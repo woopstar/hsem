@@ -304,3 +304,13 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                 [self._hsem_huawei_solar_batteries_state_of_capacity],
                 self._handle_update,
             )
+
+        if self._import_sensor:
+            _LOGGER.info(
+                f"Starting to track state changes for entity_id {self._import_sensor}"
+            )
+            async_track_state_change_event(
+                self.hass,
+                [self._import_sensor],
+                self._handle_update,
+            )
