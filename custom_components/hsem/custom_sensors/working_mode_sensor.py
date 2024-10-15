@@ -11,7 +11,7 @@ from ..const import (
     ICON,
 )
 from ..entity import HSEMEntity
-from ..utils.misc import get_config_value, async_resolve_entity_id_from_unique_id
+from ..utils.misc import async_resolve_entity_id_from_unique_id, get_config_value
 from ..utils.workingmodes import WorkingModes
 
 _LOGGER = logging.getLogger(__name__)
@@ -120,7 +120,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         self._update_settings()
 
         # Fetch the import sensor from the unique id of it.
-        self._import_sensor = await async_resolve_entity_id_from_unique_id(self, "hsem_import_sensor", "binary_sensor")
+        self._import_sensor = await async_resolve_entity_id_from_unique_id(
+            self, "hsem_import_sensor", "binary_sensor"
+        )
 
         if not self._import_sensor:
             _LOGGER.warning(f"Entity with unique_id hsem_import_sensor not found.")
@@ -198,7 +200,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
         # If the import sensor is on, set the working mode to TimeOfUse to force charge the batteries
         if import_sensor_boolean:
-            _LOGGER.warning(f"Import sensor is on. Set mode to TimeOfUse. _import_sensor_state={import_sensor_boolean}")
+            _LOGGER.warning(
+                f"Import sensor is on. Set mode to TimeOfUse. _import_sensor_state={import_sensor_boolean}"
+            )
             new_working_mode = WorkingModes.TimeOfUse.value
         else:
             _LOGGER.warning(f"Set default mode to MaximizeSelfConsumption.")
