@@ -1,13 +1,13 @@
 import logging
 
-from homeassistant.helpers.entity import Entity
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from .const import DOMAIN, ICON, NAME
 
 _LOGGER = logging.getLogger(__name__)
 
 
-class HSEMEntity(Entity):
+class HSEMEntity(RestoreEntity):
     """Base class for HSEM (Device)"""
 
     # Define the attributes of the entity

@@ -5,7 +5,7 @@ from .const import (
     DOMAIN,
 )
 
-from .custom_sensors.working_mode_sensor import WorkingModeSensor
+from .custom_sensors.export_sensor import ExportSensor
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -23,17 +23,17 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     config = config_entry.data
 
     # Extract configuration parameters
-    hsem_huawei_solar_batteries_working_mode = config.get("hsem_huawei_solar_batteries_working_mode")
+    hsem_energi_data_service_export = config.get("hsem_energi_data_service_export")
 
     # Create the export from the input from hsem_energi_data_service_export
-    working_mode_sensor = WorkingModeSensor(
-        hsem_huawei_solar_batteries_working_mode, config_entry
+    export_sensor = ExportSensor(
+        hsem_energi_data_service_export, config_entry
     )
 
     # Add sensors to Home Assistant
     async_add_entities(
         [
-            working_mode_sensor,
+            export_sensor,
         ]
     )
 

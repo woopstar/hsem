@@ -2,40 +2,40 @@ import logging
 from datetime import datetime
 
 # Importer den nye funktion
-from homeassistant.components.binary_sensor import BinarySensorEntity, BinarySensorDeviceClass
+from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.event import async_track_state_change_event
 
 from ..entity import HSEMEntity
 from ..const import (
     ICON,
-    DEFAULT_HSEM_ENERGI_DATA_SERVICE_EXPORT
+    DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_WORKING_MODE
 )
+from ..utils.workingmodes import WorkingModes
 
 _LOGGER = logging.getLogger(__name__)
 
-class ExportSensor(BinarySensorEntity, HSEMEntity):
+class WorkingModeSensor(SensorEntity, HSEMEntity):
     # Define the attributes of the entity
     _attr_icon = ICON
     _attr_has_entity_name = True
-    _attr_device_class = BinarySensorDeviceClass.POWER
 
-    def __init__(self, hsem_energi_data_service_export, config_entry):
+    def __init__(self, hsem_huawei_solar_batteries_working_mode, config_entry):
         super().__init__(config_entry)
-        self._input_sensor = hsem_energi_data_service_export
-        self._export_price = None
-        self._state = False
+        self._input_sensor = hsem_huawei_solar_batteries_working_mode
+        self._current_working_mode = None
+        self._state = None
         self._previous_value = None
         self._last_updated = None
         self._last_reset = None
         self._config_entry = config_entry
-        self._unique_id = f"hsem_export_sensor"
+        self._unique_id = f"hsem_workingmode_sensor"
         self._update_interval = 1
         self._update_settings()
 
     def _update_settings(self):
         """Fetch updated settings from config_entry options."""
         self._input_sensor = self._config_entry.options.get(
-            "hsem_energi_data_service_export", DEFAULT_HSEM_ENERGI_DATA_SERVICE_EXPORT
+            "hsem_huawei_solar_batteries_working_mode", DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_WORKING_MODE
         )
 
         # Log updated settings
@@ -43,15 +43,14 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
 
     @property
     def name(self):
-        return f"Export Sensor"
+        return f"Working Mode Sensor"
 
     @property
     def unique_id(self):
         return self._unique_id
 
     @property
-    def is_on(self):
-        """Return true if the binary sensor is on."""
+    def state(self):
         return self._state
 
     @property
@@ -60,7 +59,7 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
 
         return {
             "input_sensor": self._input_sensor,
-            "export_price": self._export_price,
+            "current_working_mode": self._current_working_mode,
             "last_updated": self._last_updated,
             "previous_value": self._previous_value,
             "sensor_update_interval": self._update_interval,
@@ -88,7 +87,7 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
             _LOGGER.warning(f"Sensor {self._input_sensor} not found.")
             return
         try:
-            input_value = float(input_state.state)
+            input_value = input_state.state
         except ValueError:
             _LOGGER.warning(
                 f"Invalid value from {self._input_sensor}: {input_state.state}"
@@ -99,8 +98,24 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
         self._previous_value = self._state
 
         # Set state to True if the export price is negative, otherwise False
-        self._export_price = input_value
-        self._state = self._export_price < 0
+        self._current_working_mode = input_value
+
+        new_working_mode = WorkingModes.MaximizeSelfConsumption.value
+
+        # Set the select sensor value to the working mode
+        try:
+            # await self.hass.services.async_call(
+            #     "select",
+            #     "select_option",
+            #     {
+            #         "entity_id": self._input_sensor,
+            #         "option": new_working_mode,
+            #     },
+            # )
+            self._state = new_working_mode
+        except Exception as e:
+            _LOGGER.error(f"Failed to set select sensor state: {e}")
+            # Do not update self._state if the call fails
 
         # Update count and last update time
         self._last_updated = now.isoformat()

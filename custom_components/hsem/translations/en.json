@@ -2,29 +2,56 @@
   "config": {
     "step": {
       "user": {
-        "title": "Configure HSEM Device",
-        "description": "Set up the device for HSEM.",
+        "title": "Configure Huawei Solar Energy Management",
+        "description": "Configure the settings for HSEM",
         "data": {
-          "device_name": "Name",
-          "hsem_energi_data_service_import": "Energi Data Service Import",
-          "hsem_energi_data_service_export": "Energi Data Service Export"
-
+          "device_name": "Name"
+        }
+      },
+      "energidataservice": {
+        "title": "Energy Data Service Sensors",
+        "description": "Select energy data services for HSEM.",
+        "data": {
+          "hsem_energi_data_service_import": "Energy Data Service Import Sensor",
+          "hsem_energi_data_service_export": "Energy Data Service Export Sensor"
+        }
+      },
+      "huawei_solar": {
+        "title": "Huawei Solar Sensors",
+        "description": "Configure the working mode for Huawei solar batteries.",
+        "data": {
+          "hsem_huawei_solar_batteries_working_mode": "Huawei Solar Batteries Working Mode"
         }
       }
     },
     "error": {
+      "only_one_entry_allowed": "Only one config entry is allowed.",
+      "required": "This field is required.",
       "invalid_sensor": "Invalid input sensor. Please choose a valid sensor."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Update HSEM Device Settings",
-        "description": "Update the device settings for HSEM.",
+        "title": "Update Huawei Solar Energy Management",
+        "description": "Update the settings for HSEM",
         "data": {
-          "device_name": "Name",
-          "hsem_energi_data_service_import": "Energi Data Service Import",
-          "hsem_energi_data_service_export": "Energi Data Service Export"
+          "device_name": "Name"
+        }
+      },
+      "energidataservice": {
+        "title": "Energy Data Service Sensors",
+        "description": "Select energy data services for HSEM.",
+        "data": {
+          "hsem_energi_data_service_import": "Energy Data Service Import Sensor",
+          "hsem_energi_data_service_export": "Energy Data Service Export Sensor"
+        }
+      },
+      "huawei_solar": {
+        "title": "Huawei Solar Sensors",
+        "description": "Configure the working mode for Huawei solar batteries.",
+        "data": {
+          "hsem_huawei_solar_batteries_working_mode": "Huawei Solar Batteries Working Mode"
         }
       }
     }
