@@ -5,15 +5,13 @@ from datetime import datetime
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.event import async_track_state_change_event
 
-from ..entity import HSEMEntity
-from ..utils.workingmodes import WorkingModes
-from ..utils.misc import get_config_value
 from ..const import (
     DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_STATE_OF_CAPACITY,
     DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_WORKING_MODE,
     ICON,
 )
 from ..entity import HSEMEntity
+from ..utils.misc import get_config_value
 from ..utils.workingmodes import WorkingModes
 
 _LOGGER = logging.getLogger(__name__)
@@ -60,24 +58,24 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
     def _update_settings(self):
         """Fetch updated settings from config_entry options."""
-        self._hsem_huawei_solar_device_id_inverter_1 = get_config_value(self._config_entry,
-            "hsem_huawei_solar_device_id_inverter_1"
+        self._hsem_huawei_solar_device_id_inverter_1 = get_config_value(
+            self._config_entry, "hsem_huawei_solar_device_id_inverter_1"
         )
-        self._hsem_huawei_solar_device_id_inverter_2 = get_config_value(self._config_entry,
-            "hsem_huawei_solar_device_id_inverter_2"
+        self._hsem_huawei_solar_device_id_inverter_2 = get_config_value(
+            self._config_entry, "hsem_huawei_solar_device_id_inverter_2"
         )
-        self._hsem_huawei_solar_device_id_batteries = get_config_value(self._config_entry,
-            "hsem_huawei_solar_device_id_batteries"
+        self._hsem_huawei_solar_device_id_batteries = get_config_value(
+            self._config_entry, "hsem_huawei_solar_device_id_batteries"
         )
-        self._hsem_huawei_solar_batteries_working_mode = get_config_value(self._config_entry,
+        self._hsem_huawei_solar_batteries_working_mode = get_config_value(
+            self._config_entry,
             "hsem_huawei_solar_batteries_working_mode",
             DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_WORKING_MODE,
         )
-        self._hsem_huawei_solar_batteries_state_of_capacity = (
-            get_config_value(self._config_entry,
-                "hsem_huawei_solar_batteries_state_of_capacity",
-                DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_STATE_OF_CAPACITY,
-            )
+        self._hsem_huawei_solar_batteries_state_of_capacity = get_config_value(
+            self._config_entry,
+            "hsem_huawei_solar_batteries_state_of_capacity",
+            DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_STATE_OF_CAPACITY,
         )
 
         # Log updated settings

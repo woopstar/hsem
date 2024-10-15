@@ -13,24 +13,29 @@ def generate_md5_hash(input_sensor):
     """Generate an MD5 hash based on the input sensor's name."""
     return hashlib.md5(input_sensor.encode("utf-8")).hexdigest()
 
+
 async def async_setup_entry(hass, config_entry, async_add_entities):
     """Set up HSEM sensors from a config entry."""
 
     # Extract configuration parameters
-    hsem_huawei_solar_device_id_inverter_1 = get_config_value(config_entry,
-        "hsem_huawei_solar_device_id_inverter_1"
+    hsem_huawei_solar_device_id_inverter_1 = get_config_value(
+        config_entry, "hsem_huawei_solar_device_id_inverter_1"
     )
-    hsem_huawei_solar_device_id_inverter_2 = get_config_value(config_entry,
-        "hsem_huawei_solar_device_id_inverter_2"
+    hsem_huawei_solar_device_id_inverter_2 = get_config_value(
+        config_entry, "hsem_huawei_solar_device_id_inverter_2"
     )
-    hsem_huawei_solar_inverter_active_power_control = get_config_value(config_entry,
-        "hsem_huawei_solar_inverter_active_power_control"
+    hsem_huawei_solar_inverter_active_power_control = get_config_value(
+        config_entry, "hsem_huawei_solar_inverter_active_power_control"
     )
-    hsem_huawei_solar_device_id_batteries = get_config_value(config_entry,
-        "hsem_huawei_solar_device_id_batteries"
+    hsem_huawei_solar_device_id_batteries = get_config_value(
+        config_entry, "hsem_huawei_solar_device_id_batteries"
     )
-    hsem_energi_data_service_import = get_config_value(config_entry,"hsem_energi_data_service_import")
-    hsem_energi_data_service_export = get_config_value(config_entry,"hsem_energi_data_service_export")
+    hsem_energi_data_service_import = get_config_value(
+        config_entry, "hsem_energi_data_service_import"
+    )
+    hsem_energi_data_service_export = get_config_value(
+        config_entry, "hsem_energi_data_service_export"
+    )
 
     # Create the export from the input from hsem_energi_data_service_export
     export_sensor = ExportSensor(
