@@ -4,7 +4,7 @@ from homeassistant.core import HomeAssistant
 from .const import DOMAIN
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up Smoothing Analytics Sensors from a config entry."""
+    """Set up Huawei Solar Energy Management from a config entry."""
     await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
     return True
 
