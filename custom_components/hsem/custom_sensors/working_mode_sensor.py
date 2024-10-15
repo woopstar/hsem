@@ -16,6 +16,7 @@ from ..utils.workingmodes import WorkingModes
 
 _LOGGER = logging.getLogger(__name__)
 
+
 class WorkingModeSensor(SensorEntity, HSEMEntity):
     # Define the attributes of the entity
     _attr_icon = ICON

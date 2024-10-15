@@ -17,6 +17,7 @@ from ..utils.misc import get_config_value
 
 _LOGGER = logging.getLogger(__name__)
 
+
 class ImportSensor(BinarySensorEntity, HSEMEntity):
     # Define the attributes of the entity
     _attr_icon = ICON

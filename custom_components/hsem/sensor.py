@@ -17,20 +17,20 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     """Set up HSEM sensors from a config entry."""
 
     # Extract configuration parameters
-    hsem_huawei_solar_device_id_inverter_1 = get_config_value(config_entry,
-        "hsem_huawei_solar_device_id_inverter_1"
+    hsem_huawei_solar_device_id_inverter_1 = get_config_value(
+        config_entry, "hsem_huawei_solar_device_id_inverter_1"
     )
-    hsem_huawei_solar_device_id_inverter_2 = get_config_value(config_entry,
-        "hsem_huawei_solar_device_id_inverter_2"
+    hsem_huawei_solar_device_id_inverter_2 = get_config_value(
+        config_entry, "hsem_huawei_solar_device_id_inverter_2"
     )
-    hsem_huawei_solar_device_id_batteries = get_config_value(config_entry,
-        "hsem_huawei_solar_device_id_batteries"
+    hsem_huawei_solar_device_id_batteries = get_config_value(
+        config_entry, "hsem_huawei_solar_device_id_batteries"
     )
-    hsem_huawei_solar_batteries_working_mode = get_config_value(config_entry,
-        "hsem_huawei_solar_batteries_working_mode"
+    hsem_huawei_solar_batteries_working_mode = get_config_value(
+        config_entry, "hsem_huawei_solar_batteries_working_mode"
     )
-    hsem_huawei_solar_batteries_state_of_capacity = get_config_value(config_entry,
-        "hsem_huawei_solar_batteries_state_of_capacity"
+    hsem_huawei_solar_batteries_state_of_capacity = get_config_value(
+        config_entry, "hsem_huawei_solar_batteries_state_of_capacity"
     )
 
     # Create the export from the input from hsem_energi_data_service_export
