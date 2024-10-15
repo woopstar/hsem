@@ -24,6 +24,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
 
     # Extract configuration parameters
     hsem_huawei_solar_device_id_inverter_1 = config.get("hsem_huawei_solar_device_id_inverter_1")
+    hsem_huawei_solar_device_id_inverter_2 = config.get("hsem_huawei_solar_device_id_inverter_2")
     hsem_huawei_solar_device_id_batteries = config.get("hsem_huawei_solar_device_id_batteries")
     hsem_huawei_solar_batteries_working_mode = config.get("hsem_huawei_solar_batteries_working_mode")
     hsem_huawei_solar_batteries_state_of_capacity = config.get("hsem_huawei_solar_batteries_state_of_capacity")
@@ -32,6 +33,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     # Create the export from the input from hsem_energi_data_service_export
     working_mode_sensor = WorkingModeSensor(
         hsem_huawei_solar_device_id_inverter_1,
+        hsem_huawei_solar_device_id_inverter_2,
         hsem_huawei_solar_device_id_batteries,
         hsem_huawei_solar_batteries_working_mode,
         hsem_huawei_solar_batteries_state_of_capacity,

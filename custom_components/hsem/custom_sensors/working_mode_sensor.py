@@ -23,6 +23,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
     def __init__(self,
         hsem_huawei_solar_device_id_inverter_1,
+        hsem_huawei_solar_device_id_inverter_2,
         hsem_huawei_solar_device_id_batteries,
         hsem_huawei_solar_batteries_working_mode,
         hsem_huawei_solar_batteries_state_of_capacity,
@@ -30,9 +31,8 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         config_entry):
         super().__init__(config_entry)
         self._hsem_huawei_solar_device_id_inverter_1 = hsem_huawei_solar_device_id_inverter_1
-        self._hsem_huawei_solar_device_id_inverter_1_current = None
+        self._hsem_huawei_solar_device_id_inverter_2 = hsem_huawei_solar_device_id_inverter_2
         self._hsem_huawei_solar_device_id_batteries = hsem_huawei_solar_device_id_batteries
-        self._hsem_huawei_solar_device_id_batteries_current = None
         self._hsem_huawei_solar_batteries_working_mode = hsem_huawei_solar_batteries_working_mode
         self._hsem_huawei_solar_batteries_working_mode_current = None
         self._hsem_huawei_solar_batteries_state_of_capacity = hsem_huawei_solar_batteries_state_of_capacity
@@ -40,18 +40,19 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_huawei_solar_inverter_active_power_control = hsem_huawei_solar_inverter_active_power_control
         self._hsem_huawei_solar_inverter_active_power_control_current = None
         self._state = None
-        self._previous_value = None
         self._last_updated = None
         self._last_reset = None
         self._config_entry = config_entry
         self._unique_id = f"hsem_workingmode_sensor"
-        self._update_interval = 1
         self._update_settings()
 
     def _update_settings(self):
         """Fetch updated settings from config_entry options."""
         self._hsem_huawei_solar_device_id_inverter_1 = self._config_entry.options.get(
             "hsem_huawei_solar_device_id_inverter_1"
+        )
+        self._hsem_huawei_solar_device_id_inverter_2 = self._config_entry.options.get(
+            "hsem_huawei_solar_device_id_inverter_2"
         )
         self._hsem_huawei_solar_device_id_batteries = self._config_entry.options.get(
             "hsem_huawei_solar_device_id_batteries"
@@ -87,6 +88,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
         return {
             "hsem_huawei_solar_device_id_inverter_1": self._hsem_huawei_solar_device_id_inverter_1,
+            "hsem_huawei_solar_device_id_inverter_2": self._hsem_huawei_solar_device_id_inverter_2,
             "hsem_huawei_solar_device_id_batteries": self._hsem_huawei_solar_device_id_batteries,
             "hsem_huawei_solar_batteries_working_mode": self._hsem_huawei_solar_batteries_working_mode,
             "hsem_huawei_solar_batteries_working_mode_current": self._hsem_huawei_solar_batteries_working_mode_current,
@@ -95,22 +97,11 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             "hsem_huawei_solar_inverter_active_power_control": self._hsem_huawei_solar_inverter_active_power_control,
             "hsem_huawei_solar_inverter_active_power_control_current": self._hsem_huawei_solar_inverter_active_power_control_current,
             "last_updated": self._last_updated,
-            "previous_value": self._previous_value,
-            "sensor_update_interval": self._update_interval,
             "unique_id": self._unique_id,
         }
 
     async def _handle_update(self, event):
         """Handle the sensor state update (for both manual and state change)."""
-
-        # Get the current time
-        now = datetime.now()
-
-        # Calculate the update interval to be used
-        if self._last_updated is not None:
-            self._update_interval = (
-                now - datetime.fromisoformat(self._last_updated)
-            ).total_seconds()
 
         # Ensure settings are reloaded if config is changed.
         self._update_settings()
@@ -156,9 +147,6 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             )
             return
 
-        # Update the previous lowpass value to the new lowpass value
-        self._previous_value = self._state
-
         # Set state to True if the export price is negative, otherwise False
         self._hsem_huawei_solar_batteries_working_mode_current = value_hsem_huawei_solar_batteries_working_mode
         self._hsem_huawei_solar_batteries_state_of_capacity_current = value_hsem_huawei_solar_batteries_state_of_capacity
@@ -183,8 +171,8 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             _LOGGER.error(f"Failed to set select sensor state: {e}")
             # Do not update self._state if the call fails
 
-        # Update count and last update time
-        self._last_updated = now.isoformat()
+        # Update last update time
+        self._last_updated = datetime.now().isoformat()
 
         # Trigger an update in Home Assistant
         self.async_write_ha_state()
@@ -202,22 +190,43 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             _LOGGER.info(f"Restoring state for {self._unique_id}")
             try:
                 self._state = old_state.state
-                self._previous_value = self._state
             except (ValueError, TypeError):
                 _LOGGER.warning(
                     f"Could not restore state for {self._unique_id}, invalid value: {old_state.state}"
                 )
                 self._state = None
-                self._previous_value = None
 
             self._last_updated = old_state.attributes.get("last_updated", None)
-            self._update_interval = old_state.attributes.get("update_interval", 1)
         else:
             _LOGGER.info(
                 f"No previous state found for {self._unique_id}, starting fresh."
             )
 
-        # Start listening for state changes of the input sensor
+        # Start listening for state changes of the input sensors
+        if self._hsem_huawei_solar_device_id_inverter_1:
+            _LOGGER.info(
+                f"Starting to track state changes for entity_id {self._hsem_huawei_solar_device_id_inverter_1}"
+            )
+            async_track_state_change_event(
+                self.hass, [self._hsem_huawei_solar_device_id_inverter_1], self._handle_update
+            )
+
+        if self._hsem_huawei_solar_device_id_inverter_2:
+            _LOGGER.info(
+                f"Starting to track state changes for entity_id {self._hsem_huawei_solar_device_id_inverter_2}"
+            )
+            async_track_state_change_event(
+                self.hass, [self._hsem_huawei_solar_device_id_inverter_2], self._handle_update
+            )
+
+        if self._hsem_huawei_solar_device_id_batteries:
+            _LOGGER.info(
+                f"Starting to track state changes for entity_id {self._hsem_huawei_solar_device_id_batteries}"
+            )
+            async_track_state_change_event(
+                self.hass, [self._hsem_huawei_solar_device_id_batteries], self._handle_update
+            )
+
         if self._hsem_huawei_solar_batteries_working_mode:
             _LOGGER.info(
                 f"Starting to track state changes for entity_id {self._hsem_huawei_solar_batteries_working_mode}"
@@ -225,7 +234,19 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             async_track_state_change_event(
                 self.hass, [self._hsem_huawei_solar_batteries_working_mode], self._handle_update
             )
-        else:
-            _LOGGER.error(
-                f"Failed to track state changes, input_sensor is not resolved."
+
+        if self._hsem_huawei_solar_batteries_state_of_capacity:
+            _LOGGER.info(
+                f"Starting to track state changes for entity_id {self._hsem_huawei_solar_batteries_state_of_capacity}"
+            )
+            async_track_state_change_event(
+                self.hass, [self._hsem_huawei_solar_batteries_state_of_capacity], self._handle_update
+            )
+
+        if self._hsem_huawei_solar_inverter_active_power_control:
+            _LOGGER.info(
+                f"Starting to track state changes for entity_id {self._hsem_huawei_solar_inverter_active_power_control}"
+            )
+            async_track_state_change_event(
+                self.hass, [self._hsem_huawei_solar_inverter_active_power_control], self._handle_update
             )

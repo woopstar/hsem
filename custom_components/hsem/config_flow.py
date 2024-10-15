@@ -112,7 +112,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required("hsem_huawei_solar_device_id_inverter_1"): selector(
                     {"device": {"integration": "huawei_solar"}}
                 ),
-                vol.Optional("hsem_huawei_solar_device_id_inverter_2"): selector(
+                vol.Optional("hsem_huawei_solar_device_id_inverter_2", default=None): selector(
                     {"device": {"integration": "huawei_solar"}}
                 ),
                 vol.Required("hsem_huawei_solar_device_id_batteries"): selector(
@@ -231,7 +231,7 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
                 vol.Required("hsem_huawei_solar_device_id_inverter_1", default=self.config_entry.options.get("hsem_huawei_solar_device_id_inverter_1")): selector(
                     {"device": {"integration": "huawei_solar"}}
                 ),
-                vol.Optional("hsem_huawei_solar_device_id_inverter_2", default=self.config_entry.options.get("hsem_huawei_solar_device_id_inverter_2")): selector(
+                vol.Optional("hsem_huawei_solar_device_id_inverter_2", default=self.config_entry.options.get("hsem_huawei_solar_device_id_inverter_2", None)): selector(
                     {"device": {"integration": "huawei_solar"}}
                 ),
                 vol.Required("hsem_huawei_solar_device_id_batteries", default=self.config_entry.options.get("hsem_huawei_solar_device_id_batteries")): selector(

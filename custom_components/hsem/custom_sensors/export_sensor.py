@@ -23,12 +23,10 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
         self._price_sensor = hsem_energi_data_service_export
         self._export_price = None
         self._state = True
-        self._previous_value = None
         self._last_updated = None
         self._last_reset = None
         self._config_entry = config_entry
         self._unique_id = f"hsem_export_sensor"
-        self._update_interval = 1
         self._update_settings()
 
     def _update_settings(self):
@@ -61,22 +59,11 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
             "price_sensor": self._price_sensor,
             "export_price": self._export_price,
             "last_updated": self._last_updated,
-            "previous_value": self._previous_value,
-            "sensor_update_interval": self._update_interval,
             "unique_id": self._unique_id,
         }
 
     async def _handle_update(self, event):
         """Handle the sensor state update (for both manual and state change)."""
-
-        # Get the current time
-        now = datetime.now()
-
-        # Calculate the update interval to be used
-        if self._last_updated is not None:
-            self._update_interval = (
-                now - datetime.fromisoformat(self._last_updated)
-            ).total_seconds()
 
         # Ensure settings are reloaded if config is changed.
         self._update_settings()
@@ -94,15 +81,10 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
             )
             return
 
-        # Update the previous lowpass value to the new lowpass value
-        self._previous_value = self._state
-
         # Set state to True if the export price is negative, otherwise False
         self._export_price = input_value
         self._state = self._export_price > 0
-
-        # Update count and last update time
-        self._last_updated = now.isoformat()
+        self._last_updated = datetime.now().isoformat()
 
         # Trigger an update in Home Assistant
         self.async_write_ha_state()
@@ -120,16 +102,13 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
             _LOGGER.info(f"Restoring state for {self._unique_id}")
             try:
                 self._state = old_state.state
-                self._previous_value = self._state
             except (ValueError, TypeError):
                 _LOGGER.warning(
                     f"Could not restore state for {self._unique_id}, invalid value: {old_state.state}"
                 )
                 self._state = None
-                self._previous_value = None
 
             self._last_updated = old_state.attributes.get("last_updated", None)
-            self._update_interval = old_state.attributes.get("update_interval", 1)
         else:
             _LOGGER.info(
                 f"No previous state found for {self._unique_id}, starting fresh."
@@ -145,5 +124,5 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
             )
         else:
             _LOGGER.error(
-                f"Failed to track state changes, input_sensor is not resolved."
+                f"Failed to track state changes, hsem_energi_data_service_export is not resolved."
             )
