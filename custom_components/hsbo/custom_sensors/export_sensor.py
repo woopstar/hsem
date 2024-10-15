@@ -20,7 +20,7 @@ class ExportSensor(HSBOEntity, RestoreEntity):
 
     def __init__(self, hsbo_energi_data_service_export, sensor_hash, config_entry):
         super().__init__(config_entry)
-        self._hsbo_energi_data_service_export = hsbo_energi_data_service_export
+        self._input_sensor = hsbo_energi_data_service_export
         self._sensor_hash = sensor_hash
         self._state = False
         self._previous_value = None
@@ -41,7 +41,7 @@ class ExportSensor(HSBOEntity, RestoreEntity):
         )
 
         # Log updated settings
-        _LOGGER.debug(f"Updated settings: hsbo_energi_data_service_export={self._hsbo_energi_data_service_export}")
+        _LOGGER.debug(f"Updated settings: input_sensor={self._input_sensor}")
 
     @property
     def name(self):
