@@ -9,6 +9,8 @@ from .const import (
     DEFAULT_HSEM_ENERGI_DATA_SERVICE_IMPORT,
     DEFAULT_HSEM_ENERGI_DATA_SERVICE_EXPORT,
     DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_WORKING_MODE,
+    DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_STATE_OF_CAPACITY,
+    DEFAULT_HSEM_HUAWEI_SOLAR_INVERTER_ACTIVE_POWER_CONTROL,
     DOMAIN,
     NAME,
 )
@@ -27,7 +29,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         # Check if there's already an entry for this domain
         existing_entries = self.hass.config_entries.async_entries(DOMAIN)
         if existing_entries:
-            self._errors["only_one_entry_allowed"] = "only_one_entry_allowed"
+            self._errors["base"] = "only_one_entry_allowed"
             return self.async_show_form(step_id="user", errors=self._errors)
 
         # If user_input is not None, the user has submitted the form
@@ -92,6 +94,10 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # Validate the working mode
             if not user_input.get("hsem_huawei_solar_batteries_working_mode"):
                 self._errors["hsem_huawei_solar_batteries_working_mode"] = "required"
+            elif not user_input.get("hsem_huawei_solar_batteries_state_of_capacity"):
+                self._errors["hsem_huawei_solar_batteries_state_of_capacity"] = "required"
+            elif not user_input.get("hsem_huawei_solar_inverter_active_power_control"):
+                self._errors["hsem_huawei_solar_inverter_active_power_control"] = "required"
             else:
                 # Combine user inputs and create the entry
                 final_data = {**self._user_input, **user_input}
@@ -103,8 +109,20 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         # Define the form schema for working mode step
         data_schema = vol.Schema(
             {
+                vol.Required("hsem_huawei_solar_device_id_inverter_1"): selector(
+                    {"device": {"integration": "huawei_solar"}}
+                ),
+                vol.Required("hsem_huawei_solar_device_id_batteries"): selector(
+                    {"device": {"integration": "huawei_solar"}}
+                ),
                 vol.Required("hsem_huawei_solar_batteries_working_mode", default=DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_WORKING_MODE): selector(
                     {"entity": {"domain": "select"}}
+                ),
+                vol.Required("hsem_huawei_solar_batteries_state_of_capacity", default=DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_STATE_OF_CAPACITY): selector(
+                    {"entity": {"domain": "sensor"}}
+                ),
+                vol.Required("hsem_huawei_solar_inverter_active_power_control", default=DEFAULT_HSEM_HUAWEI_SOLAR_INVERTER_ACTIVE_POWER_CONTROL): selector(
+                    {"entity": {"domain": "sensor"}}
                 )
             }
         )
@@ -192,6 +210,10 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
         if user_input is not None:
             if not user_input.get("hsem_huawei_solar_batteries_working_mode"):
                 self._errors["hsem_huawei_solar_batteries_working_mode"] = "required"
+            elif not user_input.get("hsem_huawei_solar_batteries_state_of_capacity"):
+                self._errors["hsem_huawei_solar_batteries_state_of_capacity"] = "required"
+            elif not user_input.get("hsem_huawei_solar_inverter_active_power_control"):
+                self._errors["hsem_huawei_solar_inverter_active_power_control"] = "required"
             else:
                 # Combine user inputs and create the entry
                 final_data = {**self._user_input, **user_input}
@@ -203,8 +225,20 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
         # Define the form schema for working mode step
         data_schema = vol.Schema(
             {
+                vol.Required("hsem_huawei_solar_device_id_inverter_1", default=self.config_entry.options.get("hsem_huawei_solar_device_id_inverter_1")): selector(
+                    {"device": {"integration": "huawei_solar"}}
+                ),
+                vol.Required("hsem_huawei_solar_device_id_batteries", default=self.config_entry.options.get("hsem_huawei_solar_device_id_batteries")): selector(
+                    {"device": {"integration": "huawei_solar"}}
+                ),
                 vol.Required("hsem_huawei_solar_batteries_working_mode", default=self.config_entry.options.get("hsem_huawei_solar_batteries_working_mode", DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_WORKING_MODE)): selector(
                     {"entity": {"domain": "select"}}
+                ),
+                vol.Required("hsem_huawei_solar_batteries_state_of_capacity", default=self.config_entry.options.get("hsem_huawei_solar_batteries_state_of_capacity", DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_STATE_OF_CAPACITY)): selector(
+                    {"entity": {"domain": "sensor"}}
+                ),
+                vol.Required("hsem_huawei_solar_inverter_active_power_control", default=self.config_entry.options.get("hsem_huawei_solar_inverter_active_power_control", DEFAULT_HSEM_HUAWEI_SOLAR_INVERTER_ACTIVE_POWER_CONTROL)): selector(
+                    {"entity": {"domain": "sensor"}}
                 )
             }
         )

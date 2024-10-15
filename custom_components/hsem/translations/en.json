@@ -9,7 +9,7 @@
         }
       },
       "energidataservice": {
-        "title": "Energy Data Service Sensors",
+        "title": "Energi Data Service Sensors",
         "description": "Select energy data services for HSEM.",
         "data": {
           "hsem_energi_data_service_import": "Energy Data Service Import Sensor",
@@ -40,7 +40,7 @@
         }
       },
       "energidataservice": {
-        "title": "Energy Data Service Sensors",
+        "title": "Energi Data Service Sensors",
         "description": "Select energy data services for HSEM.",
         "data": {
           "hsem_energi_data_service_import": "Energy Data Service Import Sensor",

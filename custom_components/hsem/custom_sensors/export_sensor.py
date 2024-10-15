@@ -2,7 +2,7 @@ import logging
 from datetime import datetime
 
 # Importer den nye funktion
-from homeassistant.components.binary_sensor import BinarySensorEntity, BinarySensorDeviceClass
+from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.helpers.event import async_track_state_change_event
 
 from ..entity import HSEMEntity
@@ -17,13 +17,12 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
     # Define the attributes of the entity
     _attr_icon = ICON
     _attr_has_entity_name = True
-    _attr_device_class = BinarySensorDeviceClass.POWER
 
     def __init__(self, hsem_energi_data_service_export, config_entry):
         super().__init__(config_entry)
-        self._input_sensor = hsem_energi_data_service_export
+        self._price_sensor = hsem_energi_data_service_export
         self._export_price = None
-        self._state = False
+        self._state = True
         self._previous_value = None
         self._last_updated = None
         self._last_reset = None
@@ -34,12 +33,12 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
 
     def _update_settings(self):
         """Fetch updated settings from config_entry options."""
-        self._input_sensor = self._config_entry.options.get(
+        self._price_sensor = self._config_entry.options.get(
             "hsem_energi_data_service_export", DEFAULT_HSEM_ENERGI_DATA_SERVICE_EXPORT
         )
 
         # Log updated settings
-        _LOGGER.debug(f"Updated settings: input_sensor={self._input_sensor}")
+        _LOGGER.debug(f"Updated settings: input_sensor={self._price_sensor}")
 
     @property
     def name(self):
@@ -59,7 +58,7 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
         """Return the state attributes."""
 
         return {
-            "input_sensor": self._input_sensor,
+            "price_sensor": self._price_sensor,
             "export_price": self._export_price,
             "last_updated": self._last_updated,
             "previous_value": self._previous_value,
@@ -83,15 +82,15 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
         self._update_settings()
 
         # Fetch the current value from the input sensor
-        input_state = self.hass.states.get(self._input_sensor)
+        input_state = self.hass.states.get(self._price_sensor)
         if input_state is None:
-            _LOGGER.warning(f"Sensor {self._input_sensor} not found.")
+            _LOGGER.warning(f"Sensor {self._price_sensor} not found.")
             return
         try:
             input_value = float(input_state.state)
         except ValueError:
             _LOGGER.warning(
-                f"Invalid value from {self._input_sensor}: {input_state.state}"
+                f"Invalid value from {self._price_sensor}: {input_state.state}"
             )
             return
 
@@ -100,7 +99,7 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
 
         # Set state to True if the export price is negative, otherwise False
         self._export_price = input_value
-        self._state = self._export_price < 0
+        self._state = self._export_price > 0
 
         # Update count and last update time
         self._last_updated = now.isoformat()
@@ -137,12 +136,12 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
             )
 
         # Start listening for state changes of the input sensor
-        if self._input_sensor:
+        if self._price_sensor:
             _LOGGER.info(
-                f"Starting to track state changes for entity_id {self._input_sensor}"
+                f"Starting to track state changes for entity_id {self._price_sensor}"
             )
             async_track_state_change_event(
-                self.hass, [self._input_sensor], self._handle_update
+                self.hass, [self._price_sensor], self._handle_update
             )
         else:
             _LOGGER.error(
