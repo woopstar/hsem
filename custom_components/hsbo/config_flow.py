@@ -92,10 +92,10 @@ class HSBOOptionsFlow(config_entries.OptionsFlow):
                     "device_name",
                     default=self.config_entry.options.get("device_name", NAME),
                 ): str,
-                vol.Required("hsbo_energi_data_service_import"): selector(
+                vol.Required("hsbo_energi_data_service_import", default=DEFAULT_HSBO_ENERGI_DATA_SERVICE_IMPORT): selector(
                     {"entity": {"domain": "sensor"}}
                 ),
-                vol.Required("hsbo_energi_data_service_export"): selector(
+                vol.Required("hsbo_energi_data_service_export", default=DEFAULT_HSBO_ENERGI_DATA_SERVICE_EXPORT): selector(
                     {"entity": {"domain": "sensor"}}
                 ),
 

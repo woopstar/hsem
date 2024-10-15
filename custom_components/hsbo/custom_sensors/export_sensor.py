@@ -21,6 +21,7 @@ class ExportSensor(HSBOEntity, RestoreEntity):
     def __init__(self, hsbo_energi_data_service_export, sensor_hash, config_entry):
         super().__init__(config_entry)
         self._input_sensor = hsbo_energi_data_service_export
+        self._export_price = None
         self._sensor_hash = sensor_hash
         self._state = False
         self._previous_value = None
@@ -77,6 +78,7 @@ class ExportSensor(HSBOEntity, RestoreEntity):
 
         return {
             "input_sensor": self._hsbo_energi_data_service_export,
+            "export_price": self._export_price,
             "last_updated": self._last_updated,
             "previous_value": self._previous_value,
             "sensor_hash": self._sensor_hash,
@@ -120,8 +122,10 @@ class ExportSensor(HSBOEntity, RestoreEntity):
         # Update the previous lowpass value to the new lowpass value
         self._previous_value = self._state
 
-        # Apply lowpass filter when we have a previous value
-        if input_value < 0:
+        self._export_price = input_value
+
+        # Set state to true if we have negative export price
+        if self._export_price < 0:
             self._state = True
         else:
             self._state = False
