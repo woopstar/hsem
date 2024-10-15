@@ -6,8 +6,8 @@ from homeassistant.core import callback
 from homeassistant.helpers.selector import selector
 
 from .const import (
-    DEFAULT_HSBO_ENERGI_DATA_SERVICE_IMPORT,
-    DEFAULT_HSBO_ENERGI_DATA_SERVICE_EXPORT,
+    DEFAULT_hsem_ENERGI_DATA_SERVICE_IMPORT,
+    DEFAULT_hsem_ENERGI_DATA_SERVICE_EXPORT,
     DOMAIN,
     NAME,
 )
@@ -15,8 +15,8 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
-class HSBOConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Config flow for Huawei Solar Battery Optimization."""
+class hsemConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+    """Config flow for HSEM."""
 
     VERSION = 1
 
@@ -27,10 +27,10 @@ class HSBOConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         # If user_input is not None, the user has submitted the form
         if user_input is not None:
             # Validate input_sensor and other necessary fields
-            if not user_input.get("hsbo_energi_data_service_import"):
-                self._errors["hsbo_energi_data_service_import"] = "required"
-            elif not user_input.get("hsbo_energi_data_service_export"):
-                self._errors["hsbo_energi_data_service_export"] = "required"
+            if not user_input.get("hsem_energi_data_service_import"):
+                self._errors["hsem_energi_data_service_import"] = "required"
+            elif not user_input.get("hsem_energi_data_service_export"):
+                self._errors["hsem_energi_data_service_export"] = "required"
             else:
                 # Create the configuration with device_name as title
                 return self.async_create_entry(
@@ -42,10 +42,10 @@ class HSBOConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         data_schema = vol.Schema(
             {
                 vol.Optional("device_name", default=NAME): str,
-                vol.Required("hsbo_energi_data_service_import", default=DEFAULT_HSBO_ENERGI_DATA_SERVICE_IMPORT): selector(
+                vol.Required("hsem_energi_data_service_import", default=DEFAULT_hsem_ENERGI_DATA_SERVICE_IMPORT): selector(
                     {"entity": {"domain": "sensor"}}
                 ),
-                vol.Required("hsbo_energi_data_service_export", default=DEFAULT_HSBO_ENERGI_DATA_SERVICE_EXPORT): selector(
+                vol.Required("hsem_energi_data_service_export", default=DEFAULT_hsem_ENERGI_DATA_SERVICE_EXPORT): selector(
                     {"entity": {"domain": "sensor"}}
                 )
             }
@@ -60,11 +60,11 @@ class HSBOConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @callback
     def async_get_options_flow(config_entry):
         """Return the options flow."""
-        return HSBOOptionsFlow(config_entry)
+        return hsemOptionsFlow(config_entry)
 
 
-class HSBOOptionsFlow(config_entries.OptionsFlow):
-    """Options flow for Huawei Solar Battery Optimization."""
+class hsemOptionsFlow(config_entries.OptionsFlow):
+    """Options flow for HSEM."""
 
     def __init__(self, config_entry):
         """Initialize options flow."""
@@ -74,10 +74,10 @@ class HSBOOptionsFlow(config_entries.OptionsFlow):
         """Handle options step."""
 
         if user_input is not None:
-            if not user_input.get("hsbo_energi_data_service_import"):
-                self._errors["hsbo_energi_data_service_import"] = "required"
-            elif not user_input.get("hsbo_energi_data_service_export"):
-                self._errors["hsbo_energi_data_service_export"] = "required"
+            if not user_input.get("hsem_energi_data_service_import"):
+                self._errors["hsem_energi_data_service_import"] = "required"
+            elif not user_input.get("hsem_energi_data_service_export"):
+                self._errors["hsem_energi_data_service_export"] = "required"
             else:
                 # Update the device name in options flow
                 return self.async_create_entry(
@@ -92,10 +92,10 @@ class HSBOOptionsFlow(config_entries.OptionsFlow):
                     "device_name",
                     default=self.config_entry.options.get("device_name", NAME),
                 ): str,
-                vol.Required("hsbo_energi_data_service_import", default=DEFAULT_HSBO_ENERGI_DATA_SERVICE_IMPORT): selector(
+                vol.Required("hsem_energi_data_service_import", default=DEFAULT_hsem_ENERGI_DATA_SERVICE_IMPORT): selector(
                     {"entity": {"domain": "sensor"}}
                 ),
-                vol.Required("hsbo_energi_data_service_export", default=DEFAULT_HSBO_ENERGI_DATA_SERVICE_EXPORT): selector(
+                vol.Required("hsem_energi_data_service_export", default=DEFAULT_hsem_ENERGI_DATA_SERVICE_EXPORT): selector(
                     {"entity": {"domain": "sensor"}}
                 ),
 

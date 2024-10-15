@@ -1,7 +1,7 @@
 {
-  "name": "Huawei Solar Battery Optimization",
+  "name": "Huawei Solar Energy Management",
   "render_readme": true,
   "homeassistant": "2024.6.0",
   "zip_release": true,
-  "filename": "hsbo.zip"
+  "filename": "hsem.zip"
 }

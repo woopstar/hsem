@@ -4,23 +4,24 @@ from datetime import datetime
 # Importer den nye funktion
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.restore_state import RestoreEntity
+from homeassistant.components.binary_sensor import BinarySensorEntity
 
-from ..entity import HSBOEntity
+from ..entity import HSEMEntity
 from ..const import (
     ICON,
-    DEFAULT_HSBO_ENERGI_DATA_SERVICE_EXPORT
+    DEFAULT_HSEM_ENERGI_DATA_SERVICE_EXPORT
 )
 
 _LOGGER = logging.getLogger(__name__)
 
-class ExportSensor(HSBOEntity, RestoreEntity):
+class ExportSensor(HSEMEntity, RestoreEntity, BinarySensorEntity):
     # Define the attributes of the entity
     _attr_icon = ICON
     _attr_has_entity_name = True
 
-    def __init__(self, hsbo_energi_data_service_export, sensor_hash, config_entry):
+    def __init__(self, hsem_energi_data_service_export, sensor_hash, config_entry):
         super().__init__(config_entry)
-        self._input_sensor = hsbo_energi_data_service_export
+        self._input_sensor = hsem_energi_data_service_export
         self._export_price = None
         self._sensor_hash = sensor_hash
         self._state = False
@@ -31,14 +32,14 @@ class ExportSensor(HSBOEntity, RestoreEntity):
         self._state_class = None
         self._last_reset = None
         self._config_entry = config_entry
-        self._unique_id = f"hsbo_export_{sensor_hash}"
+        self._unique_id = f"hsem_export_{sensor_hash}"
         self._update_interval = 1
         self._update_settings()
 
     def _update_settings(self):
         """Fetch updated settings from config_entry options."""
-        self._hsbo_energi_data_service_export = self._config_entry.options.get(
-            "hsbo_energi_data_service_export", DEFAULT_HSBO_ENERGI_DATA_SERVICE_EXPORT
+        self._hsem_energi_data_service_export = self._config_entry.options.get(
+            "hsem_energi_data_service_export", DEFAULT_HSEM_ENERGI_DATA_SERVICE_EXPORT
         )
 
         # Log updated settings
@@ -69,6 +70,11 @@ class ExportSensor(HSBOEntity, RestoreEntity):
         return self._state_class
 
     @property
+    def is_on(self):
+        """Return true if the binary sensor is on."""
+        return self._state
+
+    @property
     def last_reset(self):
         return self._last_reset
 
@@ -77,7 +83,7 @@ class ExportSensor(HSBOEntity, RestoreEntity):
         """Return the state attributes."""
 
         return {
-            "input_sensor": self._hsbo_energi_data_service_export,
+            "input_sensor": self._hsem_energi_data_service_export,
             "export_price": self._export_price,
             "last_updated": self._last_updated,
             "previous_value": self._previous_value,
@@ -122,13 +128,9 @@ class ExportSensor(HSBOEntity, RestoreEntity):
         # Update the previous lowpass value to the new lowpass value
         self._previous_value = self._state
 
+        # Set state to True if the export price is negative, otherwise False
         self._export_price = input_value
-
-        # Set state to true if we have negative export price
-        if self._export_price < 0:
-            self._state = True
-        else:
-            self._state = False
+        self._state = self._export_price < 0
 
         # Update count and last update time
         self._last_updated = now.isoformat()
@@ -148,8 +150,8 @@ class ExportSensor(HSBOEntity, RestoreEntity):
         if old_state is not None:
             _LOGGER.info(f"Restoring state for {self._unique_id}")
             try:
-                self._state = round(float(old_state.state), 2)
-                self._previous_value = float(self._state)  # Restore the previous value
+                self._state = old_state.state
+                self._previous_value = self._state
             except (ValueError, TypeError):
                 _LOGGER.warning(
                     f"Could not restore state for {self._unique_id}, invalid value: {old_state.state}"

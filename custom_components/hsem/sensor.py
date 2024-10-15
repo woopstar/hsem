@@ -19,16 +19,16 @@ def get_config_value(config_entry, key, default_value):
 
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
-    """Set up Huawei Solar Battery Optimization sensors from a config entry."""
+    """Set up HSEM sensors from a config entry."""
     config = config_entry.data
 
     # Extract configuration parameters
-    hsbo_energi_data_service_import = config.get("hsbo_energi_data_service_import")
-    hsbo_energi_data_service_export = config.get("hsbo_energi_data_service_export")
+    hsem_energi_data_service_import = config.get("hsem_energi_data_service_import")
+    hsem_energi_data_service_export = config.get("hsem_energi_data_service_export")
 
-    # Create the export from the input from hsbo_energi_data_service_export
+    # Create the export from the input from hsem_energi_data_service_export
     export_sensor = ExportSensor(
-        hsbo_energi_data_service_export, generate_md5_hash(hsbo_energi_data_service_export), config_entry
+        hsem_energi_data_service_export, generate_md5_hash(hsem_energi_data_service_export), config_entry
     )
 
     # Add sensors to Home Assistant

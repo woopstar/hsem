@@ -7,15 +7,15 @@ from .const import DOMAIN, ICON, NAME
 _LOGGER = logging.getLogger(__name__)
 
 
-class HSBOEntity(Entity):
-    """Base class for Huawei Solar Battery Optimization (Device)"""
+class HSEMEntity(Entity):
+    """Base class for HSEM (Device)"""
 
     # Define the attributes of the entity
     _attr_icon = ICON
     _attr_has_entity_name = True
 
     def __init__(self, config_entry):
-        """Initialize the Huawei Solar Battery Optimization"""
+        """Initialize the HSEM"""
         super().__init__()
         self.config_entry = config_entry
 
