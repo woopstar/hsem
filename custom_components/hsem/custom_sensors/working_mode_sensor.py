@@ -11,7 +11,7 @@ from ..const import (
     ICON,
 )
 from ..entity import HSEMEntity
-from ..utils.misc import get_config_value
+from ..utils.misc import get_config_value, async_resolve_entity_id_from_unique_id
 from ..utils.workingmodes import WorkingModes
 
 _LOGGER = logging.getLogger(__name__)
@@ -49,6 +49,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             hsem_huawei_solar_batteries_state_of_capacity
         )
         self._hsem_huawei_solar_batteries_state_of_capacity_current = None
+        self._import_sensor = None
         self._state = None
         self._last_updated = None
         self._last_reset = None
@@ -107,6 +108,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             "hsem_huawei_solar_batteries_working_mode_current": self._hsem_huawei_solar_batteries_working_mode_current,
             "hsem_huawei_solar_batteries_state_of_capacity_input_sensor": self._hsem_huawei_solar_batteries_state_of_capacity,
             "hsem_huawei_solar_batteries_state_of_capacity_current": self._hsem_huawei_solar_batteries_state_of_capacity_current,
+            "import_sensor: ": self._import_sensor,
             "last_updated": self._last_updated,
             "unique_id": self._unique_id,
         }
@@ -116,6 +118,33 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
         # Ensure settings are reloaded if config is changed.
         self._update_settings()
+
+        # Fetch the import sensor from the unique id of it.
+        self._import_sensor = await async_resolve_entity_id_from_unique_id(self, "hsem_import_sensor", "binary_sensor")
+
+        if not self._import_sensor:
+            _LOGGER.warning(f"Entity with unique_id hsem_import_sensor not found.")
+            return
+
+        # Fetch the current value from the input sensor
+        _import_sensor_state = self.hass.states.get(self._import_sensor).state
+        if _import_sensor_state is None:
+            _LOGGER.warning(
+                f"Sensor {self._import_sensor} not ready or not found. Skipping update."
+            )
+            return
+
+        if isinstance(_import_sensor_state, str):
+            if _import_sensor_state.lower() in ("on", "true", "1"):
+                import_sensor_boolean = True
+            elif _import_sensor_state.lower() in ("off", "false", "0"):
+                import_sensor_boolean = False
+            else:
+                _LOGGER.error(f"Unexpected sensor state: {_import_sensor_state}")
+                return
+        else:
+            _LOGGER.error(f"Invalid sensor state type: {_import_sensor_state}")
+            return
 
         # Fetch the current value from the input sensors
         input_hsem_huawei_solar_batteries_working_mode = self.hass.states.get(
@@ -167,7 +196,13 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
         # Start calculating the optiomal working mode for the batteries
 
-        new_working_mode = WorkingModes.MaximizeSelfConsumption.value
+        # If the import sensor is on, set the working mode to TimeOfUse to force charge the batteries
+        if import_sensor_boolean:
+            _LOGGER.warning(f"Import sensor is on. Set mode to TimeOfUse. _import_sensor_state={import_sensor_boolean}")
+            new_working_mode = WorkingModes.TimeOfUse.value
+        else:
+            _LOGGER.warning(f"Set default mode to MaximizeSelfConsumption.")
+            new_working_mode = WorkingModes.MaximizeSelfConsumption.value
 
         # Set the select sensor value to the working mode
         try:
