@@ -5,16 +5,15 @@ from datetime import datetime
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.event import async_track_state_change_event
 
+from ..entity import HSEMEntity
+from ..utils.workingmodes import WorkingModes
 from ..const import (
     DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_STATE_OF_CAPACITY,
     DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_WORKING_MODE,
     ICON,
 )
-from ..entity import HSEMEntity
-from ..utils.workingmodes import WorkingModes
 
 _LOGGER = logging.getLogger(__name__)
-
 
 class WorkingModeSensor(SensorEntity, HSEMEntity):
     # Define the attributes of the entity

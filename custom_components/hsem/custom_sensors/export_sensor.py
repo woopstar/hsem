@@ -6,61 +6,15 @@ from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_track_state_change_event
 
+from ..entity import HSEMEntity
+from ..utils.huawei import async_set_grid_export_power_pct
 from ..const import (
     DEFAULT_HSEM_ENERGI_DATA_SERVICE_EXPORT,
     DEFAULT_HSEM_HUAWEI_SOLAR_INVERTER_ACTIVE_POWER_CONTROL,
     ICON,
 )
-from ..entity import HSEMEntity
 
 _LOGGER = logging.getLogger(__name__)
-
-
-async def async_set_grid_export_power_pct(self, device_id, power_percentage):
-    """Set the maximum grid export power percentage and handle errors."""
-
-    # Check if the service exists
-    if not self.hass.services.has_service(
-        "huawei_solar", "set_maximum_feed_grid_power_percent"
-    ):
-        _LOGGER.error(
-            "Service huawei_solar.set_maximum_feed_grid_power_percent not found"
-        )
-
-    try:
-        # Send the service call to set the maximum grid export power percentage
-        await self.hass.services.async_call(
-            "huawei_solar",  # Integration providing the service
-            "set_maximum_feed_grid_power_percent",  # The action to set grid export power
-            {
-                "device_id": device_id,  # Device ID of the inverter
-                "power_percentage": power_percentage,  # The power percentage to set
-            },
-            blocking=False,  # Non-blocking call to avoid performance issues
-        )
-
-        # Log success message
-        _LOGGER.debug(
-            f"Updated export power pct to: {power_percentage} for device id: {device_id}"
-        )
-
-    except vol.MultipleInvalid as err:
-        # Handle validation errors (e.g., invalid device_id)
-        _LOGGER.error(
-            f"Invalid input data: {err}. Please check the device ID or power percentage."
-        )
-        raise HomeAssistantError(f"Invalid input data: {err}")
-
-    except HomeAssistantError as err:
-        # Handle general Home Assistant errors (e.g., service not found)
-        _LOGGER.error(f"Home Assistant error while setting grid export power: {err}")
-        raise
-
-    except Exception as err:
-        # Handle any other unexpected errors
-        _LOGGER.error(f"An unexpected error occurred: {err}")
-        raise HomeAssistantError(f"Unexpected error: {err}")
-
 
 class ExportSensor(BinarySensorEntity, HSEMEntity):
     # Define the attributes of the entity

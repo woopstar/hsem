@@ -3,6 +3,7 @@ import logging
 
 from .const import DOMAIN
 from .custom_sensors.export_sensor import ExportSensor
+from .custom_sensors.import_sensor import ImportSensor
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -31,7 +32,12 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     hsem_huawei_solar_inverter_active_power_control = config.get(
         "hsem_huawei_solar_inverter_active_power_control"
     )
+    hsem_huawei_solar_device_id_batteries = config.get(
+        "hsem_huawei_solar_device_id_batteries"
+    )
+    hsem_energi_data_service_import = config.get("hsem_energi_data_service_import")
     hsem_energi_data_service_export = config.get("hsem_energi_data_service_export")
+
 
     # Create the export from the input from hsem_energi_data_service_export
     export_sensor = ExportSensor(
@@ -42,10 +48,17 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
         config_entry,
     )
 
+    import_sensor = ImportSensor(
+        hsem_huawei_solar_device_id_batteries,
+        hsem_energi_data_service_import,
+        config_entry,
+    )
+
     # Add sensors to Home Assistant
     async_add_entities(
         [
             export_sensor,
+            import_sensor,
         ]
     )
 
