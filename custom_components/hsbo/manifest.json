@@ -1,0 +1,16 @@
+{
+    "domain": "hsbo",
+    "name": "Huawei Solar Battery Optimization",
+    "after_dependencies": [
+        "energidataservice"
+    ],
+    "codeowners": [
+        "@woopstar",
+        "@heinoskov"
+    ],
+    "config_flow": true,
+    "documentation": "https://github.com/woopstar/hsbo/blob/main/README.md",
+    "iot_class": "cloud_polling",
+    "issue_tracker": "https://github.com/woopstar/hsbo/issues",
+    "version": "1.0.0"
+}
