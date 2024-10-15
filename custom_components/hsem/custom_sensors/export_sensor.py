@@ -9,13 +9,18 @@ from homeassistant.helpers.event import async_track_state_change_event
 from ..entity import HSEMEntity
 from ..const import (
     ICON,
-    DEFAULT_HSEM_ENERGI_DATA_SERVICE_EXPORT
+    DEFAULT_HSEM_ENERGI_DATA_SERVICE_EXPORT,
+    DEFAULT_HSEM_HUAWEI_SOLAR_INVERTER_ACTIVE_POWER_CONTROL
 )
 
 _LOGGER = logging.getLogger(__name__)
 
 async def async_set_grid_export_power_pct(self, device_id, power_percentage):
     """Set the maximum grid export power percentage and handle errors."""
+
+    # Check if the service exists
+    if not self.hass.services.has_service("huawei_solar", "set_maximum_feed_grid_power_percent"):
+        _LOGGER.error("Service huawei_solar.set_maximum_feed_grid_power_percent not found")
 
     try:
         # Send the service call to set the maximum grid export power percentage
@@ -26,7 +31,7 @@ async def async_set_grid_export_power_pct(self, device_id, power_percentage):
                 "device_id": device_id,  # Device ID of the inverter
                 "power_percentage": power_percentage  # The power percentage to set
             },
-            blocking=True  # Ensure it completes before moving on
+            blocking=False  # Non-blocking call to avoid performance issues
         )
 
         # Log success message
@@ -55,11 +60,14 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
     def __init__(self,
         hsem_huawei_solar_device_id_inverter_1,
         hsem_huawei_solar_device_id_inverter_2,
+        hsem_huawei_solar_inverter_active_power_control,
         hsem_energi_data_service_export,
         config_entry):
         super().__init__(config_entry)
         self._hsem_huawei_solar_device_id_inverter_1 = hsem_huawei_solar_device_id_inverter_1
         self._hsem_huawei_solar_device_id_inverter_2 = hsem_huawei_solar_device_id_inverter_2
+        self._hsem_huawei_solar_inverter_active_power_control = hsem_huawei_solar_inverter_active_power_control
+        self._hsem_huawei_solar_inverter_active_power_control_current = None
         self._price_sensor = hsem_energi_data_service_export
         self._export_price = None
         self._state = True
@@ -77,6 +85,9 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
         self._hsem_huawei_solar_device_id_inverter_2 = self._config_entry.options.get(
             "hsem_huawei_solar_device_id_inverter_2", None
         )
+        self._hsem_huawei_solar_inverter_active_power_control = self._config_entry.options.get(
+            "hsem_huawei_solar_inverter_active_power_control", DEFAULT_HSEM_HUAWEI_SOLAR_INVERTER_ACTIVE_POWER_CONTROL
+        )
         self._price_sensor = self._config_entry.options.get(
             "hsem_energi_data_service_export", DEFAULT_HSEM_ENERGI_DATA_SERVICE_EXPORT
         )
@@ -93,6 +104,10 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
         return self._unique_id
 
     @property
+    def state(self):
+        return self._state
+
+    @property
     def is_on(self):
         """Return true if the binary sensor is on."""
         return self._state
@@ -104,6 +119,8 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
         return {
             "hsem_huawei_solar_device_id_inverter_1": self._hsem_huawei_solar_device_id_inverter_1,
             "hsem_huawei_solar_device_id_inverter_2": self._hsem_huawei_solar_device_id_inverter_2,
+            "hsem_huawei_solar_inverter_active_power_control": self._hsem_huawei_solar_inverter_active_power_control,
+            "hsem_huawei_solar_inverter_active_power_control_current": self._hsem_huawei_solar_inverter_active_power_control_current,
             "price_sensor": self._price_sensor,
             "export_price": self._export_price,
             "last_updated": self._last_updated,
@@ -115,6 +132,21 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
 
         # Ensure settings are reloaded if config is changed.
         self._update_settings()
+
+        input_hsem_huawei_solar_inverter_active_power_control = self.hass.states.get(self._hsem_huawei_solar_inverter_active_power_control)
+        if input_hsem_huawei_solar_inverter_active_power_control is None:
+            _LOGGER.warning(f"Sensor {self._hsem_huawei_solar_inverter_active_power_control} not found.")
+            return
+
+        try:
+            value_hsem_huawei_solar_inverter_active_power_control = input_hsem_huawei_solar_inverter_active_power_control.state
+        except ValueError:
+            _LOGGER.warning(
+                f"Invalid value from {self._hsem_huawei_solar_inverter_active_power_control}: {input_hsem_huawei_solar_inverter_active_power_control.state}"
+            )
+            return
+
+        self._hsem_huawei_solar_inverter_active_power_control_current = value_hsem_huawei_solar_inverter_active_power_control
 
         # Fetch the current value from the input sensor
         input_state = self.hass.states.get(self._price_sensor)
@@ -133,6 +165,7 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
         self._export_price = input_value
         self._state = self._export_price > 0
 
+        # Set the grid export power percentage based on the state
         if self._state:
             if self._hsem_huawei_solar_device_id_inverter_1:
                 await async_set_grid_export_power_pct(self, self._hsem_huawei_solar_device_id_inverter_1, 100)
@@ -144,6 +177,7 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
             if self._hsem_huawei_solar_device_id_inverter_2:
                 await async_set_grid_export_power_pct(self, self._hsem_huawei_solar_device_id_inverter_2, 0)
 
+        # Update the last updated timestamp
         self._last_updated = datetime.now().isoformat()
 
         # Trigger an update in Home Assistant
@@ -190,6 +224,14 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
             )
             async_track_state_change_event(
                 self.hass, [self._hsem_huawei_solar_device_id_inverter_2], self._handle_update
+            )
+
+        if self._hsem_huawei_solar_inverter_active_power_control:
+            _LOGGER.info(
+                f"Starting to track state changes for entity_id {self._hsem_huawei_solar_inverter_active_power_control}"
+            )
+            async_track_state_change_event(
+                self.hass, [self._hsem_huawei_solar_inverter_active_power_control], self._handle_update
             )
 
         if self._price_sensor:

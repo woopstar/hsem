@@ -5,14 +5,13 @@ from datetime import datetime
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.event import async_track_state_change_event
 
+from ..utils.workingmodes import WorkingModes
 from ..entity import HSEMEntity
 from ..const import (
     ICON,
     DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_WORKING_MODE,
-    DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_STATE_OF_CAPACITY,
-    DEFAULT_HSEM_HUAWEI_SOLAR_INVERTER_ACTIVE_POWER_CONTROL
+    DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_STATE_OF_CAPACITY
 )
-from ..utils.workingmodes import WorkingModes
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -27,7 +26,6 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         hsem_huawei_solar_device_id_batteries,
         hsem_huawei_solar_batteries_working_mode,
         hsem_huawei_solar_batteries_state_of_capacity,
-        hsem_huawei_solar_inverter_active_power_control,
         config_entry):
         super().__init__(config_entry)
         self._hsem_huawei_solar_device_id_inverter_1 = hsem_huawei_solar_device_id_inverter_1
@@ -37,8 +35,6 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_huawei_solar_batteries_working_mode_current = None
         self._hsem_huawei_solar_batteries_state_of_capacity = hsem_huawei_solar_batteries_state_of_capacity
         self._hsem_huawei_solar_batteries_state_of_capacity_current = None
-        self._hsem_huawei_solar_inverter_active_power_control = hsem_huawei_solar_inverter_active_power_control
-        self._hsem_huawei_solar_inverter_active_power_control_current = None
         self._state = None
         self._last_updated = None
         self._last_reset = None
@@ -62,9 +58,6 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         )
         self._hsem_huawei_solar_batteries_state_of_capacity = self._config_entry.options.get(
             "hsem_huawei_solar_batteries_state_of_capacity", DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_STATE_OF_CAPACITY
-        )
-        self._hsem_huawei_solar_inverter_active_power_control = self._config_entry.options.get(
-            "hsem_huawei_solar_inverter_active_power_control", DEFAULT_HSEM_HUAWEI_SOLAR_INVERTER_ACTIVE_POWER_CONTROL
         )
 
         # Log updated settings
@@ -94,8 +87,6 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             "hsem_huawei_solar_batteries_working_mode_current": self._hsem_huawei_solar_batteries_working_mode_current,
             "hsem_huawei_solar_batteries_state_of_capacity_input_sensor": self._hsem_huawei_solar_batteries_state_of_capacity,
             "hsem_huawei_solar_batteries_state_of_capacity_current": self._hsem_huawei_solar_batteries_state_of_capacity_current,
-            "hsem_huawei_solar_inverter_active_power_control_input_sensor": self._hsem_huawei_solar_inverter_active_power_control,
-            "hsem_huawei_solar_inverter_active_power_control_current": self._hsem_huawei_solar_inverter_active_power_control_current,
             "last_updated": self._last_updated,
             "unique_id": self._unique_id,
         }
@@ -109,7 +100,6 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         # Fetch the current value from the input sensors
         input_hsem_huawei_solar_batteries_working_mode = self.hass.states.get(self._hsem_huawei_solar_batteries_working_mode)
         input_hsem_huawei_solar_batteries_state_of_capacity = self.hass.states.get(self._hsem_huawei_solar_batteries_state_of_capacity)
-        input_hsem_huawei_solar_inverter_active_power_control = self.hass.states.get(self._hsem_huawei_solar_inverter_active_power_control)
 
         if input_hsem_huawei_solar_batteries_working_mode is None:
             _LOGGER.warning(f"Sensor {self._hsem_huawei_solar_batteries_working_mode} not found.")
@@ -117,10 +107,6 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
         if input_hsem_huawei_solar_batteries_state_of_capacity is None:
             _LOGGER.warning(f"Sensor {self._hsem_huawei_solar_batteries_state_of_capacity} not found.")
-            return
-
-        if input_hsem_huawei_solar_inverter_active_power_control is None:
-            _LOGGER.warning(f"Sensor {self._hsem_huawei_solar_inverter_active_power_control} not found.")
             return
 
         try:
@@ -139,18 +125,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             )
             return
 
-        try:
-            value_hsem_huawei_solar_inverter_active_power_control = input_hsem_huawei_solar_inverter_active_power_control.state
-        except ValueError:
-            _LOGGER.warning(
-                f"Invalid value from {self._hsem_huawei_solar_inverter_active_power_control}: {input_hsem_huawei_solar_inverter_active_power_control.state}"
-            )
-            return
-
         # Set current values from input sensors
         self._hsem_huawei_solar_batteries_working_mode_current = value_hsem_huawei_solar_batteries_working_mode
         self._hsem_huawei_solar_batteries_state_of_capacity_current = value_hsem_huawei_solar_batteries_state_of_capacity
-        self._hsem_huawei_solar_inverter_active_power_control_current = value_hsem_huawei_solar_inverter_active_power_control
 
         # Start calculating the optiomal working mode for the batteries
 
@@ -241,12 +218,4 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             )
             async_track_state_change_event(
                 self.hass, [self._hsem_huawei_solar_batteries_state_of_capacity], self._handle_update
-            )
-
-        if self._hsem_huawei_solar_inverter_active_power_control:
-            _LOGGER.info(
-                f"Starting to track state changes for entity_id {self._hsem_huawei_solar_inverter_active_power_control}"
-            )
-            async_track_state_change_event(
-                self.hass, [self._hsem_huawei_solar_inverter_active_power_control], self._handle_update
             )
