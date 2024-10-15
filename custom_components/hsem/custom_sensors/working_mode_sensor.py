@@ -5,35 +5,48 @@ from datetime import datetime
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.event import async_track_state_change_event
 
-from ..utils.workingmodes import WorkingModes
-from ..entity import HSEMEntity
 from ..const import (
-    ICON,
+    DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_STATE_OF_CAPACITY,
     DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_WORKING_MODE,
-    DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_STATE_OF_CAPACITY
+    ICON,
 )
+from ..entity import HSEMEntity
+from ..utils.workingmodes import WorkingModes
 
 _LOGGER = logging.getLogger(__name__)
+
 
 class WorkingModeSensor(SensorEntity, HSEMEntity):
     # Define the attributes of the entity
     _attr_icon = ICON
     _attr_has_entity_name = True
 
-    def __init__(self,
+    def __init__(
+        self,
         hsem_huawei_solar_device_id_inverter_1,
         hsem_huawei_solar_device_id_inverter_2,
         hsem_huawei_solar_device_id_batteries,
         hsem_huawei_solar_batteries_working_mode,
         hsem_huawei_solar_batteries_state_of_capacity,
-        config_entry):
+        config_entry,
+    ):
         super().__init__(config_entry)
-        self._hsem_huawei_solar_device_id_inverter_1 = hsem_huawei_solar_device_id_inverter_1
-        self._hsem_huawei_solar_device_id_inverter_2 = hsem_huawei_solar_device_id_inverter_2
-        self._hsem_huawei_solar_device_id_batteries = hsem_huawei_solar_device_id_batteries
-        self._hsem_huawei_solar_batteries_working_mode = hsem_huawei_solar_batteries_working_mode
+        self._hsem_huawei_solar_device_id_inverter_1 = (
+            hsem_huawei_solar_device_id_inverter_1
+        )
+        self._hsem_huawei_solar_device_id_inverter_2 = (
+            hsem_huawei_solar_device_id_inverter_2
+        )
+        self._hsem_huawei_solar_device_id_batteries = (
+            hsem_huawei_solar_device_id_batteries
+        )
+        self._hsem_huawei_solar_batteries_working_mode = (
+            hsem_huawei_solar_batteries_working_mode
+        )
         self._hsem_huawei_solar_batteries_working_mode_current = None
-        self._hsem_huawei_solar_batteries_state_of_capacity = hsem_huawei_solar_batteries_state_of_capacity
+        self._hsem_huawei_solar_batteries_state_of_capacity = (
+            hsem_huawei_solar_batteries_state_of_capacity
+        )
         self._hsem_huawei_solar_batteries_state_of_capacity_current = None
         self._state = None
         self._last_updated = None
@@ -54,14 +67,20 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             "hsem_huawei_solar_device_id_batteries"
         )
         self._hsem_huawei_solar_batteries_working_mode = self._config_entry.options.get(
-            "hsem_huawei_solar_batteries_working_mode", DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_WORKING_MODE
+            "hsem_huawei_solar_batteries_working_mode",
+            DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_WORKING_MODE,
         )
-        self._hsem_huawei_solar_batteries_state_of_capacity = self._config_entry.options.get(
-            "hsem_huawei_solar_batteries_state_of_capacity", DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_STATE_OF_CAPACITY
+        self._hsem_huawei_solar_batteries_state_of_capacity = (
+            self._config_entry.options.get(
+                "hsem_huawei_solar_batteries_state_of_capacity",
+                DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_STATE_OF_CAPACITY,
+            )
         )
 
         # Log updated settings
-        _LOGGER.debug(f"Updated settings: input_sensor={self._hsem_huawei_solar_batteries_working_mode}")
+        _LOGGER.debug(
+            f"Updated settings: input_sensor={self._hsem_huawei_solar_batteries_working_mode}"
+        )
 
     @property
     def name(self):
@@ -98,19 +117,29 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         self._update_settings()
 
         # Fetch the current value from the input sensors
-        input_hsem_huawei_solar_batteries_working_mode = self.hass.states.get(self._hsem_huawei_solar_batteries_working_mode)
-        input_hsem_huawei_solar_batteries_state_of_capacity = self.hass.states.get(self._hsem_huawei_solar_batteries_state_of_capacity)
+        input_hsem_huawei_solar_batteries_working_mode = self.hass.states.get(
+            self._hsem_huawei_solar_batteries_working_mode
+        )
+        input_hsem_huawei_solar_batteries_state_of_capacity = self.hass.states.get(
+            self._hsem_huawei_solar_batteries_state_of_capacity
+        )
 
         if input_hsem_huawei_solar_batteries_working_mode is None:
-            _LOGGER.warning(f"Sensor {self._hsem_huawei_solar_batteries_working_mode} not found.")
+            _LOGGER.warning(
+                f"Sensor {self._hsem_huawei_solar_batteries_working_mode} not found."
+            )
             return
 
         if input_hsem_huawei_solar_batteries_state_of_capacity is None:
-            _LOGGER.warning(f"Sensor {self._hsem_huawei_solar_batteries_state_of_capacity} not found.")
+            _LOGGER.warning(
+                f"Sensor {self._hsem_huawei_solar_batteries_state_of_capacity} not found."
+            )
             return
 
         try:
-            value_hsem_huawei_solar_batteries_working_mode = input_hsem_huawei_solar_batteries_working_mode.state
+            value_hsem_huawei_solar_batteries_working_mode = (
+                input_hsem_huawei_solar_batteries_working_mode.state
+            )
         except ValueError:
             _LOGGER.warning(
                 f"Invalid value from {self._hsem_huawei_solar_batteries_working_mode}: {input_hsem_huawei_solar_batteries_working_mode.state}"
@@ -118,7 +147,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             return
 
         try:
-            value_hsem_huawei_solar_batteries_state_of_capacity = input_hsem_huawei_solar_batteries_state_of_capacity.state
+            value_hsem_huawei_solar_batteries_state_of_capacity = (
+                input_hsem_huawei_solar_batteries_state_of_capacity.state
+            )
         except ValueError:
             _LOGGER.warning(
                 f"Invalid value from {self._hsem_huawei_solar_batteries_state_of_capacity}: {input_hsem_huawei_solar_batteries_state_of_capacity.state}"
@@ -126,8 +157,12 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             return
 
         # Set current values from input sensors
-        self._hsem_huawei_solar_batteries_working_mode_current = value_hsem_huawei_solar_batteries_working_mode
-        self._hsem_huawei_solar_batteries_state_of_capacity_current = value_hsem_huawei_solar_batteries_state_of_capacity
+        self._hsem_huawei_solar_batteries_working_mode_current = (
+            value_hsem_huawei_solar_batteries_working_mode
+        )
+        self._hsem_huawei_solar_batteries_state_of_capacity_current = (
+            value_hsem_huawei_solar_batteries_state_of_capacity
+        )
 
         # Start calculating the optiomal working mode for the batteries
 
@@ -185,7 +220,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                 f"Starting to track state changes for entity_id {self._hsem_huawei_solar_device_id_inverter_1}"
             )
             async_track_state_change_event(
-                self.hass, [self._hsem_huawei_solar_device_id_inverter_1], self._handle_update
+                self.hass,
+                [self._hsem_huawei_solar_device_id_inverter_1],
+                self._handle_update,
             )
 
         if self._hsem_huawei_solar_device_id_inverter_2:
@@ -193,7 +230,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                 f"Starting to track state changes for entity_id {self._hsem_huawei_solar_device_id_inverter_2}"
             )
             async_track_state_change_event(
-                self.hass, [self._hsem_huawei_solar_device_id_inverter_2], self._handle_update
+                self.hass,
+                [self._hsem_huawei_solar_device_id_inverter_2],
+                self._handle_update,
             )
 
         if self._hsem_huawei_solar_device_id_batteries:
@@ -201,7 +240,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                 f"Starting to track state changes for entity_id {self._hsem_huawei_solar_device_id_batteries}"
             )
             async_track_state_change_event(
-                self.hass, [self._hsem_huawei_solar_device_id_batteries], self._handle_update
+                self.hass,
+                [self._hsem_huawei_solar_device_id_batteries],
+                self._handle_update,
             )
 
         if self._hsem_huawei_solar_batteries_working_mode:
@@ -209,7 +250,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                 f"Starting to track state changes for entity_id {self._hsem_huawei_solar_batteries_working_mode}"
             )
             async_track_state_change_event(
-                self.hass, [self._hsem_huawei_solar_batteries_working_mode], self._handle_update
+                self.hass,
+                [self._hsem_huawei_solar_batteries_working_mode],
+                self._handle_update,
             )
 
         if self._hsem_huawei_solar_batteries_state_of_capacity:
@@ -217,5 +260,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                 f"Starting to track state changes for entity_id {self._hsem_huawei_solar_batteries_state_of_capacity}"
             )
             async_track_state_change_event(
-                self.hass, [self._hsem_huawei_solar_batteries_state_of_capacity], self._handle_update
+                self.hass,
+                [self._hsem_huawei_solar_batteries_state_of_capacity],
+                self._handle_update,
             )

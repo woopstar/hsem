@@ -1,17 +1,16 @@
 import hashlib
 import logging
 
-from .const import (
-    DOMAIN,
-)
-
+from .const import DOMAIN
 from .custom_sensors.export_sensor import ExportSensor
 
 _LOGGER = logging.getLogger(__name__)
 
+
 def generate_md5_hash(input_sensor):
     """Generate an MD5 hash based on the input sensor's name."""
     return hashlib.md5(input_sensor.encode("utf-8")).hexdigest()
+
 
 def get_config_value(config_entry, key, default_value):
     """Get the configuration value from options or fall back to the initial data."""
@@ -23,9 +22,15 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     config = config_entry.data
 
     # Extract configuration parameters
-    hsem_huawei_solar_device_id_inverter_1 = config.get("hsem_huawei_solar_device_id_inverter_1")
-    hsem_huawei_solar_device_id_inverter_2 = config.get("hsem_huawei_solar_device_id_inverter_2")
-    hsem_huawei_solar_inverter_active_power_control = config.get("hsem_huawei_solar_inverter_active_power_control")
+    hsem_huawei_solar_device_id_inverter_1 = config.get(
+        "hsem_huawei_solar_device_id_inverter_1"
+    )
+    hsem_huawei_solar_device_id_inverter_2 = config.get(
+        "hsem_huawei_solar_device_id_inverter_2"
+    )
+    hsem_huawei_solar_inverter_active_power_control = config.get(
+        "hsem_huawei_solar_inverter_active_power_control"
+    )
     hsem_energi_data_service_export = config.get("hsem_energi_data_service_export")
 
     # Create the export from the input from hsem_energi_data_service_export
@@ -34,7 +39,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
         hsem_huawei_solar_device_id_inverter_2,
         hsem_huawei_solar_inverter_active_power_control,
         hsem_energi_data_service_export,
-        config_entry
+        config_entry,
     )
 
     # Add sensors to Home Assistant
