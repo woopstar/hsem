@@ -6,6 +6,9 @@ from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_track_state_change_event
 
+from ..entity import HSEMEntity
+from ..utils.huawei import async_set_tou_periods
+from ..utils.misc import get_config_value
 from ..const import (
     DEFAULT_HSEM_ENERGI_DATA_SERVICE_IMPORT,
     DEFAULT_HSEM_HUAWEI_SOLAR_INVERTER_ACTIVE_POWER_CONTROL,
@@ -43,10 +46,10 @@ class ImportSensor(BinarySensorEntity, HSEMEntity):
 
     def _update_settings(self):
         """Fetch updated settings from config_entry options."""
-        self._hsem_huawei_solar_device_id_batteries = self._config_entry.options.get(
+        self._hsem_huawei_solar_device_id_batteries = get_config_value(self._config_entry,
             "hsem_huawei_solar_device_id_batteries"
         )
-        self._price_sensor = self._config_entry.options.get(
+        self._price_sensor = get_config_value(self._config_entry,
             "hsem_energi_data_service_import", DEFAULT_HSEM_ENERGI_DATA_SERVICE_IMPORT
         )
 

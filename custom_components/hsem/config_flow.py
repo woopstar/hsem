@@ -114,6 +114,12 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             else:
                 # Combine user inputs and create the entry
                 final_data = {**self._user_input, **user_input}
+
+                # Ensure that optional inverter_id is set to an empty string if not provided
+                final_data["hsem_huawei_solar_device_id_inverter_2"] = final_data.get(
+                    "hsem_huawei_solar_device_id_inverter_2", ""
+                )
+
                 return self.async_create_entry(
                     title=final_data.get("device_name", NAME),
                     data=final_data,
@@ -126,7 +132,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     {"device": {"integration": "huawei_solar"}}
                 ),
                 vol.Optional(
-                    "hsem_huawei_solar_device_id_inverter_2", default=None
+                    "hsem_huawei_solar_device_id_inverter_2", default=""
                 ): selector({"device": {"integration": "huawei_solar"}}),
                 vol.Required("hsem_huawei_solar_device_id_batteries"): selector(
                     {"device": {"integration": "huawei_solar"}}
@@ -271,7 +277,7 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
                 vol.Optional(
                     "hsem_huawei_solar_device_id_inverter_2",
                     default=self.config_entry.options.get(
-                        "hsem_huawei_solar_device_id_inverter_2", None
+                        "hsem_huawei_solar_device_id_inverter_2", ""
                     ),
                 ): selector({"device": {"integration": "huawei_solar"}}),
                 vol.Required(
