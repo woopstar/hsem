@@ -2,7 +2,8 @@
     "domain": "hsem",
     "name": "Huawei Solar Energy Management",
     "after_dependencies": [
-        "energidataservice"
+        "energidataservice",
+        "huawei_solar"
     ],
     "codeowners": [
         "@woopstar",
