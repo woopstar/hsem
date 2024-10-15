@@ -87,9 +87,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
         return {
             "hsem_huawei_solar_device_id_inverter_1": self._hsem_huawei_solar_device_id_inverter_1,
-            "hsem_huawei_solar_device_id_inverter_1_current": self._hsem_huawei_solar_device_id_inverter_1_current,
             "hsem_huawei_solar_device_id_batteries": self._hsem_huawei_solar_device_id_batteries,
-            "hsem_huawei_solar_device_id_batteries_current": self._hsem_huawei_solar_device_id_batteries_current,
             "hsem_huawei_solar_batteries_working_mode": self._hsem_huawei_solar_batteries_working_mode,
             "hsem_huawei_solar_batteries_working_mode_current": self._hsem_huawei_solar_batteries_working_mode_current,
             "hsem_huawei_solar_batteries_state_of_capacity": self._hsem_huawei_solar_batteries_state_of_capacity,
@@ -118,19 +116,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         self._update_settings()
 
         # Fetch the current value from the input sensors
-        input_hsem_huawei_solar_device_id_inverter_1 = self.hass.states.get(self._hsem_huawei_solar_device_id_inverter_1)
-        input_hsem_huawei_solar_device_id_batteries = self.hass.states.get(self._hsem_huawei_solar_device_id_batteries)
         input_hsem_huawei_solar_batteries_working_mode = self.hass.states.get(self._hsem_huawei_solar_batteries_working_mode)
         input_hsem_huawei_solar_batteries_state_of_capacity = self.hass.states.get(self._hsem_huawei_solar_batteries_state_of_capacity)
         input_hsem_huawei_solar_inverter_active_power_control = self.hass.states.get(self._hsem_huawei_solar_inverter_active_power_control)
-
-        if input_hsem_huawei_solar_device_id_inverter_1 is None:
-            _LOGGER.warning(f"Sensor {self._hsem_huawei_solar_device_id_inverter_1} not found.")
-            return
-
-        if input_hsem_huawei_solar_device_id_batteries is None:
-            _LOGGER.warning(f"Sensor {self._hsem_huawei_solar_device_id_batteries} not found.")
-            return
 
         if input_hsem_huawei_solar_batteries_working_mode is None:
             _LOGGER.warning(f"Sensor {self._hsem_huawei_solar_batteries_working_mode} not found.")
@@ -142,22 +130,6 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
         if input_hsem_huawei_solar_inverter_active_power_control is None:
             _LOGGER.warning(f"Sensor {self._hsem_huawei_solar_inverter_active_power_control} not found.")
-            return
-
-        try:
-            value_hsem_huawei_solar_device_id_inverter_1 = input_hsem_huawei_solar_device_id_inverter_1.state
-        except ValueError:
-            _LOGGER.warning(
-                f"Invalid value from {self._hsem_huawei_solar_device_id_inverter_1}: {input_hsem_huawei_solar_device_id_inverter_1.state}"
-            )
-            return
-
-        try:
-            value_hsem_huawei_solar_device_id_batteries = input_hsem_huawei_solar_device_id_batteries.state
-        except ValueError:
-            _LOGGER.warning(
-                f"Invalid value from {self._hsem_huawei_solar_device_id_batteries}: {input_hsem_huawei_solar_device_id_batteries.state}"
-            )
             return
 
         try:
@@ -188,8 +160,6 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         self._previous_value = self._state
 
         # Set state to True if the export price is negative, otherwise False
-        self._hsem_huawei_solar_device_id_inverter_1_current = value_hsem_huawei_solar_device_id_inverter_1
-        self._hsem_huawei_solar_device_id_batteries_current = value_hsem_huawei_solar_device_id_batteries
         self._hsem_huawei_solar_batteries_working_mode_current = value_hsem_huawei_solar_batteries_working_mode
         self._hsem_huawei_solar_batteries_state_of_capacity_current = value_hsem_huawei_solar_batteries_state_of_capacity
         self._hsem_huawei_solar_inverter_active_power_control_current = value_hsem_huawei_solar_inverter_active_power_control
