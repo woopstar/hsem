@@ -6,15 +6,16 @@ from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_track_state_change_event
 
-from ..entity import HSEMEntity
-from ..utils.huawei import async_set_grid_export_power_pct
 from ..const import (
     DEFAULT_HSEM_ENERGI_DATA_SERVICE_EXPORT,
     DEFAULT_HSEM_HUAWEI_SOLAR_INVERTER_ACTIVE_POWER_CONTROL,
     ICON,
 )
+from ..entity import HSEMEntity
+from ..utils.huawei import async_set_grid_export_power_pct
 
 _LOGGER = logging.getLogger(__name__)
+
 
 class ExportSensor(BinarySensorEntity, HSEMEntity):
     # Define the attributes of the entity

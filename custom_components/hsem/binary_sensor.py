@@ -38,7 +38,6 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     hsem_energi_data_service_import = config.get("hsem_energi_data_service_import")
     hsem_energi_data_service_export = config.get("hsem_energi_data_service_export")
 
-
     # Create the export from the input from hsem_energi_data_service_export
     export_sensor = ExportSensor(
         hsem_huawei_solar_device_id_inverter_1,

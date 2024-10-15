@@ -6,15 +6,16 @@ from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_track_state_change_event
 
-from ..entity import HSEMEntity
-from ..utils.huawei import async_set_tou_periods
 from ..const import (
     DEFAULT_HSEM_ENERGI_DATA_SERVICE_IMPORT,
     DEFAULT_HSEM_HUAWEI_SOLAR_INVERTER_ACTIVE_POWER_CONTROL,
     ICON,
 )
+from ..entity import HSEMEntity
+from ..utils.huawei import async_set_tou_periods
 
 _LOGGER = logging.getLogger(__name__)
+
 
 class ImportSensor(BinarySensorEntity, HSEMEntity):
     # Define the attributes of the entity
@@ -28,7 +29,9 @@ class ImportSensor(BinarySensorEntity, HSEMEntity):
         config_entry,
     ):
         super().__init__(config_entry)
-        self._hsem_huawei_solar_device_id_batteries = hsem_huawei_solar_device_id_batteries
+        self._hsem_huawei_solar_device_id_batteries = (
+            hsem_huawei_solar_device_id_batteries
+        )
         self._price_sensor = hsem_energi_data_service_import
         self._import_price = None
         self._state = True
@@ -105,11 +108,11 @@ class ImportSensor(BinarySensorEntity, HSEMEntity):
 
         # Force charge the battery
         if self._state:
-            tou_modes = [
-                "00:00-23:59/1234567/+"
-            ]
+            tou_modes = ["00:00-23:59/1234567/+"]
 
-            await async_set_tou_periods(self, self._hsem_huawei_solar_device_id_batteries, tou_modes)
+            await async_set_tou_periods(
+                self, self._hsem_huawei_solar_device_id_batteries, tou_modes
+            )
 
         # Update the last updated timestamp
         self._last_updated = datetime.now().isoformat()

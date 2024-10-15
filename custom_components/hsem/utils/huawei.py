@@ -1,9 +1,11 @@
 import logging
+
+import voluptuous as vol
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
-import voluptuous as vol
 
 _LOGGER = logging.getLogger(__name__)
+
 
 async def async_set_grid_export_power_pct(self, device_id, power_percentage):
     """Set the maximum grid export power percentage and handle errors."""
@@ -50,6 +52,7 @@ async def async_set_grid_export_power_pct(self, device_id, power_percentage):
         _LOGGER.error(f"An unexpected error occurred: {err}")
         raise HomeAssistantError(f"Unexpected error: {err}")
 
+
 async def async_set_tou_periods(self, batteries_id, tou_modes):
     """Set the TOU modes for the specified batteries."""
 
@@ -74,11 +77,15 @@ async def async_set_tou_periods(self, batteries_id, tou_modes):
         )
 
         # Log success message
-        _LOGGER.debug(f"Set TOU periods for device id: {batteries_id} with periods: {periods}")
+        _LOGGER.debug(
+            f"Set TOU periods for device id: {batteries_id} with periods: {periods}"
+        )
 
     except vol.MultipleInvalid as err:
         # Handle validation errors (e.g., invalid batteries_id)
-        _LOGGER.error(f"Invalid input data: {err}. Please check the device ID or TOU modes.")
+        _LOGGER.error(
+            f"Invalid input data: {err}. Please check the device ID or TOU modes."
+        )
         raise HomeAssistantError(f"Invalid input data: {err}")
 
     except HomeAssistantError as err:
