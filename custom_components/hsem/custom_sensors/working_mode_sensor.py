@@ -90,11 +90,11 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             "hsem_huawei_solar_device_id_inverter_1": self._hsem_huawei_solar_device_id_inverter_1,
             "hsem_huawei_solar_device_id_inverter_2": self._hsem_huawei_solar_device_id_inverter_2,
             "hsem_huawei_solar_device_id_batteries": self._hsem_huawei_solar_device_id_batteries,
-            "hsem_huawei_solar_batteries_working_mode": self._hsem_huawei_solar_batteries_working_mode,
+            "hsem_huawei_solar_batteries_working_mode_input_sensor": self._hsem_huawei_solar_batteries_working_mode,
             "hsem_huawei_solar_batteries_working_mode_current": self._hsem_huawei_solar_batteries_working_mode_current,
-            "hsem_huawei_solar_batteries_state_of_capacity": self._hsem_huawei_solar_batteries_state_of_capacity,
+            "hsem_huawei_solar_batteries_state_of_capacity_input_sensor": self._hsem_huawei_solar_batteries_state_of_capacity,
             "hsem_huawei_solar_batteries_state_of_capacity_current": self._hsem_huawei_solar_batteries_state_of_capacity_current,
-            "hsem_huawei_solar_inverter_active_power_control": self._hsem_huawei_solar_inverter_active_power_control,
+            "hsem_huawei_solar_inverter_active_power_control_input_sensor": self._hsem_huawei_solar_inverter_active_power_control,
             "hsem_huawei_solar_inverter_active_power_control_current": self._hsem_huawei_solar_inverter_active_power_control_current,
             "last_updated": self._last_updated,
             "unique_id": self._unique_id,
@@ -147,7 +147,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             )
             return
 
-        # Set state to True if the export price is negative, otherwise False
+        # Set current values from input sensors
         self._hsem_huawei_solar_batteries_working_mode_current = value_hsem_huawei_solar_batteries_working_mode
         self._hsem_huawei_solar_batteries_state_of_capacity_current = value_hsem_huawei_solar_batteries_state_of_capacity
         self._hsem_huawei_solar_inverter_active_power_control_current = value_hsem_huawei_solar_inverter_active_power_control

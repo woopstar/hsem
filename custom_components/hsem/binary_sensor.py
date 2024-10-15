@@ -23,11 +23,16 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     config = config_entry.data
 
     # Extract configuration parameters
+    hsem_huawei_solar_device_id_inverter_1 = config.get("hsem_huawei_solar_device_id_inverter_1")
+    hsem_huawei_solar_device_id_inverter_2 = config.get("hsem_huawei_solar_device_id_inverter_2")
     hsem_energi_data_service_export = config.get("hsem_energi_data_service_export")
 
     # Create the export from the input from hsem_energi_data_service_export
     export_sensor = ExportSensor(
-        hsem_energi_data_service_export, config_entry
+        hsem_huawei_solar_device_id_inverter_1,
+        hsem_huawei_solar_device_id_inverter_2,
+        hsem_energi_data_service_export,
+        config_entry
     )
 
     # Add sensors to Home Assistant

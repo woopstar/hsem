@@ -1,7 +1,8 @@
 import logging
 from datetime import datetime
+import voluptuous as vol
 
-# Importer den nye funktion
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.helpers.event import async_track_state_change_event
 
@@ -13,13 +14,52 @@ from ..const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+async def async_set_grid_export_power_pct(self, device_id, power_percentage):
+    """Set the maximum grid export power percentage and handle errors."""
+
+    try:
+        # Send the service call to set the maximum grid export power percentage
+        await self.hass.services.async_call(
+            "huawei_solar",  # Integration providing the service
+            "set_maximum_feed_grid_power_percent",  # The action to set grid export power
+            {
+                "device_id": device_id,  # Device ID of the inverter
+                "power_percentage": power_percentage  # The power percentage to set
+            },
+            blocking=True  # Ensure it completes before moving on
+        )
+
+        # Log success message
+        _LOGGER.debug(f"Updated export power pct to: {power_percentage} for device id: {device_id}")
+
+    except vol.MultipleInvalid as err:
+        # Handle validation errors (e.g., invalid device_id)
+        _LOGGER.error(f"Invalid input data: {err}. Please check the device ID or power percentage.")
+        raise HomeAssistantError(f"Invalid input data: {err}")
+
+    except HomeAssistantError as err:
+        # Handle general Home Assistant errors (e.g., service not found)
+        _LOGGER.error(f"Home Assistant error while setting grid export power: {err}")
+        raise
+
+    except Exception as err:
+        # Handle any other unexpected errors
+        _LOGGER.error(f"An unexpected error occurred: {err}")
+        raise HomeAssistantError(f"Unexpected error: {err}")
+
 class ExportSensor(BinarySensorEntity, HSEMEntity):
     # Define the attributes of the entity
     _attr_icon = ICON
     _attr_has_entity_name = True
 
-    def __init__(self, hsem_energi_data_service_export, config_entry):
+    def __init__(self,
+        hsem_huawei_solar_device_id_inverter_1,
+        hsem_huawei_solar_device_id_inverter_2,
+        hsem_energi_data_service_export,
+        config_entry):
         super().__init__(config_entry)
+        self._hsem_huawei_solar_device_id_inverter_1 = hsem_huawei_solar_device_id_inverter_1
+        self._hsem_huawei_solar_device_id_inverter_2 = hsem_huawei_solar_device_id_inverter_2
         self._price_sensor = hsem_energi_data_service_export
         self._export_price = None
         self._state = True
@@ -31,12 +71,18 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
 
     def _update_settings(self):
         """Fetch updated settings from config_entry options."""
+        self._hsem_huawei_solar_device_id_inverter_1 = self._config_entry.options.get(
+            "hsem_huawei_solar_device_id_inverter_1"
+        )
+        self._hsem_huawei_solar_device_id_inverter_2 = self._config_entry.options.get(
+            "hsem_huawei_solar_device_id_inverter_2", None
+        )
         self._price_sensor = self._config_entry.options.get(
             "hsem_energi_data_service_export", DEFAULT_HSEM_ENERGI_DATA_SERVICE_EXPORT
         )
 
         # Log updated settings
-        _LOGGER.debug(f"Updated settings: input_sensor={self._price_sensor}")
+        _LOGGER.debug(f"Updated settings for export sensor: {self._price_sensor}, {self._hsem_huawei_solar_device_id_inverter_1}, {self._hsem_huawei_solar_device_id_inverter_2}")
 
     @property
     def name(self):
@@ -56,6 +102,8 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
         """Return the state attributes."""
 
         return {
+            "hsem_huawei_solar_device_id_inverter_1": self._hsem_huawei_solar_device_id_inverter_1,
+            "hsem_huawei_solar_device_id_inverter_2": self._hsem_huawei_solar_device_id_inverter_2,
             "price_sensor": self._price_sensor,
             "export_price": self._export_price,
             "last_updated": self._last_updated,
@@ -84,6 +132,18 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
         # Set state to True if the export price is negative, otherwise False
         self._export_price = input_value
         self._state = self._export_price > 0
+
+        if self._state:
+            if self._hsem_huawei_solar_device_id_inverter_1:
+                await async_set_grid_export_power_pct(self, self._hsem_huawei_solar_device_id_inverter_1, 100)
+            if self._hsem_huawei_solar_device_id_inverter_2:
+                await async_set_grid_export_power_pct(self, self._hsem_huawei_solar_device_id_inverter_2, 100)
+        else:
+            if self._hsem_huawei_solar_device_id_inverter_1:
+                await async_set_grid_export_power_pct(self, self._hsem_huawei_solar_device_id_inverter_1, 0)
+            if self._hsem_huawei_solar_device_id_inverter_2:
+                await async_set_grid_export_power_pct(self, self._hsem_huawei_solar_device_id_inverter_2, 0)
+
         self._last_updated = datetime.now().isoformat()
 
         # Trigger an update in Home Assistant
@@ -104,10 +164,11 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
                 self._state = old_state.state
             except (ValueError, TypeError):
                 _LOGGER.warning(
-                    f"Could not restore state for {self._unique_id}, invalid value: {old_state.state}"
+                    f"Could not restore state for {self._unique_id}"
                 )
                 self._state = None
 
+            self._export_price = old_state.attributes.get("export_price", None)
             self._last_updated = old_state.attributes.get("last_updated", None)
         else:
             _LOGGER.info(
@@ -115,6 +176,22 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
             )
 
         # Start listening for state changes of the input sensor
+        if self._hsem_huawei_solar_device_id_inverter_1:
+            _LOGGER.info(
+                f"Starting to track state changes for entity_id {self._hsem_huawei_solar_device_id_inverter_1}"
+            )
+            async_track_state_change_event(
+                self.hass, [self._hsem_huawei_solar_device_id_inverter_1], self._handle_update
+            )
+
+        if self._hsem_huawei_solar_device_id_inverter_2:
+            _LOGGER.info(
+                f"Starting to track state changes for entity_id {self._hsem_huawei_solar_device_id_inverter_2}"
+            )
+            async_track_state_change_event(
+                self.hass, [self._hsem_huawei_solar_device_id_inverter_2], self._handle_update
+            )
+
         if self._price_sensor:
             _LOGGER.info(
                 f"Starting to track state changes for entity_id {self._price_sensor}"
