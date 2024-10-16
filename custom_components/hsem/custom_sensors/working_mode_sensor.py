@@ -20,6 +20,9 @@ from ..const import (
     DEFAULT_HSEM_MONTHS_WINTER_SPRING,
     DEFAULT_HSEM_SOLAR_PRODUCTION_POWER,
     DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TODAY,
+    HOUSE_CONSUMPTION_ENERGY_WEIGHT_3D,
+    HOUSE_CONSUMPTION_ENERGY_WEIGHT_7D,
+    HOUSE_CONSUMPTION_ENERGY_WEIGHT_14D,
     DOMAIN,
     ICON,
 )
@@ -444,7 +447,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
             # Calculate the weighted average house consumption for the hour
             weighted_value = round(
-                (value_3d * 0.6) + (value_7d * 0.3) + (value_14d * 0.1), 6
+                (value_3d * HOUSE_CONSUMPTION_ENERGY_WEIGHT_3D) +
+                (value_7d * HOUSE_CONSUMPTION_ENERGY_WEIGHT_7D) +
+                (value_14d * HOUSE_CONSUMPTION_ENERGY_WEIGHT_14D), 6
             )
 
             # Only update "avg_house_consumption" in the existing dictionary entry
