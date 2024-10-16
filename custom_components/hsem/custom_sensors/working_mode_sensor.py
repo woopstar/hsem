@@ -9,16 +9,16 @@ from homeassistant.helpers.event import (
 )
 
 from ..const import (
+    DEFAULT_HSEM_DEFAULT_TOU_MODES,
     DEFAULT_HSEM_EV_CHARGER_STATUS,
+    DEFAULT_HSEM_EV_CHARGER_TOU_MODES,
     DEFAULT_HSEM_HOUSE_CONSUMPTION_POWER,
     DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_STATE_OF_CAPACITY,
     DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_WORKING_MODE,
-    DEFAULT_HSEM_SOLAR_PRODUCTION_POWER,
     DEFAULT_HSEM_IMPORT_SENSOR_TOU_MODES,
-    DEFAULT_HSEM_EV_CHARGER_TOU_MODES,
-    DEFAULT_HSEM_DEFAULT_TOU_MODES,
-    DEFAULT_HSEM_MONTHS_WINTER_SPRING,
     DEFAULT_HSEM_MONTHS_SUMMER,
+    DEFAULT_HSEM_MONTHS_WINTER_SPRING,
+    DEFAULT_HSEM_SOLAR_PRODUCTION_POWER,
     DOMAIN,
     ICON,
 )
@@ -271,7 +271,10 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
         # Calculate the net consumption
         # Hvis beregningen er baseret på produktion minus forbrug, vil et positivt resultat indikere overskud, mens et negativt resultat indikerer underskud eller nettoforbrug fra nettet.
-        self._hsem_net_consumption = self._hsem_solar_production_power_current - self._hsem_house_consumption_power_current
+        self._hsem_net_consumption = (
+            self._hsem_solar_production_power_current
+            - self._hsem_house_consumption_power_current
+        )
 
         # Set the working mode based on the input sensors
         await self.async_set_working_mode()
