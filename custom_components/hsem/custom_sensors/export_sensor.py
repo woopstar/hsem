@@ -166,11 +166,12 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
         ]
 
         # Loop through the inverters and update the grid export power percentage
-        for inverter_id in inverters:
-            if inverter_id:  # Ensure inverter_id is not None
-                await async_set_grid_export_power_pct(
-                    self, inverter_id, power_percentage
-                )
+        if (self._hsem_huawei_solar_inverter_active_power_control_current == 'Limited to 100.0%' and power_percentage != 100 ) or (self._hsem_huawei_solar_inverter_active_power_control_current == 'Limited to 0.0%' and power_percentage != 0):
+            for inverter_id in inverters:
+                if inverter_id:  # Ensure inverter_id is not None
+                    await async_set_grid_export_power_pct(
+                        self, inverter_id, power_percentage
+                    )
 
         # Update the last updated timestamp
         self._last_updated = datetime.now().isoformat()

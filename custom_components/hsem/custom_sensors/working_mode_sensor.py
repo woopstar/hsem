@@ -61,7 +61,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         )
         self._hsem_huawei_solar_batteries_state_of_capacity_current = None
         self._hsem_ev_charger_status = hsem_ev_charger_status
-        self._hsem_ev_charger_status_current = None
+        self._hsem_ev_charger_status_current = False
         self._import_sensor = None
         self._import_sensor_current = None
         self._state = None
@@ -214,6 +214,16 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             value_hsem_huawei_solar_batteries_state_of_capacity
         )
 
+        # Set the working mode based on the input sensors
+        await self.async_set_working_mode()
+
+        # Update last update time
+        self._last_updated = datetime.now().isoformat()
+
+        # Trigger an update in Home Assistant
+        self.async_write_ha_state()
+
+    async def async_set_working_mode(self):
         # Define TOU modes for different scenarios
         import_sensor_tou_modes = ["00:00-23:59/1234567/+"]
         ev_charger_tou_modes = ["00:00-00:01/1234567/+"]
@@ -249,16 +259,13 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         await async_set_tou_periods(
             self, self._hsem_huawei_solar_device_id_batteries, tou_modes
         )
-        await async_set_select_option(
-            self, self._hsem_huawei_solar_batteries_working_mode, working_mode
-        )
+
+        if self._hsem_huawei_solar_batteries_working_mode_current != working_mode:
+            await async_set_select_option(
+                self, self._hsem_huawei_solar_batteries_working_mode, working_mode
+            )
+
         self._state = working_mode
-
-        # Update last update time
-        self._last_updated = datetime.now().isoformat()
-
-        # Trigger an update in Home Assistant
-        self.async_write_ha_state()
 
     async def async_update(self):
         """Manually trigger the sensor update."""

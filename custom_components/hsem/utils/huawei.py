@@ -31,7 +31,7 @@ async def async_set_grid_export_power_pct(self, device_id, power_percentage):
         )
 
         # Log success message
-        _LOGGER.debug(
+        _LOGGER.warning(
             f"Updated export power pct to: {power_percentage} for device id: {device_id}"
         )
 
