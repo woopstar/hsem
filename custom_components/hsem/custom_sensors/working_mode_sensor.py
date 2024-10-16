@@ -85,9 +85,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         )
         self._hsem_net_consumption = 0.0
         self._hsem_battery_max_capacity = hsem_battery_max_capacity
-        self._hsem_battery_remaining_capacity = round(
-            ((100 - convert_to_float(self._hsem_huawei_solar_batteries_state_of_capacity)) / 100 * convert_to_float(self._hsem_battery_max_capacity)), 2
-        )
+        self._hsem_battery_remaining_capacity = 0.0
         self._import_sensor = None
         self._import_sensor_current = None
         self._state = None
@@ -306,6 +304,11 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_net_consumption = (
             self._hsem_solar_production_power_current
             - self._hsem_house_consumption_power_current
+        )
+
+        # Calculate the remaining battery capacity
+        self._hsem_battery_remaining_capacity = round(
+            ((100 - convert_to_float(self._hsem_huawei_solar_batteries_state_of_capacity)) / 100 * convert_to_float(self._hsem_battery_max_capacity)), 2
         )
 
         # calculate the hourly data from power sensors
