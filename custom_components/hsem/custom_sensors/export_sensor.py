@@ -10,6 +10,7 @@ from ..const import (
     DEFAULT_HSEM_ENERGI_DATA_SERVICE_EXPORT,
     DEFAULT_HSEM_HUAWEI_SOLAR_INVERTER_ACTIVE_POWER_CONTROL,
     ICON,
+    DOMAIN
 )
 from ..entity import HSEMEntity
 from ..utils.huawei import async_set_grid_export_power_pct
@@ -48,7 +49,7 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
         self._last_updated = None
         self._last_reset = None
         self._config_entry = config_entry
-        self._unique_id = f"hsem_export_sensor"
+        self._unique_id = f"{DOMAIN}_export_sensor"
         self._update_settings()
 
     def _update_settings(self):

@@ -9,6 +9,7 @@ from ..const import (
     DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_STATE_OF_CAPACITY,
     DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_WORKING_MODE,
     ICON,
+    DOMAIN
 )
 from ..entity import HSEMEntity
 from ..utils.ha import async_set_select_option
@@ -59,7 +60,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         self._last_updated = None
         self._last_reset = None
         self._config_entry = config_entry
-        self._unique_id = f"hsem_workingmode_sensor"
+        self._unique_id = f"{DOMAIN}_workingmode_sensor"
         self._update_settings()
 
     def _update_settings(self):
@@ -126,7 +127,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
         # Fetch the import sensor from the unique id of it.
         self._import_sensor = await async_resolve_entity_id_from_unique_id(
-            self, "hsem_import_sensor", "binary_sensor"
+            self, "{DOMAIN}_import_sensor", "binary_sensor"
         )
 
         if not self._import_sensor:
