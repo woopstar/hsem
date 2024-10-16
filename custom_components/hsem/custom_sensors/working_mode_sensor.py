@@ -8,6 +8,7 @@ from homeassistant.helpers.event import (
 )
 
 from ..const import (
+    DEFAULT_HSEM_BATTERY_MAX_CAPACITY,
     DEFAULT_HSEM_DEFAULT_TOU_MODES,
     DEFAULT_HSEM_EV_CHARGER_STATUS,
     DEFAULT_HSEM_EV_CHARGER_TOU_MODES,
@@ -19,7 +20,6 @@ from ..const import (
     DEFAULT_HSEM_MONTHS_WINTER_SPRING,
     DEFAULT_HSEM_SOLAR_PRODUCTION_POWER,
     DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TODAY,
-    DEFAULT_HSEM_BATTERY_MAX_CAPACITY,
     DOMAIN,
     ICON,
 )
@@ -142,7 +142,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TODAY,
         )
         self._hsem_battery_max_capacity = get_config_value(
-            self._config_entry, "hsem_battery_max_capacity", DEFAULT_HSEM_BATTERY_MAX_CAPACITY
+            self._config_entry,
+            "hsem_battery_max_capacity",
+            DEFAULT_HSEM_BATTERY_MAX_CAPACITY,
         )
 
         # Log updated settings
