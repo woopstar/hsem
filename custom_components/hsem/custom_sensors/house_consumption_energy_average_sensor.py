@@ -23,9 +23,7 @@ class HouseConsumptionEnergyAverageSensor(SensorEntity, HSEMEntity):
         self._hour_start = hour_start
         self._hour_end = hour_end
         self._max_age = timedelta(days=max_age_days)
-        self._unique_id = (
-            f"{DOMAIN}_house_consumption_energy_avg_{hour_start:02d}_{hour_end:02d}_{self._max_age.days}d"
-        )
+        self._unique_id = f"{DOMAIN}_house_consumption_energy_avg_{hour_start:02d}_{hour_end:02d}_{self._max_age.days}d"
         self._energy_sensor_entity_id = None
         self._config_entry = config_entry
         self._state = 0.0
