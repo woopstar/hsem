@@ -104,6 +104,12 @@ async def async_setup_energy__average_sensors(config_entry):
         hour_start = hour
         hour_end = (hour + 1) % 24
         sensors.append(
-            HouseConsumptionEnergyAverageSensor(config_entry, hour_start, hour_end)
+            HouseConsumptionEnergyAverageSensor(config_entry, hour_start, hour_end, 2160, 3)
+        )
+        sensors.append(
+            HouseConsumptionEnergyAverageSensor(config_entry, hour_start, hour_end, 5040, 7)
+        )
+        sensors.append(
+            HouseConsumptionEnergyAverageSensor(config_entry, hour_start, hour_end, 10080, 14)
         )
     return sensors

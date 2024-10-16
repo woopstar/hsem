@@ -22,19 +22,19 @@ class HouseConsumptionEnergyAverageSensor(SensorEntity, HSEMEntity):
         super().__init__(config_entry)
         self._hour_start = hour_start
         self._hour_end = hour_end
+        self._max_age = timedelta(days=max_age_days)
         self._unique_id = (
-            f"{DOMAIN}_house_consumption_energy_avg_{hour_start:02d}_{hour_end:02d}_7d"
+            f"{DOMAIN}_house_consumption_energy_avg_{hour_start:02d}_{hour_end:02d}_{self._max_age.days}d"
         )
         self._energy_sensor_entity_id = None
         self._config_entry = config_entry
         self._state = 0.0
         self._samples = deque(maxlen=sampling_size)
-        self._max_age = timedelta(days=max_age_days)
         self._last_updated = None
 
     @property
     def name(self):
-        return f"House Consumption {self._hour_start:02d}-{self._hour_end:02d} Energy Average 7d"
+        return f"House Consumption {self._hour_start:02d}-{self._hour_end:02d} Energy Average {self._max_age.days}d"
 
     @property
     def unique_id(self):
