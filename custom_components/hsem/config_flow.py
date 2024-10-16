@@ -169,7 +169,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             "max": 42,
                             "step": 1,
                             "unit_of_measurement": "kWh",
-                            "mode": "box",
+                            "mode": "slider",
                         }
                     }
                 ),
@@ -284,7 +284,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             "max": 10,
                             "step": 0.1,
                             "unit_of_measurement": "kWh",
-                            "mode": "box",
+                            "mode": "slider",
                         }
                     }
                 ),
@@ -468,7 +468,7 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
                             "max": 42,
                             "step": 1,
                             "unit_of_measurement": "kWh",
-                            "mode": "box",
+                            "mode": "slider",
                         }
                     }
                 ),
@@ -589,7 +589,7 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
                             "max": 10,
                             "step": 0.1,
                             "unit_of_measurement": "kWh",
-                            "mode": "box",
+                            "mode": "slider",
                         }
                     }
                 ),
