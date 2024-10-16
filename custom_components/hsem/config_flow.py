@@ -15,12 +15,13 @@ from .const import (
     DEFAULT_HSEM_SOLAR_PRODUCTION_POWER,
     DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TODAY,
     DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TOMORROW,
+    DEFAULT_HSEM_MORNING_ENERGY_NEED,
+    DEFAULT_HSEM_BATTERY_MAX_CAPACITY,
     DOMAIN,
     NAME,
 )
 
 _LOGGER = logging.getLogger(__name__)
-
 
 class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Config flow for HSEM."""
@@ -50,7 +51,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         # Define the form schema for the first step
         data_schema = vol.Schema(
             {
-                vol.Optional("device_name", default=NAME): str,
+                vol.Required("device_name", default=NAME): str,
             }
         )
 
@@ -105,14 +106,22 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             # Validate the working mode
-            if not user_input.get("hsem_huawei_solar_batteries_working_mode"):
-                self._errors["hsem_huawei_solar_batteries_working_mode"] = "required"
+            if not user_input.get("hsem_huawei_solar_device_id_inverter_1"):
+                self._errors["hsem_huawei_solar_device_id_inverter_1"] = "required"
+            elif not user_input.get("hsem_huawei_solar_batteries_working_mode"):
+                self._errors["hsem_huawei_solar_batteries_working_mode"] = (
+                    "required"
+                )
             elif not user_input.get("hsem_huawei_solar_batteries_state_of_capacity"):
                 self._errors["hsem_huawei_solar_batteries_state_of_capacity"] = (
                     "required"
                 )
             elif not user_input.get("hsem_huawei_solar_inverter_active_power_control"):
                 self._errors["hsem_huawei_solar_inverter_active_power_control"] = (
+                    "required"
+                )
+            elif not user_input.get("hsem_battery_max_capacity"):
+                self._errors["hsem_battery_max_capacity"] = (
                     "required"
                 )
             else:
@@ -153,6 +162,20 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "hsem_huawei_solar_inverter_active_power_control",
                     default=DEFAULT_HSEM_HUAWEI_SOLAR_INVERTER_ACTIVE_POWER_CONTROL,
                 ): selector({"entity": {"domain": "sensor"}}),
+                vol.Required(
+                    "hsem_battery_max_capacity",
+                    default=DEFAULT_HSEM_BATTERY_MAX_CAPACITY,
+                ): selector(
+                    {
+                        "number": {
+                            "min": 0,
+                            "max": 42,
+                            "step": 1,
+                            "unit_of_measurement": "kWh",
+                            "mode": "box",
+                        }
+                    }
+                ),
             }
         )
 
@@ -214,7 +237,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             else:
                 # Save energidata input and move to the next step (working mode)
                 self._user_input.update(user_input)
-                return await self.async_step_huawei_solar()
+                return await self.async_step_misc()
 
         # Define the form schema steps
         data_schema = vol.Schema(
@@ -233,6 +256,47 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         # Show the form to the user for energy data services
         return self.async_show_form(
             step_id="power",
+            data_schema=data_schema,
+            errors=self._errors,
+            last_step=False,
+        )
+
+    async def async_step_misc(self, user_input=None):
+        """Handle the step for power sensors."""
+        self._errors = {}
+
+        if user_input is not None:
+            # Validate input_sensor and other necessary fields
+            if not user_input.get("hsem_morning_energy_need"):
+                self._errors["hsem_morning_energy_need"] = "required"
+            else:
+                # Save energidata input and move to the next step (working mode)
+                self._user_input.update(user_input)
+                return await self.async_step_huawei_solar()
+
+        # Define the form schema steps
+        data_schema = vol.Schema(
+            {
+                vol.Required(
+                    "hsem_morning_energy_need",
+                    default=DEFAULT_HSEM_MORNING_ENERGY_NEED,
+                ): selector(
+                    {
+                        "number": {
+                            "min": 0,
+                            "max": 10,
+                            "step": 0.1,
+                            "unit_of_measurement": "kWh",
+                            "mode": "box",
+                        }
+                    }
+                ),
+            }
+        )
+
+        # Show the form to the user for energy data services
+        return self.async_show_form(
+            step_id="misc",
             data_schema=data_schema,
             errors=self._errors,
             last_step=False,
@@ -268,7 +332,7 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
         # Define the form schema for the first step
         data_schema = vol.Schema(
             {
-                vol.Optional(
+                vol.Required(
                     "device_name",
                     default=self.config_entry.options.get("device_name", NAME),
                 ): str,
@@ -328,14 +392,26 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
         self._errors = {}
 
         if user_input is not None:
-            if not user_input.get("hsem_huawei_solar_batteries_working_mode"):
-                self._errors["hsem_huawei_solar_batteries_working_mode"] = "required"
+            if not user_input.get("hsem_huawei_solar_device_id_inverter_1"):
+                self._errors["hsem_huawei_solar_device_id_inverter_1"] = "required"
+            elif not user_input.get("hsem_huawei_solar_device_id_batteries"):
+                self._errors["hsem_huawei_solar_device_id_batteries"] = (
+                    "required"
+                )
+            elif not user_input.get("hsem_huawei_solar_batteries_working_mode"):
+                self._errors["hsem_huawei_solar_batteries_working_mode"] = (
+                    "required"
+                )
             elif not user_input.get("hsem_huawei_solar_batteries_state_of_capacity"):
                 self._errors["hsem_huawei_solar_batteries_state_of_capacity"] = (
                     "required"
                 )
             elif not user_input.get("hsem_huawei_solar_inverter_active_power_control"):
                 self._errors["hsem_huawei_solar_inverter_active_power_control"] = (
+                    "required"
+                )
+            elif not user_input.get("hsem_battery_max_capacity"):
+                self._errors["hsem_battery_max_capacity"] = (
                     "required"
                 )
             else:
@@ -388,6 +464,23 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
                         DEFAULT_HSEM_HUAWEI_SOLAR_INVERTER_ACTIVE_POWER_CONTROL,
                     ),
                 ): selector({"entity": {"domain": "sensor"}}),
+                vol.Required(
+                    "hsem_battery_max_capacity",
+                    default=self.config_entry.options.get(
+                        "hsem_battery_max_capacity",
+                        DEFAULT_HSEM_BATTERY_MAX_CAPACITY,
+                    ),
+                ): selector(
+                    {
+                        "number": {
+                            "min": 0,
+                            "max": 42,
+                            "step": 1,
+                            "unit_of_measurement": "kWh",
+                            "mode": "box",
+                        }
+                    }
+                ),
             }
         )
 
@@ -448,7 +541,7 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
             else:
                 # Save energidata input and move to the next step (working mode)
                 self._user_input.update(user_input)
-                return await self.async_step_huawei_solar()
+                return await self.async_step_misc()
 
         # Define the form schema for energy data services step
         data_schema = vol.Schema(
@@ -472,6 +565,48 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
 
         return self.async_show_form(
             step_id="solcast",
+            data_schema=data_schema,
+            errors=self._errors,
+            last_step=False,
+        )
+
+    async def async_step_misc(self, user_input=None):
+        """Handle the step for energy data services."""
+        self._errors = {}
+
+        if user_input is not None:
+            if not user_input.get("hsem_morning_energy_need"):
+                self._errors["hsem_morning_energy_need"] = "required"
+            else:
+                # Save energidata input and move to the next step (working mode)
+                self._user_input.update(user_input)
+                return await self.async_step_huawei_solar()
+
+        # Define the form schema for energy data services step
+        data_schema = vol.Schema(
+            {
+                vol.Required(
+                    "hsem_morning_energy_need",
+                    default=self.config_entry.options.get(
+                        "hsem_morning_energy_need",
+                        DEFAULT_HSEM_MORNING_ENERGY_NEED,
+                    ),
+                ): selector(
+                    {
+                        "number": {
+                            "min": 0,
+                            "max": 10,
+                            "step": 0.1,
+                            "unit_of_measurement": "kWh",
+                            "mode": "box",
+                        }
+                    }
+                ),
+            }
+        )
+
+        return self.async_show_form(
+            step_id="misc",
             data_schema=data_schema,
             errors=self._errors,
             last_step=False,

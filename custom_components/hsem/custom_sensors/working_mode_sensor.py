@@ -12,6 +12,7 @@ from ..const import (
 )
 from ..entity import HSEMEntity
 from ..utils.misc import async_resolve_entity_id_from_unique_id, get_config_value
+from ..utils.ha import async_set_select_option
 from ..utils.workingmodes import WorkingModes
 
 _LOGGER = logging.getLogger(__name__)
@@ -101,14 +102,14 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         """Return the state attributes."""
 
         return {
-            "hsem_huawei_solar_device_id_inverter_1": self._hsem_huawei_solar_device_id_inverter_1,
-            "hsem_huawei_solar_device_id_inverter_2": self._hsem_huawei_solar_device_id_inverter_2,
-            "hsem_huawei_solar_device_id_batteries": self._hsem_huawei_solar_device_id_batteries,
-            "hsem_huawei_solar_batteries_working_mode_input_sensor": self._hsem_huawei_solar_batteries_working_mode,
+            "hsem_huawei_solar_device_id_inverter_1_id": self._hsem_huawei_solar_device_id_inverter_1,
+            "hsem_huawei_solar_device_id_inverter_2_id": self._hsem_huawei_solar_device_id_inverter_2,
+            "hsem_huawei_solar_device_id_batteries_id": self._hsem_huawei_solar_device_id_batteries,
+            "hsem_huawei_solar_batteries_working_mode__entity_id": self._hsem_huawei_solar_batteries_working_mode,
             "hsem_huawei_solar_batteries_working_mode_current": self._hsem_huawei_solar_batteries_working_mode_current,
-            "hsem_huawei_solar_batteries_state_of_capacity_input_sensor": self._hsem_huawei_solar_batteries_state_of_capacity,
+            "hsem_huawei_solar_batteries_state_of_capacity__entity_id": self._hsem_huawei_solar_batteries_state_of_capacity,
             "hsem_huawei_solar_batteries_state_of_capacity_current": self._hsem_huawei_solar_batteries_state_of_capacity_current,
-            "import_sensor: ": self._import_sensor,
+            "import_sensor_entity_id: ": self._import_sensor,
             "last_updated": self._last_updated,
             "unique_id": self._unique_id,
         }
@@ -213,18 +214,11 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
         # Set the select sensor value to the working mode
         try:
-            # await self.hass.services.async_call(
-            #     "select",
-            #     "select_option",
-            #     {
-            #         "entity_id": self._hsem_huawei_solar_batteries_working_mode,
-            #         "option": new_working_mode,
-            #     },
-            # )
+            # TODO: Enable this when we want to set working mode
+            #await async_set_select_option(self, self._hsem_huawei_solar_batteries_working_mode, new_working_mode)
             self._state = new_working_mode
         except Exception as e:
             _LOGGER.error(f"Failed to set select sensor state: {e}")
-            # Do not update self._state if the call fails
 
         # Update last update time
         self._last_updated = datetime.now().isoformat()

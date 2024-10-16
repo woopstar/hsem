@@ -13,9 +13,7 @@ DEFAULT_HSEM_HUAWEI_SOLAR_INVERTER_ACTIVE_POWER_CONTROL = (
 )
 DEFAULT_HSEM_HOUSE_CONSUMPTION_POWER = "sensor.power_house_load"
 DEFAULT_HSEM_SOLAR_PRODUCTION_POWER = "sensor.power_inverter_input_total"
-DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TODAY = (
-    "sensor.solcast_pv_forecast_forecast_today"
-)
-DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TOMORROW = (
-    "sensor.solcast_pv_forecast_forecast_tomorrow"
-)
+DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TODAY = "sensor.solcast_pv_forecast_forecast_today"
+DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TOMORROW = "sensor.solcast_pv_forecast_forecast_tomorrow"
+DEFAULT_HSEM_MORNING_ENERGY_NEED = 1.5
+DEFAULT_HSEM_BATTERY_MAX_CAPACITY = 10

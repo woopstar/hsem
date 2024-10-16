@@ -97,11 +97,11 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
         """Return the state attributes."""
 
         return {
-            "hsem_huawei_solar_device_id_inverter_1": self._hsem_huawei_solar_device_id_inverter_1,
-            "hsem_huawei_solar_device_id_inverter_2": self._hsem_huawei_solar_device_id_inverter_2,
-            "hsem_huawei_solar_inverter_active_power_control": self._hsem_huawei_solar_inverter_active_power_control,
+            "hsem_huawei_solar_device_id_inverter_1_id": self._hsem_huawei_solar_device_id_inverter_1,
+            "hsem_huawei_solar_device_id_inverter_2_id": self._hsem_huawei_solar_device_id_inverter_2,
+            "hsem_huawei_solar_inverter_active_power_control_entity_id": self._hsem_huawei_solar_inverter_active_power_control,
             "hsem_huawei_solar_inverter_active_power_control_current": self._hsem_huawei_solar_inverter_active_power_control_current,
-            "price_sensor": self._price_sensor,
+            "price_sensor_entity_id": self._price_sensor,
             "export_price": self._export_price,
             "last_updated": self._last_updated,
             "unique_id": self._unique_id,

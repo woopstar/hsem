@@ -3,7 +3,8 @@
     "name": "Huawei Solar Energy Management",
     "after_dependencies": [
         "energidataservice",
-        "huawei_solar"
+        "huawei_solar",
+        "solcast_solar"
     ],
     "codeowners": [
         "@woopstar",

@@ -80,7 +80,7 @@ class ImportSensor(BinarySensorEntity, HSEMEntity):
         """Return the state attributes."""
 
         return {
-            "price_sensor": self._price_sensor,
+            "price_sensor_entity_id": self._price_sensor,
             "import_price": self._import_price,
             "last_updated": self._last_updated,
             "unique_id": self._unique_id,

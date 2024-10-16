@@ -6,7 +6,6 @@ from .const import DOMAIN, ICON, NAME
 
 _LOGGER = logging.getLogger(__name__)
 
-
 class HSEMEntity(RestoreEntity):
     """Base class for HSEM (Device)"""
 
