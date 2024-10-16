@@ -1,25 +1,30 @@
 import logging
-from datetime import datetime, timedelta
 from collections import deque
+from datetime import datetime, timedelta
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.event import async_track_state_change_event
 
-from ..utils.misc import async_resolve_entity_id_from_unique_id
-from ..entity import HSEMEntity
 from ..const import DOMAIN, ICON
+from ..entity import HSEMEntity
+from ..utils.misc import async_resolve_entity_id_from_unique_id
 
 _LOGGER = logging.getLogger(__name__)
+
 
 class HouseConsumptionEnergyAverageSensor(SensorEntity, HSEMEntity):
     _attr_icon = ICON
     _attr_has_entity_name = True
 
-    def __init__(self, config_entry, hour_start, hour_end, sampling_size=5040, max_age_days=7):
+    def __init__(
+        self, config_entry, hour_start, hour_end, sampling_size=5040, max_age_days=7
+    ):
         super().__init__(config_entry)
         self._hour_start = hour_start
         self._hour_end = hour_end
-        self._unique_id = f"{DOMAIN}_house_consumption_energy_avg_{hour_start:02d}_{hour_end:02d}_7d"
+        self._unique_id = (
+            f"{DOMAIN}_house_consumption_energy_avg_{hour_start:02d}_{hour_end:02d}_7d"
+        )
         self._energy_sensor_entity_id = None
         self._config_entry = config_entry
         self._state = 0.0
@@ -60,7 +65,8 @@ class HouseConsumptionEnergyAverageSensor(SensorEntity, HSEMEntity):
     async def async_update(self):
         # Slå energisensoren op
         self._energy_sensor_entity_id = await async_resolve_entity_id_from_unique_id(
-            self, f"{DOMAIN}_house_consumption_energy_{self._hour_start:02d}_{self._hour_end:02d}"
+            self,
+            f"{DOMAIN}_house_consumption_energy_{self._hour_start:02d}_{self._hour_end:02d}",
         )
 
         if not self._energy_sensor_entity_id:
@@ -84,9 +90,12 @@ class HouseConsumptionEnergyAverageSensor(SensorEntity, HSEMEntity):
 
             # Fjern gamle samples uden for max age
             self._samples = deque(
-                [(timestamp, value) for timestamp, value in self._samples
-                 if current_time - timestamp <= self._max_age],
-                maxlen=self._samples.maxlen
+                [
+                    (timestamp, value)
+                    for timestamp, value in self._samples
+                    if current_time - timestamp <= self._max_age
+                ],
+                maxlen=self._samples.maxlen,
             )
 
             # Beregn gennemsnittet af sampleværdierne

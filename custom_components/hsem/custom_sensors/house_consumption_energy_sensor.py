@@ -4,11 +4,12 @@ from datetime import datetime
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.event import async_track_state_change_event
 
-from ..utils.misc import async_resolve_entity_id_from_unique_id
-from ..entity import HSEMEntity
 from ..const import DOMAIN, ICON
+from ..entity import HSEMEntity
+from ..utils.misc import async_resolve_entity_id_from_unique_id
 
 _LOGGER = logging.getLogger(__name__)
+
 
 class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
     _attr_icon = ICON
@@ -90,7 +91,9 @@ class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
                 # Beregn tidsintervallet i sekunder
                 time_diff = (current_time - self._last_updated).total_seconds()
                 # Konverter effekt til energi (W til kWh)
-                self._state += (power_value * time_diff) / 3600000  # Divider med 3600 for kW og 1000 for kWh
+                self._state += (
+                    power_value * time_diff
+                ) / 3600000  # Divider med 3600 for kW og 1000 for kWh
             else:
                 _LOGGER.debug(f"First update for {self.name}, skipping accumulation.")
 
