@@ -20,10 +20,10 @@ from ..const import (
     DEFAULT_HSEM_MONTHS_WINTER_SPRING,
     DEFAULT_HSEM_SOLAR_PRODUCTION_POWER,
     DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TODAY,
+    DOMAIN,
     HOUSE_CONSUMPTION_ENERGY_WEIGHT_3D,
     HOUSE_CONSUMPTION_ENERGY_WEIGHT_7D,
     HOUSE_CONSUMPTION_ENERGY_WEIGHT_14D,
-    DOMAIN,
     ICON,
 )
 from ..entity import HSEMEntity
@@ -310,7 +310,17 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
         # Calculate the remaining battery capacity
         self._hsem_battery_remaining_charge = round(
-            ((100 - convert_to_float(self._hsem_huawei_solar_batteries_state_of_capacity_current)) / 100 * convert_to_float(self._hsem_battery_max_capacity)), 2
+            (
+                (
+                    100
+                    - convert_to_float(
+                        self._hsem_huawei_solar_batteries_state_of_capacity_current
+                    )
+                )
+                / 100
+                * convert_to_float(self._hsem_battery_max_capacity)
+            ),
+            2,
         )
 
         # calculate the hourly data from power sensors
@@ -447,9 +457,10 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
             # Calculate the weighted average house consumption for the hour
             weighted_value = round(
-                (value_3d * HOUSE_CONSUMPTION_ENERGY_WEIGHT_3D) +
-                (value_7d * HOUSE_CONSUMPTION_ENERGY_WEIGHT_7D) +
-                (value_14d * HOUSE_CONSUMPTION_ENERGY_WEIGHT_14D), 6
+                (value_3d * HOUSE_CONSUMPTION_ENERGY_WEIGHT_3D)
+                + (value_7d * HOUSE_CONSUMPTION_ENERGY_WEIGHT_7D)
+                + (value_14d * HOUSE_CONSUMPTION_ENERGY_WEIGHT_14D),
+                6,
             )
 
             # Only update "avg_house_consumption" in the existing dictionary entry
