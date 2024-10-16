@@ -1,11 +1,12 @@
 import hashlib
 import logging
 
+from homeassistant.helpers import entity_registry as er
+
 from .const import DOMAIN
 from .custom_sensors.export_sensor import ExportSensor
 from .custom_sensors.import_sensor import ImportSensor
 from .utils.misc import generate_md5_hash, get_config_value
-from homeassistant.helpers import entity_registry as er
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -71,6 +72,7 @@ async def async_unload_entry(hass, entry):
     if platform:
         return await platform.async_remove_entry(entry)
     return False
+
 
 async def enable_entity(hass, entity_id):
     """Enable a disabled entity in Home Assistant."""
