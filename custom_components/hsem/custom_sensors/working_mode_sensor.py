@@ -278,6 +278,10 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         self.async_write_ha_state()
 
     async def async_set_working_mode(self):
+        # Determine the current month and hour
+        current_month = datetime.now().month
+        current_hour = datetime.now().hour
+
         # Define TOU modes for different scenarios
         import_sensor_tou_modes = ["00:00-23:59/1234567/+"]
         ev_charger_tou_modes = ["00:00-00:01/1234567/+"]
@@ -310,11 +314,20 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                 f"Solar power is above house consumption. Working Mode: {working_mode}, Solar Production: {self._hsem_solar_production_power_current}, House Consumption: {self._hsem_house_consumption_power_current}"
             )
         else:
-            tou_modes = default_tou_modes
-            working_mode = WorkingModes.TimeOfUse.value
-            _LOGGER.warning(
-                f"Default settings. TOU Periods: {tou_modes} and Working Mode: {working_mode}"
-            )
+            # Winter/Spring settings
+            if current_month in [1, 2, 3, 4, 9, 10, 11, 12]:
+                tou_modes = default_tou_modes
+                working_mode = WorkingModes.TimeOfUse.value
+                _LOGGER.warning(
+                    f"Default winter/spring settings. TOU Periods: {tou_modes} and Working Mode: {working_mode}"
+                )
+
+            # Summer settings
+            if current_month in [5, 6, 7, 8]:
+                working_mode = WorkingModes.MaximizeSelfConsumption.value
+                _LOGGER.warning(
+                    f"Default summer settings. Working Mode: {working_mode}"
+                )
 
         # Apply TOU periods if working mode is TOU
         if working_mode == WorkingModes.TimeOfUse.value:
