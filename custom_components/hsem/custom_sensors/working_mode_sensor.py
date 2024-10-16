@@ -85,7 +85,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         )
         self._hsem_net_consumption = 0.0
         self._hsem_battery_max_capacity = hsem_battery_max_capacity
-        self._hsem_battery_remaining_capacity = round(((100 - self._hsem_huawei_solar_batteries_state_of_capacity) / 100 * self._hsem_battery_max_capacity), 2)
+        self._hsem_battery_remaining_capacity = round(
+            ((100 - convert_to_float(self._hsem_huawei_solar_batteries_state_of_capacity)) / 100 * convert_to_float(self._hsem_battery_max_capacity)), 2
+        )
         self._import_sensor = None
         self._import_sensor_current = None
         self._state = None
@@ -412,7 +414,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                 entity_state_3d = self.hass.states.get(entity_id_3d)
                 if entity_state_3d and entity_state_3d.state != "unknown":
                     try:
-                        value_3d = float(entity_state_3d.state)
+                        value_3d = convert_to_float(entity_state_3d.state)
                     except ValueError:
                         _LOGGER.warning(
                             f"Invalid state for entity {entity_id_3d}: {entity_state_3d.state}"
@@ -422,7 +424,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                 entity_state_7d = self.hass.states.get(entity_id_7d)
                 if entity_state_7d and entity_state_7d.state != "unknown":
                     try:
-                        value_7d = float(entity_state_7d.state)
+                        value_7d = convert_to_float(entity_state_7d.state)
                     except ValueError:
                         _LOGGER.warning(
                             f"Invalid state for entity {entity_id_7d}: {entity_state_7d.state}"
@@ -432,7 +434,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                 entity_state_14d = self.hass.states.get(entity_id_14d)
                 if entity_state_14d and entity_state_14d.state != "unknown":
                     try:
-                        value_14d = float(entity_state_14d.state)
+                        value_14d = convert_to_float(entity_state_14d.state)
                     except ValueError:
                         _LOGGER.warning(
                             f"Invalid state for entity {entity_id_14d}: {entity_state_14d.state}"
