@@ -86,7 +86,7 @@ async def enable_entity(hass, entity_id):
         # Check if the entity is disabled
         if entity_entry.disabled:
             # Enable the entity
-            registry.async_update_entity(entity_id, disabled_by=None)
-            _LOGGER.info(f"Entity {entity_id} has been enabled.")
+            await registry.async_update_entity(entity_id, disabled_by=None)
+            _LOGGER.warning(f"Entity {entity_id} has been enabled.")
     else:
         _LOGGER.warning(f"Entity {entity_id} not found in the entity registry.")
