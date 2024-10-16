@@ -4,15 +4,13 @@ from datetime import datetime
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.event import async_track_state_change_event
 
-from ..const import DOMAIN, ICON
+from ..utils.misc import async_resolve_entity_id_from_unique_id
 from ..entity import HSEMEntity
-from ..utils.misc import async_resolve_entity_id_from_unique_id, get_config_value
+from ..const import DOMAIN, ICON
 
 _LOGGER = logging.getLogger(__name__)
 
-
 class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
-
     _attr_icon = ICON
     _attr_has_entity_name = True
 
@@ -27,6 +25,7 @@ class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
         self._config_entry = config_entry
         self._state = 0.0
         self._last_updated = None
+        self._last_reset_date = None  # Holder styr på den sidste nulstillingsdato
 
     @property
     def name(self):
@@ -54,9 +53,18 @@ class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
             "power_sensor_entity_id": self._power_sensor_entity_id,
             "last_updated": self._last_updated,
             "unique_id": self._unique_id,
+            "last_reset_date": self._last_reset_date,
         }
 
     async def async_update(self):
+        current_time = datetime.now()
+
+        # Tjek om vi skal nulstille (hvis dagen er ændret)
+        if self._last_reset_date != current_time.date():
+            _LOGGER.info(f"Nulstiller sensoren for en ny dag: {self.name}")
+            self._state = 0.0  # Nulstil energiforbruget
+            self._last_reset_date = current_time.date()
+
         # Slå power sensoren op
         self._power_sensor_entity_id = await async_resolve_entity_id_from_unique_id(
             self,
@@ -77,23 +85,19 @@ class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
 
         try:
             power_value = float(power_sensor_state.state)
-            current_time = datetime.now()
 
             if self._last_updated:
                 # Beregn tidsintervallet i sekunder
                 time_diff = (current_time - self._last_updated).total_seconds()
                 # Konverter effekt til energi (W til kWh)
-                self._state += (
-                    power_value * time_diff
-                ) / 3600000  # Dividere med 3600 for kW og med 1000 for kWh
+                self._state += (power_value * time_diff) / 3600000  # Divider med 3600 for kW og 1000 for kWh
             else:
-                # Hvis det er første opdatering, starter vi ikke en beregning
                 _LOGGER.debug(f"First update for {self.name}, skipping accumulation.")
 
             # Sæt sidste opdateringstidspunkt
             self._last_updated = current_time
 
-            # Runde state til 6 decimaler som specificeret i YAML
+            # Runde state til 6 decimaler
             self._state = round(self._state, 6)
 
         except ValueError:
@@ -109,9 +113,13 @@ class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
         if old_state is not None:
             try:
                 self._state = float(old_state.state)
+                self._last_reset_date = datetime.strptime(
+                    old_state.attributes.get("last_reset_date"), "%Y-%m-%d"
+                ).date()
             except (ValueError, TypeError):
                 _LOGGER.warning(f"Invalid old state value for {self.name}")
                 self._state = 0.0
+                self._last_reset_date = datetime.now().date()
 
         # Track power-sensorens tilstand
         if self._power_sensor_entity_id:
