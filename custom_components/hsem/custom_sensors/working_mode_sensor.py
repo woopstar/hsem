@@ -92,6 +92,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             f"{hour:02d}-{(hour + 1) % 24:02d}": {
                 "avg_house_consumption": 0.0,
                 "solcast_pv_estimate": 0.0,
+                "estimated_net_consumption": 0.0,
             }
             for hour in range(24)
         }
@@ -300,7 +301,10 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         # calculate the solcast forecast for today
         await self.async_calculate_solcast_forecast()
 
-        # Set the working mode based on the input sensors
+        # calculate the hourly net consumption between house consumption and solar production
+        await self.async_calculate_hourly_net_consumption()
+
+        # Set the working mode
         await self.async_set_working_mode()
 
         # Update last update time
@@ -467,6 +471,38 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         _LOGGER.debug(
             f"Updated hourly calculations with Solcast PV estimates: {self._hourly_calculations}"
         )
+
+    async def async_calculate_hourly_net_consumption(self):
+        """Calculate the estimated net consumption for each hour of the day."""
+
+        for hour in range(24):
+            hour_start = hour
+            hour_end = (hour + 1) % 24
+            time_range = f"{hour_start:02d}-{hour_end:02d}"
+
+            avg_house_consumption = self._hourly_calculations[time_range][
+                    "avg_house_consumption"
+                ]
+
+            solcast_pv_estimate = self._hourly_calculations[time_range][
+                    "solcast_pv_estimate"
+                ]
+
+            if avg_house_consumption is None or solcast_pv_estimate is None:
+                estimated_net_consumption = 0.0
+            else:
+                estimated_net_consumption = (solcast_pv_estimate - avg_house_consumption)
+
+            # calculate the estimated net consumption
+            if time_range in self._hourly_calculations:
+                self._hourly_calculations[time_range][
+                        "estimated_net_consumption"
+                    ] = estimated_net_consumption
+
+        _LOGGER.debug(
+            f"Updated hourly calculations with Estimated Net Consumption: {self._hourly_calculations}"
+        )
+
 
     async def async_update(self):
         """Manually trigger the sensor update."""
