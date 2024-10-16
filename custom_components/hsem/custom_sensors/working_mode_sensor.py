@@ -23,6 +23,7 @@ from ..utils.huawei import async_set_tou_periods
 from ..utils.misc import (
     async_resolve_entity_id_from_unique_id,
     convert_to_boolean,
+    convert_to_float,
     get_config_value,
 )
 from ..utils.workingmodes import WorkingModes
@@ -68,9 +69,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_ev_charger_status = hsem_ev_charger_status
         self._hsem_ev_charger_status_current = False
         self._hsem_house_consumption_power = hsem_house_consumption_power
-        self._hsem_house_consumption_power_current = None
+        self._hsem_house_consumption_power_current = 0.0
         self._hsem_solar_production_power = hsem_solar_production_power
-        self._hsem_solar_production_power_current = None
+        self._hsem_solar_production_power_current = 0.0
         self._import_sensor = None
         self._import_sensor_current = None
         self._state = None
@@ -139,10 +140,14 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             "huawei_solar_device_id_inverter_1_id": self._hsem_huawei_solar_device_id_inverter_1,
             "huawei_solar_device_id_inverter_2_id": self._hsem_huawei_solar_device_id_inverter_2,
             "huawei_solar_device_id_batteries_id": self._hsem_huawei_solar_device_id_batteries,
-            "huawei_solar_batteries_working_mode__entity_id": self._hsem_huawei_solar_batteries_working_mode,
+            "huawei_solar_batteries_working_mode_entity_id": self._hsem_huawei_solar_batteries_working_mode,
             "huawei_solar_batteries_working_mode_current": self._hsem_huawei_solar_batteries_working_mode_current,
-            "huawei_solar_batteries_state_of_capacity__entity_id": self._hsem_huawei_solar_batteries_state_of_capacity,
+            "huawei_solar_batteries_state_of_capacity_entity_id": self._hsem_huawei_solar_batteries_state_of_capacity,
             "huawei_solar_batteries_state_of_capacity_current": self._hsem_huawei_solar_batteries_state_of_capacity_current,
+            "house_consumption_power_entity_id": self._hsem_house_consumption_power,
+            "house_consumption_power_current": self._hsem_house_consumption_power_current,
+            "solar_production_power_entity_id": self._hsem_solar_production_power,
+            "solar_production_power_current": self._hsem_solar_production_power_current,
             "ev_charger_status_entity_id": self._hsem_ev_charger_status,
             "ev_charger_status_current": self._hsem_ev_charger_status_current,
             "import_sensor_entity_id: ": self._import_sensor,
@@ -164,25 +169,55 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
         # Fetch the current value from the import sensor
         if self._import_sensor:
-            import_sensor_state = self.hass.states.get(self._import_sensor)
-            if import_sensor_state:
+            state = self.hass.states.get(self._import_sensor)
+            if state:
                 self._import_sensor_current = convert_to_boolean(
-                    import_sensor_state.state
+                    state.state
                 )
             else:
-                _LOGGER.warning(f"Import sensor {self._import_sensor} not found.")
+                _LOGGER.warning(
+                    f"Import sensor {self._import_sensor} not found."
+                )
+        state = None
 
         # Fetch the current value from the EV charger status sensor
         if self._hsem_ev_charger_status:
-            ev_charger_state = self.hass.states.get(self._hsem_ev_charger_status)
-            if ev_charger_state:
+            state = self.hass.states.get(self._hsem_ev_charger_status)
+            if state:
                 self._hsem_ev_charger_status_current = convert_to_boolean(
-                    ev_charger_state.state
+                    state.state
                 )
             else:
                 _LOGGER.warning(
                     f"EV charger status sensor {self._hsem_ev_charger_status} not found."
                 )
+        state = None
+
+        # Fetch the current value from the house consumption power sensor
+        if self._hsem_house_consumption_power:
+            state = self.hass.states.get(self._hsem_house_consumption_power)
+            if state:
+                self._hsem_house_consumption_power_current = convert_to_float(
+                    state.state
+                )
+            else:
+                _LOGGER.warning(
+                    f"Sensor {self._hsem_house_consumption_power} not found."
+                )
+        state = None
+
+        # Fetch the current value from the solar production power sensor
+        if self._hsem_solar_production_power:
+            state = self.hass.states.get(self._hsem_solar_production_power)
+            if state:
+                self._hsem_solar_production_power_current = convert_to_float(
+                    state.state
+                )
+            else:
+                _LOGGER.warning(
+                    f"Sensor {self._hsem_solar_production_power} not found."
+                )
+        state = None
 
         # Fetch the current value from the input sensors
         input_hsem_huawei_solar_batteries_working_mode = self.hass.states.get(
@@ -265,19 +300,25 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             _LOGGER.warning(
                 f"EV Charger active. Setting TOU Periods: {tou_modes} and Working Mode: {working_mode}"
             )
-
+        elif self._hsem_solar_production_power_current > self._hsem_house_consumption_power_current:
+            working_mode = WorkingModes.MaximizeSelfConsumption.value
+            _LOGGER.warning(
+                f"Solar power is above house consumption. Working Mode: {working_mode}, Solar Production: {self._hsem_solar_production_power_current}, House Consumption: {self._hsem_house_consumption_power_current}"
+            )
         else:
             tou_modes = default_tou_modes
-            working_mode = WorkingModes.MaximizeSelfConsumption.value
+            working_mode = WorkingModes.TimeOfUse.value
             _LOGGER.warning(
                 f"Default settings. TOU Periods: {tou_modes} and Working Mode: {working_mode}"
             )
 
-        # Apply TOU periods and working mode
-        await async_set_tou_periods(
-            self, self._hsem_huawei_solar_device_id_batteries, tou_modes
-        )
+        # Apply TOU periods if working mode is TOU
+        if working_mode == WorkingModes.TimeOfUse.value:
+            await async_set_tou_periods(
+                self, self._hsem_huawei_solar_device_id_batteries, tou_modes
+            )
 
+        # Apply working mode if it has changed
         if self._hsem_huawei_solar_batteries_working_mode_current != working_mode:
             await async_set_select_option(
                 self, self._hsem_huawei_solar_batteries_working_mode, working_mode
