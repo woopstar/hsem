@@ -295,14 +295,14 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             tou_modes = DEFAULT_HSEM_IMPORT_SENSOR_TOU_MODES
             working_mode = WorkingModes.TimeOfUse.value
             _LOGGER.warning(
-                f"Import sensor active. Setting TOU Periods: {tou_modes} and Working Mode: {working_mode}"
+                f"Import sensor is active. Setting TOU Periods: {tou_modes} and Working Mode: {working_mode}"
             )
 
         elif self._hsem_ev_charger_status_current:
             tou_modes = DEFAULT_HSEM_EV_CHARGER_TOU_MODES
             working_mode = WorkingModes.TimeOfUse.value
             _LOGGER.warning(
-                f"EV Charger active. Setting TOU Periods: {tou_modes} and Working Mode: {working_mode}"
+                f"EV Charger is active. Setting TOU Periods: {tou_modes} and Working Mode: {working_mode}"
             )
         elif (
             self._hsem_solar_production_power_current
@@ -310,7 +310,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         ):
             working_mode = WorkingModes.MaximizeSelfConsumption.value
             _LOGGER.warning(
-                f"Solar power is above house consumption. Working Mode: {working_mode}, Solar Production: {self._hsem_solar_production_power_current}, House Consumption: {self._hsem_house_consumption_power_current}"
+                f"Solar power is above house consumption. Working Mode: {working_mode}, Solar Production: {self._hsem_solar_production_power_current}, House Consumption: {self._hsem_house_consumption_power_current}, Net Consumption: {self._hsem_net_consumption}"
             )
         else:
             # Winter/Spring settings
@@ -425,6 +425,26 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             async_track_state_change_event(
                 self.hass,
                 [self._import_sensor],
+                self._handle_update,
+            )
+
+        if self._hsem_house_consumption_power:
+            _LOGGER.info(
+                f"Starting to track state changes for entity_id {self._hsem_house_consumption_power}"
+            )
+            async_track_state_change_event(
+                self.hass,
+                [self._hsem_house_consumption_power],
+                self._handle_update,
+            )
+
+        if self._hsem_solar_production_power:
+            _LOGGER.info(
+                f"Starting to track state changes for entity_id {self._hsem_solar_production_power}"
+            )
+            async_track_state_change_event(
+                self.hass,
+                [self._hsem_solar_production_power],
                 self._handle_update,
             )
 
