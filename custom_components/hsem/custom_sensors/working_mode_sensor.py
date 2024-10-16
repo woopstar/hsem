@@ -19,6 +19,7 @@ from ..const import (
     DEFAULT_HSEM_MONTHS_WINTER_SPRING,
     DEFAULT_HSEM_SOLAR_PRODUCTION_POWER,
     DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TODAY,
+    DEFAULT_HSEM_BATTERY_MAX_CAPACITY,
     DOMAIN,
     ICON,
 )
@@ -52,6 +53,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         hsem_solar_production_power,
         hsem_ev_charger_status,
         hsem_solcast_pv_forecast_forecast_today,
+        hsem_battery_max_capacity,
         config_entry,
     ):
         super().__init__(config_entry)
@@ -82,6 +84,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             hsem_solcast_pv_forecast_forecast_today
         )
         self._hsem_net_consumption = 0.0
+        self._hsem_battery_max_capacity = hsem_battery_max_capacity
         self._import_sensor = None
         self._import_sensor_current = None
         self._state = None
@@ -138,6 +141,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             "hsem_solcast_pv_forecast_forecast_today",
             DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TODAY,
         )
+        self._hsem_battery_max_capacity = get_config_value(
+            self._config_entry, "hsem_battery_max_capacity", DEFAULT_HSEM_BATTERY_MAX_CAPACITY
+        )
 
         # Log updated settings
         _LOGGER.debug(
@@ -173,6 +179,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             "solar_production_power_entity_id": self._hsem_solar_production_power,
             "solar_production_power_current": self._hsem_solar_production_power_current,
             "net_consumption": self._hsem_net_consumption,
+            "battery_max_capacity_entity_id": self._hsem_battery_max_capacity,
             "ev_charger_status_entity_id": self._hsem_ev_charger_status,
             "ev_charger_status_current": self._hsem_ev_charger_status_current,
             "solcast_pv_forecast_forecast_today_entity_id": self._hsem_solcast_pv_forecast_forecast_today,
@@ -626,6 +633,16 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             async_track_state_change_event(
                 self.hass,
                 [self._hsem_solcast_pv_forecast_forecast_today],
+                self._handle_update,
+            )
+
+        if self._hsem_battery_max_capacity:
+            _LOGGER.info(
+                f"Starting to track state changes for entity_id {self._hsem_battery_max_capacity}"
+            )
+            async_track_state_change_event(
+                self.hass,
+                [self._hsem_battery_max_capacity],
                 self._handle_update,
             )
 

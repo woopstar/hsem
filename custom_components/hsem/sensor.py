@@ -41,6 +41,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
         config_entry, "hsem_solcast_pv_forecast_forecast_today"
     )
     hsem_ev_charger_status = get_config_value(config_entry, "hsem_ev_charger_status")
+    hsem_battery_max_capacity = get_config_value(config_entry, "hsem_battery_max_capacity")
 
     # Create the export from the input from hsem_energi_data_service_export
     working_mode_sensor = WorkingModeSensor(
@@ -53,6 +54,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
         hsem_solar_production_power,
         hsem_ev_charger_status,
         hsem_solcast_pv_forecast_forecast_today,
+        hsem_battery_max_capacity,
         config_entry,
     )
 
