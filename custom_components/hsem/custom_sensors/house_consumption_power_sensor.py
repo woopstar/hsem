@@ -30,6 +30,7 @@ class HouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
         self._state = None
         self._config_entry = config_entry
         self._last_updated = None
+        self._update_settings()
 
     @property
     def name(self):
@@ -61,6 +62,12 @@ class HouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
             "last_updated": self._last_updated,
             "unique_id": self._unique_id,
         }
+
+    def _update_settings(self):
+        """Fetch updated settings from config_entry options."""
+        self._hsem_house_consumption_power = get_config_value(
+            self._config_entry, "hsem_house_consumption_power"
+        )
 
     async def async_added_to_hass(self):
         """Handle when sensor is added to Home Assistant."""

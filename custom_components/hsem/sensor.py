@@ -34,6 +34,9 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     hsem_house_consumption_power = get_config_value(
         config_entry, "hsem_house_consumption_power"
     )
+    hsem_solar_production_power = get_config_value(
+        config_entry, "hsem_solar_production_power"
+    )
     hsem_ev_charger_status = get_config_value(config_entry, "hsem_ev_charger_status")
 
     # Create the export from the input from hsem_energi_data_service_export
@@ -43,6 +46,8 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
         hsem_huawei_solar_device_id_batteries,
         hsem_huawei_solar_batteries_working_mode,
         hsem_huawei_solar_batteries_state_of_capacity,
+        hsem_house_consumption_power,
+        hsem_solar_production_power,
         hsem_ev_charger_status,
         config_entry,
     )
