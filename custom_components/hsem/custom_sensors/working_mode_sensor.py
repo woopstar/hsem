@@ -12,7 +12,11 @@ from ..const import (
 )
 from ..entity import HSEMEntity
 from ..utils.ha import async_set_select_option
-from ..utils.misc import async_resolve_entity_id_from_unique_id, get_config_value, convert_to_boolean
+from ..utils.misc import (
+    async_resolve_entity_id_from_unique_id,
+    convert_to_boolean,
+    get_config_value,
+)
 from ..utils.workingmodes import WorkingModes
 
 _LOGGER = logging.getLogger(__name__)
@@ -195,7 +199,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                 f"Import sensor is on. Set mode to TimeOfUse. _import_sensor_state={import_sensor_boolean}"
             )
             self._state = WorkingModes.TimeOfUse.value
-            await async_set_select_option(self, self._hsem_huawei_solar_batteries_working_mode, self._state)
+            await async_set_select_option(
+                self, self._hsem_huawei_solar_batteries_working_mode, self._state
+            )
         else:
             _LOGGER.warning(f"Set default mode to MaximizeSelfConsumption.")
             new_working_mode = WorkingModes.MaximizeSelfConsumption.value

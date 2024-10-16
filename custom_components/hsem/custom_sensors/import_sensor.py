@@ -96,7 +96,9 @@ class ImportSensor(BinarySensorEntity, HSEMEntity):
         # Fetch the current value from the input sensor
         input_state = self.hass.states.get(self._hsem_energi_data_service_import)
         if input_state is None:
-            _LOGGER.warning(f"Sensor {self._hsem_energi_data_service_import} not found.")
+            _LOGGER.warning(
+                f"Sensor {self._hsem_energi_data_service_import} not found."
+            )
             return
         try:
             input_value = float(input_state.state)

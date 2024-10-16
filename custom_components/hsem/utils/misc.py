@@ -40,6 +40,7 @@ def convert_to_boolean(state):
         _LOGGER.error(f"Unexpected sensor state: {state}")
         return None  # Return None for unexpected states
 
+
 async def async_resolve_entity_id_from_unique_id(
     self, unique_entity_id, domain="sensor"
 ):
