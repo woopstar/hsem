@@ -481,28 +481,27 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             time_range = f"{hour_start:02d}-{hour_end:02d}"
 
             avg_house_consumption = self._hourly_calculations[time_range][
-                    "avg_house_consumption"
-                ]
+                "avg_house_consumption"
+            ]
 
             solcast_pv_estimate = self._hourly_calculations[time_range][
-                    "solcast_pv_estimate"
-                ]
+                "solcast_pv_estimate"
+            ]
 
             if avg_house_consumption is None or solcast_pv_estimate is None:
                 estimated_net_consumption = 0.0
             else:
-                estimated_net_consumption = (solcast_pv_estimate - avg_house_consumption)
+                estimated_net_consumption = solcast_pv_estimate - avg_house_consumption
 
             # calculate the estimated net consumption
             if time_range in self._hourly_calculations:
                 self._hourly_calculations[time_range][
-                        "estimated_net_consumption"
-                    ] = estimated_net_consumption
+                    "estimated_net_consumption"
+                ] = estimated_net_consumption
 
         _LOGGER.debug(
             f"Updated hourly calculations with Estimated Net Consumption: {self._hourly_calculations}"
         )
-
 
     async def async_update(self):
         """Manually trigger the sensor update."""

@@ -32,8 +32,10 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     def update_config_entry_options(self):
         """Update config_entry.data with the latest configuration values from options."""
-        updated_data = {**self.config_entry.options,**self.config_entry.data}
-        self.hass.config_entries.async_update_entry(self.config_entry, data=updated_data)
+        updated_data = {**self.config_entry.options, **self.config_entry.data}
+        self.hass.config_entries.async_update_entry(
+            self.config_entry, data=updated_data
+        )
 
     async def async_step_user(self, user_input=None):
         """Handle the initial step."""
@@ -334,7 +336,9 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
     def update_config_entry_data(self):
         """Update config_entry.data with the latest configuration values from options."""
         updated_data = {**self.config_entry.data, **self.config_entry.options}
-        self.hass.config_entries.async_update_entry(self.config_entry, data=updated_data)
+        self.hass.config_entries.async_update_entry(
+            self.config_entry, data=updated_data
+        )
 
     async def async_step_init(self, user_input=None):
         """Handle the initial options step."""
