@@ -9,11 +9,11 @@ from homeassistant.helpers.event import (
 )
 
 from ..const import (
+    DEFAULT_HSEM_EV_CHARGER_STATUS,
+    DEFAULT_HSEM_HOUSE_CONSUMPTION_POWER,
     DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_STATE_OF_CAPACITY,
     DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_WORKING_MODE,
-    DEFAULT_HSEM_HOUSE_CONSUMPTION_POWER,
     DEFAULT_HSEM_SOLAR_PRODUCTION_POWER,
-    DEFAULT_HSEM_EV_CHARGER_STATUS,
     DOMAIN,
     ICON,
 )
@@ -103,16 +103,17 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_STATE_OF_CAPACITY,
         )
         self._hsem_house_consumption_power = get_config_value(
-            self._config_entry, "hsem_house_consumption_power",
-            DEFAULT_HSEM_HOUSE_CONSUMPTION_POWER
+            self._config_entry,
+            "hsem_house_consumption_power",
+            DEFAULT_HSEM_HOUSE_CONSUMPTION_POWER,
         )
         self._hsem_solar_production_power = get_config_value(
-            self._config_entry, "hsem_solar_production_power",
-            DEFAULT_HSEM_SOLAR_PRODUCTION_POWER
+            self._config_entry,
+            "hsem_solar_production_power",
+            DEFAULT_HSEM_SOLAR_PRODUCTION_POWER,
         )
         self._hsem_ev_charger_status = get_config_value(
-            self._config_entry, "hsem_ev_charger_status",
-            DEFAULT_HSEM_EV_CHARGER_STATUS
+            self._config_entry, "hsem_ev_charger_status", DEFAULT_HSEM_EV_CHARGER_STATUS
         )
 
         # Log updated settings
@@ -171,22 +172,16 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         if self._import_sensor:
             state = self.hass.states.get(self._import_sensor)
             if state:
-                self._import_sensor_current = convert_to_boolean(
-                    state.state
-                )
+                self._import_sensor_current = convert_to_boolean(state.state)
             else:
-                _LOGGER.warning(
-                    f"Import sensor {self._import_sensor} not found."
-                )
+                _LOGGER.warning(f"Import sensor {self._import_sensor} not found.")
         state = None
 
         # Fetch the current value from the EV charger status sensor
         if self._hsem_ev_charger_status:
             state = self.hass.states.get(self._hsem_ev_charger_status)
             if state:
-                self._hsem_ev_charger_status_current = convert_to_boolean(
-                    state.state
-                )
+                self._hsem_ev_charger_status_current = convert_to_boolean(state.state)
             else:
                 _LOGGER.warning(
                     f"EV charger status sensor {self._hsem_ev_charger_status} not found."
@@ -300,7 +295,10 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             _LOGGER.warning(
                 f"EV Charger active. Setting TOU Periods: {tou_modes} and Working Mode: {working_mode}"
             )
-        elif self._hsem_solar_production_power_current > self._hsem_house_consumption_power_current:
+        elif (
+            self._hsem_solar_production_power_current
+            > self._hsem_house_consumption_power_current
+        ):
             working_mode = WorkingModes.MaximizeSelfConsumption.value
             _LOGGER.warning(
                 f"Solar power is above house consumption. Working Mode: {working_mode}, Solar Production: {self._hsem_solar_production_power_current}, House Consumption: {self._hsem_house_consumption_power_current}"

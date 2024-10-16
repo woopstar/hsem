@@ -17,6 +17,7 @@ def get_config_value(config_entry, key, default_value=None):
     """Get the configuration value from options or fall back to the initial data."""
     return config_entry.options.get(key, config_entry.data.get(key, default_value))
 
+
 def convert_to_float(state):
     """Resolve the input sensor state and cast it to a float."""
 
@@ -28,6 +29,7 @@ def convert_to_float(state):
     except ValueError:
         _LOGGER.error(f"Unexpected sensor state: {state}")
         return 0.0  # Return None for unexpected states
+
 
 def convert_to_boolean(state):
     """Resolve the input sensor state and cast it to a boolean."""
@@ -44,7 +46,7 @@ def convert_to_boolean(state):
         "0": False,
         "charging": True,
         "not_charging": False,
-        "unknown": False
+        "unknown": False,
     }
 
     # Convert the state to lowercase for case-insensitive comparison
