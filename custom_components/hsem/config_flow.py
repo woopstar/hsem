@@ -11,6 +11,10 @@ from .const import (
     DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_STATE_OF_CAPACITY,
     DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_WORKING_MODE,
     DEFAULT_HSEM_HUAWEI_SOLAR_INVERTER_ACTIVE_POWER_CONTROL,
+    DEFAULT_HSEM_HOUSE_CONSUMPTION_POWER,
+    DEFAULT_HSEM_SOLAR_PRODUCTION_POWER,
+    DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TODAY,
+    DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TOMORROW,
     DOMAIN,
     NAME,
 )
@@ -71,7 +75,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             else:
                 # Save energidata input and move to the next step (working mode)
                 self._user_input.update(user_input)
-                return await self.async_step_huawei_solar()
+                return await self.async_step_power()
 
         # Define the form schema for energy data services step
         data_schema = vol.Schema(
@@ -154,7 +158,81 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         # Show the form to the user for working mode
         return self.async_show_form(
-            step_id="huawei_solar", data_schema=data_schema, errors=self._errors
+            step_id="huawei_solar", data_schema=data_schema, errors=self._errors, last_step=True
+        )
+
+    async def async_step_power(self, user_input=None):
+        """Handle the step for power sensors."""
+        self._errors = {}
+
+        if user_input is not None:
+            # Validate input_sensor and other necessary fields
+            if not user_input.get("hsem_house_consumption_power"):
+                self._errors["hsem_house_consumption_power"] = "required"
+            elif not user_input.get("hsem_solar_production_power"):
+                self._errors["hsem_solar_production_power"] = "required"
+            else:
+                # Save energidata input and move to the next step (working mode)
+                self._user_input.update(user_input)
+                return await self.async_step_solcast()
+
+        # Define the form schema steps
+        data_schema = vol.Schema(
+            {
+                vol.Required(
+                    "hsem_house_consumption_power",
+                    default=DEFAULT_HSEM_HOUSE_CONSUMPTION_POWER,
+                ): selector({"entity": {"domain": "sensor"}}),
+                vol.Required(
+                    "hsem_solar_production_power",
+                    default=DEFAULT_HSEM_SOLAR_PRODUCTION_POWER,
+                ): selector({"entity": {"domain": "sensor"}}),
+            }
+        )
+
+        # Show the form to the user for energy data services
+        return self.async_show_form(
+            step_id="power",
+            data_schema=data_schema,
+            errors=self._errors,
+            last_step=False,
+        )
+
+    async def async_step_solcast(self, user_input=None):
+        """Handle the step for power sensors."""
+        self._errors = {}
+
+        if user_input is not None:
+            # Validate input_sensor and other necessary fields
+            if not user_input.get("hsem_solcast_pv_forecast_forecast_today"):
+                self._errors["hsem_solcast_pv_forecast_forecast_today"] = "required"
+            elif not user_input.get("hsem_solcast_pv_forecast_forecast_tomorrow"):
+                self._errors["hsem_solcast_pv_forecast_forecast_tomorrow"] = "required"
+            else:
+                # Save energidata input and move to the next step (working mode)
+                self._user_input.update(user_input)
+                return await self.async_step_huawei_solar()
+
+        # Define the form schema steps
+        data_schema = vol.Schema(
+            {
+                vol.Required(
+                    "hsem_solcast_pv_forecast_forecast_today",
+                    default=DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TODAY,
+                ): selector({"entity": {"domain": "sensor"}}),
+                vol.Required(
+                    "hsem_solcast_pv_forecast_forecast_tomorrow",
+                    default=DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TOMORROW,
+                ): selector({"entity": {"domain": "sensor"}}),
+            }
+        )
+
+        # Show the form to the user for energy data services
+        return self.async_show_form(
+            step_id="power",
+            data_schema=data_schema,
+            errors=self._errors,
+            last_step=False,
         )
 
     @staticmethod
@@ -213,7 +291,7 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
             else:
                 # Save energidata input and move to the next step (working mode)
                 self._user_input.update(user_input)
-                return await self.async_step_huawei_solar()
+                return await self.async_step_power()
 
         # Define the form schema for energy data services step
         data_schema = vol.Schema(
@@ -312,4 +390,86 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
 
         return self.async_show_form(
             step_id="huawei_solar", data_schema=data_schema, errors=self._errors
+        )
+
+    async def async_step_power(self, user_input=None):
+        """Handle the step for energy data services."""
+        self._errors = {}
+
+        if user_input is not None:
+            if not user_input.get("hsem_house_consumption_power"):
+                self._errors["hsem_house_consumption_power"] = "required"
+            elif not user_input.get("hsem_solar_production_power"):
+                self._errors["hsem_solar_production_power"] = "required"
+            else:
+                # Save energidata input and move to the next step (working mode)
+                self._user_input.update(user_input)
+                return await self.async_step_solcast()
+
+        # Define the form schema for energy data services step
+        data_schema = vol.Schema(
+            {
+                vol.Required(
+                    "hsem_house_consumption_power",
+                    default=self.config_entry.options.get(
+                        "hsem_house_consumption_power",
+                        DEFAULT_HSEM_HOUSE_CONSUMPTION_POWER,
+                    ),
+                ): selector({"entity": {"domain": "sensor"}}),
+                vol.Required(
+                    "hsem_solar_production_power",
+                    default=self.config_entry.options.get(
+                        "hsem_solar_production_power",
+                        DEFAULT_HSEM_SOLAR_PRODUCTION_POWER,
+                    ),
+                ): selector({"entity": {"domain": "sensor"}}),
+            }
+        )
+
+        return self.async_show_form(
+            step_id="power",
+            data_schema=data_schema,
+            errors=self._errors,
+            last_step=False,
+        )
+
+    async def async_step_solcast(self, user_input=None):
+        """Handle the step for energy data services."""
+        self._errors = {}
+
+        if user_input is not None:
+            if not user_input.get("hsem_solcast_pv_forecast_forecast_today"):
+                self._errors["hsem_solcast_pv_forecast_forecast_today"] = "required"
+            elif not user_input.get("hsem_solcast_pv_forecast_forecast_tomorrow"):
+                self._errors["hsem_solcast_pv_forecast_forecast_tomorrow"] = "required"
+            else:
+                # Save energidata input and move to the next step (working mode)
+                self._user_input.update(user_input)
+                return await self.async_step_huawei_solar()
+
+        # Define the form schema for energy data services step
+        data_schema = vol.Schema(
+            {
+                vol.Required(
+                    "hsem_solcast_pv_forecast_forecast_today",
+                    default=self.config_entry.options.get(
+                        "hsem_solcast_pv_forecast_forecast_today",
+                        DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TODAY,
+                    ),
+                ): selector({"entity": {"domain": "sensor"}}),
+                vol.Required(
+                    "hsem_solcast_pv_forecast_forecast_tomorrow",
+                    default=self.config_entry.options.get(
+                        "hsem_solcast_pv_forecast_forecast_tomorrow",
+                        DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TOMORROW,
+                    ),
+                ): selector({"entity": {"domain": "sensor"}}),
+            }
+        )
+
+        return self.async_show_form(
+            step_id="solcast",
+            data_schema=data_schema,
+            errors=self._errors,
+            last_step=False,
         )

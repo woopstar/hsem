@@ -153,25 +153,16 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
         self._export_price = input_value
         self._state = self._export_price > 0
 
-        # Set the grid export power percentage based on the state
-        if self._state:
-            if self._hsem_huawei_solar_device_id_inverter_1:
-                await async_set_grid_export_power_pct(
-                    self, self._hsem_huawei_solar_device_id_inverter_1, 100
-                )
-            if self._hsem_huawei_solar_device_id_inverter_2:
-                await async_set_grid_export_power_pct(
-                    self, self._hsem_huawei_solar_device_id_inverter_2, 100
-                )
-        else:
-            if self._hsem_huawei_solar_device_id_inverter_1:
-                await async_set_grid_export_power_pct(
-                    self, self._hsem_huawei_solar_device_id_inverter_1, 0
-                )
-            if self._hsem_huawei_solar_device_id_inverter_2:
-                await async_set_grid_export_power_pct(
-                    self, self._hsem_huawei_solar_device_id_inverter_2, 0
-                )
+        # Determine the grid export power percentage based on the state
+        power_percentage = 100 if self._state else 0
+
+        # List of inverters to update
+        inverters = [self._hsem_huawei_solar_device_id_inverter_1, self._hsem_huawei_solar_device_id_inverter_2]
+
+        # Loop through the inverters and update the grid export power percentage
+        for inverter_id in inverters:
+            if inverter_id:  # Ensure inverter_id is not None
+                await async_set_grid_export_power_pct(self, inverter_id, power_percentage)
 
         # Update the last updated timestamp
         self._last_updated = datetime.now().isoformat()

@@ -4,15 +4,9 @@ import logging
 from .const import DOMAIN
 from .custom_sensors.export_sensor import ExportSensor
 from .custom_sensors.import_sensor import ImportSensor
-from .utils.misc import get_config_value
+from .utils.misc import get_config_value, generate_md5_hash
 
 _LOGGER = logging.getLogger(__name__)
-
-
-def generate_md5_hash(input_sensor):
-    """Generate an MD5 hash based on the input sensor's name."""
-    return hashlib.md5(input_sensor.encode("utf-8")).hexdigest()
-
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
     """Set up HSEM sensors from a config entry."""

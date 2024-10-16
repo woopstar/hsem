@@ -125,28 +125,25 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         )
 
         if not self._import_sensor:
-            _LOGGER.warning(f"Entity with unique_id hsem_import_sensor not found.")
+            _LOGGER.warning("Entity with unique_id hsem_import_sensor not found.")
             return
 
         # Fetch the current value from the input sensor
         _import_sensor_state = self.hass.states.get(self._import_sensor).state
         if _import_sensor_state is None:
-            _LOGGER.warning(
-                f"Sensor {self._import_sensor} not ready or not found. Skipping update."
-            )
+            _LOGGER.warning(f"Sensor {self._import_sensor} not ready or not found. Skipping update.")
             return
 
-        if isinstance(_import_sensor_state, str):
-            if _import_sensor_state.lower() in ("on", "true", "1"):
-                import_sensor_boolean = True
-            elif _import_sensor_state.lower() in ("off", "false", "0"):
-                import_sensor_boolean = False
-            else:
-                _LOGGER.error(f"Unexpected sensor state: {_import_sensor_state}")
-                return
+        state_map = {
+            "on": True, "true": True, "1": True,
+            "off": False, "false": False, "0": False
+        }
+
+        _import_sensor_state_lower = _import_sensor_state.lower()
+        if _import_sensor_state_lower in state_map:
+            import_sensor_boolean = state_map[_import_sensor_state_lower]
         else:
-            _LOGGER.error(f"Invalid sensor state type: {_import_sensor_state}")
-            return
+            _LOGGER.error(f"Unexpected sensor state: {_import_sensor_state}")
 
         # Fetch the current value from the input sensors
         input_hsem_huawei_solar_batteries_working_mode = self.hass.states.get(
