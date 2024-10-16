@@ -8,10 +8,10 @@ from homeassistant.helpers.selector import selector
 from .const import (
     DEFAULT_HSEM_ENERGI_DATA_SERVICE_EXPORT,
     DEFAULT_HSEM_ENERGI_DATA_SERVICE_IMPORT,
+    DEFAULT_HSEM_HOUSE_CONSUMPTION_POWER,
     DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_STATE_OF_CAPACITY,
     DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_WORKING_MODE,
     DEFAULT_HSEM_HUAWEI_SOLAR_INVERTER_ACTIVE_POWER_CONTROL,
-    DEFAULT_HSEM_HOUSE_CONSUMPTION_POWER,
     DEFAULT_HSEM_SOLAR_PRODUCTION_POWER,
     DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TODAY,
     DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TOMORROW,
@@ -158,7 +158,10 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         # Show the form to the user for working mode
         return self.async_show_form(
-            step_id="huawei_solar", data_schema=data_schema, errors=self._errors, last_step=True
+            step_id="huawei_solar",
+            data_schema=data_schema,
+            errors=self._errors,
+            last_step=True,
         )
 
     async def async_step_power(self, user_input=None):

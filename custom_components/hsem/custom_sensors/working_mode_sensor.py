@@ -131,12 +131,18 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         # Fetch the current value from the input sensor
         _import_sensor_state = self.hass.states.get(self._import_sensor).state
         if _import_sensor_state is None:
-            _LOGGER.warning(f"Sensor {self._import_sensor} not ready or not found. Skipping update.")
+            _LOGGER.warning(
+                f"Sensor {self._import_sensor} not ready or not found. Skipping update."
+            )
             return
 
         state_map = {
-            "on": True, "true": True, "1": True,
-            "off": False, "false": False, "0": False
+            "on": True,
+            "true": True,
+            "1": True,
+            "off": False,
+            "false": False,
+            "0": False,
         }
 
         _import_sensor_state_lower = _import_sensor_state.lower()
