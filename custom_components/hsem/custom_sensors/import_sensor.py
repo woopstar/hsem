@@ -33,7 +33,7 @@ class ImportSensor(BinarySensorEntity, HSEMEntity):
         self._hsem_huawei_solar_device_id_batteries = (
             hsem_huawei_solar_device_id_batteries
         )
-        self._price_sensor = hsem_energi_data_service_import
+        self._hsem_energi_data_service_import = hsem_energi_data_service_import
         self._import_price = None
         self._state = True
         self._last_updated = None
@@ -47,7 +47,7 @@ class ImportSensor(BinarySensorEntity, HSEMEntity):
         self._hsem_huawei_solar_device_id_batteries = get_config_value(
             self._config_entry, "hsem_huawei_solar_device_id_batteries"
         )
-        self._price_sensor = get_config_value(
+        self._hsem_energi_data_service_import = get_config_value(
             self._config_entry,
             "hsem_energi_data_service_import",
             DEFAULT_HSEM_ENERGI_DATA_SERVICE_IMPORT,
@@ -55,7 +55,7 @@ class ImportSensor(BinarySensorEntity, HSEMEntity):
 
         # Log updated settings
         _LOGGER.debug(
-            f"Updated settings for import sensor: {self._price_sensor}, {self._hsem_huawei_solar_device_id_batteries}"
+            f"Updated settings for import sensor: {self._hsem_energi_data_service_import}, {self._hsem_huawei_solar_device_id_batteries}"
         )
 
     @property
@@ -80,7 +80,8 @@ class ImportSensor(BinarySensorEntity, HSEMEntity):
         """Return the state attributes."""
 
         return {
-            "price_sensor_entity_id": self._price_sensor,
+            "huawei_solar_device_id_batteries_id": self._hsem_huawei_solar_device_id_batteries,
+            "energi_data_service_import_entity_id": self._hsem_energi_data_service_import,
             "import_price": self._import_price,
             "last_updated": self._last_updated,
             "unique_id": self._unique_id,
@@ -93,15 +94,15 @@ class ImportSensor(BinarySensorEntity, HSEMEntity):
         self._update_settings()
 
         # Fetch the current value from the input sensor
-        input_state = self.hass.states.get(self._price_sensor)
+        input_state = self.hass.states.get(self._hsem_energi_data_service_import)
         if input_state is None:
-            _LOGGER.warning(f"Sensor {self._price_sensor} not found.")
+            _LOGGER.warning(f"Sensor {self._hsem_energi_data_service_import} not found.")
             return
         try:
             input_value = float(input_state.state)
         except ValueError:
             _LOGGER.warning(
-                f"Invalid value from {self._price_sensor}: {input_state.state}"
+                f"Invalid value from {self._hsem_energi_data_service_import}: {input_state.state}"
             )
             return
 
@@ -158,12 +159,12 @@ class ImportSensor(BinarySensorEntity, HSEMEntity):
                 self._handle_update,
             )
 
-        if self._price_sensor:
+        if self._hsem_energi_data_service_import:
             _LOGGER.info(
-                f"Starting to track state changes for entity_id {self._price_sensor}"
+                f"Starting to track state changes for entity_id {self._hsem_energi_data_service_import}"
             )
             async_track_state_change_event(
-                self.hass, [self._price_sensor], self._handle_update
+                self.hass, [self._hsem_energi_data_service_import], self._handle_update
             )
         else:
             _LOGGER.error(

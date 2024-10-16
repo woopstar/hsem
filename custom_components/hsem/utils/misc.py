@@ -18,6 +18,28 @@ def get_config_value(config_entry, key, default_value=None):
     return config_entry.options.get(key, config_entry.data.get(key, default_value))
 
 
+def convert_to_boolean(state):
+    """Resolve the input sensor state and cast it to a boolean."""
+
+    state_map = {
+        "on": True,
+        "true": True,
+        "1": True,
+        "off": False,
+        "false": False,
+        "0": False,
+    }
+
+    # Convert the state to lowercase for case-insensitive comparison
+    state_value_lower = state.lower()
+
+    # Check if the state is in the mapping and return the corresponding boolean
+    if state_value_lower in state_map:
+        return state_map[state_value_lower]
+    else:
+        _LOGGER.error(f"Unexpected sensor state: {state}")
+        return None  # Return None for unexpected states
+
 async def async_resolve_entity_id_from_unique_id(
     self, unique_entity_id, domain="sensor"
 ):

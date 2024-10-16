@@ -12,7 +12,7 @@ from ..const import (
 )
 from ..entity import HSEMEntity
 from ..utils.ha import async_set_select_option
-from ..utils.misc import async_resolve_entity_id_from_unique_id, get_config_value
+from ..utils.misc import async_resolve_entity_id_from_unique_id, get_config_value, convert_to_boolean
 from ..utils.workingmodes import WorkingModes
 
 _LOGGER = logging.getLogger(__name__)
@@ -102,13 +102,13 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         """Return the state attributes."""
 
         return {
-            "hsem_huawei_solar_device_id_inverter_1_id": self._hsem_huawei_solar_device_id_inverter_1,
-            "hsem_huawei_solar_device_id_inverter_2_id": self._hsem_huawei_solar_device_id_inverter_2,
-            "hsem_huawei_solar_device_id_batteries_id": self._hsem_huawei_solar_device_id_batteries,
-            "hsem_huawei_solar_batteries_working_mode__entity_id": self._hsem_huawei_solar_batteries_working_mode,
-            "hsem_huawei_solar_batteries_working_mode_current": self._hsem_huawei_solar_batteries_working_mode_current,
-            "hsem_huawei_solar_batteries_state_of_capacity__entity_id": self._hsem_huawei_solar_batteries_state_of_capacity,
-            "hsem_huawei_solar_batteries_state_of_capacity_current": self._hsem_huawei_solar_batteries_state_of_capacity_current,
+            "huawei_solar_device_id_inverter_1_id": self._hsem_huawei_solar_device_id_inverter_1,
+            "huawei_solar_device_id_inverter_2_id": self._hsem_huawei_solar_device_id_inverter_2,
+            "huawei_solar_device_id_batteries_id": self._hsem_huawei_solar_device_id_batteries,
+            "huawei_solar_batteries_working_mode__entity_id": self._hsem_huawei_solar_batteries_working_mode,
+            "huawei_solar_batteries_working_mode_current": self._hsem_huawei_solar_batteries_working_mode_current,
+            "huawei_solar_batteries_state_of_capacity__entity_id": self._hsem_huawei_solar_batteries_state_of_capacity,
+            "huawei_solar_batteries_state_of_capacity_current": self._hsem_huawei_solar_batteries_state_of_capacity_current,
             "import_sensor_entity_id: ": self._import_sensor,
             "last_updated": self._last_updated,
             "unique_id": self._unique_id,
@@ -137,20 +137,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             )
             return
 
-        state_map = {
-            "on": True,
-            "true": True,
-            "1": True,
-            "off": False,
-            "false": False,
-            "0": False,
-        }
-
-        _import_sensor_state_lower = _import_sensor_state.lower()
-        if _import_sensor_state_lower in state_map:
-            import_sensor_boolean = state_map[_import_sensor_state_lower]
-        else:
-            _LOGGER.error(f"Unexpected sensor state: {_import_sensor_state}")
+        import_sensor_boolean = convert_to_boolean(_import_sensor_state)
 
         # Fetch the current value from the input sensors
         input_hsem_huawei_solar_batteries_working_mode = self.hass.states.get(
@@ -207,18 +194,11 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             _LOGGER.warning(
                 f"Import sensor is on. Set mode to TimeOfUse. _import_sensor_state={import_sensor_boolean}"
             )
-            new_working_mode = WorkingModes.TimeOfUse.value
+            self._state = WorkingModes.TimeOfUse.value
+            await async_set_select_option(self, self._hsem_huawei_solar_batteries_working_mode, self._state)
         else:
             _LOGGER.warning(f"Set default mode to MaximizeSelfConsumption.")
             new_working_mode = WorkingModes.MaximizeSelfConsumption.value
-
-        # Set the select sensor value to the working mode
-        try:
-            # TODO: Enable this when we want to set working mode
-            # await async_set_select_option(self, self._hsem_huawei_solar_batteries_working_mode, new_working_mode)
-            self._state = new_working_mode
-        except Exception as e:
-            _LOGGER.error(f"Failed to set select sensor state: {e}")
 
         # Update last update time
         self._last_updated = datetime.now().isoformat()
