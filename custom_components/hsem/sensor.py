@@ -2,6 +2,8 @@ import logging
 
 from .const import DOMAIN
 from .custom_sensors.working_mode_sensor import WorkingModeSensor
+from .custom_sensors.house_consumption_power_sensor import HouseConsumptionPowerSensor
+from .custom_sensors.house_consumption_energy_sensor import HouseConsumptionEnergySensor
 from .utils.misc import generate_md5_hash, get_config_value
 
 _LOGGER = logging.getLogger(__name__)
@@ -26,6 +28,9 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     hsem_huawei_solar_batteries_state_of_capacity = get_config_value(
         config_entry, "hsem_huawei_solar_batteries_state_of_capacity"
     )
+    hsem_house_consumption_power = get_config_value(
+        config_entry, "hsem_house_consumption_power"
+    )
 
     # Create the export from the input from hsem_energi_data_service_export
     working_mode_sensor = WorkingModeSensor(
@@ -37,12 +42,13 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
         config_entry,
     )
 
-    # Add sensors to Home Assistant
-    async_add_entities(
-        [
-            working_mode_sensor,
-        ]
-    )
+    # Afvent at power_sensors returnerer en liste
+    power_sensors = await async_setup_power_sensors(config_entry, hsem_house_consumption_power)
+
+    energy_sensors = await async_setup_energy_sensors(config_entry)
+
+    # Tilføj alle sensorer til Home Assistant
+    async_add_entities([working_mode_sensor] + power_sensors + energy_sensors)
 
     # Store reference to the platform to handle unloads later
     if DOMAIN not in hass.data:
@@ -56,3 +62,21 @@ async def async_unload_entry(hass, entry):
     if platform:
         return await platform.async_remove_entry(entry)
     return False
+
+async def async_setup_power_sensors(config_entry, hsem_house_consumption_power):
+    """Set up house consumption power sensors for each hour block."""
+    sensors = []
+    for hour in range(24):
+        hour_start = hour
+        hour_end = (hour + 1) % 24
+        sensors.append(HouseConsumptionPowerSensor(config_entry, hour_start, hour_end, hsem_house_consumption_power))
+    return sensors
+
+async def async_setup_energy_sensors(config_entry):
+    """Setup House Consumption Energy sensors for each hour in the day."""
+    sensors = []
+    for hour in range(24):
+        hour_start = hour
+        hour_end = (hour + 1) % 24
+        sensors.append(HouseConsumptionEnergySensor(config_entry, hour_start, hour_end))
+    return sensors
