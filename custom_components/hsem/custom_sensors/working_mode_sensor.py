@@ -182,7 +182,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             "solar_production_power_entity_id": self._hsem_solar_production_power,
             "solar_production_power_current": self._hsem_solar_production_power_current,
             "net_consumption": self._hsem_net_consumption,
-            "battery_max_capacity_entity_id": self._hsem_battery_max_capacity,
+            "battery_max_capacity": self._hsem_battery_max_capacity,
             "battery_remaining_capacity": self._hsem_battery_remaining_capacity,
             "ev_charger_status_entity_id": self._hsem_ev_charger_status,
             "ev_charger_status_current": self._hsem_ev_charger_status_current,
@@ -300,7 +300,6 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         )
 
         # Calculate the net consumption
-        # Hvis beregningen er baseret på produktion minus forbrug, vil et positivt resultat indikere overskud, mens et negativt resultat indikerer underskud eller nettoforbrug fra nettet.
         self._hsem_net_consumption = (
             self._hsem_solar_production_power_current
             - self._hsem_house_consumption_power_current
@@ -308,7 +307,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
         # Calculate the remaining battery capacity
         self._hsem_battery_remaining_capacity = round(
-            ((100 - convert_to_float(self._hsem_huawei_solar_batteries_state_of_capacity)) / 100 * convert_to_float(self._hsem_battery_max_capacity)), 2
+            ((100 - convert_to_float(self._hsem_huawei_solar_batteries_state_of_capacity_current)) / 100 * convert_to_float(self._hsem_battery_max_capacity)), 2
         )
 
         # calculate the hourly data from power sensors
