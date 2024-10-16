@@ -72,6 +72,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_house_consumption_power_current = 0.0
         self._hsem_solar_production_power = hsem_solar_production_power
         self._hsem_solar_production_power_current = 0.0
+        self._hsem_net_consumption = 0.0
         self._import_sensor = None
         self._import_sensor_current = None
         self._state = None
@@ -149,6 +150,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             "house_consumption_power_current": self._hsem_house_consumption_power_current,
             "solar_production_power_entity_id": self._hsem_solar_production_power,
             "solar_production_power_current": self._hsem_solar_production_power_current,
+            "net_consumption": self._hsem_net_consumption,
             "ev_charger_status_entity_id": self._hsem_ev_charger_status,
             "ev_charger_status_current": self._hsem_ev_charger_status_current,
             "import_sensor_entity_id: ": self._import_sensor,
@@ -261,6 +263,10 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_huawei_solar_batteries_state_of_capacity_current = (
             value_hsem_huawei_solar_batteries_state_of_capacity
         )
+
+        # Calculate the net consumption
+        # Hvis beregningen er baseret på produktion minus forbrug, vil et positivt resultat indikere overskud, mens et negativt resultat indikerer underskud eller nettoforbrug fra nettet.
+        self._hsem_net_consumption = self._hsem_solar_production_power_current - self._hsem_house_consumption_power_current
 
         # Set the working mode based on the input sensors
         await self.async_set_working_mode()
