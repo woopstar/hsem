@@ -3,7 +3,6 @@ from datetime import datetime
 
 import voluptuous as vol
 from homeassistant.components.binary_sensor import BinarySensorEntity
-from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_track_state_change_event
 
 from ..const import (

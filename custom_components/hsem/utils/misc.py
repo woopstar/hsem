@@ -21,6 +21,9 @@ def get_config_value(config_entry, key, default_value=None):
 def convert_to_boolean(state):
     """Resolve the input sensor state and cast it to a boolean."""
 
+    if state is None:
+        return False
+
     state_map = {
         "on": True,
         "true": True,
@@ -28,6 +31,8 @@ def convert_to_boolean(state):
         "off": False,
         "false": False,
         "0": False,
+        "charging": True,
+        "not_charging": False,
     }
 
     # Convert the state to lowercase for case-insensitive comparison

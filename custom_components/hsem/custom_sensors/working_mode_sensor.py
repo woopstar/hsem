@@ -4,6 +4,7 @@ from datetime import datetime
 # Importer den nye funktion
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.event import async_track_state_change_event
+from ..utils.huawei import async_set_tou_periods
 
 from ..const import (
     DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_STATE_OF_CAPACITY,
@@ -13,15 +14,14 @@ from ..const import (
 )
 from ..entity import HSEMEntity
 from ..utils.ha import async_set_select_option
+from ..utils.workingmodes import WorkingModes
 from ..utils.misc import (
     async_resolve_entity_id_from_unique_id,
     convert_to_boolean,
     get_config_value,
 )
-from ..utils.workingmodes import WorkingModes
 
 _LOGGER = logging.getLogger(__name__)
-
 
 class WorkingModeSensor(SensorEntity, HSEMEntity):
     # Define the attributes of the entity
@@ -35,6 +35,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         hsem_huawei_solar_device_id_batteries,
         hsem_huawei_solar_batteries_working_mode,
         hsem_huawei_solar_batteries_state_of_capacity,
+        hsem_ev_charger_status,
         config_entry,
     ):
         super().__init__(config_entry)
@@ -55,7 +56,10 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             hsem_huawei_solar_batteries_state_of_capacity
         )
         self._hsem_huawei_solar_batteries_state_of_capacity_current = None
+        self._hsem_ev_charger_status = hsem_ev_charger_status
+        self._hsem_ev_charger_status_current = None
         self._import_sensor = None
+        self._import_sensor_current = None
         self._state = None
         self._last_updated = None
         self._last_reset = None
@@ -83,6 +87,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             self._config_entry,
             "hsem_huawei_solar_batteries_state_of_capacity",
             DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_STATE_OF_CAPACITY,
+        )
+        self._hsem_ev_charger_status = get_config_value(
+            self._config_entry, "hsem_ev_charger_status"
         )
 
         # Log updated settings
@@ -114,7 +121,10 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             "huawei_solar_batteries_working_mode_current": self._hsem_huawei_solar_batteries_working_mode_current,
             "huawei_solar_batteries_state_of_capacity__entity_id": self._hsem_huawei_solar_batteries_state_of_capacity,
             "huawei_solar_batteries_state_of_capacity_current": self._hsem_huawei_solar_batteries_state_of_capacity_current,
+            "ev_charger_status_entity_id": self._hsem_ev_charger_status,
+            "ev_charger_status_current": self._hsem_ev_charger_status_current,
             "import_sensor_entity_id: ": self._import_sensor,
+            "import_sensor_current: ": self._import_sensor_current,
             "last_updated": self._last_updated,
             "unique_id": self._unique_id,
         }
@@ -130,19 +140,21 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             self, f"{DOMAIN}_import_sensor", "binary_sensor"
         )
 
-        if not self._import_sensor:
-            _LOGGER.warning("Entity with unique_id hsem_import_sensor not found.")
-            return
+        # Fetch the current value from the import sensor
+        if self._import_sensor:
+            import_sensor_state = self.hass.states.get(self._import_sensor)
+            if import_sensor_state:
+                self._import_sensor_current = convert_to_boolean(import_sensor_state.state)
+            else:
+                _LOGGER.warning(f"Import sensor {self._import_sensor} not found.")
 
-        # Fetch the current value from the input sensor
-        _import_sensor_state = self.hass.states.get(self._import_sensor).state
-        if _import_sensor_state is None:
-            _LOGGER.warning(
-                f"Sensor {self._import_sensor} not ready or not found. Skipping update."
-            )
-            return
-
-        import_sensor_boolean = convert_to_boolean(_import_sensor_state)
+        # Fetch the current value from the EV charger status sensor
+        if self._hsem_ev_charger_status:
+            ev_charger_state = self.hass.states.get(self._hsem_ev_charger_status)
+            if ev_charger_state:
+                self._hsem_ev_charger_status_current = convert_to_boolean(ev_charger_state.state)
+            else:
+                _LOGGER.warning(f"EV charger status sensor {self._hsem_ev_charger_status} not found.")
 
         # Fetch the current value from the input sensors
         input_hsem_huawei_solar_batteries_working_mode = self.hass.states.get(
@@ -195,9 +207,26 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         # Start calculating the optiomal working mode for the batteries
 
         # If the import sensor is on, set the working mode to TimeOfUse to force charge the batteries
-        if import_sensor_boolean:
+        if self._import_sensor_current:
             _LOGGER.warning(
-                f"Import sensor is on. Set mode to TimeOfUse. _import_sensor_state={import_sensor_boolean}"
+                f"Import sensor is on. Set mode to TimeOfUse. import_sensor_current={self._import_sensor_current}"
+            )
+            self._state = WorkingModes.TimeOfUse.value
+            await async_set_select_option(
+                self, self._hsem_huawei_solar_batteries_working_mode, self._state
+            )
+        elif self._hsem_ev_charger_status_current:
+            # Disable battery discharge as we are charging our EV
+            tou_modes = ["00:00-00:01/1234567/+"]
+
+            _LOGGER.warning(
+                f"EV Charger is on. Set TOU Periods. tou_modes={tou_modes}"
+            )
+            await async_set_tou_periods(
+                self, self._hsem_huawei_solar_device_id_batteries, tou_modes
+            )
+            _LOGGER.warning(
+                f"EV Charger is on. Set mode to TimeOfUse. hsem_ev_charger_status_current={self._hsem_ev_charger_status_current}"
             )
             self._state = WorkingModes.TimeOfUse.value
             await async_set_select_option(
@@ -205,7 +234,10 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             )
         else:
             _LOGGER.warning(f"Set default mode to MaximizeSelfConsumption.")
-            new_working_mode = WorkingModes.MaximizeSelfConsumption.value
+            self._state = WorkingModes.MaximizeSelfConsumption.value
+            await async_set_select_option(
+                self, self._hsem_huawei_solar_batteries_working_mode, self._state
+            )
 
         # Update last update time
         self._last_updated = datetime.now().isoformat()

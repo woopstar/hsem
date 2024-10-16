@@ -17,6 +17,7 @@ from .const import (
     DEFAULT_HSEM_SOLAR_PRODUCTION_POWER,
     DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TODAY,
     DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TOMORROW,
+    DEFAULT_HSEM_EV_CHARGER_STATUS,
     DOMAIN,
     NAME,
 )
@@ -128,6 +129,11 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 # Ensure that optional inverter_id is set to an empty string if not provided
                 final_data["hsem_huawei_solar_device_id_inverter_2"] = final_data.get(
                     "hsem_huawei_solar_device_id_inverter_2", ""
+                )
+
+                # Ensure that optional ev_charger_status is set to an empty string if not provided
+                final_data["hsem_ev_charger_status"] = final_data.get(
+                    "hsem_ev_charger_status", ""
                 )
 
                 return self.async_create_entry(
@@ -288,6 +294,10 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         }
                     }
                 ),
+                vol.Optional(
+                    "hsem_ev_charger_status",
+                    default=DEFAULT_HSEM_EV_CHARGER_STATUS,
+                ): selector({"entity": {"domain": "sensor"}}),
             }
         )
 
@@ -593,6 +603,13 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
                         }
                     }
                 ),
+                vol.Optional(
+                    "hsem_ev_charger_status",
+                    default=self.config_entry.options.get(
+                        "hsem_ev_charger_status",
+                        DEFAULT_HSEM_EV_CHARGER_STATUS,
+                    ),
+                ): selector({"entity": {"domain": "sensor"}}),
             }
         )
 
