@@ -11,8 +11,8 @@ from ..const import (
     ICON,
 )
 from ..entity import HSEMEntity
-from ..utils.misc import async_resolve_entity_id_from_unique_id, get_config_value
 from ..utils.ha import async_set_select_option
+from ..utils.misc import async_resolve_entity_id_from_unique_id, get_config_value
 from ..utils.workingmodes import WorkingModes
 
 _LOGGER = logging.getLogger(__name__)
@@ -215,7 +215,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         # Set the select sensor value to the working mode
         try:
             # TODO: Enable this when we want to set working mode
-            #await async_set_select_option(self, self._hsem_huawei_solar_batteries_working_mode, new_working_mode)
+            # await async_set_select_option(self, self._hsem_huawei_solar_batteries_working_mode, new_working_mode)
             self._state = new_working_mode
         except Exception as e:
             _LOGGER.error(f"Failed to set select sensor state: {e}")

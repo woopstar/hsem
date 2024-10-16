@@ -6,22 +6,23 @@ from homeassistant.core import callback
 from homeassistant.helpers.selector import selector
 
 from .const import (
+    DEFAULT_HSEM_BATTERY_MAX_CAPACITY,
     DEFAULT_HSEM_ENERGI_DATA_SERVICE_EXPORT,
     DEFAULT_HSEM_ENERGI_DATA_SERVICE_IMPORT,
     DEFAULT_HSEM_HOUSE_CONSUMPTION_POWER,
     DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_STATE_OF_CAPACITY,
     DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_WORKING_MODE,
     DEFAULT_HSEM_HUAWEI_SOLAR_INVERTER_ACTIVE_POWER_CONTROL,
+    DEFAULT_HSEM_MORNING_ENERGY_NEED,
     DEFAULT_HSEM_SOLAR_PRODUCTION_POWER,
     DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TODAY,
     DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TOMORROW,
-    DEFAULT_HSEM_MORNING_ENERGY_NEED,
-    DEFAULT_HSEM_BATTERY_MAX_CAPACITY,
     DOMAIN,
     NAME,
 )
 
 _LOGGER = logging.getLogger(__name__)
+
 
 class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Config flow for HSEM."""
@@ -109,9 +110,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if not user_input.get("hsem_huawei_solar_device_id_inverter_1"):
                 self._errors["hsem_huawei_solar_device_id_inverter_1"] = "required"
             elif not user_input.get("hsem_huawei_solar_batteries_working_mode"):
-                self._errors["hsem_huawei_solar_batteries_working_mode"] = (
-                    "required"
-                )
+                self._errors["hsem_huawei_solar_batteries_working_mode"] = "required"
             elif not user_input.get("hsem_huawei_solar_batteries_state_of_capacity"):
                 self._errors["hsem_huawei_solar_batteries_state_of_capacity"] = (
                     "required"
@@ -121,9 +120,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "required"
                 )
             elif not user_input.get("hsem_battery_max_capacity"):
-                self._errors["hsem_battery_max_capacity"] = (
-                    "required"
-                )
+                self._errors["hsem_battery_max_capacity"] = "required"
             else:
                 # Combine user inputs and create the entry
                 final_data = {**self._user_input, **user_input}
@@ -395,13 +392,9 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
             if not user_input.get("hsem_huawei_solar_device_id_inverter_1"):
                 self._errors["hsem_huawei_solar_device_id_inverter_1"] = "required"
             elif not user_input.get("hsem_huawei_solar_device_id_batteries"):
-                self._errors["hsem_huawei_solar_device_id_batteries"] = (
-                    "required"
-                )
+                self._errors["hsem_huawei_solar_device_id_batteries"] = "required"
             elif not user_input.get("hsem_huawei_solar_batteries_working_mode"):
-                self._errors["hsem_huawei_solar_batteries_working_mode"] = (
-                    "required"
-                )
+                self._errors["hsem_huawei_solar_batteries_working_mode"] = "required"
             elif not user_input.get("hsem_huawei_solar_batteries_state_of_capacity"):
                 self._errors["hsem_huawei_solar_batteries_state_of_capacity"] = (
                     "required"
@@ -411,9 +404,7 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
                     "required"
                 )
             elif not user_input.get("hsem_battery_max_capacity"):
-                self._errors["hsem_battery_max_capacity"] = (
-                    "required"
-                )
+                self._errors["hsem_battery_max_capacity"] = "required"
             else:
                 # Combine user inputs and create the entry
                 final_data = {**self._user_input, **user_input}

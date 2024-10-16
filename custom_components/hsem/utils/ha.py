@@ -2,6 +2,7 @@ import logging
 
 _LOGGER = logging.getLogger(__name__)
 
+
 async def async_set_select_option(self, entity_id, option):
     """Set the selected option for an entity."""
 
@@ -24,5 +25,7 @@ async def async_set_select_option(self, entity_id, option):
         )
         _LOGGER.debug(f"Set option '{option}' for entity_id '{entity_id}'")
     except Exception as err:
-        _LOGGER.error(f"Failed to set option '{option}' for entity_id '{entity_id}': {err}")
+        _LOGGER.error(
+            f"Failed to set option '{option}' for entity_id '{entity_id}': {err}"
+        )
         raise
