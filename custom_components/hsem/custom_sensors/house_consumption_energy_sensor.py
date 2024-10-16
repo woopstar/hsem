@@ -4,12 +4,12 @@ from datetime import datetime
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.event import async_track_state_change_event
 
-from ..utils.misc import async_resolve_entity_id_from_unique_id, get_config_value
-from ..entity import HSEMEntity
 from ..const import DOMAIN, ICON
-
+from ..entity import HSEMEntity
+from ..utils.misc import async_resolve_entity_id_from_unique_id, get_config_value
 
 _LOGGER = logging.getLogger(__name__)
+
 
 class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
 
@@ -20,7 +20,9 @@ class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
         super().__init__(config_entry)
         self._hour_start = hour_start
         self._hour_end = hour_end
-        self._unique_id = f"{DOMAIN}_house_consumption_energy_{hour_start:02d}_{hour_end:02d}"
+        self._unique_id = (
+            f"{DOMAIN}_house_consumption_energy_{hour_start:02d}_{hour_end:02d}"
+        )
         self._power_sensor_entity_id = None
         self._config_entry = config_entry
         self._state = 0.0
@@ -57,7 +59,8 @@ class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
     async def async_update(self):
         # Slå power sensoren op
         self._power_sensor_entity_id = await async_resolve_entity_id_from_unique_id(
-            self, f"{DOMAIN}_house_consumption_power_{self._hour_start:02d}_{self._hour_end:02d}"
+            self,
+            f"{DOMAIN}_house_consumption_power_{self._hour_start:02d}_{self._hour_end:02d}",
         )
 
         if not self._power_sensor_entity_id:
@@ -80,7 +83,9 @@ class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
                 # Beregn tidsintervallet i sekunder
                 time_diff = (current_time - self._last_updated).total_seconds()
                 # Konverter effekt til energi (W til kWh)
-                self._state += (power_value * time_diff) / 3600000  # Dividere med 3600 for kW og med 1000 for kWh
+                self._state += (
+                    power_value * time_diff
+                ) / 3600000  # Dividere med 3600 for kW og med 1000 for kWh
             else:
                 # Hvis det er første opdatering, starter vi ikke en beregning
                 _LOGGER.debug(f"First update for {self.name}, skipping accumulation.")

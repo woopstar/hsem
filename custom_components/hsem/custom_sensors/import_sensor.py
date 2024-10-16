@@ -9,8 +9,8 @@ from homeassistant.helpers.event import async_track_state_change_event
 from ..const import (
     DEFAULT_HSEM_ENERGI_DATA_SERVICE_IMPORT,
     DEFAULT_HSEM_HUAWEI_SOLAR_INVERTER_ACTIVE_POWER_CONTROL,
+    DOMAIN,
     ICON,
-    DOMAIN
 )
 from ..entity import HSEMEntity
 from ..utils.huawei import async_set_tou_periods

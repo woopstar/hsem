@@ -8,8 +8,8 @@ from homeassistant.helpers.event import async_track_state_change_event
 from ..const import (
     DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_STATE_OF_CAPACITY,
     DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_WORKING_MODE,
+    DOMAIN,
     ICON,
-    DOMAIN
 )
 from ..entity import HSEMEntity
 from ..utils.ha import async_set_select_option

@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime
+
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.event import async_track_state_change_event
 
@@ -9,18 +10,23 @@ from ..utils.misc import get_config_value
 
 _LOGGER = logging.getLogger(__name__)
 
+
 class HouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
     """Representation of a sensor that tracks power consumption per hour block."""
 
     _attr_icon = ICON
     _attr_has_entity_name = True
 
-    def __init__(self, config_entry, hour_start, hour_end, hsem_house_consumption_power):
+    def __init__(
+        self, config_entry, hour_start, hour_end, hsem_house_consumption_power
+    ):
         super().__init__(config_entry)
         self._hsem_house_consumption_power = hsem_house_consumption_power
         self._hour_start = hour_start
         self._hour_end = hour_end
-        self._unique_id = f"{DOMAIN}_house_consumption_power_{hour_start:02d}_{hour_end:02d}"
+        self._unique_id = (
+            f"{DOMAIN}_house_consumption_power_{hour_start:02d}_{hour_end:02d}"
+        )
         self._state = None
         self._config_entry = config_entry
         self._last_updated = None
@@ -68,8 +74,12 @@ class HouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
             self._state = 0.0
 
         # Track state changes for the source sensor
-        _LOGGER.info(f"Starting to track state changes for {self._hsem_house_consumption_power}")
-        async_track_state_change_event(self.hass, [self._hsem_house_consumption_power], self._handle_update)
+        _LOGGER.info(
+            f"Starting to track state changes for {self._hsem_house_consumption_power}"
+        )
+        async_track_state_change_event(
+            self.hass, [self._hsem_house_consumption_power], self._handle_update
+        )
 
     async def _handle_update(self, event):
         """Handle updates to the source sensor."""
@@ -82,7 +92,9 @@ class HouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
                 try:
                     self._state = float(state.state)
                 except ValueError:
-                    _LOGGER.warning(f"Invalid state value from {self._hsem_house_consumption_power}: {state.state}")
+                    _LOGGER.warning(
+                        f"Invalid state value from {self._hsem_house_consumption_power}: {state.state}"
+                    )
                     self._state = 0.0
 
             self._last_updated = datetime.now().isoformat()
