@@ -304,13 +304,10 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             _LOGGER.warning(
                 f"EV Charger is active. Setting TOU Periods: {tou_modes} and Working Mode: {working_mode}"
             )
-        elif (
-            self._hsem_solar_production_power_current
-            > self._hsem_house_consumption_power_current
-        ):
+        elif self._hsem_net_consumption > 0:
             working_mode = WorkingModes.MaximizeSelfConsumption.value
             _LOGGER.warning(
-                f"Solar power is above house consumption. Working Mode: {working_mode}, Solar Production: {self._hsem_solar_production_power_current}, House Consumption: {self._hsem_house_consumption_power_current}, Net Consumption: {self._hsem_net_consumption}"
+                f"Positive net consumption. Working Mode: {working_mode}, Solar Production: {self._hsem_solar_production_power_current}, House Consumption: {self._hsem_house_consumption_power_current}, Net Consumption: {self._hsem_net_consumption}"
             )
         else:
             # Winter/Spring settings
