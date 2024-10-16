@@ -30,6 +30,11 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
+    def update_config_entry_options(self):
+        """Update config_entry.data with the latest configuration values from options."""
+        updated_data = {**self.config_entry.options,**self.config_entry.data}
+        self.hass.config_entries.async_update_entry(self.config_entry, data=updated_data)
+
     async def async_step_user(self, user_input=None):
         """Handle the initial step."""
         self._errors = {}
@@ -135,6 +140,8 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 final_data["hsem_ev_charger_status"] = final_data.get(
                     "hsem_ev_charger_status", ""
                 )
+
+                self.update_config_entry_options()
 
                 return self.async_create_entry(
                     title=final_data.get("device_name", NAME),
@@ -324,6 +331,11 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
         self.config_entry = config_entry
         self._user_input = {}
 
+    def update_config_entry_data(self):
+        """Update config_entry.data with the latest configuration values from options."""
+        updated_data = {**self.config_entry.data, **self.config_entry.options}
+        self.hass.config_entries.async_update_entry(self.config_entry, data=updated_data)
+
     async def async_step_init(self, user_input=None):
         """Handle the initial options step."""
         self._errors = {}
@@ -418,6 +430,7 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
             else:
                 # Combine user inputs and create the entry
                 final_data = {**self._user_input, **user_input}
+                self.update_config_entry_data()
                 return self.async_create_entry(
                     title=final_data.get("device_name", NAME),
                     data=final_data,
