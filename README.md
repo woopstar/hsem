@@ -30,6 +30,14 @@ Perfect for homeowners looking to make the most of their solar investment while 
 - Grid import management based on spot prices:
   - Enables or disables for charge of battery based on current electricity spot prices
 
+- EV charging optimization:
+  - Switches to a special TOU mode during EV charging to prioritize vehicle charging
+  - Disables discharge of battery when EV charger is on
+  - Reverts to optimal mode after EV charging is complete
+
+- Seasonal mode switching:
+  - If solar power is above the house consumption, the battery is put into Maximize Self Consumption
+
 ## Requirements
 
 To use this package, you need the following integrations:
