@@ -85,6 +85,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         )
         self._hsem_net_consumption = 0.0
         self._hsem_battery_max_capacity = hsem_battery_max_capacity
+        self._hsem_battery_remaining_capacity = round(((100 - self._hsem_huawei_solar_batteries_state_of_capacity) / 100 * self._hsem_battery_max_capacity), 2)
         self._import_sensor = None
         self._import_sensor_current = None
         self._state = None
@@ -182,6 +183,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             "solar_production_power_current": self._hsem_solar_production_power_current,
             "net_consumption": self._hsem_net_consumption,
             "battery_max_capacity_entity_id": self._hsem_battery_max_capacity,
+            "battery_remaining_capacity": self._hsem_battery_remaining_capacity,
             "ev_charger_status_entity_id": self._hsem_ev_charger_status,
             "ev_charger_status_current": self._hsem_ev_charger_status_current,
             "solcast_pv_forecast_forecast_today_entity_id": self._hsem_solcast_pv_forecast_forecast_today,
