@@ -12,7 +12,6 @@ from ..const import (
     ICON,
 )
 from ..entity import HSEMEntity
-from ..utils.huawei import async_set_tou_periods
 from ..utils.misc import get_config_value
 
 _LOGGER = logging.getLogger(__name__)
@@ -111,14 +110,6 @@ class ImportSensor(BinarySensorEntity, HSEMEntity):
         # Set state to True if the import price is negative, otherwise False
         self._import_price = input_value
         self._state = self._import_price < 0
-
-        # Force charge the battery
-        if self._state:
-            tou_modes = ["00:00-23:59/1234567/+"]
-
-            await async_set_tou_periods(
-                self, self._hsem_huawei_solar_device_id_batteries, tou_modes
-            )
 
         # Update the last updated timestamp
         self._last_updated = datetime.now().isoformat()

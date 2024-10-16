@@ -1,9 +1,9 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Importer den nye funktion
 from homeassistant.components.sensor import SensorEntity
-from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.helpers.event import async_track_state_change_event, async_track_time_interval
 from ..utils.huawei import async_set_tou_periods
 
 from ..const import (
@@ -204,40 +204,35 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             value_hsem_huawei_solar_batteries_state_of_capacity
         )
 
-        # Start calculating the optiomal working mode for the batteries
+        # Define TOU modes for different scenarios
+        import_sensor_tou_modes = ["00:00-23:59/1234567/+"]
+        ev_charger_tou_modes = ["00:00-00:01/1234567/+"]
+        default_tou_modes = [
+            "00:01-05:59/1234567/+",
+            "06:00-10:00/1234567/-",
+            "17:00-23:59/1234567/-"
+        ]
 
-        # If the import sensor is on, set the working mode to TimeOfUse to force charge the batteries
+        # Determine the appropriate TOU modes and working mode state. In priority order:
         if self._import_sensor_current:
-            _LOGGER.warning(
-                f"Import sensor is on. Set mode to TimeOfUse. import_sensor_current={self._import_sensor_current}"
-            )
-            self._state = WorkingModes.TimeOfUse.value
-            await async_set_select_option(
-                self, self._hsem_huawei_solar_batteries_working_mode, self._state
-            )
-        elif self._hsem_ev_charger_status_current:
-            # Disable battery discharge as we are charging our EV
-            tou_modes = ["00:00-00:01/1234567/+"]
+            tou_modes = import_sensor_tou_modes
+            working_mode = WorkingModes.TimeOfUse.value
+            _LOGGER.warning(f"Import sensor active. Setting TOU Periods: {tou_modes} and Working Mode: {working_mode}")
 
-            _LOGGER.warning(
-                f"EV Charger is on. Set TOU Periods. tou_modes={tou_modes}"
-            )
-            await async_set_tou_periods(
-                self, self._hsem_huawei_solar_device_id_batteries, tou_modes
-            )
-            _LOGGER.warning(
-                f"EV Charger is on. Set mode to TimeOfUse. hsem_ev_charger_status_current={self._hsem_ev_charger_status_current}"
-            )
-            self._state = WorkingModes.TimeOfUse.value
-            await async_set_select_option(
-                self, self._hsem_huawei_solar_batteries_working_mode, self._state
-            )
+        elif self._hsem_ev_charger_status_current:
+            tou_modes = ev_charger_tou_modes
+            working_mode = WorkingModes.TimeOfUse.value
+            _LOGGER.warning(f"EV Charger active. Setting TOU Periods: {tou_modes} and Working Mode: {working_mode}")
+
         else:
-            _LOGGER.warning(f"Set default mode to MaximizeSelfConsumption.")
-            self._state = WorkingModes.MaximizeSelfConsumption.value
-            await async_set_select_option(
-                self, self._hsem_huawei_solar_batteries_working_mode, self._state
-            )
+            tou_modes = default_tou_modes
+            working_mode = WorkingModes.MaximizeSelfConsumption.value
+            _LOGGER.warning(f"Default settings. TOU Periods: {tou_modes} and Working Mode: {working_mode}")
+
+        # Apply TOU periods and working mode
+        await async_set_tou_periods(self, self._hsem_huawei_solar_device_id_batteries, tou_modes)
+        await async_set_select_option(self, self._hsem_huawei_solar_batteries_working_mode, working_mode)
+        self._state = working_mode
 
         # Update last update time
         self._last_updated = datetime.now().isoformat()
@@ -330,3 +325,16 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                 [self._import_sensor],
                 self._handle_update,
             )
+
+        if self._hsem_ev_charger_status:
+            _LOGGER.info(
+                f"Starting to track state changes for entity_id {self._hsem_ev_charger_status}"
+            )
+            async_track_state_change_event(
+                self.hass,
+                [self._hsem_ev_charger_status],
+                self._handle_update,
+            )
+
+        # Schedule a periodic update every 5 minutes
+        async_track_time_interval(self.hass, self._handle_update, timedelta(minutes=5))
