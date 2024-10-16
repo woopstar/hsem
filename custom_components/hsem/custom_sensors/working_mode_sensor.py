@@ -127,7 +127,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
         # Fetch the import sensor from the unique id of it.
         self._import_sensor = await async_resolve_entity_id_from_unique_id(
-            self, "{DOMAIN}_import_sensor", "binary_sensor"
+            self, f"{DOMAIN}_import_sensor", "binary_sensor"
         )
 
         if not self._import_sensor:
