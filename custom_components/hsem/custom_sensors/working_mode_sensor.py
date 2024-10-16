@@ -436,7 +436,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             if time_range in self._hourly_calculations:
                 self._hourly_calculations[time_range][
                     "avg_house_consumption"
-                ] = weighted_value
+                ] = round(weighted_value, 2)
 
         _LOGGER.debug(
             f"Hourly weighted calculations (avg_house_consumption): {self._hourly_calculations}"
@@ -466,7 +466,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             if time_range in self._hourly_calculations:
                 self._hourly_calculations[time_range][
                     "solcast_pv_estimate"
-                ] = pv_estimate
+                ] = round(pv_estimate, 2)
 
         _LOGGER.debug(
             f"Updated hourly calculations with Solcast PV estimates: {self._hourly_calculations}"
@@ -496,8 +496,8 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             # calculate the estimated net consumption
             if time_range in self._hourly_calculations:
                 self._hourly_calculations[time_range][
-                    "estimated_net_consumption"
-                ] = estimated_net_consumption
+                        "estimated_net_consumption"
+                    ] = round(estimated_net_consumption, 2)
 
         _LOGGER.debug(
             f"Updated hourly calculations with Estimated Net Consumption: {self._hourly_calculations}"
