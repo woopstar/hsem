@@ -1,8 +1,11 @@
 # Huawei Solar Energy Management
 
-[![Current Release](https://img.shields.io/github/release/woopstar/hsem/all.svg?style=plastic)](https://github.com/woopstar/hsem/releases) [![Github All Releases](https://img.shields.io/github/downloads/woopstar/hsem/total.svg?style=plastic)](https://github.com/woopstar/hsem/releases)
+[![GitHub Release][releases-shield]][releases]
+[![GitHub Downloads][downloads-shield]][downloads]
+[![License][license-shield]][license]
+[![BuyMeCoffee][buymecoffeebadge]][buymecoffee]
 
-![Huawei Solar Energy Management](assets/icon.png)
+![Icon](assets/icon.png)
 
 ## Derived from the Huawei Solar Battery Optimization Project
 
@@ -112,3 +115,12 @@ These default periods are set to optimize battery usage based on typical daily e
 - If there's a need to reduce battery cycling to extend its lifespan
 
 Note: This working mode is not in use by any automations at the moment, but script is added if needed.
+
+[releases-shield]: https://img.shields.io/github/v/release/woopstar/hsem?style=for-the-badge
+[releases]: https://github.com/woopstar/hsem/releases
+[downloads-shield]: https://img.shields.io/github/downloads/woopstar/hsem/total.svg?style=for-the-badge
+[downloads]: https://github.com/woopstar/hsem/releases
+[license-shield]: https://img.shields.io/github/license/woopstar/hsem?style=for-the-badge
+[license]: https://github.com/woopstar/hsem/blob/main/LICENSE
+[buymecoffeebadge]: https://img.shields.io/badge/buy%20me%20a%20coffee-donate-FFDD00.svg?style=for-the-badge&logo=buymeacoffee
+[buymecoffee]: https://www.buymeacoffee.com/woopstar
