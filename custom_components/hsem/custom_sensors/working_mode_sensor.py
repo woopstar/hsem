@@ -14,6 +14,11 @@ from ..const import (
     DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_STATE_OF_CAPACITY,
     DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_WORKING_MODE,
     DEFAULT_HSEM_SOLAR_PRODUCTION_POWER,
+    DEFAULT_HSEM_IMPORT_SENSOR_TOU_MODES,
+    DEFAULT_HSEM_EV_CHARGER_TOU_MODES,
+    DEFAULT_HSEM_DEFAULT_TOU_MODES,
+    DEFAULT_HSEM_MONTHS_WINTER_SPRING,
+    DEFAULT_HSEM_MONTHS_SUMMER,
     DOMAIN,
     ICON,
 )
@@ -282,25 +287,16 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         current_month = datetime.now().month
         current_hour = datetime.now().hour
 
-        # Define TOU modes for different scenarios
-        import_sensor_tou_modes = ["00:00-23:59/1234567/+"]
-        ev_charger_tou_modes = ["00:00-00:01/1234567/+"]
-        default_tou_modes = [
-            "00:01-05:59/1234567/+",
-            "06:00-10:00/1234567/-",
-            "17:00-23:59/1234567/-",
-        ]
-
         # Determine the appropriate TOU modes and working mode state. In priority order:
         if self._import_sensor_current:
-            tou_modes = import_sensor_tou_modes
+            tou_modes = DEFAULT_HSEM_IMPORT_SENSOR_TOU_MODES
             working_mode = WorkingModes.TimeOfUse.value
             _LOGGER.warning(
                 f"Import sensor active. Setting TOU Periods: {tou_modes} and Working Mode: {working_mode}"
             )
 
         elif self._hsem_ev_charger_status_current:
-            tou_modes = ev_charger_tou_modes
+            tou_modes = DEFAULT_HSEM_EV_CHARGER_TOU_MODES
             working_mode = WorkingModes.TimeOfUse.value
             _LOGGER.warning(
                 f"EV Charger active. Setting TOU Periods: {tou_modes} and Working Mode: {working_mode}"
@@ -315,15 +311,15 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             )
         else:
             # Winter/Spring settings
-            if current_month in [1, 2, 3, 4, 9, 10, 11, 12]:
-                tou_modes = default_tou_modes
+            if current_month in DEFAULT_HSEM_MONTHS_WINTER_SPRING:
+                tou_modes = DEFAULT_HSEM_DEFAULT_TOU_MODES
                 working_mode = WorkingModes.TimeOfUse.value
                 _LOGGER.warning(
                     f"Default winter/spring settings. TOU Periods: {tou_modes} and Working Mode: {working_mode}"
                 )
 
             # Summer settings
-            if current_month in [5, 6, 7, 8]:
+            if current_month in DEFAULT_HSEM_MONTHS_SUMMER:
                 working_mode = WorkingModes.MaximizeSelfConsumption.value
                 _LOGGER.warning(
                     f"Default summer settings. Working Mode: {working_mode}"
