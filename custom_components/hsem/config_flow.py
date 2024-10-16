@@ -258,7 +258,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         # Show the form to the user for energy data services
         return self.async_show_form(
-            step_id="power",
+            step_id="solcast",
             data_schema=data_schema,
             errors=self._errors,
             last_step=False,

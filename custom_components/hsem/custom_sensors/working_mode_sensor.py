@@ -1,7 +1,6 @@
 import logging
 from datetime import datetime, timedelta
 
-# Importer den nye funktion
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.event import (
     async_track_state_change_event,
@@ -19,6 +18,7 @@ from ..const import (
     DEFAULT_HSEM_MONTHS_SUMMER,
     DEFAULT_HSEM_MONTHS_WINTER_SPRING,
     DEFAULT_HSEM_SOLAR_PRODUCTION_POWER,
+    DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TODAY,
     DOMAIN,
     ICON,
 )
@@ -51,6 +51,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         hsem_house_consumption_power,
         hsem_solar_production_power,
         hsem_ev_charger_status,
+        hsem_solcast_pv_forecast_forecast_today,
         config_entry,
     ):
         super().__init__(config_entry)
@@ -77,6 +78,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_house_consumption_power_current = 0.0
         self._hsem_solar_production_power = hsem_solar_production_power
         self._hsem_solar_production_power_current = 0.0
+        self._hsem_solcast_pv_forecast_forecast_today = hsem_solcast_pv_forecast_forecast_today
         self._hsem_net_consumption = 0.0
         self._import_sensor = None
         self._import_sensor_current = None
@@ -84,6 +86,13 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         self._last_updated = None
         self._last_reset = None
         self._config_entry = config_entry
+        self._hourly_calculations = {
+            f"{hour:02d}-{(hour + 1) % 24:02d}": {
+                "avg_house_consumption": 0.0,
+                "solcast_pv_estimate": 0.0
+            }
+            for hour in range(24)
+        }
         self._unique_id = f"{DOMAIN}_workingmode_sensor"
         self._update_settings()
 
@@ -120,6 +129,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         )
         self._hsem_ev_charger_status = get_config_value(
             self._config_entry, "hsem_ev_charger_status", DEFAULT_HSEM_EV_CHARGER_STATUS
+        )
+        self._hsem_solcast_pv_forecast_forecast_today = get_config_value(
+            self._config_entry, "hsem_solcast_pv_forecast_forecast_today", DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TODAY
         )
 
         # Log updated settings
@@ -158,10 +170,12 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             "net_consumption": self._hsem_net_consumption,
             "ev_charger_status_entity_id": self._hsem_ev_charger_status,
             "ev_charger_status_current": self._hsem_ev_charger_status_current,
+            "solcast_pv_forecast_forecast_today_entity_id": self._hsem_solcast_pv_forecast_forecast_today,
             "import_sensor_entity_id: ": self._import_sensor,
             "import_sensor_current: ": self._import_sensor_current,
             "last_updated": self._last_updated,
             "unique_id": self._unique_id,
+            "hourly_calculations": self._hourly_calculations
         }
 
     async def _handle_update(self, event):
@@ -276,6 +290,12 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             - self._hsem_house_consumption_power_current
         )
 
+        # calculate the hourly data from power sensors
+        await self.async_calculate_hourly_data()
+
+        # calculate the solcast forecast for today
+        await self.async_calculate_solcast_forecast()
+
         # Set the working mode based on the input sensors
         await self.async_set_working_mode()
 
@@ -338,6 +358,87 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             )
 
         self._state = working_mode
+
+    async def async_calculate_hourly_data(self):
+        """Calculate the weighted hourly data for the sensor using both 3-day and 7-day HouseConsumptionEnergyAverageSensors."""
+
+        for hour in range(24):
+            hour_start = hour
+            hour_end = (hour + 1) % 24
+            time_range = f"{hour_start:02d}-{hour_end:02d}"
+
+            # Construct unique_ids for the 3d, 7d, and 14d sensors
+            unique_id_3d = f"{DOMAIN}_house_consumption_energy_avg_{hour_start:02d}_{hour_end:02d}_3d"
+            unique_id_7d = f"{DOMAIN}_house_consumption_energy_avg_{hour_start:02d}_{hour_end:02d}_7d"
+            unique_id_14d = f"{DOMAIN}_house_consumption_energy_avg_{hour_start:02d}_{hour_end:02d}_14d"
+
+            # Resolve entity_ids for 3d, 7d, and 14d sensors
+            entity_id_3d = await async_resolve_entity_id_from_unique_id(self, unique_id_3d)
+            entity_id_7d = await async_resolve_entity_id_from_unique_id(self, unique_id_7d)
+            entity_id_14d = await async_resolve_entity_id_from_unique_id(self, unique_id_14d)
+
+            # Default values for sensors in case they are missing
+            value_3d = 0.0
+            value_7d = 0.0
+            value_14d = 0.0
+
+            # Fetch values for 3d, 7d, and 14d if available
+            if entity_id_3d:
+                entity_state_3d = self.hass.states.get(entity_id_3d)
+                if entity_state_3d and entity_state_3d.state != 'unknown':
+                    try:
+                        value_3d = float(entity_state_3d.state)
+                    except ValueError:
+                        _LOGGER.warning(f"Invalid state for entity {entity_id_3d}: {entity_state_3d.state}")
+
+            if entity_id_7d:
+                entity_state_7d = self.hass.states.get(entity_id_7d)
+                if entity_state_7d and entity_state_7d.state != 'unknown':
+                    try:
+                        value_7d = float(entity_state_7d.state)
+                    except ValueError:
+                        _LOGGER.warning(f"Invalid state for entity {entity_id_7d}: {entity_state_7d.state}")
+
+            if entity_id_14d:
+                entity_state_14d = self.hass.states.get(entity_id_14d)
+                if entity_state_14d and entity_state_14d.state != 'unknown':
+                    try:
+                        value_14d = float(entity_state_14d.state)
+                    except ValueError:
+                        _LOGGER.warning(f"Invalid state for entity {entity_id_14d}: {entity_state_14d.state}")
+
+            # Calculate the weighted average house consumption for the hour
+            weighted_value = round((value_3d * 0.6) + (value_7d * 0.3) + (value_14d * 0.1), 6)
+
+            # Only update "avg_house_consumption" in the existing dictionary entry
+            if time_range in self._hourly_calculations:
+                self._hourly_calculations[time_range]["avg_house_consumption"] = weighted_value
+
+        _LOGGER.debug(f"Hourly weighted calculations (avg_house_consumption): {self._hourly_calculations}")
+
+    async def async_calculate_solcast_forecast(self):
+        """Calculate the hourly Solcast PV estimate and update self._hourly_calculations without resetting avg_house_consumption."""
+
+        solcast_sensor = self.hass.states.get(self._hsem_solcast_pv_forecast_forecast_today)
+        if not solcast_sensor:
+            _LOGGER.warning("Solcast forecast sensor not found.")
+            return
+
+        detailed_forecast = solcast_sensor.attributes.get("detailedForecast", [])
+        if not detailed_forecast:
+            _LOGGER.warning("Detailed forecast data is missing or empty.")
+            return
+
+        for period in detailed_forecast:
+            period_start = period.get("period_start")
+            pv_estimate = period.get("pv_estimate", 0.0)
+            time_range = f"{period_start.hour:02d}-{(period_start.hour + 1) % 24:02d}"
+
+            # Only update "solcast_pv_estimate" in the existing dictionary entry
+            if time_range in self._hourly_calculations:
+                self._hourly_calculations[time_range]["solcast_pv_estimate"] = pv_estimate
+
+        _LOGGER.debug(f"Updated hourly calculations with Solcast PV estimates: {self._hourly_calculations}")
 
     async def async_update(self):
         """Manually trigger the sensor update."""
@@ -452,6 +553,16 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             async_track_state_change_event(
                 self.hass,
                 [self._hsem_ev_charger_status],
+                self._handle_update,
+            )
+
+        if self._hsem_solcast_pv_forecast_forecast_today:
+            _LOGGER.info(
+                f"Starting to track state changes for entity_id {self._hsem_solcast_pv_forecast_forecast_today}"
+            )
+            async_track_state_change_event(
+                self.hass,
+                [self._hsem_solcast_pv_forecast_forecast_today],
                 self._handle_update,
             )
 
