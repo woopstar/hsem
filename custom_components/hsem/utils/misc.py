@@ -33,6 +33,7 @@ def convert_to_boolean(state):
         "0": False,
         "charging": True,
         "not_charging": False,
+        "unknown": False
     }
 
     # Convert the state to lowercase for case-insensitive comparison
