@@ -445,12 +445,8 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             unique_id_14d = f"{DOMAIN}_house_consumption_energy_avg_{hour_start:02d}_{hour_end:02d}_14d"
 
             # Resolve entity_ids for 3d, 7d, and 14d sensors
-            entity_id_3d = await async_resolve_entity_from_unique_id(
-                self, unique_id_3d
-            )
-            entity_id_7d = await async_resolve_entity_from_unique_id(
-                self, unique_id_7d
-            )
+            entity_id_3d = await async_resolve_entity_from_unique_id(self, unique_id_3d)
+            entity_id_7d = await async_resolve_entity_from_unique_id(self, unique_id_7d)
             entity_id_14d = await async_resolve_entity_from_unique_id(
                 self, unique_id_14d
             )
