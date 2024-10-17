@@ -648,21 +648,38 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
             # Maximize Self Consumption
             if net_consumption > 0:
-                    data["recommendation"] = "Maximize Self Consumption"
-                    changed = True
+                data["recommendation"] = "Maximize Self Consumption"
+                changed = True
 
             # Time of Use: Charge if before 17:00 and import price is favorable
             elif start_hour < 17:
-                if remaining_charge < self._hsem_battery_max_capacity and import_price < min([h["import_price"] for h in self._hourly_calculations.values() if h["import_price"]]):
+                if (
+                    remaining_charge < self._hsem_battery_max_capacity
+                    and import_price
+                    < min(
+                        [
+                            h["import_price"]
+                            for h in self._hourly_calculations.values()
+                            if h["import_price"]
+                        ]
+                    )
+                ):
                     data["recommendation"] = "Time of Use: Charge"
-                    charge_amount = min(self._hsem_battery_maximum_charging_power / 1000, self._hsem_battery_max_capacity - remaining_charge)
-                    remaining_charge += charge_amount * (1 - self._hsem_battery_conversion_loss / 100)
+                    charge_amount = min(
+                        self._hsem_battery_maximum_charging_power / 1000,
+                        self._hsem_battery_max_capacity - remaining_charge,
+                    )
+                    remaining_charge += charge_amount * (
+                        1 - self._hsem_battery_conversion_loss / 100
+                    )
                     changed = True
 
             # Time of Use: Discharge during peak hours if there is remaining charge
             elif 17 <= start_hour < 21 and remaining_charge > 0:
                 data["recommendation"] = "Time of Use: Discharge"
-                discharge_amount = min(self._hsem_battery_maximum_charging_power / 1000, remaining_charge)
+                discharge_amount = min(
+                    self._hsem_battery_maximum_charging_power / 1000, remaining_charge
+                )
                 remaining_charge -= discharge_amount
                 changed = True
 
