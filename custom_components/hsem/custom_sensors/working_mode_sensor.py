@@ -160,6 +160,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             DEFAULT_HSEM_ENERGI_DATA_SERVICE_IMPORT,
         )
 
+        if len(self._hsem_huawei_solar_device_id_inverter_2) == 0:
+            self._hsem_huawei_solar_device_id_inverter_2 = None
+
         # Log updated settings
         _LOGGER.debug(
             f"Updated settings: input_sensor={self._hsem_huawei_solar_batteries_working_mode}"
@@ -242,9 +245,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         if self._hsem_house_consumption_power:
             state = self.hass.states.get(self._hsem_house_consumption_power)
             if state:
-                self._hsem_house_consumption_power_current = convert_to_float(
+                self._hsem_house_consumption_power_current = round(convert_to_float(
                     state.state
-                )
+                ), 2)
             else:
                 _LOGGER.warning(
                     f"Sensor {self._hsem_house_consumption_power} not found."
@@ -255,9 +258,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         if self._hsem_solar_production_power:
             state = self.hass.states.get(self._hsem_solar_production_power)
             if state:
-                self._hsem_solar_production_power_current = convert_to_float(
+                self._hsem_solar_production_power_current = round(convert_to_float(
                     state.state
-                )
+                ), 2)
             else:
                 _LOGGER.warning(
                     f"Sensor {self._hsem_solar_production_power} not found."
@@ -309,7 +312,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             value_hsem_huawei_solar_batteries_working_mode
         )
         self._hsem_huawei_solar_batteries_state_of_capacity_current = (
-            value_hsem_huawei_solar_batteries_state_of_capacity
+            round(value_hsem_huawei_solar_batteries_state_of_capacity, 0)
         )
 
         # Calculate the net consumption
@@ -563,7 +566,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             if avg_house_consumption is None or solcast_pv_estimate is None:
                 estimated_net_consumption = 0.0
             else:
-                estimated_net_consumption = solcast_pv_estimate - avg_house_consumption
+                estimated_net_consumption = round(solcast_pv_estimate - avg_house_consumption, 2)
 
             # calculate the estimated net consumption
             if time_range in self._hourly_calculations:
