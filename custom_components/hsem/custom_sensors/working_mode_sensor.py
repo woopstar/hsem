@@ -92,6 +92,8 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         )
         self._hsem_net_consumption = 0.0
         self._hsem_battery_max_capacity = hsem_battery_max_capacity
+        self._hsem_battery_maximum_charging_power = 5000
+        self._hsem_battery_conversion_loss = 20
         self._hsem_battery_remaining_charge = 0.0
         self._hsem_energi_data_service_import = hsem_energi_data_service_import
         self._hsem_energi_data_service_export = hsem_energi_data_service_export
@@ -108,6 +110,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                 "estimated_net_consumption": 0.0,
                 "import_price": 0.0,
                 "export_price": 0.0,
+                "recommendation": "",
             }
             for hour in range(24)
         }
@@ -359,6 +362,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
         # calculate the hourly export price
         await self.async_calculate_hourly_export_price()
+
+        # calculate the optimization strategy
+        await self.async_optimization_strategy()
 
         # Set the working mode
         await self.async_set_working_mode()
@@ -619,6 +625,52 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         _LOGGER.debug(
             f"Updated hourly calculations with Estimated Net Consumption: {self._hourly_calculations}"
         )
+
+    async def async_optimization_strategy(self):
+        """Generate hourly battery optimization recommendations based on energy prices and solar forecast."""
+
+        # Beregn antal timer, der kræves for at oplade batteriet fuldt inden peak forbrugstimer
+        hours_to_full_charge = int((self._hsem_battery_max_capacity - self._hsem_battery_remaining_charge) /
+                                (self._hsem_battery_maximum_charging_power / 1000 * (1 - self._hsem_battery_conversion_loss / 100)))
+
+        for hour, data in self._hourly_calculations.items():
+            import_price = data["import_price"]
+            export_price = data["export_price"]
+            net_consumption = data["estimated_net_consumption"]
+            solcast_pv_estimate = data["solcast_pv_estimate"]
+
+            # Prioriter opladning før peak-timer for at sikre fuld batterikapacitet
+            if "17-18" <= hour <= "20-21" and self._hsem_battery_remaining_charge < self._hsem_battery_max_capacity:
+                data["recommendation"] = "Charge battery (peak hour prep)"
+
+            # Oplad batteriet, hvis importprisen er negativ
+            elif import_price < 0:
+                data["recommendation"] = "Charge battery (negative import price)"
+
+            # Hvis EV oplader, undgå at aflade batteriet
+            elif self._hsem_ev_charger_status_current:
+                data["recommendation"] = "Do nothing (EV is charging)"
+
+            # Maksimer selvforbrug, hvis solproduktion overstiger husforbrug
+            elif net_consumption > 0:
+                data["recommendation"] = "Maximize Self Consumption"
+
+            # Omkostningsoptimeret opladning før peak-timer
+            elif hours_to_full_charge > 0 and hour < "17-18":
+                if import_price < min(d["import_price"] for d in self._hourly_calculations.values()):
+                    data["recommendation"] = "Charge battery (optimal cost)"
+                    hours_to_full_charge -= 1
+
+            # Sælg til nettet, hvis eksportprisen er højere end importprisen
+            elif export_price > import_price:
+                data["recommendation"] = "Sell to grid (higher export price)"
+
+            # Standard handling, hvis ingen andre betingelser er opfyldt
+            else:
+                data["recommendation"] = "Do nothing"
+
+            # Log anbefalinger for debugging
+            _LOGGER.debug(f"Hour {hour}: {data['recommendation']} | Import: {import_price}, Export: {export_price}, Net: {net_consumption}")
 
     async def async_update(self):
         """Manually trigger the sensor update."""
