@@ -1,6 +1,6 @@
 import logging
-import voluptuous as vol
 
+import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.helpers.selector import selector
