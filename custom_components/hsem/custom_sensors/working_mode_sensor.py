@@ -10,8 +10,8 @@ from homeassistant.helpers.event import (
 from ..const import (
     DEFAULT_HSEM_BATTERY_MAX_CAPACITY,
     DEFAULT_HSEM_DEFAULT_TOU_MODES,
-    DEFAULT_HSEM_ENERGI_DATA_SERVICE_IMPORT,
     DEFAULT_HSEM_ENERGI_DATA_SERVICE_EXPORT,
+    DEFAULT_HSEM_ENERGI_DATA_SERVICE_IMPORT,
     DEFAULT_HSEM_EV_CHARGER_STATUS,
     DEFAULT_HSEM_EV_CHARGER_TOU_MODES,
     DEFAULT_HSEM_HOUSE_CONSUMPTION_POWER,
@@ -166,7 +166,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_energi_data_service_export = get_config_value(
             self._config_entry,
             "hsem_energi_data_service_export",
-            DEFAULT_HSEM_ENERGI_DATA_SERVICE_EXPORT
+            DEFAULT_HSEM_ENERGI_DATA_SERVICE_EXPORT,
         )
 
         if len(self._hsem_huawei_solar_device_id_inverter_2) == 0:
@@ -320,8 +320,8 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_huawei_solar_batteries_working_mode_current = (
             value_hsem_huawei_solar_batteries_working_mode
         )
-        self._hsem_huawei_solar_batteries_state_of_capacity_current = (
-            round(convert_to_float(value_hsem_huawei_solar_batteries_state_of_capacity), 0)
+        self._hsem_huawei_solar_batteries_state_of_capacity_current = round(
+            convert_to_float(value_hsem_huawei_solar_batteries_state_of_capacity), 0
         )
 
         # Calculate the net consumption
