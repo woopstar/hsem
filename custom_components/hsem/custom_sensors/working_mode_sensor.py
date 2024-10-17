@@ -24,6 +24,7 @@ from ..const import (
     HOUSE_CONSUMPTION_ENERGY_WEIGHT_3D,
     HOUSE_CONSUMPTION_ENERGY_WEIGHT_7D,
     HOUSE_CONSUMPTION_ENERGY_WEIGHT_14D,
+    DEFAULT_HSEM_ENERGI_DATA_SERVICE_IMPORT,
     ICON,
 )
 from ..entity import HSEMEntity
@@ -57,6 +58,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         hsem_ev_charger_status,
         hsem_solcast_pv_forecast_forecast_today,
         hsem_battery_max_capacity,
+        hsem_energi_data_service_import,
         config_entry,
     ):
         super().__init__(config_entry)
@@ -89,6 +91,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_net_consumption = 0.0
         self._hsem_battery_max_capacity = hsem_battery_max_capacity
         self._hsem_battery_remaining_charge = 0.0
+        self._hsem_energi_data_service_import = hsem_energi_data_service_import
         self._import_sensor = None
         self._import_sensor_current = None
         self._state = None
@@ -150,6 +153,10 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             "hsem_battery_max_capacity",
             DEFAULT_HSEM_BATTERY_MAX_CAPACITY,
         )
+        self._hsem_energi_data_service_import = get_config_value(
+            self._config_entry, "hsem_energi_data_service_import",
+            DEFAULT_HSEM_ENERGI_DATA_SERVICE_IMPORT
+        )
 
         # Log updated settings
         _LOGGER.debug(
@@ -185,6 +192,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             "solar_production_power_entity_id": self._hsem_solar_production_power,
             "solar_production_power_current": self._hsem_solar_production_power_current,
             "net_consumption": self._hsem_net_consumption,
+            "energi_data_service_import_entity_id": self._hsem_energi_data_service_import,
             "battery_max_capacity": self._hsem_battery_max_capacity,
             "battery_remaining_charge": self._hsem_battery_remaining_charge,
             "ev_charger_status_entity_id": self._hsem_ev_charger_status,
@@ -667,6 +675,16 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             async_track_state_change_event(
                 self.hass,
                 [self._hsem_battery_max_capacity],
+                self._handle_update,
+            )
+
+        if self._hsem_energi_data_service_import:
+            _LOGGER.info(
+                f"Starting to track state changes for entity_id {self._hsem_energi_data_service_import}"
+            )
+            async_track_state_change_event(
+                self.hass,
+                [self._hsem_energi_data_service_import],
                 self._handle_update,
             )
 
