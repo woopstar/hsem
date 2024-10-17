@@ -21,22 +21,29 @@ Minimize your carbon footprint
 Increase your energy independence
 Perfect for homeowners looking to make the most of their solar investment while contributing to a greener future.
 
+Certainly! Here’s a more concise and streamlined version:
+
 ## Features
 
-- Grid export management based on spot prices:
-  - Enables or disables grid export based on current electricity spot prices
-  - Avoids exporting during negative price periods
+Dynamic Grid Export/Import Management:
 
-- Grid import management based on spot prices:
-  - Enables or disables for charge of battery based on current electricity spot prices
+- Avoids grid export when export prices are negative.
+- Forces battery charging when import prices are negative.
 
-- EV charging optimization:
-  - Switches to a special TOU mode during EV charging to prioritize vehicle charging
-  - Disables discharge of battery when EV charger is on
-  - Reverts to optimal mode after EV charging is complete
+EV Charging Optimization:
 
-- Seasonal mode switching:
-  - If solar power is above the house consumption, the battery is put into Maximize Self Consumption
+- Activates a dedicated TOU mode during EV charging.
+- Prevents battery discharge while the EV is charging.
+
+Seasonal Mode Switching:
+
+- Uses Maximize Self Consumption (MSC) when solar production exceeds home consumption.
+- Automatically selects between TOU and MSC based on season: TOU for winter/spring, MSC for summer.
+
+Automatic Operational Adjustments:
+
+- Maximizes solar self-consumption when solar production is high.
+- Shifts modes based on time-of-use rates and seasonal conditions.
 
 ## Requirements
 
@@ -49,7 +56,7 @@ To use this package, you need the following integrations:
 ### Optional integrations
 
 - [Huawei Solar PEES package by JensenNick](https://github.com/JensenNick/huawei_solar_pees) (optional but recommended)
-- [Smoothing Analytics Sensors by woopstar](https://github.com/woopstar/smoothing_analytics_sensors) (optional for now)
+- [Smoothing Analytics Sensors by woopstar](https://github.com/woopstar/smoothing_analytics_sensors) (optional but recommended)
 
 ---
 
