@@ -11,6 +11,7 @@ from ..const import (
     DEFAULT_HSEM_BATTERY_MAX_CAPACITY,
     DEFAULT_HSEM_DEFAULT_TOU_MODES,
     DEFAULT_HSEM_ENERGI_DATA_SERVICE_IMPORT,
+    DEFAULT_HSEM_ENERGI_DATA_SERVICE_EXPORT,
     DEFAULT_HSEM_EV_CHARGER_STATUS,
     DEFAULT_HSEM_EV_CHARGER_TOU_MODES,
     DEFAULT_HSEM_HOUSE_CONSUMPTION_POWER,
@@ -59,6 +60,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         hsem_solcast_pv_forecast_forecast_today,
         hsem_battery_max_capacity,
         hsem_energi_data_service_import,
+        hsem_energi_data_service_export,
         config_entry,
     ):
         super().__init__(config_entry)
@@ -92,6 +94,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_battery_max_capacity = hsem_battery_max_capacity
         self._hsem_battery_remaining_charge = 0.0
         self._hsem_energi_data_service_import = hsem_energi_data_service_import
+        self._hsem_energi_data_service_export = hsem_energi_data_service_export
         self._import_sensor = None
         self._import_sensor_current = None
         self._state = None
@@ -104,6 +107,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                 "solcast_pv_estimate": 0.0,
                 "estimated_net_consumption": 0.0,
                 "import_price": 0.0,
+                "export_price": 0.0,
             }
             for hour in range(24)
         }
@@ -158,6 +162,11 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             self._config_entry,
             "hsem_energi_data_service_import",
             DEFAULT_HSEM_ENERGI_DATA_SERVICE_IMPORT,
+        )
+        self._hsem_energi_data_service_export = get_config_value(
+            self._config_entry,
+            "hsem_energi_data_service_export",
+            DEFAULT_HSEM_ENERGI_DATA_SERVICE_EXPORT
         )
 
         if len(self._hsem_huawei_solar_device_id_inverter_2) == 0:
@@ -311,8 +320,8 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_huawei_solar_batteries_working_mode_current = (
             value_hsem_huawei_solar_batteries_working_mode
         )
-        self._hsem_huawei_solar_batteries_state_of_capacity_current = round(
-            value_hsem_huawei_solar_batteries_state_of_capacity, 0
+        self._hsem_huawei_solar_batteries_state_of_capacity_current = (
+            round(convert_to_float(value_hsem_huawei_solar_batteries_state_of_capacity), 0)
         )
 
         # Calculate the net consumption
@@ -347,6 +356,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
         # calculate the hourly import price
         await self.async_calculate_hourly_import_price()
+
+        # calculate the hourly export price
+        await self.async_calculate_hourly_export_price()
 
         # Set the working mode
         await self.async_set_working_mode()
@@ -547,6 +559,34 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             f"Updated hourly calculations with import prices: {self._hourly_calculations}"
         )
 
+    async def async_calculate_hourly_export_price(self):
+        """Calculate the estimated import price for each hour of the day."""
+
+        export_price_sensor = self.hass.states.get(
+            self._hsem_energi_data_service_export
+        )
+        if not export_price_sensor:
+            _LOGGER.warning("hsem_energi_data_service_import sensor not found.")
+            return
+
+        detailed_raw_today = export_price_sensor.attributes.get("raw_today", [])
+        if not detailed_raw_today:
+            _LOGGER.warning("Detailed raw data is missing or empty.")
+            return
+
+        for period in detailed_raw_today:
+            period_start = period.get("hour")
+            price = period.get("price", 0.0)
+            time_range = f"{period_start.hour:02d}-{(period_start.hour + 1) % 24:02d}"
+
+            # Only update "import_price" in the existing dictionary entry
+            if time_range in self._hourly_calculations:
+                self._hourly_calculations[time_range]["export_price"] = price
+
+        _LOGGER.debug(
+            f"Updated hourly calculations with import prices: {self._hourly_calculations}"
+        )
+
     async def async_calculate_hourly_net_consumption(self):
         """Calculate the estimated net consumption for each hour of the day."""
 
@@ -723,6 +763,16 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             async_track_state_change_event(
                 self.hass,
                 [self._hsem_energi_data_service_import],
+                self._handle_update,
+            )
+
+        if self._hsem_energi_data_service_export:
+            _LOGGER.info(
+                f"Starting to track state changes for entity_id {self._hsem_energi_data_service_export}"
+            )
+            async_track_state_change_event(
+                self.hass,
+                [self._hsem_energi_data_service_export],
                 self._handle_update,
             )
 
