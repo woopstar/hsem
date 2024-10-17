@@ -34,9 +34,6 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
         config_entry, "hsem_energi_data_service_export"
     )
 
-    # Enable hsem_huawei_solar_inverter_active_power_control as it's disabled by default
-    await enable_entity(hass, hsem_huawei_solar_inverter_active_power_control)
-
     # Create the export from the input from hsem_energi_data_service_export
     export_sensor = ExportSensor(
         hsem_huawei_solar_device_id_inverter_1,
@@ -72,21 +69,3 @@ async def async_unload_entry(hass, entry):
     if platform:
         return await platform.async_remove_entry(entry)
     return False
-
-
-async def enable_entity(hass, entity_id):
-    """Enable a disabled entity in Home Assistant."""
-
-    # Access the entity registry
-    registry = er.async_get(hass)
-
-    # Find the entity entry
-    entity_entry = registry.async_get(entity_id)
-    if entity_entry:
-        # Check if the entity is disabled
-        if entity_entry.disabled:
-            # Enable the entity
-            await registry.async_update_entity(entity_id, disabled_by=None)
-            _LOGGER.warning(f"Entity {entity_id} has been enabled.")
-    else:
-        _LOGGER.warning(f"Entity {entity_id} not found in the entity registry.")
