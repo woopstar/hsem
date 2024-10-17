@@ -103,6 +103,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                 "avg_house_consumption": 0.0,
                 "solcast_pv_estimate": 0.0,
                 "estimated_net_consumption": 0.0,
+                "import_price": 0.0,
             }
             for hour in range(24)
         }
@@ -340,6 +341,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         # calculate the hourly net consumption between house consumption and solar production
         await self.async_calculate_hourly_net_consumption()
 
+        # calculate the hourly import price
+        await self.async_calculate_hourly_import_price()
+
         # Set the working mode
         await self.async_set_working_mode()
 
@@ -509,6 +513,34 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
         _LOGGER.debug(
             f"Updated hourly calculations with Solcast PV estimates: {self._hourly_calculations}"
+        )
+
+    async def async_calculate_hourly_import_price(self):
+        """Calculate the estimated import price for each hour of the day."""
+
+        import_price_sensor = self.hass.states.get(
+            self._hsem_energi_data_service_import
+        )
+        if not import_price_sensor:
+            _LOGGER.warning("hsem_energi_data_service_import sensor not found.")
+            return
+
+        detailed_raw_today = import_price_sensor.attributes.get("raw_today", [])
+        if not detailed_raw_today:
+            _LOGGER.warning("Detailed raw data is missing or empty.")
+            return
+
+        for period in detailed_raw_today:
+            period_start = period.get("hour")
+            price = period.get("price", 0.0)
+            time_range = f"{period_start.hour:02d}-{(period_start.hour + 1) % 24:02d}"
+
+            # Only update "import_price" in the existing dictionary entry
+            if time_range in self._hourly_calculations:
+                self._hourly_calculations[time_range]["import_price"] = price
+
+        _LOGGER.debug(
+            f"Updated hourly calculations with import prices: {self._hourly_calculations}"
         )
 
     async def async_calculate_hourly_net_consumption(self):
