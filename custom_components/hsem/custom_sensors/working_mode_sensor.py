@@ -10,6 +10,7 @@ from homeassistant.helpers.event import (
 from ..const import (
     DEFAULT_HSEM_BATTERY_MAX_CAPACITY,
     DEFAULT_HSEM_DEFAULT_TOU_MODES,
+    DEFAULT_HSEM_ENERGI_DATA_SERVICE_IMPORT,
     DEFAULT_HSEM_EV_CHARGER_STATUS,
     DEFAULT_HSEM_EV_CHARGER_TOU_MODES,
     DEFAULT_HSEM_HOUSE_CONSUMPTION_POWER,
@@ -24,7 +25,6 @@ from ..const import (
     HOUSE_CONSUMPTION_ENERGY_WEIGHT_3D,
     HOUSE_CONSUMPTION_ENERGY_WEIGHT_7D,
     HOUSE_CONSUMPTION_ENERGY_WEIGHT_14D,
-    DEFAULT_HSEM_ENERGI_DATA_SERVICE_IMPORT,
     ICON,
 )
 from ..entity import HSEMEntity
@@ -155,8 +155,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             DEFAULT_HSEM_BATTERY_MAX_CAPACITY,
         )
         self._hsem_energi_data_service_import = get_config_value(
-            self._config_entry, "hsem_energi_data_service_import",
-            DEFAULT_HSEM_ENERGI_DATA_SERVICE_IMPORT
+            self._config_entry,
+            "hsem_energi_data_service_import",
+            DEFAULT_HSEM_ENERGI_DATA_SERVICE_IMPORT,
         )
 
         # Log updated settings
