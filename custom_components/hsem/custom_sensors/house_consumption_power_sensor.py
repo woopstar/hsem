@@ -56,7 +56,7 @@ class HouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
     def extra_state_attributes(self):
         """Return the state attributes."""
         return {
-            "house_consumption_power_entity_id": self._hsem_house_consumption_power,
+            "house_consumption_power_entity": self._hsem_house_consumption_power,
             "hour_start": self._hour_start,
             "hour_end": self._hour_end,
             "last_updated": self._last_updated,

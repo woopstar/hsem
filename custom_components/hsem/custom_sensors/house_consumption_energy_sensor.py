@@ -6,7 +6,7 @@ from homeassistant.helpers.event import async_track_state_change_event
 
 from ..const import DOMAIN, ICON
 from ..entity import HSEMEntity
-from ..utils.misc import async_resolve_entity_id_from_unique_id
+from ..utils.misc import async_resolve_entity_from_unique_id
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
         self._unique_id = (
             f"{DOMAIN}_house_consumption_energy_{hour_start:02d}_{hour_end:02d}"
         )
-        self._power_sensor_entity_id = None
+        self._power_sensor_entity = None
         self._config_entry = config_entry
         self._state = 0.0
         self._last_updated = None
@@ -51,7 +51,7 @@ class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
     @property
     def extra_state_attributes(self):
         return {
-            "power_sensor_entity_id": self._power_sensor_entity_id,
+            "power_sensor_entity": self._power_sensor_entity,
             "last_updated": self._last_updated,
             "unique_id": self._unique_id,
             "last_reset_date": self._last_reset_date,
@@ -67,20 +67,20 @@ class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
             self._last_reset_date = current_time.date()
 
         # Slå power sensoren op
-        self._power_sensor_entity_id = await async_resolve_entity_id_from_unique_id(
+        self._power_sensor_entity = await async_resolve_entity_from_unique_id(
             self,
             f"{DOMAIN}_house_consumption_power_{self._hour_start:02d}_{self._hour_end:02d}",
         )
 
-        if not self._power_sensor_entity_id:
+        if not self._power_sensor_entity:
             _LOGGER.warning(f"Power sensor not found for {self.name}")
             return
 
         # Hent power-sensorens nuværende værdi
-        power_sensor_state = self.hass.states.get(self._power_sensor_entity_id)
+        power_sensor_state = self.hass.states.get(self._power_sensor_entity)
         if power_sensor_state is None:
             _LOGGER.warning(
-                f"Power sensor {self._power_sensor_entity_id} not ready or not found. Skipping update."
+                f"Power sensor {self._power_sensor_entity} not ready or not found. Skipping update."
             )
             return
 
@@ -105,7 +105,7 @@ class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
 
         except ValueError:
             _LOGGER.warning(
-                f"Invalid value from power sensor {self._power_sensor_entity_id}: {power_sensor_state.state}"
+                f"Invalid value from power sensor {self._power_sensor_entity}: {power_sensor_state.state}"
             )
 
         # Update Home Assistant state
@@ -125,9 +125,9 @@ class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
                 self._last_reset_date = datetime.now().date()
 
         # Track power-sensorens tilstand
-        if self._power_sensor_entity_id:
+        if self._power_sensor_entity:
             async_track_state_change_event(
                 self.hass,
-                [self._power_sensor_entity_id],
+                [self._power_sensor_entity],
                 self.async_update,
             )

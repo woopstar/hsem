@@ -42,9 +42,9 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
         self._hsem_huawei_solar_inverter_active_power_control = (
             hsem_huawei_solar_inverter_active_power_control
         )
-        self._hsem_huawei_solar_inverter_active_power_control_current = None
+        self._hsem_huawei_solar_inverter_active_power_control_state = None
         self._hsem_energi_data_service_export = hsem_energi_data_service_export
-        self._export_price = None
+        self._energi_data_service_export_value = None
         self._state = True
         self._last_updated = None
         self._last_reset = None
@@ -98,14 +98,14 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
         """Return the state attributes."""
 
         return {
-            "huawei_solar_device_id_inverter_1_id": self._hsem_huawei_solar_device_id_inverter_1,
-            "huawei_solar_device_id_inverter_2_id": self._hsem_huawei_solar_device_id_inverter_2,
-            "huawei_solar_inverter_active_power_control_entity_id": self._hsem_huawei_solar_inverter_active_power_control,
-            "huawei_solar_inverter_active_power_control_current": self._hsem_huawei_solar_inverter_active_power_control_current,
-            "energi_data_service_export_entity_id": self._hsem_energi_data_service_export,
-            "export_price": self._export_price,
             "last_updated": self._last_updated,
             "unique_id": self._unique_id,
+            "huawei_solar_device_id_inverter_1_id": self._hsem_huawei_solar_device_id_inverter_1,
+            "huawei_solar_device_id_inverter_2_id": self._hsem_huawei_solar_device_id_inverter_2,
+            "huawei_solar_inverter_active_power_control_entity": self._hsem_huawei_solar_inverter_active_power_control,
+            "huawei_solar_inverter_active_power_control_state": self._hsem_huawei_solar_inverter_active_power_control_state,
+            "energi_data_service_export_entity": self._hsem_energi_data_service_export,
+            "energi_data_service_export_value": self._energi_data_service_export_value,
         }
 
     async def _handle_update(self, event):
@@ -133,7 +133,7 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
             )
             return
 
-        self._hsem_huawei_solar_inverter_active_power_control_current = (
+        self._hsem_huawei_solar_inverter_active_power_control_state = (
             value_hsem_huawei_solar_inverter_active_power_control
         )
 
@@ -153,8 +153,8 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
             return
 
         # Set state to True if the export price is negative, otherwise False
-        self._export_price = input_value
-        self._state = self._export_price > 0
+        self._energi_data_service_export_value = input_value
+        self._state = self._energi_data_service_export_value > 0
 
         # Determine the grid export power percentage based on the state
         power_percentage = 100 if self._state else 0
@@ -167,11 +167,11 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
 
         # Loop through the inverters and update the grid export power percentage
         if (
-            self._hsem_huawei_solar_inverter_active_power_control_current
+            self._hsem_huawei_solar_inverter_active_power_control_state
             == "Limited to 100.0%"
             and power_percentage != 100
         ) or (
-            self._hsem_huawei_solar_inverter_active_power_control_current
+            self._hsem_huawei_solar_inverter_active_power_control_state
             == "Limited to 0.0%"
             and power_percentage != 0
         ):
@@ -204,7 +204,7 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
                 _LOGGER.warning(f"Could not restore state for {self._unique_id}")
                 self._state = None
 
-            self._export_price = old_state.attributes.get("export_price", None)
+            self._energi_data_service_export_value = old_state.attributes.get("energi_data_service_export_value", None)
             self._last_updated = old_state.attributes.get("last_updated", None)
         else:
             _LOGGER.info(

@@ -33,7 +33,7 @@ class ImportSensor(BinarySensorEntity, HSEMEntity):
             hsem_huawei_solar_device_id_batteries
         )
         self._hsem_energi_data_service_import = hsem_energi_data_service_import
-        self._import_price = None
+        self._energi_data_service_import_value = None
         self._state = True
         self._last_updated = None
         self._last_reset = None
@@ -79,11 +79,11 @@ class ImportSensor(BinarySensorEntity, HSEMEntity):
         """Return the state attributes."""
 
         return {
-            "huawei_solar_device_id_batteries_id": self._hsem_huawei_solar_device_id_batteries,
-            "energi_data_service_import_entity_id": self._hsem_energi_data_service_import,
-            "import_price": self._import_price,
             "last_updated": self._last_updated,
             "unique_id": self._unique_id,
+            "huawei_solar_device_id_batteries_id": self._hsem_huawei_solar_device_id_batteries,
+            "energi_data_service_import_entity": self._hsem_energi_data_service_import,
+            "energi_data_service_import_value": self._energi_data_service_import_value,
         }
 
     async def _handle_update(self, event):
@@ -108,8 +108,8 @@ class ImportSensor(BinarySensorEntity, HSEMEntity):
             return
 
         # Set state to True if the import price is negative, otherwise False
-        self._import_price = input_value
-        self._state = self._import_price < 0
+        self._energi_data_service_import_value = input_value
+        self._state = self._energi_data_service_import_value < 0
 
         # Update the last updated timestamp
         self._last_updated = datetime.now().isoformat()
@@ -134,7 +134,7 @@ class ImportSensor(BinarySensorEntity, HSEMEntity):
                 _LOGGER.warning(f"Could not restore state for {self._unique_id}")
                 self._state = None
 
-            self._import_price = old_state.attributes.get("import_price", None)
+            self._energi_data_service_import_value = old_state.attributes.get("energi_data_service_import_value", None)
             self._last_updated = old_state.attributes.get("last_updated", None)
         else:
             _LOGGER.info(

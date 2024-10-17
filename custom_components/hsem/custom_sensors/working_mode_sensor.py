@@ -32,7 +32,7 @@ from ..entity import HSEMEntity
 from ..utils.ha import async_set_select_option
 from ..utils.huawei import async_set_tou_periods
 from ..utils.misc import (
-    async_resolve_entity_id_from_unique_id,
+    async_resolve_entity_from_unique_id,
     convert_to_boolean,
     convert_to_float,
     get_config_value,
@@ -76,17 +76,17 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_huawei_solar_batteries_working_mode = (
             hsem_huawei_solar_batteries_working_mode
         )
-        self._hsem_huawei_solar_batteries_working_mode_current = None
+        self._hsem_huawei_solar_batteries_working_mode_state = None
         self._hsem_huawei_solar_batteries_state_of_capacity = (
             hsem_huawei_solar_batteries_state_of_capacity
         )
-        self._hsem_huawei_solar_batteries_state_of_capacity_current = None
+        self._hsem_huawei_solar_batteries_state_of_capacity_state = None
         self._hsem_ev_charger_status = hsem_ev_charger_status
-        self._hsem_ev_charger_status_current = False
+        self._hsem_ev_charger_status_state = False
         self._hsem_house_consumption_power = hsem_house_consumption_power
-        self._hsem_house_consumption_power_current = 0.0
+        self._hsem_house_consumption_power_state = 0.0
         self._hsem_solar_production_power = hsem_solar_production_power
-        self._hsem_solar_production_power_current = 0.0
+        self._hsem_solar_production_power_state = 0.0
         self._hsem_solcast_pv_forecast_forecast_today = (
             hsem_solcast_pv_forecast_forecast_today
         )
@@ -98,7 +98,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_energi_data_service_import = hsem_energi_data_service_import
         self._hsem_energi_data_service_export = hsem_energi_data_service_export
         self._import_sensor = None
-        self._import_sensor_current = None
+        self._import_sensor_state = None
         self._state = None
         self._last_updated = None
         self._last_reset = None
@@ -197,30 +197,30 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         """Return the state attributes."""
 
         return {
+            "last_updated": self._last_updated,
+            "unique_id": self._unique_id,
             "huawei_solar_device_id_inverter_1_id": self._hsem_huawei_solar_device_id_inverter_1,
             "huawei_solar_device_id_inverter_2_id": self._hsem_huawei_solar_device_id_inverter_2,
             "huawei_solar_device_id_batteries_id": self._hsem_huawei_solar_device_id_batteries,
-            "huawei_solar_batteries_working_mode_entity_id": self._hsem_huawei_solar_batteries_working_mode,
-            "huawei_solar_batteries_working_mode_current": self._hsem_huawei_solar_batteries_working_mode_current,
-            "huawei_solar_batteries_state_of_capacity_entity_id": self._hsem_huawei_solar_batteries_state_of_capacity,
-            "huawei_solar_batteries_state_of_capacity_current": self._hsem_huawei_solar_batteries_state_of_capacity_current,
-            "house_consumption_power_entity_id": self._hsem_house_consumption_power,
-            "house_consumption_power_current": self._hsem_house_consumption_power_current,
-            "solar_production_power_entity_id": self._hsem_solar_production_power,
-            "solar_production_power_current": self._hsem_solar_production_power_current,
+            "huawei_solar_batteries_working_mode_entity": self._hsem_huawei_solar_batteries_working_mode,
+            "huawei_solar_batteries_working_mode_state": self._hsem_huawei_solar_batteries_working_mode_state,
+            "huawei_solar_batteries_state_of_capacity_entity": self._hsem_huawei_solar_batteries_state_of_capacity,
+            "huawei_solar_batteries_state_of_capacity_state": self._hsem_huawei_solar_batteries_state_of_capacity_state,
+            "house_consumption_power_entity": self._hsem_house_consumption_power,
+            "house_consumption_power_state": self._hsem_house_consumption_power_state,
+            "solar_production_power_entity": self._hsem_solar_production_power,
+            "solar_production_power_state": self._hsem_solar_production_power_state,
             "net_consumption": self._hsem_net_consumption,
-            "energi_data_service_import_entity_id": self._hsem_energi_data_service_import,
+            "energi_data_service_import_entity": self._hsem_energi_data_service_import,
             "battery_max_capacity": self._hsem_battery_max_capacity,
             "battery_remaining_charge": self._hsem_battery_remaining_charge,
             "battery_maximum_charging_power": self._hsem_battery_maximum_charging_power,
             "battery_conversion_loss": self._hsem_battery_conversion_loss,
-            "ev_charger_status_entity_id": self._hsem_ev_charger_status,
-            "ev_charger_status_current": self._hsem_ev_charger_status_current,
-            "solcast_pv_forecast_forecast_today_entity_id": self._hsem_solcast_pv_forecast_forecast_today,
-            "import_sensor_entity_id": self._import_sensor,
-            "import_sensor_current": self._import_sensor_current,
-            "last_updated": self._last_updated,
-            "unique_id": self._unique_id,
+            "ev_charger_status_entity": self._hsem_ev_charger_status,
+            "ev_charger_status_state": self._hsem_ev_charger_status_state,
+            "solcast_pv_forecast_forecast_today_entity": self._hsem_solcast_pv_forecast_forecast_today,
+            "import_sensor_entity": self._import_sensor,
+            "import_sensor_state": self._import_sensor_state,
             "hourly_calculations": self._hourly_calculations,
         }
 
@@ -231,7 +231,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         self._update_settings()
 
         # Fetch the import sensor from the unique id of it.
-        self._import_sensor = await async_resolve_entity_id_from_unique_id(
+        self._import_sensor = await async_resolve_entity_from_unique_id(
             self, f"{DOMAIN}_import_sensor", "binary_sensor"
         )
 
@@ -239,7 +239,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         if self._import_sensor:
             state = self.hass.states.get(self._import_sensor)
             if state:
-                self._import_sensor_current = convert_to_boolean(state.state)
+                self._import_sensor_state = convert_to_boolean(state.state)
             else:
                 _LOGGER.warning(f"Import sensor {self._import_sensor} not found.")
         state = None
@@ -248,7 +248,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         if self._hsem_ev_charger_status:
             state = self.hass.states.get(self._hsem_ev_charger_status)
             if state:
-                self._hsem_ev_charger_status_current = convert_to_boolean(state.state)
+                self._hsem_ev_charger_status_state = convert_to_boolean(state.state)
             else:
                 _LOGGER.warning(
                     f"EV charger status sensor {self._hsem_ev_charger_status} not found."
@@ -259,7 +259,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         if self._hsem_house_consumption_power:
             state = self.hass.states.get(self._hsem_house_consumption_power)
             if state:
-                self._hsem_house_consumption_power_current = round(
+                self._hsem_house_consumption_power_state = round(
                     convert_to_float(state.state), 2
                 )
             else:
@@ -272,7 +272,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         if self._hsem_solar_production_power:
             state = self.hass.states.get(self._hsem_solar_production_power)
             if state:
-                self._hsem_solar_production_power_current = round(
+                self._hsem_solar_production_power_state = round(
                     convert_to_float(state.state), 2
                 )
             else:
@@ -322,17 +322,17 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             return
 
         # Set current values from input sensors
-        self._hsem_huawei_solar_batteries_working_mode_current = (
+        self._hsem_huawei_solar_batteries_working_mode_state = (
             value_hsem_huawei_solar_batteries_working_mode
         )
-        self._hsem_huawei_solar_batteries_state_of_capacity_current = round(
+        self._hsem_huawei_solar_batteries_state_of_capacity_state = round(
             convert_to_float(value_hsem_huawei_solar_batteries_state_of_capacity), 0
         )
 
         # Calculate the net consumption
         self._hsem_net_consumption = (
-            self._hsem_solar_production_power_current
-            - self._hsem_house_consumption_power_current
+            self._hsem_solar_production_power_state
+            - self._hsem_house_consumption_power_state
         )
 
         # Calculate the remaining battery capacity
@@ -341,7 +341,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                 (
                     100
                     - convert_to_float(
-                        self._hsem_huawei_solar_batteries_state_of_capacity_current
+                        self._hsem_huawei_solar_batteries_state_of_capacity_state
                     )
                 )
                 / 100
@@ -383,14 +383,14 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         current_hour = datetime.now().hour
 
         # Determine the appropriate TOU modes and working mode state. In priority order:
-        if self._import_sensor_current:
+        if self._import_sensor_state:
             tou_modes = DEFAULT_HSEM_IMPORT_SENSOR_TOU_MODES
             working_mode = WorkingModes.TimeOfUse.value
             _LOGGER.warning(
                 f"Import sensor is active. Setting TOU Periods: {tou_modes} and Working Mode: {working_mode}"
             )
 
-        elif self._hsem_ev_charger_status_current:
+        elif self._hsem_ev_charger_status_state:
             tou_modes = DEFAULT_HSEM_EV_CHARGER_TOU_MODES
             working_mode = WorkingModes.TimeOfUse.value
             _LOGGER.warning(
@@ -399,7 +399,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         elif self._hsem_net_consumption > 0:
             working_mode = WorkingModes.MaximizeSelfConsumption.value
             _LOGGER.warning(
-                f"Positive net consumption. Working Mode: {working_mode}, Solar Production: {self._hsem_solar_production_power_current}, House Consumption: {self._hsem_house_consumption_power_current}, Net Consumption: {self._hsem_net_consumption}"
+                f"Positive net consumption. Working Mode: {working_mode}, Solar Production: {self._hsem_solar_production_power_state}, House Consumption: {self._hsem_house_consumption_power_state}, Net Consumption: {self._hsem_net_consumption}"
             )
         else:
             # Winter/Spring settings
@@ -424,7 +424,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             )
 
         # Apply working mode if it has changed
-        if self._hsem_huawei_solar_batteries_working_mode_current != working_mode:
+        if self._hsem_huawei_solar_batteries_working_mode_state != working_mode:
             await async_set_select_option(
                 self, self._hsem_huawei_solar_batteries_working_mode, working_mode
             )
@@ -445,13 +445,13 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             unique_id_14d = f"{DOMAIN}_house_consumption_energy_avg_{hour_start:02d}_{hour_end:02d}_14d"
 
             # Resolve entity_ids for 3d, 7d, and 14d sensors
-            entity_id_3d = await async_resolve_entity_id_from_unique_id(
+            entity_id_3d = await async_resolve_entity_from_unique_id(
                 self, unique_id_3d
             )
-            entity_id_7d = await async_resolve_entity_id_from_unique_id(
+            entity_id_7d = await async_resolve_entity_from_unique_id(
                 self, unique_id_7d
             )
-            entity_id_14d = await async_resolve_entity_id_from_unique_id(
+            entity_id_14d = await async_resolve_entity_from_unique_id(
                 self, unique_id_14d
             )
 
