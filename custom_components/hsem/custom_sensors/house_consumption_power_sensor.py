@@ -20,9 +20,9 @@ class HouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
     def __init__(self, config_entry, hour_start, hour_end):
         super().__init__(config_entry)
         self._hsem_house_consumption_power = None
-        self._hsem_house_consumption_power_state = 0-0
+        self._hsem_house_consumption_power_state = 0.0
         self._hsem_ev_charger_power = None
-        self._hsem_ev_charger_power_state = 0-0
+        self._hsem_ev_charger_power_state = 0.0
         self._hsem_house_power_includes_ev_charger_power = None
         self._hsem_house_power_includes_ev_charger_power_state = DEFAULT_HSEM_HOUSE_POWER_INCLUDES_EV_CHARGER_POWER
         self._hour_start = hour_start
@@ -72,8 +72,7 @@ class HouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
             "house_consumption_power_state": self._hsem_house_consumption_power_state,
             "ev_charger_power_entity": self._hsem_ev_charger_power,
             "ev_charger_power_state": self._hsem_ev_charger_power_state,
-            "house_power_includes_ev_charger_power_entity": self._hsem_house_power_includes_ev_charger_power,
-            "house_power_includes_ev_charger_power_state": self._hsem_house_power_includes_ev_charger_power_state,
+            "house_power_includes_ev_charger_power": self._hsem_house_power_includes_ev_charger_power,
             "hour_start": self._hour_start,
             "hour_end": self._hour_end,
             "last_updated": self._last_updated,
@@ -148,29 +147,19 @@ class HouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
                 )
         state = None
 
-        if self._hsem_house_power_includes_ev_charger_power:
-            state = self.hass.states.get(self._hsem_house_power_includes_ev_charger_power)
-            if state:
-                self._hsem_house_power_includes_ev_charger_power_state = convert_to_boolean(state.state)
-            else:
-                _LOGGER.warning(
-                    f"Sensor {self._hsem_house_power_includes_ev_charger_power} not found."
-                )
-        state = None
-
-        current_hour = now.hour
-
-        if current_hour == self._hour_start:
-            if self._hsem_house_power_includes_ev_charger_power_state:
+        if now.hour == self._hour_start:
+            if self._hsem_house_power_includes_ev_charger_power:
                 self._state = float(self._hsem_house_consumption_power_state - self._hsem_ev_charger_power_state)
             else:
                 self._state = float(self._hsem_house_consumption_power_state)
 
+        _LOGGER.debug(f"Updated state for {self._unique_id}: {self._state}")
 
-            self._last_updated = now.isoformat()
+        # Update last update time
+        self._last_updated = now.isoformat()
 
-            _LOGGER.debug(f"Updated state for {self._unique_id}: {self._state}")
-            self.async_write_ha_state()
+        # Trigger an update in Home Assistant
+        self.async_write_ha_state()
 
     async def async_update(self):
         """Manually trigger the sensor update."""
