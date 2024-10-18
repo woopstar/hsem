@@ -48,7 +48,7 @@ class HouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
 
     @property
     def name(self):
-        return f"House Consumption {self._hour_start:02d}-{self._hour_end:02d} Power"
+        return f"House Consumption {self._hour_start:02d}-{self._hour_end:02d} Hourly Power"
 
     @property
     def unit_of_measurement(self):
