@@ -842,6 +842,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
     async def async_added_to_hass(self):
         """Handle the sensor being added to Home Assistant."""
+        await super().async_added_to_hass()
 
         # Restore the previous state if available
         old_state = await self.async_get_last_state()

@@ -20,8 +20,11 @@ class HouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
     def __init__(self, config_entry, hour_start, hour_end):
         super().__init__(config_entry)
         self._hsem_house_consumption_power = None
+        self._hsem_house_consumption_power_state = 0-0
         self._hsem_ev_charger_power = None
+        self._hsem_ev_charger_power_state = 0-0
         self._hsem_house_power_includes_ev_charger_power = None
+        self._hsem_house_power_includes_ev_charger_power_state = DEFAULT_HSEM_HOUSE_POWER_INCLUDES_EV_CHARGER_POWER
         self._hour_start = hour_start
         self._hour_end = hour_end
         self._unique_id = (
@@ -118,33 +121,48 @@ class HouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
         """Handle updates to the source sensor."""
         now = datetime.now()
 
+        if self._hsem_house_consumption_power:
+            state = self.hass.states.get(self._hsem_house_consumption_power)
+            if state:
+                self._hsem_house_consumption_power_state = round(
+                    convert_to_float(state.state), 2
+                )
+            else:
+                _LOGGER.warning(
+                    f"Sensor {self._hsem_house_consumption_power} not found."
+                )
+        state = None
+
+        if self._hsem_ev_charger_power:
+            state = self.hass.states.get(self._hsem_ev_charger_power)
+            if state:
+                self._hsem_ev_charger_power_state = round(
+                    convert_to_float(state.state), 2
+                )
+            else:
+                _LOGGER.warning(
+                    f"Sensor {self._hsem_ev_charger_power} not found."
+                )
+        state = None
+
+        if self._hsem_house_power_includes_ev_charger_power:
+            state = self.hass.states.get(self._hsem_house_power_includes_ev_charger_power)
+            if state:
+                self._hsem_house_power_includes_ev_charger_power_state = convert_to_boolean(state.state)
+            else:
+                _LOGGER.warning(
+                    f"Sensor {self._hsem_house_power_includes_ev_charger_power} not found."
+                )
+        state = None
+
         current_hour = now.hour
 
         if current_hour == self._hour_start:
-            hsem_house_consumption_power = self.hass.states.get(self._hsem_house_consumption_power)
-            hsem_ev_charger_power = self.hass.states.get(self._hsem_ev_charger_power)
-            hsem_house_power_includes_ev_charger_power = self.hass.states.get(self._hsem_house_power_includes_ev_charger_power)
+            if self._hsem_house_power_includes_ev_charger_power_state:
+                self._state = float(self._hsem_house_consumption_power_state - self._hsem_ev_charger_power_state)
+            else:
+                self._state = float(self._hsem_house_consumption_power_state)
 
-            if hsem_house_consumption_power and hsem_house_consumption_power.state:
-                try:
-                    hsem_house_consumption_power_state = convert_to_float(hsem_house_consumption_power.state)
-
-                    if hsem_house_power_includes_ev_charger_power:
-                        hsem_house_power_includes_ev_charger_power_state = convert_to_boolean(hsem_house_power_includes_ev_charger_power.state)
-                    else:
-                        hsem_house_power_includes_ev_charger_power_state = DEFAULT_HSEM_HOUSE_POWER_INCLUDES_EV_CHARGER_POWER
-
-                    if hsem_ev_charger_power:
-                        hsem_ev_charger_power_state = convert_to_float(hsem_ev_charger_power.state)
-                    else:
-                        hsem_ev_charger_power_state = 0
-
-                    if hsem_house_power_includes_ev_charger_power_state:
-                        self._state = float(hsem_house_consumption_power_state - hsem_ev_charger_power_state)
-                    else:
-                        self._state = float(hsem_house_consumption_power_state)
-                except ValueError:
-                    self._state = 0.0
 
             self._last_updated = now.isoformat()
 

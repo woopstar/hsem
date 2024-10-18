@@ -115,6 +115,8 @@ class HouseConsumptionEnergyAverageSensor(SensorEntity, HSEMEntity):
         self.async_write_ha_state()
 
     async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+
         old_state = await self.async_get_last_state()
         if old_state is not None:
             try:
