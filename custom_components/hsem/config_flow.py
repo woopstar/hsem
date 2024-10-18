@@ -20,6 +20,8 @@ from .const import (
     DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TOMORROW,
     DEFAULT_HSEM_HOUSE_POWER_INCLUDES_EV_CHARGER_POWER,
     DEFAULT_HSEM_EV_CHARGER_POWER,
+    DEFAULT_HSEM_BATTERY_CONVERSION_LOSS,
+    DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_MAXIMUM_CHARGING_POWER,
     DOMAIN,
     NAME,
 )
@@ -122,8 +124,14 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._errors["hsem_huawei_solar_inverter_active_power_control"] = (
                     "required"
                 )
+            elif not user_input.get("hsem_huawei_solar_batteries_maximum_charging_power"):
+                self._errors["hsem_huawei_solar_batteries_maximum_charging_power"] = (
+                    "required"
+                )
             elif not user_input.get("hsem_battery_max_capacity"):
                 self._errors["hsem_battery_max_capacity"] = "required"
+            elif not user_input.get("hsem_battery_conversion_loss"):
+                self._errors["hsem_battery_conversion_loss"] = "required"
             else:
                 # Combine user inputs and create the entry
                 final_data = {**self._user_input, **user_input}
@@ -168,6 +176,10 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     default=DEFAULT_HSEM_HUAWEI_SOLAR_INVERTER_ACTIVE_POWER_CONTROL,
                 ): selector({"entity": {"domain": "sensor"}}),
                 vol.Required(
+                    "hsem_huawei_solar_batteries_maximum_charging_power",
+                    default=DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_MAXIMUM_CHARGING_POWER,
+                ): selector({"entity": {"domain": "sensor"}}),
+                vol.Required(
                     "hsem_battery_max_capacity",
                     default=DEFAULT_HSEM_BATTERY_MAX_CAPACITY,
                 ): selector(
@@ -177,6 +189,20 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             "max": 42,
                             "step": 1,
                             "unit_of_measurement": "kWh",
+                            "mode": "slider",
+                        }
+                    }
+                ),
+                vol.Required(
+                    "hsem_battery_conversion_loss",
+                    default=DEFAULT_HSEM_BATTERY_CONVERSION_LOSS,
+                ): selector(
+                    {
+                        "number": {
+                            "min": 0,
+                            "max": 50,
+                            "step": 1,
+                            "unit_of_measurement": "%",
                             "mode": "slider",
                         }
                     }
@@ -431,8 +457,18 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
                 self._errors["hsem_huawei_solar_inverter_active_power_control"] = (
                     "required"
                 )
+            elif not user_input.get("hsem_huawei_solar_inverter_active_power_control"):
+                self._errors["hsem_huawei_solar_inverter_active_power_control"] = (
+                    "required"
+                )
+            elif not user_input.get("hsem_huawei_solar_batteries_maximum_charging_power"):
+                self._errors["hsem_huawei_solar_batteries_maximum_charging_power"] = (
+                    "required"
+                )
             elif not user_input.get("hsem_battery_max_capacity"):
                 self._errors["hsem_battery_max_capacity"] = "required"
+            elif not user_input.get("hsem_battery_conversion_loss"):
+                self._errors["hsem_battery_conversion_loss"] = "required"
             else:
                 # Combine user inputs and create the entry
                 final_data = {**self._user_input, **user_input}
@@ -485,6 +521,13 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
                     ),
                 ): selector({"entity": {"domain": "sensor"}}),
                 vol.Required(
+                    "hsem_huawei_solar_batteries_maximum_charging_power",
+                    default=self.config_entry.options.get(
+                        "hsem_huawei_solar_batteries_maximum_charging_power",
+                        DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_MAXIMUM_CHARGING_POWER,
+                    ),
+                ): selector({"entity": {"domain": "sensor"}}),
+                vol.Required(
                     "hsem_battery_max_capacity",
                     default=self.config_entry.options.get(
                         "hsem_battery_max_capacity",
@@ -497,6 +540,23 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
                             "max": 42,
                             "step": 1,
                             "unit_of_measurement": "kWh",
+                            "mode": "slider",
+                        }
+                    }
+                ),
+                vol.Required(
+                    "hsem_battery_conversion_loss",
+                    default=self.config_entry.options.get(
+                        "hsem_battery_conversion_loss",
+                        DEFAULT_HSEM_BATTERY_CONVERSION_LOSS,
+                    ),
+                ): selector(
+                    {
+                        "number": {
+                            "min": 0,
+                            "max": 50,
+                            "step": 1,
+                            "unit_of_measurement": "%",
                             "mode": "slider",
                         }
                     }

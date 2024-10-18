@@ -41,6 +41,8 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
         config_entry, "hsem_solcast_pv_forecast_forecast_today"
     )
     hsem_ev_charger_status = get_config_value(config_entry, "hsem_ev_charger_status")
+    hsem_ev_charger_power = get_config_value(config_entry, "hsem_ev_charger_power")
+
     hsem_battery_max_capacity = get_config_value(
         config_entry, "hsem_battery_max_capacity"
     )
@@ -52,6 +54,18 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     )
     hsem_huawei_solar_inverter_active_power_control = get_config_value(
         config_entry, "hsem_huawei_solar_inverter_active_power_control"
+    )
+    hsem_huawei_solar_batteries_maximum_charging_power = get_config_value(
+        config_entry, "hsem_huawei_solar_batteries_maximum_charging_power"
+    )
+    hsem_battery_conversion_loss = get_config_value(
+        config_entry, "hsem_battery_conversion_loss"
+    )
+    hsem_house_power_includes_ev_charger_power = get_config_value(
+        config_entry, "hsem_house_power_includes_ev_charger_power"
+    )
+    hsem_morning_energy_need = get_config_value(
+        config_entry, "hsem_morning_energy_need"
     )
 
     # Create the export from the input from hsem_energi_data_service_export
@@ -76,6 +90,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     working_mode_sensor.set_hsem_house_consumption_power(hsem_house_consumption_power)
     working_mode_sensor.set_hsem_solar_production_power(hsem_solar_production_power)
     working_mode_sensor.set_hsem_ev_charger_status(hsem_ev_charger_status)
+    working_mode_sensor.set_hsem_ev_charger_power(hsem_ev_charger_power)
     working_mode_sensor.set_hsem_solcast_pv_forecast_forecast_today(
         hsem_solcast_pv_forecast_forecast_today
     )
@@ -89,6 +104,14 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     working_mode_sensor.set_hsem_huawei_solar_inverter_active_power_control(
         hsem_huawei_solar_inverter_active_power_control
     )
+    working_mode_sensor.set_hsem_huawei_solar_batteries_maximum_charging_power(
+        hsem_huawei_solar_batteries_maximum_charging_power
+    )
+    working_mode_sensor.set_hsem_battery_conversion_loss(hsem_battery_conversion_loss)
+    working_mode_sensor.set_hsem_house_power_includes_ev_charger_power(
+        hsem_house_power_includes_ev_charger_power
+    )
+
 
     # Wait for power, energy and energy average sensors to be set up
     power_sensors = await async_setup_power_sensors(

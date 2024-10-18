@@ -54,6 +54,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_house_consumption_power = None
         self._hsem_solar_production_power = None
         self._hsem_ev_charger_status = None
+        self._hsem_ev_charger_power = None
         self._hsem_solcast_pv_forecast_forecast_today = None
         self._hsem_battery_max_capacity = None
         self._hsem_energi_data_service_import = None
@@ -61,16 +62,20 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_huawei_solar_inverter_active_power_control = None
         self._hsem_huawei_solar_batteries_working_mode_state = None
         self._hsem_huawei_solar_batteries_state_of_capacity_state = None
+        self._hsem_house_power_includes_ev_charger_power = None
         self._hsem_ev_charger_status_state = False
+        self._hsem_ev_charger_power_state = False
         self._hsem_house_consumption_power_state = 0.0
         self._hsem_solar_production_power_state = 0.0
         self._hsem_huawei_solar_inverter_active_power_control_state = None
         self._hsem_net_consumption = 0.0
-        self._hsem_battery_maximum_charging_power = 5000
-        self._hsem_battery_conversion_loss = 20
+        self._hsem_huawei_solar_batteries_maximum_charging_power = None
+        self._hsem_huawei_solar_batteries_maximum_charging_power_state = None
+        self._hsem_battery_conversion_loss = None
         self._hsem_battery_remaining_charge = 0.0
         self._hsem_energi_data_service_import_state = 0.0
         self._hsem_energi_data_service_export_state = 0.0
+        self._hsem_morning_energy_need = 0.0
         self._last_changed_mode = None
         self._last_updated = None
 
@@ -112,6 +117,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
     def set_hsem_ev_charger_status(self, value):
         self._hsem_ev_charger_status = value
 
+    def set_hsem_ev_charger_power(self, value):
+        self._hsem_ev_charger_power = value
+
     def set_hsem_solcast_pv_forecast_forecast_today(self, value):
         self._hsem_solcast_pv_forecast_forecast_today = value
 
@@ -126,6 +134,21 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
     def set_hsem_huawei_solar_inverter_active_power_control(self, value):
         self._hsem_huawei_solar_inverter_active_power_control = value
+
+    def set_hsem_huawei_solar_batteries_working_mode_state(self, value):
+        self._hsem_huawei_solar_batteries_working_mode_state = value
+
+    def set_hsem_battery_conversion_loss(self, value):
+        self._hsem_battery_conversion_loss = value
+
+    def set_hsem_house_power_includes_ev_charger_power(self, value):
+        self._hsem_house_power_includes_ev_charger_power = value
+
+    def set_hsem_huawei_solar_batteries_maximum_charging_power(self, value):
+        self._hsem_huawei_solar_batteries_maximum_charging_power = value
+
+    def set_hsem_morning_energy_need(self, value):
+        self._hsem_morning_energy_need = value
 
     def _update_settings(self):
         """Fetch updated settings from config_entry options."""
@@ -200,6 +223,36 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                 "hsem_huawei_solar_inverter_active_power_control",
             )
         )
+        self.hsem_house_power_includes_ev_charger_power(
+            get_config_value(
+                self._config_entry,
+                "hsem_house_power_includes_ev_charger_power",
+            )
+        )
+        self.set_hsem_ev_charger_power(
+            get_config_value(
+                self._config_entry,
+                "hsem_ev_charger_power",
+            )
+        )
+        self.set_hsem_battery_conversion_loss(
+            get_config_value(
+                self._config_entry,
+                "hsem_battery_conversion_loss",
+            )
+        )
+        self.set_hsem_huawei_solar_batteries_maximum_charging_power(
+            get_config_value(
+                self._config_entry,
+                "hsem_huawei_solar_batteries_maximum_charging_power",
+            )
+        )
+        self.set_hsem_morning_energy_need(
+            get_config_value(
+                self._config_entry,
+                "hsem_morning_energy_need",
+            )
+        )
 
         if self._hsem_huawei_solar_device_id_inverter_2 is not None:
             if len(self._hsem_huawei_solar_device_id_inverter_2) == 0:
@@ -250,10 +303,15 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             "energi_data_service_export_value": self._hsem_energi_data_service_export_state,
             "battery_max_capacity": self._hsem_battery_max_capacity,
             "battery_remaining_charge": self._hsem_battery_remaining_charge,
-            "battery_maximum_charging_power": self._hsem_battery_maximum_charging_power,
+            "battery_maximum_charging_power_entity": self._hsem_huawei_solar_batteries_maximum_charging_power,
+            "battery_maximum_charging_power_state": self._hsem_huawei_solar_batteries_maximum_charging_power_state,
             "battery_conversion_loss": self._hsem_battery_conversion_loss,
             "ev_charger_status_entity": self._hsem_ev_charger_status,
             "ev_charger_status_state": self._hsem_ev_charger_status_state,
+            "ev_charger_power_entity": self._hsem_ev_charger_power,
+            "ev_charger_power_state": self._hsem_ev_charger_power_state,
+            "house_power_includes_ev_charger_power": self._hsem_house_power_includes_ev_charger_power,
+            "morning_energy_need": self._hsem_morning_energy_need,
             "solcast_pv_forecast_forecast_today_entity": self._hsem_solcast_pv_forecast_forecast_today,
             "hourly_calculations": self._hourly_calculations,
         }
@@ -368,6 +426,36 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             else:
                 _LOGGER.warning(
                     f"Sensor {self._hsem_huawei_solar_inverter_active_power_control} not found."
+                )
+        state = None
+
+        # Fetch the current value from the battery maximum charging power sensor
+        if self._hsem_huawei_solar_batteries_maximum_charging_power:
+            state = self.hass.states.get(
+                self._hsem_huawei_solar_batteries_maximum_charging_power
+            )
+            if state:
+                self._hsem_huawei_solar_batteries_maximum_charging_power_state = round(convert_to_float(
+                    state.state
+                ), 0)
+            else:
+                _LOGGER.warning(
+                    f"Sensor {self._hsem_huawei_solar_batteries_maximum_charging_power} not found."
+                )
+        state = None
+
+        # Fetch the current value from the battery maximum charging power sensor
+        if self._hsem_ev_charger_power:
+            state = self.hass.states.get(
+                self._hsem_ev_charger_power
+            )
+            if state:
+                self._hsem_ev_charger_power_state = round(convert_to_float(
+                    state.state
+                ), 2)
+            else:
+                _LOGGER.warning(
+                    f"Sensor {self._hsem_ev_charger_power} not found."
                 )
         state = None
 
@@ -714,6 +802,18 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         remaining_charge = self._hsem_battery_remaining_charge
         changed = False
 
+        if self._hsem_battery_max_capacity is None:
+            _LOGGER.warning("Battery max capacity is not set.")
+            return
+
+        if self._hsem_huawei_solar_batteries_maximum_charging_power_state is None:
+            _LOGGER.warning("Battery maximum charging power is not set.")
+            return
+
+        if self._hsem_battery_conversion_loss is None:
+            _LOGGER.warning("Battery conversion loss is not set.")
+            return
+
         for hour, data in self._hourly_calculations.items():
             import_price = data["import_price"]
             export_price = data["export_price"]
@@ -748,7 +848,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                 ):
                     data["recommendation"] = "Time of Use: Charge"
                     charge_amount = min(
-                        self._hsem_battery_maximum_charging_power / 1000,
+                        self._hsem_huawei_solar_batteries_maximum_charging_power_state / 1000,
                         self._hsem_battery_max_capacity - remaining_charge,
                     )
                     remaining_charge += charge_amount * (
@@ -760,7 +860,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             elif 17 <= start_hour < 21 and remaining_charge > 0:
                 data["recommendation"] = "Time of Use: Discharge"
                 discharge_amount = min(
-                    self._hsem_battery_maximum_charging_power / 1000, remaining_charge
+                    self._hsem_huawei_solar_batteries_maximum_charging_power_state / 1000, remaining_charge
                 )
                 remaining_charge -= discharge_amount
                 changed = True
@@ -921,6 +1021,26 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             async_track_state_change_event(
                 self.hass,
                 [self._hsem_huawei_solar_inverter_active_power_control],
+                self._handle_update,
+            )
+
+        if self._hsem_ev_charger_power:
+            _LOGGER.info(
+                f"Starting to track state changes for entity_id {self._hsem_ev_charger_power}"
+            )
+            async_track_state_change_event(
+                self.hass,
+                [self._hsem_ev_charger_power],
+                self._handle_update,
+            )
+
+        if self._hsem_huawei_solar_batteries_maximum_charging_power:
+            _LOGGER.info(
+                f"Starting to track state changes for entity_id {self._hsem_huawei_solar_batteries_maximum_charging_power}"
+            )
+            async_track_state_change_event(
+                self.hass,
+                [self._hsem_huawei_solar_batteries_maximum_charging_power],
                 self._handle_update,
             )
 

@@ -26,7 +26,9 @@
           "hsem_huawei_solar_batteries_working_mode": "Huawei Solar Batteries Working Mode Sensor",
           "hsem_huawei_solar_batteries_state_of_capacity": "Huawei Batteries State of Capacity Sensor",
           "hsem_huawei_solar_inverter_active_power_control": "Huawei Inverter Active Power Control Sensor",
-          "hsem_battery_max_capacity": "Battery Max Capacity (kWh)"
+          "hsem_huawei_solar_batteries_maximum_charging_power": "Huawei Batteries Maximum Charging Power (kW)",
+          "hsem_battery_max_capacity": "Battery Max Capacity (kWh)",
+          "hsem_battery_conversion_loss": "Battery Conversion Loss (%)"
         }
       },
       "power": {
@@ -89,7 +91,9 @@
           "hsem_huawei_solar_batteries_working_mode": "Huawei Solar Batteries Working Mode Sensor",
           "hsem_huawei_solar_batteries_state_of_capacity": "Huawei Batteries State of Capacity Sensor",
           "hsem_huawei_solar_inverter_active_power_control": "Huawei Inverter Active Power Control Sensor",
-          "hsem_battery_max_capacity": "Battery Max Capacity (kWh)"
+          "hsem_huawei_solar_batteries_maximum_charging_power": "Huawei Batteries Maximum Charging Power (kW)",
+          "hsem_battery_max_capacity": "Battery Max Capacity (kWh)",
+          "hsem_battery_conversion_loss": "Battery Conversion Loss (%)"
         }
       },
       "power": {
