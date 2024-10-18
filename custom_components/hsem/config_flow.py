@@ -632,14 +632,14 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
                 vol.Optional(
                     "hsem_ev_charger_power",
                     default=self.config_entry.options.get(
-                        "hsem_ev_charger_status",
+                        "hsem_ev_charger_power",
                         DEFAULT_HSEM_EV_CHARGER_POWER,
                     ),
                 ): selector({"entity": {"domain": "sensor"}}),
                 vol.Optional(
                     "hsem_house_power_includes_ev_charger_power",
                     default=self.config_entry.options.get(
-                        "hsem_ev_charger_status",
+                        "hsem_house_power_includes_ev_charger_power",
                         DEFAULT_HSEM_HOUSE_POWER_INCLUDES_EV_CHARGER_POWER,
                     ),
                 ): selector({"boolean": {}}),
