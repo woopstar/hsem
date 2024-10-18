@@ -998,16 +998,6 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                 self._handle_update,
             )
 
-        if self._hsem_battery_max_capacity:
-            _LOGGER.info(
-                f"Starting to track state changes for entity_id {self._hsem_battery_max_capacity}"
-            )
-            async_track_state_change_event(
-                self.hass,
-                [self._hsem_battery_max_capacity],
-                self._handle_update,
-            )
-
         if self._hsem_energi_data_service_import:
             _LOGGER.info(
                 f"Starting to track state changes for entity_id {self._hsem_energi_data_service_import}"
