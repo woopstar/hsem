@@ -100,8 +100,8 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         self._import_sensor = None
         self._import_sensor_state = None
         self._state = None
+        self._last_changed_working_mode = None
         self._last_updated = None
-        self._last_reset = None
         self._config_entry = config_entry
         self._hourly_calculations = {
             f"{hour:02d}-{(hour + 1) % 24:02d}": {
@@ -198,6 +198,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
         return {
             "last_updated": self._last_updated,
+            "last_changed_working_mode": self._last_changed_working_mode,
             "unique_id": self._unique_id,
             "huawei_solar_device_id_inverter_1_id": self._hsem_huawei_solar_device_id_inverter_1,
             "huawei_solar_device_id_inverter_2_id": self._hsem_huawei_solar_device_id_inverter_2,
@@ -226,6 +227,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
     async def _handle_update(self, event):
         """Handle the sensor state update (for both manual and state change)."""
+
+        # Get the current time
+        now = datetime.now()
 
         # Ensure settings are reloaded if config is changed.
         self._update_settings()
@@ -281,53 +285,28 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                 )
         state = None
 
-        # Fetch the current value from the input sensors
-        input_hsem_huawei_solar_batteries_working_mode = self.hass.states.get(
-            self._hsem_huawei_solar_batteries_working_mode
-        )
-        input_hsem_huawei_solar_batteries_state_of_capacity = self.hass.states.get(
-            self._hsem_huawei_solar_batteries_state_of_capacity
-        )
+        # Fetch the current value from the solar production power sensor
+        if self._hsem_huawei_solar_batteries_working_mode:
+            state = self.hass.states.get(self._hsem_huawei_solar_batteries_working_mode)
+            if state:
+                self._hsem_huawei_solar_batteries_working_mode_state = state.state
+            else:
+                _LOGGER.warning(
+                    f"Sensor {self._hsem_huawei_solar_batteries_working_mode} not found."
+                )
+        state = None
 
-        if input_hsem_huawei_solar_batteries_working_mode is None:
-            _LOGGER.warning(
-                f"Sensor {self._hsem_huawei_solar_batteries_working_mode} not found."
-            )
-            return
-
-        if input_hsem_huawei_solar_batteries_state_of_capacity is None:
-            _LOGGER.warning(
-                f"Sensor {self._hsem_huawei_solar_batteries_state_of_capacity} not found."
-            )
-            return
-
-        try:
-            value_hsem_huawei_solar_batteries_working_mode = (
-                input_hsem_huawei_solar_batteries_working_mode.state
-            )
-        except ValueError:
-            _LOGGER.warning(
-                f"Invalid value from {self._hsem_huawei_solar_batteries_working_mode}: {input_hsem_huawei_solar_batteries_working_mode.state}"
-            )
-            return
-
-        try:
-            value_hsem_huawei_solar_batteries_state_of_capacity = (
-                input_hsem_huawei_solar_batteries_state_of_capacity.state
-            )
-        except ValueError:
-            _LOGGER.warning(
-                f"Invalid value from {self._hsem_huawei_solar_batteries_state_of_capacity}: {input_hsem_huawei_solar_batteries_state_of_capacity.state}"
-            )
-            return
-
-        # Set current values from input sensors
-        self._hsem_huawei_solar_batteries_working_mode_state = (
-            value_hsem_huawei_solar_batteries_working_mode
-        )
-        self._hsem_huawei_solar_batteries_state_of_capacity_state = round(
-            convert_to_float(value_hsem_huawei_solar_batteries_state_of_capacity), 0
-        )
+        # Fetch the current value from the solar production power sensor
+        if self._hsem_huawei_solar_batteries_state_of_capacity:
+            state = self.hass.states.get(self._hsem_huawei_solar_batteries_state_of_capacity)
+            if state:
+                self._hsem_huawei_solar_batteries_state_of_capacity_state = round(convert_to_float(state.state),0)
+                )
+            else:
+                _LOGGER.warning(
+                    f"Sensor {self._hsem_huawei_solar_batteries_state_of_capacity} not found."
+                )
+        state = None
 
         # Calculate the net consumption
         self._hsem_net_consumption = (
@@ -368,8 +347,18 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         # calculate the optimization strategy
         await self.async_optimization_strategy()
 
+        # Calculate the update interval to be used
+        if self._last_changed_working_mode is not None:
+            last_changed_working_mode_seconds = (
+                now - datetime.fromisoformat(self._last_changed_working_mode)
+            ).total_seconds()
+        else:
+            last_changed_working_mode_seconds = 0
+
         # Set the working mode
-        await self.async_set_working_mode()
+        if last_changed_working_mode_seconds > 300:
+            await self.async_set_working_mode()
+            self._last_changed_working_mode = datetime.now().isoformat()
 
         # Update last update time
         self._last_updated = datetime.now().isoformat()
@@ -386,19 +375,19 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         if self._import_sensor_state:
             tou_modes = DEFAULT_HSEM_IMPORT_SENSOR_TOU_MODES
             working_mode = WorkingModes.TimeOfUse.value
-            _LOGGER.warning(
+            _LOGGER.debug(
                 f"Import sensor is active. Setting TOU Periods: {tou_modes} and Working Mode: {working_mode}"
             )
 
         elif self._hsem_ev_charger_status_state:
             tou_modes = DEFAULT_HSEM_EV_CHARGER_TOU_MODES
             working_mode = WorkingModes.TimeOfUse.value
-            _LOGGER.warning(
+            _LOGGER.debug(
                 f"EV Charger is active. Setting TOU Periods: {tou_modes} and Working Mode: {working_mode}"
             )
         elif self._hsem_net_consumption > 0:
             working_mode = WorkingModes.MaximizeSelfConsumption.value
-            _LOGGER.warning(
+            _LOGGER.debug(
                 f"Positive net consumption. Working Mode: {working_mode}, Solar Production: {self._hsem_solar_production_power_state}, House Consumption: {self._hsem_house_consumption_power_state}, Net Consumption: {self._hsem_net_consumption}"
             )
         else:
@@ -406,14 +395,14 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             if current_month in DEFAULT_HSEM_MONTHS_WINTER_SPRING:
                 tou_modes = DEFAULT_HSEM_DEFAULT_TOU_MODES
                 working_mode = WorkingModes.TimeOfUse.value
-                _LOGGER.warning(
+                _LOGGER.debug(
                     f"Default winter/spring settings. TOU Periods: {tou_modes} and Working Mode: {working_mode}"
                 )
 
             # Summer settings
             if current_month in DEFAULT_HSEM_MONTHS_SUMMER:
                 working_mode = WorkingModes.MaximizeSelfConsumption.value
-                _LOGGER.warning(
+                _LOGGER.debug(
                     f"Default summer settings. Working Mode: {working_mode}"
                 )
 

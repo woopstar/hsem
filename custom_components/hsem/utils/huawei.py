@@ -73,11 +73,11 @@ async def async_set_tou_periods(self, batteries_id, tou_modes):
                 "device_id": batteries_id,  # Device ID of the inverter
                 "periods": periods,  # TOU modes formatted as a string
             },
-            blocking=False,  # Non-blocking call to avoid performance issues
+            blocking=True,  # Non-blocking call to avoid performance issues
         )
 
         # Log success message
-        _LOGGER.debug(
+        _LOGGER.warning(
             f"Set TOU periods for device id: {batteries_id} with periods: {periods}"
         )
 

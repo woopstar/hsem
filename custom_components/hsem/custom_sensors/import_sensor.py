@@ -36,7 +36,6 @@ class ImportSensor(BinarySensorEntity, HSEMEntity):
         self._energi_data_service_import_value = None
         self._state = True
         self._last_updated = None
-        self._last_reset = None
         self._config_entry = config_entry
         self._unique_id = f"{DOMAIN}_import_sensor"
         self._update_settings()

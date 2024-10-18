@@ -22,8 +22,9 @@ async def async_set_select_option(self, entity_id, option):
                 "entity_id": entity_id,
                 "option": option,
             },
+            blocking=True,
         )
-        _LOGGER.debug(f"Set option '{option}' for entity_id '{entity_id}'")
+        _LOGGER.warning(f"Set option '{option}' for entity_id '{entity_id}'")
     except Exception as err:
         _LOGGER.error(
             f"Failed to set option '{option}' for entity_id '{entity_id}': {err}"
