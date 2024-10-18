@@ -22,7 +22,7 @@ class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
         self._unique_id = (
             f"{DOMAIN}_house_consumption_energy_{hour_start:02d}_{hour_end:02d}"
         )
-        self._hsem_power_sensor_entity =  None
+        self._hsem_power_sensor_entity = None
         self._hsem_power_sensor_state = 0.0
         self._config_entry = config_entry
         self._state = 0.0
@@ -107,18 +107,16 @@ class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
         if self._hsem_power_sensor_entity:
             state = self.hass.states.get(self._hsem_power_sensor_entity)
             if state:
-                self._hsem_power_sensor_state = round(
-                    convert_to_float(state.state), 2
-                )
+                self._hsem_power_sensor_state = round(convert_to_float(state.state), 2)
             else:
-                _LOGGER.warning(
-                    f"Sensor {self._hsem_power_sensor_entity} not found."
-                )
+                _LOGGER.warning(f"Sensor {self._hsem_power_sensor_entity} not found.")
         state = None
 
         if self._last_updated and self._hsem_power_sensor_state:
             # Beregn tidsintervallet i sekunder
-            time_diff = (now - datetime.fromisoformat(self._last_updated)).total_seconds()
+            time_diff = (
+                now - datetime.fromisoformat(self._last_updated)
+            ).total_seconds()
 
             # Konverter effekt til energi (W til kWh)
             self._state += (self._hsem_power_sensor_state * time_diff) / 3600000
