@@ -17,9 +17,7 @@ class HouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
     _attr_icon = ICON
     _attr_has_entity_name = True
 
-    def __init__(
-        self, config_entry, hour_start, hour_end
-    ):
+    def __init__(self, config_entry, hour_start, hour_end):
         super().__init__(config_entry)
         self._hsem_house_consumption_power = None
         self._hour_start = hour_start
@@ -68,9 +66,9 @@ class HouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
 
     def _update_settings(self):
         """Fetch updated settings from config_entry options."""
-        self.set_hsem_house_consumption_power(get_config_value(
-            self._config_entry, "hsem_house_consumption_power"
-        ))
+        self.set_hsem_house_consumption_power(
+            get_config_value(self._config_entry, "hsem_house_consumption_power")
+        )
 
     async def async_added_to_hass(self):
         """Handle when sensor is added to Home Assistant."""
