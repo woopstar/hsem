@@ -168,6 +168,6 @@ class HouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
         # Trigger an update in Home Assistant
         self.async_write_ha_state()
 
-    async def async_update(self):
+    async def async_update(self, event=None):
         """Manually trigger the sensor update."""
         await self._handle_update(event=None)
