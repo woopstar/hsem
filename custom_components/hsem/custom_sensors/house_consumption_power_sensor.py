@@ -69,8 +69,11 @@ class HouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
         """Return the state attributes."""
         return {
             "house_consumption_power_entity": self._hsem_house_consumption_power,
+            "house_consumption_power_state": self._hsem_house_consumption_power_state,
             "ev_charger_power_entity": self._hsem_ev_charger_power,
+            "ev_charger_power_state": self._hsem_ev_charger_power_state,
             "house_power_includes_ev_charger_power_entity": self._hsem_house_power_includes_ev_charger_power,
+            "house_power_includes_ev_charger_power_state": self._hsem_house_power_includes_ev_charger_power_state,
             "hour_start": self._hour_start,
             "hour_end": self._hour_end,
             "last_updated": self._last_updated,
