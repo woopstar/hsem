@@ -516,7 +516,8 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         await self.async_optimization_strategy()
 
         # Set the inverter power control mode
-        await self.async_set_inverter_power_control()
+        if self._hsem_energi_data_service_export_state is not None:
+            await self.async_set_inverter_power_control()
 
         # calculate the last time working mode was changed
         if self._last_changed_mode is not None:
@@ -816,17 +817,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         )
 
     async def async_optimization_strategy(self):
-        remaining_charge = self._hsem_battery_remaining_charge
-        changed = False
-
-        if self._hsem_battery_max_capacity is None:
-            return
-
-        if self._hsem_huawei_solar_batteries_maximum_charging_power_state is None:
-            return
-
-        if self._hsem_battery_conversion_loss is None:
-            return
+        """Calculate the optimization strategy for each hour of the day."""
 
         for hour, data in self._hourly_calculations.items():
             import_price = data["import_price"]
@@ -840,47 +831,13 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             # Fully Fed to Grid
             if export_price > import_price:
                 data["recommendation"] = "Fully Fed to Grid"
-                changed = True
 
             # Maximize Self Consumption
             if net_consumption > 0:
                 data["recommendation"] = "Maximize Self Consumption"
-                changed = True
 
-            # Time of Use: Charge if before 17:00 and import price is favorable
-            elif start_hour < 17:
-                if (
-                    remaining_charge < self._hsem_battery_max_capacity
-                    and import_price
-                    < min(
-                        [
-                            h["import_price"]
-                            for h in self._hourly_calculations.values()
-                            if h["import_price"]
-                        ]
-                    )
-                ):
-                    data["recommendation"] = "Time of Use: Charge"
-                    charge_amount = min(
-                        self._hsem_huawei_solar_batteries_maximum_charging_power_state / 1000,
-                        self._hsem_battery_max_capacity - remaining_charge,
-                    )
-                    remaining_charge += charge_amount * (
-                        1 - self._hsem_battery_conversion_loss / 100
-                    )
-                    changed = True
-
-            # Time of Use: Discharge during peak hours if there is remaining charge
-            elif 17 <= start_hour < 21 and remaining_charge > 0:
+            if 17 <= start_hour < 21:
                 data["recommendation"] = "Time of Use: Discharge"
-                discharge_amount = min(
-                    self._hsem_huawei_solar_batteries_maximum_charging_power_state / 1000, remaining_charge
-                )
-                remaining_charge -= discharge_amount
-                changed = True
-
-        if changed:
-            await self.async_optimization_strategy()
 
     async def async_update(self):
         """Manually trigger the sensor update."""
