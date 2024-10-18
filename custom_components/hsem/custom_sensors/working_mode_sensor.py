@@ -803,15 +803,12 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         changed = False
 
         if self._hsem_battery_max_capacity is None:
-            _LOGGER.warning("Battery max capacity is not set.")
             return
 
         if self._hsem_huawei_solar_batteries_maximum_charging_power_state is None:
-            _LOGGER.warning("Battery maximum charging power is not set.")
             return
 
         if self._hsem_battery_conversion_loss is None:
-            _LOGGER.warning("Battery conversion loss is not set.")
             return
 
         for hour, data in self._hourly_calculations.items():
