@@ -60,6 +60,7 @@ class HouseConsumptionEnergyAverageSensor(SensorEntity, HSEMEntity):
             "energy_sensor_entity": self._hsem_energy_sensor_entity,
             "energy_sensor_state": self._hsem_energy_sensor_state,
             "sampling_size": len(self._samples),
+            "samples": self._samples,
             "max_age_days": self._max_age.days,
         }
 
