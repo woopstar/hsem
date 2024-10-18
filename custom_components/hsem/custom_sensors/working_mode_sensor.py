@@ -69,6 +69,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_solar_production_power_state = 0.0
         self._hsem_huawei_solar_inverter_active_power_control_state = None
         self._hsem_net_consumption = 0.0
+        self._hsem_net_consumption_with_ev = 0.0
         self._hsem_huawei_solar_batteries_maximum_charging_power = None
         self._hsem_huawei_solar_batteries_maximum_charging_power_state = None
         self._hsem_battery_conversion_loss = None
@@ -297,6 +298,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             "solar_production_power_entity": self._hsem_solar_production_power,
             "solar_production_power_state": self._hsem_solar_production_power_state,
             "net_consumption": self._hsem_net_consumption,
+            "net_consumption_with_ev": self._hsem_net_consumption_with_ev,
             "energi_data_service_import_entity": self._hsem_energi_data_service_import,
             "energi_data_service_import_state": self._hsem_energi_data_service_import_state,
             "energi_data_service_export_entity": self._hsem_energi_data_service_export,
@@ -459,11 +461,26 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                 )
         state = None
 
-        # Calculate the net consumption
-        self._hsem_net_consumption = (
-            self._hsem_solar_production_power_state
-            - self._hsem_house_consumption_power_state
-        )
+        # Calculate the net consumption without the EV charger power
+        if self._hsem_house_power_includes_ev_charger_power:
+            self._hsem_net_consumption_with_ev = (
+                self._hsem_solar_production_power_state
+                - (self._hsem_house_consumption_power_state)
+            )
+            self._hsem_net_consumption = (
+                self._hsem_solar_production_power_state
+                - (self._hsem_house_consumption_power_state - self._hsem_ev_charger_power_state)
+            )
+        else:
+            self._hsem_net_consumption_with_ev = (
+                self._hsem_solar_production_power_state
+                - (self._hsem_house_consumption_power_state + self._hsem_ev_charger_power_state)
+            )
+            self._hsem_net_consumption = (
+                self._hsem_solar_production_power_state
+                - self._hsem_house_consumption_power_state
+            )
+
 
         # Calculate the remaining battery capacity
         if self._hsem_battery_max_capacity is not None and self._hsem_huawei_solar_batteries_state_of_capacity_state is not None:
