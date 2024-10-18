@@ -20,13 +20,15 @@
         "title": "Huawei Solar Sensors",
         "description": "Configure the working mode for Huawei solar batteries.",
         "data": {
-          "hsem_huawei_solar_device_id_inverter_1": "Huawei Inverter 1",
-          "hsem_huawei_solar_device_id_inverter_2": "Huawei Inverter 2",
-          "hsem_huawei_solar_device_id_batteries": "Huawei Batteries",
-          "hsem_huawei_solar_batteries_working_mode": "Huawei Solar Batteries Working Mode",
-          "hsem_huawei_solar_batteries_state_of_capacity": "Huawei Batteries State of Capacity",
-          "hsem_huawei_solar_inverter_active_power_control": "Huawei Inverter Active Power Control",
-          "hsem_battery_max_capacity": "Battery Max Capacity (kWh)"
+          "hsem_huawei_solar_device_id_inverter_1": "Huawei Inverter 1 Device",
+          "hsem_huawei_solar_device_id_inverter_2": "Huawei Inverter 2 Device",
+          "hsem_huawei_solar_device_id_batteries": "Huawei Batteries Device",
+          "hsem_huawei_solar_batteries_working_mode": "Huawei Solar Batteries Working Mode Sensor",
+          "hsem_huawei_solar_batteries_state_of_capacity": "Huawei Batteries State of Capacity Sensor",
+          "hsem_huawei_solar_inverter_active_power_control": "Huawei Inverter Active Power Control Sensor",
+          "hsem_huawei_solar_batteries_maximum_charging_power": "Huawei Batteries Maximum Charging Power (kW)",
+          "hsem_battery_max_capacity": "Battery Max Capacity (kWh)",
+          "hsem_battery_conversion_loss": "Battery Conversion Loss (%)"
         }
       },
       "power": {
@@ -41,15 +43,18 @@
         "title": "Solcast Sensors",
         "description": "Select Solcast forecast sensors.",
         "data": {
-          "hsem_solcast_pv_forecast_forecast_today": "Solcast PV Forecast Today",
-          "hsem_solcast_pv_forecast_forecast_tomorrow": "Solcast PV Forecast Tomorrow"
+          "hsem_solcast_pv_forecast_forecast_today": "Solcast PV Forecast Today Sensor",
+          "hsem_solcast_pv_forecast_forecast_tomorrow": "Solcast PV Forecast Tomorrow Sensor"
         }
       },
       "misc": {
         "title": "Miscellaneous Settings",
         "description": "Configure miscellaneous settings for HSEM.",
         "data": {
-          "hsem_morning_energy_need": "Morning Energy Need (kWh)"
+          "hsem_morning_energy_need": "Morning Energy Need (kWh)",
+          "hsem_ev_charger_status": "EV Charger Status Sensor",
+          "hsem_ev_charger_power": "EV Charger Power Sensor",
+          "hsem_house_power_includes_ev_charger_power": "House Power Includes EV Charger Power"
         }
       }
     },
@@ -80,13 +85,15 @@
         "title": "Huawei Solar Sensors",
         "description": "Configure the working mode for Huawei solar batteries.",
         "data": {
-          "hsem_huawei_solar_device_id_inverter_1": "Huawei Inverter 1",
-          "hsem_huawei_solar_device_id_inverter_2": "Huawei Inverter 2",
-          "hsem_huawei_solar_device_id_batteries": "Huawei Batteries",
-          "hsem_huawei_solar_batteries_working_mode": "Huawei Solar Batteries Working Mode",
-          "hsem_huawei_solar_batteries_state_of_capacity": "Huawei Batteries State of Capacity",
-          "hsem_huawei_solar_inverter_active_power_control": "Huawei Inverter Active Power Control",
-          "hsem_battery_max_capacity": "Battery Max Capacity (kWh)"
+          "hsem_huawei_solar_device_id_inverter_1": "Huawei Inverter 1 Device",
+          "hsem_huawei_solar_device_id_inverter_2": "Huawei Inverter 2 Device",
+          "hsem_huawei_solar_device_id_batteries": "Huawei Batteries Device",
+          "hsem_huawei_solar_batteries_working_mode": "Huawei Solar Batteries Working Mode Sensor",
+          "hsem_huawei_solar_batteries_state_of_capacity": "Huawei Batteries State of Capacity Sensor",
+          "hsem_huawei_solar_inverter_active_power_control": "Huawei Inverter Active Power Control Sensor",
+          "hsem_huawei_solar_batteries_maximum_charging_power": "Huawei Batteries Maximum Charging Power (kW)",
+          "hsem_battery_max_capacity": "Battery Max Capacity (kWh)",
+          "hsem_battery_conversion_loss": "Battery Conversion Loss (%)"
         }
       },
       "power": {
@@ -101,15 +108,18 @@
         "title": "Solcast Sensors",
         "description": "Select Solcast forecast sensors.",
         "data": {
-          "hsem_solcast_pv_forecast_forecast_today": "Solcast PV Forecast Today",
-          "hsem_solcast_pv_forecast_forecast_tomorrow": "Solcast PV Forecast Tomorrow"
+          "hsem_solcast_pv_forecast_forecast_today": "Solcast PV Forecast Today Sensor",
+          "hsem_solcast_pv_forecast_forecast_tomorrow": "Solcast PV Forecast Tomorrow Sensor"
         }
       },
       "misc": {
         "title": "Miscellaneous Settings",
         "description": "Configure miscellaneous settings for HSEM.",
         "data": {
-          "hsem_morning_energy_need": "Morning Energy Need (kWh)"
+          "hsem_morning_energy_need": "Morning Energy Need (kWh)",
+          "hsem_ev_charger_status": "EV Charger Status Sensor",
+          "hsem_ev_charger_power": "EV Charger Power Sensor",
+          "hsem_house_power_includes_ev_charger_power": "House Power Includes EV Charger Power"
         }
       }
     }
