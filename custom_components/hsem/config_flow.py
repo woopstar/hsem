@@ -178,7 +178,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required(
                     "hsem_huawei_solar_batteries_maximum_charging_power",
                     default=DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_MAXIMUM_CHARGING_POWER,
-                ): selector({"entity": {"domain": "sensor"}}),
+                ): selector({"entity": {"domain": "number"}}),
                 vol.Required(
                     "hsem_battery_max_capacity",
                     default=DEFAULT_HSEM_BATTERY_MAX_CAPACITY,
@@ -526,7 +526,7 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
                         "hsem_huawei_solar_batteries_maximum_charging_power",
                         DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_MAXIMUM_CHARGING_POWER,
                     ),
-                ): selector({"entity": {"domain": "sensor"}}),
+                ): selector({"entity": {"domain": "number"}}),
                 vol.Required(
                     "hsem_battery_max_capacity",
                     default=self.config_entry.options.get(

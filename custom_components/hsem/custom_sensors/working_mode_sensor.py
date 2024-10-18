@@ -223,7 +223,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                 "hsem_huawei_solar_inverter_active_power_control",
             )
         )
-        self.hsem_house_power_includes_ev_charger_power(
+        self.set_hsem_house_power_includes_ev_charger_power(
             get_config_value(
                 self._config_entry,
                 "hsem_house_power_includes_ev_charger_power",
