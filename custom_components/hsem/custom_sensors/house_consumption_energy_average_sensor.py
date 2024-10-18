@@ -121,6 +121,7 @@ class HouseConsumptionEnergyAverageSensor(SensorEntity, HSEMEntity):
         self.async_write_ha_state()
 
     async def async_added_to_hass(self):
+        """Handle when sensor is added to Home Assistant."""
         await super().async_added_to_hass()
 
         old_state = await self.async_get_last_state()

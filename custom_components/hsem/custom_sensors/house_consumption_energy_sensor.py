@@ -61,6 +61,8 @@ class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
         }
 
     async def async_added_to_hass(self):
+        """Handle when sensor is added to Home Assistant."""
+        await super().async_added_to_hass()
 
         old_state = await self.async_get_last_state()
         if old_state is not None:
@@ -111,23 +113,20 @@ class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
                 _LOGGER.warning(f"Sensor {self._hsem_power_sensor_entity} not found.")
         state = None
 
-        if now.hour == self._hour_start:
-            if self._last_updated and self._hsem_power_sensor_state:
-                # Beregn tidsintervallet i sekunder
-                time_diff = (
-                    now - datetime.fromisoformat(self._last_updated)
-                ).total_seconds()
+        if self._last_updated and self._hsem_power_sensor_state:
+            # Beregn tidsintervallet i sekunder
+            time_diff = (
+                now - datetime.fromisoformat(self._last_updated)
+            ).total_seconds()
 
-                # Konverter effekt til energi (W til kWh)
-                self._state += (self._hsem_power_sensor_state * time_diff) / 3600000
-                # Divider med 1000 for kW og 3600 for kWh
+            # Konverter effekt til energi (W til kWh)
+            self._state += (self._hsem_power_sensor_state * time_diff) / 3600000
+            # Divider med 1000 for kW og 3600 for kWh
 
-                # Round state to two decimals
-                self._state = round(self._state, 2)
-            else:
-                _LOGGER.debug(f"First update for {self.name}, skipping accumulation.")
+            # Round state to two decimals
+            self._state = round(self._state, 2)
         else:
-            self._state = 0.0
+            _LOGGER.debug(f"First update for {self.name}, skipping accumulation.")
 
         # Update last update time
         self._last_updated = now.isoformat()
