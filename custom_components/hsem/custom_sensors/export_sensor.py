@@ -44,7 +44,7 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
         )
         self._hsem_huawei_solar_inverter_active_power_control_state = None
         self._hsem_energi_data_service_export = hsem_energi_data_service_export
-        self._energi_data_service_export_value = None
+        self._hsem_energi_data_service_export_state = None
         self._state = True
         self._last_updated = None
         self._config_entry = config_entry
@@ -104,7 +104,7 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
             "huawei_solar_inverter_active_power_control_entity": self._hsem_huawei_solar_inverter_active_power_control,
             "huawei_solar_inverter_active_power_control_state": self._hsem_huawei_solar_inverter_active_power_control_state,
             "energi_data_service_export_entity": self._hsem_energi_data_service_export,
-            "energi_data_service_export_value": self._energi_data_service_export_value,
+            "energi_data_service_export_state": self._hsem_energi_data_service_export_state,
         }
 
     async def _handle_update(self, event):
@@ -152,8 +152,8 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
             return
 
         # Set state to True if the export price is negative, otherwise False
-        self._energi_data_service_export_value = input_value
-        self._state = self._energi_data_service_export_value > 0
+        self._hsem_energi_data_service_export_state = input_value
+        self._state = self._hsem_energi_data_service_export_state > 0
 
         # Determine the grid export power percentage based on the state
         power_percentage = 100 if self._state else 0
@@ -203,9 +203,7 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
                 _LOGGER.warning(f"Could not restore state for {self._unique_id}")
                 self._state = None
 
-            self._energi_data_service_export_value = old_state.attributes.get(
-                "energi_data_service_export_value", None
-            )
+            self._hsem_energi_data_service_export_state = old_state.attributes.get("energi_data_service_export_state", None)
             self._last_updated = old_state.attributes.get("last_updated", None)
         else:
             _LOGGER.info(

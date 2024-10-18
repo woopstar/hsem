@@ -33,7 +33,7 @@ class ImportSensor(BinarySensorEntity, HSEMEntity):
             hsem_huawei_solar_device_id_batteries
         )
         self._hsem_energi_data_service_import = hsem_energi_data_service_import
-        self._energi_data_service_import_value = None
+        self._hsem_energi_data_service_import_state = None
         self._state = True
         self._last_updated = None
         self._config_entry = config_entry
@@ -82,7 +82,7 @@ class ImportSensor(BinarySensorEntity, HSEMEntity):
             "unique_id": self._unique_id,
             "huawei_solar_device_id_batteries_id": self._hsem_huawei_solar_device_id_batteries,
             "energi_data_service_import_entity": self._hsem_energi_data_service_import,
-            "energi_data_service_import_value": self._energi_data_service_import_value,
+            "energi_data_service_import_state": self._hsem_energi_data_service_import_state,
         }
 
     async def _handle_update(self, event):
@@ -107,8 +107,8 @@ class ImportSensor(BinarySensorEntity, HSEMEntity):
             return
 
         # Set state to True if the import price is negative, otherwise False
-        self._energi_data_service_import_value = input_value
-        self._state = self._energi_data_service_import_value < 0
+        self._hsem_energi_data_service_import_state = input_value
+        self._state = self._hsem_energi_data_service_import_state < 0
 
         # Update the last updated timestamp
         self._last_updated = datetime.now().isoformat()
@@ -133,9 +133,7 @@ class ImportSensor(BinarySensorEntity, HSEMEntity):
                 _LOGGER.warning(f"Could not restore state for {self._unique_id}")
                 self._state = None
 
-            self._energi_data_service_import_value = old_state.attributes.get(
-                "energi_data_service_import_value", None
-            )
+            self._hsem_energi_data_service_import_state = old_state.attributes.get("energi_data_service_import_value", None)
             self._last_updated = old_state.attributes.get("last_updated", None)
         else:
             _LOGGER.info(
