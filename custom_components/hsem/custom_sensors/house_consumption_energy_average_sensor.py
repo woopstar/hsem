@@ -7,7 +7,7 @@ from homeassistant.helpers.event import async_track_state_change_event
 
 from ..const import DOMAIN, ICON
 from ..entity import HSEMEntity
-from ..utils.misc import async_resolve_entity_from_unique_id
+from ..utils.misc import async_resolve_entity_id_from_unique_id
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -62,7 +62,7 @@ class HouseConsumptionEnergyAverageSensor(SensorEntity, HSEMEntity):
 
     async def async_update(self):
         # Slå energisensoren op
-        self._hsem_energy_sensor_entity = await async_resolve_entity_from_unique_id(
+        self._hsem_energy_sensor_entity = await async_resolve_entity_id_from_unique_id(
             self,
             f"{DOMAIN}_house_consumption_energy_{self._hour_start:02d}_{self._hour_end:02d}",
         )

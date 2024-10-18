@@ -47,6 +47,7 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
         self._hsem_energi_data_service_export_state = None
         self._state = True
         self._last_updated = None
+        self._last_changed_mode = None
         self._config_entry = config_entry
         self._unique_id = f"{DOMAIN}_export_sensor"
         self._update_settings()
@@ -98,6 +99,7 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
 
         return {
             "last_updated": self._last_updated,
+            "last_changed_mode": self._last_changed_mode,
             "unique_id": self._unique_id,
             "huawei_solar_device_id_inverter_1_id": self._hsem_huawei_solar_device_id_inverter_1,
             "huawei_solar_device_id_inverter_2_id": self._hsem_huawei_solar_device_id_inverter_2,
@@ -109,6 +111,9 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
 
     async def _handle_update(self, event):
         """Handle the sensor state update (for both manual and state change)."""
+
+        # Get the current time
+        now = datetime.now()
 
         # Ensure settings are reloaded if config is changed.
         self._update_settings()
@@ -179,6 +184,7 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
                     await async_set_grid_export_power_pct(
                         self, inverter_id, power_percentage
                     )
+                    self._last_changed_mode = datetime.now().isoformat()
 
         # Update the last updated timestamp
         self._last_updated = datetime.now().isoformat()

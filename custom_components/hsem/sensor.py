@@ -7,7 +7,7 @@ from .custom_sensors.house_consumption_energy_average_sensor import (
 from .custom_sensors.house_consumption_energy_sensor import HouseConsumptionEnergySensor
 from .custom_sensors.house_consumption_power_sensor import HouseConsumptionPowerSensor
 from .custom_sensors.working_mode_sensor import WorkingModeSensor
-from .utils.misc import generate_md5_hash, get_config_value
+from .utils.misc import get_config_value
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -50,6 +50,9 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     hsem_energi_data_service_export = get_config_value(
         config_entry, "hsem_energi_data_service_export"
     )
+    hsem_huawei_solar_inverter_active_power_control = get_config_value(
+        config_entry, "hsem_huawei_solar_inverter_active_power_control"
+    )
 
     # Create the export from the input from hsem_energi_data_service_export
     working_mode_sensor = WorkingModeSensor(
@@ -65,6 +68,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
         hsem_battery_max_capacity,
         hsem_energi_data_service_import,
         hsem_energi_data_service_export,
+        hsem_huawei_solar_inverter_active_power_control,
         config_entry,
     )
 

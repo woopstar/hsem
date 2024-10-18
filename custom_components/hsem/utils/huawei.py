@@ -78,7 +78,7 @@ async def async_set_tou_periods(self, batteries_id, tou_modes):
 
         # Log success message
         _LOGGER.warning(
-            f"Set TOU periods for device id: {batteries_id} with periods: {periods}"
+            f"Set TOU periods for device id: {batteries_id} with tou modes: {tou_modes}"
         )
 
     except vol.MultipleInvalid as err:

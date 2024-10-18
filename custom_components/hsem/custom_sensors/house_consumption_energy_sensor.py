@@ -6,7 +6,7 @@ from homeassistant.helpers.event import async_track_state_change_event
 
 from ..const import DOMAIN, ICON
 from ..entity import HSEMEntity
-from ..utils.misc import async_resolve_entity_from_unique_id
+from ..utils.misc import async_resolve_entity_id_from_unique_id
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -67,7 +67,7 @@ class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
             self._last_reset_date = current_time.date()
 
         # Slå power sensoren op
-        self._hsem_power_sensor_entity = await async_resolve_entity_from_unique_id(
+        self._hsem_power_sensor_entity = await async_resolve_entity_id_from_unique_id(
             self,
             f"{DOMAIN}_house_consumption_power_{self._hour_start:02d}_{self._hour_end:02d}",
         )
