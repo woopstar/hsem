@@ -60,7 +60,6 @@ class HouseConsumptionEnergyAverageSensor(SensorEntity, HSEMEntity):
             "energy_sensor_entity": self._hsem_energy_sensor_entity,
             "energy_sensor_state": self._hsem_energy_sensor_state,
             "sampling_size": len(self._samples),
-            "samples": self._samples,
             "max_age_days": self._max_age.days,
         }
 
@@ -129,7 +128,7 @@ class HouseConsumptionEnergyAverageSensor(SensorEntity, HSEMEntity):
             try:
                 self._state = round(convert_to_float(old_state.state), 2)
                 self._last_updated = old_state.attributes.get("last_updated", None)
-                # self._samples = old_state.attributes.get("samples")
+                #self._samples = old_state.attributes.get("samples")
             except (ValueError, TypeError):
                 _LOGGER.warning(f"Invalid old state value for {self.name}")
                 self._state = 0.0
