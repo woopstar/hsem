@@ -27,7 +27,6 @@ def convert_to_float(state):
     try:
         return float(state)
     except ValueError:
-        _LOGGER.error(f"Unexpected sensor state: {state}")
         return 0.0  # Return None for unexpected states
 
 
@@ -46,13 +45,20 @@ def convert_to_boolean(state):
         "0": False,
         "charging": True,
         "not_charging": False,
+        "notcharging": False,
         "unknown": False,
+        "available": True,
         "unavailable": False,
-        "ready": False,
+        "ready": True,
+        "notready": False,
+        "not_ready": False,
+        "unready": False,
         "disconnected": False,
+        "connected": True,
         "locked": False,
+        "unlocked": True,
         "paused": False,
-
+        "continue": True,
     }
 
     # Convert the state to lowercase for case-insensitive comparison
@@ -62,7 +68,6 @@ def convert_to_boolean(state):
     if state_value_lower in state_map:
         return state_map[state_value_lower]
     else:
-        _LOGGER.error(f"Unexpected sensor state: {state}")
         return None  # Return None for unexpected states
 
 
