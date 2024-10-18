@@ -209,7 +209,9 @@ class ExportSensor(BinarySensorEntity, HSEMEntity):
                 _LOGGER.warning(f"Could not restore state for {self._unique_id}")
                 self._state = None
 
-            self._hsem_energi_data_service_export_state = old_state.attributes.get("energi_data_service_export_state", None)
+            self._hsem_energi_data_service_export_state = old_state.attributes.get(
+                "energi_data_service_export_state", None
+            )
             self._last_updated = old_state.attributes.get("last_updated", None)
         else:
             _LOGGER.info(

@@ -17,12 +17,12 @@ from ..const import (
     DEFAULT_HSEM_HOUSE_CONSUMPTION_POWER,
     DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_STATE_OF_CAPACITY,
     DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_WORKING_MODE,
+    DEFAULT_HSEM_HUAWEI_SOLAR_INVERTER_ACTIVE_POWER_CONTROL,
     DEFAULT_HSEM_IMPORT_SENSOR_TOU_MODES,
     DEFAULT_HSEM_MONTHS_SUMMER,
     DEFAULT_HSEM_MONTHS_WINTER_SPRING,
     DEFAULT_HSEM_SOLAR_PRODUCTION_POWER,
     DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TODAY,
-    DEFAULT_HSEM_HUAWEI_SOLAR_INVERTER_ACTIVE_POWER_CONTROL,
     DOMAIN,
     HOUSE_CONSUMPTION_ENERGY_WEIGHT_3D,
     HOUSE_CONSUMPTION_ENERGY_WEIGHT_7D,
@@ -31,7 +31,7 @@ from ..const import (
 )
 from ..entity import HSEMEntity
 from ..utils.ha import async_set_select_option
-from ..utils.huawei import async_set_tou_periods, async_set_grid_export_power_pct
+from ..utils.huawei import async_set_grid_export_power_pct, async_set_tou_periods
 from ..utils.misc import (
     async_resolve_entity_id_from_unique_id,
     convert_to_boolean,
@@ -92,7 +92,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_solcast_pv_forecast_forecast_today = (
             hsem_solcast_pv_forecast_forecast_today
         )
-        self._hsem_huawei_solar_inverter_active_power_control = hsem_huawei_solar_inverter_active_power_control
+        self._hsem_huawei_solar_inverter_active_power_control = (
+            hsem_huawei_solar_inverter_active_power_control
+        )
         self._hsem_huawei_solar_inverter_active_power_control_state = None
         self._hsem_net_consumption = 0.0
         self._hsem_battery_max_capacity = hsem_battery_max_capacity
@@ -238,7 +240,6 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         }
 
     async def _handle_update(self, event):
-
         """Handle the sensor state update (for both manual and state change)."""
 
         # Get the current time
@@ -297,9 +298,13 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
         # Fetch the current value from the state of capacity sensor
         if self._hsem_huawei_solar_batteries_state_of_capacity:
-            state = self.hass.states.get(self._hsem_huawei_solar_batteries_state_of_capacity)
+            state = self.hass.states.get(
+                self._hsem_huawei_solar_batteries_state_of_capacity
+            )
             if state:
-                self._hsem_huawei_solar_batteries_state_of_capacity_state = round(convert_to_float(state.state),0)
+                self._hsem_huawei_solar_batteries_state_of_capacity_state = round(
+                    convert_to_float(state.state), 0
+                )
             else:
                 _LOGGER.warning(
                     f"Sensor {self._hsem_huawei_solar_batteries_state_of_capacity} not found."
@@ -310,7 +315,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         if self._hsem_energi_data_service_import:
             state = self.hass.states.get(self._hsem_energi_data_service_import)
             if state:
-                self._hsem_energi_data_service_import_state = round(convert_to_float(state.state),3)
+                self._hsem_energi_data_service_import_state = round(
+                    convert_to_float(state.state), 3
+                )
             else:
                 _LOGGER.warning(
                     f"Sensor {self._hsem_energi_data_service_import} not found."
@@ -321,7 +328,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         if self._hsem_energi_data_service_export:
             state = self.hass.states.get(self._hsem_energi_data_service_export)
             if state:
-                self._hsem_energi_data_service_export_state = round(convert_to_float(state.state),3)
+                self._hsem_energi_data_service_export_state = round(
+                    convert_to_float(state.state), 3
+                )
             else:
                 _LOGGER.warning(
                     f"Sensor {self._hsem_energi_data_service_export} not found."
@@ -330,9 +339,13 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
         # Fetch the current value from the energi data service export sensor
         if self._hsem_huawei_solar_inverter_active_power_control:
-            state = self.hass.states.get(self._hsem_huawei_solar_inverter_active_power_control)
+            state = self.hass.states.get(
+                self._hsem_huawei_solar_inverter_active_power_control
+            )
             if state:
-                self._hsem_huawei_solar_inverter_active_power_control_state = state.state
+                self._hsem_huawei_solar_inverter_active_power_control_state = (
+                    state.state
+                )
             else:
                 _LOGGER.warning(
                     f"Sensor {self._hsem_huawei_solar_inverter_active_power_control} not found."
@@ -402,7 +415,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
     async def async_set_inverter_power_control(self):
         # Determine the grid export power percentage based on the state
-        export_power_percentage = 100 if self._hsem_energi_data_service_export_state > 0 else 0
+        export_power_percentage = (
+            100 if self._hsem_energi_data_service_export_state > 0 else 0
+        )
 
         # List of inverters to update
         inverters = [
@@ -463,9 +478,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             # Summer settings
             if current_month in DEFAULT_HSEM_MONTHS_SUMMER:
                 working_mode = WorkingModes.MaximizeSelfConsumption.value
-                _LOGGER.debug(
-                    f"Default summer settings. Working Mode: {working_mode}"
-                )
+                _LOGGER.debug(f"Default summer settings. Working Mode: {working_mode}")
 
         # Apply TOU periods if working mode is TOU
         if working_mode == WorkingModes.TimeOfUse.value:
