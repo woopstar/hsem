@@ -114,7 +114,10 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
 
     # Wait for power, energy and energy average sensors to be set up
     power_sensors = await async_setup_power_sensors(
-        config_entry, hsem_house_consumption_power, hsem_ev_charger_power, hsem_house_power_includes_ev_charger_power
+        config_entry,
+        hsem_house_consumption_power,
+        hsem_ev_charger_power,
+        hsem_house_power_includes_ev_charger_power,
     )
 
     energy_sensors = await async_setup_energy_sensors(config_entry)
@@ -140,7 +143,12 @@ async def async_unload_entry(hass, entry):
     return False
 
 
-async def async_setup_power_sensors(config_entry, hsem_house_consumption_power, hsem_ev_charger_power, hsem_house_power_includes_ev_charger_power):
+async def async_setup_power_sensors(
+    config_entry,
+    hsem_house_consumption_power,
+    hsem_ev_charger_power,
+    hsem_house_power_includes_ev_charger_power,
+):
     """Set up house consumption power sensors for each hour block."""
     sensors = []
     for hour in range(24):
@@ -149,7 +157,9 @@ async def async_setup_power_sensors(config_entry, hsem_house_consumption_power, 
         sensor = HouseConsumptionPowerSensor(config_entry, hour_start, hour_end)
         sensor.set_hsem_house_consumption_power(hsem_house_consumption_power)
         sensor.set_hsem_ev_charger_power(hsem_ev_charger_power)
-        sensor.set_hsem_house_power_includes_ev_charger_power(hsem_house_power_includes_ev_charger_power)
+        sensor.set_hsem_house_power_includes_ev_charger_power(
+            hsem_house_power_includes_ev_charger_power
+        )
         sensors.append(sensor)
     return sensors
 

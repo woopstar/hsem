@@ -4,9 +4,9 @@ from datetime import datetime
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.event import async_track_state_change_event
 
-from ..const import DOMAIN, ICON,DEFAULT_HSEM_HOUSE_POWER_INCLUDES_EV_CHARGER_POWER
+from ..const import DEFAULT_HSEM_HOUSE_POWER_INCLUDES_EV_CHARGER_POWER, DOMAIN, ICON
 from ..entity import HSEMEntity
-from ..utils.misc import get_config_value, convert_to_float, convert_to_boolean
+from ..utils.misc import convert_to_boolean, convert_to_float, get_config_value
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -24,7 +24,9 @@ class HouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
         self._hsem_ev_charger_power = None
         self._hsem_ev_charger_power_state = 0.0
         self._hsem_house_power_includes_ev_charger_power = None
-        self._hsem_house_power_includes_ev_charger_power_state = DEFAULT_HSEM_HOUSE_POWER_INCLUDES_EV_CHARGER_POWER
+        self._hsem_house_power_includes_ev_charger_power_state = (
+            DEFAULT_HSEM_HOUSE_POWER_INCLUDES_EV_CHARGER_POWER
+        )
         self._hour_start = hour_start
         self._hour_end = hour_end
         self._unique_id = (
@@ -88,7 +90,9 @@ class HouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
             get_config_value(self._config_entry, "hsem_ev_charger_power")
         )
         self.set_hsem_house_power_includes_ev_charger_power(
-            get_config_value(self._config_entry, "hsem_house_power_includes_ev_charger_power")
+            get_config_value(
+                self._config_entry, "hsem_house_power_includes_ev_charger_power"
+            )
         )
 
     async def async_added_to_hass(self):
@@ -142,14 +146,15 @@ class HouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
                     convert_to_float(state.state), 2
                 )
             else:
-                _LOGGER.warning(
-                    f"Sensor {self._hsem_ev_charger_power} not found."
-                )
+                _LOGGER.warning(f"Sensor {self._hsem_ev_charger_power} not found.")
         state = None
 
         if now.hour == self._hour_start:
             if self._hsem_house_power_includes_ev_charger_power:
-                self._state = float(self._hsem_house_consumption_power_state - self._hsem_ev_charger_power_state)
+                self._state = float(
+                    self._hsem_house_consumption_power_state
+                    - self._hsem_ev_charger_power_state
+                )
             else:
                 self._state = float(self._hsem_house_consumption_power_state)
 
