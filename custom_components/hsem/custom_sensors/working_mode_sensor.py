@@ -378,19 +378,19 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         )
 
         # Calculate the remaining battery capacity
-        self._hsem_battery_remaining_charge = round(
-            (
+        if self._hsem_battery_max_capacity is not None and self._hsem_huawei_solar_batteries_state_of_capacity_state is not None:
+            self._hsem_battery_remaining_charge = round(
                 (
-                    100
-                    - convert_to_float(
+                    (
+                        100
+                        -
                         self._hsem_huawei_solar_batteries_state_of_capacity_state
+
                     )
-                )
-                / 100
-                * convert_to_float(self._hsem_battery_max_capacity)
-            ),
-            2,
-        )
+                    / 100
+                    * self._hsem_battery_max_capacity
+                ),
+                2)
 
         # calculate the hourly data from power sensors
         await self.async_calculate_hourly_data()
