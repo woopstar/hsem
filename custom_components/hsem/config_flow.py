@@ -18,6 +18,8 @@ from .const import (
     DEFAULT_HSEM_SOLAR_PRODUCTION_POWER,
     DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TODAY,
     DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TOMORROW,
+    DEFAULT_HSEM_HOUSE_POWER_INCLUDES_EV_CHARGER_POWER,
+    DEFAULT_HSEM_EV_CHARGER_POWER,
     DOMAIN,
     NAME,
 )
@@ -298,6 +300,15 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "hsem_ev_charger_status",
                     default=DEFAULT_HSEM_EV_CHARGER_STATUS,
                 ): selector({"entity": {"domain": "sensor"}}),
+                vol.Optional(
+                    "hsem_ev_charger_power",
+                    default=DEFAULT_HSEM_EV_CHARGER_POWER,
+                ): selector({"entity": {"domain": "sensor"}}),
+                vol.Optional(
+                    "hsem_house_power_includes_ev_charger_power",
+                    default=DEFAULT_HSEM_HOUSE_POWER_INCLUDES_EV_CHARGER_POWER,
+                ): selector({"boolean": {}}),
+
             }
         )
 
@@ -618,6 +629,20 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
                         DEFAULT_HSEM_EV_CHARGER_STATUS,
                     ),
                 ): selector({"entity": {"domain": "sensor"}}),
+                vol.Optional(
+                    "hsem_ev_charger_power",
+                    default=self.config_entry.options.get(
+                        "hsem_ev_charger_status",
+                        DEFAULT_HSEM_EV_CHARGER_POWER,
+                    ),
+                ): selector({"entity": {"domain": "sensor"}}),
+                vol.Optional(
+                    "hsem_house_power_includes_ev_charger_power",
+                    default=self.config_entry.options.get(
+                        "hsem_ev_charger_status",
+                        DEFAULT_HSEM_HOUSE_POWER_INCLUDES_EV_CHARGER_POWER,
+                    ),
+                ): selector({"boolean": {}}),
             }
         )
 
