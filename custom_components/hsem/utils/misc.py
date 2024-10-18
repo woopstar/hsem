@@ -47,6 +47,12 @@ def convert_to_boolean(state):
         "charging": True,
         "not_charging": False,
         "unknown": False,
+        "unavailable": False,
+        "ready": False,
+        "disconnected": False,
+        "locked": False,
+        "paused": False,
+
     }
 
     # Convert the state to lowercase for case-insensitive comparison
