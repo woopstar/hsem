@@ -8,6 +8,7 @@ from homeassistant.helpers.event import async_track_state_change_event
 from ..const import DOMAIN, ICON
 from ..entity import HSEMEntity
 from ..utils.misc import async_resolve_entity_id_from_unique_id, convert_to_float
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -64,7 +65,6 @@ class HouseConsumptionEnergyAverageSensor(SensorEntity, HSEMEntity):
 
     async def async_update(self):
 
-
         # Find energy sensor from unique id
         self._hsem_energy_sensor_entity = await async_resolve_entity_id_from_unique_id(
             self,
@@ -86,13 +86,9 @@ class HouseConsumptionEnergyAverageSensor(SensorEntity, HSEMEntity):
         if self._hsem_energy_sensor_entity:
             state = self.hass.states.get(self._hsem_energy_sensor_entity)
             if state:
-                self._hsem_energy_sensor_state = round(
-                    convert_to_float(state.state), 2
-                )
+                self._hsem_energy_sensor_state = round(convert_to_float(state.state), 2)
             else:
-                _LOGGER.warning(
-                    f"Sensor {self._hsem_energy_sensor_entity} not found."
-                )
+                _LOGGER.warning(f"Sensor {self._hsem_energy_sensor_entity} not found.")
         state = None
 
         now = datetime.now()
@@ -132,7 +128,7 @@ class HouseConsumptionEnergyAverageSensor(SensorEntity, HSEMEntity):
             try:
                 self._state = round(convert_to_float(old_state.state), 2)
                 self._last_updated = old_state.attributes.get("last_updated", None)
-                #self._samples = old_state.attributes.get("samples")
+                # self._samples = old_state.attributes.get("samples")
             except (ValueError, TypeError):
                 _LOGGER.warning(f"Invalid old state value for {self.name}")
                 self._state = 0.0
