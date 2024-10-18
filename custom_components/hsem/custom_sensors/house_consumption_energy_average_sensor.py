@@ -7,8 +7,7 @@ from homeassistant.helpers.event import async_track_state_change_event
 
 from ..const import DOMAIN, ICON
 from ..entity import HSEMEntity
-from ..utils.misc import async_resolve_entity_id_from_unique_id
-
+from ..utils.misc import async_resolve_entity_id_from_unique_id, convert_to_float
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -25,10 +24,12 @@ class HouseConsumptionEnergyAverageSensor(SensorEntity, HSEMEntity):
         self._max_age = timedelta(days=max_age_days)
         self._unique_id = f"{DOMAIN}_house_consumption_energy_avg_{hour_start:02d}_{hour_end:02d}_{self._max_age.days}d"
         self._hsem_energy_sensor_entity = None
+        self._hsem_energy_sensor_state = 0.0
         self._config_entry = config_entry
         self._state = 0.0
         self._samples = deque(maxlen=sampling_size)
         self._last_updated = None
+        self._entity_is_tracked = False
 
     @property
     def name(self):
@@ -56,12 +57,16 @@ class HouseConsumptionEnergyAverageSensor(SensorEntity, HSEMEntity):
             "last_updated": self._last_updated,
             "unique_id": self._unique_id,
             "energy_sensor_entity": self._hsem_energy_sensor_entity,
+            "energy_sensor_state": self._hsem_energy_sensor_state,
             "sampling_size": len(self._samples),
+            "samples": self._samples,
             "max_age_days": self._max_age.days,
         }
 
     async def async_update(self):
-        # Slå energisensoren op
+
+
+        # Find energy sensor from unique id
         self._hsem_energy_sensor_entity = await async_resolve_entity_id_from_unique_id(
             self,
             f"{DOMAIN}_house_consumption_energy_{self._hour_start:02d}_{self._hour_end:02d}",
@@ -71,27 +76,38 @@ class HouseConsumptionEnergyAverageSensor(SensorEntity, HSEMEntity):
             _LOGGER.warning(f"Energy sensor not found for {self.name}")
             return
 
-        # Hent energisensorens nuværende værdi
-        energy_sensor_state = self.hass.states.get(self._hsem_energy_sensor_entity)
-        if energy_sensor_state is None:
-            _LOGGER.warning(
-                f"Energy sensor {self._hsem_energy_sensor_entity} not ready or not found. Skipping update."
+        if self._hsem_energy_sensor_entity and not self._entity_is_tracked:
+            async_track_state_change_event(
+                self.hass,
+                [self._hsem_energy_sensor_entity],
+                self.async_update,
             )
-            return
+            self._entity_is_tracked = True
 
-        try:
-            energy_value = float(energy_sensor_state.state)
-            current_time = datetime.now()
+        if self._hsem_energy_sensor_entity:
+            state = self.hass.states.get(self._hsem_energy_sensor_entity)
+            if state:
+                self._hsem_energy_sensor_state = round(
+                    convert_to_float(state.state), 2
+                )
+            else:
+                _LOGGER.warning(
+                    f"Sensor {self._hsem_energy_sensor_entity} not found."
+                )
+        state = None
 
-            # Tilføj den nye værdi og tidspunkt til samples
-            self._samples.append((current_time, energy_value))
+        now = datetime.now()
+
+        # Tilføj den nye værdi og tidspunkt til samples
+        if self._hsem_energy_sensor_state:
+            self._samples.append((now, self._hsem_energy_sensor_state))
 
             # Fjern gamle samples uden for max age
             self._samples = deque(
                 [
                     (timestamp, value)
                     for timestamp, value in self._samples
-                    if current_time - timestamp <= self._max_age
+                    if now - timestamp <= self._max_age
                 ],
                 maxlen=self._samples.maxlen,
             )
@@ -103,15 +119,10 @@ class HouseConsumptionEnergyAverageSensor(SensorEntity, HSEMEntity):
             else:
                 self._state = 0.0  # Ingen samples, så ingen gennemsnit
 
-            # Opdater sidste opdateringstidspunkt
-            self._last_updated = current_time
+        # Update last update time
+        self._last_updated = now.isoformat()
 
-        except ValueError:
-            _LOGGER.warning(
-                f"Invalid value from energy sensor {self._hsem_energy_sensor_entity}: {energy_sensor_state.state}"
-            )
-
-        # Update Home Assistant state
+        # Trigger an update in Home Assistant
         self.async_write_ha_state()
 
     async def async_added_to_hass(self):
@@ -120,16 +131,9 @@ class HouseConsumptionEnergyAverageSensor(SensorEntity, HSEMEntity):
         old_state = await self.async_get_last_state()
         if old_state is not None:
             try:
-                self._state = float(old_state.state)
-                self._last_updated = datetime.now()
+                self._state = round(convert_to_float(old_state.state), 2)
+                self._last_updated = old_state.attributes.get("last_updated", None)
+                self._samples = old_state.attributes.get("samples")
             except (ValueError, TypeError):
                 _LOGGER.warning(f"Invalid old state value for {self.name}")
                 self._state = 0.0
-
-        # Track energisensorens tilstand
-        if self._hsem_energy_sensor_entity:
-            async_track_state_change_event(
-                self.hass,
-                [self._hsem_energy_sensor_entity],
-                self.async_update,
-            )
