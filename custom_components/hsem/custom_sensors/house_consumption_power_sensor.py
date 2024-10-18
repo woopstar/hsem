@@ -157,6 +157,8 @@ class HouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
                 )
             else:
                 self._state = float(self._hsem_house_consumption_power_state)
+        else:
+            self._state = 0.0
 
         _LOGGER.debug(f"Updated state for {self._unique_id}: {self._state}")
 
