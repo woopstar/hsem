@@ -61,7 +61,6 @@ class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
         }
 
     async def async_added_to_hass(self):
-        await super().async_added_to_hass()
 
         old_state = await self.async_get_last_state()
         if old_state is not None:
@@ -77,7 +76,7 @@ class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
                 self._last_reset_date = datetime.now().date()
                 self._last_updated = None
 
-    async def async_update(self):
+    async def _handle_update(self, event):
         now = datetime.now()
 
         # Tjek om vi skal nulstille (hvis dagen er ændret)
@@ -135,3 +134,7 @@ class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
 
         # Update Home Assistant state
         self.async_write_ha_state()
+
+    async def async_update(self, event=None):
+        """Manually trigger the sensor update."""
+        await self._handle_update(event=None)

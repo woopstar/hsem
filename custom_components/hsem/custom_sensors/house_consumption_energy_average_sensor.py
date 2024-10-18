@@ -63,7 +63,7 @@ class HouseConsumptionEnergyAverageSensor(SensorEntity, HSEMEntity):
             "max_age_days": self._max_age.days,
         }
 
-    async def async_update(self):
+    async def _handle_update(self, event):
 
         # Find energy sensor from unique id
         self._hsem_energy_sensor_entity = await async_resolve_entity_id_from_unique_id(
@@ -132,3 +132,7 @@ class HouseConsumptionEnergyAverageSensor(SensorEntity, HSEMEntity):
             except (ValueError, TypeError):
                 _LOGGER.warning(f"Invalid old state value for {self.name}")
                 self._state = 0.0
+
+    async def async_update(self, event=None):
+        """Manually trigger the sensor update."""
+        await self._handle_update(event=None)
