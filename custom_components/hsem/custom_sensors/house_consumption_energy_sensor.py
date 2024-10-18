@@ -112,20 +112,23 @@ class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
                 _LOGGER.warning(f"Sensor {self._hsem_power_sensor_entity} not found.")
         state = None
 
-        if self._last_updated and self._hsem_power_sensor_state:
-            # Beregn tidsintervallet i sekunder
-            time_diff = (
-                now - datetime.fromisoformat(self._last_updated)
-            ).total_seconds()
+        if now.hour == self._hour_start:
+            if self._last_updated and self._hsem_power_sensor_state:
+                # Beregn tidsintervallet i sekunder
+                time_diff = (
+                    now - datetime.fromisoformat(self._last_updated)
+                ).total_seconds()
 
-            # Konverter effekt til energi (W til kWh)
-            self._state += (self._hsem_power_sensor_state * time_diff) / 3600000
-            # Divider med 1000 for kW og 3600 for kWh
+                # Konverter effekt til energi (W til kWh)
+                self._state += (self._hsem_power_sensor_state * time_diff) / 3600000
+                # Divider med 1000 for kW og 3600 for kWh
 
-            # Round state to two decimals
-            self._state = round(self._state, 2)
+                # Round state to two decimals
+                self._state = round(self._state, 2)
+            else:
+                _LOGGER.debug(f"First update for {self.name}, skipping accumulation.")
         else:
-            _LOGGER.debug(f"First update for {self.name}, skipping accumulation.")
+            self._state = 0.0
 
         # Update last update time
         self._last_updated = now.isoformat()
