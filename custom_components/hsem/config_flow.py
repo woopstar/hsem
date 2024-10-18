@@ -6,11 +6,15 @@ from homeassistant.core import callback
 from homeassistant.helpers.selector import selector
 
 from .const import (
+    DEFAULT_HSEM_BATTERY_CONVERSION_LOSS,
     DEFAULT_HSEM_BATTERY_MAX_CAPACITY,
     DEFAULT_HSEM_ENERGI_DATA_SERVICE_EXPORT,
     DEFAULT_HSEM_ENERGI_DATA_SERVICE_IMPORT,
+    DEFAULT_HSEM_EV_CHARGER_POWER,
     DEFAULT_HSEM_EV_CHARGER_STATUS,
     DEFAULT_HSEM_HOUSE_CONSUMPTION_POWER,
+    DEFAULT_HSEM_HOUSE_POWER_INCLUDES_EV_CHARGER_POWER,
+    DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_MAXIMUM_CHARGING_POWER,
     DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_STATE_OF_CAPACITY,
     DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_WORKING_MODE,
     DEFAULT_HSEM_HUAWEI_SOLAR_INVERTER_ACTIVE_POWER_CONTROL,
@@ -18,10 +22,6 @@ from .const import (
     DEFAULT_HSEM_SOLAR_PRODUCTION_POWER,
     DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TODAY,
     DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TOMORROW,
-    DEFAULT_HSEM_HOUSE_POWER_INCLUDES_EV_CHARGER_POWER,
-    DEFAULT_HSEM_EV_CHARGER_POWER,
-    DEFAULT_HSEM_BATTERY_CONVERSION_LOSS,
-    DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_MAXIMUM_CHARGING_POWER,
     DOMAIN,
     NAME,
 )
@@ -124,7 +124,9 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._errors["hsem_huawei_solar_inverter_active_power_control"] = (
                     "required"
                 )
-            elif not user_input.get("hsem_huawei_solar_batteries_maximum_charging_power"):
+            elif not user_input.get(
+                "hsem_huawei_solar_batteries_maximum_charging_power"
+            ):
                 self._errors["hsem_huawei_solar_batteries_maximum_charging_power"] = (
                     "required"
                 )
@@ -334,7 +336,6 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "hsem_house_power_includes_ev_charger_power",
                     default=DEFAULT_HSEM_HOUSE_POWER_INCLUDES_EV_CHARGER_POWER,
                 ): selector({"boolean": {}}),
-
             }
         )
 
@@ -461,7 +462,9 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
                 self._errors["hsem_huawei_solar_inverter_active_power_control"] = (
                     "required"
                 )
-            elif not user_input.get("hsem_huawei_solar_batteries_maximum_charging_power"):
+            elif not user_input.get(
+                "hsem_huawei_solar_batteries_maximum_charging_power"
+            ):
                 self._errors["hsem_huawei_solar_batteries_maximum_charging_power"] = (
                     "required"
                 )

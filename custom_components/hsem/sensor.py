@@ -112,7 +112,6 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
         hsem_house_power_includes_ev_charger_power
     )
 
-
     # Wait for power, energy and energy average sensors to be set up
     power_sensors = await async_setup_power_sensors(
         config_entry, hsem_house_consumption_power

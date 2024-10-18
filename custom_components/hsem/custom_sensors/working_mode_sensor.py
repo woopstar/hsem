@@ -437,9 +437,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                 self._hsem_huawei_solar_batteries_maximum_charging_power
             )
             if state:
-                self._hsem_huawei_solar_batteries_maximum_charging_power_state = round(convert_to_float(
-                    state.state
-                ), 0)
+                self._hsem_huawei_solar_batteries_maximum_charging_power_state = round(
+                    convert_to_float(state.state), 0
+                )
             else:
                 _LOGGER.warning(
                     f"Sensor {self._hsem_huawei_solar_batteries_maximum_charging_power} not found."
@@ -448,17 +448,13 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
         # Fetch the current value from the battery maximum charging power sensor
         if self._hsem_ev_charger_power:
-            state = self.hass.states.get(
-                self._hsem_ev_charger_power
-            )
+            state = self.hass.states.get(self._hsem_ev_charger_power)
             if state:
-                self._hsem_ev_charger_power_state = round(convert_to_float(
-                    state.state
-                ), 2)
-            else:
-                _LOGGER.warning(
-                    f"Sensor {self._hsem_ev_charger_power} not found."
+                self._hsem_ev_charger_power_state = round(
+                    convert_to_float(state.state), 2
                 )
+            else:
+                _LOGGER.warning(f"Sensor {self._hsem_ev_charger_power} not found.")
         state = None
 
         # Calculate the net consumption without the EV charger power
@@ -467,35 +463,36 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                 self._hsem_solar_production_power_state
                 - (self._hsem_house_consumption_power_state)
             )
-            self._hsem_net_consumption = (
-                self._hsem_solar_production_power_state
-                - (self._hsem_house_consumption_power_state - self._hsem_ev_charger_power_state)
+            self._hsem_net_consumption = self._hsem_solar_production_power_state - (
+                self._hsem_house_consumption_power_state
+                - self._hsem_ev_charger_power_state
             )
         else:
             self._hsem_net_consumption_with_ev = (
                 self._hsem_solar_production_power_state
-                - (self._hsem_house_consumption_power_state + self._hsem_ev_charger_power_state)
+                - (
+                    self._hsem_house_consumption_power_state
+                    + self._hsem_ev_charger_power_state
+                )
             )
             self._hsem_net_consumption = (
                 self._hsem_solar_production_power_state
                 - self._hsem_house_consumption_power_state
             )
 
-
         # Calculate the remaining battery capacity
-        if self._hsem_battery_max_capacity is not None and self._hsem_huawei_solar_batteries_state_of_capacity_state is not None:
+        if (
+            self._hsem_battery_max_capacity is not None
+            and self._hsem_huawei_solar_batteries_state_of_capacity_state is not None
+        ):
             self._hsem_battery_remaining_charge = round(
                 (
-                    (
-                        100
-                        -
-                        self._hsem_huawei_solar_batteries_state_of_capacity_state
-
-                    )
+                    (100 - self._hsem_huawei_solar_batteries_state_of_capacity_state)
                     / 100
                     * self._hsem_battery_max_capacity
                 ),
-                2)
+                2,
+            )
 
         # calculate the hourly data from power sensors
         await self.async_calculate_hourly_data()
