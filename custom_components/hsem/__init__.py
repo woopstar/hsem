@@ -8,6 +8,7 @@ Functions:
     async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         Unload the custom component from a config entry.
 """
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 

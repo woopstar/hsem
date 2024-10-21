@@ -18,7 +18,6 @@ Functions:
 """
 
 import hashlib
-
 import logging
 
 from homeassistant.helpers import entity_registry as er

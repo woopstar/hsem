@@ -88,7 +88,6 @@ Methods:
 """
 
 import logging
-
 from datetime import datetime, timedelta
 
 from homeassistant.components.sensor import SensorEntity

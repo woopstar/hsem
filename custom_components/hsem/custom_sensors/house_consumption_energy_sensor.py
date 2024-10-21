@@ -31,7 +31,6 @@ Methods:
 """
 
 import logging
-
 from datetime import datetime
 
 from homeassistant.components.sensor import SensorEntity

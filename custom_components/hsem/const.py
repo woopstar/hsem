@@ -1,4 +1,3 @@
-
 """
 This module defines constants used in the Huawei Solar Energy Management (HSEM) integration.
 

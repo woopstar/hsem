@@ -39,7 +39,6 @@ Methods:
 """
 
 import logging
-
 from collections import deque
 from datetime import datetime, timedelta
 
@@ -170,7 +169,7 @@ class HouseConsumptionEnergyAverageSensor(SensorEntity, HSEMEntity):
             try:
                 self._state = round(convert_to_float(old_state.state), 2)
                 self._last_updated = old_state.attributes.get("last_updated", None)
-                #self._samples = old_state.attributes.get("samples")
+                # self._samples = old_state.attributes.get("samples")
             except (ValueError, TypeError):
                 _LOGGER.warning(f"Invalid old state value for {self.name}")
                 self._state = 0.0

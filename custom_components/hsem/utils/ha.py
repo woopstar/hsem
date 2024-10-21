@@ -15,7 +15,9 @@ Raises:
 """
 
 import logging
+
 _LOGGER = logging.getLogger(__name__)
+
 
 async def async_set_select_option(self, entity_id, option):
     """Set the selected option for an entity."""

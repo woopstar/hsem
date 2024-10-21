@@ -207,7 +207,7 @@ async def async_setup_energy_sensors(config_entry):
     Setup House Consumption Energy sensors for each hour in the day.
 
     This function initializes a list of `HouseConsumptionEnergySensor` objects,
-    each representing energy consumption for a specific hour of the day. It 
+    each representing energy consumption for a specific hour of the day. It
     creates 24 sensors, one for each hour, and returns the list of these sensors.
 
     Args:
@@ -229,8 +229,8 @@ async def async_setup_energy__average_sensors(config_entry):
     Setup House Consumption Energy Average sensors for each hour in the day.
 
     This function initializes and returns a list of HouseConsumptionEnergyAverageSensor
-    instances for each hour of the day. For each hour, three sensors are created with 
-    different durations (2160 minutes, 5040 minutes, and 10080 minutes) and corresponding 
+    instances for each hour of the day. For each hour, three sensors are created with
+    different durations (2160 minutes, 5040 minutes, and 10080 minutes) and corresponding
     intervals (3 days, 7 days, and 14 days).
 
     Args:
