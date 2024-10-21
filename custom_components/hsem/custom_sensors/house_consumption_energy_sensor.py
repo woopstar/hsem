@@ -1,4 +1,37 @@
+"""
+HouseConsumptionEnergySensor is a custom sensor entity for Home Assistant that tracks the energy consumption of a house 
+within a specified hourly range. It extends both SensorEntity and HSEMEntity.
+
+Attributes:
+    _attr_icon (str): Icon for the sensor.
+    _attr_has_entity_name (bool): Indicates if the entity has a name.
+    _hour_start (int): Start hour for the energy consumption tracking.
+    _hour_end (int): End hour for the energy consumption tracking.
+    _unique_id (str): Unique identifier for the sensor.
+    _hsem_power_sensor_entity (str): Entity ID of the power sensor.
+    _hsem_power_sensor_state (float): Current state of the power sensor.
+    _config_entry (ConfigEntry): Configuration entry for the sensor.
+    _state (float): Current state of the energy consumption.
+    _last_updated (str): Timestamp of the last update.
+    _entity_is_tracked (bool): Indicates if the entity is being tracked.
+    _last_reset_date (date): Date of the last reset.
+
+Properties:
+    name (str): Name of the sensor.
+    unique_id (str): Unique identifier for the sensor.
+    state (float): Current state of the energy consumption.
+    unit_of_measurement (str): Unit of measurement for the sensor (kWh).
+    state_class (str): State class of the sensor (total).
+    extra_state_attributes (dict): Additional state attributes for the sensor.
+
+Methods:
+    async_added_to_hass(): Handle when sensor is added to Home Assistant.
+    _handle_update(event): Handle updates to the sensor state.
+    async_update(event=None): Manually trigger the sensor update.
+"""
+
 import logging
+
 from datetime import datetime
 
 from homeassistant.components.sensor import SensorEntity
@@ -28,7 +61,7 @@ class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
         self._state = 0.0
         self._last_updated = None
         self._entity_is_tracked = False
-        self._last_reset_date = None  # Holder styr på den sidste nulstillingsdato
+        self._last_reset_date = None  # Keeps track of the last reset date
 
     @property
     def name(self):
@@ -81,7 +114,7 @@ class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
     async def _handle_update(self, event):
         now = datetime.now()
 
-        # Tjek om vi skal nulstille (hvis dagen er ændret)
+        # Check if we need to reset (if the day has changed)
         if self._last_reset_date != now.date():
             _LOGGER.info(f"Nulstiller sensoren for en ny dag: {self.name}")
             self._state = 0.0  # Nulstil energiforbruget
@@ -114,14 +147,14 @@ class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
         state = None
 
         if self._last_updated and self._hsem_power_sensor_state:
-            # Beregn tidsintervallet i sekunder
+            # Calculate the time interval in seconds
             time_diff = (
                 now - datetime.fromisoformat(self._last_updated)
             ).total_seconds()
 
-            # Konverter effekt til energi (W til kWh)
+            # Convert power to energy (W to kWh)
             self._state += (self._hsem_power_sensor_state * time_diff) / 3600000
-            # Divider med 1000 for kW og 3600 for kWh
+            # Divide by 1000 for kW and 3600 for kWh
 
             # Round state to two decimals
             self._state = round(self._state, 2)

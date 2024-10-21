@@ -1,3 +1,27 @@
+"""
+This module provides utility functions for interacting with Huawei solar inverters
+via Home Assistant services. It includes functions to set the maximum grid export
+power percentage and to configure Time-of-Use (TOU) periods for batteries.
+
+Functions:
+    async_set_grid_export_power_pct(self, device_id, power_percentage):
+        Asynchronously sets the maximum grid export power percentage for a specified device.
+        
+    async_set_tou_periods(self, batteries_id, tou_modes):
+        Asynchronously sets the Time-of-Use (TOU) periods for specified batteries.
+
+Dependencies:
+    - logging: For logging error and success messages.
+    - voluptuous as vol: For input validation.
+    - homeassistant.core: For Home Assistant core functionalities.
+    - homeassistant.exceptions: For Home Assistant specific exceptions.
+
+Usage:
+    These functions are designed to be used within a Home Assistant custom component
+    to interact with Huawei solar inverters. They handle service calls to the
+    "huawei_solar" integration and manage errors appropriately.
+"""
+
 import logging
 
 import voluptuous as vol

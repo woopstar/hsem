@@ -8,7 +8,23 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class HSEMEntity(RestoreEntity):
-    """Base class for HSEM (Device)"""
+    """
+    HSEMEntity is a base class for HSEM (Device) entities that extends RestoreEntity.
+
+    Attributes:
+        _attr_icon (str): The icon attribute for the entity.
+        _attr_has_entity_name (bool): Indicates if the entity has a name.
+
+    Methods:
+        __init__(config_entry):
+            Initializes the HSEM entity with the provided configuration entry.
+        
+        set_entity_id(platform_str, key):
+            Sets the entity ID using the platform string and key.
+        
+        device_info:
+            Returns the device information as a dictionary. If the configuration entry is missing, logs a warning and returns None.
+    """
 
     # Define the attributes of the entity
     _attr_icon = ICON

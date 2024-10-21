@@ -1,4 +1,45 @@
+"""
+HouseConsumptionEnergyAverageSensor is a custom sensor entity for Home Assistant that calculates the average energy consumption of a house over a specified period.
+
+Attributes:
+    _attr_icon (str): Icon for the sensor.
+    _attr_has_entity_name (bool): Indicates if the entity has a name.
+    _hour_start (int): The starting hour for the energy consumption calculation.
+    _hour_end (int): The ending hour for the energy consumption calculation.
+    _max_age (timedelta): The maximum age of the samples to consider for the average calculation.
+    _unique_id (str): Unique identifier for the sensor.
+    _hsem_energy_sensor_entity (str): Entity ID of the energy sensor.
+    _hsem_energy_sensor_state (float): Current state of the energy sensor.
+    _config_entry (ConfigEntry): Configuration entry for the sensor.
+    _state (float): Current state of the sensor.
+    _samples (deque): Deque to store the samples of energy consumption.
+    _last_updated (str): Timestamp of the last update.
+    _entity_is_tracked (bool): Indicates if the entity is being tracked.
+
+Properties:
+    name (str): Name of the sensor.
+    unique_id (str): Unique identifier for the sensor.
+    state (float): Current state of the sensor.
+    unit_of_measurement (str): Unit of measurement for the sensor.
+    state_class (str): State class of the sensor.
+    extra_state_attributes (dict): Extra state attributes for the sensor.
+
+Methods:
+    __init__(self, config_entry, hour_start, hour_end, sampling_size=5040, max_age_days=7):
+        Initializes the sensor with the given configuration entry, start and end hours, sampling size, and maximum age of samples.
+
+    async _handle_update(self, event):
+        Handles the update of the sensor state by fetching the energy sensor state, updating the samples, and calculating the average energy consumption.
+
+    async async_added_to_hass(self):
+        Handles the event when the sensor is added to Home Assistant. Restores the previous state if available.
+
+    async async_update(self, event=None):
+        Manually triggers the sensor update.
+"""
+
 import logging
+
 from collections import deque
 from datetime import datetime, timedelta
 
@@ -93,11 +134,11 @@ class HouseConsumptionEnergyAverageSensor(SensorEntity, HSEMEntity):
 
         now = datetime.now()
 
-        # Tilføj den nye værdi og tidspunkt til samples
+        # Add the new value and timestamp to samples
         if self._hsem_energy_sensor_state:
             self._samples.append((now, self._hsem_energy_sensor_state))
 
-            # Fjern gamle samples uden for max age
+            # Remove old samples outside of max age
             self._samples = deque(
                 [
                     (timestamp, value)
@@ -107,12 +148,12 @@ class HouseConsumptionEnergyAverageSensor(SensorEntity, HSEMEntity):
                 maxlen=self._samples.maxlen,
             )
 
-            # Beregn gennemsnittet af sampleværdierne
+            # Calculate the average of the sample values
             if self._samples:
                 values = [value for _, value in self._samples]
                 self._state = round(sum(values) / len(values), 6)
             else:
-                self._state = 0.0  # Ingen samples, så ingen gennemsnit
+                self._state = 0.0  # No samples, so no average
 
         # Update last update time
         self._last_updated = now.isoformat()

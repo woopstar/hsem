@@ -1,3 +1,28 @@
+"""
+Module for the HouseConsumptionPowerSensor class.
+
+This module defines the HouseConsumptionPowerSensor class, which represents a sensor
+that tracks power consumption per hour block in a Home Assistant environment.
+
+Classes:
+    HouseConsumptionPowerSensor: A sensor entity that tracks power consumption per hour block.
+
+Functions:
+    set_hsem_house_consumption_power(value): Sets the house consumption power entity.
+    set_hsem_house_power_includes_ev_charger_power(value): Sets whether house power includes EV charger power.
+    set_hsem_ev_charger_power(value): Sets the EV charger power entity.
+    name: Returns the name of the sensor.
+    unit_of_measurement: Returns the unit of measurement for the sensor.
+    device_class: Returns the device class of the sensor.
+    unique_id: Returns the unique ID of the sensor.
+    state: Returns the current state of the sensor.
+    extra_state_attributes: Returns the extra state attributes of the sensor.
+    _update_settings(): Fetches updated settings from config_entry options.
+    async_added_to_hass(): Handles when the sensor is added to Home Assistant.
+    _handle_update(event): Handles updates to the source sensor.
+    async_update(event=None): Manually triggers the sensor update.
+"""
+
 import logging
 from datetime import datetime
 

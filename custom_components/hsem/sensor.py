@@ -13,7 +13,22 @@ _LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
-    """Set up HSEM sensors from a config entry."""
+    """
+    Set up HSEM sensors from a config entry.
+
+    This function initializes various HSEM sensors based on the provided configuration entry.
+    It extracts configuration parameters, creates a WorkingModeSensor, sets its attributes,
+    and sets up power, energy, and energy average sensors. Finally, it adds these sensors
+    to Home Assistant and stores a reference to the platform for handling unloads later.
+
+    Args:
+        hass (HomeAssistant): The Home Assistant instance.
+        config_entry (ConfigEntry): The configuration entry containing setup information.
+        async_add_entities (Callable): The function to add entities to Home Assistant.
+
+    Returns:
+        None
+    """
 
     # Extract configuration parameters
     hsem_huawei_solar_device_id_inverter_1 = get_config_value(
@@ -136,7 +151,19 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
 
 
 async def async_unload_entry(hass, entry):
-    """Handle unloading of an entry."""
+    """
+    Handle unloading of an entry.
+
+    This function is responsible for unloading a specific entry from the Home Assistant instance.
+    It retrieves the platform associated with the entry from the hass data and attempts to remove it.
+
+    Args:
+        hass (HomeAssistant): The Home Assistant instance.
+        entry (ConfigEntry): The configuration entry to unload.
+
+    Returns:
+        bool: True if the entry was successfully removed, False otherwise.
+    """
     platform = hass.data[DOMAIN].get(entry.entry_id)
     if platform:
         return await platform.async_remove_entry(entry)
@@ -149,7 +176,18 @@ async def async_setup_power_sensors(
     hsem_ev_charger_power,
     hsem_house_power_includes_ev_charger_power,
 ):
-    """Set up house consumption power sensors for each hour block."""
+    """
+    Set up house consumption power sensors for each hour block.
+
+    Args:
+        config_entry: The configuration entry for the sensor setup.
+        hsem_house_consumption_power: The house consumption power data.
+        hsem_ev_charger_power: The EV charger power data.
+        hsem_house_power_includes_ev_charger_power: Boolean indicating if house power includes EV charger power.
+
+    Returns:
+        List of HouseConsumptionPowerSensor objects for each hour block.
+    """
     sensors = []
     for hour in range(24):
         hour_start = hour
@@ -165,7 +203,19 @@ async def async_setup_power_sensors(
 
 
 async def async_setup_energy_sensors(config_entry):
-    """Setup House Consumption Energy sensors for each hour in the day."""
+    """
+    Setup House Consumption Energy sensors for each hour in the day.
+
+    This function initializes a list of `HouseConsumptionEnergySensor` objects,
+    each representing energy consumption for a specific hour of the day. It 
+    creates 24 sensors, one for each hour, and returns the list of these sensors.
+
+    Args:
+        config_entry (ConfigEntry): The configuration entry containing setup information.
+
+    Returns:
+        list: A list of `HouseConsumptionEnergySensor` objects, one for each hour of the day.
+    """
     sensors = []
     for hour in range(24):
         hour_start = hour
@@ -175,7 +225,20 @@ async def async_setup_energy_sensors(config_entry):
 
 
 async def async_setup_energy__average_sensors(config_entry):
-    """Setup House Consumption Energy Average sensors for each hour in the day."""
+    """
+    Setup House Consumption Energy Average sensors for each hour in the day.
+
+    This function initializes and returns a list of HouseConsumptionEnergyAverageSensor
+    instances for each hour of the day. For each hour, three sensors are created with 
+    different durations (2160 minutes, 5040 minutes, and 10080 minutes) and corresponding 
+    intervals (3 days, 7 days, and 14 days).
+
+    Args:
+        config_entry: The configuration entry containing setup information.
+
+    Returns:
+        List[HouseConsumptionEnergyAverageSensor]: A list of initialized sensors.
+    """
     sensors = []
     for hour in range(24):
         hour_start = hour
