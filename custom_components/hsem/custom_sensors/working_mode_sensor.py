@@ -1,4 +1,94 @@
+"""
+This module defines the WorkingModeSensor class, which is a custom sensor entity for Home Assistant.
+The sensor monitors various attributes related to solar energy production, battery status, and energy consumption,
+and calculates the optimal working mode for the system.
+
+Classes:
+    WorkingModeSensor(SensorEntity, HSEMEntity): Represents a custom sensor entity for monitoring and optimizing
+    solar energy production and consumption.
+
+Attributes:
+    _attr_icon (str): The icon for the sensor entity.
+    _attr_has_entity_name (bool): Indicates if the entity has a name.
+    _config_entry (ConfigEntry): The configuration entry for the sensor.
+    _state (str): The current state of the sensor.
+    _hsem_huawei_solar_device_id_inverter_1 (str): The device ID for the first Huawei solar inverter.
+    _hsem_huawei_solar_device_id_inverter_2 (str): The device ID for the second Huawei solar inverter.
+    _hsem_huawei_solar_device_id_batteries (str): The device ID for the Huawei solar batteries.
+    _hsem_huawei_solar_batteries_working_mode (str): The working mode for the Huawei solar batteries.
+    _hsem_huawei_solar_batteries_state_of_capacity (str): The state of capacity for the Huawei solar batteries.
+    _hsem_house_consumption_power (str): The power consumption of the house.
+    _hsem_solar_production_power (str): The power production from solar panels.
+    _hsem_ev_charger_status (str): The status of the EV charger.
+    _hsem_ev_charger_power (str): The power consumption of the EV charger.
+    _hsem_solcast_pv_forecast_forecast_today (str): The Solcast PV forecast for today.
+    _hsem_battery_max_capacity (float): The maximum capacity of the battery.
+    _hsem_energi_data_service_import (str): The energy data service import sensor.
+    _hsem_energi_data_service_export (str): The energy data service export sensor.
+    _hsem_huawei_solar_inverter_active_power_control (str): The active power control for the Huawei solar inverter.
+    _hsem_huawei_solar_batteries_working_mode_state (str): The working mode state for the Huawei solar batteries.
+    _hsem_huawei_solar_batteries_state_of_capacity_state (float): The state of capacity for the Huawei solar batteries.
+    _hsem_house_power_includes_ev_charger_power (bool): Indicates if the house power includes EV charger power.
+    _hsem_ev_charger_status_state (bool): The state of the EV charger status.
+    _hsem_ev_charger_power_state (float): The state of the EV charger power.
+    _hsem_house_consumption_power_state (float): The state of the house consumption power.
+    _hsem_solar_production_power_state (float): The state of the solar production power.
+    _hsem_huawei_solar_inverter_active_power_control_state (str): The active power control state for the Huawei solar inverter.
+    _hsem_net_consumption (float): The net energy consumption.
+    _hsem_net_consumption_with_ev (float): The net energy consumption including EV charger power.
+    _hsem_huawei_solar_batteries_maximum_charging_power (float): The maximum charging power for the Huawei solar batteries.
+    _hsem_huawei_solar_batteries_maximum_charging_power_state (float): The state of the maximum charging power for the Huawei solar batteries.
+    _hsem_battery_conversion_loss (float): The battery conversion loss.
+    _hsem_battery_remaining_charge (float): The remaining charge of the battery.
+    _hsem_energi_data_service_import_state (float): The state of the energy data service import.
+    _hsem_energi_data_service_export_state (float): The state of the energy data service export.
+    _hsem_morning_energy_need (float): The morning energy need.
+    _last_changed_mode (str): The last time the working mode was changed.
+    _last_updated (str): The last time the sensor was updated.
+    _hourly_calculations (dict): A dictionary containing hourly calculations for various attributes.
+    _unique_id (str): The unique ID for the sensor entity.
+
+Methods:
+    __init__(self, config_entry): Initializes the WorkingModeSensor instance.
+    set_hsem_huawei_solar_device_id_inverter_1(self, value): Sets the device ID for the first Huawei solar inverter.
+    set_hsem_huawei_solar_device_id_inverter_2(self, value): Sets the device ID for the second Huawei solar inverter.
+    set_hsem_huawei_solar_device_id_batteries(self, value): Sets the device ID for the Huawei solar batteries.
+    set_hsem_huawei_solar_batteries_working_mode(self, value): Sets the working mode for the Huawei solar batteries.
+    set_hsem_huawei_solar_batteries_state_of_capacity(self, value): Sets the state of capacity for the Huawei solar batteries.
+    set_hsem_house_consumption_power(self, value): Sets the power consumption of the house.
+    set_hsem_solar_production_power(self, value): Sets the power production from solar panels.
+    set_hsem_ev_charger_status(self, value): Sets the status of the EV charger.
+    set_hsem_ev_charger_power(self, value): Sets the power consumption of the EV charger.
+    set_hsem_solcast_pv_forecast_forecast_today(self, value): Sets the Solcast PV forecast for today.
+    set_hsem_battery_max_capacity(self, value): Sets the maximum capacity of the battery.
+    set_hsem_energi_data_service_import(self, value): Sets the energy data service import sensor.
+    set_hsem_energi_data_service_export(self, value): Sets the energy data service export sensor.
+    set_hsem_huawei_solar_inverter_active_power_control(self, value): Sets the active power control for the Huawei solar inverter.
+    set_hsem_huawei_solar_batteries_working_mode_state(self, value): Sets the working mode state for the Huawei solar batteries.
+    set_hsem_battery_conversion_loss(self, value): Sets the battery conversion loss.
+    set_hsem_house_power_includes_ev_charger_power(self, value): Sets if the house power includes EV charger power.
+    set_hsem_huawei_solar_batteries_maximum_charging_power(self, value): Sets the maximum charging power for the Huawei solar batteries.
+    set_hsem_morning_energy_need(self, value): Sets the morning energy need.
+    _update_settings(self): Fetches updated settings from config_entry options.
+    name(self): Returns the name of the sensor.
+    unique_id(self): Returns the unique ID of the sensor.
+    state(self): Returns the current state of the sensor.
+    extra_state_attributes(self): Returns the state attributes of the sensor.
+    _handle_update(self, event): Handles the sensor state update (for both manual and state change).
+    async_set_inverter_power_control(self): Sets the inverter power control mode.
+    async_set_working_mode(self): Sets the working mode for the system.
+    async_calculate_hourly_data(self): Calculates the weighted hourly data for the sensor.
+    async_calculate_solcast_forecast(self): Calculates the hourly Solcast PV estimate.
+    async_calculate_hourly_import_price(self): Calculates the estimated import price for each hour of the day.
+    async_calculate_hourly_export_price(self): Calculates the estimated export price for each hour of the day.
+    async_calculate_hourly_net_consumption(self): Calculates the estimated net consumption for each hour of the day.
+    async_optimization_strategy(self): Calculates the optimization strategy for each hour of the day.
+    async_update(self): Manually triggers the sensor update.
+    async_added_to_hass(self): Handles the sensor being added to Home Assistant.
+"""
+
 import logging
+
 from datetime import datetime, timedelta
 
 from homeassistant.components.sensor import SensorEntity

@@ -1,4 +1,24 @@
+"""
+This module provides utility functions for the Home Assistant custom integration.
+
+Functions:
+    generate_md5_hash(input_sensor):
+        Generate an MD5 hash based on the input sensor's name.
+
+    get_config_value(config_entry, key, default_value=None):
+        Get the configuration value from options or fall back to the initial data.
+
+    convert_to_float(state):
+        Resolve the input sensor state and cast it to a float.
+
+    convert_to_boolean(state):
+        Resolve the input sensor state and cast it to a boolean.
+
+    async_resolve_entity_id_from_unique_id(self, unique_entity_id, domain="sensor"):
+"""
+
 import hashlib
+
 import logging
 
 from homeassistant.helpers import entity_registry as er

@@ -1,4 +1,26 @@
 import logging
+"""
+This module defines the configuration flow for the HSEM integration in Home Assistant.
+
+Classes:
+    HSEMConfigFlow: Handles the configuration flow for the HSEM integration.
+    HSEMOptionsFlow: Handles the options flow for the HSEM integration.
+
+Functions:
+    async_step_user: Handles the initial step of the configuration flow.
+    async_step_energidataservice: Handles the step for energy data services configuration.
+    async_step_huawei_solar: Handles the step for Huawei solar configuration.
+    async_step_power: Handles the step for power sensors configuration.
+    async_step_solcast: Handles the step for Solcast PV forecast configuration.
+    async_step_misc: Handles the step for miscellaneous configuration.
+    async_get_options_flow: Returns the options flow for the HSEM integration.
+
+Attributes:
+    _LOGGER: Logger instance for the module.
+    DOMAIN: The domain of the HSEM integration.
+    NAME: The name of the HSEM integration.
+    DEFAULT_HSEM_*: Default values for various configuration parameters.
+"""
 
 import voluptuous as vol
 from homeassistant import config_entries
