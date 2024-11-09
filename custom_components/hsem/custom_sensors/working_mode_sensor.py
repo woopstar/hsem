@@ -627,6 +627,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         # calculate the hourly export price
         await self.async_calculate_hourly_export_price()
 
+        # reset the recommendations
+        await self.async_reset_recommendations()
+
         # calculate the optimization strategy
         await self.async_optimization_strategy()
 
@@ -760,6 +763,12 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             )
 
         self._state = working_mode
+
+    async def async_reset_recommendations(self):
+        """Reset the recommendations for each hour of the day."""
+
+        for hour, data in self._hourly_calculations.items():
+            data["recommendation"] = None
 
     async def async_calculate_hourly_data(self):
         """Calculate the weighted hourly data for the sensor using both 3-day and 7-day HouseConsumptionEnergyAverageSensors."""
