@@ -98,6 +98,8 @@ from homeassistant.helpers.event import (
 
 from ..const import (
     DEFAULT_HSEM_DEFAULT_TOU_MODES,
+    DEFAULT_HSEM_TOU_MODES_FORCE_CHARGE,
+    DEFAULT_HSEM_TOU_MODES_FORCE_DISCHARGE,
     DEFAULT_HSEM_EV_CHARGER_TOU_MODES,
     DEFAULT_HSEM_IMPORT_SENSOR_TOU_MODES,
     DEFAULT_HSEM_MONTHS_SUMMER,
@@ -151,6 +153,8 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_huawei_solar_inverter_active_power_control = None
         self._hsem_huawei_solar_batteries_working_mode_state = None
         self._hsem_huawei_solar_batteries_state_of_capacity_state = None
+        self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc = None
+        self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state = None
         self._hsem_house_power_includes_ev_charger_power = None
         self._hsem_ev_charger_status_state = False
         self._hsem_ev_charger_power_state = False
@@ -236,6 +240,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
     def set_hsem_huawei_solar_batteries_maximum_charging_power(self, value):
         self._hsem_huawei_solar_batteries_maximum_charging_power = value
+
+    def set_hsem_huawei_solar_batteries_grid_charge_cutoff_soc(self, value):
+        self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc = value
 
     def set_hsem_morning_energy_need(self, value):
         self._hsem_morning_energy_need = value
@@ -343,6 +350,12 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                 "hsem_morning_energy_need",
             )
         )
+        self.set_hsem_huawei_solar_batteries_grid_charge_cutoff_soc(
+            get_config_value(
+                self._config_entry,
+                "hsem_huawei_solar_batteries_grid_charge_cutoff_soc",
+            )
+        )
 
         if self._hsem_huawei_solar_device_id_inverter_2 is not None:
             if len(self._hsem_huawei_solar_device_id_inverter_2) == 0:
@@ -380,6 +393,10 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             "huawei_solar_batteries_working_mode_state": self._hsem_huawei_solar_batteries_working_mode_state,
             "huawei_solar_batteries_state_of_capacity_entity": self._hsem_huawei_solar_batteries_state_of_capacity,
             "huawei_solar_batteries_state_of_capacity_state": self._hsem_huawei_solar_batteries_state_of_capacity_state,
+            "huawei_solar_batteries_grid_charge_cutoff_soc_entity": self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc,
+            "huawei_solar_batteries_grid_charge_cutoff_soc_state": self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state,
+            "huawei_solar_batteries_maximum_charging_power_entity": self._hsem_huawei_solar_batteries_maximum_charging_power,
+            "huawei_solar_batteries_maximum_charging_power_state": self._hsem_huawei_solar_batteries_maximum_charging_power_state,
             "huawei_solar_inverter_active_power_control_state_entity": self._hsem_huawei_solar_inverter_active_power_control,
             "huawei_solar_inverter_active_power_control_state_state": self._hsem_huawei_solar_inverter_active_power_control_state,
             "house_consumption_power_entity": self._hsem_house_consumption_power,
@@ -394,8 +411,6 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             "energi_data_service_export_value": self._hsem_energi_data_service_export_state,
             "battery_max_capacity": self._hsem_battery_max_capacity,
             "battery_remaining_charge": self._hsem_battery_remaining_charge,
-            "battery_maximum_charging_power_entity": self._hsem_huawei_solar_batteries_maximum_charging_power,
-            "battery_maximum_charging_power_state": self._hsem_huawei_solar_batteries_maximum_charging_power_state,
             "battery_conversion_loss": self._hsem_battery_conversion_loss,
             "ev_charger_status_entity": self._hsem_ev_charger_status,
             "ev_charger_status_state": self._hsem_ev_charger_status_state,
@@ -535,6 +550,20 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                 )
         state = None
 
+        # Fetch the current value from the battery grid charge cutoff SOC sensor
+        if self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc:
+            state = self.hass.states.get(
+                self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc
+            )
+            if state:
+                self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state = round(
+                    convert_to_float(state.state), 0
+                )
+            else:
+                _LOGGER.warning(
+                    f"Sensor {self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc} not found."
+                )
+
         # Fetch the current value from the battery maximum charging power sensor
         if self._hsem_ev_charger_power:
             state = self.hass.states.get(self._hsem_ev_charger_power)
@@ -569,6 +598,8 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                 - self._hsem_house_consumption_power_state
             )
 
+        self._hsem_net_consumption = round(self._hsem_net_consumption, 2)
+
         # Calculate the remaining battery capacity
         if (
             self._hsem_battery_max_capacity is not None
@@ -579,9 +610,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                     (100 - self._hsem_huawei_solar_batteries_state_of_capacity_state)
                     / 100
                     * self._hsem_battery_max_capacity
-                ),
-                2,
-            )
+                ), 2)
 
         # calculate the hourly data from power sensors
         await self.async_calculate_hourly_data()
@@ -600,6 +629,13 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
         # calculate the optimization strategy
         await self.async_optimization_strategy()
+
+        # find best time to charge the battery
+        if now.hour >= 0 and now.hour < 8:
+            await self.async_find_best_time_to_charge(0,8)
+
+        if now.hour >= 10 and now.hour < 17:
+            await self.async_find_best_time_to_charge(10,17)
 
         # Set the inverter power control mode
         if self._hsem_energi_data_service_export_state is not None:
@@ -653,17 +689,26 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
     async def async_set_working_mode(self):
         # Determine the current month and hour
-        current_month = datetime.now().month
+        now = datetime.now()
+        current_month = now.month
+        current_hour_start = now.hour
+        current_hour_end = (current_hour_start + 1) % 24
+        current_time_range = f"{current_hour_start:02d}-{current_hour_end:02d}"
 
         # Determine the appropriate TOU modes and working mode state. In priority order:
         if self._hsem_energi_data_service_import_state < 0:
             # Negative import price. Force charge battery
-            tou_modes = DEFAULT_HSEM_IMPORT_SENSOR_TOU_MODES
+            tou_modes = DEFAULT_HSEM_TOU_MODES_FORCE_CHARGE
             working_mode = WorkingModes.TimeOfUse.value
             _LOGGER.debug(
                 f"Import price is negative. Setting TOU Periods: {tou_modes} and Working Mode: {working_mode}"
             )
-
+        elif self._hourly_calculations.get(current_time_range, {}).get('recommendation') == "force_battery_charge":
+            tou_modes = DEFAULT_HSEM_TOU_MODES_FORCE_CHARGE
+            working_mode = WorkingModes.TimeOfUse.value
+            _LOGGER.warning(
+                f"# Recommendation for {current_time_range} is to force charge the battery. Setting TOU Periods: {tou_modes} and Working Mode: {working_mode}"
+            )
         elif self._hsem_ev_charger_status_state:
             # EV Charger is active. Disable battery discharge
             tou_modes = DEFAULT_HSEM_EV_CHARGER_TOU_MODES
@@ -671,11 +716,22 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             _LOGGER.debug(
                 f"EV Charger is active. Setting TOU Periods: {tou_modes} and Working Mode: {working_mode}"
             )
+        elif self._hourly_calculations.get(current_time_range, {}).get('recommendation') == "force_battery_discharge":
+            tou_modes = DEFAULT_HSEM_TOU_MODES_FORCE_DISCHARGE
+            working_mode = WorkingModes.TimeOfUse.value
+            _LOGGER.warning(
+                f"# Recommendation for {current_time_range} is to force discharge the battery. Setting TOU Periods: {tou_modes} and Working Mode: {working_mode}"
+            )
         elif self._hsem_net_consumption > 0:
             # Positive net consumption. Charge battery from Solar
             working_mode = WorkingModes.MaximizeSelfConsumption.value
             _LOGGER.debug(
                 f"Positive net consumption. Working Mode: {working_mode}, Solar Production: {self._hsem_solar_production_power_state}, House Consumption: {self._hsem_house_consumption_power_state}, Net Consumption: {self._hsem_net_consumption}"
+            )
+        elif self._hourly_calculations.get(current_time_range, {}).get('recommendation') == "msc":
+            working_mode = WorkingModes.MaximizeSelfConsumption.value
+            _LOGGER.warning(
+                f"# Recommendation for {current_time_range} is to set working mode to Maximize Self Consumption"
             )
         else:
             # Winter/Spring settings
@@ -902,6 +958,63 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             f"Updated hourly calculations with Estimated Net Consumption: {self._hourly_calculations}"
         )
 
+    async def async_find_best_time_to_charge(self, start_hour=14, stop_hour=17):
+        _LOGGER.debug(
+            f"Calculating best time to charge battery between {start_hour} and {stop_hour}"
+        )
+
+        # Check if the necessary variables have valid numerical values
+        if (
+            self._hsem_battery_max_capacity is None or
+            self._hsem_huawei_solar_batteries_maximum_charging_power_state is None or
+            self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state is None or
+            self._hsem_battery_remaining_charge is None or
+            self._hsem_huawei_solar_batteries_state_of_capacity_state is None
+        ):
+            _LOGGER.debug(
+                f"Missing necessary variables for calculating best time to charge battery: {self._hsem_battery_remaining_charge}, {self._hsem_battery_max_capacity}, {self._hsem_huawei_solar_batteries_maximum_charging_power_state}, {self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state}, {self._hsem_huawei_solar_batteries_state_of_capacity_state}"
+            )
+            return  # Wait for the next call until all values are available
+
+        # Calculate remaining charge needed based on battery capacity and SOC
+        remaining_charge_needed = self._hsem_battery_remaining_charge
+        max_charging_power_kW = self._hsem_huawei_solar_batteries_maximum_charging_power_state / 1000
+        max_grid_soc = self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state
+
+        # Calculate the maximum allowed charge from the grid in kWh, based on max SOC
+        max_allowed_grid_charge = max_grid_soc * self._hsem_battery_max_capacity / 100
+
+        # Find the hours within the specified range when it is cheapest to charge
+        hours_to_charge = []
+        for hour_start in range(start_hour, stop_hour):
+            hour_end = (hour_start + 1) % 24
+            time_range = f"{hour_start:02d}-{hour_end:02d}"
+            if time_range in self._hourly_calculations:
+                hours_to_charge.append((time_range, self._hourly_calculations[time_range]['import_price']))
+
+        # Sort hours by lowest import_price
+        hours_to_charge.sort(key=lambda x: x[1])
+
+        # Calculate charging time and mark the hours for charging
+        charged_energy = 0.0
+        for time_range, price in hours_to_charge:
+            if charged_energy >= remaining_charge_needed or charged_energy >= max_allowed_grid_charge:
+                break
+
+            # Calculate how much energy we can charge in this hour (in kWh)
+            energy_to_charge = min(max_charging_power_kW, remaining_charge_needed - charged_energy)
+
+            # Mark this hour for charging and update the charged energy
+            self._hourly_calculations[time_range]['recommendation'] = "force_battery_charge"
+            _LOGGER.debug(
+                f"Marked hour {time_range} for charging. Energy to charge: {energy_to_charge} kWh"
+            )
+            charged_energy += energy_to_charge
+
+        _LOGGER.debug(
+            f"Updated hourly calculations with when to charge battery: {self._hourly_calculations}"
+        )
+
     async def async_optimization_strategy(self):
         """Calculate the optimization strategy for each hour of the day."""
 
@@ -920,10 +1033,10 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
             # Maximize Self Consumption
             if net_consumption > 0:
-                data["recommendation"] = "Maximize Self Consumption"
+                data["recommendation"] = "msc"
 
             if 17 <= start_hour < 21:
-                data["recommendation"] = "Time of Use: Discharge"
+                data["recommendation"] = "force_battery_discharge"
 
     async def async_update(self):
         """Manually trigger the sensor update."""
@@ -1089,6 +1202,16 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             async_track_state_change_event(
                 self.hass,
                 [self._hsem_huawei_solar_batteries_maximum_charging_power],
+                self._handle_update,
+            )
+
+        if self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc:
+            _LOGGER.info(
+                f"Starting to track state changes for entity_id {self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc}"
+            )
+            async_track_state_change_event(
+                self.hass,
+                [self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc],
                 self._handle_update,
             )
 

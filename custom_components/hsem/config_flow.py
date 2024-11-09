@@ -45,6 +45,7 @@ from .const import (
     DEFAULT_HSEM_SOLAR_PRODUCTION_POWER,
     DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TODAY,
     DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TOMORROW,
+    DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_GRID_CHARGE_CUTOFF_SOC,
     DOMAIN,
     NAME,
 )
@@ -157,6 +158,10 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._errors["hsem_battery_max_capacity"] = "required"
             elif not user_input.get("hsem_battery_conversion_loss"):
                 self._errors["hsem_battery_conversion_loss"] = "required"
+            elif not user_input.get("hsem_huawei_solar_batteries_grid_charge_cutoff_soc"):
+                self._errors["hsem_huawei_solar_batteries_grid_charge_cutoff_soc"] = (
+                    "required"
+                )
             else:
                 # Combine user inputs and create the entry
                 final_data = {**self._user_input, **user_input}
@@ -203,6 +208,10 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required(
                     "hsem_huawei_solar_batteries_maximum_charging_power",
                     default=DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_MAXIMUM_CHARGING_POWER,
+                ): selector({"entity": {"domain": "number"}}),
+                vol.Required(
+                    "hsem_huawei_solar_batteries_grid_charge_cutoff_soc",
+                    default=DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_GRID_CHARGE_CUTOFF_SOC,
                 ): selector({"entity": {"domain": "number"}}),
                 vol.Required(
                     "hsem_battery_max_capacity",
@@ -495,6 +504,10 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
                 self._errors["hsem_battery_max_capacity"] = "required"
             elif not user_input.get("hsem_battery_conversion_loss"):
                 self._errors["hsem_battery_conversion_loss"] = "required"
+            elif not user_input.get("hsem_huawei_solar_batteries_grid_charge_cutoff_soc"):
+                self._errors["hsem_huawei_solar_batteries_grid_charge_cutoff_soc"] = (
+                    "required"
+                )
             else:
                 # Combine user inputs and create the entry
                 final_data = {**self._user_input, **user_input}
@@ -551,6 +564,13 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
                     default=self.config_entry.options.get(
                         "hsem_huawei_solar_batteries_maximum_charging_power",
                         DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_MAXIMUM_CHARGING_POWER,
+                    ),
+                ): selector({"entity": {"domain": "number"}}),
+                vol.Required(
+                    "hsem_huawei_solar_batteries_grid_charge_cutoff_soc",
+                    default=self.config_entry.options.get(
+                        "hsem_huawei_solar_batteries_grid_charge_cutoff_soc",
+                        DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_GRID_CHARGE_CUTOFF_SOC,
                     ),
                 ): selector({"entity": {"domain": "number"}}),
                 vol.Required(
