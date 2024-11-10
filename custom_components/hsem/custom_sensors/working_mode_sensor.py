@@ -626,6 +626,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             if self._hsem_battery_remaining_charge > max_allowed_grid_charge:
                 self._hsem_battery_remaining_charge = max_allowed_grid_charge
 
+        # reset the recommendations
+        await self.async_reset_recommendations()
+
         # calculate the hourly data from power sensors
         await self.async_calculate_hourly_data()
 
@@ -640,9 +643,6 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
         # calculate the hourly export price
         await self.async_calculate_hourly_export_price()
-
-        # reset the recommendations
-        await self.async_reset_recommendations()
 
         # calculate the optimization strategy
         await self.async_optimization_strategy()
@@ -670,7 +670,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             last_changed_mode_seconds = 0
 
         # Set the working mode
-        if last_changed_mode_seconds > 300 or self._last_changed_mode is None:
+        if last_changed_mode_seconds > 120 or self._last_changed_mode is None:
             await self.async_set_working_mode()
             self._last_changed_mode = datetime.now().isoformat()
 
@@ -721,7 +721,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             # Negative import price. Force charge battery
             tou_modes = DEFAULT_HSEM_TOU_MODES_FORCE_CHARGE
             working_mode = WorkingModes.TimeOfUse.value
-            _LOGGER.debug(
+            _LOGGER.warning(
                 f"Import price is negative. Setting TOU Periods: {tou_modes} and Working Mode: {working_mode}"
             )
         elif self._hourly_calculations.get(current_time_range, {}).get('recommendation') == "force_battery_charge":
@@ -734,7 +734,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             # EV Charger is active. Disable battery discharge
             tou_modes = DEFAULT_HSEM_EV_CHARGER_TOU_MODES
             working_mode = WorkingModes.TimeOfUse.value
-            _LOGGER.debug(
+            _LOGGER.warning(
                 f"EV Charger is active. Setting TOU Periods: {tou_modes} and Working Mode: {working_mode}"
             )
         elif self._hourly_calculations.get(current_time_range, {}).get('recommendation') == "force_battery_discharge":
@@ -746,7 +746,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         elif self._hsem_net_consumption > 0:
             # Positive net consumption. Charge battery from Solar
             working_mode = WorkingModes.MaximizeSelfConsumption.value
-            _LOGGER.debug(
+            _LOGGER.warning(
                 f"Positive net consumption. Working Mode: {working_mode}, Solar Production: {self._hsem_solar_production_power_state}, House Consumption: {self._hsem_house_consumption_power_state}, Net Consumption: {self._hsem_net_consumption}"
             )
         elif self._hourly_calculations.get(current_time_range, {}).get('recommendation') == "msc":
@@ -759,14 +759,14 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             if current_month in DEFAULT_HSEM_MONTHS_WINTER_SPRING:
                 tou_modes = DEFAULT_HSEM_DEFAULT_TOU_MODES
                 working_mode = WorkingModes.TimeOfUse.value
-                _LOGGER.debug(
+                _LOGGER.warning(
                     f"Default winter/spring settings. TOU Periods: {tou_modes} and Working Mode: {working_mode}"
                 )
 
             # Summer settings
             if current_month in DEFAULT_HSEM_MONTHS_SUMMER:
                 working_mode = WorkingModes.MaximizeSelfConsumption.value
-                _LOGGER.debug(f"Default summer settings. Working Mode: {working_mode}")
+                _LOGGER.warning(f"Default summer settings. Working Mode: {working_mode}")
 
         # Apply TOU periods if working mode is TOU
         if working_mode == WorkingModes.TimeOfUse.value:
@@ -785,8 +785,11 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
     async def async_reset_recommendations(self):
         """Reset the recommendations for each hour of the day."""
 
-        for hour, data in self._hourly_calculations.items():
-            data["recommendation"] = None
+        for hour in range(24):
+            hour_start = hour
+            hour_end = (hour + 1) % 24
+            time_range = f"{hour_start:02d}-{hour_end:02d}"
+            self._hourly_calculations[time_range]["recommendation"] = None
 
     async def async_calculate_hourly_data(self):
         """Calculate the weighted hourly data for the sensor using both 3-day and 7-day HouseConsumptionEnergyAverageSensors."""
@@ -990,6 +993,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             f"Calculating best time to charge battery between {start_hour} and {stop_hour}"
         )
 
+        # Get the current time
+        now = datetime.now()
+
         # Check if the necessary variables have valid numerical values
         if (
             self._hsem_battery_max_capacity is None or
@@ -1007,8 +1013,14 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         # Find the hours within the specified range when it is cheapest to charge
         hours_to_charge = []
         for hour_start in range(start_hour, stop_hour):
+
+            # Skip hours that have already passed
+            if hour_start < now.hour:
+                continue
+
             hour_end = (hour_start + 1) % 24
             time_range = f"{hour_start:02d}-{hour_end:02d}"
+
             if time_range in self._hourly_calculations:
                 hours_to_charge.append((time_range, self._hourly_calculations[time_range]['import_price']))
 
@@ -1019,6 +1031,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         charged_energy = 0.0
         for time_range, price in hours_to_charge:
             if charged_energy >= self._hsem_battery_remaining_charge:
+                _LOGGER.debug(
+                    f"Charged energy exceeds remaining charge. Stopping charging. Charged Energy: {charged_energy} kWh. Remaining Charge: {self._hsem_battery_remaining_charge} kWh."
+                )
                 break
 
             ### Calculate how much energy we can charge in this hour (in kWh)
@@ -1063,11 +1078,11 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
             # Fully Fed to Grid
             if export_price > import_price:
-                data["recommendation"] = "Fully Fed to Grid"
+                data["recommendation"] = "msc"
 
             # Maximize Self Consumption
-            if net_consumption > 0:
-                data["recommendation"] = "msc"
+            #if net_consumption > 0:
+            #    data["recommendation"] = "msc"
 
             if 17 <= start_hour < 21:
                 data["recommendation"] = "force_battery_discharge"
@@ -1087,7 +1102,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             try:
                 self._state = old_state.state
             except (ValueError, TypeError):
-                _LOGGER.warning(
+                _LOGGER.debug(
                     f"Could not restore state for {self._unique_id}, invalid value: {old_state.state}"
                 )
                 self._state = None
