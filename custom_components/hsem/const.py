@@ -113,7 +113,7 @@ DEFAULT_HSEM_HOUSE_POWER_INCLUDES_EV_CHARGER_POWER = True
 # Default sensor entity ID for EV charger power
 DEFAULT_HSEM_EV_CHARGER_POWER = "sensor.go_echarger_222819_nrg_12"
 
-# Default conversion loss for battery charging
+# Default conversion loss for battery charging in pct
 DEFAULT_HSEM_BATTERY_CONVERSION_LOSS = 10
 
 # Default sensor entity ID for battery charging power

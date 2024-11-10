@@ -172,13 +172,13 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_morning_energy_need = 0.0
         self._last_changed_mode = None
         self._last_updated = None
-        self._last_tou_mode = None
 
         self._hourly_calculations = {
             f"{hour:02d}-{(hour + 1) % 24:02d}": {
                 "avg_house_consumption": 0.0,
                 "solcast_pv_estimate": 0.0,
                 "estimated_net_consumption": 0.0,
+                "batteries_charged": 0.0,
                 "import_price": 0.0,
                 "export_price": 0.0,
                 "recommendation": None,
@@ -769,13 +769,10 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                 _LOGGER.debug(f"Default summer settings. Working Mode: {working_mode}")
 
         # Apply TOU periods if working mode is TOU
-        if tou_modes is not None:
-            tou_hash = generate_md5_hash(str(tou_modes))
-            if working_mode == WorkingModes.TimeOfUse.value and self._last_tou_mode != tou_hash:
-                await async_set_tou_periods(
-                    self, self._hsem_huawei_solar_device_id_batteries, tou_modes
-                )
-                self._last_tou_mode = tou_hash
+        if working_mode == WorkingModes.TimeOfUse.value:
+            await async_set_tou_periods(
+                self, self._hsem_huawei_solar_device_id_batteries, tou_modes
+            )
 
         # Only apply working mode if it has changed
         if self._hsem_huawei_solar_batteries_working_mode_state != working_mode:
@@ -1036,10 +1033,12 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             remaining_charge_needed = (self._hsem_battery_remaining_charge - charged_energy)
 
             # Determine the energy to charge by taking the minimum of the maximum charge allowed and the remaining needed charge
-            energy_to_charge = min(max_charge_per_hour, remaining_charge_needed)
+            energy_to_charge = round(min(max_charge_per_hour, remaining_charge_needed), 2)
 
             # Mark this hour for charging and update the charged energy
             self._hourly_calculations[time_range]['recommendation'] = "force_battery_charge"
+            self._hourly_calculations[time_range]['batteries_charged'] = energy_to_charge
+
             charged_energy += energy_to_charge
 
             _LOGGER.debug(
