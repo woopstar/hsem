@@ -116,6 +116,7 @@ from ..utils.misc import (
     async_resolve_entity_id_from_unique_id,
     convert_to_boolean,
     convert_to_float,
+    generate_md5_hash,
     get_config_value,
 )
 from ..utils.workingmodes import WorkingModes
@@ -171,6 +172,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_morning_energy_need = 0.0
         self._last_changed_mode = None
         self._last_updated = None
+        self._last_tou_mode = None
 
         self._hourly_calculations = {
             f"{hour:02d}-{(hour + 1) % 24:02d}": {
@@ -712,6 +714,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         current_hour_start = now.hour
         current_hour_end = (current_hour_start + 1) % 24
         current_time_range = f"{current_hour_start:02d}-{current_hour_end:02d}"
+        tou_modes = None
 
         # Determine the appropriate TOU modes and working mode state. In priority order:
         if self._hsem_energi_data_service_import_state < 0:
@@ -766,10 +769,13 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                 _LOGGER.debug(f"Default summer settings. Working Mode: {working_mode}")
 
         # Apply TOU periods if working mode is TOU
-        if working_mode == WorkingModes.TimeOfUse.value:
-            await async_set_tou_periods(
-                self, self._hsem_huawei_solar_device_id_batteries, tou_modes
-            )
+        if tou_modes is not None:
+            tou_hash = generate_md5_hash(str(tou_modes))
+            if working_mode == WorkingModes.TimeOfUse.value and self._last_tou_mode != tou_hash:
+                await async_set_tou_periods(
+                    self, self._hsem_huawei_solar_device_id_batteries, tou_modes
+                )
+                self._last_tou_mode = tou_hash
 
         # Only apply working mode if it has changed
         if self._hsem_huawei_solar_batteries_working_mode_state != working_mode:
@@ -1027,17 +1033,18 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             max_charge_per_hour = (self._hsem_huawei_solar_batteries_maximum_charging_power_state / 1000) * conversion_loss_factor
 
             # Calculate the remaining charge needed to fill the battery, adjusted for conversion loss
-            remaining_charge_needed = (self._hsem_battery_remaining_charge - charged_energy) * conversion_loss_factor
+            remaining_charge_needed = (self._hsem_battery_remaining_charge - charged_energy)
 
             # Determine the energy to charge by taking the minimum of the maximum charge allowed and the remaining needed charge
             energy_to_charge = min(max_charge_per_hour, remaining_charge_needed)
 
             # Mark this hour for charging and update the charged energy
             self._hourly_calculations[time_range]['recommendation'] = "force_battery_charge"
-            _LOGGER.debug(
-                f"Marked hour {time_range} for charging. Energy to charge: {energy_to_charge} kWh"
-            )
             charged_energy += energy_to_charge
+
+            _LOGGER.debug(
+                f"Marked hour {time_range} for charging. Energy Charged: {energy_to_charge} kWh. Total Charged Energy: {charged_energy} kWh. Total Charge needed: {self._hsem_battery_remaining_charge} kWh."
+            )
 
         _LOGGER.debug(
             f"Updated hourly calculations with when to charge battery: {self._hourly_calculations}"
