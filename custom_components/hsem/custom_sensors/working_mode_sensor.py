@@ -101,7 +101,6 @@ from ..const import (
     DEFAULT_HSEM_TOU_MODES_FORCE_CHARGE,
     DEFAULT_HSEM_TOU_MODES_FORCE_DISCHARGE,
     DEFAULT_HSEM_EV_CHARGER_TOU_MODES,
-    DEFAULT_HSEM_IMPORT_SENSOR_TOU_MODES,
     DEFAULT_HSEM_MONTHS_SUMMER,
     DEFAULT_HSEM_MONTHS_WINTER_SPRING,
     DOMAIN,
@@ -600,17 +599,30 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
         self._hsem_net_consumption = round(self._hsem_net_consumption, 2)
 
-        # Calculate the remaining battery capacity
+        # Calculate remaining battery capacity and max allowed charge from grid if all necessary values are available
         if (
             self._hsem_battery_max_capacity is not None
             and self._hsem_huawei_solar_batteries_state_of_capacity_state is not None
+            and self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state is not None
         ):
+            # Calculate the remaining charge needed to reach full capacity (kWh)
             self._hsem_battery_remaining_charge = round(
-                (
-                    (100 - self._hsem_huawei_solar_batteries_state_of_capacity_state)
-                    / 100
-                    * self._hsem_battery_max_capacity
-                ), 2)
+                (100 - self._hsem_huawei_solar_batteries_state_of_capacity_state)
+                / 100
+                * self._hsem_battery_max_capacity,
+                2,
+            )
+
+            # Calculate the maximum charge allowed from the grid based on cutoff SOC (kWh)
+            max_allowed_grid_charge = (
+                self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state
+                * self._hsem_battery_max_capacity
+                / 100
+            )
+
+            # Adjust remaining charge if it exceeds the max grid-allowed charge
+            if self._hsem_battery_remaining_charge > max_allowed_grid_charge:
+                self._hsem_battery_remaining_charge = max_allowed_grid_charge
 
         # calculate the hourly data from power sensors
         await self.async_calculate_hourly_data()
@@ -633,12 +645,15 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         # calculate the optimization strategy
         await self.async_optimization_strategy()
 
-        # find best time to charge the battery
-        if now.hour >= 0 and now.hour < 8:
-            await self.async_find_best_time_to_charge(0,8)
+        # Charge the battery when it's winter/spring and prices are high
+        if now.month in DEFAULT_HSEM_MONTHS_WINTER_SPRING:
+            # find best time to charge the battery at night
+            if now.hour >= 0 and now.hour < 6:
+                await self.async_find_best_time_to_charge(0,6)
 
-        if now.hour >= 10 and now.hour < 17:
-            await self.async_find_best_time_to_charge(10,17)
+            # find best time to charge the battery at day
+            if now.hour >= 12 and now.hour < 17:
+                await self.async_find_best_time_to_charge(12,17)
 
         # Set the inverter power control mode
         if self._hsem_energi_data_service_export_state is not None:
@@ -978,20 +993,13 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             self._hsem_huawei_solar_batteries_maximum_charging_power_state is None or
             self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state is None or
             self._hsem_battery_remaining_charge is None or
+            self._hsem_battery_conversion_loss is None or
             self._hsem_huawei_solar_batteries_state_of_capacity_state is None
         ):
             _LOGGER.debug(
                 f"Missing necessary variables for calculating best time to charge battery: {self._hsem_battery_remaining_charge}, {self._hsem_battery_max_capacity}, {self._hsem_huawei_solar_batteries_maximum_charging_power_state}, {self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state}, {self._hsem_huawei_solar_batteries_state_of_capacity_state}"
             )
             return  # Wait for the next call until all values are available
-
-        # Calculate remaining charge needed based on battery capacity and SOC
-        remaining_charge_needed = self._hsem_battery_remaining_charge
-        max_charging_power_kW = self._hsem_huawei_solar_batteries_maximum_charging_power_state / 1000
-        max_grid_soc = self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state
-
-        # Calculate the maximum allowed charge from the grid in kWh, based on max SOC
-        max_allowed_grid_charge = max_grid_soc * self._hsem_battery_max_capacity / 100
 
         # Find the hours within the specified range when it is cheapest to charge
         hours_to_charge = []
@@ -1007,11 +1015,22 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         # Calculate charging time and mark the hours for charging
         charged_energy = 0.0
         for time_range, price in hours_to_charge:
-            if charged_energy >= remaining_charge_needed or charged_energy >= max_allowed_grid_charge:
+            if charged_energy >= self._hsem_battery_remaining_charge:
                 break
 
-            # Calculate how much energy we can charge in this hour (in kWh)
-            energy_to_charge = min(max_charging_power_kW, remaining_charge_needed - charged_energy)
+            ### Calculate how much energy we can charge in this hour (in kWh)
+
+            # Calculate the conversion loss factor from AC to DC
+            conversion_loss_factor = 1 - (self._hsem_battery_conversion_loss / 100)
+
+            # Calculate the maximum possible charge in kWh for this hour, limited by charging power and conversion loss
+            max_charge_per_hour = (self._hsem_huawei_solar_batteries_maximum_charging_power_state / 1000) * conversion_loss_factor
+
+            # Calculate the remaining charge needed to fill the battery, adjusted for conversion loss
+            remaining_charge_needed = (self._hsem_battery_remaining_charge - charged_energy) * conversion_loss_factor
+
+            # Determine the energy to charge by taking the minimum of the maximum charge allowed and the remaining needed charge
+            energy_to_charge = min(max_charge_per_hour, remaining_charge_needed)
 
             # Mark this hour for charging and update the charged energy
             self._hourly_calculations[time_range]['recommendation'] = "force_battery_charge"

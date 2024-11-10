@@ -18,7 +18,6 @@ Constants:
     DEFAULT_HSEM_MORNING_ENERGY_NEED (float): Default morning energy need in kWh.
     DEFAULT_HSEM_BATTERY_MAX_CAPACITY (float): Default battery maximum capacity in kWh.
     DEFAULT_HSEM_EV_CHARGER_STATUS (str): Default sensor entity ID for EV charger status.
-    DEFAULT_HSEM_IMPORT_SENSOR_TOU_MODES (list): Default Time-Of-Use (TOU) modes for import sensor when enabled.
     DEFAULT_HSEM_EV_CHARGER_TOU_MODES (list): Default TOU modes for EV charger when charging.
     DEFAULT_HSEM_DEFAULT_TOU_MODES (list): Default TOU modes for solar energy consumption throughout the day.
     DEFAULT_HSEM_MONTHS_WINTER_SPRING (list): Default list of months considered winter and spring.
@@ -80,17 +79,14 @@ DEFAULT_HSEM_BATTERY_MAX_CAPACITY = 10
 # Default sensor entity ID for EV charger status
 DEFAULT_HSEM_EV_CHARGER_STATUS = "sensor.go_echarger_is_charging"
 
-# Default Time-Of-Use (TOU) modes for import sensor when enabled
-DEFAULT_HSEM_IMPORT_SENSOR_TOU_MODES = ["00:00-23:59/1234567/+"]
-
 # Default TOU modes for EV charger when charging
 DEFAULT_HSEM_EV_CHARGER_TOU_MODES = ["00:00-00:01/1234567/+"]
 
 # Default TOU modes for solar energy consumption throughout the day
 DEFAULT_HSEM_DEFAULT_TOU_MODES = [
-    "00:01-05:59/1234567/+",
+    #"00:01-05:59/1234567/+",
     "06:00-10:00/1234567/-",
-    "15:00-16:59/1234567/+",
+    #"15:00-16:59/1234567/+",
     "17:00-23:59/1234567/-",
 ]
 
