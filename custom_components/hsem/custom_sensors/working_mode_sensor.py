@@ -172,7 +172,18 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_morning_energy_need = 0.0
         self._last_changed_mode = None
         self._last_updated = None
-        self._hourly_calculations = None
+        self._hourly_calculations = {
+            f"{hour:02d}-{(hour + 1) % 24:02d}": {
+                "avg_house_consumption": 0.0,
+                "solcast_pv_estimate": 0.0,
+                "estimated_net_consumption": 0.0,
+                "batteries_charged": 0.0,
+                "import_price": 0.0,
+                "export_price": 0.0,
+                "recommendation": None,
+            }
+            for hour in range(24)
+        }
         self._unique_id = f"{DOMAIN}_workingmode_sensor"
         self._update_settings()
 
