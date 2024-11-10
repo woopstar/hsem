@@ -1072,6 +1072,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
     async def async_optimization_strategy(self):
         """Calculate the optimization strategy for each hour of the day."""
 
+        now = datetime.now()
+        current_month = now.month
+
         for hour, data in self._hourly_calculations.items():
             import_price = data["import_price"]
             export_price = data["export_price"]
@@ -1093,7 +1096,11 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                 data["recommendation"] = WorkingModes.MaximizeSelfConsumption.value
 
             else:
-                data["recommendation"] = WorkingModes.TimeOfUse.value
+                if current_month in DEFAULT_HSEM_MONTHS_WINTER_SPRING:
+                    data["recommendation"] = WorkingModes.TimeOfUse.value
+
+                if current_month in DEFAULT_HSEM_MONTHS_SUMMER:
+                    data["recommendation"] = WorkingModes.MaximizeSelfConsumption.value
 
     async def async_update(self):
         """Manually trigger the sensor update."""
