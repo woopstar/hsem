@@ -1083,14 +1083,17 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
             # Fully Fed to Grid
             if export_price > import_price:
-                data["recommendation"] = "msc"
+                data["recommendation"] = WorkingModes.MaximizeSelfConsumption.value
 
             # Maximize Self Consumption
-            #if net_consumption > 0:
-            #    data["recommendation"] = "msc"
+            elif net_consumption > 0:
+                data["recommendation"] = WorkingModes.MaximizeSelfConsumption.value
 
-            if 17 <= start_hour < 21:
-                data["recommendation"] = "force_battery_discharge"
+            elif 17 <= start_hour < 21:
+                data["recommendation"] = WorkingModes.MaximizeSelfConsumption.value
+
+            else:
+                data["recommendation"] = WorkingModes.TimeOfUse.value
 
     async def async_update(self):
         """Manually trigger the sensor update."""
