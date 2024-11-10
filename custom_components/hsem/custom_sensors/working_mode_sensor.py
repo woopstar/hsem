@@ -172,19 +172,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_morning_energy_need = 0.0
         self._last_changed_mode = None
         self._last_updated = None
-
-        self._hourly_calculations = {
-            f"{hour:02d}-{(hour + 1) % 24:02d}": {
-                "avg_house_consumption": 0.0,
-                "solcast_pv_estimate": 0.0,
-                "estimated_net_consumption": 0.0,
-                "batteries_charged": 0.0,
-                "import_price": 0.0,
-                "export_price": 0.0,
-                "recommendation": None,
-            }
-            for hour in range(24)
-        }
+        self._hourly_calculations = None
         self._unique_id = f"{DOMAIN}_workingmode_sensor"
         self._update_settings()
 
@@ -784,12 +772,18 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
     async def async_reset_recommendations(self):
         """Reset the recommendations for each hour of the day."""
-
-        for hour in range(24):
-            hour_start = hour
-            hour_end = (hour + 1) % 24
-            time_range = f"{hour_start:02d}-{hour_end:02d}"
-            self._hourly_calculations[time_range]["recommendation"] = None
+        self._hourly_calculations = {
+            f"{hour:02d}-{(hour + 1) % 24:02d}": {
+                "avg_house_consumption": 0.0,
+                "solcast_pv_estimate": 0.0,
+                "estimated_net_consumption": 0.0,
+                "batteries_charged": 0.0,
+                "import_price": 0.0,
+                "export_price": 0.0,
+                "recommendation": None,
+            }
+            for hour in range(24)
+        }
 
     async def async_calculate_hourly_data(self):
         """Calculate the weighted hourly data for the sensor using both 3-day and 7-day HouseConsumptionEnergyAverageSensors."""
