@@ -84,9 +84,9 @@ DEFAULT_HSEM_EV_CHARGER_TOU_MODES = ["00:00-00:01/1234567/+"]
 
 # Default TOU modes for solar energy consumption throughout the day
 DEFAULT_HSEM_DEFAULT_TOU_MODES = [
-    #"00:01-05:59/1234567/+",
+    # "00:01-05:59/1234567/+",
     "06:00-10:00/1234567/-",
-    #"15:00-16:59/1234567/+",
+    # "15:00-16:59/1234567/+",
     "17:00-23:59/1234567/-",
 ]
 
@@ -122,7 +122,11 @@ DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_MAXIMUM_CHARGING_POWER = (
 )
 
 # Default sensor entity ID for for batteries grid charge cutoff SOC
-DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_GRID_CHARGE_CUTOFF_SOC = 'number.batteries_grid_charge_cutoff_soc'
+DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_GRID_CHARGE_CUTOFF_SOC = (
+    "number.batteries_grid_charge_cutoff_soc"
+)
 
 # Default sensor entity ID for for batteries charging and discahrging periods
-DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_TOU_CHARGING_AND_DISCHARGING_PERIODS = 'sensor.batteries_tou_charging_and_discharging_periods'
+DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_TOU_CHARGING_AND_DISCHARGING_PERIODS = (
+    "sensor.batteries_tou_charging_and_discharging_periods"
+)
