@@ -18,7 +18,6 @@ Constants:
     DEFAULT_HSEM_MORNING_ENERGY_NEED (float): Default morning energy need in kWh.
     DEFAULT_HSEM_BATTERY_MAX_CAPACITY (float): Default battery maximum capacity in kWh.
     DEFAULT_HSEM_EV_CHARGER_STATUS (str): Default sensor entity ID for EV charger status.
-    DEFAULT_HSEM_IMPORT_SENSOR_TOU_MODES (list): Default Time-Of-Use (TOU) modes for import sensor when enabled.
     DEFAULT_HSEM_EV_CHARGER_TOU_MODES (list): Default TOU modes for EV charger when charging.
     DEFAULT_HSEM_DEFAULT_TOU_MODES (list): Default TOU modes for solar energy consumption throughout the day.
     DEFAULT_HSEM_MONTHS_WINTER_SPRING (list): Default list of months considered winter and spring.
@@ -43,11 +42,11 @@ DEFAULT_HSEM_ENERGI_DATA_SERVICE_IMPORT = "sensor.energi_data_service"
 DEFAULT_HSEM_ENERGI_DATA_SERVICE_EXPORT = "sensor.energi_data_service_produktion"
 
 # Default select entity ID for solar battery working mode
-DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_WORKING_MODE = "select.battery_working_mode"
+DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_WORKING_MODE = "select.batteries_working_mode"
 
 # Default sensor entity ID for battery state of capacity
 DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_STATE_OF_CAPACITY = (
-    "sensor.battery_state_of_capacity"
+    "sensor.batteries_state_of_capacity"
 )
 
 # Default sensor entity ID for inverter active power control
@@ -80,18 +79,22 @@ DEFAULT_HSEM_BATTERY_MAX_CAPACITY = 10
 # Default sensor entity ID for EV charger status
 DEFAULT_HSEM_EV_CHARGER_STATUS = "sensor.go_echarger_is_charging"
 
-# Default Time-Of-Use (TOU) modes for import sensor when enabled
-DEFAULT_HSEM_IMPORT_SENSOR_TOU_MODES = ["00:00-23:59/1234567/+"]
-
 # Default TOU modes for EV charger when charging
 DEFAULT_HSEM_EV_CHARGER_TOU_MODES = ["00:00-00:01/1234567/+"]
 
 # Default TOU modes for solar energy consumption throughout the day
 DEFAULT_HSEM_DEFAULT_TOU_MODES = [
-    "00:01-05:59/1234567/+",
+    #"00:01-05:59/1234567/+",
     "06:00-10:00/1234567/-",
+    #"15:00-16:59/1234567/+",
     "17:00-23:59/1234567/-",
 ]
+
+# TOU mode for force charging the battery
+DEFAULT_HSEM_TOU_MODES_FORCE_CHARGE = ["00:00-23:59/1234567/+"]
+
+# TOU mode for force dicharging the battery
+DEFAULT_HSEM_TOU_MODES_FORCE_DISCHARGE = ["00:00-23:59/1234567/-"]
 
 # Default list of months considered winter and spring
 DEFAULT_HSEM_MONTHS_WINTER_SPRING = [1, 2, 3, 4, 9, 10, 11, 12]
@@ -110,10 +113,16 @@ DEFAULT_HSEM_HOUSE_POWER_INCLUDES_EV_CHARGER_POWER = True
 # Default sensor entity ID for EV charger power
 DEFAULT_HSEM_EV_CHARGER_POWER = "sensor.go_echarger_222819_nrg_12"
 
-# Default conversion loss for battery charging
+# Default conversion loss for battery charging in pct
 DEFAULT_HSEM_BATTERY_CONVERSION_LOSS = 10
 
 # Default sensor entity ID for battery charging power
 DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_MAXIMUM_CHARGING_POWER = (
-    "number.battery_maximum_charging_power"
+    "number.batteries_maximum_charging_power"
 )
+
+# Default sensor entity ID for for batteries grid charge cutoff SOC
+DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_GRID_CHARGE_CUTOFF_SOC = 'number.batteries_grid_charge_cutoff_soc'
+
+# Default sensor entity ID for for batteries charging and discahrging periods
+DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_TOU_CHARGING_AND_DISCHARGING_PERIODS = 'sensor.batteries_tou_charging_and_discharging_periods'

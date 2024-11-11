@@ -82,6 +82,12 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     hsem_morning_energy_need = get_config_value(
         config_entry, "hsem_morning_energy_need"
     )
+    hsem_huawei_solar_batteries_grid_charge_cutoff_soc = get_config_value(
+        config_entry, "hsem_huawei_solar_batteries_grid_charge_cutoff_soc"
+    )
+    hsem_huawei_solar_batteries_tou_charging_and_discharging_periods = get_config_value(
+        config_entry, "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods"
+    )
 
     # Create the export from the input from hsem_energi_data_service_export
     working_mode_sensor = WorkingModeSensor(config_entry)
@@ -121,6 +127,12 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     )
     working_mode_sensor.set_hsem_huawei_solar_batteries_maximum_charging_power(
         hsem_huawei_solar_batteries_maximum_charging_power
+    )
+    working_mode_sensor.set_hsem_huawei_solar_batteries_grid_charge_cutoff_soc(
+        hsem_huawei_solar_batteries_grid_charge_cutoff_soc
+    )
+    working_mode_sensor.set_hsem_huawei_solar_batteries_tou_charging_and_discharging_periods(
+        hsem_huawei_solar_batteries_tou_charging_and_discharging_periods
     )
     working_mode_sensor.set_hsem_battery_conversion_loss(hsem_battery_conversion_loss)
     working_mode_sensor.set_hsem_house_power_includes_ev_charger_power(
