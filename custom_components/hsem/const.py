@@ -121,4 +121,8 @@ DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_MAXIMUM_CHARGING_POWER = (
     "number.batteries_maximum_charging_power"
 )
 
+# Default sensor entity ID for for batteries grid charge cutoff SOC
 DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_GRID_CHARGE_CUTOFF_SOC = 'number.batteries_grid_charge_cutoff_soc'
+
+# Default sensor entity ID for for batteries charging and discahrging periods
+DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_TOU_CHARGING_AND_DISCHARGING_PERIODS = 'sensor.batteries_tou_charging_and_discharging_periods'
