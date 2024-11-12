@@ -4,7 +4,8 @@
     "after_dependencies": [
         "energidataservice",
         "huawei_solar",
-        "solcast_solar"
+        "solcast_solar",
+        "statistics"
     ],
     "codeowners": [
         "@woopstar",
