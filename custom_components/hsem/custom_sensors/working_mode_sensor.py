@@ -104,6 +104,7 @@ from ..const import (
     DEFAULT_HSEM_TOU_MODES_FORCE_CHARGE,
     DEFAULT_HSEM_TOU_MODES_FORCE_DISCHARGE,
     DOMAIN,
+    HOUSE_CONSUMPTION_ENERGY_WEIGHT_1D,
     HOUSE_CONSUMPTION_ENERGY_WEIGHT_3D,
     HOUSE_CONSUMPTION_ENERGY_WEIGHT_7D,
     HOUSE_CONSUMPTION_ENERGY_WEIGHT_14D,
@@ -868,11 +869,15 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             time_range = f"{hour_start:02d}-{hour_end:02d}"
 
             # Construct unique_ids for the 3d, 7d, and 14d sensors
+            unique_id_1d = f"{DOMAIN}_house_consumption_energy_avg_{hour_start:02d}_{hour_end:02d}_1d"
             unique_id_3d = f"{DOMAIN}_house_consumption_energy_avg_{hour_start:02d}_{hour_end:02d}_3d"
             unique_id_7d = f"{DOMAIN}_house_consumption_energy_avg_{hour_start:02d}_{hour_end:02d}_7d"
             unique_id_14d = f"{DOMAIN}_house_consumption_energy_avg_{hour_start:02d}_{hour_end:02d}_14d"
 
             # Resolve entity_ids for 3d, 7d, and 14d sensors
+            entity_id_1d = await async_resolve_entity_id_from_unique_id(
+                self, unique_id_1d
+            )
             entity_id_3d = await async_resolve_entity_id_from_unique_id(
                 self, unique_id_3d
             )
@@ -884,11 +889,22 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             )
 
             # Default values for sensors in case they are missing
+            value_1d = 0.0
             value_3d = 0.0
             value_7d = 0.0
             value_14d = 0.0
 
-            # Fetch values for 3d, 7d, and 14d if available
+            # Fetch values for 1d, 3d, 7d, and 14d if available
+            if entity_id_1d:
+                entity_state_1d = self.hass.states.get(entity_id_1d)
+                if entity_state_1d and entity_state_1d.state != "unknown":
+                    try:
+                        value_1d = convert_to_float(entity_state_1d.state)
+                    except ValueError:
+                        _LOGGER.warning(
+                            f"Invalid state for entity {entity_id_1d}: {entity_state_1d.state}"
+                        )
+
             if entity_id_3d:
                 entity_state_3d = self.hass.states.get(entity_id_3d)
                 if entity_state_3d and entity_state_3d.state != "unknown":
@@ -921,7 +937,8 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
             # Calculate the weighted average house consumption for the hour
             weighted_value = round(
-                (value_3d * HOUSE_CONSUMPTION_ENERGY_WEIGHT_3D)
+                (value_1d * HOUSE_CONSUMPTION_ENERGY_WEIGHT_1D)
+                + (value_3d * HOUSE_CONSUMPTION_ENERGY_WEIGHT_3D)
                 + (value_7d * HOUSE_CONSUMPTION_ENERGY_WEIGHT_7D)
                 + (value_14d * HOUSE_CONSUMPTION_ENERGY_WEIGHT_14D),
                 6,
