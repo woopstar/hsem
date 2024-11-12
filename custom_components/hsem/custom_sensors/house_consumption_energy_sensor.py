@@ -216,15 +216,6 @@ class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
                 samples_max_age=timedelta(days=avg)
             )
 
-            # avg_sensor = StatisticsSensor(
-            #     source_entity_id=energy_sensor,
-            #     name=avg_energy_sensor_name,
-            #     unique_id=avg_energy_sensor_unique_id,
-            #     state_characteristic='mean',
-            #     samples_max_buffer_size=(24*60*avg),
-            #     samples_max_age={"days": avg}
-            # )
-
             async_add_entities = self.hass.data[DOMAIN].get(self._config_entry.entry_id)
 
             if async_add_entities:
