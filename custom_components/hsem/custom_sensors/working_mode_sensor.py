@@ -120,8 +120,8 @@ from custom_components.hsem.utils.misc import (
     generate_md5_hash,
     get_config_value,
 )
-from ..utils.recommendations import Recommendations
-from ..utils.workingmodes import WorkingModes
+from custom_components.hsem.utils.recommendations import Recommendations
+from custom_components.hsem.utils.workingmodes import WorkingModes
 
 _LOGGER = logging.getLogger(__name__)
 
