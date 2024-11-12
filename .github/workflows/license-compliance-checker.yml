@@ -12,9 +12,9 @@ jobs:
       with:
         fetch-depth: 0
     - name: Setup Python
-      uses: actions/setup-python@v5.3.0
+      uses: actions/setup-python@v5
       with:
-        python-version: '3.8'
+        python-version: '3.13'
     - name: Get explicit and transitive dependencies
       run: |
         pip3 install --upgrade pip
