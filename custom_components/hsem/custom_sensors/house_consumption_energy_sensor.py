@@ -192,12 +192,12 @@ class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
         avg_energy_sensor_unique_id=f"{DOMAIN}_house_consumption_energy_avg_{self._hour_start:02d}_{self._hour_end:02d}_{avg}d"
 
         energy_sensor = await async_resolve_entity_id_from_unique_id(
-            self.hass,
+            self,
             self._unique_id
         )
 
         avg_energy_sensor_exists = await async_resolve_entity_id_from_unique_id(
-            self.hass,
+            self,
             avg_energy_sensor_unique_id
         )
 
@@ -207,13 +207,23 @@ class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
             )
 
             avg_sensor = StatisticsSensor(
-                energy_sensor,
+                hass=self.hass,
+                source_entity_id=energy_sensor,
                 name=avg_energy_sensor_name,
                 unique_id=avg_energy_sensor_unique_id,
-                sampling_size=(24 * 60 * avg),
-                max_age={"days": avg},
-                characteristic="mean"
+                state_characteristic="mean",
+                samples_max_buffer_size=(24 * 60 * avg),
+                samples_max_age=timedelta(days=avg)
             )
+
+            # avg_sensor = StatisticsSensor(
+            #     source_entity_id=energy_sensor,
+            #     name=avg_energy_sensor_name,
+            #     unique_id=avg_energy_sensor_unique_id,
+            #     state_characteristic='mean',
+            #     samples_max_buffer_size=(24*60*avg),
+            #     samples_max_age={"days": avg}
+            # )
 
             async_add_entities = self.hass.data[DOMAIN].get(self._config_entry.entry_id)
 
