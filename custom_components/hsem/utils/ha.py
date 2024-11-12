@@ -16,6 +16,8 @@ Raises:
 
 import logging
 
+from ..utils.misc import convert_to_boolean, convert_to_float
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -46,3 +48,22 @@ async def async_set_select_option(self, entity_id, option):
             f"Failed to set option '{option}' for entity_id '{entity_id}': {err}"
         )
         raise
+
+def ha_get_entity_state_and_convert(self, entity_id, output_type=None, float_precision=2):
+    """Get the state of an entity."""
+
+    state = self.hass.states.get(entity_id)
+    if state:
+        if output_type is None:
+            return state
+        if output_type.lower() == 'float':
+            return round(convert_to_float(state.state), float_precision)
+        if output_type.lower() == 'boolean':
+            return convert_to_boolean(state.state)
+        if output_type.lower() == 'string':
+            return str(state.state)
+        else:
+            return state
+    else:
+        _LOGGER.warning(f"Sensor {entity_id} not found.")
+        return None

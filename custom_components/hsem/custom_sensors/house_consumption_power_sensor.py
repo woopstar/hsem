@@ -24,14 +24,15 @@ Functions:
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from homeassistant.components.sensor import SensorEntity
-from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.helpers.event import async_track_state_change_event, async_track_time_interval
 
 from ..const import DEFAULT_HSEM_HOUSE_POWER_INCLUDES_EV_CHARGER_POWER, DOMAIN, ICON
 from ..entity import HSEMEntity
-from ..utils.misc import convert_to_boolean, convert_to_float, get_config_value
+from ..utils.misc import convert_to_float, get_config_value
+from ..utils.ha import ha_get_entity_state_and_convert
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -133,7 +134,7 @@ class HouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
 
         # Track state changes for the source sensor
         if self._hsem_house_consumption_power:
-            _LOGGER.info(
+            _LOGGER.debug(
                 f"Starting to track state changes for {self._hsem_house_consumption_power}"
             )
             async_track_state_change_event(
@@ -141,47 +142,40 @@ class HouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
             )
 
         if self._hsem_ev_charger_power:
-            _LOGGER.info(
+            _LOGGER.debug(
                 f"Starting to track state changes for {self._hsem_ev_charger_power}"
             )
             async_track_state_change_event(
                 self.hass, [self._hsem_ev_charger_power], self._handle_update
             )
 
+        # Schedule a periodic update every minute
+        async_track_time_interval(self.hass, self._handle_update, timedelta(minutes=1))
+
     async def _handle_update(self, event):
         """Handle updates to the source sensor."""
         now = datetime.now()
 
         if self._hsem_house_consumption_power:
-            state = self.hass.states.get(self._hsem_house_consumption_power)
-            if state:
-                self._hsem_house_consumption_power_state = round(
-                    convert_to_float(state.state), 2
-                )
-            else:
-                _LOGGER.warning(
-                    f"Sensor {self._hsem_house_consumption_power} not found."
-                )
-        state = None
+            self._hsem_house_consumption_power_state = ha_get_entity_state_and_convert(self, self._hsem_house_consumption_power, 'float')
 
         if self._hsem_ev_charger_power:
-            state = self.hass.states.get(self._hsem_ev_charger_power)
-            if state:
-                self._hsem_ev_charger_power_state = round(
-                    convert_to_float(state.state), 2
-                )
-            else:
-                _LOGGER.warning(f"Sensor {self._hsem_ev_charger_power} not found.")
-        state = None
+            self._hsem_ev_charger_power_state = ha_get_entity_state_and_convert(self, self._hsem_ev_charger_power, 'float')
 
         if now.hour == self._hour_start:
-            if self._hsem_house_power_includes_ev_charger_power:
-                self._state = float(
-                    self._hsem_house_consumption_power_state
-                    - self._hsem_ev_charger_power_state
-                )
+            if (
+                isinstance(self._hsem_ev_charger_power_state, (int, float)) and
+                isinstance(self._hsem_house_consumption_power_state, (int, float))
+               ):
+                if self._hsem_house_power_includes_ev_charger_power:
+                    self._state = float(
+                        self._hsem_house_consumption_power_state
+                        - self._hsem_ev_charger_power_state
+                    )
+                else:
+                    self._state = self._hsem_house_consumption_power_state
             else:
-                self._state = float(self._hsem_house_consumption_power_state)
+                self._state = 0.0
         else:
             self._state = 0.0
 
