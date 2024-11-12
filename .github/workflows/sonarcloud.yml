@@ -22,11 +22,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-
+          pip install tox
       # Test
-      - name: Test with pytest
+      - name: Run tox
         run: |
-          pytest --cov=./ --cov-report=xml --doctest-modules -p no:warnings
+          tox -e py
 
       # Sonar Qube
       - name: SonarCloud Scan

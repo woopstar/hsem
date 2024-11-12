@@ -29,7 +29,7 @@ _LOGGER = logging.getLogger(__name__)
 
 def generate_md5_hash(input_sensor):
     """Generate an MD5 hash based on the input sensor's name."""
-    return hashlib.md5(input_sensor.encode("utf-8")).hexdigest()
+    return hashlib.sha256(input_sensor.encode("utf-8")).hexdigest()
 
 
 def get_config_value(config_entry, key, default_value=None):
