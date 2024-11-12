@@ -503,10 +503,6 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
                 self._errors["hsem_huawei_solar_inverter_active_power_control"] = (
                     "required"
                 )
-            elif not user_input.get("hsem_huawei_solar_inverter_active_power_control"):
-                self._errors["hsem_huawei_solar_inverter_active_power_control"] = (
-                    "required"
-                )
             elif not user_input.get(
                 "hsem_huawei_solar_batteries_maximum_charging_power"
             ):
