@@ -1,5 +1,5 @@
 """
-HouseConsumptionEnergySensor is a custom sensor entity for Home Assistant that tracks the energy consumption of a house 
+HouseConsumptionEnergySensor is a custom sensor entity for Home Assistant that tracks the energy consumption of a house
 within a specified hourly range. It extends both SensorEntity and HSEMEntity.
 
 Attributes:
@@ -31,14 +31,15 @@ Methods:
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from homeassistant.components.sensor import SensorEntity
-from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.helpers.event import async_track_state_change_event,async_track_time_interval
 
 from ..const import DOMAIN, ICON
 from ..entity import HSEMEntity
 from ..utils.misc import async_resolve_entity_id_from_unique_id, convert_to_float
+from ..utils.ha import ha_get_entity_state_and_convert
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -83,6 +84,10 @@ class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
         return "total"
 
     @property
+    def device_class(self):
+       return "energy"
+
+    @property
     def extra_state_attributes(self):
         return {
             "power_sensor_entity": self._hsem_power_sensor_entity,
@@ -109,6 +114,9 @@ class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
                 self._state = 0.0
                 self._last_reset_date = datetime.now().date()
                 self._last_updated = None
+
+        # Schedule a periodic update every minute
+        async_track_time_interval(self.hass, self._handle_update, timedelta(minutes=1))
 
     async def _handle_update(self, event):
         now = datetime.now()
@@ -138,14 +146,9 @@ class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
             self._entity_is_tracked = True
 
         if self._hsem_power_sensor_entity:
-            state = self.hass.states.get(self._hsem_power_sensor_entity)
-            if state:
-                self._hsem_power_sensor_state = round(convert_to_float(state.state), 2)
-            else:
-                _LOGGER.warning(f"Sensor {self._hsem_power_sensor_entity} not found.")
-        state = None
+            self._hsem_power_sensor_state = ha_get_entity_state_and_convert(self, self._hsem_power_sensor_entity, 'float')
 
-        if self._last_updated and self._hsem_power_sensor_state:
+        if self._last_updated and isinstance(self._hsem_power_sensor_state, (int, float)):
             # Calculate the time interval in seconds
             time_diff = (
                 now - datetime.fromisoformat(self._last_updated)

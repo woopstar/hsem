@@ -43,7 +43,7 @@ from collections import deque
 from datetime import datetime, timedelta
 
 from homeassistant.components.sensor import SensorEntity
-from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.helpers.event import async_track_state_change_event,async_track_time_interval
 
 from ..const import DOMAIN, ICON
 from ..entity import HSEMEntity
@@ -93,6 +93,10 @@ class HouseConsumptionEnergyAverageSensor(SensorEntity, HSEMEntity):
         return "measurement"
 
     @property
+    def device_class(self):
+       return "energy"
+
+    @property
     def extra_state_attributes(self):
         return {
             "last_updated": self._last_updated,
@@ -128,6 +132,7 @@ class HouseConsumptionEnergyAverageSensor(SensorEntity, HSEMEntity):
             if state:
                 self._hsem_energy_sensor_state = round(convert_to_float(state.state), 2)
             else:
+                self._hsem_energy_sensor_state = None
                 _LOGGER.warning(f"Sensor {self._hsem_energy_sensor_entity} not found.")
         state = None
 
@@ -173,6 +178,9 @@ class HouseConsumptionEnergyAverageSensor(SensorEntity, HSEMEntity):
             except (ValueError, TypeError):
                 _LOGGER.warning(f"Invalid old state value for {self.name}")
                 self._state = 0.0
+
+        # Schedule a periodic update every minute
+        async_track_time_interval(self.hass, self._handle_update, timedelta(minutes=1))
 
     async def async_update(self, event=None):
         """Manually trigger the sensor update."""

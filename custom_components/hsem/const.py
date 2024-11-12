@@ -33,7 +33,7 @@ Constants:
 
 DOMAIN = "hsem"  # Domain name for the integration
 NAME = "Huawei Solar Energy Management"  # Display name for the integration
-ICON = "mdi:power"  # Default icon for the integration's sensors
+ICON = "mdi:flash"  # Default icon for the integration's sensors
 
 # Default sensor entity ID for energy data service import
 DEFAULT_HSEM_ENERGI_DATA_SERVICE_IMPORT = "sensor.energi_data_service"

@@ -110,7 +110,7 @@ from ..const import (
     ICON,
 )
 from ..entity import HSEMEntity
-from ..utils.ha import async_set_select_option
+from ..utils.ha import async_set_select_option, ha_get_entity_state_and_convert
 from ..utils.huawei import async_set_grid_export_power_pct, async_set_tou_periods
 from ..utils.misc import (
     async_resolve_entity_id_from_unique_id,
@@ -450,141 +450,52 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         # Get the current time
         now = datetime.now()
 
-        # Ensure settings are reloaded if config is changed.
+        # Ensure config flow settings are reloaded if it changed.
         self._update_settings()
 
         # Fetch the current value from the EV charger status sensor
         if self._hsem_ev_charger_status:
-            state = self.hass.states.get(self._hsem_ev_charger_status)
-            if state:
-                self._hsem_ev_charger_status_state = convert_to_boolean(state.state)
-            else:
-                _LOGGER.warning(
-                    f"EV charger status sensor {self._hsem_ev_charger_status} not found."
-                )
-        state = None
+            self._hsem_ev_charger_status_state = ha_get_entity_state_and_convert(self, self._hsem_ev_charger_status, 'boolean')
+
+        # Fetch the current value from the battery maximum charging power sensor
+        if self._hsem_ev_charger_power:
+            self._hsem_ev_charger_power_state = ha_get_entity_state_and_convert(self, self._hsem_ev_charger_power, 'float')
 
         # Fetch the current value from the house consumption power sensor
         if self._hsem_house_consumption_power:
-            state = self.hass.states.get(self._hsem_house_consumption_power)
-            if state:
-                self._hsem_house_consumption_power_state = round(
-                    convert_to_float(state.state), 2
-                )
-            else:
-                _LOGGER.warning(
-                    f"Sensor {self._hsem_house_consumption_power} not found."
-                )
-        state = None
+            self._hsem_house_consumption_power_state = ha_get_entity_state_and_convert(self, self._hsem_house_consumption_power, 'float')
 
         # Fetch the current value from the solar production power sensor
         if self._hsem_solar_production_power:
-            state = self.hass.states.get(self._hsem_solar_production_power)
-            if state:
-                self._hsem_solar_production_power_state = round(
-                    convert_to_float(state.state), 2
-                )
-            else:
-                _LOGGER.warning(
-                    f"Sensor {self._hsem_solar_production_power} not found."
-                )
-        state = None
+            self._hsem_solar_production_power_state = ha_get_entity_state_and_convert(self, self._hsem_solar_production_power, 'float')
 
         # fetch the current value from the working mode sensor
         if self._hsem_huawei_solar_batteries_working_mode:
-            state = self.hass.states.get(self._hsem_huawei_solar_batteries_working_mode)
-            if state:
-                self._hsem_huawei_solar_batteries_working_mode_state = state.state
-            else:
-                _LOGGER.warning(
-                    f"Sensor {self._hsem_huawei_solar_batteries_working_mode} not found."
-                )
-        state = None
+            self._hsem_huawei_solar_batteries_working_mode_state = ha_get_entity_state_and_convert(self, self._hsem_huawei_solar_batteries_working_mode, 'string')
 
         # Fetch the current value from the state of capacity sensor
         if self._hsem_huawei_solar_batteries_state_of_capacity:
-            state = self.hass.states.get(
-                self._hsem_huawei_solar_batteries_state_of_capacity
-            )
-            if state:
-                self._hsem_huawei_solar_batteries_state_of_capacity_state = round(
-                    convert_to_float(state.state), 0
-                )
-            else:
-                _LOGGER.warning(
-                    f"Sensor {self._hsem_huawei_solar_batteries_state_of_capacity} not found."
-                )
-        state = None
+            self._hsem_huawei_solar_batteries_state_of_capacity_state = ha_get_entity_state_and_convert(self, self._hsem_huawei_solar_batteries_state_of_capacity, 'float', 0)
 
         # Fetch the current value from the energi data service import sensor
         if self._hsem_energi_data_service_import:
-            state = self.hass.states.get(self._hsem_energi_data_service_import)
-            if state:
-                self._hsem_energi_data_service_import_state = round(
-                    convert_to_float(state.state), 3
-                )
-            else:
-                _LOGGER.warning(
-                    f"Sensor {self._hsem_energi_data_service_import} not found."
-                )
-        state = None
+            self._hsem_energi_data_service_import_state = ha_get_entity_state_and_convert(self, self._hsem_energi_data_service_import, 'float', 3)
 
         # Fetch the current value from the energi data service export sensor
         if self._hsem_energi_data_service_export:
-            state = self.hass.states.get(self._hsem_energi_data_service_export)
-            if state:
-                self._hsem_energi_data_service_export_state = round(
-                    convert_to_float(state.state), 3
-                )
-            else:
-                _LOGGER.warning(
-                    f"Sensor {self._hsem_energi_data_service_export} not found."
-                )
-        state = None
+            self._hsem_energi_data_service_export_state = ha_get_entity_state_and_convert(self, self._hsem_energi_data_service_export, 'float', 3)
 
         # Fetch the current value from the energi data service export sensor
         if self._hsem_huawei_solar_inverter_active_power_control:
-            state = self.hass.states.get(
-                self._hsem_huawei_solar_inverter_active_power_control
-            )
-            if state:
-                self._hsem_huawei_solar_inverter_active_power_control_state = (
-                    state.state
-                )
-            else:
-                _LOGGER.warning(
-                    f"Sensor {self._hsem_huawei_solar_inverter_active_power_control} not found."
-                )
-        state = None
+            self._hsem_huawei_solar_inverter_active_power_control_state = ha_get_entity_state_and_convert(self, self._hsem_huawei_solar_inverter_active_power_control, 'string')
 
         # Fetch the current value from the battery maximum charging power sensor
         if self._hsem_huawei_solar_batteries_maximum_charging_power:
-            state = self.hass.states.get(
-                self._hsem_huawei_solar_batteries_maximum_charging_power
-            )
-            if state:
-                self._hsem_huawei_solar_batteries_maximum_charging_power_state = round(
-                    convert_to_float(state.state), 0
-                )
-            else:
-                _LOGGER.warning(
-                    f"Sensor {self._hsem_huawei_solar_batteries_maximum_charging_power} not found."
-                )
-        state = None
+            self._hsem_huawei_solar_batteries_maximum_charging_power_state = ha_get_entity_state_and_convert(self, self._hsem_huawei_solar_batteries_maximum_charging_power, 'float', 0)
 
         # Fetch the current value from the battery grid charge cutoff SOC sensor
         if self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc:
-            state = self.hass.states.get(
-                self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc
-            )
-            if state:
-                self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state = round(
-                    convert_to_float(state.state), 0
-                )
-            else:
-                _LOGGER.warning(
-                    f"Sensor {self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc} not found."
-                )
+            self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state = ha_get_entity_state_and_convert(self, self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc, 'float', 0)
 
         # Fetch the current value from the battery TOU charging and discharging periods sensor
         if self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods:
@@ -610,52 +521,49 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                     periods
                 )
             else:
+                self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_state = None
+                self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_periods = None
                 _LOGGER.warning(
                     f"Sensor {self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods} not found."
                 )
 
-        # Fetch the current value from the battery maximum charging power sensor
-        if self._hsem_ev_charger_power:
-            state = self.hass.states.get(self._hsem_ev_charger_power)
-            if state:
-                self._hsem_ev_charger_power_state = round(
-                    convert_to_float(state.state), 2
+        # Calculate the net consumption without the EV charger power
+        if (
+            isinstance(self._hsem_solar_production_power_state, (int, float)) and
+            isinstance(self._hsem_house_consumption_power_state, (int, float)) and
+            isinstance(self._hsem_ev_charger_power_state, (int, float))
+           ):
+            if self._hsem_house_power_includes_ev_charger_power is not None:
+                self._hsem_net_consumption_with_ev = (
+                    float(self._hsem_solar_production_power_state)
+                    - float(self._hsem_house_consumption_power_state)
+                )
+                self._hsem_net_consumption = self._hsem_solar_production_power_state - (
+                    self._hsem_house_consumption_power_state
+                    - self._hsem_ev_charger_power_state
                 )
             else:
-                _LOGGER.warning(f"Sensor {self._hsem_ev_charger_power} not found.")
-        state = None
-
-        # Calculate the net consumption without the EV charger power
-        if self._hsem_house_power_includes_ev_charger_power:
-            self._hsem_net_consumption_with_ev = (
-                self._hsem_solar_production_power_state
-                - (self._hsem_house_consumption_power_state)
-            )
-            self._hsem_net_consumption = self._hsem_solar_production_power_state - (
-                self._hsem_house_consumption_power_state
-                - self._hsem_ev_charger_power_state
-            )
-        else:
-            self._hsem_net_consumption_with_ev = (
-                self._hsem_solar_production_power_state
-                - (
-                    self._hsem_house_consumption_power_state
-                    + self._hsem_ev_charger_power_state
+                self._hsem_net_consumption_with_ev = (
+                    self._hsem_solar_production_power_state
+                    - (
+                        self._hsem_house_consumption_power_state
+                        + self._hsem_ev_charger_power_state
+                    )
                 )
-            )
-            self._hsem_net_consumption = (
-                self._hsem_solar_production_power_state
-                - self._hsem_house_consumption_power_state
-            )
+                self._hsem_net_consumption = (
+                    self._hsem_solar_production_power_state
+                    - self._hsem_house_consumption_power_state
+                )
 
-        self._hsem_net_consumption = round(self._hsem_net_consumption, 2)
+                self._hsem_net_consumption = round(self._hsem_net_consumption, 2)
+        else:
+            self._hsem_net_consumption = None
 
         # Calculate remaining battery capacity and max allowed charge from grid if all necessary values are available
         if (
-            self._hsem_battery_max_capacity is not None
-            and self._hsem_huawei_solar_batteries_state_of_capacity_state is not None
-            and self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state
-            is not None
+            isinstance(self._hsem_battery_max_capacity, (int, float)) and
+            isinstance(self._hsem_huawei_solar_batteries_state_of_capacity_state, (int, float)) and
+            isinstance(self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state, (int, float))
         ):
             # Calculate the remaining charge needed to reach full capacity (kWh)
             self._hsem_battery_remaining_charge = round(
@@ -675,6 +583,8 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             # Adjust remaining charge if it exceeds the max grid-allowed charge
             if self._hsem_battery_remaining_charge > max_allowed_grid_charge:
                 self._hsem_battery_remaining_charge = max_allowed_grid_charge
+        else:
+            self._hsem_battery_remaining_charge = None
 
         # reset the recommendations
         await self.async_reset_recommendations()
@@ -732,6 +642,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
     async def async_set_inverter_power_control(self):
         # Determine the grid export power percentage based on the state
+        if self._hsem_energi_data_service_export_state is None:
+            return
+
         export_power_percentage = (
             100 if self._hsem_energi_data_service_export_state > 0 else 0
         )
@@ -758,6 +671,16 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                     )
 
     async def async_set_working_mode(self):
+
+        if self._hsem_huawei_solar_batteries_working_mode_state is None:
+            return
+
+        if self._hsem_energi_data_service_import_state is None:
+            return
+
+        if self._hsem_net_consumption is None:
+            return
+
         # Determine the current month and hour
         now = datetime.now()
         current_month = now.month
@@ -849,11 +772,11 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                     self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_periods
                 )
             )
-            _LOGGER.warning(
-                f"New TOU Modes Hash: {new_tou_modes_hash}, Current TOU Modes Hash: {current_tou_modes_hash}"
-            )
 
             if new_tou_modes_hash != current_tou_modes_hash:
+                _LOGGER.warning(
+                    f"New TOU Modes Hash: {new_tou_modes_hash}, Current TOU Modes Hash: {current_tou_modes_hash}"
+                )
                 await async_set_tou_periods(
                     self, self._hsem_huawei_solar_device_id_batteries, tou_modes
                 )
@@ -1001,7 +924,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
         detailed_raw_today = import_price_sensor.attributes.get("raw_today", [])
         if not detailed_raw_today:
-            _LOGGER.warning("Detailed raw data is missing or empty.")
+            _LOGGER.warning("Detailed raw data is missing or empty for import prices.")
             return
 
         for period in detailed_raw_today:
@@ -1024,12 +947,12 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             self._hsem_energi_data_service_export
         )
         if not export_price_sensor:
-            _LOGGER.warning("hsem_energi_data_service_import sensor not found.")
+            _LOGGER.warning("hsem_energi_data_service_export sensor not found.")
             return
 
         detailed_raw_today = export_price_sensor.attributes.get("raw_today", [])
         if not detailed_raw_today:
-            _LOGGER.warning("Detailed raw data is missing or empty.")
+            _LOGGER.warning("Detailed raw data is missing or empty for export prices.")
             return
 
         for period in detailed_raw_today:
@@ -1042,7 +965,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                 self._hourly_calculations[time_range]["export_price"] = price
 
         _LOGGER.debug(
-            f"Updated hourly calculations with import prices: {self._hourly_calculations}"
+            f"Updated hourly calculations with export prices: {self._hourly_calculations}"
         )
 
     async def async_calculate_hourly_net_consumption(self):
@@ -1183,12 +1106,13 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
             # Fully Fed to Grid
             if export_price > import_price:
-                data["recommendation"] = WorkingModes.MaximizeSelfConsumption.value
+                data["recommendation"] = WorkingModes.FullyFedToGrid.value
 
             # Maximize Self Consumption
             elif net_consumption > 0:
                 data["recommendation"] = WorkingModes.MaximizeSelfConsumption.value
 
+            # Between 17 and 21 we always want to maximize self consumption
             elif 17 <= start_hour < 21:
                 data["recommendation"] = WorkingModes.MaximizeSelfConsumption.value
 
@@ -1208,22 +1132,22 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         await super().async_added_to_hass()
 
         # Restore the previous state if available
-        old_state = await self.async_get_last_state()
-        if old_state is not None:
-            _LOGGER.info(f"Restoring state for {self._unique_id}")
-            try:
-                self._state = old_state.state
-            except (ValueError, TypeError):
-                _LOGGER.debug(
-                    f"Could not restore state for {self._unique_id}, invalid value: {old_state.state}"
-                )
-                self._state = None
+        # old_state = await self.async_get_last_state()
+        # if old_state is not None:
+        #     _LOGGER.info(f"Restoring state for {self._unique_id}")
+        #     try:
+        #         self._state = old_state.state
+        #     except (ValueError, TypeError):
+        #         _LOGGER.debug(
+        #             f"Could not restore state for {self._unique_id}, invalid value: {old_state.state}"
+        #         )
+        #         self._state = None
 
-            self._last_updated = old_state.attributes.get("last_updated", None)
-        else:
-            _LOGGER.info(
-                f"No previous state found for {self._unique_id}, starting fresh."
-            )
+        #     self._last_updated = old_state.attributes.get("last_updated", None)
+        # else:
+        #     _LOGGER.info(
+        #         f"No previous state found for {self._unique_id}, starting fresh."
+        #     )
 
         # Start listening for state changes of the input sensors
         # if self._hsem_huawei_solar_device_id_inverter_1:
