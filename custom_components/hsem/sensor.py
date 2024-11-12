@@ -1,10 +1,10 @@
 import logging
 
-from .const import DOMAIN
-from .custom_sensors.house_consumption_energy_sensor import HouseConsumptionEnergySensor
-from .custom_sensors.house_consumption_power_sensor import HouseConsumptionPowerSensor
-from .custom_sensors.working_mode_sensor import WorkingModeSensor
-from .utils.misc import get_config_value
+from custom_components.hsem.const import DOMAIN
+from custom_components.hsem.custom_sensors.house_consumption_energy_sensor import HouseConsumptionEnergySensor
+from custom_components.hsem.custom_sensors.house_consumption_power_sensor import HouseConsumptionPowerSensor
+from custom_components.hsem.custom_sensors.working_mode_sensor import WorkingModeSensor
+from custom_components.hsem.utils.misc import get_config_value
 
 _LOGGER = logging.getLogger(__name__)
 

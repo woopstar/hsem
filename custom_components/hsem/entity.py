@@ -2,7 +2,7 @@ import logging
 
 from homeassistant.helpers.restore_state import RestoreEntity
 
-from .const import DOMAIN, ICON, NAME
+from custom_components.hsem.const import DOMAIN, ICON, NAME
 
 _LOGGER = logging.getLogger(__name__)
 

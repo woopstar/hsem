@@ -40,10 +40,10 @@ from homeassistant.helpers.event import (
     async_track_time_interval,
 )
 
-from ..const import DOMAIN, ICON
-from ..entity import HSEMEntity
-from ..utils.ha import ha_get_entity_state_and_convert
-from ..utils.misc import async_resolve_entity_id_from_unique_id, convert_to_float
+from custom_components.hsem.const import DOMAIN, ICON
+from custom_components.hsem.entity import HSEMEntity
+from custom_components.hsem.utils.ha import ha_get_entity_state_and_convert
+from custom_components.hsem.utils.misc import async_resolve_entity_id_from_unique_id, convert_to_float
 
 _LOGGER = logging.getLogger(__name__)
 
