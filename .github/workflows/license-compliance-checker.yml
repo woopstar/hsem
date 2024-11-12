@@ -17,9 +17,10 @@ jobs:
         python-version: '3.8'
     - name: Get explicit and transitive dependencies
       run: |
-        pip install -r requirements.txt
-        pip freeze > requirements-all.txt
-    - name: Check python
+        pip3 install --upgrade pip
+        pip3 install -r requirements.txt
+        pip3 freeze > requirements-all.txt
+    - name: pilosus/action-pip-license-checker
       id: license_check_report
       uses: pilosus/action-pip-license-checker@v2
       with:
