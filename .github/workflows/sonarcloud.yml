@@ -26,7 +26,7 @@ jobs:
       # Test
       - name: Test with pytest
         run: |
-          pytest --cov=./ --cov-report=xml --doctest-modules || true
+          pytest --cov=./ --cov-report=xml --doctest-modules -p no:warnings
 
       # Sonar Qube
       - name: SonarCloud Scan
