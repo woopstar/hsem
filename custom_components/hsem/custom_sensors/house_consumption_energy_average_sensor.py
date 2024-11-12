@@ -39,6 +39,7 @@ Methods:
 """
 
 import logging
+import json
 from collections import deque
 from datetime import datetime, timedelta
 
@@ -71,9 +72,10 @@ class HouseConsumptionEnergyAverageSensor(SensorEntity, HSEMEntity):
         self._hsem_energy_sensor_state = 0.0
         self._config_entry = config_entry
         self._state = 0.0
-        self._samples = deque(maxlen=sampling_size)
+        self._samples = []
         self._last_updated = None
         self._entity_is_tracked = False
+        self._sampling_size = sampling_size  # Max sample size
 
     @property
     def name(self):
@@ -108,6 +110,7 @@ class HouseConsumptionEnergyAverageSensor(SensorEntity, HSEMEntity):
             "energy_sensor_state": self._hsem_energy_sensor_state,
             "sampling_size": len(self._samples),
             "max_age_days": self._max_age.days,
+            "samples": json.dumps(self._samples),
         }
 
     async def _handle_update(self, event):
@@ -141,24 +144,25 @@ class HouseConsumptionEnergyAverageSensor(SensorEntity, HSEMEntity):
 
         now = datetime.now()
 
-        # Add the new value and timestamp to samples
+         # Add the new value and timestamp to samples
         if self._hsem_energy_sensor_state:
-            self._samples.append((now, self._hsem_energy_sensor_state))
+            self._samples.append((now.isoformat(), self._hsem_energy_sensor_state))
 
             # Remove old samples outside of max age
-            self._samples = deque(
-                [
-                    (timestamp, value)
-                    for timestamp, value in self._samples
-                    if now - timestamp <= self._max_age
-                ],
-                maxlen=self._samples.maxlen,
-            )
+            self._samples = [
+                (timestamp, value)
+                for timestamp, value in self._samples
+                if now - datetime.fromisoformat(timestamp) <= self._max_age
+            ]
+
+            # Limit to sampling size
+            if len(self._samples) > self._sampling_size:
+                self._samples = self._samples[-self._sampling_size:]
 
             # Calculate the average of the sample values
             if self._samples:
                 values = [value for _, value in self._samples]
-                self._state = round(sum(values) / len(values), 6)
+                self._state = round(sum(values) / len(values), 2)
             else:
                 self._state = 0.0  # No samples, so no average
 
@@ -177,10 +181,13 @@ class HouseConsumptionEnergyAverageSensor(SensorEntity, HSEMEntity):
             try:
                 self._state = round(convert_to_float(old_state.state), 2)
                 self._last_updated = old_state.attributes.get("last_updated", None)
-                # self._samples = old_state.attributes.get("samples")
+                # Restore samples from JSON string
+                samples_json = old_state.attributes.get("samples", "[]")
+                self._samples = json.loads(samples_json)
             except (ValueError, TypeError):
                 _LOGGER.warning(f"Invalid old state value for {self.name}")
                 self._state = 0.0
+                self._samples = []
 
         # Schedule a periodic update every minute
         async_track_time_interval(self.hass, self._handle_update, timedelta(minutes=1))
