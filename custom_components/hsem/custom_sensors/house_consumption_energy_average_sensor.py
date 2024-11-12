@@ -43,7 +43,10 @@ from collections import deque
 from datetime import datetime, timedelta
 
 from homeassistant.components.sensor import SensorEntity
-from homeassistant.helpers.event import async_track_state_change_event,async_track_time_interval
+from homeassistant.helpers.event import (
+    async_track_state_change_event,
+    async_track_time_interval,
+)
 
 from ..const import DOMAIN, ICON
 from ..entity import HSEMEntity
@@ -94,7 +97,7 @@ class HouseConsumptionEnergyAverageSensor(SensorEntity, HSEMEntity):
 
     @property
     def device_class(self):
-       return "energy"
+        return "energy"
 
     @property
     def extra_state_attributes(self):

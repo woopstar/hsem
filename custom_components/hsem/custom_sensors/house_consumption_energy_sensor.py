@@ -34,12 +34,15 @@ import logging
 from datetime import datetime, timedelta
 
 from homeassistant.components.sensor import SensorEntity
-from homeassistant.helpers.event import async_track_state_change_event,async_track_time_interval
+from homeassistant.helpers.event import (
+    async_track_state_change_event,
+    async_track_time_interval,
+)
 
 from ..const import DOMAIN, ICON
 from ..entity import HSEMEntity
-from ..utils.misc import async_resolve_entity_id_from_unique_id, convert_to_float
 from ..utils.ha import ha_get_entity_state_and_convert
+from ..utils.misc import async_resolve_entity_id_from_unique_id, convert_to_float
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -85,7 +88,7 @@ class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
 
     @property
     def device_class(self):
-       return "energy"
+        return "energy"
 
     @property
     def extra_state_attributes(self):
@@ -146,9 +149,13 @@ class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
             self._entity_is_tracked = True
 
         if self._hsem_power_sensor_entity:
-            self._hsem_power_sensor_state = ha_get_entity_state_and_convert(self, self._hsem_power_sensor_entity, 'float')
+            self._hsem_power_sensor_state = ha_get_entity_state_and_convert(
+                self, self._hsem_power_sensor_entity, "float"
+            )
 
-        if self._last_updated and isinstance(self._hsem_power_sensor_state, (int, float)):
+        if self._last_updated and isinstance(
+            self._hsem_power_sensor_state, (int, float)
+        ):
             # Calculate the time interval in seconds
             time_diff = (
                 now - datetime.fromisoformat(self._last_updated)

@@ -455,47 +455,94 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
         # Fetch the current value from the EV charger status sensor
         if self._hsem_ev_charger_status:
-            self._hsem_ev_charger_status_state = ha_get_entity_state_and_convert(self, self._hsem_ev_charger_status, 'boolean')
+            self._hsem_ev_charger_status_state = ha_get_entity_state_and_convert(
+                self, self._hsem_ev_charger_status, "boolean"
+            )
 
         # Fetch the current value from the battery maximum charging power sensor
         if self._hsem_ev_charger_power:
-            self._hsem_ev_charger_power_state = ha_get_entity_state_and_convert(self, self._hsem_ev_charger_power, 'float')
+            self._hsem_ev_charger_power_state = ha_get_entity_state_and_convert(
+                self, self._hsem_ev_charger_power, "float"
+            )
 
         # Fetch the current value from the house consumption power sensor
         if self._hsem_house_consumption_power:
-            self._hsem_house_consumption_power_state = ha_get_entity_state_and_convert(self, self._hsem_house_consumption_power, 'float')
+            self._hsem_house_consumption_power_state = ha_get_entity_state_and_convert(
+                self, self._hsem_house_consumption_power, "float"
+            )
 
         # Fetch the current value from the solar production power sensor
         if self._hsem_solar_production_power:
-            self._hsem_solar_production_power_state = ha_get_entity_state_and_convert(self, self._hsem_solar_production_power, 'float')
+            self._hsem_solar_production_power_state = ha_get_entity_state_and_convert(
+                self, self._hsem_solar_production_power, "float"
+            )
 
         # fetch the current value from the working mode sensor
         if self._hsem_huawei_solar_batteries_working_mode:
-            self._hsem_huawei_solar_batteries_working_mode_state = ha_get_entity_state_and_convert(self, self._hsem_huawei_solar_batteries_working_mode, 'string')
+            self._hsem_huawei_solar_batteries_working_mode_state = (
+                ha_get_entity_state_and_convert(
+                    self, self._hsem_huawei_solar_batteries_working_mode, "string"
+                )
+            )
 
         # Fetch the current value from the state of capacity sensor
         if self._hsem_huawei_solar_batteries_state_of_capacity:
-            self._hsem_huawei_solar_batteries_state_of_capacity_state = ha_get_entity_state_and_convert(self, self._hsem_huawei_solar_batteries_state_of_capacity, 'float', 0)
+            self._hsem_huawei_solar_batteries_state_of_capacity_state = (
+                ha_get_entity_state_and_convert(
+                    self,
+                    self._hsem_huawei_solar_batteries_state_of_capacity,
+                    "float",
+                    0,
+                )
+            )
 
         # Fetch the current value from the energi data service import sensor
         if self._hsem_energi_data_service_import:
-            self._hsem_energi_data_service_import_state = ha_get_entity_state_and_convert(self, self._hsem_energi_data_service_import, 'float', 3)
+            self._hsem_energi_data_service_import_state = (
+                ha_get_entity_state_and_convert(
+                    self, self._hsem_energi_data_service_import, "float", 3
+                )
+            )
 
         # Fetch the current value from the energi data service export sensor
         if self._hsem_energi_data_service_export:
-            self._hsem_energi_data_service_export_state = ha_get_entity_state_and_convert(self, self._hsem_energi_data_service_export, 'float', 3)
+            self._hsem_energi_data_service_export_state = (
+                ha_get_entity_state_and_convert(
+                    self, self._hsem_energi_data_service_export, "float", 3
+                )
+            )
 
         # Fetch the current value from the energi data service export sensor
         if self._hsem_huawei_solar_inverter_active_power_control:
-            self._hsem_huawei_solar_inverter_active_power_control_state = ha_get_entity_state_and_convert(self, self._hsem_huawei_solar_inverter_active_power_control, 'string')
+            self._hsem_huawei_solar_inverter_active_power_control_state = (
+                ha_get_entity_state_and_convert(
+                    self,
+                    self._hsem_huawei_solar_inverter_active_power_control,
+                    "string",
+                )
+            )
 
         # Fetch the current value from the battery maximum charging power sensor
         if self._hsem_huawei_solar_batteries_maximum_charging_power:
-            self._hsem_huawei_solar_batteries_maximum_charging_power_state = ha_get_entity_state_and_convert(self, self._hsem_huawei_solar_batteries_maximum_charging_power, 'float', 0)
+            self._hsem_huawei_solar_batteries_maximum_charging_power_state = (
+                ha_get_entity_state_and_convert(
+                    self,
+                    self._hsem_huawei_solar_batteries_maximum_charging_power,
+                    "float",
+                    0,
+                )
+            )
 
         # Fetch the current value from the battery grid charge cutoff SOC sensor
         if self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc:
-            self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state = ha_get_entity_state_and_convert(self, self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc, 'float', 0)
+            self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state = (
+                ha_get_entity_state_and_convert(
+                    self,
+                    self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc,
+                    "float",
+                    0,
+                )
+            )
 
         # Fetch the current value from the battery TOU charging and discharging periods sensor
         if self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods:
@@ -521,23 +568,26 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                     periods
                 )
             else:
-                self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_state = None
-                self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_periods = None
+                self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_state = (
+                    None
+                )
+                self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_periods = (
+                    None
+                )
                 _LOGGER.warning(
                     f"Sensor {self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods} not found."
                 )
 
         # Calculate the net consumption without the EV charger power
         if (
-            isinstance(self._hsem_solar_production_power_state, (int, float)) and
-            isinstance(self._hsem_house_consumption_power_state, (int, float)) and
-            isinstance(self._hsem_ev_charger_power_state, (int, float))
-           ):
+            isinstance(self._hsem_solar_production_power_state, (int, float))
+            and isinstance(self._hsem_house_consumption_power_state, (int, float))
+            and isinstance(self._hsem_ev_charger_power_state, (int, float))
+        ):
             if self._hsem_house_power_includes_ev_charger_power is not None:
-                self._hsem_net_consumption_with_ev = (
-                    float(self._hsem_solar_production_power_state)
-                    - float(self._hsem_house_consumption_power_state)
-                )
+                self._hsem_net_consumption_with_ev = float(
+                    self._hsem_solar_production_power_state
+                ) - float(self._hsem_house_consumption_power_state)
                 self._hsem_net_consumption = self._hsem_solar_production_power_state - (
                     self._hsem_house_consumption_power_state
                     - self._hsem_ev_charger_power_state
@@ -561,9 +611,14 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
         # Calculate remaining battery capacity and max allowed charge from grid if all necessary values are available
         if (
-            isinstance(self._hsem_battery_max_capacity, (int, float)) and
-            isinstance(self._hsem_huawei_solar_batteries_state_of_capacity_state, (int, float)) and
-            isinstance(self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state, (int, float))
+            isinstance(self._hsem_battery_max_capacity, (int, float))
+            and isinstance(
+                self._hsem_huawei_solar_batteries_state_of_capacity_state, (int, float)
+            )
+            and isinstance(
+                self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state,
+                (int, float),
+            )
         ):
             # Calculate the remaining charge needed to reach full capacity (kWh)
             self._hsem_battery_remaining_charge = round(

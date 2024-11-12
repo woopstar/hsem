@@ -27,12 +27,15 @@ import logging
 from datetime import datetime, timedelta
 
 from homeassistant.components.sensor import SensorEntity
-from homeassistant.helpers.event import async_track_state_change_event, async_track_time_interval
+from homeassistant.helpers.event import (
+    async_track_state_change_event,
+    async_track_time_interval,
+)
 
 from ..const import DEFAULT_HSEM_HOUSE_POWER_INCLUDES_EV_CHARGER_POWER, DOMAIN, ICON
 from ..entity import HSEMEntity
-from ..utils.misc import convert_to_float, get_config_value
 from ..utils.ha import ha_get_entity_state_and_convert
+from ..utils.misc import convert_to_float, get_config_value
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -157,16 +160,19 @@ class HouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
         now = datetime.now()
 
         if self._hsem_house_consumption_power:
-            self._hsem_house_consumption_power_state = ha_get_entity_state_and_convert(self, self._hsem_house_consumption_power, 'float')
+            self._hsem_house_consumption_power_state = ha_get_entity_state_and_convert(
+                self, self._hsem_house_consumption_power, "float"
+            )
 
         if self._hsem_ev_charger_power:
-            self._hsem_ev_charger_power_state = ha_get_entity_state_and_convert(self, self._hsem_ev_charger_power, 'float')
+            self._hsem_ev_charger_power_state = ha_get_entity_state_and_convert(
+                self, self._hsem_ev_charger_power, "float"
+            )
 
         if now.hour == self._hour_start:
-            if (
-                isinstance(self._hsem_ev_charger_power_state, (int, float)) and
-                isinstance(self._hsem_house_consumption_power_state, (int, float))
-               ):
+            if isinstance(
+                self._hsem_ev_charger_power_state, (int, float)
+            ) and isinstance(self._hsem_house_consumption_power_state, (int, float)):
                 if self._hsem_house_power_includes_ev_charger_power:
                     self._state = float(
                         self._hsem_house_consumption_power_state
