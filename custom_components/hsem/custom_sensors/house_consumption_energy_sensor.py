@@ -217,8 +217,11 @@ class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
                 name=avg_energy_sensor_name,
                 unique_id=avg_energy_sensor_unique_id,
                 state_characteristic="mean",
-                samples_max_buffer_size=(24 * 60 * avg),
-                samples_max_age=timedelta(days=avg)
+                samples_max_buffer_size=(24 * 60 * avg),  # Sampling size
+                samples_max_age=timedelta(days=avg),       # Max age
+                samples_keep_last=False,
+                precision=2,
+                percentile=50,
             )
 
             # Add the avg sensor to Home Assistant
