@@ -40,7 +40,7 @@ from homeassistant.helpers.event import (
     async_track_time_interval,
 )
 
-from custom_components.hsem.const import DOMAIN, ICON
+from custom_components.hsem.const import DOMAIN, ICON, NAME
 from custom_components.hsem.entity import HSEMEntity
 from custom_components.hsem.utils.ha import ha_get_entity_state_and_convert
 from custom_components.hsem.utils.misc import async_resolve_entity_id_from_unique_id, convert_to_float
@@ -189,7 +189,7 @@ class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
 
     async def add_energy_average_sensors(self, avg=3):
         # Create the name and unique id for the avg sensor
-        avg_energy_sensor_name=f"House Consumption {self._hour_start:02d}-{self._hour_end:02d} Energy Average {avg}d"
+        avg_energy_sensor_name=f"{NAME} House Consumption {self._hour_start:02d}-{self._hour_end:02d} Energy Average {avg}d"
         avg_energy_sensor_unique_id=f"{DOMAIN}_house_consumption_energy_avg_{self._hour_start:02d}_{self._hour_end:02d}_{avg}d"
 
         # find the energy sensor from the unique id
