@@ -1,8 +1,12 @@
 import logging
 
 from custom_components.hsem.const import DOMAIN
-from custom_components.hsem.custom_sensors.house_consumption_energy_sensor import HouseConsumptionEnergySensor
-from custom_components.hsem.custom_sensors.house_consumption_power_sensor import HouseConsumptionPowerSensor
+from custom_components.hsem.custom_sensors.house_consumption_energy_sensor import (
+    HouseConsumptionEnergySensor,
+)
+from custom_components.hsem.custom_sensors.house_consumption_power_sensor import (
+    HouseConsumptionPowerSensor,
+)
 from custom_components.hsem.custom_sensors.working_mode_sensor import WorkingModeSensor
 from custom_components.hsem.utils.misc import get_config_value
 
@@ -147,9 +151,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     energy_sensors = await async_setup_energy_sensors(config_entry)
 
     # Add sensors to Home Assistant
-    async_add_entities(
-        [working_mode_sensor] + power_sensors + energy_sensors
-    )
+    async_add_entities([working_mode_sensor] + power_sensors + energy_sensors)
 
     # Store reference to the platform to handle unloads later
     if DOMAIN not in hass.data:

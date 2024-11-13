@@ -43,7 +43,10 @@ from homeassistant.helpers.event import (
 from custom_components.hsem.const import DOMAIN, ICON, NAME
 from custom_components.hsem.entity import HSEMEntity
 from custom_components.hsem.utils.ha import ha_get_entity_state_and_convert
-from custom_components.hsem.utils.misc import async_resolve_entity_id_from_unique_id, convert_to_float
+from custom_components.hsem.utils.misc import (
+    async_resolve_entity_id_from_unique_id,
+    convert_to_float,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -189,19 +192,17 @@ class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
 
     async def add_energy_average_sensors(self, avg=3):
         # Create the name and unique id for the avg sensor
-        avg_energy_sensor_name=f"{NAME} House Consumption {self._hour_start:02d}-{self._hour_end:02d} Energy Average {avg}d"
-        avg_energy_sensor_unique_id=f"{DOMAIN}_house_consumption_energy_avg_{self._hour_start:02d}_{self._hour_end:02d}_{avg}d"
+        avg_energy_sensor_name = f"{NAME} House Consumption {self._hour_start:02d}-{self._hour_end:02d} Energy Average {avg}d"
+        avg_energy_sensor_unique_id = f"{DOMAIN}_house_consumption_energy_avg_{self._hour_start:02d}_{self._hour_end:02d}_{avg}d"
 
         # find the energy sensor from the unique id
         energy_sensor = await async_resolve_entity_id_from_unique_id(
-            self,
-            self._unique_id
+            self, self._unique_id
         )
 
         # Check if the avg sensor already exists
         avg_energy_sensor_exists = await async_resolve_entity_id_from_unique_id(
-            self,
-            avg_energy_sensor_unique_id
+            self, avg_energy_sensor_unique_id
         )
 
         # Check if the avg sensor exists and create it if it doesn't
@@ -218,7 +219,7 @@ class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
                 unique_id=avg_energy_sensor_unique_id,
                 state_characteristic="mean",
                 samples_max_buffer_size=(24 * 60 * avg),  # Sampling size
-                samples_max_age=timedelta(days=avg),       # Max age
+                samples_max_age=timedelta(days=avg),  # Max age
                 samples_keep_last=False,
                 precision=2,
                 percentile=50,
