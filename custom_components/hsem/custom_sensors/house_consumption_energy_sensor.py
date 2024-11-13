@@ -207,7 +207,7 @@ class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
         # Check if the avg sensor exists and create it if it doesn't
         if energy_sensor and not avg_energy_sensor_exists:
             _LOGGER.warning(
-                f"Adding avg {avg}d sensor for {energy_sensor}"
+                f"Adding sensor {avg_energy_sensor_name} for {energy_sensor} with unique id {avg_energy_sensor_unique_id}"
             )
 
             # Create the avg sensor for the energy sensor with the specified days of averaging
