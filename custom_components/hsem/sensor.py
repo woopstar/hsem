@@ -1,13 +1,10 @@
 import logging
 
-from .const import DOMAIN
-from .custom_sensors.house_consumption_energy_average_sensor import (
-    HouseConsumptionEnergyAverageSensor,
-)
-from .custom_sensors.house_consumption_energy_sensor import HouseConsumptionEnergySensor
-from .custom_sensors.house_consumption_power_sensor import HouseConsumptionPowerSensor
-from .custom_sensors.working_mode_sensor import WorkingModeSensor
-from .utils.misc import get_config_value
+from custom_components.hsem.const import DOMAIN
+from custom_components.hsem.custom_sensors.house_consumption_energy_sensor import HouseConsumptionEnergySensor
+from custom_components.hsem.custom_sensors.house_consumption_power_sensor import HouseConsumptionPowerSensor
+from custom_components.hsem.custom_sensors.working_mode_sensor import WorkingModeSensor
+from custom_components.hsem.utils.misc import get_config_value
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -149,11 +146,9 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
 
     energy_sensors = await async_setup_energy_sensors(config_entry)
 
-    energy_average_sensors = await async_setup_energy__average_sensors(config_entry)
-
     # Add sensors to Home Assistant
     async_add_entities(
-        [working_mode_sensor] + power_sensors + energy_sensors + energy_average_sensors
+        [working_mode_sensor] + power_sensors + energy_sensors
     )
 
     # Store reference to the platform to handle unloads later
@@ -233,41 +228,4 @@ async def async_setup_energy_sensors(config_entry):
         hour_start = hour
         hour_end = (hour + 1) % 24
         sensors.append(HouseConsumptionEnergySensor(config_entry, hour_start, hour_end))
-    return sensors
-
-
-async def async_setup_energy__average_sensors(config_entry):
-    """
-    Setup House Consumption Energy Average sensors for each hour in the day.
-
-    This function initializes and returns a list of HouseConsumptionEnergyAverageSensor
-    instances for each hour of the day. For each hour, three sensors are created with
-    different durations (2160 minutes, 5040 minutes, and 10080 minutes) and corresponding
-    intervals (3 days, 7 days, and 14 days).
-
-    Args:
-        config_entry: The configuration entry containing setup information.
-
-    Returns:
-        List[HouseConsumptionEnergyAverageSensor]: A list of initialized sensors.
-    """
-    sensors = []
-    for hour in range(24):
-        hour_start = hour
-        hour_end = (hour + 1) % 24
-        sensors.append(
-            HouseConsumptionEnergyAverageSensor(
-                config_entry, hour_start, hour_end, 2160, 3
-            )
-        )
-        sensors.append(
-            HouseConsumptionEnergyAverageSensor(
-                config_entry, hour_start, hour_end, 5040, 7
-            )
-        )
-        sensors.append(
-            HouseConsumptionEnergyAverageSensor(
-                config_entry, hour_start, hour_end, 10080, 14
-            )
-        )
     return sensors

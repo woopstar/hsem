@@ -1,0 +1,16 @@
+name: Pyre
+
+on:
+  push:
+
+jobs:
+  pyre:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pyre Action
+        uses: facebook/pyre-action@v0.0.2
+        with:
+            repo-directory: './'
+            requirements-path: 'requirements.txt'

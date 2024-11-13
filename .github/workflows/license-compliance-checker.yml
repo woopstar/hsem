@@ -1,0 +1,32 @@
+name: Dependencies license compliance checker
+
+on:
+  push:
+
+jobs:
+  license_check:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout the code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.13'
+    - name: Get explicit and transitive dependencies
+      run: |
+        pip3 install --upgrade pip
+        pip3 install -r requirements.txt
+        pip3 freeze > requirements-all.txt
+    - name: pilosus/action-pip-license-checker
+      id: license_check_report
+      uses: pilosus/action-pip-license-checker@v2
+      with:
+        requirements: 'requirements-all.txt'
+        fail: 'Copyleft'
+        exclude: '(?i)^(pylint|aio[-_]*).*'
+    - name: Print report
+      if: ${{ always() }}
+      run: echo "${{ steps.license_check_report.outputs.report }}"

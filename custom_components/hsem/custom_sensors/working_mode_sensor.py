@@ -96,7 +96,7 @@ from homeassistant.helpers.event import (
     async_track_time_interval,
 )
 
-from ..const import (
+from custom_components.hsem.const import (
     DEFAULT_HSEM_DEFAULT_TOU_MODES,
     DEFAULT_HSEM_EV_CHARGER_TOU_MODES,
     DEFAULT_HSEM_MONTHS_SUMMER,
@@ -104,23 +104,24 @@ from ..const import (
     DEFAULT_HSEM_TOU_MODES_FORCE_CHARGE,
     DEFAULT_HSEM_TOU_MODES_FORCE_DISCHARGE,
     DOMAIN,
+    HOUSE_CONSUMPTION_ENERGY_WEIGHT_1D,
     HOUSE_CONSUMPTION_ENERGY_WEIGHT_3D,
     HOUSE_CONSUMPTION_ENERGY_WEIGHT_7D,
     HOUSE_CONSUMPTION_ENERGY_WEIGHT_14D,
     ICON,
 )
-from ..entity import HSEMEntity
-from ..utils.ha import async_set_select_option, ha_get_entity_state_and_convert
-from ..utils.huawei import async_set_grid_export_power_pct, async_set_tou_periods
-from ..utils.misc import (
+from custom_components.hsem.entity import HSEMEntity
+from custom_components.hsem.utils.ha import async_set_select_option, ha_get_entity_state_and_convert
+from custom_components.hsem.utils.huawei import async_set_grid_export_power_pct, async_set_tou_periods
+from custom_components.hsem.utils.misc import (
     async_resolve_entity_id_from_unique_id,
     convert_to_boolean,
     convert_to_float,
     generate_md5_hash,
     get_config_value,
 )
-from ..utils.recommendations import Recommendations
-from ..utils.workingmodes import WorkingModes
+from custom_components.hsem.utils.recommendations import Recommendations
+from custom_components.hsem.utils.workingmodes import WorkingModes
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -868,11 +869,15 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             time_range = f"{hour_start:02d}-{hour_end:02d}"
 
             # Construct unique_ids for the 3d, 7d, and 14d sensors
+            unique_id_1d = f"{DOMAIN}_house_consumption_energy_avg_{hour_start:02d}_{hour_end:02d}_1d"
             unique_id_3d = f"{DOMAIN}_house_consumption_energy_avg_{hour_start:02d}_{hour_end:02d}_3d"
             unique_id_7d = f"{DOMAIN}_house_consumption_energy_avg_{hour_start:02d}_{hour_end:02d}_7d"
             unique_id_14d = f"{DOMAIN}_house_consumption_energy_avg_{hour_start:02d}_{hour_end:02d}_14d"
 
             # Resolve entity_ids for 3d, 7d, and 14d sensors
+            entity_id_1d = await async_resolve_entity_id_from_unique_id(
+                self, unique_id_1d
+            )
             entity_id_3d = await async_resolve_entity_id_from_unique_id(
                 self, unique_id_3d
             )
@@ -884,11 +889,22 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             )
 
             # Default values for sensors in case they are missing
+            value_1d = 0.0
             value_3d = 0.0
             value_7d = 0.0
             value_14d = 0.0
 
-            # Fetch values for 3d, 7d, and 14d if available
+            # Fetch values for 1d, 3d, 7d, and 14d if available
+            if entity_id_1d:
+                entity_state_1d = self.hass.states.get(entity_id_1d)
+                if entity_state_1d and entity_state_1d.state != "unknown":
+                    try:
+                        value_1d = convert_to_float(entity_state_1d.state)
+                    except ValueError:
+                        _LOGGER.warning(
+                            f"Invalid state for entity {entity_id_1d}: {entity_state_1d.state}"
+                        )
+
             if entity_id_3d:
                 entity_state_3d = self.hass.states.get(entity_id_3d)
                 if entity_state_3d and entity_state_3d.state != "unknown":
@@ -921,7 +937,8 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
             # Calculate the weighted average house consumption for the hour
             weighted_value = round(
-                (value_3d * HOUSE_CONSUMPTION_ENERGY_WEIGHT_3D)
+                (value_1d * HOUSE_CONSUMPTION_ENERGY_WEIGHT_1D)
+                + (value_3d * HOUSE_CONSUMPTION_ENERGY_WEIGHT_3D)
                 + (value_7d * HOUSE_CONSUMPTION_ENERGY_WEIGHT_7D)
                 + (value_14d * HOUSE_CONSUMPTION_ENERGY_WEIGHT_14D),
                 6,

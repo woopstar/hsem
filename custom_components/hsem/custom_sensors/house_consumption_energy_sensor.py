@@ -34,15 +34,16 @@ import logging
 from datetime import datetime, timedelta
 
 from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.statistics.sensor import StatisticsSensor
 from homeassistant.helpers.event import (
     async_track_state_change_event,
     async_track_time_interval,
 )
 
-from ..const import DOMAIN, ICON
-from ..entity import HSEMEntity
-from ..utils.ha import ha_get_entity_state_and_convert
-from ..utils.misc import async_resolve_entity_id_from_unique_id, convert_to_float
+from custom_components.hsem.const import DOMAIN, ICON, NAME
+from custom_components.hsem.entity import HSEMEntity
+from custom_components.hsem.utils.ha import ha_get_entity_state_and_convert
+from custom_components.hsem.utils.misc import async_resolve_entity_id_from_unique_id, convert_to_float
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -170,6 +171,12 @@ class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
         else:
             _LOGGER.debug(f"First update for {self.name}, skipping accumulation.")
 
+        # Add avg energy sensors for 1,3,7,14 days
+        await self.add_energy_average_sensors(1)
+        await self.add_energy_average_sensors(3)
+        await self.add_energy_average_sensors(7)
+        await self.add_energy_average_sensors(14)
+
         # Update last update time
         self._last_updated = now.isoformat()
 
@@ -179,3 +186,48 @@ class HouseConsumptionEnergySensor(SensorEntity, HSEMEntity):
     async def async_update(self, event=None):
         """Manually trigger the sensor update."""
         await self._handle_update(event=None)
+
+    async def add_energy_average_sensors(self, avg=3):
+        # Create the name and unique id for the avg sensor
+        avg_energy_sensor_name=f"{NAME} House Consumption {self._hour_start:02d}-{self._hour_end:02d} Energy Average {avg}d"
+        avg_energy_sensor_unique_id=f"{DOMAIN}_house_consumption_energy_avg_{self._hour_start:02d}_{self._hour_end:02d}_{avg}d"
+
+        # find the energy sensor from the unique id
+        energy_sensor = await async_resolve_entity_id_from_unique_id(
+            self,
+            self._unique_id
+        )
+
+        # Check if the avg sensor already exists
+        avg_energy_sensor_exists = await async_resolve_entity_id_from_unique_id(
+            self,
+            avg_energy_sensor_unique_id
+        )
+
+        # Check if the avg sensor exists and create it if it doesn't
+        if energy_sensor and not avg_energy_sensor_exists:
+            _LOGGER.warning(
+                f"Adding sensor {avg_energy_sensor_name} for {energy_sensor} with unique id {avg_energy_sensor_unique_id}"
+            )
+
+            # Create the avg sensor for the energy sensor with the specified days of averaging
+            avg_sensor = StatisticsSensor(
+                hass=self.hass,
+                source_entity_id=energy_sensor,
+                name=avg_energy_sensor_name,
+                unique_id=avg_energy_sensor_unique_id,
+                state_characteristic="mean",
+                samples_max_buffer_size=(24 * 60 * avg),  # Sampling size
+                samples_max_age=timedelta(days=avg),       # Max age
+                samples_keep_last=False,
+                precision=2,
+                percentile=50,
+            )
+
+            # Add the avg sensor to Home Assistant
+            async_add_entities = self.hass.data[DOMAIN].get(self._config_entry.entry_id)
+
+            if async_add_entities:
+                async_add_entities([avg_sensor])
+            else:
+                _LOGGER.error("Could not add avg sensor for {energy_sensor}")

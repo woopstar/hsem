@@ -1,0 +1,19 @@
+name: Python safety check
+
+on:
+  push:
+
+env:
+  DEP_PATH: ./requirements.txt
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out master
+        uses: actions/checkout@v4
+
+      - name: pyupio/safety-action
+        uses: pyupio/safety-action@v1.0.1
+        with:
+          api-key: ${{ secrets.SAFETY_API_KEY }}

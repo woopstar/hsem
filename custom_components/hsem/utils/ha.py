@@ -16,7 +16,7 @@ Raises:
 
 import logging
 
-from ..utils.misc import convert_to_boolean, convert_to_float
+from custom_components.hsem.utils.misc import convert_to_boolean, convert_to_float
 
 _LOGGER = logging.getLogger(__name__)
 
