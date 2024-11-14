@@ -5,7 +5,9 @@
         "energidataservice",
         "huawei_solar",
         "solcast_solar",
-        "statistics"
+        "statistics",
+        "integration",
+        "utility_meter"
     ],
     "codeowners": [
         "@woopstar",
