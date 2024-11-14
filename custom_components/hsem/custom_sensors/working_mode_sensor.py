@@ -199,21 +199,16 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         self._unique_id = get_working_mode_sensor_unique_id()
         self._update_settings()
 
-
-
     def _update_settings(self):
         """Fetch updated settings from config_entry options."""
-        self.hsem_huawei_solar_device_id_inverter_1 = (
-            get_config_value(
-                self._config_entry, "hsem_huawei_solar_device_id_inverter_1"
-            )
-        )
-        self.hsem_huawei_solar_device_id_inverter_2 = (
+        self._hsem_huawei_solar_device_id_inverter_1 = get_config_value(self._config_entry, "hsem_huawei_solar_device_id_inverter_1")
+
+        self._hsem_huawei_solar_device_id_inverter_2 = (
             get_config_value(
                 self._config_entry, "hsem_huawei_solar_device_id_inverter_2"
             )
         )
-        self.hsem_huawei_solar_device_id_batteries = (
+        self._hsem_huawei_solar_device_id_batteries = (
             get_config_value(
                 self._config_entry, "hsem_huawei_solar_device_id_batteries"
             )
@@ -319,7 +314,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
         if self._hsem_huawei_solar_device_id_inverter_2 is not None:
             if len(self._hsem_huawei_solar_device_id_inverter_2) == 0:
-                self._hsem_huawei_solar_device_id_inverter_2(None)
+                self._hsem_huawei_solar_device_id_inverter_2 = None
+
+        self._intialized = True
 
         # Log updated settings
         _LOGGER.debug(
