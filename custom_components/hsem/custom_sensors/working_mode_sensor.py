@@ -92,7 +92,6 @@ from datetime import datetime, timedelta
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.event import (
-    async_track_state_change_event,
     async_track_time_interval,
 )
 
@@ -111,20 +110,17 @@ from custom_components.hsem.const import (
     ICON,
 )
 from custom_components.hsem.entity import HSEMEntity
-from custom_components.hsem.utils.ha import (
-    async_set_select_option,
-    ha_get_entity_state_and_convert,
-)
 from custom_components.hsem.utils.huawei import (
     async_set_grid_export_power_pct,
     async_set_tou_periods,
 )
 from custom_components.hsem.utils.misc import (
     async_resolve_entity_id_from_unique_id,
-    convert_to_boolean,
     convert_to_float,
     generate_md5_hash,
     get_config_value,
+    async_set_select_option,
+    ha_get_entity_state_and_convert,
 )
 from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.workingmodes import WorkingModes
@@ -478,6 +474,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                 self, self._hsem_house_consumption_power, "float"
             )
 
+
         # Fetch the current value from the solar production power sensor
         if self._hsem_solar_production_power:
             self._hsem_solar_production_power_state = ha_get_entity_state_and_convert(
@@ -704,7 +701,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
     async def async_set_inverter_power_control(self):
         # Determine the grid export power percentage based on the state
-        if self._hsem_energi_data_service_export_state is None:
+        if not isinstance(self._hsem_energi_data_service_export_state, (int,float)):
             return
 
         export_power_percentage = (
@@ -737,7 +734,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         if self._hsem_huawei_solar_batteries_working_mode_state is None:
             return
 
-        if self._hsem_energi_data_service_import_state is None:
+        if not isinstance(self._hsem_energi_data_service_import_state, (int, float)):
             return
 
         if self._hsem_net_consumption is None:
@@ -962,6 +959,8 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
     async def async_calculate_solcast_forecast(self):
         """Calculate the hourly Solcast PV estimate and update self._hourly_calculations without resetting avg_house_consumption."""
+        if self._hsem_solcast_pv_forecast_forecast_today is None:
+            return
 
         solcast_sensor = self.hass.states.get(
             self._hsem_solcast_pv_forecast_forecast_today
@@ -992,6 +991,8 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
     async def async_calculate_hourly_import_price(self):
         """Calculate the estimated import price for each hour of the day."""
+        if self._hsem_energi_data_service_import is None:
+            return
 
         import_price_sensor = self.hass.states.get(
             self._hsem_energi_data_service_import
@@ -1020,6 +1021,8 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
     async def async_calculate_hourly_export_price(self):
         """Calculate the estimated import price for each hour of the day."""
+        if self._hsem_energi_data_service_export is None:
+            return
 
         export_price_sensor = self.hass.states.get(
             self._hsem_energi_data_service_export
@@ -1135,9 +1138,12 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             conversion_loss_factor = 1 - (self._hsem_battery_conversion_loss / 100)
 
             # Calculate the maximum possible charge in kWh for this hour, limited by charging power and conversion loss
-            max_charge_per_hour = (
-                self._hsem_huawei_solar_batteries_maximum_charging_power_state / 1000
-            ) * conversion_loss_factor
+            if isinstance(self._hsem_huawei_solar_batteries_maximum_charging_power_state, (int, float)):
+                max_charge_per_hour = (
+                    self._hsem_huawei_solar_batteries_maximum_charging_power_state / 1000
+                ) * conversion_loss_factor
+            else:
+                max_charge_per_hour = 0.0
 
             # Calculate the remaining charge needed to fill the battery, adjusted for conversion loss
             remaining_charge_needed = (
@@ -1208,175 +1214,6 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
     async def async_added_to_hass(self):
         """Handle the sensor being added to Home Assistant."""
         await super().async_added_to_hass()
-
-        # Restore the previous state if available
-        # old_state = await self.async_get_last_state()
-        # if old_state is not None:
-        #     _LOGGER.info(f"Restoring state for {self._unique_id}")
-        #     try:
-        #         self._state = old_state.state
-        #     except (ValueError, TypeError):
-        #         _LOGGER.debug(
-        #             f"Could not restore state for {self._unique_id}, invalid value: {old_state.state}"
-        #         )
-        #         self._state = None
-
-        #     self._last_updated = old_state.attributes.get("last_updated", None)
-        # else:
-        #     _LOGGER.info(
-        #         f"No previous state found for {self._unique_id}, starting fresh."
-        #     )
-
-        # Start listening for state changes of the input sensors
-        # if self._hsem_huawei_solar_device_id_inverter_1:
-        #     _LOGGER.info(
-        #         f"Starting to track state changes for entity_id {self._hsem_huawei_solar_device_id_inverter_1}"
-        #     )
-        #     async_track_state_change_event(
-        #         self.hass,
-        #         [self._hsem_huawei_solar_device_id_inverter_1],
-        #         self._handle_update,
-        #     )
-
-        # if self._hsem_huawei_solar_device_id_inverter_2:
-        #     _LOGGER.info(
-        #         f"Starting to track state changes for entity_id {self._hsem_huawei_solar_device_id_inverter_2}"
-        #     )
-        #     async_track_state_change_event(
-        #         self.hass,
-        #         [self._hsem_huawei_solar_device_id_inverter_2],
-        #         self._handle_update,
-        #     )
-
-        # if self._hsem_huawei_solar_device_id_batteries:
-        #     _LOGGER.info(
-        #         f"Starting to track state changes for entity_id {self._hsem_huawei_solar_device_id_batteries}"
-        #     )
-        #     async_track_state_change_event(
-        #         self.hass,
-        #         [self._hsem_huawei_solar_device_id_batteries],
-        #         self._handle_update,
-        #     )
-
-        # if self._hsem_huawei_solar_batteries_working_mode:
-        #     _LOGGER.info(
-        #         f"Starting to track state changes for entity_id {self._hsem_huawei_solar_batteries_working_mode}"
-        #     )
-        #     async_track_state_change_event(
-        #         self.hass,
-        #         [self._hsem_huawei_solar_batteries_working_mode],
-        #         self._handle_update,
-        #     )
-
-        # if self._hsem_huawei_solar_batteries_state_of_capacity:
-        #     _LOGGER.info(
-        #         f"Starting to track state changes for entity_id {self._hsem_huawei_solar_batteries_state_of_capacity}"
-        #     )
-        #     async_track_state_change_event(
-        #         self.hass,
-        #         [self._hsem_huawei_solar_batteries_state_of_capacity],
-        #         self._handle_update,
-        #     )
-
-        # if self._hsem_house_consumption_power:
-        #     _LOGGER.info(
-        #         f"Starting to track state changes for entity_id {self._hsem_house_consumption_power}"
-        #     )
-        #     async_track_state_change_event(
-        #         self.hass,
-        #         [self._hsem_house_consumption_power],
-        #         self._handle_update,
-        #     )
-
-        # if self._hsem_solar_production_power:
-        #     _LOGGER.info(
-        #         f"Starting to track state changes for entity_id {self._hsem_solar_production_power}"
-        #     )
-        #     async_track_state_change_event(
-        #         self.hass,
-        #         [self._hsem_solar_production_power],
-        #         self._handle_update,
-        #     )
-
-        # if self._hsem_ev_charger_status:
-        #     _LOGGER.info(
-        #         f"Starting to track state changes for entity_id {self._hsem_ev_charger_status}"
-        #     )
-        #     async_track_state_change_event(
-        #         self.hass,
-        #         [self._hsem_ev_charger_status],
-        #         self._handle_update,
-        #     )
-
-        # if self._hsem_solcast_pv_forecast_forecast_today:
-        #     _LOGGER.info(
-        #         f"Starting to track state changes for entity_id {self._hsem_solcast_pv_forecast_forecast_today}"
-        #     )
-        #     async_track_state_change_event(
-        #         self.hass,
-        #         [self._hsem_solcast_pv_forecast_forecast_today],
-        #         self._handle_update,
-        #     )
-
-        # if self._hsem_energi_data_service_import:
-        #     _LOGGER.info(
-        #         f"Starting to track state changes for entity_id {self._hsem_energi_data_service_import}"
-        #     )
-        #     async_track_state_change_event(
-        #         self.hass,
-        #         [self._hsem_energi_data_service_import],
-        #         self._handle_update,
-        #     )
-
-        # if self._hsem_energi_data_service_export:
-        #     _LOGGER.info(
-        #         f"Starting to track state changes for entity_id {self._hsem_energi_data_service_export}"
-        #     )
-        #     async_track_state_change_event(
-        #         self.hass,
-        #         [self._hsem_energi_data_service_export],
-        #         self._handle_update,
-        #     )
-
-        # if self._hsem_huawei_solar_inverter_active_power_control:
-        #     _LOGGER.info(
-        #         f"Starting to track state changes for entity_id {self._hsem_huawei_solar_inverter_active_power_control}"
-        #     )
-        #     async_track_state_change_event(
-        #         self.hass,
-        #         [self._hsem_huawei_solar_inverter_active_power_control],
-        #         self._handle_update,
-        #     )
-
-        # if self._hsem_ev_charger_power:
-        #     _LOGGER.info(
-        #         f"Starting to track state changes for entity_id {self._hsem_ev_charger_power}"
-        #     )
-        #     async_track_state_change_event(
-        #         self.hass,
-        #         [self._hsem_ev_charger_power],
-        #         self._handle_update,
-        #     )
-
-        # if self._hsem_huawei_solar_batteries_maximum_charging_power:
-        #     _LOGGER.info(
-        #         f"Starting to track state changes for entity_id {self._hsem_huawei_solar_batteries_maximum_charging_power}"
-        #     )
-        #     async_track_state_change_event(
-        #         self.hass,
-        #         [self._hsem_huawei_solar_batteries_maximum_charging_power],
-        #         self._handle_update,
-        #     )
-
-        # if self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc:
-        #     _LOGGER.info(
-        #         f"Starting to track state changes for entity_id {self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc}"
-        #     )
-        #     async_track_state_change_event(
-        #         self.hass,
-        #         [self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc],
-        #         self._handle_update,
-        #     )
 
         # Schedule a periodic update every minute
         async_track_time_interval(self.hass, self._handle_update, timedelta(minutes=1))
