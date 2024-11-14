@@ -155,6 +155,7 @@ def ha_get_entity_state_and_convert(
     if state:
         if output_type is None:
             return state
+
         if output_type.lower() == "float":
             return round(convert_to_float(state.state), float_precision)
         if output_type.lower() == "boolean":
@@ -162,7 +163,7 @@ def ha_get_entity_state_and_convert(
         if output_type.lower() == "string":
             return str(state.state)
         else:
-            return state
+            return None
     else:
         _LOGGER.debug(f"Sensor {entity_id} not found.")
         return None

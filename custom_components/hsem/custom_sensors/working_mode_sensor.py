@@ -91,6 +91,7 @@ import logging
 from datetime import datetime, timedelta
 
 from homeassistant.components.sensor import SensorEntity
+from homeassistant.core import State
 from homeassistant.helpers.event import (
     async_track_time_interval,
 )
@@ -550,37 +551,25 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
         # Fetch the current value from the battery TOU charging and discharging periods sensor
         if self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods:
-            state = self.hass.states.get(
-                self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods
+            entity_data = ha_get_entity_state_and_convert(
+                self, self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods, None
             )
-            if state:
-                self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_state = (
-                    state.state
-                )
 
-                # Initialize an empty list to store period values
-                periods = []
+            # Reset state and periods attributes
+            self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_state = None
+            self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_periods = None
 
-                # Loop through "Period 1" to "Period 10" and add to list if attribute exists
-                for i in range(1, 11):
-                    period_key = f"Period {i}"
-                    if period_key in state.attributes:
-                        periods.append(state.attributes[period_key])
+            # Ensure entity_data is valid and a State object
+            if isinstance(entity_data, State):
+                # Set the state directly
+                self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_state = entity_data.state
 
-                # Set the list of periods to the desired variable
-                self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_periods = (
-                    periods
-                )
-            else:
-                self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_state = (
-                    None
-                )
-                self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_periods = (
-                    None
-                )
-                _LOGGER.warning(
-                    f"Sensor {self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods} not found."
-                )
+                # Gather period values from attributes using a list comprehension
+                self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_periods = [
+                    entity_data.attributes[f"Period {i}"]
+                    for i in range(1, 11)
+                    if f"Period {i}" in entity_data.attributes
+                ]
 
         # Calculate the net consumption without the EV charger power
         if (
