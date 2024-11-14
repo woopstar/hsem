@@ -30,3 +30,10 @@ def get_house_consumption_power_sensor_name(hour_start, hour_end):
 
 def get_house_consumption_power_sensor_unique_id(hour_start, hour_end):
     return f"{DOMAIN}_house_consumption_power_{hour_start:02d}_{hour_end:02d}"
+
+# Working Mode sensor
+def get_working_mode_sensor_name():
+    return f"Working Mode Sensor"
+
+def get_working_mode_sensor_unique_id():
+    return f"{DOMAIN}_workingmode_sensor"

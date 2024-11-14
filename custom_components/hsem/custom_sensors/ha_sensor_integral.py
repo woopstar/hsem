@@ -18,9 +18,9 @@ async def add_integral_sensor(self):
     integral_sensor_unique_id = get_integral_sensor_unique_id(self._hour_start, self._hour_end)
 
     # Resolve the source power sensor entity
-    source_power_entity = await async_resolve_entity_id_from_unique_id(self, self._unique_id)
+    source_entity = await async_resolve_entity_id_from_unique_id(self, self._unique_id)
 
-    if not source_power_entity:
+    if not source_entity:
         return
 
     # Check if the integral sensor already exists
@@ -32,14 +32,14 @@ async def add_integral_sensor(self):
                 self._has_been_removed.append(integral_sensor_unique_id)
                 _LOGGER.info(f"Successfully removed '{integral_sensor_name}'.")
     else:
-        _LOGGER.warning(f"Adding integral sensor {integral_sensor_name} for {source_power_entity}")
+        _LOGGER.warning(f"Adding integral sensor {integral_sensor_name} for {source_entity}")
 
         # Create the integral sensor using the left Reimann method
         integral_sensor = IntegrationSensor(
             integration_method="left",
             name=integral_sensor_name,
             round_digits=2,
-            source_entity=source_power_entity,
+            source_entity=source_entity,
             unique_id=integral_sensor_unique_id,
             unit_prefix="k",
             unit_time=UnitOfTime.HOURS,
@@ -52,4 +52,4 @@ async def add_integral_sensor(self):
         if async_add_entities:
             async_add_entities([integral_sensor])
         else:
-            _LOGGER.error(f"Could not add integral sensor for {source_power_entity}")
+            _LOGGER.error(f"Could not add integral sensor for {source_entity}")

@@ -4,7 +4,6 @@ This module defines constants used in the Huawei Solar Energy Management (HSEM) 
 Constants:
     DOMAIN (str): Domain name for the integration.
     NAME (str): Display name for the integration.
-    ICON (str): Default icon for the integration's sensors.
 
     DEFAULT_HSEM_ENERGI_DATA_SERVICE_IMPORT (str): Default sensor entity ID for energy data service import.
     DEFAULT_HSEM_ENERGI_DATA_SERVICE_EXPORT (str): Default sensor entity ID for energy data service export.
@@ -33,7 +32,6 @@ Constants:
 
 DOMAIN = "hsem"  # Domain name for the integration
 NAME = "Huawei Solar Energy Management"  # Display name for the integration
-ICON = "mdi:flash"  # Default icon for the integration's sensors
 
 # Default sensor entity ID for energy data service import
 DEFAULT_HSEM_ENERGI_DATA_SERVICE_IMPORT = "sensor.energi_data_service"

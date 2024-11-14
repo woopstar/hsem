@@ -16,11 +16,11 @@ async def add_energy_average_sensors(self, avg=3):
     utility_meter_unique_id = get_utility_meter_sensor_unique_id(self._hour_start, self._hour_end)
 
     # find the energy sensor from the unique id
-    energy_sensor = await async_resolve_entity_id_from_unique_id(
+    source_entity = await async_resolve_entity_id_from_unique_id(
         self, utility_meter_unique_id
     )
 
-    if not energy_sensor:
+    if not source_entity:
         return
 
     # Check if the avg sensor already exists
@@ -35,11 +35,11 @@ async def add_energy_average_sensors(self, avg=3):
                 self._has_been_removed.append(avg_energy_sensor_unique_id)
     else:
         # If sensor does not exist, create it and add to Home Assistant
-        _LOGGER.warning(f"Creating new average energy sensor '{avg_energy_sensor_name}' for '{energy_sensor}'.")
+        _LOGGER.warning(f"Creating new average energy sensor '{avg_energy_sensor_name}' for '{source_entity}'.")
 
         avg_sensor = StatisticsSensor(
             hass=self.hass,
-            source_entity_id=energy_sensor,
+            source_entity_id=source_entity,
             name=avg_energy_sensor_name,
             unique_id=avg_energy_sensor_unique_id,
             state_characteristic="mean",
