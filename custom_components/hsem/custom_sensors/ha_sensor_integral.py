@@ -12,6 +12,7 @@ from custom_components.hsem.utils.misc import (
 from custom_components.hsem.utils.sensornames import (
     get_integral_sensor_name,
     get_integral_sensor_unique_id,
+    get_house_consumption_power_sensor_unique_id,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -25,9 +26,12 @@ async def add_integral_sensor(self):
     integral_sensor_unique_id = get_integral_sensor_unique_id(
         self._hour_start, self._hour_end
     )
+    power_sensor_unique_id = get_house_consumption_power_sensor_unique_id(
+        self._hour_start,
+    self._hour_end)
 
     # Resolve the source power sensor entity
-    source_entity = await async_resolve_entity_id_from_unique_id(self, self._unique_id)
+    source_entity = await async_resolve_entity_id_from_unique_id(self, power_sensor_unique_id)
 
     if not source_entity:
         return
