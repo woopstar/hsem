@@ -316,8 +316,6 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             if len(self._hsem_huawei_solar_device_id_inverter_2) == 0:
                 self._hsem_huawei_solar_device_id_inverter_2 = None
 
-        self._intialized = True
-
         # Log updated settings
         _LOGGER.debug(
             f"Updated settings: input_sensor={self._hsem_huawei_solar_batteries_working_mode}"
