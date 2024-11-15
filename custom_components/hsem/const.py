@@ -75,7 +75,7 @@ DEFAULT_HSEM_MORNING_ENERGY_NEED = 1.5
 DEFAULT_HSEM_BATTERY_MAX_CAPACITY = 10
 
 # Default sensor entity ID for EV charger status
-DEFAULT_HSEM_EV_CHARGER_STATUS = "sensor.go_echarger_is_charging"
+DEFAULT_HSEM_EV_CHARGER_STATUS = ""
 
 # Default TOU modes for EV charger when charging
 DEFAULT_HSEM_EV_CHARGER_TOU_MODES = ["00:00-00:01/1234567/+"]
@@ -110,7 +110,7 @@ HOUSE_CONSUMPTION_ENERGY_WEIGHT_14D = 0.1  # 10% weight for the 14-day average
 DEFAULT_HSEM_HOUSE_POWER_INCLUDES_EV_CHARGER_POWER = True
 
 # Default sensor entity ID for EV charger power
-DEFAULT_HSEM_EV_CHARGER_POWER = "sensor.go_echarger_222819_nrg_12"
+DEFAULT_HSEM_EV_CHARGER_POWER = ""
 
 # Default conversion loss for battery charging in pct
 DEFAULT_HSEM_BATTERY_CONVERSION_LOSS = 10
