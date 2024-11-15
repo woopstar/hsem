@@ -483,22 +483,28 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         if (
             isinstance(self._hsem_solar_production_power_state, (int, float))
             and isinstance(self._hsem_house_consumption_power_state, (int, float))
-            and isinstance(self._hsem_ev_charger_power_state, (int, float))
         ):
+            # Treat EV charger power state as 0.0 if it's None
+            ev_charger_power_state = (
+                self._hsem_ev_charger_power_state
+                if isinstance(self._hsem_ev_charger_power_state, (int, float))
+                else 0.0
+            )
+
             if self._hsem_house_power_includes_ev_charger_power is not None:
-                self._hsem_net_consumption_with_ev = float(
+                self._hsem_net_consumption_with_ev = (
                     self._hsem_solar_production_power_state
-                ) - float(self._hsem_house_consumption_power_state)
+                    - self._hsem_house_consumption_power_state
+                )
                 self._hsem_net_consumption = self._hsem_solar_production_power_state - (
-                    self._hsem_house_consumption_power_state
-                    - self._hsem_ev_charger_power_state
+                    self._hsem_house_consumption_power_state - ev_charger_power_state
                 )
             else:
                 self._hsem_net_consumption_with_ev = (
                     self._hsem_solar_production_power_state
                     - (
                         self._hsem_house_consumption_power_state
-                        + self._hsem_ev_charger_power_state
+                        + ev_charger_power_state
                     )
                 )
                 self._hsem_net_consumption = (
@@ -506,7 +512,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                     - self._hsem_house_consumption_power_state
                 )
 
-                self._hsem_net_consumption = round(self._hsem_net_consumption, 2)
+            self._hsem_net_consumption = round(self._hsem_net_consumption, 2)
         else:
             self._hsem_net_consumption = None
 
