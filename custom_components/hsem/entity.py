@@ -2,7 +2,7 @@ import logging
 
 from homeassistant.helpers.restore_state import RestoreEntity
 
-from custom_components.hsem.const import DOMAIN, ICON, NAME
+from custom_components.hsem.const import DOMAIN, NAME
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ class HSEMEntity(RestoreEntity):
     """
 
     # Define the attributes of the entity
-    _attr_icon = ICON
+    _attr_icon = 'mdi:flash'
     _attr_has_entity_name = True
 
     def __init__(self, config_entry):

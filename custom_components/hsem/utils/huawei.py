@@ -6,7 +6,7 @@ power percentage and to configure Time-of-Use (TOU) periods for batteries.
 Functions:
     async_set_grid_export_power_pct(self, device_id, power_percentage):
         Asynchronously sets the maximum grid export power percentage for a specified device.
-        
+
     async_set_tou_periods(self, batteries_id, tou_modes):
         Asynchronously sets the Time-of-Use (TOU) periods for specified batteries.
 
@@ -55,7 +55,7 @@ async def async_set_grid_export_power_pct(self, device_id, power_percentage):
         )
 
         # Log success message
-        _LOGGER.warning(
+        _LOGGER.debug(
             f"Updated export power pct to: {power_percentage} for device id: {device_id}"
         )
 
@@ -101,7 +101,7 @@ async def async_set_tou_periods(self, batteries_id, tou_modes):
         )
 
         # Log success message
-        _LOGGER.warning(
+        _LOGGER.debug(
             f"Set TOU periods for device id: {batteries_id} with tou modes: {tou_modes}"
         )
 
