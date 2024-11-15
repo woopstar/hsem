@@ -93,9 +93,9 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     # Wait for power, energy and energy average sensors to be set up
     power_sensors = await async_setup_power_sensors(
         config_entry,
-        #working_mode_sensor._hsem_house_consumption_power,
-        #working_mode_sensor._hsem_ev_charger_power,
-        #working_mode_sensor._hsem_house_power_includes_ev_charger_power,
+        # working_mode_sensor._hsem_house_consumption_power,
+        # working_mode_sensor._hsem_ev_charger_power,
+        # working_mode_sensor._hsem_house_power_includes_ev_charger_power,
     )
 
     # Add sensors to Home Assistant
@@ -129,9 +129,9 @@ async def async_unload_entry(hass, entry):
 
 async def async_setup_power_sensors(
     config_entry,
-    #hsem_house_consumption_power,
-    #hsem_ev_charger_power,
-    #hsem_house_power_includes_ev_charger_power,
+    # hsem_house_consumption_power,
+    # hsem_ev_charger_power,
+    # hsem_house_power_includes_ev_charger_power,
 ):
     """
     Set up house consumption power sensors for each hour block.
@@ -150,10 +150,10 @@ async def async_setup_power_sensors(
         hour_start = hour
         hour_end = (hour + 1) % 24
         sensor = HouseConsumptionPowerSensor(config_entry, hour_start, hour_end)
-        #sensor.set_hsem_house_consumption_power(hsem_house_consumption_power)
-        #sensor.set_hsem_ev_charger_power(hsem_ev_charger_power)
-        #sensor.set_hsem_house_power_includes_ev_charger_power(
+        # sensor.set_hsem_house_consumption_power(hsem_house_consumption_power)
+        # sensor.set_hsem_ev_charger_power(hsem_ev_charger_power)
+        # sensor.set_hsem_house_power_includes_ev_charger_power(
         #    hsem_house_power_includes_ev_charger_power
-        #)
+        # )
         sensors.append(sensor)
     return sensors

@@ -35,12 +35,22 @@ from homeassistant.helpers.event import (
 from custom_components.hsem.const import (
     DEFAULT_HSEM_HOUSE_POWER_INCLUDES_EV_CHARGER_POWER,
 )
-from custom_components.hsem.entity import HSEMEntity
-from custom_components.hsem.custom_sensors.ha_sensor_utility_meter import add_utility_meter_sensor
 from custom_components.hsem.custom_sensors.ha_sensor_integral import add_integral_sensor
-from custom_components.hsem.custom_sensors.ha_sensor_statistics import add_energy_average_sensors
-from custom_components.hsem.utils.misc import get_config_value, ha_get_entity_state_and_convert
-from custom_components.hsem.utils.sensornames import get_house_consumption_power_sensor_name, get_house_consumption_power_sensor_unique_id
+from custom_components.hsem.custom_sensors.ha_sensor_statistics import (
+    add_energy_average_sensors,
+)
+from custom_components.hsem.custom_sensors.ha_sensor_utility_meter import (
+    add_utility_meter_sensor,
+)
+from custom_components.hsem.entity import HSEMEntity
+from custom_components.hsem.utils.misc import (
+    get_config_value,
+    ha_get_entity_state_and_convert,
+)
+from custom_components.hsem.utils.sensornames import (
+    get_house_consumption_power_sensor_name,
+    get_house_consumption_power_sensor_unique_id,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -48,7 +58,7 @@ _LOGGER = logging.getLogger(__name__)
 class HouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
     """Representation of a sensor that tracks power consumption per hour block."""
 
-    _attr_icon = 'mdi:flash'
+    _attr_icon = "mdi:flash"
     _attr_has_entity_name = True
 
     def __init__(self, config_entry, hour_start, hour_end):
@@ -63,7 +73,9 @@ class HouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
         )
         self._hour_start = hour_start
         self._hour_end = hour_end
-        self._unique_id = get_house_consumption_power_sensor_unique_id(hour_start, hour_end)
+        self._unique_id = get_house_consumption_power_sensor_unique_id(
+            hour_start, hour_end
+        )
         self._state = None
         self._config_entry = config_entry
         self._last_updated = None
@@ -118,22 +130,20 @@ class HouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
             self._state = 0.0
 
         # Schedule a periodic update every minute
-        #async_track_time_interval(self.hass, self._handle_update, timedelta(minutes=1))
+        # async_track_time_interval(self.hass, self._handle_update, timedelta(minutes=1))
 
     def _update_settings(self):
         """Fetch updated settings from config_entry options."""
-        self._hsem_house_consumption_power = (
-            get_config_value(self._config_entry, "hsem_house_consumption_power")
+        self._hsem_house_consumption_power = get_config_value(
+            self._config_entry, "hsem_house_consumption_power"
         )
 
-        self._hsem_ev_charger_power = (
-            get_config_value(self._config_entry, "hsem_ev_charger_power")
+        self._hsem_ev_charger_power = get_config_value(
+            self._config_entry, "hsem_ev_charger_power"
         )
 
-        self._hsem_house_power_includes_ev_charger_power = (
-            get_config_value(
-                self._config_entry, "hsem_house_power_includes_ev_charger_power"
-            )
+        self._hsem_house_power_includes_ev_charger_power = get_config_value(
+            self._config_entry, "hsem_house_power_includes_ev_charger_power"
         )
 
     async def _handle_update(self, event):

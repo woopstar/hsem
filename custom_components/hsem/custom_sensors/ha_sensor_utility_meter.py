@@ -1,25 +1,42 @@
 import logging
 from datetime import timedelta
 
+from homeassistant.components.utility_meter.const import (
+    DATA_TARIFF_SENSORS,
+    DATA_UTILITY,
+)
 from homeassistant.components.utility_meter.sensor import UtilityMeterSensor
-from homeassistant.components.utility_meter.const import DATA_UTILITY, DATA_TARIFF_SENSORS
 
-from custom_components.hsem.utils.misc import async_resolve_entity_id_from_unique_id, async_remove_entity_from_ha
-from custom_components.hsem.utils.sensornames import get_utility_meter_sensor_name, get_utility_meter_sensor_unique_id, get_integral_sensor_unique_id
 from custom_components.hsem.const import DOMAIN
+from custom_components.hsem.utils.misc import (
+    async_remove_entity_from_ha,
+    async_resolve_entity_id_from_unique_id,
+)
+from custom_components.hsem.utils.sensornames import (
+    get_integral_sensor_unique_id,
+    get_utility_meter_sensor_name,
+    get_utility_meter_sensor_unique_id,
+)
 
 _LOGGER = logging.getLogger(__name__)
+
 
 async def add_utility_meter_sensor(self):
     """Add a utility meter sensor dynamically."""
 
     # Create the name and unique id for the avg sensor
     utility_meter_name = get_utility_meter_sensor_name(self._hour_start, self._hour_end)
-    utility_meter_unique_id = get_utility_meter_sensor_unique_id(self._hour_start, self._hour_end)
-    integral_sensor_unique_id = get_integral_sensor_unique_id(self._hour_start, self._hour_end)
+    utility_meter_unique_id = get_utility_meter_sensor_unique_id(
+        self._hour_start, self._hour_end
+    )
+    integral_sensor_unique_id = get_integral_sensor_unique_id(
+        self._hour_start, self._hour_end
+    )
 
     # Resolve the source entity (sensor) that the utility meter should track
-    source_entity = await async_resolve_entity_id_from_unique_id(self, integral_sensor_unique_id)
+    source_entity = await async_resolve_entity_id_from_unique_id(
+        self, integral_sensor_unique_id
+    )
 
     if not source_entity:
         return
@@ -33,15 +50,21 @@ async def add_utility_meter_sensor(self):
         self.hass.data[DATA_UTILITY][source_entity] = {DATA_TARIFF_SENSORS: []}
 
     # Check if the utility meter already exists
-    utility_meter_exists = await async_resolve_entity_id_from_unique_id(self, utility_meter_unique_id)
+    utility_meter_exists = await async_resolve_entity_id_from_unique_id(
+        self, utility_meter_unique_id
+    )
 
     if utility_meter_exists:
         if utility_meter_unique_id not in self._has_been_removed:
             if await async_remove_entity_from_ha(self, utility_meter_unique_id):
-                _LOGGER.info(f"Successfully removed '{utility_meter_name}' before re-adding.")
+                _LOGGER.info(
+                    f"Successfully removed '{utility_meter_name}' before re-adding."
+                )
                 self._has_been_removed.append(utility_meter_unique_id)
     else:
-        _LOGGER.warning(f"Adding utility meter sensor {utility_meter_name} for {source_entity}")
+        _LOGGER.warning(
+            f"Adding utility meter sensor {utility_meter_name} for {source_entity}"
+        )
 
         # Create the utility meter sensor with the given cycle and source
         utility_meter_sensor = UtilityMeterSensor(
@@ -67,6 +90,8 @@ async def add_utility_meter_sensor(self):
             async_add_entities([utility_meter_sensor])
 
             # Append the newly created sensor to DATA_TARIFF_SENSORS
-            self.hass.data[DATA_UTILITY][source_entity][DATA_TARIFF_SENSORS].append(utility_meter_sensor)
+            self.hass.data[DATA_UTILITY][source_entity][DATA_TARIFF_SENSORS].append(
+                utility_meter_sensor
+            )
         else:
             _LOGGER.error(f"Could not add utility meter sensor for {source_entity}")

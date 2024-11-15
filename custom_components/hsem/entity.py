@@ -27,7 +27,7 @@ class HSEMEntity(RestoreEntity):
     """
 
     # Define the attributes of the entity
-    _attr_icon = 'mdi:flash'
+    _attr_icon = "mdi:flash"
     _attr_has_entity_name = True
 
     def __init__(self, config_entry):

@@ -168,6 +168,7 @@ def ha_get_entity_state_and_convert(
         _LOGGER.debug(f"Sensor {entity_id} not found.")
         return None
 
+
 async def async_remove_entity_from_ha(self, entity_unique_id):
     """
     Remove an existing entity in Home Assistant based on its unique ID.
@@ -187,7 +188,9 @@ async def async_remove_entity_from_ha(self, entity_unique_id):
 
     # Remove the entity if it exists in the registry
     if existing_entry:
-        _LOGGER.warning(f"Removing existing entity with unique ID '{entity_unique_id}' before re-adding.")
+        _LOGGER.warning(
+            f"Removing existing entity with unique ID '{entity_unique_id}' before re-adding."
+        )
         registry.async_remove(existing_entry)
         return True
     else:

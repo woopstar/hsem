@@ -92,9 +92,7 @@ from datetime import datetime, timedelta
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.core import State
-from homeassistant.helpers.event import (
-    async_track_time_interval,
-)
+from homeassistant.helpers.event import async_track_time_interval
 
 from custom_components.hsem.const import (
     DEFAULT_HSEM_DEFAULT_TOU_MODES,
@@ -116,22 +114,25 @@ from custom_components.hsem.utils.huawei import (
 )
 from custom_components.hsem.utils.misc import (
     async_resolve_entity_id_from_unique_id,
+    async_set_select_option,
     convert_to_float,
     generate_md5_hash,
     get_config_value,
-    async_set_select_option,
     ha_get_entity_state_and_convert,
 )
 from custom_components.hsem.utils.recommendations import Recommendations
+from custom_components.hsem.utils.sensornames import (
+    get_working_mode_sensor_name,
+    get_working_mode_sensor_unique_id,
+)
 from custom_components.hsem.utils.workingmodes import WorkingModes
-from custom_components.hsem.utils.sensornames import get_working_mode_sensor_unique_id, get_working_mode_sensor_name
 
 _LOGGER = logging.getLogger(__name__)
 
 
 class WorkingModeSensor(SensorEntity, HSEMEntity):
     # Define the attributes of the entity
-    _attr_icon = 'mdi:chart-timeline-variant'
+    _attr_icon = "mdi:chart-timeline-variant"
     _attr_has_entity_name = True
 
     def __init__(self, config_entry):
@@ -201,109 +202,77 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
     def _update_settings(self):
         """Fetch updated settings from config_entry options."""
-        self._hsem_huawei_solar_device_id_inverter_1 = get_config_value(self._config_entry, "hsem_huawei_solar_device_id_inverter_1")
+        self._hsem_huawei_solar_device_id_inverter_1 = get_config_value(
+            self._config_entry, "hsem_huawei_solar_device_id_inverter_1"
+        )
 
-        self._hsem_huawei_solar_device_id_inverter_2 = (
-            get_config_value(
-                self._config_entry, "hsem_huawei_solar_device_id_inverter_2"
-            )
+        self._hsem_huawei_solar_device_id_inverter_2 = get_config_value(
+            self._config_entry, "hsem_huawei_solar_device_id_inverter_2"
         )
-        self._hsem_huawei_solar_device_id_batteries = (
-            get_config_value(
-                self._config_entry, "hsem_huawei_solar_device_id_batteries"
-            )
+        self._hsem_huawei_solar_device_id_batteries = get_config_value(
+            self._config_entry, "hsem_huawei_solar_device_id_batteries"
         )
-        self._hsem_huawei_solar_batteries_working_mode = (
-            get_config_value(
-                self._config_entry, "hsem_huawei_solar_batteries_working_mode"
-            )
+        self._hsem_huawei_solar_batteries_working_mode = get_config_value(
+            self._config_entry, "hsem_huawei_solar_batteries_working_mode"
         )
-        self._hsem_huawei_solar_batteries_state_of_capacity = (
-            get_config_value(
-                self._config_entry,
-                "hsem_huawei_solar_batteries_state_of_capacity",
-            )
+        self._hsem_huawei_solar_batteries_state_of_capacity = get_config_value(
+            self._config_entry,
+            "hsem_huawei_solar_batteries_state_of_capacity",
         )
-        self._hsem_house_consumption_power = (
-            get_config_value(
-                self._config_entry,
-                "hsem_house_consumption_power",
-            )
+        self._hsem_house_consumption_power = get_config_value(
+            self._config_entry,
+            "hsem_house_consumption_power",
         )
-        self._hsem_solar_production_power = (
-            get_config_value(
-                self._config_entry,
-                "hsem_solar_production_power",
-            )
+        self._hsem_solar_production_power = get_config_value(
+            self._config_entry,
+            "hsem_solar_production_power",
         )
-        self._hsem_ev_charger_status = (
-            get_config_value(self._config_entry, "hsem_ev_charger_status")
+        self._hsem_ev_charger_status = get_config_value(
+            self._config_entry, "hsem_ev_charger_status"
         )
-        self._hsem_solcast_pv_forecast_forecast_today = (
-            get_config_value(
-                self._config_entry,
-                "hsem_solcast_pv_forecast_forecast_today",
-            )
+        self._hsem_solcast_pv_forecast_forecast_today = get_config_value(
+            self._config_entry,
+            "hsem_solcast_pv_forecast_forecast_today",
         )
-        self._hsem_battery_max_capacity = (
-            get_config_value(
-                self._config_entry,
-                "hsem_battery_max_capacity",
-            )
+        self._hsem_battery_max_capacity = get_config_value(
+            self._config_entry,
+            "hsem_battery_max_capacity",
         )
-        self._hsem_energi_data_service_import = (
-            get_config_value(
-                self._config_entry,
-                "hsem_energi_data_service_import",
-            )
+        self._hsem_energi_data_service_import = get_config_value(
+            self._config_entry,
+            "hsem_energi_data_service_import",
         )
-        self._hsem_energi_data_service_export = (
-            get_config_value(
-                self._config_entry,
-                "hsem_energi_data_service_export",
-            )
+        self._hsem_energi_data_service_export = get_config_value(
+            self._config_entry,
+            "hsem_energi_data_service_export",
         )
-        self._hsem_huawei_solar_inverter_active_power_control = (
-            get_config_value(
-                self._config_entry,
-                "hsem_huawei_solar_inverter_active_power_control",
-            )
+        self._hsem_huawei_solar_inverter_active_power_control = get_config_value(
+            self._config_entry,
+            "hsem_huawei_solar_inverter_active_power_control",
         )
-        self._hsem_house_power_includes_ev_charger_power = (
-            get_config_value(
-                self._config_entry,
-                "hsem_house_power_includes_ev_charger_power",
-            )
+        self._hsem_house_power_includes_ev_charger_power = get_config_value(
+            self._config_entry,
+            "hsem_house_power_includes_ev_charger_power",
         )
-        self._hsem_ev_charger_power = (
-            get_config_value(
-                self._config_entry,
-                "hsem_ev_charger_power",
-            )
+        self._hsem_ev_charger_power = get_config_value(
+            self._config_entry,
+            "hsem_ev_charger_power",
         )
-        self._hsem_battery_conversion_loss = (
-            get_config_value(
-                self._config_entry,
-                "hsem_battery_conversion_loss",
-            )
+        self._hsem_battery_conversion_loss = get_config_value(
+            self._config_entry,
+            "hsem_battery_conversion_loss",
         )
-        self._hsem_huawei_solar_batteries_maximum_charging_power = (
-            get_config_value(
-                self._config_entry,
-                "hsem_huawei_solar_batteries_maximum_charging_power",
-            )
+        self._hsem_huawei_solar_batteries_maximum_charging_power = get_config_value(
+            self._config_entry,
+            "hsem_huawei_solar_batteries_maximum_charging_power",
         )
-        self._hsem_morning_energy_need = (
-            get_config_value(
-                self._config_entry,
-                "hsem_morning_energy_need",
-            )
+        self._hsem_morning_energy_need = get_config_value(
+            self._config_entry,
+            "hsem_morning_energy_need",
         )
-        self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc = (
-            get_config_value(
-                self._config_entry,
-                "hsem_huawei_solar_batteries_grid_charge_cutoff_soc",
-            )
+        self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc = get_config_value(
+            self._config_entry,
+            "hsem_huawei_solar_batteries_grid_charge_cutoff_soc",
         )
         self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods = (
             get_config_value(
@@ -407,7 +376,6 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                 self, self._hsem_house_consumption_power, "float"
             )
 
-
         # Fetch the current value from the solar production power sensor
         if self._hsem_solar_production_power:
             self._hsem_solar_production_power_state = ha_get_entity_state_and_convert(
@@ -484,17 +452,25 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         # Fetch the current value from the battery TOU charging and discharging periods sensor
         if self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods:
             entity_data = ha_get_entity_state_and_convert(
-                self, self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods, None
+                self,
+                self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods,
+                None,
             )
 
             # Reset state and periods attributes
-            self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_state = None
-            self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_periods = None
+            self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_state = (
+                None
+            )
+            self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_periods = (
+                None
+            )
 
             # Ensure entity_data is valid and a State object
             if isinstance(entity_data, State):
                 # Set the state directly
-                self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_state = entity_data.state
+                self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_state = (
+                    entity_data.state
+                )
 
                 # Gather period values from attributes using a list comprehension
                 self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_periods = [
@@ -622,7 +598,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
     async def async_set_inverter_power_control(self):
         # Determine the grid export power percentage based on the state
-        if not isinstance(self._hsem_energi_data_service_export_state, (int,float)):
+        if not isinstance(self._hsem_energi_data_service_export_state, (int, float)):
             return
 
         export_power_percentage = (
@@ -1059,9 +1035,13 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             conversion_loss_factor = 1 - (self._hsem_battery_conversion_loss / 100)
 
             # Calculate the maximum possible charge in kWh for this hour, limited by charging power and conversion loss
-            if isinstance(self._hsem_huawei_solar_batteries_maximum_charging_power_state, (int, float)):
+            if isinstance(
+                self._hsem_huawei_solar_batteries_maximum_charging_power_state,
+                (int, float),
+            ):
                 max_charge_per_hour = (
-                    self._hsem_huawei_solar_batteries_maximum_charging_power_state / 1000
+                    self._hsem_huawei_solar_batteries_maximum_charging_power_state
+                    / 1000
                 ) * conversion_loss_factor
             else:
                 max_charge_per_hour = 0.0
