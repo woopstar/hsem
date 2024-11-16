@@ -33,8 +33,6 @@ from .const import (
     DEFAULT_HSEM_BATTERY_MAX_CAPACITY,
     DEFAULT_HSEM_ENERGI_DATA_SERVICE_EXPORT,
     DEFAULT_HSEM_ENERGI_DATA_SERVICE_IMPORT,
-    DEFAULT_HSEM_EV_CHARGER_POWER,
-    DEFAULT_HSEM_EV_CHARGER_STATUS,
     DEFAULT_HSEM_HOUSE_CONSUMPTION_POWER,
     DEFAULT_HSEM_HOUSE_POWER_INCLUDES_EV_CHARGER_POWER,
     DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_GRID_CHARGE_CUTOFF_SOC,
@@ -182,7 +180,10 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
                 # Ensure that optional ev_charger_status is set to an empty string if not provided
                 final_data["hsem_ev_charger_status"] = final_data.get(
-                    "hsem_ev_charger_status", ""
+                    "hsem_ev_charger_status", None
+                )
+                final_data["hsem_ev_charger_power"] = final_data.get(
+                    "hsem_ev_charger_power", None
                 )
 
                 return self.async_create_entry(
@@ -371,11 +372,9 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 ),
                 vol.Optional(
                     "hsem_ev_charger_status",
-                    default=DEFAULT_HSEM_EV_CHARGER_STATUS,
                 ): selector({"entity": {"domain": "sensor"}}),
                 vol.Optional(
                     "hsem_ev_charger_power",
-                    default=DEFAULT_HSEM_EV_CHARGER_POWER,
                 ): selector({"entity": {"domain": "sensor"}}),
                 vol.Optional(
                     "hsem_house_power_includes_ev_charger_power",
@@ -756,14 +755,12 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
                     "hsem_ev_charger_status",
                     default=self.config_entry.options.get(
                         "hsem_ev_charger_status",
-                        DEFAULT_HSEM_EV_CHARGER_STATUS,
                     ),
                 ): selector({"entity": {"domain": "sensor"}}),
                 vol.Optional(
                     "hsem_ev_charger_power",
                     default=self.config_entry.options.get(
                         "hsem_ev_charger_power",
-                        DEFAULT_HSEM_EV_CHARGER_POWER,
                     ),
                 ): selector({"entity": {"domain": "sensor"}}),
                 vol.Optional(
