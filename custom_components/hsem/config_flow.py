@@ -17,7 +17,6 @@ Functions:
     async_get_options_flow: Returns the options flow for the HSEM integration.
 
 Attributes:
-    _LOGGER: Logger instance for the module.
     DOMAIN: The domain of the HSEM integration.
     NAME: The name of the HSEM integration.
     DEFAULT_HSEM_*: Default values for various configuration parameters.
@@ -28,7 +27,8 @@ from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.helpers.selector import selector
 
-from .const import (
+from custom_components.hsem.utils.misc import get_config_value
+from custom_components.hsem.const import (
     DEFAULT_HSEM_BATTERY_CONVERSION_LOSS,
     DEFAULT_HSEM_BATTERY_MAX_CAPACITY,
     DEFAULT_HSEM_ENERGI_DATA_SERVICE_EXPORT,
@@ -50,8 +50,6 @@ from .const import (
     DOMAIN,
     NAME,
 )
-
-_LOGGER = logging.getLogger(__name__)
 
 
 class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -431,7 +429,7 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
             {
                 vol.Required(
                     "device_name",
-                    default=self.config_entry.options.get("device_name", NAME),
+                    default=get_config_value("device_name", NAME),
                 ): str,
             }
         )
@@ -462,14 +460,14 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
             {
                 vol.Required(
                     "hsem_energi_data_service_import",
-                    default=self.config_entry.options.get(
+                    default=get_config_value(
                         "hsem_energi_data_service_import",
                         DEFAULT_HSEM_ENERGI_DATA_SERVICE_IMPORT,
                     ),
                 ): selector({"entity": {"domain": "sensor"}}),
                 vol.Required(
                     "hsem_energi_data_service_export",
-                    default=self.config_entry.options.get(
+                    default=get_config_value(
                         "hsem_energi_data_service_export",
                         DEFAULT_HSEM_ENERGI_DATA_SERVICE_EXPORT,
                     ),
@@ -539,67 +537,67 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
             {
                 vol.Required(
                     "hsem_huawei_solar_device_id_inverter_1",
-                    default=self.config_entry.options.get(
-                        "hsem_huawei_solar_device_id_inverter_1"
+                    default=get_config_value(
+                        "hsem_huawei_solar_device_id_inverter_1", ""
                     ),
                 ): selector({"device": {"integration": "huawei_solar"}}),
                 vol.Optional(
                     "hsem_huawei_solar_device_id_inverter_2",
-                    default=self.config_entry.options.get(
+                    default=get_config_value(
                         "hsem_huawei_solar_device_id_inverter_2", ""
                     ),
                 ): selector({"device": {"integration": "huawei_solar"}}),
                 vol.Required(
                     "hsem_huawei_solar_device_id_batteries",
-                    default=self.config_entry.options.get(
-                        "hsem_huawei_solar_device_id_batteries"
+                    default=get_config_value(
+                        "hsem_huawei_solar_device_id_batteries",""
                     ),
                 ): selector({"device": {"integration": "huawei_solar"}}),
                 vol.Required(
                     "hsem_huawei_solar_batteries_working_mode",
-                    default=self.config_entry.options.get(
+                    default=get_config_value(
                         "hsem_huawei_solar_batteries_working_mode",
                         DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_WORKING_MODE,
                     ),
                 ): selector({"entity": {"domain": "select"}}),
                 vol.Required(
                     "hsem_huawei_solar_batteries_state_of_capacity",
-                    default=self.config_entry.options.get(
+                    default=get_config_value(
                         "hsem_huawei_solar_batteries_state_of_capacity",
                         DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_STATE_OF_CAPACITY,
                     ),
                 ): selector({"entity": {"domain": "sensor"}}),
                 vol.Required(
                     "hsem_huawei_solar_inverter_active_power_control",
-                    default=self.config_entry.options.get(
+                    default=get_config_value(
                         "hsem_huawei_solar_inverter_active_power_control",
                         DEFAULT_HSEM_HUAWEI_SOLAR_INVERTER_ACTIVE_POWER_CONTROL,
                     ),
                 ): selector({"entity": {"domain": "sensor"}}),
                 vol.Required(
                     "hsem_huawei_solar_batteries_maximum_charging_power",
-                    default=self.config_entry.options.get(
+                    default=get_config_value(
                         "hsem_huawei_solar_batteries_maximum_charging_power",
                         DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_MAXIMUM_CHARGING_POWER,
                     ),
                 ): selector({"entity": {"domain": "number"}}),
                 vol.Required(
                     "hsem_huawei_solar_batteries_grid_charge_cutoff_soc",
-                    default=self.config_entry.options.get(
+                    default=get_config_value(
                         "hsem_huawei_solar_batteries_grid_charge_cutoff_soc",
                         DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_GRID_CHARGE_CUTOFF_SOC,
                     ),
                 ): selector({"entity": {"domain": "number"}}),
                 vol.Required(
                     "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods",
-                    default=self.config_entry.options.get(
+                    default=get_config_value(
                         "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods",
                         DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_TOU_CHARGING_AND_DISCHARGING_PERIODS,
                     ),
                 ): selector({"entity": {"domain": "sensor"}}),
                 vol.Required(
                     "hsem_battery_max_capacity",
-                    default=self.config_entry.options.get(
+                    default=get_config_value(
                         "hsem_battery_max_capacity",
                         DEFAULT_HSEM_BATTERY_MAX_CAPACITY,
                     ),
@@ -616,7 +614,7 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
                 ),
                 vol.Required(
                     "hsem_battery_conversion_loss",
-                    default=self.config_entry.options.get(
+                    default=get_config_value(
                         "hsem_battery_conversion_loss",
                         DEFAULT_HSEM_BATTERY_CONVERSION_LOSS,
                     ),
@@ -657,14 +655,14 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
             {
                 vol.Required(
                     "hsem_house_consumption_power",
-                    default=self.config_entry.options.get(
+                    default=get_config_value(
                         "hsem_house_consumption_power",
                         DEFAULT_HSEM_HOUSE_CONSUMPTION_POWER,
                     ),
                 ): selector({"entity": {"domain": "sensor"}}),
                 vol.Required(
                     "hsem_solar_production_power",
-                    default=self.config_entry.options.get(
+                    default=get_config_value(
                         "hsem_solar_production_power",
                         DEFAULT_HSEM_SOLAR_PRODUCTION_POWER,
                     ),
@@ -698,14 +696,14 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
             {
                 vol.Required(
                     "hsem_solcast_pv_forecast_forecast_today",
-                    default=self.config_entry.options.get(
+                    default=get_config_value(
                         "hsem_solcast_pv_forecast_forecast_today",
                         DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TODAY,
                     ),
                 ): selector({"entity": {"domain": "sensor"}}),
                 vol.Required(
                     "hsem_solcast_pv_forecast_forecast_tomorrow",
-                    default=self.config_entry.options.get(
+                    default=get_config_value(
                         "hsem_solcast_pv_forecast_forecast_tomorrow",
                         DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TOMORROW,
                     ),
@@ -737,7 +735,7 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
             {
                 vol.Required(
                     "hsem_morning_energy_need",
-                    default=self.config_entry.options.get(
+                    default=get_config_value(
                         "hsem_morning_energy_need",
                         DEFAULT_HSEM_MORNING_ENERGY_NEED,
                     ),
@@ -754,21 +752,21 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
                 ),
                 vol.Optional(
                     "hsem_ev_charger_status",
-                    default=self.config_entry.options.get(
+                    default=get_config_value(
                         "hsem_ev_charger_status",
                         DEFAULT_HSEM_EV_CHARGER_STATUS,
                     ),
                 ): selector({"entity": {"domain": "sensor"}}),
                 vol.Optional(
                     "hsem_ev_charger_power",
-                    default=self.config_entry.options.get(
+                    default=get_config_value(
                         "hsem_ev_charger_power",
                         DEFAULT_HSEM_EV_CHARGER_POWER,
                     ),
                 ): selector({"entity": {"domain": "sensor"}}),
                 vol.Optional(
                     "hsem_house_power_includes_ev_charger_power",
-                    default=self.config_entry.options.get(
+                    default=get_config_value(
                         "hsem_house_power_includes_ev_charger_power",
                         DEFAULT_HSEM_HOUSE_POWER_INCLUDES_EV_CHARGER_POWER,
                     ),

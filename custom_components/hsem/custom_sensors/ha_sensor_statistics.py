@@ -3,6 +3,7 @@ from datetime import timedelta
 
 from homeassistant.components.statistics.sensor import StatisticsSensor
 
+from custom_components.hsem.entity import HSEMEntity
 from custom_components.hsem.const import DOMAIN
 from custom_components.hsem.utils.misc import (
     async_remove_entity_from_ha,
@@ -16,6 +17,12 @@ from custom_components.hsem.utils.sensornames import (
 
 _LOGGER = logging.getLogger(__name__)
 
+class HSEMStatisticsSensor(StatisticsSensor, HSEMEntity):
+    """Custom Statistics Sensor with device_info."""
+
+    def __init__(self, *args, config_entry=None, **kwargs):
+        StatisticsSensor.__init__(self, *args, **kwargs)
+        HSEMEntity.__init__(self, config_entry)
 
 async def add_energy_average_sensors(self, avg=3):
     # Create the name and unique id for the avg sensor
@@ -55,7 +62,7 @@ async def add_energy_average_sensors(self, avg=3):
             f"Creating new average energy sensor '{avg_energy_sensor_name}' for '{source_entity}'."
         )
 
-        avg_sensor = StatisticsSensor(
+        avg_sensor = HSEMStatisticsSensor(
             hass=self.hass,
             source_entity_id=source_entity,
             name=avg_energy_sensor_name,
@@ -66,6 +73,7 @@ async def add_energy_average_sensors(self, avg=3):
             samples_keep_last=False,
             precision=2,
             percentile=50,
+            config_entry=self._config_entry,
         )
 
         async_add_entities = self.hass.data[DOMAIN].get(self._config_entry.entry_id)

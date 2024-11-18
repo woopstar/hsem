@@ -7,6 +7,7 @@ from homeassistant.components.utility_meter.const import (
 )
 from homeassistant.components.utility_meter.sensor import UtilityMeterSensor
 
+from custom_components.hsem.entity import HSEMEntity
 from custom_components.hsem.const import DOMAIN
 from custom_components.hsem.utils.misc import (
     async_remove_entity_from_ha,
@@ -20,6 +21,13 @@ from custom_components.hsem.utils.sensornames import (
 
 _LOGGER = logging.getLogger(__name__)
 
+
+class HSEMUtilityMeterSensor(UtilityMeterSensor, HSEMEntity):
+    """Custom Utility Meter Sensor with device_info."""
+
+    def __init__(self, *args, config_entry=None, **kwargs):
+        UtilityMeterSensor.__init__(self, *args, **kwargs)
+        HSEMEntity.__init__(self, config_entry)
 
 async def add_utility_meter_sensor(self):
     """Add a utility meter sensor dynamically."""
@@ -67,21 +75,22 @@ async def add_utility_meter_sensor(self):
         )
 
         # Create the utility meter sensor with the given cycle and source
-        utility_meter_sensor = UtilityMeterSensor(
+        utility_meter_sensor = HSEMUtilityMeterSensor(
             cron_pattern=None,
-            delta_values=False,  # Set to True if you want to track changes only
-            meter_offset=timedelta(hours=0),  # No offset by default
+            delta_values=False,
+            meter_offset=timedelta(hours=0),
             meter_type="daily",
             name=utility_meter_name,
-            net_consumption=True,  # Track net consumption
+            net_consumption=False,
             parent_meter=source_entity,
             periodically_resetting=True,
             source_entity=source_entity,
-            tariff_entity=None,  # No specific tariff for this example
+            tariff_entity=None,
             tariff=None,
             unique_id=utility_meter_unique_id,
-            device_info=None,  # Optional device info
+            device_info=None,
             sensor_always_available=True,
+            config_entry=self._config_entry,
         )
 
         # Add the utility meter to Home Assistant
