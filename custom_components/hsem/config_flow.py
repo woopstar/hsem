@@ -27,7 +27,6 @@ from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.helpers.selector import selector
 
-from custom_components.hsem.utils.misc import get_config_value
 from custom_components.hsem.const import (
     DEFAULT_HSEM_BATTERY_CONVERSION_LOSS,
     DEFAULT_HSEM_BATTERY_MAX_CAPACITY,
@@ -52,6 +51,7 @@ from custom_components.hsem.const import (
     DOMAIN,
     NAME,
 )
+from custom_components.hsem.utils.misc import get_config_value
 
 
 class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -640,7 +640,7 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
                 vol.Required(
                     "hsem_huawei_solar_device_id_batteries",
                     default=get_config_value(self.config_entry,
-                        "hsem_huawei_solar_device_id_batteries",""
+                        "hsem_huawei_solar_device_id_batteries", ""
                     ),
                 ): selector({"device": {"integration": "huawei_solar"}}),
                 vol.Required(
