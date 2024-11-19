@@ -617,25 +617,45 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         # Charge the battery when it's winter/spring and prices are high
         if now.month in DEFAULT_HSEM_MONTHS_WINTER_SPRING:
             if (
-                self._hsem_batteries_enable_charge_hours_day_start and
-                self._hsem_batteries_enable_charge_hours_day_end and
-                self._hsem_batteries_enable_charge_hours_night_start and
-                self._hsem_batteries_enable_charge_hours_night_end
-                ):
+                self._hsem_batteries_enable_charge_hours_day_start
+                and self._hsem_batteries_enable_charge_hours_day_end
+                and self._hsem_batteries_enable_charge_hours_night_start
+                and self._hsem_batteries_enable_charge_hours_night_end
+            ):
 
-                day_hour_start = datetime.strptime(self._hsem_batteries_enable_charge_hours_day_start, "%H:%M:%S").hour
-                day_hour_end = datetime.strptime(self._hsem_batteries_enable_charge_hours_day_end, "%H:%M:%S").hour
+                day_hour_start = datetime.strptime(
+                    self._hsem_batteries_enable_charge_hours_day_start, "%H:%M:%S"
+                ).hour
+                day_hour_end = datetime.strptime(
+                    self._hsem_batteries_enable_charge_hours_day_end, "%H:%M:%S"
+                ).hour
 
-                night_hour_start = datetime.strptime(self._hsem_batteries_enable_charge_hours_night_start, "%H:%M:%S").hour
-                night_hour_end = datetime.strptime(self._hsem_batteries_enable_charge_hours_night_end, "%H:%M:%S").hour
+                night_hour_start = datetime.strptime(
+                    self._hsem_batteries_enable_charge_hours_night_start, "%H:%M:%S"
+                ).hour
+                night_hour_end = datetime.strptime(
+                    self._hsem_batteries_enable_charge_hours_night_end, "%H:%M:%S"
+                ).hour
 
                 # find best time to charge the battery at night
-                if now.hour >= night_hour_start and now.hour < night_hour_end and self._hsem_batteries_enable_charge_hours_night:
-                    await self.async_find_best_time_to_charge(night_hour_start, night_hour_end)
+                if (
+                    now.hour >= night_hour_start
+                    and now.hour < night_hour_end
+                    and self._hsem_batteries_enable_charge_hours_night
+                ):
+                    await self.async_find_best_time_to_charge(
+                        night_hour_start, night_hour_end
+                    )
 
                 # find best time to charge the battery at day
-                if now.hour >= day_hour_start and now.hour < day_hour_end and self._hsem_batteries_enable_charge_hours_day:
-                    await self.async_find_best_time_to_charge(day_hour_start, day_hour_end)
+                if (
+                    now.hour >= day_hour_start
+                    and now.hour < day_hour_end
+                    and self._hsem_batteries_enable_charge_hours_day
+                ):
+                    await self.async_find_best_time_to_charge(
+                        day_hour_start, day_hour_end
+                    )
 
         # Set the inverter power control mode
         if self._hsem_energi_data_service_export_state is not None:
