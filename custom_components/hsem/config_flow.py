@@ -23,10 +23,12 @@ Attributes:
 """
 
 import voluptuous as vol
+from datetime import datetime
 from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.helpers.selector import selector
 
+from custom_components.hsem.utils.misc import get_config_value
 from custom_components.hsem.const import (
     DEFAULT_HSEM_BATTERY_CONVERSION_LOSS,
     DEFAULT_HSEM_BATTERY_MAX_CAPACITY,
@@ -45,13 +47,19 @@ from custom_components.hsem.const import (
     DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TODAY,
     DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TOMORROW,
     DOMAIN,
-    HOUSE_CONSUMPTION_ENERGY_WEIGHT_1D,
-    HOUSE_CONSUMPTION_ENERGY_WEIGHT_3D,
-    HOUSE_CONSUMPTION_ENERGY_WEIGHT_7D,
-    HOUSE_CONSUMPTION_ENERGY_WEIGHT_14D,
+    DEFAULT_HOUSE_CONSUMPTION_ENERGY_WEIGHT_1D,
+    DEFAULT_HOUSE_CONSUMPTION_ENERGY_WEIGHT_3D,
+    DEFAULT_HOUSE_CONSUMPTION_ENERGY_WEIGHT_7D,
+    DEFAULT_HOUSE_CONSUMPTION_ENERGY_WEIGHT_14D,
+    DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_DAY,
+    DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_DAY_START,
+    DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_DAY_END,
+    DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_NIGHT,
+    DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_NIGHT_START,
+    DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_NIGHT_END,
     NAME,
 )
-from custom_components.hsem.utils.misc import get_config_value
+
 
 
 class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -354,17 +362,17 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 + int(user_input.get("hsem_house_consumption_energy_weight_7d"))
                 + int(user_input.get("hsem_house_consumption_energy_weight_14d"))
             ) != 100:
-                self._errors["hsem_house_consumption_energy_weight_total"] = "required"
+                self._errors["base"] = "hsem_house_consumption_energy_weight_total"
             else:
                 self._user_input.update(user_input)
-                return await self.async_step_huawei_solar()
+                return await self.async_step_charge_hours()
 
         # Define the form schema steps
         data_schema = vol.Schema(
             {
                 vol.Required(
                     "hsem_house_consumption_energy_weight_1d",
-                    default=HOUSE_CONSUMPTION_ENERGY_WEIGHT_1D,
+                    default=DEFAULT_HOUSE_CONSUMPTION_ENERGY_WEIGHT_1D,
                 ): selector(
                     {
                         "number": {
@@ -378,7 +386,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 ),
                 vol.Required(
                     "hsem_house_consumption_energy_weight_3d",
-                    default=HOUSE_CONSUMPTION_ENERGY_WEIGHT_3D,
+                    default=DEFAULT_HOUSE_CONSUMPTION_ENERGY_WEIGHT_3D,
                 ): selector(
                     {
                         "number": {
@@ -392,7 +400,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 ),
                 vol.Required(
                     "hsem_house_consumption_energy_weight_7d",
-                    default=HOUSE_CONSUMPTION_ENERGY_WEIGHT_7D,
+                    default=DEFAULT_HOUSE_CONSUMPTION_ENERGY_WEIGHT_7D,
                 ): selector(
                     {
                         "number": {
@@ -406,7 +414,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 ),
                 vol.Required(
                     "hsem_house_consumption_energy_weight_14d",
-                    default=HOUSE_CONSUMPTION_ENERGY_WEIGHT_14D,
+                    default=DEFAULT_HOUSE_CONSUMPTION_ENERGY_WEIGHT_14D,
                 ): selector(
                     {
                         "number": {
@@ -479,6 +487,84 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=self._errors,
             last_step=False,
         )
+
+    async def async_step_charge_hours(self, user_input=None):
+        """Handle the step for the weighted values."""
+        self._errors = {}
+
+        if user_input is not None:
+            # Validate input_sensor and other necessary fields
+            try:
+                # Validate day charge hours
+                if user_input.get("hsem_batteries_enable_charge_hours_day"):
+                    day_start = user_input.get("hsem_batteries_enable_charge_hours_day_start")
+                    day_end = user_input.get("hsem_batteries_enable_charge_hours_day_end")
+
+                    # Ensure values are valid times and start < end
+                    day_start_time = datetime.strptime(day_start, "%H:%M:%S").time()
+                    day_end_time = datetime.strptime(day_end, "%H:%M:%S").time()
+
+                    if day_start_time >= day_end_time:
+                        self._errors["base"] = "start_time_after_end_time"
+
+                # Validate night charge hours
+                if user_input.get("hsem_batteries_enable_charge_hours_night"):
+                    night_start = user_input.get("hsem_batteries_enable_charge_hours_night_start")
+                    night_end = user_input.get("hsem_batteries_enable_charge_hours_night_end")
+
+                    # Ensure values are valid times and start < end
+                    night_start_time = datetime.strptime(night_start, "%H:%M:%S").time()
+                    night_end_time = datetime.strptime(night_end, "%H:%M:%S").time()
+
+                    if night_start_time >= night_end_time:
+                        self._errors["base"] = "start_time_after_end_time"
+
+            except (ValueError, TypeError) as e:
+                self._errors["base"] = "invalid_time_format"
+
+
+            if not self._errors:
+                self._user_input.update(user_input)
+                return await self.async_step_huawei_solar()
+
+        # Define the form schema steps
+        data_schema = vol.Schema(
+            {
+                vol.Required(
+                    "hsem_batteries_enable_charge_hours_day",
+                    default=DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_DAY,
+                ): selector({"boolean": {}}),
+                vol.Required(
+                    "hsem_batteries_enable_charge_hours_day_start",
+                    default=DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_DAY_START,
+                ): selector({"time": {}}),
+                vol.Required(
+                    "hsem_batteries_enable_charge_hours_day_end",
+                    default=DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_DAY_END,
+                ): selector({"time": {}}),
+                vol.Required(
+                    "hsem_batteries_enable_charge_hours_night",
+                    default=DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_NIGHT,
+                ): selector({"boolean": {}}),
+                vol.Required(
+                    "hsem_batteries_enable_charge_hours_night_start",
+                    default=DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_NIGHT_START,
+                ): selector({"time": {}}),
+                vol.Required(
+                    "hsem_batteries_enable_charge_hours_night_end",
+                    default=DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_NIGHT_END,
+                ): selector({"time": {}}),
+            }
+        )
+
+        # Show the form to the user for energy data services
+        return self.async_show_form(
+            step_id="charge_hours",
+            data_schema=data_schema,
+            errors=self._errors,
+            last_step=False,
+        )
+
 
     @staticmethod
     @callback
@@ -900,7 +986,7 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
                 self._errors["base"] = "hsem_house_consumption_energy_weight_total"
             else:
                 self._user_input.update(user_input)
-                return await self.async_step_huawei_solar()
+                return await self.async_step_charge_hours()
 
         # Define the form schema steps
         data_schema = vol.Schema(
@@ -910,7 +996,7 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
                     default=get_config_value(
                         self.config_entry,
                         "hsem_house_consumption_energy_weight_1d",
-                        HOUSE_CONSUMPTION_ENERGY_WEIGHT_1D,
+                        DEFAULT_HOUSE_CONSUMPTION_ENERGY_WEIGHT_1D,
                     ),
                 ): selector(
                     {
@@ -928,7 +1014,7 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
                     default=get_config_value(
                         self.config_entry,
                         "hsem_house_consumption_energy_weight_3d",
-                        HOUSE_CONSUMPTION_ENERGY_WEIGHT_3D,
+                        DEFAULT_HOUSE_CONSUMPTION_ENERGY_WEIGHT_3D,
                     ),
                 ): selector(
                     {
@@ -946,7 +1032,7 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
                     default=get_config_value(
                         self.config_entry,
                         "hsem_house_consumption_energy_weight_7d",
-                        HOUSE_CONSUMPTION_ENERGY_WEIGHT_7D,
+                        DEFAULT_HOUSE_CONSUMPTION_ENERGY_WEIGHT_7D,
                     ),
                 ): selector(
                     {
@@ -964,7 +1050,7 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
                     default=get_config_value(
                         self.config_entry,
                         "hsem_house_consumption_energy_weight_14d",
-                        HOUSE_CONSUMPTION_ENERGY_WEIGHT_14D,
+                        DEFAULT_HOUSE_CONSUMPTION_ENERGY_WEIGHT_14D,
                     ),
                 ): selector(
                     {
@@ -983,6 +1069,107 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
         # Show the form to the user for energy data services
         return self.async_show_form(
             step_id="weigted_values",
+            data_schema=data_schema,
+            errors=self._errors,
+            last_step=False,
+        )
+
+    async def async_step_charge_hours(self, user_input=None):
+        """Handle the step for the weighted values."""
+        self._errors = {}
+
+        if user_input is not None:
+            # Validate input_sensor and other necessary fields
+            try:
+                # Validate day charge hours
+                if user_input.get("hsem_batteries_enable_charge_hours_day"):
+                    day_start = user_input.get("hsem_batteries_enable_charge_hours_day_start")
+                    day_end = user_input.get("hsem_batteries_enable_charge_hours_day_end")
+
+                    # Ensure values are valid times and start < end
+                    day_start_time = datetime.strptime(day_start, "%H:%M:%S").time()
+                    day_end_time = datetime.strptime(day_end, "%H:%M:%S").time()
+
+                    if day_start_time >= day_end_time:
+                        self._errors["base"] = "start_time_after_end_time"
+
+                # Validate night charge hours
+                if user_input.get("hsem_batteries_enable_charge_hours_night"):
+                    night_start = user_input.get("hsem_batteries_enable_charge_hours_night_start")
+                    night_end = user_input.get("hsem_batteries_enable_charge_hours_night_end")
+
+                    # Ensure values are valid times and start < end
+                    night_start_time = datetime.strptime(night_start, "%H:%M:%S").time()
+                    night_end_time = datetime.strptime(night_end, "%H:%M:%S").time()
+
+                    if night_start_time >= night_end_time:
+                        self._errors["base"] = "start_time_after_end_time"
+
+            except (ValueError, TypeError) as e:
+                self._errors["base"] = "invalid_time_format"
+
+
+            if not self._errors:
+                self._user_input.update(user_input)
+                return await self.async_step_huawei_solar()
+
+        # Define the form schema steps
+        data_schema = vol.Schema(
+            {
+                vol.Required(
+                    "hsem_batteries_enable_charge_hours_day",
+                    default=get_config_value(
+                        self.config_entry,
+                        "hsem_batteries_enable_charge_hours_day",
+                        DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_DAY,
+                    ),
+                ): selector({"boolean": {}}),
+                vol.Required(
+                    "hsem_batteries_enable_charge_hours_day_start",
+                    default=get_config_value(
+                        self.config_entry,
+                        "hsem_batteries_enable_charge_hours_day_start",
+                        DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_DAY_START,
+                    ),
+                ): selector({"time": {}}),
+                vol.Required(
+                    "hsem_batteries_enable_charge_hours_day_end",
+                    default=get_config_value(
+                        self.config_entry,
+                        "hsem_batteries_enable_charge_hours_day_end",
+                        DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_DAY_END,
+                    ),
+                ): selector({"time": {}}),
+                vol.Required(
+                    "hsem_batteries_enable_charge_hours_night",
+                    default=get_config_value(
+                        self.config_entry,
+                        "hsem_batteries_enable_charge_hours_night",
+                        DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_NIGHT,
+                    ),
+                ): selector({"boolean": {}}),
+                vol.Required(
+                    "hsem_batteries_enable_charge_hours_night_start",
+                    default=get_config_value(
+                        self.config_entry,
+                        "hsem_batteries_enable_charge_hours_night_start",
+                        DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_NIGHT_START,
+                    ),
+                ): selector({"time": {}}),
+                vol.Required(
+                    "hsem_batteries_enable_charge_hours_night_end",
+                    default=get_config_value(
+                        self.config_entry,
+                        "hsem_batteries_enable_charge_hours_night_end",
+                        DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_NIGHT_END,
+                    ),
+                ): selector({"time": {}}),
+            }
+        )
+
+        # Show the form to the user for energy data services
+        return self.async_show_form(
+            step_id="charge_hours",
             data_schema=data_schema,
             errors=self._errors,
             last_step=False,

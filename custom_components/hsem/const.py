@@ -98,10 +98,10 @@ DEFAULT_HSEM_MONTHS_WINTER_SPRING = [1, 2, 3, 4, 9, 10, 11, 12]
 DEFAULT_HSEM_MONTHS_SUMMER = [5, 6, 7, 8]
 
 # Weighting factors for calculating the weighted average of house consumption energy over different time periods
-HOUSE_CONSUMPTION_ENERGY_WEIGHT_1D = 30  # 30% weight for the 1-day average
-HOUSE_CONSUMPTION_ENERGY_WEIGHT_3D = 40  # 40% weight for the 3-day average
-HOUSE_CONSUMPTION_ENERGY_WEIGHT_7D = 20  # 20% weight for the 7-day average
-HOUSE_CONSUMPTION_ENERGY_WEIGHT_14D = 10  # 10% weight for the 14-day average
+DEFAULT_HOUSE_CONSUMPTION_ENERGY_WEIGHT_1D = 30  # 30% weight for the 1-day average
+DEFAULT_HOUSE_CONSUMPTION_ENERGY_WEIGHT_3D = 40  # 40% weight for the 3-day average
+DEFAULT_HOUSE_CONSUMPTION_ENERGY_WEIGHT_7D = 20  # 20% weight for the 7-day average
+DEFAULT_HOUSE_CONSUMPTION_ENERGY_WEIGHT_14D = 10  # 10% weight for the 14-day average
 
 # Default for house power includes EV charger power
 DEFAULT_HSEM_HOUSE_POWER_INCLUDES_EV_CHARGER_POWER = True
@@ -123,3 +123,13 @@ DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_GRID_CHARGE_CUTOFF_SOC = (
 DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_TOU_CHARGING_AND_DISCHARGING_PERIODS = (
     "sensor.batteries_tou_charging_and_discharging_periods"
 )
+
+# Default to enable charging the battery during day hours
+DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_DAY = True
+DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_DAY_START = "12:00:00"
+DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_DAY_END = "17:00:00"
+
+# Default to enable charging the battery during night hours
+DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_NIGHT = True
+DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_NIGHT_START = "00:00:00"
+DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_NIGHT_END = "06:00:00"

@@ -4,7 +4,8 @@
       "only_one_entry_allowed": "Only one config entry is allowed.",
       "required": "This field is required.",
       "invalid_sensor": "Invalid input sensor. Please choose a valid sensor.",
-      "hsem_house_consumption_energy_weight_total": "The total of the house consumption energy weights must be total of 100%."
+      "hsem_house_consumption_energy_weight_total": "The total of the house consumption energy weights must be total of 100%.",
+      "start_time_after_end_time": "Start time must be before end time."
     },
     "step": {
       "user": {
@@ -49,6 +50,18 @@
           "hsem_house_consumption_energy_weight_14d": "House Consumption Energy Weight 14 Days"
         }
       },
+      "charge_hours": {
+        "title": "Charging Hours",
+        "description": "Configure the charging hours for the batteries during day and night.",
+        "data": {
+          "hsem_batteries_enable_charge_hours_day": "Enable Charging Hours Day",
+          "hsem_batteries_enable_charge_hours_day_start": "Charging Hours Day Start Time",
+          "hsem_batteries_enable_charge_hours_day_end": "Charging Hours Day End Time",
+          "hsem_batteries_enable_charge_hours_night": "Enable Charging Hours Night",
+          "hsem_batteries_enable_charge_hours_night_start": "Charging Hours Night Start Time",
+          "hsem_batteries_enable_charge_hours_night_end": "Charging Hours Night End Time"
+        }
+      },
       "power": {
         "title": "Power Sensors",
         "description": "Select power sensors for HSEM.",
@@ -82,7 +95,8 @@
       "only_one_entry_allowed": "Only one config entry is allowed.",
       "required": "This field is required.",
       "invalid_sensor": "Invalid input sensor. Please choose a valid sensor.",
-      "hsem_house_consumption_energy_weight_total": "The total of the house consumption energy weights must be total of 100%."
+      "hsem_house_consumption_energy_weight_total": "The total of the house consumption energy weights must be total of 100%.",
+      "start_time_after_end_time": "Start time must be before end time."
     },
     "step": {
       "init": {
@@ -129,6 +143,18 @@
           "hsem_house_consumption_energy_weight_3d": "House Consumption Energy Weight 3 Days",
           "hsem_house_consumption_energy_weight_7d": "House Consumption Energy Weight 7 Days",
           "hsem_house_consumption_energy_weight_14d": "House Consumption Energy Weight 14 Days"
+        }
+      },
+      "charge_hours": {
+        "title": "Charging Hours",
+        "description": "Configure the charging hours for the batteries during day and night.",
+        "data": {
+          "hsem_batteries_enable_charge_hours_day": "Enable Charging Hours Day",
+          "hsem_batteries_enable_charge_hours_day_start": "Charging Hours Day Start Time",
+          "hsem_batteries_enable_charge_hours_day_end": "Charging Hours Day End Time",
+          "hsem_batteries_enable_charge_hours_night": "Enable Charging Hours Night",
+          "hsem_batteries_enable_charge_hours_night_start": "Charging Hours Night Start Time",
+          "hsem_batteries_enable_charge_hours_night_end": "Charging Hours Night End Time"
         }
       },
       "power": {
