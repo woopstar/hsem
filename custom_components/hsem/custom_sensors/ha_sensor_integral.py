@@ -4,6 +4,7 @@ from datetime import timedelta
 from homeassistant.components.integration.sensor import IntegrationSensor
 from homeassistant.const import UnitOfTime
 
+from custom_components.hsem.entity import HSEMEntity
 from custom_components.hsem.const import DOMAIN
 from custom_components.hsem.utils.misc import (
     async_remove_entity_from_ha,
@@ -17,6 +18,12 @@ from custom_components.hsem.utils.sensornames import (
 
 _LOGGER = logging.getLogger(__name__)
 
+class HSEMIntegrationSensor(IntegrationSensor, HSEMEntity):
+    """Custom Integration Sensor with device_info."""
+
+    def __init__(self, *args, config_entry=None, **kwargs):
+        IntegrationSensor.__init__(self, *args, **kwargs)
+        HSEMEntity.__init__(self, config_entry)
 
 async def add_integral_sensor(self):
     """Add an integral sensor dynamically to convert power to energy."""
@@ -54,7 +61,7 @@ async def add_integral_sensor(self):
         )
 
         # Create the integral sensor using the left Reimann method
-        integral_sensor = IntegrationSensor(
+        integral_sensor = HSEMIntegrationSensor(
             integration_method="left",
             name=integral_sensor_name,
             round_digits=2,
@@ -64,6 +71,7 @@ async def add_integral_sensor(self):
             unit_time=UnitOfTime.HOURS,
             max_sub_interval=timedelta(minutes=1),
             device_info=None,
+            config_entry=self._config_entry,
         )
 
         # Add the integral sensor to Home Assistant

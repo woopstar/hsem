@@ -19,7 +19,7 @@ class HSEMEntity(RestoreEntity):
         __init__(config_entry):
             Initializes the HSEM entity with the provided configuration entry.
 
-        set_entity_id(platform_str, key):
+      ª  set_entity_id(platform_str, key):
             Sets the entity ID using the platform string and key.
 
         device_info:
