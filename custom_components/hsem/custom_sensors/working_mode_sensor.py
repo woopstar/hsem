@@ -203,6 +203,13 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             }
             for hour in range(24)
         }
+        self._energy_needs = {
+                "0am_6am": 0.0,
+                "6am_10am": 0.0,
+                "10am_5pm": 0.0,
+                "5pm_9pm": 0.0,
+                "9pm_midnight": 0.0
+            }
         self._unique_id = get_working_mode_sensor_unique_id()
         self._update_settings()
 
@@ -392,6 +399,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             "house_consumption_energy_weight_3d": self._hsem_house_consumption_energy_weight_3d,
             "house_consumption_energy_weight_7d": self._hsem_house_consumption_energy_weight_7d,
             "house_consumption_energy_weight_14d": self._hsem_house_consumption_energy_weight_14d,
+            "energy_needs": self._energy_needs,
             "hourly_calculations": self._hourly_calculations,
         }
 
@@ -613,6 +621,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
         # calculate the optimization strategy
         await self.async_optimization_strategy()
+
+        # calculate the energy needs
+        await self.async_calculate_energy_needs()
 
         # Charge the battery when it's winter/spring and prices are high
         if now.month in DEFAULT_HSEM_MONTHS_WINTER_SPRING:
@@ -1204,6 +1215,27 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
                 if current_month in DEFAULT_HSEM_MONTHS_SUMMER:
                     data["recommendation"] = WorkingModes.MaximizeSelfConsumption.value
+
+    async def async_calculate_energy_needs(self):
+        """Calculate the energy needs for the day."""
+
+        # Define time ranges and labels
+        time_ranges = {
+            "0am_6am": ["00-01", "01-02", "02-03", "03-04", "04-05", "05-06"],
+            "6am_10am": ["06-07", "07-08", "08-09", "09-10"],
+            "10am_5pm": ["10-11", "11-12", "12-13", "13-14", "14-15", "15-16", "16-17"],
+            "5pm_9pm": ["17-18", "18-19", "19-20", "20-21"],
+            "9pm_midnight": ["21-22", "22-23", "23-00"],
+        }
+
+        # Calculate energy needs for each time range
+        self._energy_needs = {
+            label: round(sum(
+                self._hourly_calculations[hour]["estimated_net_consumption"]
+                for hour in hours
+            ), 2)
+            for label, hours in time_ranges.items()
+        }
 
     async def async_update(self):
         """Manually trigger the sensor update."""
