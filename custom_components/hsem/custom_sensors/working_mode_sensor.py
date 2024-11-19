@@ -111,7 +111,7 @@ from custom_components.hsem.utils.misc import (
     async_resolve_entity_id_from_unique_id,
     async_set_select_option,
     convert_to_float,
-    generate_md5_hash,
+    generate_hash,
     get_config_value,
     ha_get_entity_state_and_convert,
 )
@@ -806,8 +806,8 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
         # Apply TOU periods if working mode is TOU
         if working_mode == WorkingModes.TimeOfUse.value:
-            new_tou_modes_hash = generate_md5_hash(str(tou_modes))
-            current_tou_modes_hash = generate_md5_hash(
+            new_tou_modes_hash = generate_hash(str(tou_modes))
+            current_tou_modes_hash = generate_hash(
                 str(
                     self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_periods
                 )

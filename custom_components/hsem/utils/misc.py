@@ -2,8 +2,8 @@
 This module provides utility functions for the Home Assistant custom integration.
 
 Functions:
-    generate_md5_hash(input_sensor):
-        Generate an MD5 hash based on the input sensor's name.
+    generate_hash(input_sensor):
+        Generate an SHA-256 hash based on the input sensor's name.
 
     get_config_value(config_entry, key, default_value=None):
         Get the configuration value from options or fall back to the initial data.
@@ -27,7 +27,7 @@ from custom_components.hsem.const import DOMAIN
 _LOGGER = logging.getLogger(__name__)
 
 
-def generate_md5_hash(input_sensor):
+def generate_hash(input_sensor):
     """Generate an SHA-256 hash based on the input sensor's name."""
     return hashlib.sha256(input_sensor.encode("utf-8")).hexdigest()
 

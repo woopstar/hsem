@@ -1,33 +1,5 @@
 """
 This module defines constants used in the Huawei Solar Energy Management (HSEM) integration.
-
-Constants:
-    DOMAIN (str): Domain name for the integration.
-    NAME (str): Display name for the integration.
-
-    DEFAULT_HSEM_ENERGI_DATA_SERVICE_IMPORT (str): Default sensor entity ID for energy data service import.
-    DEFAULT_HSEM_ENERGI_DATA_SERVICE_EXPORT (str): Default sensor entity ID for energy data service export.
-    DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_WORKING_MODE (str): Default select entity ID for solar battery working mode.
-    DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_STATE_OF_CAPACITY (str): Default sensor entity ID for battery state of capacity.
-    DEFAULT_HSEM_HUAWEI_SOLAR_INVERTER_ACTIVE_POWER_CONTROL (str): Default sensor entity ID for inverter active power control.
-    DEFAULT_HSEM_HOUSE_CONSUMPTION_POWER (str): Default sensor entity ID for house power consumption.
-    DEFAULT_HSEM_SOLAR_PRODUCTION_POWER (str): Default sensor entity ID for total solar production power.
-    DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TODAY (str): Default sensor entity ID for today’s solar PV forecast.
-    DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TOMORROW (str): Default sensor entity ID for tomorrow’s solar PV forecast.
-    DEFAULT_HSEM_MORNING_ENERGY_NEED (float): Default morning energy need in kWh.
-    DEFAULT_HSEM_BATTERY_MAX_CAPACITY (float): Default battery maximum capacity in kWh.
-    DEFAULT_HSEM_EV_CHARGER_STATUS (str): Default sensor entity ID for EV charger status.
-    DEFAULT_HSEM_EV_CHARGER_TOU_MODES (list): Default TOU modes for EV charger when charging.
-    DEFAULT_HSEM_DEFAULT_TOU_MODES (list): Default TOU modes for solar energy consumption throughout the day.
-    DEFAULT_HSEM_MONTHS_WINTER_SPRING (list): Default list of months considered winter and spring.
-    DEFAULT_HSEM_MONTHS_SUMMER (list): Default list of months considered summer.
-    HOUSE_CONSUMPTION_ENERGY_WEIGHT_3D (float): Weighting factor for the 3-day average of house consumption energy.
-    HOUSE_CONSUMPTION_ENERGY_WEIGHT_7D (float): Weighting factor for the 7-day average of house consumption energy.
-    HOUSE_CONSUMPTION_ENERGY_WEIGHT_14D (float): Weighting factor for the 14-day average of house consumption energy.
-    DEFAULT_HSEM_HOUSE_POWER_INCLUDES_EV_CHARGER_POWER (bool): Default for house power includes EV charger power.
-    DEFAULT_HSEM_EV_CHARGER_POWER (str): Default sensor entity ID for EV charger power.
-    DEFAULT_HSEM_BATTERY_CONVERSION_LOSS (int): Default conversion loss for battery charging.
-    DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_MAXIMUM_CHARGING_POWER (str): Default sensor entity ID for battery charging power.
 """
 
 DOMAIN = "hsem"  # Domain name for the integration
