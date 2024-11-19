@@ -1,5 +1,11 @@
 {
   "config": {
+    "error": {
+      "only_one_entry_allowed": "Only one config entry is allowed.",
+      "required": "This field is required.",
+      "invalid_sensor": "Invalid input sensor. Please choose a valid sensor.",
+      "hsem_house_consumption_energy_weight_total": "The total of the house consumption energy weights must be total of 100%."
+    },
     "step": {
       "user": {
         "title": "Configure Huawei Solar Energy Management",
@@ -33,6 +39,16 @@
           "hsem_battery_conversion_loss": "Battery Conversion Loss (%)"
         }
       },
+      "weigted_values": {
+        "title": "Weighted Values",
+        "description": "Configure the weighted values for the house consumption energy. Must total 100%.",
+        "data": {
+          "hsem_house_consumption_energy_weight_1d": "House Consumption Energy Weight 1 Day",
+          "hsem_house_consumption_energy_weight_3d": "House Consumption Energy Weight 3 Days",
+          "hsem_house_consumption_energy_weight_7d": "House Consumption Energy Weight 7 Days",
+          "hsem_house_consumption_energy_weight_14d": "House Consumption Energy Weight 14 Days"
+        }
+      },
       "power": {
         "title": "Power Sensors",
         "description": "Select power sensors for HSEM.",
@@ -59,14 +75,15 @@
           "hsem_house_power_includes_ev_charger_power": "House Power Includes EV Charger Power"
         }
       }
-    },
-    "error": {
-      "only_one_entry_allowed": "Only one config entry is allowed.",
-      "required": "This field is required.",
-      "invalid_sensor": "Invalid input sensor. Please choose a valid sensor."
     }
   },
   "options": {
+    "error": {
+      "only_one_entry_allowed": "Only one config entry is allowed.",
+      "required": "This field is required.",
+      "invalid_sensor": "Invalid input sensor. Please choose a valid sensor.",
+      "hsem_house_consumption_energy_weight_total": "The total of the house consumption energy weights must be total of 100%."
+    },
     "step": {
       "init": {
         "title": "Update Huawei Solar Energy Management",
@@ -97,7 +114,21 @@
           "hsem_huawei_solar_batteries_grid_charge_cutoff_soc": "Huawei Batteries Grid Charge Cutoff SOC (%)",
           "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods": "Huawei Batteries TOU Charging and Discharging Periods",
           "hsem_battery_max_capacity": "Battery Max Capacity (kWh)",
-          "hsem_battery_conversion_loss": "Battery Conversion Loss (%)"
+          "hsem_battery_conversion_loss": "Battery Conversion Loss (%)",
+          "hsem_house_consumption_energy_weight_1d": "House Consumption Energy Weight 1 Day",
+          "hsem_house_consumption_energy_weight_3d": "House Consumption Energy Weight 3 Days",
+          "hsem_house_consumption_energy_weight_7d": "House Consumption Energy Weight 7 Days",
+          "hsem_house_consumption_energy_weight_14d": "House Consumption Energy Weight 14 Days"
+        }
+      },
+      "weigted_values": {
+        "title": "Weighted Values",
+        "description": "Configure the weighted values for the house consumption energy. Must total 100%.",
+        "data": {
+          "hsem_house_consumption_energy_weight_1d": "House Consumption Energy Weight 1 Day",
+          "hsem_house_consumption_energy_weight_3d": "House Consumption Energy Weight 3 Days",
+          "hsem_house_consumption_energy_weight_7d": "House Consumption Energy Weight 7 Days",
+          "hsem_house_consumption_energy_weight_14d": "House Consumption Energy Weight 14 Days"
         }
       },
       "power": {

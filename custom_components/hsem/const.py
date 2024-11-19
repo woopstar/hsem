@@ -98,10 +98,10 @@ DEFAULT_HSEM_MONTHS_WINTER_SPRING = [1, 2, 3, 4, 9, 10, 11, 12]
 DEFAULT_HSEM_MONTHS_SUMMER = [5, 6, 7, 8]
 
 # Weighting factors for calculating the weighted average of house consumption energy over different time periods
-HOUSE_CONSUMPTION_ENERGY_WEIGHT_1D = 0.3  # 30% weight for the 1-day average
-HOUSE_CONSUMPTION_ENERGY_WEIGHT_3D = 0.4  # 40% weight for the 3-day average
-HOUSE_CONSUMPTION_ENERGY_WEIGHT_7D = 0.2  # 20% weight for the 7-day average
-HOUSE_CONSUMPTION_ENERGY_WEIGHT_14D = 0.1  # 10% weight for the 14-day average
+HOUSE_CONSUMPTION_ENERGY_WEIGHT_1D = 30  # 30% weight for the 1-day average
+HOUSE_CONSUMPTION_ENERGY_WEIGHT_3D = 40  # 40% weight for the 3-day average
+HOUSE_CONSUMPTION_ENERGY_WEIGHT_7D = 20  # 20% weight for the 7-day average
+HOUSE_CONSUMPTION_ENERGY_WEIGHT_14D = 10  # 10% weight for the 14-day average
 
 # Default for house power includes EV charger power
 DEFAULT_HSEM_HOUSE_POWER_INCLUDES_EV_CHARGER_POWER = True

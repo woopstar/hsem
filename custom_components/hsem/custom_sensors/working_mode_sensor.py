@@ -124,6 +124,7 @@ from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.sensornames import (
     get_working_mode_sensor_name,
     get_working_mode_sensor_unique_id,
+    get_energy_average_sensor_unique_id
 )
 from custom_components.hsem.utils.workingmodes import WorkingModes
 
@@ -185,6 +186,10 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_morning_energy_need = 0.0
         self._last_changed_mode = None
         self._last_updated = None
+        self._hsem_house_consumption_energy_weight_1d = None
+        self._hsem_house_consumption_energy_weight_3d = None
+        self._hsem_house_consumption_energy_weight_7d = None
+        self._hsem_house_consumption_energy_weight_14d = None
         self._hourly_calculations = {
             f"{hour:02d}-{(hour + 1) % 24:02d}": {
                 "avg_house_consumption": 0.0,
@@ -280,6 +285,18 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                 "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods",
             )
         )
+        self._hsem_house_consumption_energy_weight_1d = get_config_value(
+            self._config_entry, "hsem_house_consumption_energy_weight_1d"
+        )
+        self._hsem_house_consumption_energy_weight_3d = get_config_value(
+            self._config_entry, "hsem_house_consumption_energy_weight_3d"
+        )
+        self._hsem_house_consumption_energy_weight_7d = get_config_value(
+            self._config_entry, "hsem_house_consumption_energy_weight_7d"
+        )
+        self._hsem_house_consumption_energy_weight_14d = get_config_value(
+            self._config_entry, "hsem_house_consumption_energy_weight_14d"
+        )
 
         if self._hsem_huawei_solar_device_id_inverter_2 is not None:
             if len(self._hsem_huawei_solar_device_id_inverter_2) == 0:
@@ -346,6 +363,10 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             "house_power_includes_ev_charger_power": self._hsem_house_power_includes_ev_charger_power,
             "morning_energy_need": self._hsem_morning_energy_need,
             "solcast_pv_forecast_forecast_today_entity": self._hsem_solcast_pv_forecast_forecast_today,
+            "house_consumption_energy_weight_1d": self._hsem_house_consumption_energy_weight_1d,
+            "house_consumption_energy_weight_3d": self._hsem_house_consumption_energy_weight_3d,
+            "house_consumption_energy_weight_7d": self._hsem_house_consumption_energy_weight_7d,
+            "house_consumption_energy_weight_14d": self._hsem_house_consumption_energy_weight_14d,
             "hourly_calculations": self._hourly_calculations,
         }
 
@@ -768,16 +789,28 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
     async def async_calculate_hourly_data(self):
         """Calculate the weighted hourly data for the sensor using both 3-day and 7-day HouseConsumptionEnergyAverageSensors."""
 
+        if self._hsem_house_consumption_energy_weight_1d is None:
+            return
+
+        if self._hsem_house_consumption_energy_weight_3d is None:
+            return
+
+        if self._hsem_house_consumption_energy_weight_7d is None:
+            return
+
+        if self._hsem_house_consumption_energy_weight_14d is None:
+            return
+
         for hour in range(24):
             hour_start = hour
             hour_end = (hour + 1) % 24
             time_range = f"{hour_start:02d}-{hour_end:02d}"
 
             # Construct unique_ids for the 3d, 7d, and 14d sensors
-            unique_id_1d = f"{DOMAIN}_house_consumption_energy_avg_{hour_start:02d}_{hour_end:02d}_1d"
-            unique_id_3d = f"{DOMAIN}_house_consumption_energy_avg_{hour_start:02d}_{hour_end:02d}_3d"
-            unique_id_7d = f"{DOMAIN}_house_consumption_energy_avg_{hour_start:02d}_{hour_end:02d}_7d"
-            unique_id_14d = f"{DOMAIN}_house_consumption_energy_avg_{hour_start:02d}_{hour_end:02d}_14d"
+            unique_id_1d = get_energy_average_sensor_unique_id(hour_start, hour_end, 1)
+            unique_id_3d = get_energy_average_sensor_unique_id(hour_start, hour_end, 3)
+            unique_id_7d = get_energy_average_sensor_unique_id(hour_start, hour_end, 7)
+            unique_id_14d = get_energy_average_sensor_unique_id(hour_start, hour_end, 14)
 
             # Resolve entity_ids for 3d, 7d, and 14d sensors
             entity_id_1d = await async_resolve_entity_id_from_unique_id(
@@ -841,12 +874,11 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                         )
 
             # Calculate the weighted average house consumption for the hour
-            weighted_value = round(
-                (value_1d * HOUSE_CONSUMPTION_ENERGY_WEIGHT_1D)
-                + (value_3d * HOUSE_CONSUMPTION_ENERGY_WEIGHT_3D)
-                + (value_7d * HOUSE_CONSUMPTION_ENERGY_WEIGHT_7D)
-                + (value_14d * HOUSE_CONSUMPTION_ENERGY_WEIGHT_14D),
-                6,
+            weighted_value = (
+                value_1d * (self._hsem_house_consumption_energy_weight_1d / 100) +
+                value_3d * (self._hsem_house_consumption_energy_weight_3d / 100) +
+                value_7d * (self._hsem_house_consumption_energy_weight_7d / 100) +
+                value_14d * (self._hsem_house_consumption_energy_weight_14d / 100)
             )
 
             # Only update "avg_house_consumption" in the existing dictionary entry
