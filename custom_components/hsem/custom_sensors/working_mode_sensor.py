@@ -101,11 +101,6 @@ from custom_components.hsem.const import (
     DEFAULT_HSEM_MONTHS_WINTER_SPRING,
     DEFAULT_HSEM_TOU_MODES_FORCE_CHARGE,
     DEFAULT_HSEM_TOU_MODES_FORCE_DISCHARGE,
-    DOMAIN,
-    HOUSE_CONSUMPTION_ENERGY_WEIGHT_1D,
-    HOUSE_CONSUMPTION_ENERGY_WEIGHT_3D,
-    HOUSE_CONSUMPTION_ENERGY_WEIGHT_7D,
-    HOUSE_CONSUMPTION_ENERGY_WEIGHT_14D,
 )
 from custom_components.hsem.entity import HSEMEntity
 from custom_components.hsem.utils.huawei import (
@@ -190,6 +185,12 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_house_consumption_energy_weight_3d = None
         self._hsem_house_consumption_energy_weight_7d = None
         self._hsem_house_consumption_energy_weight_14d = None
+        self._hsem_batteries_enable_charge_hours_day = False
+        self._hsem_batteries_enable_charge_hours_day_start = None
+        self._hsem_batteries_enable_charge_hours_day_end = None
+        self._hsem_batteries_enable_charge_hours_night = False
+        self._hsem_batteries_enable_charge_hours_night_start = None
+        self._hsem_batteries_enable_charge_hours_night_end = None
         self._hourly_calculations = {
             f"{hour:02d}-{(hour + 1) % 24:02d}": {
                 "avg_house_consumption": 0.0,
@@ -297,6 +298,24 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_house_consumption_energy_weight_14d = get_config_value(
             self._config_entry, "hsem_house_consumption_energy_weight_14d"
         )
+        self._hsem_batteries_enable_charge_hours_day = get_config_value(
+            self._config_entry, "hsem_batteries_enable_charge_hours_day"
+        )
+        self._hsem_batteries_enable_charge_hours_day_start = get_config_value(
+            self._config_entry, "hsem_batteries_enable_charge_hours_day_start"
+        )
+        self._hsem_batteries_enable_charge_hours_day_end = get_config_value(
+            self._config_entry, "hsem_batteries_enable_charge_hours_day_end"
+        )
+        self._hsem_batteries_enable_charge_hours_night = get_config_value(
+            self._config_entry, "hsem_batteries_enable_charge_hours_night"
+        )
+        self._hsem_batteries_enable_charge_hours_night_start = get_config_value(
+            self._config_entry, "hsem_batteries_enable_charge_hours_night_start"
+        )
+        self._hsem_batteries_enable_charge_hours_night_end = get_config_value(
+            self._config_entry, "hsem_batteries_enable_charge_hours_night_end"
+        )
 
         if self._hsem_huawei_solar_device_id_inverter_2 is not None:
             if len(self._hsem_huawei_solar_device_id_inverter_2) == 0:
@@ -338,6 +357,12 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             "huawei_solar_batteries_grid_charge_cutoff_soc_state": self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state,
             "huawei_solar_batteries_maximum_charging_power_entity": self._hsem_huawei_solar_batteries_maximum_charging_power,
             "huawei_solar_batteries_maximum_charging_power_state": self._hsem_huawei_solar_batteries_maximum_charging_power_state,
+            "huawei_solar_batteries_enable_charge_hours_day": self._hsem_batteries_enable_charge_hours_day,
+            "huawei_solar_batteries_enable_charge_hours_day_start": self._hsem_batteries_enable_charge_hours_day_start,
+            "huawei_solar_batteries_enable_charge_hours_day_end": self._hsem_batteries_enable_charge_hours_day_end,
+            "huawei_solar_batteries_enable_charge_hours_night": self._hsem_batteries_enable_charge_hours_night,
+            "huawei_solar_batteries_enable_charge_hours_night_start": self._hsem_batteries_enable_charge_hours_night_start,
+            "huawei_solar_batteries_enable_charge_hours_night_end": self._hsem_batteries_enable_charge_hours_night_end,
             "huawei_solar_inverter_active_power_control_state_entity": self._hsem_huawei_solar_inverter_active_power_control,
             "huawei_solar_inverter_active_power_control_state_state": self._hsem_huawei_solar_inverter_active_power_control_state,
             "huawei_solar_batteries_tou_charging_and_discharging_periods_entity": self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods,
@@ -591,13 +616,26 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
         # Charge the battery when it's winter/spring and prices are high
         if now.month in DEFAULT_HSEM_MONTHS_WINTER_SPRING:
-            # find best time to charge the battery at night
-            if now.hour >= 0 and now.hour < 6:
-                await self.async_find_best_time_to_charge(0, 6)
+            if (
+                self._hsem_batteries_enable_charge_hours_day_start and
+                self._hsem_batteries_enable_charge_hours_day_end and
+                self._hsem_batteries_enable_charge_hours_night_start and
+                self._hsem_batteries_enable_charge_hours_night_end
+                ):
 
-            # find best time to charge the battery at day
-            if now.hour >= 12 and now.hour < 17:
-                await self.async_find_best_time_to_charge(12, 17)
+                day_hour_start = datetime.strptime(self._hsem_batteries_enable_charge_hours_day_start, "%H:%M:%S").hour
+                day_hour_end = datetime.strptime(self._hsem_batteries_enable_charge_hours_day_end, "%H:%M:%S").hour
+
+                night_hour_start = datetime.strptime(self._hsem_batteries_enable_charge_hours_night_start, "%H:%M:%S").hour
+                night_hour_end = datetime.strptime(self._hsem_batteries_enable_charge_hours_night_end, "%H:%M:%S").hour
+
+                # find best time to charge the battery at night
+                if now.hour >= night_hour_start and now.hour < night_hour_end and self._hsem_batteries_enable_charge_hours_night:
+                    await self.async_find_best_time_to_charge(night_hour_start, night_hour_end)
+
+                # find best time to charge the battery at day
+                if now.hour >= day_hour_start and now.hour < day_hour_end and self._hsem_batteries_enable_charge_hours_day:
+                    await self.async_find_best_time_to_charge(day_hour_start, day_hour_end)
 
         # Set the inverter power control mode
         if self._hsem_energi_data_service_export_state is not None:

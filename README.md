@@ -72,6 +72,10 @@ To use this package, you need the following integrations:
 - [Huawei Solar PEES package by JensenNick](https://github.com/JensenNick/huawei_solar_pees) (optional but recommended)
 - [Smoothing Analytics Sensors by woopstar](https://github.com/woopstar/smoothing_analytics_sensors) (optional but recommended)
 
+### Default disabled sensors
+
+The [Huawei Solar integration by wlcrs](https://github.com/wlcrs/huawei_solar) provides `sensor.inverter_active_power_control` but it is disabled by default. To use this entity, go to the device settings, select the inverter and show hidden/disabled entities. Find the `sensor.inverter_active_power_control` and enable it.
+
 ---
 
 ## Installation
