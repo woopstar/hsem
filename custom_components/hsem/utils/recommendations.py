@@ -7,6 +7,7 @@ Classes:
 
 from enum import Enum
 
+
 class Recommendations(Enum):
     """
     An enumeration representing various recommendations for energy management.
@@ -20,6 +21,7 @@ class Recommendations(Enum):
         EVSmartCharging (str): Activates smart charging mode for electric vehicles.
         ForceExport (str): Forces energy export to the grid under certain conditions.
     """
+
     TimeOfUse = "time_of_use_luna2000"
     MaximizeSelfConsumption = "maximise_self_consumption"
     FullyFedToGrid = "fully_fed_to_grid"

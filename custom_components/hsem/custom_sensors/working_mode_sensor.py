@@ -204,12 +204,12 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             for hour in range(24)
         }
         self._energy_needs = {
-                "0am_6am": 0.0,
-                "6am_10am": 0.0,
-                "10am_5pm": 0.0,
-                "5pm_9pm": 0.0,
-                "9pm_midnight": 0.0
-            }
+            "0am_6am": 0.0,
+            "6am_10am": 0.0,
+            "10am_5pm": 0.0,
+            "5pm_9pm": 0.0,
+            "9pm_midnight": 0.0,
+        }
         self._unique_id = get_working_mode_sensor_unique_id()
         self._update_settings()
 
@@ -1230,10 +1230,13 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
         # Calculate energy needs for each time range
         self._energy_needs = {
-            label: round(sum(
-                self._hourly_calculations[hour]["estimated_net_consumption"]
-                for hour in hours
-            ), 2)
+            label: round(
+                sum(
+                    self._hourly_calculations[hour]["estimated_net_consumption"]
+                    for hour in hours
+                ),
+                2,
+            )
             for label, hours in time_ranges.items()
         }
 

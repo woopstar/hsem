@@ -1,5 +1,6 @@
 from custom_components.hsem.const import DOMAIN
 
+
 # Integral Sensor
 def get_integral_sensor_name(hour_start: int, hour_end: int) -> str:
     """
@@ -45,7 +46,9 @@ def get_energy_average_sensor_name(hour_start: int, hour_end: int, avg: int) -> 
     return f"House Consumption {hour_start:02d}-{hour_end:02d} Energy Average {avg}d"
 
 
-def get_energy_average_sensor_unique_id(hour_start: int, hour_end: int, avg: int) -> str:
+def get_energy_average_sensor_unique_id(
+    hour_start: int, hour_end: int, avg: int
+) -> str:
     """
     Generate a unique ID for the energy average sensor.
 
@@ -57,7 +60,9 @@ def get_energy_average_sensor_unique_id(hour_start: int, hour_end: int, avg: int
     Returns:
         str: Unique ID of the energy average sensor.
     """
-    return f"{DOMAIN}_house_consumption_energy_avg_{hour_start:02d}_{hour_end:02d}_{avg}d"
+    return (
+        f"{DOMAIN}_house_consumption_energy_avg_{hour_start:02d}_{hour_end:02d}_{avg}d"
+    )
 
 
 # Utility Meter Sensor
