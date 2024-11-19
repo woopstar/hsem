@@ -1,23 +1,25 @@
 """
-This module defines the `Recommendations` enumeration for different recommendations.
+This module defines the `Recommendations` enumeration for various energy management recommendations.
 
 Classes:
-    Recommendations (Enum): An enumeration representing various recommendations.
-
-Members:
-    TimeOfUse: Represents the "time_of_use_luna2000" working mode.
-    MaximizeSelfConsumption: Represents the "maximise_self_consumption" working mode.
-    FullyFedToGrid: Represents the "fully_fed_to_grid" working mode.
-    ForceBatteriesCharge: Represents a mode to "force_batteries_charge".
-    ForceBatteriesDischarge: Represents a mode to "force_batteries_discharge".
-    EVSmartCharging: Represents a mode to enable "ev_smart_charging".
-    ForceExport: Represents a mode to "force_export" energy to the grid.
+    Recommendations (Enum): Represents different working modes or strategies for energy management.
 """
 
 from enum import Enum
 
-
 class Recommendations(Enum):
+    """
+    An enumeration representing various recommendations for energy management.
+
+    Attributes:
+        TimeOfUse (str): Working mode for "time_of_use_luna2000".
+        MaximizeSelfConsumption (str): Working mode for maximizing self-consumption of solar energy.
+        FullyFedToGrid (str): Working mode for exporting all energy to the grid.
+        ForceBatteriesCharge (str): Forces batteries to charge during low-cost energy periods.
+        ForceBatteriesDischarge (str): Forces batteries to discharge to supply energy demand.
+        EVSmartCharging (str): Activates smart charging mode for electric vehicles.
+        ForceExport (str): Forces energy export to the grid under certain conditions.
+    """
     TimeOfUse = "time_of_use_luna2000"
     MaximizeSelfConsumption = "maximise_self_consumption"
     FullyFedToGrid = "fully_fed_to_grid"
