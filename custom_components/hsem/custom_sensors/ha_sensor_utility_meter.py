@@ -7,8 +7,8 @@ from homeassistant.components.utility_meter.const import (
 )
 from homeassistant.components.utility_meter.sensor import UtilityMeterSensor
 
-from custom_components.hsem.entity import HSEMEntity
 from custom_components.hsem.const import DOMAIN
+from custom_components.hsem.entity import HSEMEntity
 from custom_components.hsem.utils.misc import (
     async_remove_entity_from_ha,
     async_resolve_entity_id_from_unique_id,
@@ -28,6 +28,7 @@ class HSEMUtilityMeterSensor(UtilityMeterSensor, HSEMEntity):
     def __init__(self, *args, config_entry=None, **kwargs):
         UtilityMeterSensor.__init__(self, *args, **kwargs)
         HSEMEntity.__init__(self, config_entry)
+
 
 async def add_utility_meter_sensor(self):
     """Add a utility meter sensor dynamically."""

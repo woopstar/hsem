@@ -480,10 +480,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                 ]
 
         # Calculate the net consumption without the EV charger power
-        if (
-            isinstance(self._hsem_solar_production_power_state, (int, float))
-            and isinstance(self._hsem_house_consumption_power_state, (int, float))
-        ):
+        if isinstance(
+            self._hsem_solar_production_power_state, (int, float)
+        ) and isinstance(self._hsem_house_consumption_power_state, (int, float)):
             # Treat EV charger power state as 0.0 if it's None
             ev_charger_power_state = (
                 self._hsem_ev_charger_power_state
