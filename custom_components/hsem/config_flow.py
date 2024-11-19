@@ -44,11 +44,11 @@ from custom_components.hsem.const import (
     DEFAULT_HSEM_SOLAR_PRODUCTION_POWER,
     DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TODAY,
     DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TOMORROW,
+    DOMAIN,
     HOUSE_CONSUMPTION_ENERGY_WEIGHT_1D,
     HOUSE_CONSUMPTION_ENERGY_WEIGHT_3D,
     HOUSE_CONSUMPTION_ENERGY_WEIGHT_7D,
     HOUSE_CONSUMPTION_ENERGY_WEIGHT_14D,
-    DOMAIN,
     NAME,
 )
 from custom_components.hsem.utils.misc import get_config_value
@@ -349,11 +349,11 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             # Validate input_sensor and other necessary fields
             if (
-                    int(user_input.get("hsem_house_consumption_energy_weight_1d")) +
-                    int(user_input.get("hsem_house_consumption_energy_weight_3d")) +
-                    int(user_input.get("hsem_house_consumption_energy_weight_7d")) +
-                    int(user_input.get("hsem_house_consumption_energy_weight_14d"))
-                ) != 100:
+                int(user_input.get("hsem_house_consumption_energy_weight_1d"))
+                + int(user_input.get("hsem_house_consumption_energy_weight_3d"))
+                + int(user_input.get("hsem_house_consumption_energy_weight_7d"))
+                + int(user_input.get("hsem_house_consumption_energy_weight_14d"))
+            ) != 100:
                 self._errors["hsem_house_consumption_energy_weight_total"] = "required"
             else:
                 self._user_input.update(user_input)
@@ -519,7 +519,7 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
             {
                 vol.Required(
                     "device_name",
-                    default=get_config_value(self.config_entry,"device_name", NAME),
+                    default=get_config_value(self.config_entry, "device_name", NAME),
                 ): str,
             }
         )
@@ -550,14 +550,16 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
             {
                 vol.Required(
                     "hsem_energi_data_service_import",
-                    default=get_config_value(self.config_entry,
+                    default=get_config_value(
+                        self.config_entry,
                         "hsem_energi_data_service_import",
                         DEFAULT_HSEM_ENERGI_DATA_SERVICE_IMPORT,
                     ),
                 ): selector({"entity": {"domain": "sensor"}}),
                 vol.Required(
                     "hsem_energi_data_service_export",
-                    default=get_config_value(self.config_entry,
+                    default=get_config_value(
+                        self.config_entry,
                         "hsem_energi_data_service_export",
                         DEFAULT_HSEM_ENERGI_DATA_SERVICE_EXPORT,
                     ),
@@ -627,67 +629,74 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
             {
                 vol.Required(
                     "hsem_huawei_solar_device_id_inverter_1",
-                    default=get_config_value(self.config_entry,
-                        "hsem_huawei_solar_device_id_inverter_1", ""
+                    default=get_config_value(
+                        self.config_entry, "hsem_huawei_solar_device_id_inverter_1", ""
                     ),
                 ): selector({"device": {"integration": "huawei_solar"}}),
                 vol.Optional(
                     "hsem_huawei_solar_device_id_inverter_2",
-                    default=get_config_value(self.config_entry,
-                        "hsem_huawei_solar_device_id_inverter_2", ""
+                    default=get_config_value(
+                        self.config_entry, "hsem_huawei_solar_device_id_inverter_2", ""
                     ),
                 ): selector({"device": {"integration": "huawei_solar"}}),
                 vol.Required(
                     "hsem_huawei_solar_device_id_batteries",
-                    default=get_config_value(self.config_entry,
-                        "hsem_huawei_solar_device_id_batteries", ""
+                    default=get_config_value(
+                        self.config_entry, "hsem_huawei_solar_device_id_batteries", ""
                     ),
                 ): selector({"device": {"integration": "huawei_solar"}}),
                 vol.Required(
                     "hsem_huawei_solar_batteries_working_mode",
-                    default=get_config_value(self.config_entry,
+                    default=get_config_value(
+                        self.config_entry,
                         "hsem_huawei_solar_batteries_working_mode",
                         DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_WORKING_MODE,
                     ),
                 ): selector({"entity": {"domain": "select"}}),
                 vol.Required(
                     "hsem_huawei_solar_batteries_state_of_capacity",
-                    default=get_config_value(self.config_entry,
+                    default=get_config_value(
+                        self.config_entry,
                         "hsem_huawei_solar_batteries_state_of_capacity",
                         DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_STATE_OF_CAPACITY,
                     ),
                 ): selector({"entity": {"domain": "sensor"}}),
                 vol.Required(
                     "hsem_huawei_solar_inverter_active_power_control",
-                    default=get_config_value(self.config_entry,
+                    default=get_config_value(
+                        self.config_entry,
                         "hsem_huawei_solar_inverter_active_power_control",
                         DEFAULT_HSEM_HUAWEI_SOLAR_INVERTER_ACTIVE_POWER_CONTROL,
                     ),
                 ): selector({"entity": {"domain": "sensor"}}),
                 vol.Required(
                     "hsem_huawei_solar_batteries_maximum_charging_power",
-                    default=get_config_value(self.config_entry,
+                    default=get_config_value(
+                        self.config_entry,
                         "hsem_huawei_solar_batteries_maximum_charging_power",
                         DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_MAXIMUM_CHARGING_POWER,
                     ),
                 ): selector({"entity": {"domain": "number"}}),
                 vol.Required(
                     "hsem_huawei_solar_batteries_grid_charge_cutoff_soc",
-                    default=get_config_value(self.config_entry,
+                    default=get_config_value(
+                        self.config_entry,
                         "hsem_huawei_solar_batteries_grid_charge_cutoff_soc",
                         DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_GRID_CHARGE_CUTOFF_SOC,
                     ),
                 ): selector({"entity": {"domain": "number"}}),
                 vol.Required(
                     "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods",
-                    default=get_config_value(self.config_entry,
+                    default=get_config_value(
+                        self.config_entry,
                         "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods",
                         DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_TOU_CHARGING_AND_DISCHARGING_PERIODS,
                     ),
                 ): selector({"entity": {"domain": "sensor"}}),
                 vol.Required(
                     "hsem_battery_max_capacity",
-                    default=get_config_value(self.config_entry,
+                    default=get_config_value(
+                        self.config_entry,
                         "hsem_battery_max_capacity",
                         DEFAULT_HSEM_BATTERY_MAX_CAPACITY,
                     ),
@@ -704,7 +713,8 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
                 ),
                 vol.Required(
                     "hsem_battery_conversion_loss",
-                    default=get_config_value(self.config_entry,
+                    default=get_config_value(
+                        self.config_entry,
                         "hsem_battery_conversion_loss",
                         DEFAULT_HSEM_BATTERY_CONVERSION_LOSS,
                     ),
@@ -745,14 +755,16 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
             {
                 vol.Required(
                     "hsem_house_consumption_power",
-                    default=get_config_value(self.config_entry,
+                    default=get_config_value(
+                        self.config_entry,
                         "hsem_house_consumption_power",
                         DEFAULT_HSEM_HOUSE_CONSUMPTION_POWER,
                     ),
                 ): selector({"entity": {"domain": "sensor"}}),
                 vol.Required(
                     "hsem_solar_production_power",
-                    default=get_config_value(self.config_entry,
+                    default=get_config_value(
+                        self.config_entry,
                         "hsem_solar_production_power",
                         DEFAULT_HSEM_SOLAR_PRODUCTION_POWER,
                     ),
@@ -786,14 +798,16 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
             {
                 vol.Required(
                     "hsem_solcast_pv_forecast_forecast_today",
-                    default=get_config_value(self.config_entry,
+                    default=get_config_value(
+                        self.config_entry,
                         "hsem_solcast_pv_forecast_forecast_today",
                         DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TODAY,
                     ),
                 ): selector({"entity": {"domain": "sensor"}}),
                 vol.Required(
                     "hsem_solcast_pv_forecast_forecast_tomorrow",
-                    default=get_config_value(self.config_entry,
+                    default=get_config_value(
+                        self.config_entry,
                         "hsem_solcast_pv_forecast_forecast_tomorrow",
                         DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TOMORROW,
                     ),
@@ -825,7 +839,8 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
             {
                 vol.Required(
                     "hsem_morning_energy_need",
-                    default=get_config_value(self.config_entry,
+                    default=get_config_value(
+                        self.config_entry,
                         "hsem_morning_energy_need",
                         DEFAULT_HSEM_MORNING_ENERGY_NEED,
                     ),
@@ -842,19 +857,20 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
                 ),
                 vol.Optional(
                     "hsem_ev_charger_status",
-                    default=get_config_value(self.config_entry,
-                        "hsem_ev_charger_status",""
+                    default=get_config_value(
+                        self.config_entry, "hsem_ev_charger_status", ""
                     ),
                 ): selector({"entity": {"domain": "sensor"}}),
                 vol.Optional(
                     "hsem_ev_charger_power",
-                    default=get_config_value(self.config_entry,
-                        "hsem_ev_charger_power",""
+                    default=get_config_value(
+                        self.config_entry, "hsem_ev_charger_power", ""
                     ),
                 ): selector({"entity": {"domain": "sensor"}}),
                 vol.Optional(
                     "hsem_house_power_includes_ev_charger_power",
-                    default=get_config_value(self.config_entry,
+                    default=get_config_value(
+                        self.config_entry,
                         "hsem_house_power_includes_ev_charger_power",
                         DEFAULT_HSEM_HOUSE_POWER_INCLUDES_EV_CHARGER_POWER,
                     ),
@@ -876,11 +892,11 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
         if user_input is not None:
             # Validate input_sensor and other necessary fields
             if (
-                    int(user_input.get("hsem_house_consumption_energy_weight_1d")) +
-                    int(user_input.get("hsem_house_consumption_energy_weight_3d")) +
-                    int(user_input.get("hsem_house_consumption_energy_weight_7d")) +
-                    int(user_input.get("hsem_house_consumption_energy_weight_14d"))
-                ) != 100:
+                int(user_input.get("hsem_house_consumption_energy_weight_1d"))
+                + int(user_input.get("hsem_house_consumption_energy_weight_3d"))
+                + int(user_input.get("hsem_house_consumption_energy_weight_7d"))
+                + int(user_input.get("hsem_house_consumption_energy_weight_14d"))
+            ) != 100:
                 self._errors["base"] = "hsem_house_consumption_energy_weight_total"
             else:
                 self._user_input.update(user_input)
@@ -891,7 +907,8 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
             {
                 vol.Required(
                     "hsem_house_consumption_energy_weight_1d",
-                    default=get_config_value(self.config_entry,
+                    default=get_config_value(
+                        self.config_entry,
                         "hsem_house_consumption_energy_weight_1d",
                         HOUSE_CONSUMPTION_ENERGY_WEIGHT_1D,
                     ),
@@ -908,7 +925,8 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
                 ),
                 vol.Required(
                     "hsem_house_consumption_energy_weight_3d",
-                    default=get_config_value(self.config_entry,
+                    default=get_config_value(
+                        self.config_entry,
                         "hsem_house_consumption_energy_weight_3d",
                         HOUSE_CONSUMPTION_ENERGY_WEIGHT_3D,
                     ),
@@ -925,7 +943,8 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
                 ),
                 vol.Required(
                     "hsem_house_consumption_energy_weight_7d",
-                    default=get_config_value(self.config_entry,
+                    default=get_config_value(
+                        self.config_entry,
                         "hsem_house_consumption_energy_weight_7d",
                         HOUSE_CONSUMPTION_ENERGY_WEIGHT_7D,
                     ),
@@ -942,7 +961,8 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
                 ),
                 vol.Required(
                     "hsem_house_consumption_energy_weight_14d",
-                    default=get_config_value(self.config_entry,
+                    default=get_config_value(
+                        self.config_entry,
                         "hsem_house_consumption_energy_weight_14d",
                         HOUSE_CONSUMPTION_ENERGY_WEIGHT_14D,
                     ),

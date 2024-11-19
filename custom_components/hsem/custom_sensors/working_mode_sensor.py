@@ -122,9 +122,9 @@ from custom_components.hsem.utils.misc import (
 )
 from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.sensornames import (
+    get_energy_average_sensor_unique_id,
     get_working_mode_sensor_name,
     get_working_mode_sensor_unique_id,
-    get_energy_average_sensor_unique_id
 )
 from custom_components.hsem.utils.workingmodes import WorkingModes
 
@@ -810,7 +810,9 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             unique_id_1d = get_energy_average_sensor_unique_id(hour_start, hour_end, 1)
             unique_id_3d = get_energy_average_sensor_unique_id(hour_start, hour_end, 3)
             unique_id_7d = get_energy_average_sensor_unique_id(hour_start, hour_end, 7)
-            unique_id_14d = get_energy_average_sensor_unique_id(hour_start, hour_end, 14)
+            unique_id_14d = get_energy_average_sensor_unique_id(
+                hour_start, hour_end, 14
+            )
 
             # Resolve entity_ids for 3d, 7d, and 14d sensors
             entity_id_1d = await async_resolve_entity_id_from_unique_id(
@@ -875,10 +877,10 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
             # Calculate the weighted average house consumption for the hour
             weighted_value = (
-                value_1d * (self._hsem_house_consumption_energy_weight_1d / 100) +
-                value_3d * (self._hsem_house_consumption_energy_weight_3d / 100) +
-                value_7d * (self._hsem_house_consumption_energy_weight_7d / 100) +
-                value_14d * (self._hsem_house_consumption_energy_weight_14d / 100)
+                value_1d * (self._hsem_house_consumption_energy_weight_1d / 100)
+                + value_3d * (self._hsem_house_consumption_energy_weight_3d / 100)
+                + value_7d * (self._hsem_house_consumption_energy_weight_7d / 100)
+                + value_14d * (self._hsem_house_consumption_energy_weight_14d / 100)
             )
 
             # Only update "avg_house_consumption" in the existing dictionary entry
