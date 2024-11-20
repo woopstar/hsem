@@ -82,7 +82,7 @@ async def add_utility_meter_sensor(self):
             meter_offset=timedelta(hours=0),
             meter_type="daily",
             name=utility_meter_name,
-            net_consumption=False,
+            net_consumption=True,
             parent_meter=source_entity,
             periodically_resetting=True,
             source_entity=source_entity,
