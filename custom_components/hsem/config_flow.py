@@ -469,7 +469,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 ),
                 vol.Optional(
                     "hsem_ev_charger_status",
-                ): selector({"entity": {"domain": "sensor"}}),
+                ): selector({"entity": {"domain": ["sensor", "switch", "input_boolean"]}}),
                 vol.Optional(
                     "hsem_ev_charger_power",
                 ): selector({"entity": {"domain": "sensor"}}),
@@ -952,7 +952,7 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
                     default=get_config_value(
                         self.config_entry, "hsem_ev_charger_status", ""
                     ),
-                ): selector({"entity": {"domain": "sensor"}}),
+                ): selector({"entity": {"domain": ["sensor", "switch", "input_boolean"]}}),
                 vol.Optional(
                     "hsem_ev_charger_power",
                     default=get_config_value(
