@@ -632,41 +632,44 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                 and self._hsem_batteries_enable_charge_hours_day_end
                 and self._hsem_batteries_enable_charge_hours_night_start
                 and self._hsem_batteries_enable_charge_hours_night_end
+                and isinstance(self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state, (int, float))
+                and isinstance(self._hsem_huawei_solar_batteries_state_of_capacity_state, (int, float))
             ):
-
-                day_hour_start = datetime.strptime(
-                    self._hsem_batteries_enable_charge_hours_day_start, "%H:%M:%S"
-                ).hour
-                day_hour_end = datetime.strptime(
-                    self._hsem_batteries_enable_charge_hours_day_end, "%H:%M:%S"
-                ).hour
-
-                night_hour_start = datetime.strptime(
-                    self._hsem_batteries_enable_charge_hours_night_start, "%H:%M:%S"
-                ).hour
-                night_hour_end = datetime.strptime(
-                    self._hsem_batteries_enable_charge_hours_night_end, "%H:%M:%S"
-                ).hour
-
-                # find best time to charge the battery at night
-                if (
-                    now.hour >= night_hour_start
-                    and now.hour < night_hour_end
-                    and self._hsem_batteries_enable_charge_hours_night
-                ):
-                    await self.async_find_best_time_to_charge(
-                        night_hour_start, night_hour_end
-                    )
-
-                # find best time to charge the battery at day
-                if (
-                    now.hour >= day_hour_start
-                    and now.hour < day_hour_end
-                    and self._hsem_batteries_enable_charge_hours_day
-                ):
-                    await self.async_find_best_time_to_charge(
-                        day_hour_start, day_hour_end
-                    )
+                # Charge the battery when the grid charge cutoff SOC is higher than the state of capacity with at least 5%
+                if (self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state - self._hsem_huawei_solar_batteries_state_of_capacity_state ) > 5:
+                    day_hour_start = datetime.strptime(
+                        self._hsem_batteries_enable_charge_hours_day_start, "%H:%M:%S"
+                    ).hour
+                    day_hour_end = datetime.strptime(
+                        self._hsem_batteries_enable_charge_hours_day_end, "%H:%M:%S"
+                    ).hour
+    
+                    night_hour_start = datetime.strptime(
+                        self._hsem_batteries_enable_charge_hours_night_start, "%H:%M:%S"
+                    ).hour
+                    night_hour_end = datetime.strptime(
+                        self._hsem_batteries_enable_charge_hours_night_end, "%H:%M:%S"
+                    ).hour
+    
+                    # find best time to charge the battery at night
+                    if (
+                        now.hour >= night_hour_start
+                        and now.hour < night_hour_end
+                        and self._hsem_batteries_enable_charge_hours_night
+                    ):
+                        await self.async_find_best_time_to_charge(
+                            night_hour_start, night_hour_end
+                        )
+    
+                    # find best time to charge the battery at day
+                    if (
+                        now.hour >= day_hour_start
+                        and now.hour < day_hour_end
+                        and self._hsem_batteries_enable_charge_hours_day
+                    ):
+                        await self.async_find_best_time_to_charge(
+                            day_hour_start, day_hour_end
+                        )
 
         # Set the inverter power control mode
         if self._hsem_energi_data_service_export_state is not None:
