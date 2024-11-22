@@ -72,7 +72,7 @@ async def add_energy_average_sensors(self, avg=3):
             state_characteristic="mean",
             samples_max_buffer_size=(24 * 60 * avg),  # Sampling size
             samples_max_age=timedelta(days=avg),  # Max age
-            samples_keep_last=False,
+            samples_keep_last=True,
             precision=2,
             percentile=50,
             config_entry=self._config_entry,

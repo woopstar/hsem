@@ -533,41 +533,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                     if f"Period {i}" in entity_data.attributes
                 ]
 
-        # Calculate the net consumption without the EV charger power
-        if isinstance(
-            self._hsem_solar_production_power_state, (int, float)
-        ) and isinstance(self._hsem_house_consumption_power_state, (int, float)):
-            # Treat EV charger power state as 0.0 if it's None
-            ev_charger_power_state = (
-                self._hsem_ev_charger_power_state
-                if isinstance(self._hsem_ev_charger_power_state, (int, float))
-                else 0.0
-            )
-
-            if self._hsem_house_power_includes_ev_charger_power is not None:
-                self._hsem_net_consumption_with_ev = (
-                    self._hsem_solar_production_power_state
-                    - self._hsem_house_consumption_power_state
-                )
-                self._hsem_net_consumption = self._hsem_solar_production_power_state - (
-                    self._hsem_house_consumption_power_state - ev_charger_power_state
-                )
-            else:
-                self._hsem_net_consumption_with_ev = (
-                    self._hsem_solar_production_power_state
-                    - (
-                        self._hsem_house_consumption_power_state
-                        + ev_charger_power_state
-                    )
-                )
-                self._hsem_net_consumption = (
-                    self._hsem_solar_production_power_state
-                    - self._hsem_house_consumption_power_state
-                )
-
-            self._hsem_net_consumption = round(self._hsem_net_consumption, 2)
-        else:
-            self._hsem_net_consumption = None
+        await self.async_calculate_net_consumption()
 
         # Calculate remaining battery capacity and max allowed charge from grid if all necessary values are available
         if (
@@ -703,6 +669,43 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         # Trigger an update in Home Assistant
         self.async_write_ha_state()
 
+    async def async_calculate_net_consumption(self):
+        # Calculate the net consumption without the EV charger power
+        if isinstance(
+            self._hsem_solar_production_power_state, (int, float)
+        ) and isinstance(self._hsem_house_consumption_power_state, (int, float)):
+
+            # Treat EV charger power state as 0.0 if it's None
+            ev_charger_power_state = (
+                self._hsem_ev_charger_power_state
+                if isinstance(self._hsem_ev_charger_power_state, (int, float))
+                else 0.0
+            )
+
+            if self._hsem_house_power_includes_ev_charger_power is not None:
+                self._hsem_net_consumption_with_ev = (
+                    self._hsem_house_consumption_power_state - self._hsem_solar_production_power_state
+                )
+                self._hsem_net_consumption = self._hsem_house_consumption_power_state - (
+                     self._hsem_solar_production_power_state - ev_charger_power_state
+                )
+            else:
+                self._hsem_net_consumption_with_ev = (
+                    self._hsem_house_consumption_power_state
+                    - (
+                        self._hsem_solar_production_power_state
+                        + ev_charger_power_state
+                    )
+                )
+                self._hsem_net_consumption = (
+                    self._hsem_house_consumption_power_state
+                    - self._hsem_solar_production_power_state
+                )
+
+            self._hsem_net_consumption = round(self._hsem_net_consumption, 2)
+        else:
+            self._hsem_net_consumption = 0.0
+
     async def async_set_inverter_power_control(self):
         # Determine the grid export power percentage based on the state
         if not isinstance(self._hsem_energi_data_service_export_state, (int, float)):
@@ -735,14 +738,8 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
     async def async_set_working_mode(self):
 
-        if self._hsem_huawei_solar_batteries_working_mode_state is None:
-            return
-
-        if not isinstance(self._hsem_energi_data_service_import_state, (int, float)):
-            return
-
-        if self._hsem_net_consumption is None:
-            return
+        #if self._hsem_huawei_solar_batteries_working_mode_state is None:
+        #    return
 
         # Determine the current month and hour
         now = datetime.now()
@@ -754,7 +751,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         state = None
 
         # Determine the appropriate TOU modes and working mode state. In priority order:
-        if self._hsem_energi_data_service_import_state < 0:
+        if isinstance(self._hsem_energi_data_service_import_state, (int, float)) and self._hsem_energi_data_service_import_state < 0:
             # Negative import price. Force charge battery
             tou_modes = DEFAULT_HSEM_TOU_MODES_FORCE_CHARGE
             working_mode = WorkingModes.TimeOfUse.value
@@ -790,7 +787,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             _LOGGER.warning(
                 f"# Recommendation for {current_time_range} is to force discharge the battery. Setting TOU Periods: {tou_modes} and Working Mode: {working_mode}"
             )
-        elif self._hsem_net_consumption > 0:
+        elif self._hsem_net_consumption < 0:
             # Positive net consumption. Charge battery from Solar
             working_mode = WorkingModes.MaximizeSelfConsumption.value
             state = Recommendations.MaximizeSelfConsumption.value
@@ -1014,6 +1011,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         import_price_sensor = self.hass.states.get(
             self._hsem_energi_data_service_import
         )
+
         if not import_price_sensor:
             _LOGGER.warning("hsem_energi_data_service_import sensor not found.")
             return
@@ -1086,7 +1084,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                 estimated_net_consumption = 0.0
             else:
                 estimated_net_consumption = round(
-                    solcast_pv_estimate - avg_house_consumption, 2
+                     avg_house_consumption - solcast_pv_estimate, 2
                 )
 
             # calculate the estimated net consumption
@@ -1214,7 +1212,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                 data["recommendation"] = WorkingModes.FullyFedToGrid.value
 
             # Maximize Self Consumption
-            elif net_consumption > 0:
+            elif net_consumption < 0:
                 data["recommendation"] = WorkingModes.MaximizeSelfConsumption.value
 
             # Between 17 and 21 we always want to maximize self consumption
