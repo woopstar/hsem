@@ -684,18 +684,17 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
             if self._hsem_house_power_includes_ev_charger_power is not None:
                 self._hsem_net_consumption_with_ev = (
-                    self._hsem_house_consumption_power_state - self._hsem_solar_production_power_state
+                    self._hsem_house_consumption_power_state
+                    - self._hsem_solar_production_power_state
                 )
-                self._hsem_net_consumption = self._hsem_house_consumption_power_state - (
-                     self._hsem_solar_production_power_state - ev_charger_power_state
+                self._hsem_net_consumption = (
+                    self._hsem_house_consumption_power_state
+                    - (self._hsem_solar_production_power_state - ev_charger_power_state)
                 )
             else:
                 self._hsem_net_consumption_with_ev = (
                     self._hsem_house_consumption_power_state
-                    - (
-                        self._hsem_solar_production_power_state
-                        + ev_charger_power_state
-                    )
+                    - (self._hsem_solar_production_power_state + ev_charger_power_state)
                 )
                 self._hsem_net_consumption = (
                     self._hsem_house_consumption_power_state
@@ -738,7 +737,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
     async def async_set_working_mode(self):
 
-        #if self._hsem_huawei_solar_batteries_working_mode_state is None:
+        # if self._hsem_huawei_solar_batteries_working_mode_state is None:
         #    return
 
         # Determine the current month and hour
@@ -751,7 +750,10 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
         state = None
 
         # Determine the appropriate TOU modes and working mode state. In priority order:
-        if isinstance(self._hsem_energi_data_service_import_state, (int, float)) and self._hsem_energi_data_service_import_state < 0:
+        if (
+            isinstance(self._hsem_energi_data_service_import_state, (int, float))
+            and self._hsem_energi_data_service_import_state < 0
+        ):
             # Negative import price. Force charge battery
             tou_modes = DEFAULT_HSEM_TOU_MODES_FORCE_CHARGE
             working_mode = WorkingModes.TimeOfUse.value
@@ -1084,7 +1086,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
                 estimated_net_consumption = 0.0
             else:
                 estimated_net_consumption = round(
-                     avg_house_consumption - solcast_pv_estimate, 2
+                    avg_house_consumption - solcast_pv_estimate, 2
                 )
 
             # calculate the estimated net consumption
