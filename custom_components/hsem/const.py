@@ -4,6 +4,7 @@ This module defines constants used in the Huawei Solar Energy Management (HSEM) 
 
 DOMAIN = "hsem"  # Domain name for the integration
 NAME = "Huawei Solar Energy Management"  # Display name for the integration
+DEFAULT_HSEM_READ_ONLY = False  # Default value for read-only mode
 
 # Default sensor entity ID for energy data service import
 DEFAULT_HSEM_ENERGI_DATA_SERVICE_IMPORT = "sensor.energi_data_service"

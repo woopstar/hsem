@@ -2,7 +2,7 @@
 This module defines the configuration flow for the HSEM integration in Home Assistant.
 
 Classes:
-    HSEMConfigFlow: Handles the configuration flow for the HSEM integration.
+    HSEMOptionsFlow: Handles the options flow for the HSEM integration.
 
 Functions:
     async_step_user: Handles the initial step of the configuration flow.
@@ -21,13 +21,10 @@ Attributes:
 
 
 from homeassistant import config_entries
-from homeassistant.core import callback
 
 from custom_components.hsem.const import (
-    DOMAIN,
     NAME,
 )
-from custom_components.hsem.options_flow import HSEMOptionsFlow
 
 from custom_components.hsem.flows.init import get_init_step_schema, validate_init_step_input
 from custom_components.hsem.flows.ev import get_ev_step_schema, validate_ev_step_input
@@ -38,46 +35,48 @@ from custom_components.hsem.flows.weighted_values import get_weighted_values_ste
 from custom_components.hsem.flows.charge_hours import get_charge_hours_step_schema, validate_charge_hours_input
 from custom_components.hsem.flows.huawei_solar import get_huawei_solar_step_schema, validate_huawei_solar_input
 
-class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Config flow for HSEM."""
+class HSEMOptionsFlow(config_entries.OptionsFlow):
+    """Options flow for HSEM."""
 
-    VERSION = 1
-    _user_input = {}
+    def __init__(self, config_entry):
+        self.config_entry = config_entry
+        self._user_input = {}
 
-    async def async_step_user(self, user_input=None):
+    def update_config_entry_data(self):
+        """Update config_entry.data with the latest configuration values from options."""
+        updated_data = {**self.config_entry.data, **self.config_entry.options}
+        self.hass.config_entries.async_update_entry(
+            self.config_entry, data=updated_data
+        )
+
+    async def async_step_init(self, user_input=None):
         errors = {}
 
-        # Check if there's already an entry for this domain
-        existing_entries = self.hass.config_entries.async_entries(DOMAIN)
-        if existing_entries:
-            errors["base"] = "only_one_entry_allowed"
-            return self.async_show_form(step_id="user", errors=errors)
-
-        # If user_input is not None, the user has submitted the form
         if user_input is not None:
             errors = validate_init_step_input(user_input)
             if not errors:
                 self._user_input.update(user_input)
                 return await self.async_step_energidataservice()
 
-        data_schema = get_init_step_schema(None)
+        data_schema = get_init_step_schema(self.config_entry)
 
-        # Show the init form
         return self.async_show_form(
-            step_id="user",
+            step_id="init",
             data_schema=data_schema,
             errors=errors,
             last_step=False,
         )
 
     async def async_step_energidataservice(self, user_input=None):
+        errors = {}
+
         if user_input is not None:
             errors = validate_energidataservice_input(user_input)
             if not errors:
                 self._user_input.update(user_input)
                 return await self.async_step_power()
 
-        data_schema = get_energidataservice_step_schema(None)
+        data_schema = get_energidataservice_step_schema(self.config_entry)
 
         return self.async_show_form(
             step_id="energidataservice",
@@ -95,7 +94,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._user_input.update(user_input)
                 return await self.async_step_solcast()
 
-        data_schema = get_power_step_schema(None)
+        data_schema = get_power_step_schema(self.config_entry)
 
         return self.async_show_form(
             step_id="power",
@@ -114,7 +113,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return await self.async_step_ev()
 
         # Define the form schema for energy data services step
-        data_schema = get_solcast_step_schema(None)
+        data_schema = get_solcast_step_schema(self.config_entry)
 
         return self.async_show_form(
             step_id="solcast",
@@ -132,7 +131,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._user_input.update(user_input)
                 return await self.async_step_weighted_values()
 
-        data_schema = get_ev_step_schema(None)
+        data_schema = get_ev_step_schema(self.config_entry)
 
         return self.async_show_form(
             step_id="ev",
@@ -150,7 +149,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._user_input.update(user_input)
                 return await self.async_step_charge_hours()
 
-        data_schema = get_weighted_values_step_schema(None)
+        data_schema = get_weighted_values_step_schema(self.config_entry)
 
         return self.async_show_form(
             step_id="weighted_values",
@@ -168,7 +167,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._user_input.update(user_input)
                 return await self.async_step_huawei_solar()
 
-        data_schema = get_charge_hours_step_schema(None)
+        data_schema = get_charge_hours_step_schema(self.config_entry)
 
         return self.async_show_form(
             step_id="charge_hours",
@@ -184,26 +183,13 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors = validate_huawei_solar_input(user_input)
             if not errors:
                 final_data = {**self._user_input, **user_input}
-
-                # Ensure that optional inverter_id is set to an empty string if not provided
-                final_data["hsem_huawei_solar_device_id_inverter_2"] = final_data.get(
-                    "hsem_huawei_solar_device_id_inverter_2", ""
-                )
-
-                # Ensure that optional ev_charger_status is set to an empty string if not provided
-                final_data["hsem_ev_charger_status"] = final_data.get(
-                    "hsem_ev_charger_status", None
-                )
-                final_data["hsem_ev_charger_power"] = final_data.get(
-                    "hsem_ev_charger_power", None
-                )
-
+                self.update_config_entry_data()
                 return self.async_create_entry(
                     title=final_data.get("device_name", NAME),
                     data=final_data,
                 )
 
-        data_schema = get_huawei_solar_step_schema(None)
+        data_schema = get_huawei_solar_step_schema(self.config_entry)
 
         return self.async_show_form(
             step_id="huawei_solar",
@@ -211,9 +197,3 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
             last_step=True,
         )
-
-    @staticmethod
-    @callback
-    def async_get_options_flow(config_entry):
-        """Return the options flow."""
-        return HSEMOptionsFlow(config_entry)

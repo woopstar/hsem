@@ -1,187 +1,185 @@
 {
   "config": {
     "error": {
+      "hsem_house_consumption_energy_weight_total": "The total of the house consumption energy weights must be total of 100%.",
+      "invalid_sensor": "Invalid input sensor. Please choose a valid sensor.",
       "only_one_entry_allowed": "Only one config entry is allowed.",
       "required": "This field is required.",
-      "invalid_sensor": "Invalid input sensor. Please choose a valid sensor.",
-      "hsem_house_consumption_energy_weight_total": "The total of the house consumption energy weights must be total of 100%.",
       "start_time_after_end_time": "Start time must be before end time."
     },
     "step": {
-      "user": {
-        "title": "Configure Huawei Solar Energy Management",
-        "description": "Configure the settings for HSEM",
-        "data": {
-          "device_name": "Name"
-        }
-      },
-      "energidataservice": {
-        "title": "Energy Data Service Sensors",
-        "description": "Select energy data services for HSEM.",
-        "data": {
-          "hsem_energi_data_service_import": "Energy Data Service Import Sensor",
-          "hsem_energi_data_service_export": "Energy Data Service Export Sensor"
-        }
-      },
-      "huawei_solar": {
-        "title": "Huawei Solar Sensors",
-        "description": "Configure the working mode for Huawei solar batteries.",
-        "data": {
-          "hsem_huawei_solar_device_id_inverter_1": "Huawei Inverter 1 Device",
-          "hsem_huawei_solar_device_id_inverter_2": "Huawei Inverter 2 Device",
-          "hsem_huawei_solar_device_id_batteries": "Huawei Batteries Device",
-          "hsem_huawei_solar_batteries_working_mode": "Huawei Solar Batteries Working Mode Sensor",
-          "hsem_huawei_solar_batteries_state_of_capacity": "Huawei Batteries State of Capacity Sensor",
-          "hsem_huawei_solar_inverter_active_power_control": "Huawei Inverter Active Power Control Sensor",
-          "hsem_huawei_solar_batteries_maximum_charging_power": "Huawei Batteries Maximum Charging Power (kW)",
-          "hsem_huawei_solar_batteries_grid_charge_cutoff_soc": "Huawei Batteries Grid Charge Cutoff SOC (%)",
-          "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods": "Huawei Batteries TOU Charging and Discharging Periods",
-          "hsem_battery_max_capacity": "Battery Max Capacity (kWh)",
-          "hsem_battery_conversion_loss": "Battery Conversion Loss (%)"
-        }
-      },
-      "weigted_values": {
-        "title": "Weighted Values",
-        "description": "Configure the weighted values for the house consumption energy. Must total 100%.",
-        "data": {
-          "hsem_house_consumption_energy_weight_1d": "House Consumption Energy Weight 1 Day",
-          "hsem_house_consumption_energy_weight_3d": "House Consumption Energy Weight 3 Days",
-          "hsem_house_consumption_energy_weight_7d": "House Consumption Energy Weight 7 Days",
-          "hsem_house_consumption_energy_weight_14d": "House Consumption Energy Weight 14 Days"
-        }
-      },
       "charge_hours": {
-        "title": "Charging Hours",
-        "description": "Configure the charging hours for the batteries during day and night.",
         "data": {
           "hsem_batteries_enable_charge_hours_day": "Enable Charging Hours Day",
-          "hsem_batteries_enable_charge_hours_day_start": "Charging Hours Day Start Time",
           "hsem_batteries_enable_charge_hours_day_end": "Charging Hours Day End Time",
+          "hsem_batteries_enable_charge_hours_day_start": "Charging Hours Day Start Time",
           "hsem_batteries_enable_charge_hours_night": "Enable Charging Hours Night",
-          "hsem_batteries_enable_charge_hours_night_start": "Charging Hours Night Start Time",
-          "hsem_batteries_enable_charge_hours_night_end": "Charging Hours Night End Time"
-        }
+          "hsem_batteries_enable_charge_hours_night_end": "Charging Hours Night End Time",
+          "hsem_batteries_enable_charge_hours_night_start": "Charging Hours Night Start Time"
+        },
+        "description": "Configure the charging hours for the batteries during day and night.",
+        "title": "Charging Hours"
+      },
+      "energidataservice": {
+        "data": {
+          "hsem_energi_data_service_export": "Energy Data Service Export Sensor",
+          "hsem_energi_data_service_import": "Energy Data Service Import Sensor"
+        },
+        "description": "Select energy data services for HSEM.",
+        "title": "Energy Data Service Sensors"
+      },
+      "ev": {
+        "data": {
+          "hsem_ev_charger_power": "EV Charger Power Sensor",
+          "hsem_ev_charger_status": "EV Charger Status Sensor",
+          "hsem_house_power_includes_ev_charger_power": "House Power Includes EV Charger Power"
+        },
+        "description": "Configure EV Charger settings for HSEM.",
+        "title": "EV Charger Settings"
+      },
+      "huawei_solar": {
+        "data": {
+          "hsem_battery_conversion_loss": "Battery Conversion Loss (%)",
+          "hsem_battery_max_capacity": "Battery Max Capacity (kWh)",
+          "hsem_huawei_solar_batteries_grid_charge_cutoff_soc": "Huawei Batteries Grid Charge Cutoff SOC (%)",
+          "hsem_huawei_solar_batteries_maximum_charging_power": "Huawei Batteries Maximum Charging Power (kW)",
+          "hsem_huawei_solar_batteries_state_of_capacity": "Huawei Batteries State of Capacity Sensor",
+          "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods": "Huawei Batteries TOU Charging and Discharging Periods",
+          "hsem_huawei_solar_batteries_working_mode": "Huawei Solar Batteries Working Mode Sensor",
+          "hsem_huawei_solar_device_id_batteries": "Huawei Batteries Device",
+          "hsem_huawei_solar_device_id_inverter_1": "Huawei Inverter 1 Device",
+          "hsem_huawei_solar_device_id_inverter_2": "Huawei Inverter 2 Device",
+          "hsem_huawei_solar_inverter_active_power_control": "Huawei Inverter Active Power Control Sensor"
+        },
+        "description": "Configure the working mode for Huawei solar batteries.",
+        "title": "Huawei Solar Sensors"
       },
       "power": {
-        "title": "Power Sensors",
-        "description": "Select power sensors for HSEM.",
         "data": {
           "hsem_house_consumption_power": "House Consumption Power Sensor",
           "hsem_solar_production_power": "Solar Production Power Sensor"
-        }
+        },
+        "description": "Select power sensors for HSEM.",
+        "title": "Power Sensors"
       },
       "solcast": {
-        "title": "Solcast Sensors",
-        "description": "Select Solcast forecast sensors.",
         "data": {
           "hsem_solcast_pv_forecast_forecast_today": "Solcast PV Forecast Today Sensor",
           "hsem_solcast_pv_forecast_forecast_tomorrow": "Solcast PV Forecast Tomorrow Sensor"
-        }
+        },
+        "description": "Select Solcast forecast sensors.",
+        "title": "Solcast Sensors"
       },
-      "misc": {
-        "title": "Miscellaneous Settings",
-        "description": "Configure miscellaneous settings for HSEM.",
+      "user": {
         "data": {
-          "hsem_morning_energy_need": "Morning Energy Need (kWh)",
-          "hsem_ev_charger_status": "EV Charger Status Sensor",
-          "hsem_ev_charger_power": "EV Charger Power Sensor",
-          "hsem_house_power_includes_ev_charger_power": "House Power Includes EV Charger Power"
-        }
+          "device_name": "Name"
+        },
+        "description": "Configure the settings for HSEM",
+        "title": "Configure Huawei Solar Energy Management"
+      },
+      "weighted_values": {
+        "data": {
+          "hsem_house_consumption_energy_weight_14d": "House Consumption Energy Weight 14 Days",
+          "hsem_house_consumption_energy_weight_1d": "House Consumption Energy Weight 1 Day",
+          "hsem_house_consumption_energy_weight_3d": "House Consumption Energy Weight 3 Days",
+          "hsem_house_consumption_energy_weight_7d": "House Consumption Energy Weight 7 Days"
+        },
+        "description": "Configure the weighted values for the house consumption energy. Must total 100%.",
+        "title": "Weighted Values"
       }
     }
   },
   "options": {
     "error": {
+      "hsem_house_consumption_energy_weight_total": "The total of the house consumption energy weights must be total of 100%.",
+      "invalid_sensor": "Invalid input sensor. Please choose a valid sensor.",
       "only_one_entry_allowed": "Only one config entry is allowed.",
       "required": "This field is required.",
-      "invalid_sensor": "Invalid input sensor. Please choose a valid sensor.",
-      "hsem_house_consumption_energy_weight_total": "The total of the house consumption energy weights must be total of 100%.",
       "start_time_after_end_time": "Start time must be before end time."
     },
     "step": {
-      "init": {
-        "title": "Update Huawei Solar Energy Management",
-        "description": "Update the settings for HSEM",
-        "data": {
-          "device_name": "Name"
-        }
-      },
-      "energidataservice": {
-        "title": "Energy Data Service Sensors",
-        "description": "Select energy data services for HSEM.",
-        "data": {
-          "hsem_energi_data_service_import": "Energy Data Service Import Sensor",
-          "hsem_energi_data_service_export": "Energy Data Service Export Sensor"
-        }
-      },
-      "huawei_solar": {
-        "title": "Huawei Solar Sensors",
-        "description": "Configure the working mode for Huawei solar batteries.",
-        "data": {
-          "hsem_huawei_solar_device_id_inverter_1": "Huawei Inverter 1 Device",
-          "hsem_huawei_solar_device_id_inverter_2": "Huawei Inverter 2 Device",
-          "hsem_huawei_solar_device_id_batteries": "Huawei Batteries Device",
-          "hsem_huawei_solar_batteries_working_mode": "Huawei Solar Batteries Working Mode Sensor",
-          "hsem_huawei_solar_batteries_state_of_capacity": "Huawei Batteries State of Capacity Sensor",
-          "hsem_huawei_solar_inverter_active_power_control": "Huawei Inverter Active Power Control Sensor",
-          "hsem_huawei_solar_batteries_maximum_charging_power": "Huawei Batteries Maximum Charging Power (kW)",
-          "hsem_huawei_solar_batteries_grid_charge_cutoff_soc": "Huawei Batteries Grid Charge Cutoff SOC (%)",
-          "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods": "Huawei Batteries TOU Charging and Discharging Periods",
-          "hsem_battery_max_capacity": "Battery Max Capacity (kWh)",
-          "hsem_battery_conversion_loss": "Battery Conversion Loss (%)",
-          "hsem_house_consumption_energy_weight_1d": "House Consumption Energy Weight 1 Day",
-          "hsem_house_consumption_energy_weight_3d": "House Consumption Energy Weight 3 Days",
-          "hsem_house_consumption_energy_weight_7d": "House Consumption Energy Weight 7 Days",
-          "hsem_house_consumption_energy_weight_14d": "House Consumption Energy Weight 14 Days"
-        }
-      },
-      "weigted_values": {
-        "title": "Weighted Values",
-        "description": "Configure the weighted values for the house consumption energy. Must total 100%.",
-        "data": {
-          "hsem_house_consumption_energy_weight_1d": "House Consumption Energy Weight 1 Day",
-          "hsem_house_consumption_energy_weight_3d": "House Consumption Energy Weight 3 Days",
-          "hsem_house_consumption_energy_weight_7d": "House Consumption Energy Weight 7 Days",
-          "hsem_house_consumption_energy_weight_14d": "House Consumption Energy Weight 14 Days"
-        }
-      },
       "charge_hours": {
-        "title": "Charging Hours",
-        "description": "Configure the charging hours for the batteries during day and night.",
         "data": {
           "hsem_batteries_enable_charge_hours_day": "Enable Charging Hours Day",
-          "hsem_batteries_enable_charge_hours_day_start": "Charging Hours Day Start Time",
           "hsem_batteries_enable_charge_hours_day_end": "Charging Hours Day End Time",
+          "hsem_batteries_enable_charge_hours_day_start": "Charging Hours Day Start Time",
           "hsem_batteries_enable_charge_hours_night": "Enable Charging Hours Night",
-          "hsem_batteries_enable_charge_hours_night_start": "Charging Hours Night Start Time",
-          "hsem_batteries_enable_charge_hours_night_end": "Charging Hours Night End Time"
-        }
+          "hsem_batteries_enable_charge_hours_night_end": "Charging Hours Night End Time",
+          "hsem_batteries_enable_charge_hours_night_start": "Charging Hours Night Start Time"
+        },
+        "description": "Configure the charging hours for the batteries during day and night.",
+        "title": "Charging Hours"
+      },
+      "energidataservice": {
+        "data": {
+          "hsem_energi_data_service_export": "Energy Data Service Export Sensor",
+          "hsem_energi_data_service_import": "Energy Data Service Import Sensor"
+        },
+        "description": "Select energy data services for HSEM.",
+        "title": "Energy Data Service Sensors"
+      },
+      "ev": {
+        "data": {
+          "hsem_ev_charger_power": "EV Charger Power Sensor",
+          "hsem_ev_charger_status": "EV Charger Status Sensor",
+          "hsem_house_power_includes_ev_charger_power": "House Power Includes EV Charger Power"
+        },
+        "description": "Configure EV Charger settings for HSEM.",
+        "title": "EV Charger Settings"
+      },
+      "huawei_solar": {
+        "data": {
+          "hsem_battery_conversion_loss": "Battery Conversion Loss (%)",
+          "hsem_battery_max_capacity": "Battery Max Capacity (kWh)",
+          "hsem_house_consumption_energy_weight_14d": "House Consumption Energy Weight 14 Days",
+          "hsem_house_consumption_energy_weight_1d": "House Consumption Energy Weight 1 Day",
+          "hsem_house_consumption_energy_weight_3d": "House Consumption Energy Weight 3 Days",
+          "hsem_house_consumption_energy_weight_7d": "House Consumption Energy Weight 7 Days",
+          "hsem_huawei_solar_batteries_grid_charge_cutoff_soc": "Huawei Batteries Grid Charge Cutoff SOC (%)",
+          "hsem_huawei_solar_batteries_maximum_charging_power": "Huawei Batteries Maximum Charging Power (kW)",
+          "hsem_huawei_solar_batteries_state_of_capacity": "Huawei Batteries State of Capacity Sensor",
+          "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods": "Huawei Batteries TOU Charging and Discharging Periods",
+          "hsem_huawei_solar_batteries_working_mode": "Huawei Solar Batteries Working Mode Sensor",
+          "hsem_huawei_solar_device_id_batteries": "Huawei Batteries Device",
+          "hsem_huawei_solar_device_id_inverter_1": "Huawei Inverter 1 Device",
+          "hsem_huawei_solar_device_id_inverter_2": "Huawei Inverter 2 Device",
+          "hsem_huawei_solar_inverter_active_power_control": "Huawei Inverter Active Power Control Sensor"
+        },
+        "description": "Configure the working mode for Huawei solar batteries.",
+        "title": "Huawei Solar Sensors"
+      },
+      "init": {
+        "data": {
+          "device_name": "Name"
+        },
+        "description": "Update the settings for HSEM",
+        "title": "Update Huawei Solar Energy Management"
       },
       "power": {
-        "title": "Power Sensors",
-        "description": "Select power sensors for HSEM.",
         "data": {
           "hsem_house_consumption_power": "House Consumption Power Sensor",
           "hsem_solar_production_power": "Solar Production Power Sensor"
-        }
+        },
+        "description": "Select power sensors for HSEM.",
+        "title": "Power Sensors"
       },
       "solcast": {
-        "title": "Solcast Sensors",
-        "description": "Select Solcast forecast sensors.",
         "data": {
           "hsem_solcast_pv_forecast_forecast_today": "Solcast PV Forecast Today Sensor",
           "hsem_solcast_pv_forecast_forecast_tomorrow": "Solcast PV Forecast Tomorrow Sensor"
-        }
+        },
+        "description": "Select Solcast forecast sensors.",
+        "title": "Solcast Sensors"
       },
-      "misc": {
-        "title": "Miscellaneous Settings",
-        "description": "Configure miscellaneous settings for HSEM.",
+      "weighted_values": {
         "data": {
-          "hsem_morning_energy_need": "Morning Energy Need (kWh)",
-          "hsem_ev_charger_status": "EV Charger Status Sensor",
-          "hsem_ev_charger_power": "EV Charger Power Sensor",
-          "hsem_house_power_includes_ev_charger_power": "House Power Includes EV Charger Power"
-        }
+          "hsem_house_consumption_energy_weight_14d": "House Consumption Energy Weight 14 Days",
+          "hsem_house_consumption_energy_weight_1d": "House Consumption Energy Weight 1 Day",
+          "hsem_house_consumption_energy_weight_3d": "House Consumption Energy Weight 3 Days",
+          "hsem_house_consumption_energy_weight_7d": "House Consumption Energy Weight 7 Days"
+        },
+        "description": "Configure the weighted values for the house consumption energy. Must total 100%.",
+        "title": "Weighted Values"
       }
     }
   }

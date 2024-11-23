@@ -139,6 +139,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self._state = None
 
         # Initialize all attributes to None or some default value
+        self._read_only = None
         self._hsem_huawei_solar_device_id_inverter_1 = None
         self._hsem_huawei_solar_device_id_inverter_2 = None
         self._hsem_huawei_solar_device_id_batteries = None
@@ -178,7 +179,6 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_battery_remaining_charge = 0.0
         self._hsem_energi_data_service_import_state = 0.0
         self._hsem_energi_data_service_export_state = 0.0
-        self._hsem_morning_energy_need = 0.0
         self._last_changed_mode = None
         self._last_updated = None
         self._hsem_house_consumption_energy_weight_1d = None
@@ -215,6 +215,10 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
     def _update_settings(self):
         """Fetch updated settings from config_entry options."""
+        self._read_only = get_config_value(
+            self._config_entry, "hsem_read_only"
+        )
+
         self._hsem_huawei_solar_device_id_inverter_1 = get_config_value(
             self._config_entry, "hsem_huawei_solar_device_id_inverter_1"
         )
@@ -278,10 +282,6 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_huawei_solar_batteries_maximum_charging_power = get_config_value(
             self._config_entry,
             "hsem_huawei_solar_batteries_maximum_charging_power",
-        )
-        self._hsem_morning_energy_need = get_config_value(
-            self._config_entry,
-            "hsem_morning_energy_need",
         )
         self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc = get_config_value(
             self._config_entry,
@@ -350,6 +350,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         """Return the state attributes."""
 
         return {
+            "read_only": self._read_only,
             "last_updated": self._last_updated,
             "last_changed_mode": self._last_changed_mode,
             "unique_id": self._unique_id,
@@ -393,7 +394,6 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             "ev_charger_power_entity": self._hsem_ev_charger_power,
             "ev_charger_power_state": self._hsem_ev_charger_power_state,
             "house_power_includes_ev_charger_power": self._hsem_house_power_includes_ev_charger_power,
-            "morning_energy_need": self._hsem_morning_energy_need,
             "solcast_pv_forecast_forecast_today_entity": self._hsem_solcast_pv_forecast_forecast_today,
             "house_consumption_energy_weight_1d": self._hsem_house_consumption_energy_weight_1d,
             "house_consumption_energy_weight_3d": self._hsem_house_consumption_energy_weight_3d,
@@ -647,7 +647,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                         )
 
         # Set the inverter power control mode
-        if self._hsem_energi_data_service_export_state is not None:
+        if self._hsem_energi_data_service_export_state is not None and self._read_only is False:
             await self.async_set_inverter_power_control()
 
         # calculate the last time working mode was changed
@@ -839,15 +839,18 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 _LOGGER.warning(
                     f"New TOU Modes Hash: {new_tou_modes_hash}, Current TOU Modes Hash: {current_tou_modes_hash}"
                 )
-                await async_set_tou_periods(
-                    self, self._hsem_huawei_solar_device_id_batteries, tou_modes
-                )
+
+                if self._read_only is False:
+                    await async_set_tou_periods(
+                        self, self._hsem_huawei_solar_device_id_batteries, tou_modes
+                    )
 
         # Only apply working mode if it has changed
         if self._hsem_huawei_solar_batteries_working_mode_state != working_mode:
-            await async_set_select_option(
-                self, self._hsem_huawei_solar_batteries_working_mode, working_mode
-            )
+            if self._read_only is False:
+                await async_set_select_option(
+                    self, self._hsem_huawei_solar_batteries_working_mode, working_mode
+                )
 
         self._state = state
 

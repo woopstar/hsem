@@ -34,6 +34,9 @@ def generate_hash(input_sensor):
 
 def get_config_value(config_entry, key, default_value=None):
     """Get the configuration value from options or fall back to the initial data."""
+    if config_entry is None:
+        return default_value
+
     return config_entry.options.get(key, config_entry.data.get(key, default_value))
 
 
