@@ -90,12 +90,26 @@ def get_weighted_values_step_schema(config_entry):
 def validate_weighted_values_input(user_input):
     """Validate user input for the 'weighted_values' step."""
     errors = {}
+
+    required_fields = [
+        "hsem_house_consumption_energy_weight_1d",
+        "hsem_house_consumption_energy_weight_3d",
+        "hsem_house_consumption_energy_weight_7d",
+        "hsem_house_consumption_energy_weight_14d",
+    ]
+
+    for field in required_fields:
+        if not user_input.get(field):
+            errors[field] = "required"
+
     total_weight = (
         int(user_input.get("hsem_house_consumption_energy_weight_1d", 0))
         + int(user_input.get("hsem_house_consumption_energy_weight_3d", 0))
         + int(user_input.get("hsem_house_consumption_energy_weight_7d", 0))
         + int(user_input.get("hsem_house_consumption_energy_weight_14d", 0))
     )
+
     if total_weight != 100:
         errors["base"] = "hsem_house_consumption_energy_weight_total"
+
     return errors

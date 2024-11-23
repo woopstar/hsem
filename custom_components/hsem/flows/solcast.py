@@ -32,8 +32,14 @@ def get_solcast_step_schema(config_entry):
 def validate_solcast_step_input(user_input):
     """Validate user input for the 'solcast' step."""
     errors = {}
-    if not user_input.get("hsem_solcast_pv_forecast_forecast_today"):
-        errors["hsem_solcast_pv_forecast_forecast_today"] = "required"
-    if not user_input.get("hsem_solcast_pv_forecast_forecast_tomorrow"):
-        errors["hsem_solcast_pv_forecast_forecast_tomorrow"] = "required"
+
+    required_fields = [
+        "hsem_solcast_pv_forecast_forecast_today",
+        "hsem_solcast_pv_forecast_forecast_tomorrow",
+    ]
+
+    for field in required_fields:
+        if not user_input.get(field):
+            errors[field] = "required"
+
     return errors

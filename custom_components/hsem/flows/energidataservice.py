@@ -30,8 +30,14 @@ def get_energidataservice_step_schema(config_entry):
 
 def validate_energidataservice_input(user_input):
     errors = {}
-    if not user_input.get("hsem_energi_data_service_import"):
-        errors["hsem_energi_data_service_import"] = "required"
-    if not user_input.get("hsem_energi_data_service_export"):
-        errors["hsem_energi_data_service_export"] = "required"
+
+    required_fields = [
+        "hsem_energi_data_service_import",
+        "hsem_energi_data_service_export",
+    ]
+
+    for field in required_fields:
+        if not user_input.get(field):
+            errors[field] = "required"
+
     return errors

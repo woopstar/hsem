@@ -24,7 +24,7 @@ def get_ev_step_schema(config_entry):
                     config_entry, "hsem_ev_charger_power", ""
                 ),
             ): selector({"entity": {"domain": "sensor"}}),
-            vol.Optional(
+            vol.Required(
                 "hsem_house_power_includes_ev_charger_power",
                 default=get_config_value(
                     config_entry,
@@ -38,4 +38,13 @@ def get_ev_step_schema(config_entry):
 def validate_ev_step_input(user_input):
     """Validate user input for the 'misc' step."""
     errors = {}
+
+    required_fields = [
+        "hsem_house_power_includes_ev_charger_power",
+    ]
+
+    for field in required_fields:
+        if not user_input.get(field):
+            errors[field] = "required"
+
     return errors

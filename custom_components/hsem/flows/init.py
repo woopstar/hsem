@@ -25,6 +25,14 @@ def get_init_step_schema(config_entry):
 def validate_init_step_input(user_input):
     """Validate user input for the 'init' step."""
     errors = {}
-    if not user_input.get("device_name"):
-        errors["device_name"] = "required"
+
+    required_fields = [
+        "device_name",
+        "hsem_read_only",
+    ]
+
+    for field in required_fields:
+        if not user_input.get(field):
+            errors[field] = "required"
+
     return errors

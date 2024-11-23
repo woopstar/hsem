@@ -124,6 +124,7 @@ def get_huawei_solar_step_schema(config_entry):
 def validate_huawei_solar_input(user_input):
     """Validate user input for the 'huawei_solar' step."""
     errors = {}
+
     required_fields = [
         "hsem_huawei_solar_device_id_inverter_1",
         "hsem_huawei_solar_device_id_batteries",
@@ -136,7 +137,9 @@ def validate_huawei_solar_input(user_input):
         "hsem_battery_max_capacity",
         "hsem_battery_conversion_loss",
     ]
+
     for field in required_fields:
         if not user_input.get(field):
             errors[field] = "required"
+
     return errors

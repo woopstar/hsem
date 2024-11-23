@@ -70,6 +70,19 @@ def validate_charge_hours_input(user_input):
     """Validate user input for the 'charge_hours' step."""
     errors = {}
 
+    required_fields = [
+        "hsem_batteries_enable_charge_hours_day",
+        "hsem_batteries_enable_charge_hours_day_start",
+        "hsem_batteries_enable_charge_hours_day_end",
+        "hsem_batteries_enable_charge_hours_night",
+        "hsem_batteries_enable_charge_hours_night_start",
+        "hsem_batteries_enable_charge_hours_night_end",
+    ]
+
+    for field in required_fields:
+        if not user_input.get(field):
+            errors[field] = "required"
+
     try:
         # Validate day charge hours
         if user_input.get("hsem_batteries_enable_charge_hours_day"):

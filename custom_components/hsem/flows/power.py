@@ -32,8 +32,14 @@ def get_power_step_schema(config_entry):
 def validate_power_step_input(user_input):
     """Validate user input for the 'power' step."""
     errors = {}
-    if not user_input.get("hsem_house_consumption_power"):
-        errors["hsem_house_consumption_power"] = "required"
-    if not user_input.get("hsem_solar_production_power"):
-        errors["hsem_solar_production_power"] = "required"
+
+    required_fields = [
+        "hsem_house_consumption_power",
+        "hsem_solar_production_power",
+    ]
+
+    for field in required_fields:
+        if not user_input.get(field):
+            errors[field] = "required"
+
     return errors
