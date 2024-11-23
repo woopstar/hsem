@@ -1262,3 +1262,10 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
         # Schedule a periodic update every minute
         async_track_time_interval(self.hass, self._handle_update, timedelta(minutes=1))
+
+        # Initial update
+        await self._handle_update(None)
+
+    async def async_will_remove_from_hass(self):
+        """Entity being removed from hass."""
+        await super().async_will_remove_from_hass()

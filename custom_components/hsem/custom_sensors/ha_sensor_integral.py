@@ -22,10 +22,22 @@ _LOGGER = logging.getLogger(__name__)
 class HSEMIntegrationSensor(IntegrationSensor, HSEMEntity):
     """Custom Integration Sensor with device_info."""
 
-    def __init__(self, *args, config_entry=None, **kwargs):
+    def __init__(self, *args, id=None, config_entry=None, **kwargs):
         IntegrationSensor.__init__(self, *args, **kwargs)
         HSEMEntity.__init__(self, config_entry)
+        self._unique_id = id
 
+    @property
+    def unique_id(self):
+        return self._unique_id
+
+    async def async_added_to_hass(self):
+        """Handle the sensor being added to Home Assistant."""
+        await super().async_added_to_hass()
+
+    async def async_will_remove_from_hass(self):
+        """Entity being removed from hass."""
+        await super().async_will_remove_from_hass()
 
 async def add_integral_sensor(self):
     """Add an integral sensor dynamically to convert power to energy."""
@@ -73,12 +85,9 @@ async def add_integral_sensor(self):
             unit_time=UnitOfTime.HOURS,
             max_sub_interval=timedelta(minutes=1),
             device_info=None,
+            id=integral_sensor_unique_id,
             config_entry=self._config_entry,
         )
 
         # Add the integral sensor to Home Assistant
-        async_add_entities = self.hass.data[DOMAIN].get(self._config_entry.entry_id)
-        if async_add_entities:
-            async_add_entities([integral_sensor])
-        else:
-            _LOGGER.error(f"Could not add integral sensor for {source_entity}")
+        self._async_add_entities([integral_sensor])

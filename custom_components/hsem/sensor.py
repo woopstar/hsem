@@ -5,12 +5,13 @@ from custom_components.hsem.custom_sensors.house_consumption_power_sensor import
     HouseConsumptionPowerSensor,
 )
 from custom_components.hsem.custom_sensors.working_mode_sensor import WorkingModeSensor
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from custom_components.hsem.utils.misc import get_config_value
 
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_entry(hass, config_entry, async_add_entities):
+async def async_setup_entry(hass, config_entry, async_add_entities: AddEntitiesCallback) -> None:
     """
     Set up HSEM sensors from a config entry.
 
@@ -31,24 +32,25 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     # Setup working mode sensor
     working_mode_sensor = WorkingModeSensor(config_entry)
 
+    async_add_entities([working_mode_sensor])
+
     # Add power, energy and energy average sensors
     power_sensors = []
     for hour in range(24):
         hour_start = hour
         hour_end = (hour + 1) % 24
-        sensor = HouseConsumptionPowerSensor(config_entry, hour_start, hour_end)
+        sensor = HouseConsumptionPowerSensor(config_entry, hour_start, hour_end, async_add_entities)
         power_sensors.append(sensor)
 
     # Add sensors to Home Assistant
-    async_add_entities([working_mode_sensor] + power_sensors)
+    async_add_entities(power_sensors)
 
     # Store reference to the platform to handle unloads later
-    if DOMAIN not in hass.data:
-        hass.data[DOMAIN] = {}
-    hass.data[DOMAIN][config_entry.entry_id] = async_add_entities
+    #if DOMAIN not in hass.data:
+    #    hass.data[DOMAIN] = {}
+    #hass.data[DOMAIN][config_entry.entry_id] = async_add_entities
 
-
-async def async_unload_entry(hass, entry):
+#async def async_unload_entry(hass, entry):
     """
     Handle unloading of an entry.
 
@@ -62,7 +64,7 @@ async def async_unload_entry(hass, entry):
     Returns:
         bool: True if the entry was successfully removed, False otherwise.
     """
-    platform = hass.data[DOMAIN].get(entry.entry_id)
-    if platform:
-        return await platform.async_remove_entry(entry)
-    return False
+#    platform = hass.data[DOMAIN].get(entry.entry_id)
+#    if platform:
+#        return await platform.async_remove_entry(entry)
+#    return False

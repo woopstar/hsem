@@ -61,7 +61,7 @@ class HouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
     _attr_icon = "mdi:flash"
     _attr_has_entity_name = True
 
-    def __init__(self, config_entry, hour_start, hour_end):
+    def __init__(self, config_entry, hour_start, hour_end, async_add_entities):
         super().__init__(config_entry)
         self._hsem_house_consumption_power = None
         self._hsem_house_consumption_power_state = 0.0
@@ -81,6 +81,7 @@ class HouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
         self._last_updated = None
         self._has_been_removed = []
         self._tracked_entities = set()
+        self._async_add_entities = async_add_entities
         self._update_settings()
 
     @property
@@ -116,12 +117,17 @@ class HouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
 
     async def async_update(self, event=None):
         """Manually trigger the sensor update."""
-        await self._handle_update(event=None)
+        await self._handle_update(None)
+
+    async def async_will_remove_from_hass(self):
+        """Entity being removed from hass."""
+        await super().async_will_remove_from_hass()
 
     async def async_added_to_hass(self):
         """Handle when sensor is added to Home Assistant."""
         await super().async_added_to_hass()
 
+        # Get the last state of the sensor
         old_state = await self.async_get_last_state()
         if old_state is not None:
             self._state = old_state.state
@@ -131,6 +137,9 @@ class HouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
 
         # Schedule a periodic update every minute
         # async_track_time_interval(self.hass, self._handle_update, timedelta(minutes=1))
+
+        # Initial update
+        await self._handle_update(None)
 
     def _update_settings(self):
         """Fetch updated settings from config_entry options."""
