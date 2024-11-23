@@ -215,9 +215,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
     def _update_settings(self):
         """Fetch updated settings from config_entry options."""
-        self._read_only = get_config_value(
-            self._config_entry, "hsem_read_only"
-        )
+        self._read_only = get_config_value(self._config_entry, "hsem_read_only")
 
         self._hsem_huawei_solar_device_id_inverter_1 = get_config_value(
             self._config_entry, "hsem_huawei_solar_device_id_inverter_1"
@@ -647,7 +645,10 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                         )
 
         # Set the inverter power control mode
-        if self._hsem_energi_data_service_export_state is not None and self._read_only is False:
+        if (
+            self._hsem_energi_data_service_export_state is not None
+            and self._read_only is False
+        ):
             await self.async_set_inverter_power_control()
 
         # calculate the last time working mode was changed
@@ -1264,7 +1265,9 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         await super().async_added_to_hass()
 
         # Schedule a periodic update every minute
-        async_track_time_interval(self.hass, self._async_handle_update, timedelta(minutes=1))
+        async_track_time_interval(
+            self.hass, self._async_handle_update, timedelta(minutes=1)
+        )
 
         # Initial update
         await self._async_handle_update(None)

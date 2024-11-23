@@ -1,16 +1,18 @@
 import voluptuous as vol
 from homeassistant.helpers.selector import selector
+
 from custom_components.hsem.const import (
-    DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_WORKING_MODE,
-    DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_STATE_OF_CAPACITY,
-    DEFAULT_HSEM_HUAWEI_SOLAR_INVERTER_ACTIVE_POWER_CONTROL,
-    DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_MAXIMUM_CHARGING_POWER,
-    DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_GRID_CHARGE_CUTOFF_SOC,
-    DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_TOU_CHARGING_AND_DISCHARGING_PERIODS,
-    DEFAULT_HSEM_BATTERY_MAX_CAPACITY,
     DEFAULT_HSEM_BATTERY_CONVERSION_LOSS,
+    DEFAULT_HSEM_BATTERY_MAX_CAPACITY,
+    DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_GRID_CHARGE_CUTOFF_SOC,
+    DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_MAXIMUM_CHARGING_POWER,
+    DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_STATE_OF_CAPACITY,
+    DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_TOU_CHARGING_AND_DISCHARGING_PERIODS,
+    DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_WORKING_MODE,
+    DEFAULT_HSEM_HUAWEI_SOLAR_INVERTER_ACTIVE_POWER_CONTROL,
 )
 from custom_components.hsem.utils.misc import get_config_value
+
 
 def get_huawei_solar_step_schema(config_entry):
     """Return the data schema for the 'huawei_solar' step."""
@@ -120,6 +122,7 @@ def get_huawei_solar_step_schema(config_entry):
             ),
         }
     )
+
 
 def validate_huawei_solar_input(user_input):
     """Validate user input for the 'huawei_solar' step."""

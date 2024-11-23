@@ -1,5 +1,7 @@
 from homeassistant.components.integration.sensor import IntegrationSensor
+
 from custom_components.hsem.entity import HSEMEntity
+
 
 class HSEMIntegrationSensor(IntegrationSensor, HSEMEntity):
     """Custom Integration Sensor with device_info."""

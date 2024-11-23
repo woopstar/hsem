@@ -1,10 +1,12 @@
 import voluptuous as vol
 from homeassistant.helpers.selector import selector
+
 from custom_components.hsem.const import (
     DEFAULT_HSEM_HOUSE_CONSUMPTION_POWER,
     DEFAULT_HSEM_SOLAR_PRODUCTION_POWER,
 )
 from custom_components.hsem.utils.misc import get_config_value
+
 
 def get_power_step_schema(config_entry):
     """Return the data schema for the 'power' step."""
@@ -28,6 +30,7 @@ def get_power_step_schema(config_entry):
             ): selector({"entity": {"domain": "sensor"}}),
         }
     )
+
 
 def validate_power_step_input(user_input):
     """Validate user input for the 'power' step."""

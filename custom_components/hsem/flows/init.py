@@ -1,7 +1,9 @@
 import voluptuous as vol
-from custom_components.hsem.const import NAME, DEFAULT_HSEM_READ_ONLY
-from custom_components.hsem.utils.misc import get_config_value
 from homeassistant.helpers.selector import selector
+
+from custom_components.hsem.const import DEFAULT_HSEM_READ_ONLY, NAME
+from custom_components.hsem.utils.misc import get_config_value
+
 
 def get_init_step_schema(config_entry):
     """Return the data schema for the 'init' step."""
@@ -21,6 +23,7 @@ def get_init_step_schema(config_entry):
             ): selector({"boolean": {}}),
         }
     )
+
 
 def validate_init_step_input(user_input):
     """Validate user input for the 'init' step."""

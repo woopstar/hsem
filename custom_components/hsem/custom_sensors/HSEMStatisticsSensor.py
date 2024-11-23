@@ -1,5 +1,7 @@
 from homeassistant.components.statistics.sensor import StatisticsSensor
+
 from custom_components.hsem.entity import HSEMEntity
+
 
 class HSEMStatisticsSensor(StatisticsSensor, HSEMEntity):
     """Custom Statistics Sensor with device_info."""

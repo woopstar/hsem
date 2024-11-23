@@ -1,10 +1,20 @@
-from custom_components.hsem.custom_sensors.HSEMHouseConsumptionPowerSensor import HSEMHouseConsumptionPowerSensor
-from custom_components.hsem.custom_sensors.HSEMWorkingModeSensor import HSEMWorkingModeSensor
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
+from custom_components.hsem.custom_sensors.HSEMHouseConsumptionPowerSensor import (
+    HSEMHouseConsumptionPowerSensor,
+)
+from custom_components.hsem.custom_sensors.HSEMWorkingModeSensor import (
+    HSEMWorkingModeSensor,
+)
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
     """
     Set up HSEM sensors from a config entry.
 
@@ -32,7 +42,9 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry, asyn
     for hour in range(24):
         hour_start = hour
         hour_end = (hour + 1) % 24
-        sensor = HSEMHouseConsumptionPowerSensor(config_entry, hour_start, hour_end, async_add_entities)
+        sensor = HSEMHouseConsumptionPowerSensor(
+            config_entry, hour_start, hour_end, async_add_entities
+        )
         power_sensors.append(sensor)
 
     # Add sensors to Home Assistant

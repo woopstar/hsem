@@ -26,38 +26,41 @@ Functions:
 import logging
 from datetime import datetime, timedelta
 
-from homeassistant.const import UnitOfTime
 from homeassistant.components.sensor import SensorEntity
-from homeassistant.helpers.event import (
-    async_track_state_change_event,
-)
-
-from custom_components.hsem.custom_sensors.HSEMIntegrationSensor import HSEMIntegrationSensor
-from custom_components.hsem.custom_sensors.HSEMStatisticsSensor import HSEMStatisticsSensor
-from custom_components.hsem.custom_sensors.HSEMUtilityMeterSensor import HSEMUtilityMeterSensor
-from custom_components.hsem.entity import HSEMEntity
-from custom_components.hsem.utils.misc import (
-    get_config_value,
-    ha_get_entity_state_and_convert,
-    async_resolve_entity_id_from_unique_id,
-    async_remove_entity_from_ha,
-)
-from custom_components.hsem.utils.sensornames import (
-    get_house_consumption_power_sensor_name,
-    get_house_consumption_power_sensor_unique_id,
-    get_integral_sensor_name,
-    get_integral_sensor_unique_id,
-    get_energy_average_sensor_name,
-    get_energy_average_sensor_unique_id,
-    get_utility_meter_sensor_unique_id,
-    get_utility_meter_sensor_name,
-)
-from homeassistant.const import UnitOfPower
+from homeassistant.components.sensor.const import SensorDeviceClass
 from homeassistant.components.utility_meter.const import (
     DATA_TARIFF_SENSORS,
     DATA_UTILITY,
 )
-from homeassistant.components.sensor.const import SensorDeviceClass
+from homeassistant.const import UnitOfPower, UnitOfTime
+from homeassistant.helpers.event import async_track_state_change_event
+
+from custom_components.hsem.custom_sensors.HSEMIntegrationSensor import (
+    HSEMIntegrationSensor,
+)
+from custom_components.hsem.custom_sensors.HSEMStatisticsSensor import (
+    HSEMStatisticsSensor,
+)
+from custom_components.hsem.custom_sensors.HSEMUtilityMeterSensor import (
+    HSEMUtilityMeterSensor,
+)
+from custom_components.hsem.entity import HSEMEntity
+from custom_components.hsem.utils.misc import (
+    async_remove_entity_from_ha,
+    async_resolve_entity_id_from_unique_id,
+    get_config_value,
+    ha_get_entity_state_and_convert,
+)
+from custom_components.hsem.utils.sensornames import (
+    get_energy_average_sensor_name,
+    get_energy_average_sensor_unique_id,
+    get_house_consumption_power_sensor_name,
+    get_house_consumption_power_sensor_unique_id,
+    get_integral_sensor_name,
+    get_integral_sensor_unique_id,
+    get_utility_meter_sensor_name,
+    get_utility_meter_sensor_unique_id,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -220,7 +223,9 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
                     f"Starting to track state changes for {self._hsem_house_consumption_power}"
                 )
                 async_track_state_change_event(
-                    self.hass, [self._hsem_house_consumption_power], self._async_handle_update
+                    self.hass,
+                    [self._hsem_house_consumption_power],
+                    self._async_handle_update,
                 )
                 self._tracked_entities.add(self._hsem_house_consumption_power)
 
@@ -251,7 +256,9 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
         """Add an integral sensor dynamically to convert power to energy."""
 
         # Create the name and unique id for the integral sensor
-        integral_sensor_name = get_integral_sensor_name(self._hour_start, self._hour_end)
+        integral_sensor_name = get_integral_sensor_name(
+            self._hour_start, self._hour_end
+        )
         integral_sensor_unique_id = get_integral_sensor_unique_id(
             self._hour_start, self._hour_end
         )
@@ -359,7 +366,9 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
         """Add a utility meter sensor dynamically."""
 
         # Create the name and unique id for the avg sensor
-        utility_meter_name = get_utility_meter_sensor_name(self._hour_start, self._hour_end)
+        utility_meter_name = get_utility_meter_sensor_name(
+            self._hour_start, self._hour_end
+        )
         utility_meter_unique_id = get_utility_meter_sensor_unique_id(
             self._hour_start, self._hour_end
         )

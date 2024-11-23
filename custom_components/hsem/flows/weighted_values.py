@@ -1,5 +1,6 @@
 import voluptuous as vol
 from homeassistant.helpers.selector import selector
+
 from custom_components.hsem.const import (
     DEFAULT_HOUSE_CONSUMPTION_ENERGY_WEIGHT_1D,
     DEFAULT_HOUSE_CONSUMPTION_ENERGY_WEIGHT_3D,
@@ -7,6 +8,7 @@ from custom_components.hsem.const import (
     DEFAULT_HOUSE_CONSUMPTION_ENERGY_WEIGHT_14D,
 )
 from custom_components.hsem.utils.misc import get_config_value
+
 
 def get_weighted_values_step_schema(config_entry):
     """Return the data schema for the 'weighted_values' step."""
@@ -86,6 +88,7 @@ def get_weighted_values_step_schema(config_entry):
             ),
         }
     )
+
 
 def validate_weighted_values_input(user_input):
     """Validate user input for the 'weighted_values' step."""

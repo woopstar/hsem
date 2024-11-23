@@ -1,7 +1,9 @@
-from homeassistant.components.utility_meter.sensor import UtilityMeterSensor
 from homeassistant.components.sensor.const import SensorDeviceClass
+from homeassistant.components.utility_meter.sensor import UtilityMeterSensor
 from homeassistant.const import UnitOfEnergy
+
 from custom_components.hsem.entity import HSEMEntity
+
 
 class HSEMUtilityMeterSensor(UtilityMeterSensor, HSEMEntity):
     """Custom Utility Meter Sensor with device_info."""

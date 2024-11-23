@@ -1,10 +1,12 @@
 import voluptuous as vol
 from homeassistant.helpers.selector import selector
+
 from custom_components.hsem.const import (
     DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TODAY,
     DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TOMORROW,
 )
 from custom_components.hsem.utils.misc import get_config_value
+
 
 def get_solcast_step_schema(config_entry):
     """Return the data schema for the 'solcast' step."""
@@ -28,6 +30,7 @@ def get_solcast_step_schema(config_entry):
             ): selector({"entity": {"domain": "sensor"}}),
         }
     )
+
 
 def validate_solcast_step_input(user_input):
     """Validate user input for the 'solcast' step."""

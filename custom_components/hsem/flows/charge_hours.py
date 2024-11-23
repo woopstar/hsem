@@ -1,15 +1,18 @@
 from datetime import datetime
+
 import voluptuous as vol
 from homeassistant.helpers.selector import selector
+
 from custom_components.hsem.const import (
     DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_DAY,
-    DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_DAY_START,
     DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_DAY_END,
+    DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_DAY_START,
     DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_NIGHT,
-    DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_NIGHT_START,
     DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_NIGHT_END,
+    DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_NIGHT_START,
 )
 from custom_components.hsem.utils.misc import get_config_value
+
 
 def get_charge_hours_step_schema(config_entry):
     """Return the data schema for the 'charge_hours' step."""
@@ -66,6 +69,7 @@ def get_charge_hours_step_schema(config_entry):
         }
     )
 
+
 def validate_charge_hours_input(user_input):
     """Validate user input for the 'charge_hours' step."""
     errors = {}
@@ -98,7 +102,9 @@ def validate_charge_hours_input(user_input):
 
         # Validate night charge hours
         if user_input.get("hsem_batteries_enable_charge_hours_night"):
-            night_start = user_input.get("hsem_batteries_enable_charge_hours_night_start")
+            night_start = user_input.get(
+                "hsem_batteries_enable_charge_hours_night_start"
+            )
             night_end = user_input.get("hsem_batteries_enable_charge_hours_night_end")
 
             # Ensure values are valid times and start < end
