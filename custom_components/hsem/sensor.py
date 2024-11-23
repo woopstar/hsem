@@ -1,8 +1,10 @@
 from custom_components.hsem.custom_sensors.HSEMHouseConsumptionPowerSensor import HSEMHouseConsumptionPowerSensor
 from custom_components.hsem.custom_sensors.HSEMWorkingModeSensor import HSEMWorkingModeSensor
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.core import HomeAssistant
+from homeassistant.config_entries import ConfigEntry
 
-async def async_setup_entry(hass, config_entry, async_add_entities: AddEntitiesCallback) -> None:
+async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     """
     Set up HSEM sensors from a config entry.
 
@@ -14,7 +16,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities: AddEntitiesC
     Args:
         hass (HomeAssistant): The Home Assistant instance.
         config_entry (ConfigEntry): The configuration entry containing setup information.
-        async_add_entities (Callable): The function to add entities to Home Assistant.
+        async_add_entities (AddEntitiesCallback): The function to add entities to Home Assistant.
 
     Returns:
         None
