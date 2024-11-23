@@ -1,5 +1,3 @@
-import logging
-
 """
 This module defines the configuration flow for the HSEM integration in Home Assistant.
 

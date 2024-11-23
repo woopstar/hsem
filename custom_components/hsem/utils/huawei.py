@@ -25,7 +25,6 @@ Usage:
 import logging
 
 import voluptuous as vol
-from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 
 _LOGGER = logging.getLogger(__name__)

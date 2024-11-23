@@ -74,7 +74,7 @@ Methods:
     unique_id(self): Returns the unique ID of the sensor.
     state(self): Returns the current state of the sensor.
     extra_state_attributes(self): Returns the state attributes of the sensor.
-    _handle_update(self, event): Handles the sensor state update (for both manual and state change).
+    _async_handle_update(self, event): Handles the sensor state update (for both manual and state change).
     async_set_inverter_power_control(self): Sets the inverter power control mode.
     async_set_working_mode(self): Sets the working mode for the system.
     async_calculate_hourly_data(self): Calculates the weighted hourly data for the sensor.
@@ -126,7 +126,7 @@ from custom_components.hsem.utils.workingmodes import WorkingModes
 _LOGGER = logging.getLogger(__name__)
 
 
-class WorkingModeSensor(SensorEntity, HSEMEntity):
+class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
     # Define the attributes of the entity
     _attr_icon = "mdi:chart-timeline-variant"
     _attr_has_entity_name = True
@@ -403,7 +403,7 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
             "hourly_calculations": self._hourly_calculations,
         }
 
-    async def _handle_update(self, event):
+    async def _async_handle_update(self, event):
         """Handle the sensor state update (for both manual and state change)."""
 
         # Get the current time
@@ -1254,17 +1254,17 @@ class WorkingModeSensor(SensorEntity, HSEMEntity):
 
     async def async_update(self):
         """Manually trigger the sensor update."""
-        await self._handle_update(event=None)
+        await self._async_handle_update(event=None)
 
     async def async_added_to_hass(self):
         """Handle the sensor being added to Home Assistant."""
         await super().async_added_to_hass()
 
         # Schedule a periodic update every minute
-        async_track_time_interval(self.hass, self._handle_update, timedelta(minutes=1))
+        async_track_time_interval(self.hass, self._async_handle_update, timedelta(minutes=1))
 
         # Initial update
-        await self._handle_update(None)
+        await self._async_handle_update(None)
 
     async def async_will_remove_from_hass(self):
         """Entity being removed from hass."""
