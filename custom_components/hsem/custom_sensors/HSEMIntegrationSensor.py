@@ -4,6 +4,8 @@ from custom_components.hsem.entity import HSEMEntity
 class HSEMIntegrationSensor(IntegrationSensor, HSEMEntity):
     """Custom Integration Sensor with device_info."""
 
+    _attr_icon = "mdi:chart-histogram"
+
     def __init__(self, *args, id=None, config_entry=None, **kwargs):
         IntegrationSensor.__init__(self, *args, **kwargs)
         HSEMEntity.__init__(self, config_entry)

@@ -4,6 +4,8 @@ from custom_components.hsem.entity import HSEMEntity
 class HSEMStatisticsSensor(StatisticsSensor, HSEMEntity):
     """Custom Statistics Sensor with device_info."""
 
+    _attr_icon = "mdi:calculator"
+
     def __init__(self, *args, id=None, config_entry=None, **kwargs):
         StatisticsSensor.__init__(self, *args, **kwargs)
         HSEMEntity.__init__(self, config_entry)
