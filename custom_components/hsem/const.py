@@ -41,9 +41,6 @@ DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TOMORROW = (
     "sensor.solcast_pv_forecast_forecast_tomorrow"
 )
 
-# Default battery maximum capacity in kWh
-DEFAULT_HSEM_BATTERY_MAX_CAPACITY = 10
-
 # Default TOU modes for EV charger when charging
 DEFAULT_HSEM_EV_CHARGER_TOU_MODES = ["00:00-00:01/1234567/+"]
 
@@ -93,6 +90,9 @@ DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_GRID_CHARGE_CUTOFF_SOC = (
 DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_TOU_CHARGING_AND_DISCHARGING_PERIODS = (
     "sensor.batteries_tou_charging_and_discharging_periods"
 )
+
+# Default sensor entity ID for for batteries rated capacity
+DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_RATED_CAPACITY = "sensor.batteries_rated_capacity"
 
 # Default to enable charging the battery during day hours
 DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_DAY = True

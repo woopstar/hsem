@@ -3,9 +3,9 @@ from homeassistant.helpers.selector import selector
 
 from custom_components.hsem.const import (
     DEFAULT_HSEM_BATTERY_CONVERSION_LOSS,
-    DEFAULT_HSEM_BATTERY_MAX_CAPACITY,
     DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_GRID_CHARGE_CUTOFF_SOC,
     DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_MAXIMUM_CHARGING_POWER,
+    DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_RATED_CAPACITY,
     DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_STATE_OF_CAPACITY,
     DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_TOU_CHARGING_AND_DISCHARGING_PERIODS,
     DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_WORKING_MODE,
@@ -85,23 +85,13 @@ def get_huawei_solar_step_schema(config_entry):
                 ),
             ): selector({"entity": {"domain": "sensor"}}),
             vol.Required(
-                "hsem_battery_max_capacity",
+                "hsem_huawei_solar_batteries_rated_capacity",
                 default=get_config_value(
                     config_entry,
-                    "hsem_battery_max_capacity",
-                    DEFAULT_HSEM_BATTERY_MAX_CAPACITY,
+                    "hsem_huawei_solar_batteries_rated_capacity",
+                    DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_RATED_CAPACITY,
                 ),
-            ): selector(
-                {
-                    "number": {
-                        "min": 0,
-                        "max": 42,
-                        "step": 1,
-                        "unit_of_measurement": "kWh",
-                        "mode": "slider",
-                    }
-                }
-            ),
+            ): selector({"entity": {"domain": "sensor"}}),
             vol.Required(
                 "hsem_battery_conversion_loss",
                 default=get_config_value(
@@ -137,7 +127,7 @@ def validate_huawei_solar_input(user_input):
         "hsem_huawei_solar_batteries_maximum_charging_power",
         "hsem_huawei_solar_batteries_grid_charge_cutoff_soc",
         "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods",
-        "hsem_battery_max_capacity",
+        "hsem_huawei_solar_batteries_rated_capacity",
         "hsem_battery_conversion_loss",
     ]
 
