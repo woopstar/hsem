@@ -1,5 +1,6 @@
 from homeassistant.components.integration.sensor import IntegrationSensor
 from homeassistant.components.sensor.const import SensorDeviceClass, SensorStateClass
+
 from custom_components.hsem.entity import HSEMEntity
 
 

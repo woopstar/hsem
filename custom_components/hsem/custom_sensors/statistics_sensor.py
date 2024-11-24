@@ -1,6 +1,7 @@
+from homeassistant.components.sensor.const import SensorStateClass
 from homeassistant.components.statistics.sensor import StatisticsSensor
 from homeassistant.const import UnitOfEnergy
-from homeassistant.components.sensor.const import SensorStateClass
+
 from custom_components.hsem.entity import HSEMEntity
 
 
