@@ -3,7 +3,6 @@ from homeassistant.helpers.selector import selector
 
 from custom_components.hsem.const import (
     DEFAULT_HSEM_HOUSE_POWER_INCLUDES_EV_CHARGER_POWER,
-    DEFAULT_HSEM_MORNING_ENERGY_NEED,
 )
 from custom_components.hsem.utils.misc import get_config_value
 

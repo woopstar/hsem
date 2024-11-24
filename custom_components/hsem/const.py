@@ -41,9 +41,6 @@ DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TOMORROW = (
     "sensor.solcast_pv_forecast_forecast_tomorrow"
 )
 
-# Default morning energy need in kWh
-DEFAULT_HSEM_MORNING_ENERGY_NEED = 1.5
-
 # Default battery maximum capacity in kWh
 DEFAULT_HSEM_BATTERY_MAX_CAPACITY = 10
 
