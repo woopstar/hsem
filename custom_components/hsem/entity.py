@@ -45,7 +45,7 @@ class HSEMEntity(RestoreEntity):
     def device_info(self):
         """Return the device information"""
         if not self.config_entry:
-            _LOGGER.warning("Config entry is missing for this entity.")
+            _LOGGER.debug("Config entry is missing for this entity.")
             return None
 
         return {

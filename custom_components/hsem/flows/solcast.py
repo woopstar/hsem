@@ -42,7 +42,7 @@ def validate_solcast_step_input(user_input):
     ]
 
     for field in required_fields:
-        if not user_input.get(field):
+        if field not in user_input:
             errors[field] = "required"
 
     return errors

@@ -191,7 +191,7 @@ async def async_remove_entity_from_ha(self, entity_unique_id):
 
     # Remove the entity if it exists in the registry
     if existing_entry:
-        _LOGGER.warning(
+        _LOGGER.debug(
             f"Removing existing entity with unique ID '{entity_unique_id}' before re-adding."
         )
         registry.async_remove(existing_entry)

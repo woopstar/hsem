@@ -1,17 +1,26 @@
-from homeassistant.components.integration.sensor import IntegrationSensor
-
+from homeassistant.components.statistics.sensor import StatisticsSensor
+from homeassistant.const import UnitOfEnergy
+from homeassistant.components.sensor.const import SensorStateClass
 from custom_components.hsem.entity import HSEMEntity
 
 
-class HSEMIntegrationSensor(IntegrationSensor, HSEMEntity):
-    """Custom Integration Sensor with device_info."""
+class HSEMStatisticsSensor(StatisticsSensor, HSEMEntity):
+    """Custom Statistics Sensor with device_info."""
 
-    _attr_icon = "mdi:chart-histogram"
+    _attr_icon = "mdi:calculator"
 
     def __init__(self, *args, id=None, config_entry=None, **kwargs):
-        IntegrationSensor.__init__(self, *args, **kwargs)
+        StatisticsSensor.__init__(self, *args, **kwargs)
         HSEMEntity.__init__(self, config_entry)
         self._unique_id = id
+
+    @property
+    def unit_of_measurement(self):
+        return UnitOfEnergy.KILO_WATT_HOUR
+
+    @property
+    def device_class(self):
+        return SensorStateClass.MEASUREMENT
 
     @property
     def unique_id(self):

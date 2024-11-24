@@ -72,7 +72,8 @@
       },
       "user": {
         "data": {
-          "device_name": "Name"
+          "device_name": "Name",
+          "hsem_read_only": "Read Only"
         },
         "description": "Configure the settings for HSEM",
         "title": "Configure Huawei Solar Energy Management"
@@ -150,7 +151,8 @@
       },
       "init": {
         "data": {
-          "device_name": "Name"
+          "device_name": "Name",
+          "hsem_read_only": "Read Only"
         },
         "description": "Update the settings for HSEM",
         "title": "Update Huawei Solar Energy Management"

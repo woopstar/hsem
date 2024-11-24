@@ -2,10 +2,10 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from custom_components.hsem.custom_sensors.HSEMHouseConsumptionPowerSensor import (
+from custom_components.hsem.custom_sensors.house_consumption_power_sensor import (
     HSEMHouseConsumptionPowerSensor,
 )
-from custom_components.hsem.custom_sensors.HSEMWorkingModeSensor import (
+from custom_components.hsem.custom_sensors.working_mode_sensor import (
     HSEMWorkingModeSensor,
 )
 

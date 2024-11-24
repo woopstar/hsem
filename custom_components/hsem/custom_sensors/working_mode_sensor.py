@@ -139,7 +139,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self._state = None
 
         # Initialize all attributes to None or some default value
-        self._read_only = None
+        self._read_only = False
         self._hsem_huawei_solar_device_id_inverter_1 = None
         self._hsem_huawei_solar_device_id_inverter_2 = None
         self._hsem_huawei_solar_device_id_batteries = None
@@ -215,7 +215,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
     def _update_settings(self):
         """Fetch updated settings from config_entry options."""
-        self._read_only = get_config_value(self._config_entry, "hsem_read_only")
+        self._read_only = get_config_value(self._config_entry, "hsem_read_only", False)
 
         self._hsem_huawei_solar_device_id_inverter_1 = get_config_value(
             self._config_entry, "hsem_huawei_solar_device_id_inverter_1"
@@ -731,15 +731,12 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             and export_power_percentage != 0
         ):
             for inverter_id in inverters:
-                if inverter_id:
+                if inverter_id is not None:
                     await async_set_grid_export_power_pct(
                         self, inverter_id, export_power_percentage
                     )
 
     async def async_set_working_mode(self):
-
-        # if self._hsem_huawei_solar_batteries_working_mode_state is None:
-        #    return
 
         # Determine the current month and hour
         now = datetime.now()

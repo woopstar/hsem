@@ -1,31 +1,29 @@
-from homeassistant.components.sensor.const import SensorDeviceClass
-from homeassistant.components.utility_meter.sensor import UtilityMeterSensor
-from homeassistant.const import UnitOfEnergy
-
+from homeassistant.components.integration.sensor import IntegrationSensor
+from homeassistant.components.sensor.const import SensorDeviceClass, SensorStateClass
 from custom_components.hsem.entity import HSEMEntity
 
 
-class HSEMUtilityMeterSensor(UtilityMeterSensor, HSEMEntity):
-    """Custom Utility Meter Sensor with device_info."""
+class HSEMIntegrationSensor(IntegrationSensor, HSEMEntity):
+    """Custom Integration Sensor with device_info."""
 
-    _attr_icon = "mdi:counter"
+    _attr_icon = "mdi:chart-histogram"
 
     def __init__(self, *args, id=None, config_entry=None, **kwargs):
-        UtilityMeterSensor.__init__(self, *args, **kwargs)
+        IntegrationSensor.__init__(self, *args, **kwargs)
         HSEMEntity.__init__(self, config_entry)
         self._unique_id = id
 
     @property
-    def unique_id(self):
-        return self._unique_id
-
-    @property
-    def unit_of_measurement(self):
-        return UnitOfEnergy.KILO_WATT_HOUR
+    def state_class(self):
+        return SensorStateClass.TOTAL
 
     @property
     def device_class(self):
         return SensorDeviceClass.ENERGY
+
+    @property
+    def unique_id(self):
+        return self._unique_id
 
     async def async_added_to_hass(self):
         """Handle the sensor being added to Home Assistant."""

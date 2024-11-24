@@ -35,13 +35,11 @@ from homeassistant.components.utility_meter.const import (
 from homeassistant.const import UnitOfPower, UnitOfTime
 from homeassistant.helpers.event import async_track_state_change_event
 
-from custom_components.hsem.custom_sensors.HSEMIntegrationSensor import (
+from custom_components.hsem.custom_sensors.integration_sensor import (
     HSEMIntegrationSensor,
 )
-from custom_components.hsem.custom_sensors.HSEMStatisticsSensor import (
-    HSEMStatisticsSensor,
-)
-from custom_components.hsem.custom_sensors.HSEMUtilityMeterSensor import (
+from custom_components.hsem.custom_sensors.statistics_sensor import HSEMStatisticsSensor
+from custom_components.hsem.custom_sensors.utility_meter_sensor import (
     HSEMUtilityMeterSensor,
 )
 from custom_components.hsem.entity import HSEMEntity
@@ -283,9 +281,9 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
             if integral_sensor_unique_id not in self._has_been_removed:
                 if await async_remove_entity_from_ha(self, integral_sensor_unique_id):
                     self._has_been_removed.append(integral_sensor_unique_id)
-                    _LOGGER.info(f"Successfully removed '{integral_sensor_name}'.")
+                    _LOGGER.debug(f"Successfully removed '{integral_sensor_name}'.")
         else:
-            _LOGGER.warning(
+            _LOGGER.debug(
                 f"Adding integral sensor {integral_sensor_name} for {source_entity}"
             )
 
@@ -335,13 +333,13 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
         if avg_energy_sensor_entity_id:
             if avg_energy_sensor_unique_id not in self._has_been_removed:
                 if await async_remove_entity_from_ha(self, avg_energy_sensor_unique_id):
-                    _LOGGER.info(
+                    _LOGGER.debug(
                         f"Successfully removed '{avg_energy_sensor_name}' before re-adding."
                     )
                     self._has_been_removed.append(avg_energy_sensor_unique_id)
         else:
             # If sensor does not exist, create it and add to Home Assistant
-            _LOGGER.warning(
+            _LOGGER.debug(
                 f"Creating new average energy sensor '{avg_energy_sensor_name}' for '{source_entity}'."
             )
 
@@ -400,12 +398,12 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
         if utility_meter_exists:
             if utility_meter_unique_id not in self._has_been_removed:
                 if await async_remove_entity_from_ha(self, utility_meter_unique_id):
-                    _LOGGER.info(
+                    _LOGGER.debug(
                         f"Successfully removed '{utility_meter_name}' before re-adding."
                     )
                     self._has_been_removed.append(utility_meter_unique_id)
         else:
-            _LOGGER.warning(
+            _LOGGER.debug(
                 f"Adding utility meter sensor {utility_meter_name} for {source_entity}"
             )
 
