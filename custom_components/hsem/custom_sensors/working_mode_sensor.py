@@ -410,6 +410,157 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         # Ensure config flow settings are reloaded if it changed.
         self._update_settings()
 
+        # Fetch the latest entity states
+        await self._async_fetch_entity_states()
+
+        # Calculate the net consumption
+        await self._async_calculate_net_consumption()
+
+        # Calculate remaining battery capacity and max allowed charge from grid if all necessary values are available
+        if (
+            isinstance(self._hsem_battery_max_capacity, (int, float))
+            and isinstance(
+                self._hsem_huawei_solar_batteries_state_of_capacity_state, (int, float)
+            )
+            and isinstance(
+                self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state,
+                (int, float),
+            )
+        ):
+            # Calculate the remaining charge needed to reach full capacity (kWh)
+            self._hsem_battery_remaining_charge = round(
+                (100 - self._hsem_huawei_solar_batteries_state_of_capacity_state)
+                / 100
+                * self._hsem_battery_max_capacity,
+                2,
+            )
+
+            # Calculate the maximum charge allowed from the grid based on cutoff SOC (kWh)
+            max_allowed_grid_charge = (
+                self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state
+                * self._hsem_battery_max_capacity
+                / 100
+            )
+
+            # Adjust remaining charge if it exceeds the max grid-allowed charge
+            if self._hsem_battery_remaining_charge > max_allowed_grid_charge:
+                self._hsem_battery_remaining_charge = max_allowed_grid_charge
+        else:
+            self._hsem_battery_remaining_charge = None
+
+        # reset the recommendations
+        await self._async_reset_recommendations()
+
+        # calculate the hourly data from power sensors
+        await self._async_calculate_hourly_data()
+
+        # calculate the solcast forecast for today
+        await self._async_calculate_solcast_forecast()
+
+        # calculate the hourly net consumption between house consumption and solar production
+        await self._async_calculate_hourly_net_consumption()
+
+        # calculate the hourly import price
+        await self._async_calculate_hourly_import_price()
+
+        # calculate the hourly export price
+        await self._async_calculate_hourly_export_price()
+
+        # calculate the optimization strategy
+        await self._async_optimization_strategy()
+
+        # calculate the energy needs
+        await self._async_calculate_energy_needs()
+
+        # Force charge the batteries when needed
+        await self._async_force_charge_batteries()
+
+        # Set the inverter power control mode
+        if (
+            self._hsem_energi_data_service_export_state is not None
+            and self._read_only is not True
+        ):
+            await self._async_set_inverter_power_control()
+
+        # calculate the last time working mode was changed
+        if self._last_changed_mode is not None:
+            last_changed_mode_seconds = (
+                now - datetime.fromisoformat(self._last_changed_mode)
+            ).total_seconds()
+        else:
+            last_changed_mode_seconds = 0
+
+        # Set the working mode
+        if last_changed_mode_seconds > 100 or self._last_changed_mode is None:
+            await self._async_set_working_mode()
+            self._last_changed_mode = datetime.now().isoformat()
+
+        # Update last update time
+        self._last_updated = datetime.now().isoformat()
+
+        # Trigger an update in Home Assistant
+        self.async_write_ha_state()
+
+    async def _async_force_charge_batteries(self):
+        # Get the current time
+        now = datetime.now()
+
+        # Charge the battery when it's winter/spring and prices are high
+        if now.month in DEFAULT_HSEM_MONTHS_WINTER_SPRING:
+            if (
+                self._hsem_batteries_enable_charge_hours_day_start
+                and self._hsem_batteries_enable_charge_hours_day_end
+                and self._hsem_batteries_enable_charge_hours_night_start
+                and self._hsem_batteries_enable_charge_hours_night_end
+                and isinstance(
+                    self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state,
+                    (int, float),
+                )
+                and isinstance(
+                    self._hsem_huawei_solar_batteries_state_of_capacity_state,
+                    (int, float),
+                )
+            ):
+                # Charge the battery when the grid charge cutoff SOC is higher than the state of capacity with at least 5%
+                if (
+                    self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state
+                    - self._hsem_huawei_solar_batteries_state_of_capacity_state
+                ) > 5:
+                    day_hour_start = datetime.strptime(
+                        self._hsem_batteries_enable_charge_hours_day_start, "%H:%M:%S"
+                    ).hour
+                    day_hour_end = datetime.strptime(
+                        self._hsem_batteries_enable_charge_hours_day_end, "%H:%M:%S"
+                    ).hour
+
+                    night_hour_start = datetime.strptime(
+                        self._hsem_batteries_enable_charge_hours_night_start, "%H:%M:%S"
+                    ).hour
+                    night_hour_end = datetime.strptime(
+                        self._hsem_batteries_enable_charge_hours_night_end, "%H:%M:%S"
+                    ).hour
+
+                    # find best time to charge the battery at night
+                    if (
+                        now.hour >= night_hour_start
+                        and now.hour < night_hour_end
+                        and self._hsem_batteries_enable_charge_hours_night
+                    ):
+                        await self._async_find_best_time_to_charge(
+                            night_hour_start, night_hour_end
+                        )
+
+                    # find best time to charge the battery at day
+                    if (
+                        now.hour >= day_hour_start
+                        and now.hour < day_hour_end
+                        and self._hsem_batteries_enable_charge_hours_day
+                    ):
+                        await self._async_find_best_time_to_charge(
+                            day_hour_start, day_hour_end
+                        )
+
+    async def _async_fetch_entity_states(self):
         # Fetch the current value from the EV charger status sensor
         if self._hsem_ev_charger_status:
             self._hsem_ev_charger_status_state = ha_get_entity_state_and_convert(
@@ -531,146 +682,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                     if f"Period {i}" in entity_data.attributes
                 ]
 
-        await self.async_calculate_net_consumption()
-
-        # Calculate remaining battery capacity and max allowed charge from grid if all necessary values are available
-        if (
-            isinstance(self._hsem_battery_max_capacity, (int, float))
-            and isinstance(
-                self._hsem_huawei_solar_batteries_state_of_capacity_state, (int, float)
-            )
-            and isinstance(
-                self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state,
-                (int, float),
-            )
-        ):
-            # Calculate the remaining charge needed to reach full capacity (kWh)
-            self._hsem_battery_remaining_charge = round(
-                (100 - self._hsem_huawei_solar_batteries_state_of_capacity_state)
-                / 100
-                * self._hsem_battery_max_capacity,
-                2,
-            )
-
-            # Calculate the maximum charge allowed from the grid based on cutoff SOC (kWh)
-            max_allowed_grid_charge = (
-                self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state
-                * self._hsem_battery_max_capacity
-                / 100
-            )
-
-            # Adjust remaining charge if it exceeds the max grid-allowed charge
-            if self._hsem_battery_remaining_charge > max_allowed_grid_charge:
-                self._hsem_battery_remaining_charge = max_allowed_grid_charge
-        else:
-            self._hsem_battery_remaining_charge = None
-
-        # reset the recommendations
-        await self.async_reset_recommendations()
-
-        # calculate the hourly data from power sensors
-        await self.async_calculate_hourly_data()
-
-        # calculate the solcast forecast for today
-        await self.async_calculate_solcast_forecast()
-
-        # calculate the hourly net consumption between house consumption and solar production
-        await self.async_calculate_hourly_net_consumption()
-
-        # calculate the hourly import price
-        await self.async_calculate_hourly_import_price()
-
-        # calculate the hourly export price
-        await self.async_calculate_hourly_export_price()
-
-        # calculate the optimization strategy
-        await self.async_optimization_strategy()
-
-        # calculate the energy needs
-        await self.async_calculate_energy_needs()
-
-        # Charge the battery when it's winter/spring and prices are high
-        if now.month in DEFAULT_HSEM_MONTHS_WINTER_SPRING:
-            if (
-                self._hsem_batteries_enable_charge_hours_day_start
-                and self._hsem_batteries_enable_charge_hours_day_end
-                and self._hsem_batteries_enable_charge_hours_night_start
-                and self._hsem_batteries_enable_charge_hours_night_end
-                and isinstance(
-                    self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state,
-                    (int, float),
-                )
-                and isinstance(
-                    self._hsem_huawei_solar_batteries_state_of_capacity_state,
-                    (int, float),
-                )
-            ):
-                # Charge the battery when the grid charge cutoff SOC is higher than the state of capacity with at least 5%
-                if (
-                    self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state
-                    - self._hsem_huawei_solar_batteries_state_of_capacity_state
-                ) > 5:
-                    day_hour_start = datetime.strptime(
-                        self._hsem_batteries_enable_charge_hours_day_start, "%H:%M:%S"
-                    ).hour
-                    day_hour_end = datetime.strptime(
-                        self._hsem_batteries_enable_charge_hours_day_end, "%H:%M:%S"
-                    ).hour
-
-                    night_hour_start = datetime.strptime(
-                        self._hsem_batteries_enable_charge_hours_night_start, "%H:%M:%S"
-                    ).hour
-                    night_hour_end = datetime.strptime(
-                        self._hsem_batteries_enable_charge_hours_night_end, "%H:%M:%S"
-                    ).hour
-
-                    # find best time to charge the battery at night
-                    if (
-                        now.hour >= night_hour_start
-                        and now.hour < night_hour_end
-                        and self._hsem_batteries_enable_charge_hours_night
-                    ):
-                        await self.async_find_best_time_to_charge(
-                            night_hour_start, night_hour_end
-                        )
-
-                    # find best time to charge the battery at day
-                    if (
-                        now.hour >= day_hour_start
-                        and now.hour < day_hour_end
-                        and self._hsem_batteries_enable_charge_hours_day
-                    ):
-                        await self.async_find_best_time_to_charge(
-                            day_hour_start, day_hour_end
-                        )
-
-        # Set the inverter power control mode
-        if (
-            self._hsem_energi_data_service_export_state is not None
-            and self._read_only is False
-        ):
-            await self.async_set_inverter_power_control()
-
-        # calculate the last time working mode was changed
-        if self._last_changed_mode is not None:
-            last_changed_mode_seconds = (
-                now - datetime.fromisoformat(self._last_changed_mode)
-            ).total_seconds()
-        else:
-            last_changed_mode_seconds = 0
-
-        # Set the working mode
-        if last_changed_mode_seconds > 100 or self._last_changed_mode is None:
-            await self.async_set_working_mode()
-            self._last_changed_mode = datetime.now().isoformat()
-
-        # Update last update time
-        self._last_updated = datetime.now().isoformat()
-
-        # Trigger an update in Home Assistant
-        self.async_write_ha_state()
-
-    async def async_calculate_net_consumption(self):
+    async def _async_calculate_net_consumption(self):
         # Calculate the net consumption without the EV charger power
         if isinstance(
             self._hsem_solar_production_power_state, (int, float)
@@ -706,7 +718,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         else:
             self._hsem_net_consumption = 0.0
 
-    async def async_set_inverter_power_control(self):
+    async def _async_set_inverter_power_control(self):
         # Determine the grid export power percentage based on the state
         if not isinstance(self._hsem_energi_data_service_export_state, (int, float)):
             return
@@ -736,7 +748,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                         self, inverter_id, export_power_percentage
                     )
 
-    async def async_set_working_mode(self):
+    async def _async_set_working_mode(self):
 
         # Determine the current month and hour
         now = datetime.now()
@@ -838,21 +850,21 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                     f"New TOU Modes Hash: {new_tou_modes_hash}, Current TOU Modes Hash: {current_tou_modes_hash}"
                 )
 
-                if self._read_only is False:
+                if self._read_only is not True:
                     await async_set_tou_periods(
                         self, self._hsem_huawei_solar_device_id_batteries, tou_modes
                     )
 
         # Only apply working mode if it has changed
         if self._hsem_huawei_solar_batteries_working_mode_state != working_mode:
-            if self._read_only is False:
+            if self._read_only is not True:
                 await async_set_select_option(
                     self, self._hsem_huawei_solar_batteries_working_mode, working_mode
                 )
 
         self._state = state
 
-    async def async_reset_recommendations(self):
+    async def _async_reset_recommendations(self):
         """Reset the recommendations for each hour of the day."""
         self._hourly_calculations = {
             f"{hour:02d}-{(hour + 1) % 24:02d}": {
@@ -867,7 +879,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             for hour in range(24)
         }
 
-    async def async_calculate_hourly_data(self):
+    async def _async_calculate_hourly_data(self):
         """Calculate the weighted hourly data for the sensor using both 3-day and 7-day HouseConsumptionEnergyAverageSensors."""
 
         if self._hsem_house_consumption_energy_weight_1d is None:
@@ -974,7 +986,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             f"Hourly weighted calculations (avg_house_consumption): {self._hourly_calculations}"
         )
 
-    async def async_calculate_solcast_forecast(self):
+    async def _async_calculate_solcast_forecast(self):
         """Calculate the hourly Solcast PV estimate and update self._hourly_calculations without resetting avg_house_consumption."""
         if self._hsem_solcast_pv_forecast_forecast_today is None:
             return
@@ -1006,7 +1018,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             f"Updated hourly calculations with Solcast PV estimates: {self._hourly_calculations}"
         )
 
-    async def async_calculate_hourly_import_price(self):
+    async def _async_calculate_hourly_import_price(self):
         """Calculate the estimated import price for each hour of the day."""
         if self._hsem_energi_data_service_import is None:
             return
@@ -1037,7 +1049,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             f"Updated hourly calculations with import prices: {self._hourly_calculations}"
         )
 
-    async def async_calculate_hourly_export_price(self):
+    async def _async_calculate_hourly_export_price(self):
         """Calculate the estimated import price for each hour of the day."""
         if self._hsem_energi_data_service_export is None:
             return
@@ -1067,7 +1079,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             f"Updated hourly calculations with export prices: {self._hourly_calculations}"
         )
 
-    async def async_calculate_hourly_net_consumption(self):
+    async def _async_calculate_hourly_net_consumption(self):
         """Calculate the estimated net consumption for each hour of the day."""
 
         for hour in range(24):
@@ -1100,7 +1112,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             f"Updated hourly calculations with Estimated Net Consumption: {self._hourly_calculations}"
         )
 
-    async def async_find_best_time_to_charge(self, start_hour=14, stop_hour=17):
+    async def _async_find_best_time_to_charge(self, start_hour=14, stop_hour=17):
         _LOGGER.debug(
             f"Calculating best time to charge battery between {start_hour} and {stop_hour}"
         )
@@ -1195,7 +1207,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             f"Updated hourly calculations with when to charge battery: {self._hourly_calculations}"
         )
 
-    async def async_optimization_strategy(self):
+    async def _async_optimization_strategy(self):
         """Calculate the optimization strategy for each hour of the day."""
 
         now = datetime.now()
@@ -1229,7 +1241,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 if current_month in DEFAULT_HSEM_MONTHS_SUMMER:
                     data["recommendation"] = WorkingModes.MaximizeSelfConsumption.value
 
-    async def async_calculate_energy_needs(self):
+    async def _async_calculate_energy_needs(self):
         """Calculate the energy needs for the day."""
 
         # Define time ranges and labels
