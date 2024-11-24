@@ -34,6 +34,9 @@ def generate_hash(input_sensor):
 
 def get_config_value(config_entry, key, default_value=None):
     """Get the configuration value from options or fall back to the initial data."""
+    if config_entry is None:
+        return default_value
+
     return config_entry.options.get(key, config_entry.data.get(key, default_value))
 
 
@@ -188,7 +191,7 @@ async def async_remove_entity_from_ha(self, entity_unique_id):
 
     # Remove the entity if it exists in the registry
     if existing_entry:
-        _LOGGER.warning(
+        _LOGGER.debug(
             f"Removing existing entity with unique ID '{entity_unique_id}' before re-adding."
         )
         registry.async_remove(existing_entry)

@@ -119,6 +119,7 @@ The Working Mode Sensor provides a variety of attributes for detailed monitoring
 
 | Attribute                                    | Description                                                                                                                 |
 |----------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------|
+| **read_only**                                | If HSEM is running in Read Only Mode                                                                                        |
 | **last_updated**                             | The last timestamp when the sensor was updated.                                                                             |
 | **last_changed_mode**                        | The last timestamp when the working mode was changed.                                                                       |
 | **unique_id**                                | Unique identifier for the working mode sensor entity.                                                                       |
@@ -156,8 +157,8 @@ The Working Mode Sensor provides a variety of attributes for detailed monitoring
 | **ev_charger_power_entity**                  | Entity ID for the power consumed by the EV charger.                                                                         |
 | **ev_charger_power_state**                   | Current power consumption by the EV charger in watts.                                                                       |
 | **house_power_includes_ev_charger_power**    | Boolean indicating if the house power consumption includes power used by the EV charger.                                    |
-| **morning_energy_need**                      | Estimated energy need in the morning based on previous usage patterns.                                                      |
 | **solcast_pv_forecast_forecast_today_entity** | Entity ID for the Solcast PV forecast data for today.                                                                      |
+| **energy_needs**                             | The amount of calculated energy needs in different periods during the day                                                   |
 | **hourly_calculations**                      | Dictionary containing hourly data for house consumption, solar forecast, net consumption, and pricing information.          |
 
 [releases-shield]: https://img.shields.io/github/v/release/woopstar/hsem?style=for-the-badge

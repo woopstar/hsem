@@ -4,6 +4,7 @@ This module defines constants used in the Huawei Solar Energy Management (HSEM) 
 
 DOMAIN = "hsem"  # Domain name for the integration
 NAME = "Huawei Solar Energy Management"  # Display name for the integration
+DEFAULT_HSEM_READ_ONLY = False  # Default value for read-only mode
 
 # Default sensor entity ID for energy data service import
 DEFAULT_HSEM_ENERGI_DATA_SERVICE_IMPORT = "sensor.energi_data_service"
@@ -39,9 +40,6 @@ DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TODAY = (
 DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TOMORROW = (
     "sensor.solcast_pv_forecast_forecast_tomorrow"
 )
-
-# Default morning energy need in kWh
-DEFAULT_HSEM_MORNING_ENERGY_NEED = 1.5
 
 # Default battery maximum capacity in kWh
 DEFAULT_HSEM_BATTERY_MAX_CAPACITY = 10
