@@ -96,8 +96,8 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_net_consumption_with_ev = 0.0
         self._hsem_huawei_solar_batteries_maximum_charging_power = None
         self._hsem_huawei_solar_batteries_maximum_charging_power_state = None
-        self._hsem_battery_conversion_loss = None
-        self._hsem_battery_remaining_charge = 0.0
+        self._hsem_batteries_conversion_loss = None
+        self._hsem_batteries_remaining_charge = 0.0
         self._hsem_energi_data_service_import_state = 0.0
         self._hsem_energi_data_service_export_state = 0.0
         self._last_changed_mode = None
@@ -192,9 +192,9 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             self._config_entry,
             "hsem_ev_charger_power",
         )
-        self._hsem_battery_conversion_loss = get_config_value(
+        self._hsem_batteries_conversion_loss = get_config_value(
             self._config_entry,
-            "hsem_battery_conversion_loss",
+            "hsem_batteries_conversion_loss",
         )
         self._hsem_huawei_solar_batteries_maximum_charging_power = get_config_value(
             self._config_entry,
@@ -276,53 +276,53 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             "last_updated": self._last_updated,
             "last_changed_mode": self._last_changed_mode,
             "unique_id": self._unique_id,
-            "huawei_solar_device_id_inverter_1_id": self._hsem_huawei_solar_device_id_inverter_1,
-            "huawei_solar_device_id_inverter_2_id": self._hsem_huawei_solar_device_id_inverter_2,
-            "huawei_solar_device_id_batteries_id": self._hsem_huawei_solar_device_id_batteries,
-            "huawei_solar_batteries_working_mode_entity": self._hsem_huawei_solar_batteries_working_mode,
-            "huawei_solar_batteries_working_mode_state": self._hsem_huawei_solar_batteries_working_mode_state,
-            "huawei_solar_batteries_state_of_capacity_entity": self._hsem_huawei_solar_batteries_state_of_capacity,
-            "huawei_solar_batteries_state_of_capacity_state": self._hsem_huawei_solar_batteries_state_of_capacity_state,
+            "batteries_conversion_loss": self._hsem_batteries_conversion_loss,
+            "batteries_remaining_charge": self._hsem_batteries_remaining_charge,
+            "energi_data_service_export_entity": self._hsem_energi_data_service_export,
+            "energi_data_service_export_value": self._hsem_energi_data_service_export_state,
+            "energi_data_service_import_entity": self._hsem_energi_data_service_import,
+            "energi_data_service_import_state": self._hsem_energi_data_service_import_state,
+            "energy_needs": self._energy_needs,
+            "ev_charger_power_entity": self._hsem_ev_charger_power,
+            "ev_charger_power_state": self._hsem_ev_charger_power_state,
+            "ev_charger_status_entity": self._hsem_ev_charger_status,
+            "ev_charger_status_state": self._hsem_ev_charger_status_state,
+            "house_consumption_energy_weight_14d": self._hsem_house_consumption_energy_weight_14d,
+            "house_consumption_energy_weight_1d": self._hsem_house_consumption_energy_weight_1d,
+            "house_consumption_energy_weight_3d": self._hsem_house_consumption_energy_weight_3d,
+            "house_consumption_energy_weight_7d": self._hsem_house_consumption_energy_weight_7d,
+            "house_consumption_power_entity": self._hsem_house_consumption_power,
+            "house_consumption_power_state": self._hsem_house_consumption_power_state,
+            "house_power_includes_ev_charger_power": self._hsem_house_power_includes_ev_charger_power,
+            "huawei_solar_batteries_enable_charge_hours_day": self._hsem_batteries_enable_charge_hours_day,
+            "huawei_solar_batteries_enable_charge_hours_day_end": self._hsem_batteries_enable_charge_hours_day_end,
+            "huawei_solar_batteries_enable_charge_hours_day_start": self._hsem_batteries_enable_charge_hours_day_start,
+            "huawei_solar_batteries_enable_charge_hours_night": self._hsem_batteries_enable_charge_hours_night,
+            "huawei_solar_batteries_enable_charge_hours_night_end": self._hsem_batteries_enable_charge_hours_night_end,
+            "huawei_solar_batteries_enable_charge_hours_night_start": self._hsem_batteries_enable_charge_hours_night_start,
             "huawei_solar_batteries_grid_charge_cutoff_soc_entity": self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc,
             "huawei_solar_batteries_grid_charge_cutoff_soc_state": self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state,
             "huawei_solar_batteries_maximum_charging_power_entity": self._hsem_huawei_solar_batteries_maximum_charging_power,
             "huawei_solar_batteries_maximum_charging_power_state": self._hsem_huawei_solar_batteries_maximum_charging_power_state,
-            "huawei_solar_batteries_enable_charge_hours_day": self._hsem_batteries_enable_charge_hours_day,
-            "huawei_solar_batteries_enable_charge_hours_day_start": self._hsem_batteries_enable_charge_hours_day_start,
-            "huawei_solar_batteries_enable_charge_hours_day_end": self._hsem_batteries_enable_charge_hours_day_end,
-            "huawei_solar_batteries_enable_charge_hours_night": self._hsem_batteries_enable_charge_hours_night,
-            "huawei_solar_batteries_enable_charge_hours_night_start": self._hsem_batteries_enable_charge_hours_night_start,
-            "huawei_solar_batteries_enable_charge_hours_night_end": self._hsem_batteries_enable_charge_hours_night_end,
             "huawei_solar_batteries_rated_capacity": self._hsem_batteries_rated_capacity,
             "huawei_solar_batteries_rated_capacity_state": self._hsem_batteries_rated_capacity_state,
+            "huawei_solar_batteries_state_of_capacity_entity": self._hsem_huawei_solar_batteries_state_of_capacity,
+            "huawei_solar_batteries_state_of_capacity_state": self._hsem_huawei_solar_batteries_state_of_capacity_state,
             "huawei_solar_batteries_tou_charging_and_discharging_periods_entity": self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods,
-            "huawei_solar_batteries_tou_charging_and_discharging_periods_state": self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_state,
             "huawei_solar_batteries_tou_charging_and_discharging_periods_periods": self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_periods,
+            "huawei_solar_batteries_tou_charging_and_discharging_periods_state": self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_state,
+            "huawei_solar_batteries_working_mode_entity": self._hsem_huawei_solar_batteries_working_mode,
+            "huawei_solar_batteries_working_mode_state": self._hsem_huawei_solar_batteries_working_mode_state,
+            "huawei_solar_device_id_batteries_id": self._hsem_huawei_solar_device_id_batteries,
+            "huawei_solar_device_id_inverter_1_id": self._hsem_huawei_solar_device_id_inverter_1,
+            "huawei_solar_device_id_inverter_2_id": self._hsem_huawei_solar_device_id_inverter_2,
             "huawei_solar_inverter_active_power_control_state_entity": self._hsem_huawei_solar_inverter_active_power_control,
             "huawei_solar_inverter_active_power_control_state_state": self._hsem_huawei_solar_inverter_active_power_control_state,
-            "house_consumption_power_entity": self._hsem_house_consumption_power,
-            "house_consumption_power_state": self._hsem_house_consumption_power_state,
-            "solar_production_power_entity": self._hsem_solar_production_power,
-            "solar_production_power_state": self._hsem_solar_production_power_state,
             "net_consumption": self._hsem_net_consumption,
             "net_consumption_with_ev": self._hsem_net_consumption_with_ev,
-            "energi_data_service_import_entity": self._hsem_energi_data_service_import,
-            "energi_data_service_import_state": self._hsem_energi_data_service_import_state,
-            "energi_data_service_export_entity": self._hsem_energi_data_service_export,
-            "energi_data_service_export_value": self._hsem_energi_data_service_export_state,
-            "battery_remaining_charge": self._hsem_battery_remaining_charge,
-            "battery_conversion_loss": self._hsem_battery_conversion_loss,
-            "ev_charger_status_entity": self._hsem_ev_charger_status,
-            "ev_charger_status_state": self._hsem_ev_charger_status_state,
-            "ev_charger_power_entity": self._hsem_ev_charger_power,
-            "ev_charger_power_state": self._hsem_ev_charger_power_state,
-            "house_power_includes_ev_charger_power": self._hsem_house_power_includes_ev_charger_power,
+            "solar_production_power_entity": self._hsem_solar_production_power,
+            "solar_production_power_state": self._hsem_solar_production_power_state,
             "solcast_pv_forecast_forecast_today_entity": self._hsem_solcast_pv_forecast_forecast_today,
-            "house_consumption_energy_weight_1d": self._hsem_house_consumption_energy_weight_1d,
-            "house_consumption_energy_weight_3d": self._hsem_house_consumption_energy_weight_3d,
-            "house_consumption_energy_weight_7d": self._hsem_house_consumption_energy_weight_7d,
-            "house_consumption_energy_weight_14d": self._hsem_house_consumption_energy_weight_14d,
-            "energy_needs": self._energy_needs,
             "hourly_calculations": self._hourly_calculations,
         }
 
@@ -353,7 +353,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             )
         ):
             # Calculate the remaining charge needed to reach full capacity (kWh)
-            self._hsem_battery_remaining_charge = round(
+            self._hsem_batteries_remaining_charge = round(
                 (100 - self._hsem_huawei_solar_batteries_state_of_capacity_state)
                 / 100
                 * (self._hsem_batteries_rated_capacity_state / 1000),
@@ -368,10 +368,10 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             )
 
             # Adjust remaining charge if it exceeds the max grid-allowed charge
-            if self._hsem_battery_remaining_charge > max_allowed_grid_charge:
-                self._hsem_battery_remaining_charge = max_allowed_grid_charge
+            if self._hsem_batteries_remaining_charge > max_allowed_grid_charge:
+                self._hsem_batteries_remaining_charge = max_allowed_grid_charge
         else:
-            self._hsem_battery_remaining_charge = None
+            self._hsem_batteries_remaining_charge = None
 
         # reset the recommendations
         await self._async_reset_recommendations()
@@ -1056,12 +1056,12 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             self._hsem_batteries_rated_capacity_state is None
             or self._hsem_huawei_solar_batteries_maximum_charging_power_state is None
             or self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state is None
-            or self._hsem_battery_remaining_charge is None
-            or self._hsem_battery_conversion_loss is None
+            or self._hsem_batteries_remaining_charge is None
+            or self._hsem_batteries_conversion_loss is None
             or self._hsem_huawei_solar_batteries_state_of_capacity_state is None
         ):
             _LOGGER.debug(
-                f"Missing necessary variables for calculating best time to charge battery: {self._hsem_battery_remaining_charge}, {self._hsem_batteries_rated_capacity_state}, {self._hsem_huawei_solar_batteries_maximum_charging_power_state}, {self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state}, {self._hsem_huawei_solar_batteries_state_of_capacity_state}"
+                f"Missing necessary variables for calculating best time to charge battery: {self._hsem_batteries_remaining_charge}, {self._hsem_batteries_rated_capacity_state}, {self._hsem_huawei_solar_batteries_maximum_charging_power_state}, {self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state}, {self._hsem_huawei_solar_batteries_state_of_capacity_state}"
             )
             return  # Wait for the next call until all values are available
 
@@ -1087,16 +1087,16 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         # Calculate charging time and mark the hours for charging
         charged_energy = 0.0
         for time_range, price in hours_to_charge:
-            if charged_energy >= self._hsem_battery_remaining_charge:
+            if charged_energy >= self._hsem_batteries_remaining_charge:
                 _LOGGER.debug(
-                    f"Charged energy exceeds remaining charge. Stopping charging. Charged Energy: {charged_energy} kWh. Remaining Charge: {self._hsem_battery_remaining_charge} kWh."
+                    f"Charged energy exceeds remaining charge. Stopping charging. Charged Energy: {charged_energy} kWh. Remaining Charge: {self._hsem_batteries_remaining_charge} kWh."
                 )
                 break
 
             ### Calculate how much energy we can charge in this hour (in kWh)
 
             # Calculate the conversion loss factor from AC to DC
-            conversion_loss_factor = 1 - (self._hsem_battery_conversion_loss / 100)
+            conversion_loss_factor = 1 - (self._hsem_batteries_conversion_loss / 100)
 
             # Calculate the maximum possible charge in kWh for this hour, limited by charging power and conversion loss
             if isinstance(
@@ -1112,7 +1112,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
             # Calculate the remaining charge needed to fill the battery, adjusted for conversion loss
             remaining_charge_needed = (
-                self._hsem_battery_remaining_charge - charged_energy
+                self._hsem_batteries_remaining_charge - charged_energy
             )
 
             # Determine the energy to charge by taking the minimum of the maximum charge allowed and the remaining needed charge
@@ -1131,7 +1131,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             charged_energy += energy_to_charge
 
             _LOGGER.debug(
-                f"Marked hour {time_range} for charging. Energy Charged: {energy_to_charge} kWh. Total Charged Energy: {charged_energy} kWh. Total Charge needed: {self._hsem_battery_remaining_charge} kWh."
+                f"Marked hour {time_range} for charging. Energy Charged: {energy_to_charge} kWh. Total Charged Energy: {charged_energy} kWh. Total Charge needed: {self._hsem_batteries_remaining_charge} kWh."
             )
 
         _LOGGER.debug(
