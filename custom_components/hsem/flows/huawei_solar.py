@@ -91,7 +91,7 @@ async def get_huawei_solar_step_schema(config_entry):
                     "hsem_huawei_solar_batteries_rated_capacity",
                     DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_RATED_CAPACITY,
                 ),
-            ): selector({"entity": {"domain": "sensor"}}),
+            ): selector({"entity": {"domain": ["sensor", "input_number"]}}),
             vol.Required(
                 "hsem_battery_conversion_loss",
                 default=get_config_value(
