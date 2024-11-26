@@ -10,7 +10,7 @@ from custom_components.hsem.const import (
 from custom_components.hsem.utils.misc import get_config_value
 
 
-def get_weighted_values_step_schema(config_entry):
+async def get_weighted_values_step_schema(config_entry):
     """Return the data schema for the 'weighted_values' step."""
     return vol.Schema(
         {
@@ -90,7 +90,7 @@ def get_weighted_values_step_schema(config_entry):
     )
 
 
-def validate_weighted_values_input(user_input):
+async def validate_weighted_values_input(user_input):
     """Validate user input for the 'weighted_values' step."""
     errors = {}
 
