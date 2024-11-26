@@ -88,6 +88,8 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_energidataservice(self, user_input=None):
+        errors = {}
+        
         if user_input is not None:
             errors = validate_energidataservice_input(user_input)
             if not errors:
