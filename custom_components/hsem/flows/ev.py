@@ -13,11 +13,11 @@ async def get_ev_step_schema(config_entry):
         {
             vol.Optional(
                 "hsem_ev_charger_status",
-                default=get_config_value(config_entry, "hsem_ev_charger_status", ""),
+                default=get_config_value(config_entry, "hsem_ev_charger_status", vol.UNDEFINED),
             ): selector({"entity": {"domain": ["sensor", "switch", "input_boolean"]}}),
             vol.Optional(
                 "hsem_ev_charger_power",
-                default=get_config_value(config_entry, "hsem_ev_charger_power", ""),
+                default=get_config_value(config_entry, "hsem_ev_charger_power", vol.UNDEFINED),
             ): selector({"entity": {"domain": "sensor"}}),
             vol.Required(
                 "hsem_house_power_includes_ev_charger_power",
