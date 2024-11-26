@@ -151,7 +151,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._user_input.update(user_input)
                 return await self.async_step_weighted_values()
 
-        data_schema =await get_ev_step_schema(None)
+        data_schema = await get_ev_step_schema(None)
 
         return self.async_show_form(
             step_id="ev",
