@@ -74,7 +74,7 @@ To use this package, you need the following integrations:
 
 ### Default disabled sensors
 
-The [Huawei Solar integration by wlcrs](https://github.com/wlcrs/huawei_solar) provides `sensor.inverter_active_power_control` but it is disabled by default. To use this entity, go to the device settings, select the inverter and show hidden/disabled entities. Find the `sensor.inverter_active_power_control` and enable it.
+The [Huawei Solar integration by wlcrs](https://github.com/wlcrs/huawei_solar) provides `sensor.inverter_active_power_control` and `sensor.batteries_rated_capacity` but it is disabled by default. To use this entity, go to the device settings, select the inverter and show hidden/disabled entities. Find the `sensor.inverter_active_power_control` and `sensor.batteries_rated_capacity` and enable it.
 
 ---
 
