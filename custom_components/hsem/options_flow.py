@@ -71,12 +71,12 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
         errors = {}
 
         if user_input is not None:
-            errors = validate_init_step_input(user_input)
+            errors = await validate_init_step_input(user_input)
             if not errors:
                 self._user_input.update(user_input)
                 return await self.async_step_energidataservice()
 
-        data_schema = get_init_step_schema(self.config_entry)
+        data_schema = await get_init_step_schema(self.config_entry)
 
         return self.async_show_form(
             step_id="init",
@@ -89,12 +89,12 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
         errors = {}
 
         if user_input is not None:
-            errors = validate_energidataservice_input(user_input)
+            errors = await validate_energidataservice_input(user_input)
             if not errors:
                 self._user_input.update(user_input)
                 return await self.async_step_power()
 
-        data_schema = get_energidataservice_step_schema(self.config_entry)
+        data_schema = await get_energidataservice_step_schema(self.config_entry)
 
         return self.async_show_form(
             step_id="energidataservice",
@@ -107,12 +107,12 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
         errors = {}
 
         if user_input is not None:
-            errors = validate_power_step_input(user_input)
+            errors = await validate_power_step_input(user_input)
             if not errors:
                 self._user_input.update(user_input)
                 return await self.async_step_solcast()
 
-        data_schema = get_power_step_schema(self.config_entry)
+        data_schema = await get_power_step_schema(self.config_entry)
 
         return self.async_show_form(
             step_id="power",
@@ -125,13 +125,13 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
         errors = {}
 
         if user_input is not None:
-            errors = validate_solcast_step_input(user_input)
+            errors = await validate_solcast_step_input(user_input)
             if not errors:
                 self._user_input.update(user_input)
                 return await self.async_step_ev()
 
         # Define the form schema for energy data services step
-        data_schema = get_solcast_step_schema(self.config_entry)
+        data_schema = await get_solcast_step_schema(self.config_entry)
 
         return self.async_show_form(
             step_id="solcast",
@@ -144,12 +144,12 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
         errors = {}
 
         if user_input is not None:
-            errors = validate_ev_step_input(user_input)
+            errors = await validate_ev_step_input(user_input)
             if not errors:
                 self._user_input.update(user_input)
                 return await self.async_step_weighted_values()
 
-        data_schema = get_ev_step_schema(self.config_entry)
+        data_schema = await get_ev_step_schema(self.config_entry)
 
         return self.async_show_form(
             step_id="ev",
@@ -162,12 +162,12 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
         errors = {}
 
         if user_input is not None:
-            errors = validate_weighted_values_input(user_input)
+            errors = await validate_weighted_values_input(user_input)
             if not errors:
                 self._user_input.update(user_input)
                 return await self.async_step_charge_hours()
 
-        data_schema = get_weighted_values_step_schema(self.config_entry)
+        data_schema = await get_weighted_values_step_schema(self.config_entry)
 
         return self.async_show_form(
             step_id="weighted_values",
@@ -180,12 +180,12 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
         errors = {}
 
         if user_input is not None:
-            errors = validate_charge_hours_input(user_input)
+            errors = await validate_charge_hours_input(user_input)
             if not errors:
                 self._user_input.update(user_input)
                 return await self.async_step_huawei_solar()
 
-        data_schema = get_charge_hours_step_schema(self.config_entry)
+        data_schema = await get_charge_hours_step_schema(self.config_entry)
 
         return self.async_show_form(
             step_id="charge_hours",
@@ -198,7 +198,7 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
         errors = {}
 
         if user_input is not None:
-            errors = validate_huawei_solar_input(user_input)
+            errors = await validate_huawei_solar_input(user_input)
             if not errors:
                 final_data = {**self._user_input, **user_input}
                 self.update_config_entry_data()
@@ -207,7 +207,7 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
                     data=final_data,
                 )
 
-        data_schema = get_huawei_solar_step_schema(self.config_entry)
+        data_schema = await get_huawei_solar_step_schema(self.config_entry)
 
         return self.async_show_form(
             step_id="huawei_solar",

@@ -8,7 +8,7 @@ from custom_components.hsem.const import (
 from custom_components.hsem.utils.misc import get_config_value
 
 
-def get_energidataservice_step_schema(config_entry):
+async def get_energidataservice_step_schema(config_entry):
     return vol.Schema(
         {
             vol.Required(
@@ -31,7 +31,7 @@ def get_energidataservice_step_schema(config_entry):
     )
 
 
-def validate_energidataservice_input(user_input):
+async def validate_energidataservice_input(user_input):
     errors = {}
 
     required_fields = [

@@ -5,7 +5,7 @@ from custom_components.hsem.const import DEFAULT_HSEM_READ_ONLY, NAME
 from custom_components.hsem.utils.misc import get_config_value
 
 
-def get_init_step_schema(config_entry):
+async def get_init_step_schema(config_entry):
     """Return the data schema for the 'init' step."""
     return vol.Schema(
         {
@@ -25,7 +25,7 @@ def get_init_step_schema(config_entry):
     )
 
 
-def validate_init_step_input(user_input):
+async def validate_init_step_input(user_input):
     """Validate user input for the 'init' step."""
     errors = {}
 
