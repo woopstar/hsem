@@ -91,7 +91,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if user_input is not None:
-            errors = await validate_energidataservice_input(user_input)
+            errors = await validate_energidataservice_input(self.hass, user_input)
             if not errors:
                 self._user_input.update(user_input)
                 return await self.async_step_power()
@@ -109,7 +109,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if user_input is not None:
-            errors = await validate_power_step_input(user_input)
+            errors = await validate_power_step_input(self.hass, user_input)
             if not errors:
                 self._user_input.update(user_input)
                 return await self.async_step_solcast()
@@ -127,7 +127,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if user_input is not None:
-            errors = await validate_solcast_step_input(user_input)
+            errors = await validate_solcast_step_input(self.hass, user_input)
             if not errors:
                 self._user_input.update(user_input)
                 return await self.async_step_ev()
@@ -146,7 +146,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if user_input is not None:
-            errors = await validate_ev_step_input(user_input)
+            errors = await validate_ev_step_input(self.hass, user_input)
             if not errors:
                 self._user_input.update(user_input)
                 return await self.async_step_weighted_values()
@@ -200,7 +200,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if user_input is not None:
-            errors = await validate_huawei_solar_input(user_input)
+            errors = await validate_huawei_solar_input(self.hass, user_input)
             if not errors:
                 final_data = {**self._user_input, **user_input}
 

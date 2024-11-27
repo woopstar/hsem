@@ -20,9 +20,10 @@ Functions:
 import hashlib
 import logging
 
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
-from custom_components.hsem.const import DOMAIN
+from custom_components.hsem.const import DEFAULT_CONFIG_VALUES, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -32,12 +33,17 @@ def generate_hash(input_sensor):
     return hashlib.sha256(input_sensor.encode("utf-8")).hexdigest()
 
 
-def get_config_value(config_entry, key, default_value=None):
+def get_config_value(config_entry, key):
     """Get the configuration value from options or fall back to the initial data."""
-    if config_entry is None:
-        return default_value
+    if key not in DEFAULT_CONFIG_VALUES:
+        raise KeyError(f"Key '{key}' not found in DEFAULT_VALUES")
 
-    return config_entry.options.get(key, config_entry.data.get(key, default_value))
+    if config_entry is None:
+        return None
+
+    return config_entry.options.get(
+        key, config_entry.data.get(key, DEFAULT_CONFIG_VALUES[key])
+    )
 
 
 def convert_to_float(state):
@@ -198,3 +204,14 @@ async def async_remove_entity_from_ha(self, entity_unique_id):
         return True
     else:
         return False
+
+
+async def async_entity_exists(hass, entity_id):
+    """Check if an entity exists in Home Assistant."""
+    return hass.states.get(entity_id) is not None
+
+
+async def async_device_exists(hass, device_id):
+    """Check if a device exists in Home Assistant."""
+    device_registry = dr.async_get(hass)
+    return device_registry.async_get(device_id) is not None

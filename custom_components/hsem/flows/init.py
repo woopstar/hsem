@@ -1,7 +1,6 @@
 import voluptuous as vol
 from homeassistant.helpers.selector import selector
 
-from custom_components.hsem.const import DEFAULT_HSEM_READ_ONLY, NAME
 from custom_components.hsem.utils.misc import get_config_value
 
 
@@ -11,15 +10,11 @@ async def get_init_step_schema(config_entry):
         {
             vol.Required(
                 "device_name",
-                default=get_config_value(config_entry, "device_name", NAME),
+                default=get_config_value(config_entry, "device_name"),
             ): str,
             vol.Required(
                 "hsem_read_only",
-                default=get_config_value(
-                    config_entry,
-                    "hsem_read_only",
-                    DEFAULT_HSEM_READ_ONLY,
-                ),
+                default=get_config_value(config_entry, "hsem_read_only"),
             ): selector({"boolean": {}}),
         }
     )
