@@ -137,7 +137,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
     def _update_settings(self):
         """Fetch updated settings from config_entry options."""
-        self._read_only = get_config_value(self._config_entry, "hsem_read_only", False)
+        self._read_only = get_config_value(self._config_entry, "hsem_read_only")
 
         self._hsem_huawei_solar_device_id_inverter_1 = get_config_value(
             self._config_entry, "hsem_huawei_solar_device_id_inverter_1"
@@ -240,7 +240,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             self._config_entry, "hsem_batteries_enable_charge_hours_night_end"
         )
         self._hsem_batteries_rated_capacity = get_config_value(
-            self._config_entry,"hsem_huawei_solar_batteries_rated_capacity"
+            self._config_entry, "hsem_huawei_solar_batteries_rated_capacity"
         )
 
         if self._hsem_huawei_solar_device_id_inverter_2 is not None:
@@ -1208,7 +1208,3 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
         # Initial update
         await self._async_handle_update(None)
-
-    async def async_will_remove_from_hass(self):
-        """Entity being removed from hass."""
-        await super().async_will_remove_from_hass()

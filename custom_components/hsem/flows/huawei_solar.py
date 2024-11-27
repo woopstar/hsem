@@ -97,10 +97,10 @@ async def get_huawei_solar_step_schema(config_entry):
                 ),
             ): selector({"entity": {"domain": ["sensor", "input_number"]}}),
             vol.Required(
-                "hsem_battery_conversion_loss",
+                "hsem_batteries_conversion_loss",
                 default=get_config_value(
                     config_entry,
-                    "hsem_battery_conversion_loss",
+                    "hsem_batteries_conversion_loss",
                     DEFAULT_HSEM_BATTERY_CONVERSION_LOSS,
                 ),
             ): selector(
@@ -132,7 +132,7 @@ async def validate_huawei_solar_input(user_input):
         "hsem_huawei_solar_batteries_grid_charge_cutoff_soc",
         "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods",
         "hsem_huawei_solar_batteries_rated_capacity",
-        "hsem_battery_conversion_loss",
+        "hsem_batteries_conversion_loss",
     ]
 
     for field in required_fields:
