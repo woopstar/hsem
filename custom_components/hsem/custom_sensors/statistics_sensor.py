@@ -10,10 +10,9 @@ class HSEMStatisticsSensor(StatisticsSensor, HSEMEntity):
 
     _attr_icon = "mdi:calculator"
 
-    def __init__(self, *args, id=None, config_entry=None, **kwargs):
+    def __init__(self, *args, config_entry=None, **kwargs):
         StatisticsSensor.__init__(self, *args, **kwargs)
         HSEMEntity.__init__(self, config_entry)
-        self._unique_id = id
 
     @property
     def unit_of_measurement(self):
@@ -25,12 +24,4 @@ class HSEMStatisticsSensor(StatisticsSensor, HSEMEntity):
 
     @property
     def unique_id(self):
-        return self._unique_id
-
-    async def async_added_to_hass(self):
-        """Handle the sensor being added to Home Assistant."""
-        await super().async_added_to_hass()
-
-    async def async_will_remove_from_hass(self):
-        """Entity being removed from hass."""
-        await super().async_will_remove_from_hass()
+        return self._attr_unique_id

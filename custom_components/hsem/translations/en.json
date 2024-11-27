@@ -39,8 +39,8 @@
       },
       "huawei_solar": {
         "data": {
-          "hsem_battery_conversion_loss": "Battery Conversion Loss (%)",
-          "hsem_battery_max_capacity": "Battery Max Capacity (kWh)",
+          "hsem_batteries_conversion_loss": "Battery Conversion Loss (%)",
+          "hsem_huawei_solar_batteries_rated_capacity": "Battery Max Capacity (kWh)",
           "hsem_huawei_solar_batteries_grid_charge_cutoff_soc": "Huawei Batteries Grid Charge Cutoff SOC (%)",
           "hsem_huawei_solar_batteries_maximum_charging_power": "Huawei Batteries Maximum Charging Power (kW)",
           "hsem_huawei_solar_batteries_state_of_capacity": "Huawei Batteries State of Capacity Sensor",
@@ -130,8 +130,8 @@
       },
       "huawei_solar": {
         "data": {
-          "hsem_battery_conversion_loss": "Battery Conversion Loss (%)",
-          "hsem_battery_max_capacity": "Battery Max Capacity (kWh)",
+          "hsem_batteries_conversion_loss": "Battery Conversion Loss (%)",
+          "hsem_huawei_solar_batteries_rated_capacity": "Battery Max Capacity (kWh)",
           "hsem_house_consumption_energy_weight_14d": "House Consumption Energy Weight 14 Days",
           "hsem_house_consumption_energy_weight_1d": "House Consumption Energy Weight 1 Day",
           "hsem_house_consumption_energy_weight_3d": "House Consumption Energy Weight 3 Days",

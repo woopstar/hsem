@@ -298,7 +298,6 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
                 unit_time=UnitOfTime.HOURS,
                 max_sub_interval=timedelta(minutes=1),
                 device_info=None,
-                id=integral_sensor_unique_id,
                 config_entry=self._config_entry,
             )
 
@@ -354,7 +353,6 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
                 samples_keep_last=True,
                 precision=2,
                 percentile=50,
-                id=avg_energy_sensor_unique_id,
                 config_entry=self._config_entry,
             )
 
@@ -423,7 +421,6 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
                 unique_id=utility_meter_unique_id,
                 device_info=None,
                 sensor_always_available=True,
-                id=utility_meter_unique_id,
                 config_entry=self._config_entry,
             )
 
