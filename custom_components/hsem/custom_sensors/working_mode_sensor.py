@@ -18,7 +18,6 @@ from homeassistant.helpers.event import async_track_time_interval
 from custom_components.hsem.const import (
     DEFAULT_HSEM_DEFAULT_TOU_MODES,
     DEFAULT_HSEM_EV_CHARGER_TOU_MODES,
-    DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_RATED_CAPACITY,
     DEFAULT_HSEM_MONTHS_SUMMER,
     DEFAULT_HSEM_MONTHS_WINTER_SPRING,
     DEFAULT_HSEM_TOU_MODES_FORCE_CHARGE,
@@ -241,9 +240,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             self._config_entry, "hsem_batteries_enable_charge_hours_night_end"
         )
         self._hsem_batteries_rated_capacity = get_config_value(
-            self._config_entry,
-            "hsem_batteries_rated_capacity",
-            DEFAULT_HSEM_HUAWEI_SOLAR_BATTERIES_RATED_CAPACITY,
+            self._config_entry,"hsem_huawei_solar_batteries_rated_capacity"
         )
 
         if self._hsem_huawei_solar_device_id_inverter_2 is not None:
