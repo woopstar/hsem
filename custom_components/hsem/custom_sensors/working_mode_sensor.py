@@ -291,18 +291,18 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             "house_consumption_power_entity": self._hsem_house_consumption_power,
             "house_consumption_power_state": self._hsem_house_consumption_power_state,
             "house_power_includes_ev_charger_power": self._hsem_house_power_includes_ev_charger_power,
-            "huawei_solar_batteries_enable_charge_hours_day": self._hsem_batteries_enable_charge_hours_day,
             "huawei_solar_batteries_enable_charge_hours_day_end": self._hsem_batteries_enable_charge_hours_day_end,
             "huawei_solar_batteries_enable_charge_hours_day_start": self._hsem_batteries_enable_charge_hours_day_start,
-            "huawei_solar_batteries_enable_charge_hours_night": self._hsem_batteries_enable_charge_hours_night,
+            "huawei_solar_batteries_enable_charge_hours_day": self._hsem_batteries_enable_charge_hours_day,
             "huawei_solar_batteries_enable_charge_hours_night_end": self._hsem_batteries_enable_charge_hours_night_end,
             "huawei_solar_batteries_enable_charge_hours_night_start": self._hsem_batteries_enable_charge_hours_night_start,
+            "huawei_solar_batteries_enable_charge_hours_night": self._hsem_batteries_enable_charge_hours_night,
             "huawei_solar_batteries_grid_charge_cutoff_soc_entity": self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc,
             "huawei_solar_batteries_grid_charge_cutoff_soc_state": self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state,
             "huawei_solar_batteries_maximum_charging_power_entity": self._hsem_huawei_solar_batteries_maximum_charging_power,
             "huawei_solar_batteries_maximum_charging_power_state": self._hsem_huawei_solar_batteries_maximum_charging_power_state,
-            "huawei_solar_batteries_rated_capacity": self._hsem_batteries_rated_capacity,
             "huawei_solar_batteries_rated_capacity_state": self._hsem_batteries_rated_capacity_state,
+            "huawei_solar_batteries_rated_capacity": self._hsem_batteries_rated_capacity,
             "huawei_solar_batteries_state_of_capacity_entity": self._hsem_huawei_solar_batteries_state_of_capacity,
             "huawei_solar_batteries_state_of_capacity_state": self._hsem_huawei_solar_batteries_state_of_capacity_state,
             "huawei_solar_batteries_tou_charging_and_discharging_periods_entity": self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods,
@@ -315,8 +315,8 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             "huawei_solar_device_id_inverter_2_id": self._hsem_huawei_solar_device_id_inverter_2,
             "huawei_solar_inverter_active_power_control_state_entity": self._hsem_huawei_solar_inverter_active_power_control,
             "huawei_solar_inverter_active_power_control_state_state": self._hsem_huawei_solar_inverter_active_power_control_state,
-            "net_consumption": self._hsem_net_consumption,
             "net_consumption_with_ev": self._hsem_net_consumption_with_ev,
+            "net_consumption": self._hsem_net_consumption,
             "solar_production_power_entity": self._hsem_solar_production_power,
             "solar_production_power_state": self._hsem_solar_production_power_state,
             "solcast_pv_forecast_forecast_today_entity": self._hsem_solcast_pv_forecast_forecast_today,
@@ -484,131 +484,143 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
     async def _async_fetch_entity_states(self):
         # Fetch the current value from the EV charger status sensor
-        if self._hsem_ev_charger_status:
-            self._hsem_ev_charger_status_state = ha_get_entity_state_and_convert(
-                self, self._hsem_ev_charger_status, "boolean"
-            )
 
-        # Fetch the current value from the battery maximum charging power sensor
-        if self._hsem_ev_charger_power:
-            self._hsem_ev_charger_power_state = ha_get_entity_state_and_convert(
-                self, self._hsem_ev_charger_power, "float"
-            )
-
-        # Fetch the current value from the house consumption power sensor
-        if self._hsem_house_consumption_power:
-            self._hsem_house_consumption_power_state = ha_get_entity_state_and_convert(
-                self, self._hsem_house_consumption_power, "float"
-            )
-
-        # Fetch the current value from the solar production power sensor
-        if self._hsem_solar_production_power:
-            self._hsem_solar_production_power_state = ha_get_entity_state_and_convert(
-                self, self._hsem_solar_production_power, "float"
-            )
-
-        # fetch the current value from the working mode sensor
-        if self._hsem_huawei_solar_batteries_working_mode:
-            self._hsem_huawei_solar_batteries_working_mode_state = (
-                ha_get_entity_state_and_convert(
-                    self, self._hsem_huawei_solar_batteries_working_mode, "string"
+        try:
+            if self._hsem_ev_charger_status:
+                self._hsem_ev_charger_status_state = ha_get_entity_state_and_convert(
+                    self, self._hsem_ev_charger_status, "boolean"
                 )
-            )
 
-        # Fetch the current value from the state of capacity sensor
-        if self._hsem_huawei_solar_batteries_state_of_capacity:
-            self._hsem_huawei_solar_batteries_state_of_capacity_state = (
-                ha_get_entity_state_and_convert(
+            # Fetch the current value from the battery maximum charging power sensor
+            if self._hsem_ev_charger_power:
+                self._hsem_ev_charger_power_state = ha_get_entity_state_and_convert(
+                    self, self._hsem_ev_charger_power, "float"
+                )
+
+            # Fetch the current value from the house consumption power sensor
+            if self._hsem_house_consumption_power:
+                self._hsem_house_consumption_power_state = (
+                    ha_get_entity_state_and_convert(
+                        self, self._hsem_house_consumption_power, "float"
+                    )
+                )
+
+            # Fetch the current value from the solar production power sensor
+            if self._hsem_solar_production_power:
+                self._hsem_solar_production_power_state = (
+                    ha_get_entity_state_and_convert(
+                        self, self._hsem_solar_production_power, "float"
+                    )
+                )
+
+            # fetch the current value from the working mode sensor
+            if self._hsem_huawei_solar_batteries_working_mode:
+                self._hsem_huawei_solar_batteries_working_mode_state = (
+                    ha_get_entity_state_and_convert(
+                        self, self._hsem_huawei_solar_batteries_working_mode, "string"
+                    )
+                )
+
+            # Fetch the current value from the state of capacity sensor
+            if self._hsem_huawei_solar_batteries_state_of_capacity:
+                self._hsem_huawei_solar_batteries_state_of_capacity_state = (
+                    ha_get_entity_state_and_convert(
+                        self,
+                        self._hsem_huawei_solar_batteries_state_of_capacity,
+                        "float",
+                        0,
+                    )
+                )
+
+            # Fetch the current value from the energi data service import sensor
+            if self._hsem_energi_data_service_import:
+                self._hsem_energi_data_service_import_state = (
+                    ha_get_entity_state_and_convert(
+                        self, self._hsem_energi_data_service_import, "float", 3
+                    )
+                )
+
+            # Fetch the current value from the energi data service export sensor
+            if self._hsem_energi_data_service_export:
+                self._hsem_energi_data_service_export_state = (
+                    ha_get_entity_state_and_convert(
+                        self, self._hsem_energi_data_service_export, "float", 3
+                    )
+                )
+
+            # Fetch the current value from the energi data service export sensor
+            if self._hsem_huawei_solar_inverter_active_power_control:
+                self._hsem_huawei_solar_inverter_active_power_control_state = (
+                    ha_get_entity_state_and_convert(
+                        self,
+                        self._hsem_huawei_solar_inverter_active_power_control,
+                        "string",
+                    )
+                )
+
+            # Fetch the current value from the battery maximum charging power sensor
+            if self._hsem_huawei_solar_batteries_maximum_charging_power:
+                self._hsem_huawei_solar_batteries_maximum_charging_power_state = (
+                    ha_get_entity_state_and_convert(
+                        self,
+                        self._hsem_huawei_solar_batteries_maximum_charging_power,
+                        "float",
+                        0,
+                    )
+                )
+
+            # Fetch the current value from the battery grid charge cutoff SOC sensor
+            if self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc:
+                self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state = (
+                    ha_get_entity_state_and_convert(
+                        self,
+                        self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc,
+                        "float",
+                        0,
+                    )
+                )
+
+            # Fetch the current value from the battery rated capacity sensor
+            if self._hsem_batteries_rated_capacity:
+                self._hsem_batteries_rated_capacity_state = (
+                    ha_get_entity_state_and_convert(
+                        self, self._hsem_batteries_rated_capacity, "float", 0
+                    )
+                )
+
+            # Fetch the current value from the battery TOU charging and discharging periods sensor
+            if self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods:
+                entity_data = ha_get_entity_state_and_convert(
                     self,
-                    self._hsem_huawei_solar_batteries_state_of_capacity,
-                    "float",
-                    0,
+                    self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods,
+                    None,
                 )
-            )
 
-        # Fetch the current value from the energi data service import sensor
-        if self._hsem_energi_data_service_import:
-            self._hsem_energi_data_service_import_state = (
-                ha_get_entity_state_and_convert(
-                    self, self._hsem_energi_data_service_import, "float", 3
-                )
-            )
-
-        # Fetch the current value from the energi data service export sensor
-        if self._hsem_energi_data_service_export:
-            self._hsem_energi_data_service_export_state = (
-                ha_get_entity_state_and_convert(
-                    self, self._hsem_energi_data_service_export, "float", 3
-                )
-            )
-
-        # Fetch the current value from the energi data service export sensor
-        if self._hsem_huawei_solar_inverter_active_power_control:
-            self._hsem_huawei_solar_inverter_active_power_control_state = (
-                ha_get_entity_state_and_convert(
-                    self,
-                    self._hsem_huawei_solar_inverter_active_power_control,
-                    "string",
-                )
-            )
-
-        # Fetch the current value from the battery maximum charging power sensor
-        if self._hsem_huawei_solar_batteries_maximum_charging_power:
-            self._hsem_huawei_solar_batteries_maximum_charging_power_state = (
-                ha_get_entity_state_and_convert(
-                    self,
-                    self._hsem_huawei_solar_batteries_maximum_charging_power,
-                    "float",
-                    0,
-                )
-            )
-
-        # Fetch the current value from the battery grid charge cutoff SOC sensor
-        if self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc:
-            self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state = (
-                ha_get_entity_state_and_convert(
-                    self,
-                    self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc,
-                    "float",
-                    0,
-                )
-            )
-
-        # Fetch the current value from the battery rated capacity sensor
-        if self._hsem_batteries_rated_capacity:
-            self._hsem_batteries_rated_capacity_state = ha_get_entity_state_and_convert(
-                self, self._hsem_batteries_rated_capacity, "float", 0
-            )
-
-        # Fetch the current value from the battery TOU charging and discharging periods sensor
-        if self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods:
-            entity_data = ha_get_entity_state_and_convert(
-                self,
-                self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods,
-                None,
-            )
-
-            # Reset state and periods attributes
-            self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_state = (
-                None
-            )
-            self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_periods = (
-                None
-            )
-
-            # Ensure entity_data is valid and a State object
-            if isinstance(entity_data, State):
-                # Set the state directly
+                # Reset state and periods attributes
                 self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_state = (
-                    entity_data.state
+                    None
+                )
+                self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_periods = (
+                    None
                 )
 
-                # Gather period values from attributes using a list comprehension
-                self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_periods = [
-                    entity_data.attributes[f"Period {i}"]
-                    for i in range(1, 11)
-                    if f"Period {i}" in entity_data.attributes
-                ]
+                # Ensure entity_data is valid and a State object
+                if isinstance(entity_data, State):
+                    # Set the state directly
+                    self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_state = (
+                        entity_data.state
+                    )
+
+                    # Gather period values from attributes using a list comprehension
+                    self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_periods = [
+                        entity_data.attributes[f"Period {i}"]
+                        for i in range(1, 11)
+                        if f"Period {i}" in entity_data.attributes
+                    ]
+        except Exception as e:
+            _LOGGER.warning(
+                "Failed to fetch state for one or more sensors. Error: %s", str(e)
+            )
 
     async def _async_calculate_net_consumption(self):
         # Calculate the net consumption without the EV charger power

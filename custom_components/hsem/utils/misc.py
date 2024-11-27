@@ -20,12 +20,17 @@ Functions:
 import hashlib
 import logging
 
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
 from custom_components.hsem.const import DEFAULT_CONFIG_VALUES, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
+
+
+class EntityNotFoundError(HomeAssistantError):
+    """Exception raised when an entity is not found."""
 
 
 def generate_hash(input_sensor):
@@ -159,23 +164,37 @@ def ha_get_entity_state_and_convert(
     self, entity_id, output_type=None, float_precision=2
 ):
     """Get the state of an entity."""
+    if not self.hass.states.get(entity_id):
+        _LOGGER.warning(f"Entity '{entity_id}' not found. Raising exception.")
+        raise EntityNotFoundError(f"Entity '{entity_id}' not found in Home Assistant.")
 
     state = self.hass.states.get(entity_id)
-    if state:
+
+    try:
         if output_type is None:
             return state
 
         if output_type.lower() == "float":
             return round(convert_to_float(state.state), float_precision)
+
         if output_type.lower() == "boolean":
             return convert_to_boolean(state.state)
+
         if output_type.lower() == "string":
             return str(state.state)
-        else:
-            return None
-    else:
-        _LOGGER.debug(f"Sensor {entity_id} not found.")
+
+        _LOGGER.warning(
+            f"Unknown output type '{output_type}' for entity '{entity_id}'. Returning None."
+        )
         return None
+
+    except Exception as e:
+        _LOGGER.error(
+            f"Error converting state of entity '{entity_id}' to type '{output_type}'. Error: {e}"
+        )
+        raise HomeAssistantError(
+            f"Error converting state of entity '{entity_id}' to type '{output_type}': {e}"
+        )
 
 
 async def async_remove_entity_from_ha(self, entity_unique_id):

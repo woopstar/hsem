@@ -61,6 +61,10 @@ class HSEMEntity(RestoreEntity):
         """Return False because entity pushes its state to HA"""
         return False
 
+    @property
+    def unique_id(self):
+        return self._attr_unique_id
+
     async def async_will_remove_from_hass(self):
         """Entity being removed from hass."""
         await super().async_will_remove_from_hass()

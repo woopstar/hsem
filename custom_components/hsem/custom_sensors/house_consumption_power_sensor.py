@@ -282,27 +282,28 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
                 if await async_remove_entity_from_ha(self, integral_sensor_unique_id):
                     self._has_been_removed.append(integral_sensor_unique_id)
                     _LOGGER.debug(f"Successfully removed '{integral_sensor_name}'.")
-        else:
-            _LOGGER.debug(
-                f"Adding integral sensor {integral_sensor_name} for {source_entity}"
-            )
+            return
 
-            # Create the integral sensor using the left Reimann method
-            integral_sensor = HSEMIntegrationSensor(
-                integration_method="left",
-                name=integral_sensor_name,
-                round_digits=2,
-                source_entity=source_entity,
-                unique_id=integral_sensor_unique_id,
-                unit_prefix="k",
-                unit_time=UnitOfTime.HOURS,
-                max_sub_interval=timedelta(minutes=1),
-                device_info=None,
-                config_entry=self._config_entry,
-            )
+        _LOGGER.debug(
+            f"Adding integral sensor {integral_sensor_name} for {source_entity}"
+        )
 
-            # Add the integral sensor to Home Assistant
-            self._async_add_entities([integral_sensor])
+        # Create the integral sensor using the left Reimann method
+        integral_sensor = HSEMIntegrationSensor(
+            integration_method="left",
+            name=integral_sensor_name,
+            round_digits=2,
+            source_entity=source_entity,
+            unique_id=integral_sensor_unique_id,
+            unit_prefix="k",
+            unit_time=UnitOfTime.HOURS,
+            max_sub_interval=timedelta(minutes=1),
+            device_info=None,
+            config_entry=self._config_entry,
+        )
+
+        # Add the integral sensor to Home Assistant
+        self._async_add_entities([integral_sensor])
 
     async def _async_add_energy_average_sensors(self, avg=3):
         # Create the name and unique id for the avg sensor
@@ -336,27 +337,27 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
                         f"Successfully removed '{avg_energy_sensor_name}' before re-adding."
                     )
                     self._has_been_removed.append(avg_energy_sensor_unique_id)
-        else:
-            # If sensor does not exist, create it and add to Home Assistant
-            _LOGGER.debug(
-                f"Creating new average energy sensor '{avg_energy_sensor_name}' for '{source_entity}'."
-            )
+            return
 
-            avg_sensor = HSEMStatisticsSensor(
-                hass=self.hass,
-                source_entity_id=source_entity,
-                name=avg_energy_sensor_name,
-                unique_id=avg_energy_sensor_unique_id,
-                state_characteristic="mean",
-                samples_max_buffer_size=(24 * 60 * avg),  # Sampling size
-                samples_max_age=timedelta(days=avg),  # Max age
-                samples_keep_last=True,
-                precision=2,
-                percentile=50,
-                config_entry=self._config_entry,
-            )
+        _LOGGER.debug(
+            f"Creating new average energy sensor '{avg_energy_sensor_name}' for '{source_entity}'."
+        )
 
-            self._async_add_entities([avg_sensor])
+        avg_sensor = HSEMStatisticsSensor(
+            hass=self.hass,
+            source_entity_id=source_entity,
+            name=avg_energy_sensor_name,
+            unique_id=avg_energy_sensor_unique_id,
+            state_characteristic="mean",
+            samples_max_buffer_size=(24 * 60 * avg),  # Sampling size
+            samples_max_age=timedelta(days=avg),  # Max age
+            samples_keep_last=True,
+            precision=2,
+            percentile=50,
+            config_entry=self._config_entry,
+        )
+
+        self._async_add_entities([avg_sensor])
 
     async def _async_add_utility_meter_sensor(self):
         """Add a utility meter sensor dynamically."""
@@ -400,34 +401,35 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
                         f"Successfully removed '{utility_meter_name}' before re-adding."
                     )
                     self._has_been_removed.append(utility_meter_unique_id)
-        else:
-            _LOGGER.debug(
-                f"Adding utility meter sensor {utility_meter_name} for {source_entity}"
-            )
+            return
 
-            # Create the utility meter sensor with the given cycle and source
-            utility_meter_sensor = HSEMUtilityMeterSensor(
-                cron_pattern=None,
-                delta_values=False,
-                meter_offset=timedelta(hours=0),
-                meter_type="daily",
-                name=utility_meter_name,
-                net_consumption=True,
-                parent_meter=source_entity,
-                periodically_resetting=True,
-                source_entity=source_entity,
-                tariff_entity=None,
-                tariff=None,
-                unique_id=utility_meter_unique_id,
-                device_info=None,
-                sensor_always_available=True,
-                config_entry=self._config_entry,
-            )
+        _LOGGER.debug(
+            f"Adding utility meter sensor {utility_meter_name} for {source_entity}"
+        )
 
-            # Add the utility meter to Home Assistant
-            self._async_add_entities([utility_meter_sensor])
+        # Create the utility meter sensor with the given cycle and source
+        utility_meter_sensor = HSEMUtilityMeterSensor(
+            cron_pattern=None,
+            delta_values=False,
+            meter_offset=timedelta(hours=0),
+            meter_type="daily",
+            name=utility_meter_name,
+            net_consumption=True,
+            parent_meter=source_entity,
+            periodically_resetting=True,
+            source_entity=source_entity,
+            tariff_entity=None,
+            tariff=None,
+            unique_id=utility_meter_unique_id,
+            device_info=None,
+            sensor_always_available=True,
+            config_entry=self._config_entry,
+        )
 
-            # Append the newly created sensor to DATA_TARIFF_SENSORS
-            self.hass.data[DATA_UTILITY][source_entity][DATA_TARIFF_SENSORS].append(
-                utility_meter_sensor
-            )
+        # Add the utility meter to Home Assistant
+        self._async_add_entities([utility_meter_sensor])
+
+        # Append the newly created sensor to DATA_TARIFF_SENSORS
+        self.hass.data[DATA_UTILITY][source_entity][DATA_TARIFF_SENSORS].append(
+            utility_meter_sensor
+        )
