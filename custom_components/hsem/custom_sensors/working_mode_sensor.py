@@ -138,6 +138,12 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             "5pm_9pm": 0.0,
             "9pm_midnight": 0.0,
         }
+        self._hsem_is_night_price_lower_than_morning = False
+        self._hsem_is_night_price_lower_than_afternoon = False
+        self._hsem_is_night_price_lower_than_evening = False
+        self._hsem_is_night_price_lower_than_late_evening = False
+        self._hsem_is_afternoon_price_lower_than_evening = False
+        self._hsem_is_afternoon_price_lower_than_late_evening = False
         self._attr_unique_id = get_working_mode_sensor_unique_id()
         self.entity_id = get_working_mode_sensor_entity_id()
         self._update_settings()
@@ -298,6 +304,12 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             "energi_data_service_import_entity": self._hsem_energi_data_service_import,
             "energi_data_service_import_state": self._hsem_energi_data_service_import_state,
             "energy_needs": self._energy_needs,
+            "is_night_price_lower_than_morning": self._hsem_is_night_price_lower_than_morning,
+            "is_night_price_lower_than_afternoon": self._hsem_is_night_price_lower_than_afternoon,
+            "is_night_price_lower_than_evening": self._hsem_is_night_price_lower_than_evening,
+            "is_night_price_lower_than_late_evening": self._hsem_is_night_price_lower_than_late_evening,
+            "is_afternoon_price_lower_than_evening": self._hsem_is_afternoon_price_lower_than_evening,
+            "is_afternoon_price_lower_than_late_evening": self._hsem_is_afternoon_price_lower_than_late_evening,
             "ev_charger_power_entity": self._hsem_ev_charger_power,
             "ev_charger_power_state": self._hsem_ev_charger_power_state,
             "ev_charger_status_entity": self._hsem_ev_charger_status,
@@ -389,7 +401,9 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
             # Adjust remaining charge if it exceeds the max grid-allowed charge
             if self._hsem_batteries_remaining_charge > max_allowed_grid_charge:
-                self._hsem_batteries_remaining_charge = max_allowed_grid_charge
+                self._hsem_batteries_remaining_charge = round(
+                    max_allowed_grid_charge, 2
+                )
 
             # Calculate usable capacity (kWh)
             self._hsem_batteries_usable_capacity = round(
@@ -399,10 +413,13 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             )
 
             # Calculate current capacity (kWh)
-            self._hsem_batteries_current_capacity = (
-                self._hsem_huawei_solar_batteries_state_of_capacity_state
-                / 100
-                * (self._hsem_batteries_rated_capacity_max_state / 1000)
+            self._hsem_batteries_current_capacity = round(
+                (
+                    self._hsem_huawei_solar_batteries_state_of_capacity_state
+                    / 100
+                    * (self._hsem_batteries_rated_capacity_max_state / 1000)
+                ),
+                2,
             )
 
         # reset the recommendations
@@ -432,6 +449,9 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         # Force charge the batteries when needed
         await self._async_force_charge_batteries()
 
+        # Calculate the price intervals and check
+        await self._async_calculate_compare_price_intervals()
+
         # Set the inverter power control mode
         if (
             self._hsem_energi_data_service_export_state is not None
@@ -459,6 +479,26 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
         # Trigger an update in Home Assistant
         return self.async_write_ha_state()
+
+    async def _async_calculate_compare_price_intervals(self):
+        self._hsem_is_night_price_lower_than_morning = (
+            await self._async_compare_price_intervals(0, 6, 6, 10)
+        )
+        self._hsem_is_night_price_lower_than_afternoon = (
+            await self._async_compare_price_intervals(0, 6, 10, 17)
+        )
+        self._hsem_is_night_price_lower_than_evening = (
+            await self._async_compare_price_intervals(0, 6, 17, 21)
+        )
+        self._hsem_is_night_price_lower_than_late_evening = (
+            await self._async_compare_price_intervals(0, 6, 21, 23)
+        )
+        self._hsem_is_afternoon_price_lower_than_evening = (
+            await self._async_compare_price_intervals(10, 17, 17, 21)
+        )
+        self._hsem_is_afternoon_price_lower_than_late_evening = (
+            await self._async_compare_price_intervals(10, 17, 21, 23)
+        )
 
     async def _async_force_charge_batteries(self):
         # Get the current time
@@ -1284,6 +1324,47 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             )
             for label, hours in time_ranges.items()
         }
+
+    async def _async_compare_price_intervals(
+        self, start_hour_1, end_hour_1, start_hour_2, end_hour_2
+    ):
+        """
+        Compares the sum of import prices between two intervals.
+
+        Args:
+            start_hour_1 (int): Start hour of the first interval.
+            end_hour_1 (int): End hour of the first interval.
+            start_hour_2 (int): Start hour of the second interval.
+            end_hour_2 (int): End hour of the second interval.
+
+        Returns:
+            bool: True if the sum of import prices in the first interval is less than the second interval, False otherwise.
+        """
+
+        def calculate_total_import_price(start_hour, end_hour):
+            total_price = 0
+            for hour_start in range(start_hour, end_hour):
+                hour_end = (hour_start + 1) % 24
+                time_range = f"{hour_start:02d}-{hour_end:02d}"
+                if time_range in self._hourly_calculations:
+                    import_price = self._hourly_calculations[time_range].get(
+                        "import_price"
+                    )
+                    if import_price is not None:
+                        total_price += import_price
+            return total_price
+
+        # Calculate the total import price for both intervals
+        total_price_1 = calculate_total_import_price(start_hour_1, end_hour_1)
+        total_price_2 = calculate_total_import_price(start_hour_2, end_hour_2)
+
+        _LOGGER.debug(
+            f"Interval 1 ({start_hour_1}-{end_hour_1}): {total_price_1}, "
+            f"Interval 2 ({start_hour_2}-{end_hour_2}): {total_price_2}"
+        )
+
+        # Return True if interval 1's total price is less than interval 2's
+        return total_price_1 < total_price_2
 
     async def async_update(self):
         """Manually trigger the sensor update."""
