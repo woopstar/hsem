@@ -66,6 +66,18 @@ def convert_to_float(state):
         return 0.0
 
 
+def convert_to_int(state):
+    """Resolve the input sensor state and cast it to a float."""
+
+    if state is None:
+        return 0
+
+    try:
+        return int(state)
+    except ValueError:
+        return 0
+
+
 def convert_to_boolean(state):
     """Resolve the input sensor state and cast it to a boolean."""
 
