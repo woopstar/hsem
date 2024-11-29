@@ -1,5 +1,9 @@
 {
   "config": {
+    "abort": {
+      "already_configured": "HSEM is already configured",
+      "reconfigured_successfully": "Integration reconfigured successfully."
+    },
     "error": {
       "device_not_found": "The selected device was not found.",
       "entity_not_found": "The selected entity was not found.",
@@ -54,7 +58,7 @@
           "hsem_house_power_includes_ev_charger_power": "Enable this if the house consumption power sensor already includes the EV charger power consumption."
         },
         "description": "Configure EV Charger settings for HSEM.",
-        "title": "EV Charger Settings"
+        "title": "EV Charger Settings (Optional)"
       },
       "huawei_solar": {
         "data": {
@@ -195,7 +199,7 @@
           "hsem_house_power_includes_ev_charger_power": "Enable this if the house consumption power sensor already includes the EV charger power consumption."
         },
         "description": "Configure EV Charger settings for HSEM.",
-        "title": "EV Charger Settings"
+        "title": "EV Charger Settings (Optional)"
       },
       "huawei_solar": {
         "data": {

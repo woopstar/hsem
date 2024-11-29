@@ -34,6 +34,7 @@ from homeassistant.components.utility_meter.const import (
 )
 from homeassistant.const import UnitOfPower, UnitOfTime
 from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from custom_components.hsem.custom_sensors.integration_sensor import (
     HSEMIntegrationSensor,
@@ -50,12 +51,16 @@ from custom_components.hsem.utils.misc import (
     ha_get_entity_state_and_convert,
 )
 from custom_components.hsem.utils.sensornames import (
+    get_energy_average_sensor_entity_id,
     get_energy_average_sensor_name,
     get_energy_average_sensor_unique_id,
+    get_house_consumption_power_sensor_entity_id,
     get_house_consumption_power_sensor_name,
     get_house_consumption_power_sensor_unique_id,
+    get_integral_sensor_entity_id,
     get_integral_sensor_name,
     get_integral_sensor_unique_id,
+    get_utility_meter_sensor_entity_id,
     get_utility_meter_sensor_name,
     get_utility_meter_sensor_unique_id,
 )
@@ -63,7 +68,7 @@ from custom_components.hsem.utils.sensornames import (
 _LOGGER = logging.getLogger(__name__)
 
 
-class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
+class HSEMHouseConsumptionPowerSensor(SensorEntity, RestoreEntity, HSEMEntity):
     """Representation of a sensor that tracks power consumption per hour block."""
 
     _attr_icon = "mdi:flash"
@@ -71,6 +76,7 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
 
     def __init__(self, config_entry, hour_start, hour_end, async_add_entities):
         super().__init__(config_entry)
+        self._available = False
         self._hsem_house_consumption_power = None
         self._hsem_house_consumption_power_state = 0.0
         self._hsem_ev_charger_power = None
@@ -79,7 +85,10 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
         self._hsem_house_power_includes_ev_charger_power_state = None
         self._hour_start = hour_start
         self._hour_end = hour_end
-        self._unique_id = get_house_consumption_power_sensor_unique_id(
+        self._attr_unique_id = get_house_consumption_power_sensor_unique_id(
+            hour_start, hour_end
+        )
+        self.entity_id = get_house_consumption_power_sensor_entity_id(
             hour_start, hour_end
         )
         self._state = None
@@ -104,11 +113,19 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
 
     @property
     def unique_id(self):
-        return self._unique_id
+        return self._attr_unique_id
 
     @property
     def state(self):
         return self._state
+
+    @property
+    def should_poll(self):
+        return True
+
+    @property
+    def available(self):
+        return self._available
 
     @property
     def extra_state_attributes(self):
@@ -122,21 +139,14 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
             "hour_start": self._hour_start,
             "hour_end": self._hour_end,
             "last_updated": self._last_updated,
-            "unique_id": self._unique_id,
+            "unique_id": self._attr_unique_id,
         }
 
     async def async_update(self, event=None):
         """Manually trigger the sensor update."""
-        await self._async_handle_update(None)
-
-    async def async_will_remove_from_hass(self):
-        """Entity being removed from hass."""
-        await super().async_will_remove_from_hass()
+        return await self._async_handle_update(None)
 
     async def async_added_to_hass(self):
-        """Handle when sensor is added to Home Assistant."""
-        await super().async_added_to_hass()
-
         # Get the last state of the sensor
         old_state = await self.async_get_last_state()
         if old_state is not None:
@@ -145,11 +155,14 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
         else:
             self._state = 0.0
 
+        # Initial update
+        await self._async_handle_update(None)
+
         # Schedule a periodic update every minute
         # async_track_time_interval(self.hass, self._async_handle_update, timedelta(minutes=1))
 
-        # Initial update
-        await self._async_handle_update(None)
+        """Handle when sensor is added to Home Assistant."""
+        return await super().async_added_to_hass()
 
     def _update_settings(self):
         """Fetch updated settings from config_entry options."""
@@ -209,9 +222,10 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
 
         # Update last update time
         self._last_updated = now.isoformat()
+        self._available = True
 
         # Trigger an update in Home Assistant
-        self.async_write_ha_state()
+        return self.async_write_ha_state()
 
     async def _async_track_entities(self):
         # Track state changes for the source sensor
@@ -260,6 +274,9 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
         integral_sensor_unique_id = get_integral_sensor_unique_id(
             self._hour_start, self._hour_end
         )
+        integral_sensor_entity_id = get_integral_sensor_entity_id(
+            self._hour_start, self._hour_end
+        )
         power_sensor_unique_id = get_house_consumption_power_sensor_unique_id(
             self._hour_start, self._hour_end
         )
@@ -299,6 +316,8 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
             unit_time=UnitOfTime.HOURS,
             max_sub_interval=timedelta(minutes=1),
             device_info=None,
+            e_id=integral_sensor_entity_id,
+            id=integral_sensor_unique_id,
             config_entry=self._config_entry,
         )
 
@@ -311,6 +330,9 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
             self._hour_start, self._hour_end, avg
         )
         avg_energy_sensor_unique_id = get_energy_average_sensor_unique_id(
+            self._hour_start, self._hour_end, avg
+        )
+        avg_energy_sensor_entity_id = get_energy_average_sensor_entity_id(
             self._hour_start, self._hour_end, avg
         )
         utility_meter_unique_id = get_utility_meter_sensor_unique_id(
@@ -326,11 +348,11 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
             return
 
         # Check if the avg sensor already exists
-        avg_energy_sensor_entity_id = await async_resolve_entity_id_from_unique_id(
+        avg_energy_sensor_exists = await async_resolve_entity_id_from_unique_id(
             self, avg_energy_sensor_unique_id
         )
 
-        if avg_energy_sensor_entity_id:
+        if avg_energy_sensor_exists:
             if avg_energy_sensor_unique_id not in self._has_been_removed:
                 if await async_remove_entity_from_ha(self, avg_energy_sensor_unique_id):
                     _LOGGER.debug(
@@ -354,6 +376,8 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
             samples_keep_last=True,
             precision=2,
             percentile=50,
+            id=avg_energy_sensor_unique_id,
+            e_id=avg_energy_sensor_entity_id,
             config_entry=self._config_entry,
         )
 
@@ -367,6 +391,9 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
             self._hour_start, self._hour_end
         )
         utility_meter_unique_id = get_utility_meter_sensor_unique_id(
+            self._hour_start, self._hour_end
+        )
+        utility_meter_entity_id = get_utility_meter_sensor_entity_id(
             self._hour_start, self._hour_end
         )
         integral_sensor_unique_id = get_integral_sensor_unique_id(
@@ -423,8 +450,12 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity):
             unique_id=utility_meter_unique_id,
             device_info=None,
             sensor_always_available=True,
+            id=utility_meter_unique_id,
+            e_id=utility_meter_entity_id,
             config_entry=self._config_entry,
         )
+
+        utility_meter_sensor.entity_id = utility_meter_entity_id
 
         # Add the utility meter to Home Assistant
         self._async_add_entities([utility_meter_sensor])

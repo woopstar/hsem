@@ -43,6 +43,9 @@ def get_config_value(config_entry, key):
     if key not in DEFAULT_CONFIG_VALUES:
         raise KeyError(f"Key '{key}' not found in DEFAULT_VALUES")
 
+    if config_entry is None and key in DEFAULT_CONFIG_VALUES:
+        return DEFAULT_CONFIG_VALUES[key]
+
     if config_entry is None:
         return None
 

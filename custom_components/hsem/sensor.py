@@ -17,19 +17,6 @@ async def async_setup_entry(
 ) -> None:
     """
     Set up HSEM sensors from a config entry.
-
-    This function initializes various HSEM sensors based on the provided configuration entry.
-    It extracts configuration parameters, creates a WorkingModeSensor, sets its attributes,
-    and sets up power, energy, and energy average sensors. Finally, it adds these sensors
-    to Home Assistant and stores a reference to the platform for handling unloads later.
-
-    Args:
-        hass (HomeAssistant): The Home Assistant instance.
-        config_entry (ConfigEntry): The configuration entry containing setup information.
-        async_add_entities (AddEntitiesCallback): The function to add entities to Home Assistant.
-
-    Returns:
-        None
     """
 
     # Setup working mode sensor

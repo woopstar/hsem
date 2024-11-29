@@ -128,7 +128,7 @@ async def validate_huawei_solar_input(hass, user_input):
 
         for field in entity_fields:
             entity_id = user_input.get(field)
-            if entity_id and not async_entity_exists(hass, entity_id):
+            if entity_id and not await async_entity_exists(hass, entity_id):
                 errors[field] = "entity_not_found"
 
         # Tjek devices

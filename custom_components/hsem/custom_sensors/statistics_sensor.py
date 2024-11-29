@@ -10,9 +10,11 @@ class HSEMStatisticsSensor(StatisticsSensor, HSEMEntity):
 
     _attr_icon = "mdi:calculator"
 
-    def __init__(self, *args, config_entry=None, **kwargs):
+    def __init__(self, *args, id: str, e_id: str, config_entry=None, **kwargs):
         StatisticsSensor.__init__(self, *args, **kwargs)
         HSEMEntity.__init__(self, config_entry)
+        self._attr_unique_id = id
+        self.entity_id = e_id
 
     @property
     def unit_of_measurement(self):
@@ -25,3 +27,7 @@ class HSEMStatisticsSensor(StatisticsSensor, HSEMEntity):
     @property
     def unique_id(self):
         return self._attr_unique_id
+
+    @property
+    def should_poll(self):
+        return True

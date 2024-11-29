@@ -9,9 +9,11 @@ class HSEMIntegrationSensor(IntegrationSensor, HSEMEntity):
 
     _attr_icon = "mdi:chart-histogram"
 
-    def __init__(self, *args, config_entry=None, **kwargs):
+    def __init__(self, *args, id: str, e_id: str, config_entry=None, **kwargs):
         IntegrationSensor.__init__(self, *args, **kwargs)
         HSEMEntity.__init__(self, config_entry)
+        self._attr_unique_id = id
+        self.entity_id = e_id
 
     @property
     def state_class(self):
@@ -24,3 +26,7 @@ class HSEMIntegrationSensor(IntegrationSensor, HSEMEntity):
     @property
     def unique_id(self):
         return self._attr_unique_id
+
+    @property
+    def should_poll(self):
+        return True
