@@ -1376,9 +1376,6 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             "recommendation"
         ] = Recommendations.ForceBatteriesCharge.value
         self._hourly_calculations[time_range]["batteries_charged"] = energy_to_charge
-        _LOGGER.warning(
-            f"Marked {time_range} for charging using {source}. Energy Charged: {energy_to_charge} kWh."
-        )
 
     async def _async_optimization_strategy(self):
         """Calculate the optimization strategy for each hour of the day."""

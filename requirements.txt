@@ -1,4 +1,2 @@
 voluptuous==0.15.2
 pytz==2024.2
-homeassistant==2024.12.0
-ruff==0.8.1
