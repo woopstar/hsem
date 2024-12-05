@@ -9,7 +9,7 @@
       "entity_not_found": "The selected entity was not found.",
       "hsem_house_consumption_energy_weight_total": "The total of the house consumption energy weights must be 100%.",
       "invalid_sensor": "Invalid input sensor. Please choose a valid sensor.",
-      "only_one_entry_allowed": "Only one config entry is allowed.",
+      "only_one_entry_allowed": "Only one configuration of HSEM is allowed.",
       "required": "This field is required.",
       "start_time_after_end_time": "Start time must be before end time."
     },
@@ -150,7 +150,7 @@
       "entity_not_found": "The selected entity was not found.",
       "hsem_house_consumption_energy_weight_total": "The total of the house consumption energy weights must be 100%.",
       "invalid_sensor": "Invalid input sensor. Please choose a valid sensor.",
-      "only_one_entry_allowed": "Only one config entry is allowed.",
+      "only_one_entry_allowed": "Only one configuration of HSEM is allowed.",
       "required": "This field is required.",
       "start_time_after_end_time": "Start time must be before end time."
     },
