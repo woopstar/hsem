@@ -117,11 +117,13 @@
       "user": {
         "data": {
           "device_name": "Name",
-          "hsem_read_only": "Read Only"
+          "hsem_read_only": "Read Only",
+          "hsem_update_interval": "Update interval"
         },
         "data_description": {
           "device_name": "Enter a unique name for this device.",
-          "hsem_read_only": "Enable this option to set the integration to read-only mode, preventing it from sending commands to devices."
+          "hsem_read_only": "Enable this option to set the integration to read-only mode, preventing it from sending commands to devices.",
+          "hsem_update_interval": "The update interval in minutes for the working mode sensor."
         },
         "description": "Configure the settings for HSEM",
         "title": "Configure Huawei Solar Energy Management"
@@ -242,11 +244,13 @@
       "init": {
         "data": {
           "device_name": "Name",
-          "hsem_read_only": "Read Only"
+          "hsem_read_only": "Read Only",
+          "hsem_update_interval": "Update interval"
         },
         "data_description": {
           "device_name": "Enter a unique name for this device.",
-          "hsem_read_only": "Enable this option to set the integration to read-only mode, preventing it from sending commands to devices."
+          "hsem_read_only": "Enable this option to set the integration to read-only mode, preventing it from sending commands to devices.",
+          "hsem_update_interval": "The update interval in minutes for the working mode sensor."
         },
         "description": "Update the settings for HSEM",
         "title": "Update Huawei Solar Energy Management"

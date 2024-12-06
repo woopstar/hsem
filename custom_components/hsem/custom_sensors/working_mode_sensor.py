@@ -32,6 +32,7 @@ from custom_components.hsem.utils.misc import (
     async_resolve_entity_id_from_unique_id,
     async_set_select_option,
     convert_to_float,
+    convert_to_int,
     generate_hash,
     get_config_value,
     ha_get_entity_state_and_convert,
@@ -63,6 +64,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         # Initialize all attributes to None or some default value
         self._read_only = False
         self._available = False
+        self._update_interval = 1
         self._hsem_huawei_solar_device_id_inverter_1 = None
         self._hsem_huawei_solar_device_id_inverter_2 = None
         self._hsem_huawei_solar_device_id_batteries = None
@@ -105,6 +107,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_energi_data_service_export_state = 0.0
         self._last_changed_mode = None
         self._last_updated = None
+        self._next_update = None
         self._hsem_house_consumption_energy_weight_1d = None
         self._hsem_house_consumption_energy_weight_3d = None
         self._hsem_house_consumption_energy_weight_7d = None
@@ -153,6 +156,10 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
     def _update_settings(self):
         """Fetch updated settings from config_entry options."""
         self._read_only = get_config_value(self._config_entry, "hsem_read_only")
+
+        self._update_interval = convert_to_int(
+            get_config_value(self._config_entry, "hsem_update_interval")
+        )
 
         self._hsem_huawei_solar_device_id_inverter_1 = get_config_value(
             self._config_entry, "hsem_huawei_solar_device_id_inverter_1"
@@ -292,10 +299,19 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
     def extra_state_attributes(self):
         """Return the state attributes."""
 
+        if self._missing_input_entities:
+            return {
+                "error": "Some of the required input sensors from the config flow is missing or not reporting a state. Check your configuration and make sure input sensors are configured correctly.",
+                "last_updated": self._last_updated,
+                "unique_id": self._attr_unique_id,
+            }
+
         return {
             "read_only": self._read_only,
             "last_updated": self._last_updated,
             "last_changed_mode": self._last_changed_mode,
+            "next_update": self._next_update,
+            "update_interval": self._update_interval,
             "unique_id": self._attr_unique_id,
             "batteries_conversion_loss": self._hsem_batteries_conversion_loss,
             "batteries_remaining_charge": self._hsem_batteries_remaining_charge,
@@ -477,10 +493,11 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 self._last_changed_mode = datetime.now().isoformat()
 
         if self._missing_input_entities:
-            self._state = Recommendations.MissingInputEntities
+            self._state = Recommendations.MissingInputEntities.value
 
         # Update last update time
-        self._last_updated = datetime.now().isoformat()
+        self._last_updated = now.isoformat()
+        self._next_update = (now + timedelta(minutes=self._update_interval)).isoformat()
         self._available = True
 
         # Trigger an update in Home Assistant
@@ -1518,7 +1535,9 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
         # Schedule a periodic update every minute
         async_track_time_interval(
-            self.hass, self._async_handle_update, timedelta(minutes=1)
+            self.hass,
+            self._async_handle_update,
+            timedelta(minutes=self._update_interval),
         )
 
         """Handle the sensor being added to Home Assistant."""

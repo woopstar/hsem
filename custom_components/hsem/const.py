@@ -32,6 +32,7 @@ DEFAULT_HSEM_MONTHS_SUMMER = [5, 6, 7, 8]
 
 DEFAULT_CONFIG_VALUES = {
     "device_name": NAME,
+    "hsem_update_interval": 5,
     "hsem_batteries_conversion_loss": 10,
     "hsem_batteries_enable_charge_hours_day_end": "17:00:00",
     "hsem_batteries_enable_charge_hours_day_start": "12:00:00",

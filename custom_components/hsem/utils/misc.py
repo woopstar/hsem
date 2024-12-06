@@ -54,7 +54,7 @@ def get_config_value(config_entry, key):
     )
 
 
-def convert_to_float(state):
+def convert_to_float(state) -> float:
     """Resolve the input sensor state and cast it to a float."""
 
     if state is None:
@@ -66,7 +66,7 @@ def convert_to_float(state):
         return 0.0
 
 
-def convert_to_int(state):
+def convert_to_int(state) -> int:
     """Resolve the input sensor state and cast it to a float."""
 
     if state is None:
@@ -78,7 +78,7 @@ def convert_to_int(state):
         return 0
 
 
-def convert_to_boolean(state):
+def convert_to_boolean(state) -> bool:
     """Resolve the input sensor state and cast it to a boolean."""
 
     if state is None:
@@ -116,7 +116,7 @@ def convert_to_boolean(state):
     if state_value_lower in state_map:
         return state_map[state_value_lower]
     else:
-        return None
+        return False
 
 
 async def async_resolve_entity_id_from_unique_id(

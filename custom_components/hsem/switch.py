@@ -10,11 +10,11 @@ SWITCHES = {
         "description": "Toggle read-only mode for the integration.",
     },
     "hsem_batteries_enable_charge_hours_day": {
-        "name": "Enable Daytime Charging",
+        "name": "Day Charging",
         "description": "Enable or disable daytime charge hours.",
     },
     "hsem_batteries_enable_charge_hours_night": {
-        "name": "Enable Nighttime Charging",
+        "name": "Night Charging",
         "description": "Enable or disable nighttime charge hours.",
     },
 }

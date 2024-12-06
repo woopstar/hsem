@@ -13,6 +13,20 @@ async def get_init_step_schema(config_entry):
                 default=get_config_value(config_entry, "device_name"),
             ): str,
             vol.Required(
+                "hsem_update_interval",
+                default=get_config_value(config_entry, "hsem_update_interval"),
+            ): selector(
+                {
+                    "number": {
+                        "min": 1,
+                        "max": 59,
+                        "step": 1,
+                        "unit_of_measurement": "min",
+                        "mode": "slider",
+                    }
+                }
+            ),
+            vol.Required(
                 "hsem_read_only",
                 default=get_config_value(config_entry, "hsem_read_only"),
             ): selector({"boolean": {}}),
