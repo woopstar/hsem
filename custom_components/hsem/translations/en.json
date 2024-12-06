@@ -1,8 +1,8 @@
 {
   "config": {
     "abort": {
-      "already_configured": "HSEM is already configured",
-      "reconfigured_successfully": "Integration reconfigured successfully."
+      "already_configured": "HSEM Integration is already configured",
+      "reconfigured_successfully": "HSEM Integration reconfigured successfully."
     },
     "error": {
       "device_not_found": "The selected device was not found.",
