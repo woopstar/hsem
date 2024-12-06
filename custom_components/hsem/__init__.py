@@ -1,19 +1,12 @@
 """
 This module initializes the custom component for Home Assistant.
-
-Functions:
-    async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-        Set up the custom component from a config entry.
-
-    async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-        Unload the custom component from a config entry.
 """
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 
-PLATFORMS = [Platform.SENSOR]
+PLATFORMS = [Platform.SENSOR, Platform.SWITCH, Platform.TIME]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

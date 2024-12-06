@@ -3,14 +3,6 @@ from datetime import datetime
 import voluptuous as vol
 from homeassistant.helpers.selector import selector
 
-from custom_components.hsem.const import (
-    DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_DAY,
-    DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_DAY_END,
-    DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_DAY_START,
-    DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_NIGHT,
-    DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_NIGHT_END,
-    DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_NIGHT_START,
-)
 from custom_components.hsem.utils.misc import get_config_value
 
 
@@ -21,49 +13,37 @@ async def get_charge_hours_step_schema(config_entry):
             vol.Required(
                 "hsem_batteries_enable_charge_hours_day",
                 default=get_config_value(
-                    config_entry,
-                    "hsem_batteries_enable_charge_hours_day",
-                    DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_DAY,
+                    config_entry, "hsem_batteries_enable_charge_hours_day"
                 ),
             ): selector({"boolean": {}}),
             vol.Required(
                 "hsem_batteries_enable_charge_hours_day_start",
                 default=get_config_value(
-                    config_entry,
-                    "hsem_batteries_enable_charge_hours_day_start",
-                    DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_DAY_START,
+                    config_entry, "hsem_batteries_enable_charge_hours_day_start"
                 ),
             ): selector({"time": {}}),
             vol.Required(
                 "hsem_batteries_enable_charge_hours_day_end",
                 default=get_config_value(
-                    config_entry,
-                    "hsem_batteries_enable_charge_hours_day_end",
-                    DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_DAY_END,
+                    config_entry, "hsem_batteries_enable_charge_hours_day_end"
                 ),
             ): selector({"time": {}}),
             vol.Required(
                 "hsem_batteries_enable_charge_hours_night",
                 default=get_config_value(
-                    config_entry,
-                    "hsem_batteries_enable_charge_hours_night",
-                    DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_NIGHT,
+                    config_entry, "hsem_batteries_enable_charge_hours_night"
                 ),
             ): selector({"boolean": {}}),
             vol.Required(
                 "hsem_batteries_enable_charge_hours_night_start",
                 default=get_config_value(
-                    config_entry,
-                    "hsem_batteries_enable_charge_hours_night_start",
-                    DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_NIGHT_START,
+                    config_entry, "hsem_batteries_enable_charge_hours_night_start"
                 ),
             ): selector({"time": {}}),
             vol.Required(
                 "hsem_batteries_enable_charge_hours_night_end",
                 default=get_config_value(
-                    config_entry,
-                    "hsem_batteries_enable_charge_hours_night_end",
-                    DEFAULT_HSEM_BATTERIES_ENABLE_CHARGE_HOURS_NIGHT_END,
+                    config_entry, "hsem_batteries_enable_charge_hours_night_end"
                 ),
             ): selector({"time": {}}),
         }

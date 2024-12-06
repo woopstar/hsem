@@ -1,12 +1,6 @@
 import voluptuous as vol
 from homeassistant.helpers.selector import selector
 
-from custom_components.hsem.const import (
-    DEFAULT_HOUSE_CONSUMPTION_ENERGY_WEIGHT_1D,
-    DEFAULT_HOUSE_CONSUMPTION_ENERGY_WEIGHT_3D,
-    DEFAULT_HOUSE_CONSUMPTION_ENERGY_WEIGHT_7D,
-    DEFAULT_HOUSE_CONSUMPTION_ENERGY_WEIGHT_14D,
-)
 from custom_components.hsem.utils.misc import get_config_value
 
 
@@ -17,9 +11,7 @@ async def get_weighted_values_step_schema(config_entry):
             vol.Required(
                 "hsem_house_consumption_energy_weight_1d",
                 default=get_config_value(
-                    config_entry,
-                    "hsem_house_consumption_energy_weight_1d",
-                    DEFAULT_HOUSE_CONSUMPTION_ENERGY_WEIGHT_1D,
+                    config_entry, "hsem_house_consumption_energy_weight_1d"
                 ),
             ): selector(
                 {
@@ -35,9 +27,7 @@ async def get_weighted_values_step_schema(config_entry):
             vol.Required(
                 "hsem_house_consumption_energy_weight_3d",
                 default=get_config_value(
-                    config_entry,
-                    "hsem_house_consumption_energy_weight_3d",
-                    DEFAULT_HOUSE_CONSUMPTION_ENERGY_WEIGHT_3D,
+                    config_entry, "hsem_house_consumption_energy_weight_3d"
                 ),
             ): selector(
                 {
@@ -53,9 +43,7 @@ async def get_weighted_values_step_schema(config_entry):
             vol.Required(
                 "hsem_house_consumption_energy_weight_7d",
                 default=get_config_value(
-                    config_entry,
-                    "hsem_house_consumption_energy_weight_7d",
-                    DEFAULT_HOUSE_CONSUMPTION_ENERGY_WEIGHT_7D,
+                    config_entry, "hsem_house_consumption_energy_weight_7d"
                 ),
             ): selector(
                 {
@@ -71,9 +59,7 @@ async def get_weighted_values_step_schema(config_entry):
             vol.Required(
                 "hsem_house_consumption_energy_weight_14d",
                 default=get_config_value(
-                    config_entry,
-                    "hsem_house_consumption_energy_weight_14d",
-                    DEFAULT_HOUSE_CONSUMPTION_ENERGY_WEIGHT_14D,
+                    config_entry, "hsem_house_consumption_energy_weight_14d"
                 ),
             ): selector(
                 {

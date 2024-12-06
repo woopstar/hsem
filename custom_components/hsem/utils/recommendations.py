@@ -20,6 +20,7 @@ class Recommendations(Enum):
         ForceBatteriesDischarge (str): Forces batteries to discharge to supply energy demand.
         EVSmartCharging (str): Activates smart charging mode for electric vehicles.
         ForceExport (str): Forces energy export to the grid under certain conditions.
+        MissingInputEntities (str): Some input entities from the configuration is missing or not giving state
     """
 
     TimeOfUse = "time_of_use_luna2000"
@@ -29,3 +30,4 @@ class Recommendations(Enum):
     ForceBatteriesDischarge = "force_batteries_discharge"
     EVSmartCharging = "ev_smart_charging"
     ForceExport = "force_export"
+    MissingInputEntities = "missing_input_entities"
