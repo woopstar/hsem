@@ -1,11 +1,7 @@
 import voluptuous as vol
 from homeassistant.helpers.selector import selector
 
-from custom_components.hsem.const import (
-    DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TODAY,
-    DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TOMORROW,
-)
-from custom_components.hsem.utils.misc import get_config_value
+from custom_components.hsem.utils.misc import async_entity_exists, get_config_value
 
 
 async def get_solcast_step_schema(config_entry):
@@ -15,24 +11,20 @@ async def get_solcast_step_schema(config_entry):
             vol.Required(
                 "hsem_solcast_pv_forecast_forecast_today",
                 default=get_config_value(
-                    config_entry,
-                    "hsem_solcast_pv_forecast_forecast_today",
-                    DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TODAY,
+                    config_entry, "hsem_solcast_pv_forecast_forecast_today"
                 ),
             ): selector({"entity": {"domain": "sensor"}}),
             vol.Required(
                 "hsem_solcast_pv_forecast_forecast_tomorrow",
                 default=get_config_value(
-                    config_entry,
-                    "hsem_solcast_pv_forecast_forecast_tomorrow",
-                    DEFAULT_HSEM_SOLCAST_PV_FORECAST_FORECAST_TOMORROW,
+                    config_entry, "hsem_solcast_pv_forecast_forecast_tomorrow"
                 ),
             ): selector({"entity": {"domain": "sensor"}}),
         }
     )
 
 
-async def validate_solcast_step_input(user_input):
+async def validate_solcast_step_input(hass, user_input):
     """Validate user input for the 'solcast' step."""
     errors = {}
 
@@ -44,5 +36,9 @@ async def validate_solcast_step_input(user_input):
     for field in required_fields:
         if field not in user_input:
             errors[field] = "required"
+        else:
+            entity_id = user_input[field]
+            if not await async_entity_exists(hass, entity_id):
+                errors[field] = "entity_not_found"
 
     return errors

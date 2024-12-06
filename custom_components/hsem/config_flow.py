@@ -1,23 +1,8 @@
 """
 This module defines the configuration flow for the HSEM integration in Home Assistant.
-
-Classes:
-    HSEMConfigFlow: Handles the configuration flow for the HSEM integration.
-
-Functions:
-    async_step_user: Handles the initial step of the configuration flow.
-    async_step_energidataservice: Handles the step for energy data services configuration.
-    async_step_huawei_solar: Handles the step for Huawei solar configuration.
-    async_step_power: Handles the step for power sensors configuration.
-    async_step_solcast: Handles the step for Solcast PV forecast configuration.
-    async_step_misc: Handles the step for miscellaneous configuration.
-    async_get_options_flow: Returns the options flow for the HSEM integration.
-
-Attributes:
-    DOMAIN: The domain of the HSEM integration.
-    NAME: The name of the HSEM integration.
-    DEFAULT_HSEM_*: Default values for various configuration parameters.
 """
+
+import uuid
 
 from homeassistant import config_entries
 from homeassistant.core import callback
@@ -64,6 +49,9 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_user(self, user_input=None):
         errors = {}
 
+        # Abort if a config entry with the same unique ID already exists
+        self._abort_if_unique_id_configured()
+
         # Check if there's already an entry for this domain
         existing_entries = self.hass.config_entries.async_entries(DOMAIN)
         if existing_entries:
@@ -91,7 +79,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if user_input is not None:
-            errors = await validate_energidataservice_input(user_input)
+            errors = await validate_energidataservice_input(self.hass, user_input)
             if not errors:
                 self._user_input.update(user_input)
                 return await self.async_step_power()
@@ -109,7 +97,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if user_input is not None:
-            errors = await validate_power_step_input(user_input)
+            errors = await validate_power_step_input(self.hass, user_input)
             if not errors:
                 self._user_input.update(user_input)
                 return await self.async_step_solcast()
@@ -127,7 +115,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if user_input is not None:
-            errors = await validate_solcast_step_input(user_input)
+            errors = await validate_solcast_step_input(self.hass, user_input)
             if not errors:
                 self._user_input.update(user_input)
                 return await self.async_step_ev()
@@ -146,7 +134,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if user_input is not None:
-            errors = await validate_ev_step_input(user_input)
+            errors = await validate_ev_step_input(self.hass, user_input)
             if not errors:
                 self._user_input.update(user_input)
                 return await self.async_step_weighted_values()
@@ -200,7 +188,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if user_input is not None:
-            errors = await validate_huawei_solar_input(user_input)
+            errors = await validate_huawei_solar_input(self.hass, user_input)
             if not errors:
                 final_data = {**self._user_input, **user_input}
 
@@ -216,6 +204,9 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 final_data["hsem_ev_charger_power"] = final_data.get(
                     "hsem_ev_charger_power", None
                 )
+
+                # Set unique ID for this config flow based on DOMAIN
+                await self.async_set_unique_id(str(uuid.uuid4()))
 
                 return self.async_create_entry(
                     title=final_data.get("device_name", NAME),
