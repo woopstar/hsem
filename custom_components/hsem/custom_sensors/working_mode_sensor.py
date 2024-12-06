@@ -145,6 +145,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_is_afternoon_price_lower_than_evening = False
         self._hsem_is_afternoon_price_lower_than_late_evening = False
         self._hsem_ac_charge_cutoff_percentage = 0.0
+        self._missing_input_entities = False
         self._attr_unique_id = get_working_mode_sensor_unique_id()
         self.entity_id = get_working_mode_sensor_entity_id()
         self._update_settings()
@@ -475,6 +476,9 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             if self._last_changed_mode is None:
                 self._last_changed_mode = datetime.now().isoformat()
 
+        if self._missing_input_entities:
+            self._state = Recommendations.MissingInputEntities
+
         # Update last update time
         self._last_updated = datetime.now().isoformat()
         self._available = True
@@ -565,6 +569,9 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
     async def _async_fetch_entity_states(self):
         # Fetch the current value from the EV charger status sensor
 
+        # Reset
+        self._missing_input_entities = False
+
         try:
             if self._hsem_ev_charger_status:
                 self._hsem_ev_charger_status_state = ha_get_entity_state_and_convert(
@@ -584,6 +591,8 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                         self, self._hsem_house_consumption_power, "float"
                     )
                 )
+            else:
+                self._missing_input_entities = True
 
             # Fetch the current value from the solar production power sensor
             if self._hsem_solar_production_power:
@@ -592,6 +601,8 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                         self, self._hsem_solar_production_power, "float"
                     )
                 )
+            else:
+                self._missing_input_entities = True
 
             # fetch the current value from the working mode sensor
             if self._hsem_huawei_solar_batteries_working_mode:
@@ -600,6 +611,8 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                         self, self._hsem_huawei_solar_batteries_working_mode, "string"
                     )
                 )
+            else:
+                self._missing_input_entities = True
 
             # Fetch the current value from the state of capacity sensor
             if self._hsem_huawei_solar_batteries_state_of_capacity:
@@ -611,6 +624,8 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                         0,
                     )
                 )
+            else:
+                self._missing_input_entities = True
 
             # Fetch the current value from the energi data service import sensor
             if self._hsem_energi_data_service_import:
@@ -619,6 +634,8 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                         self, self._hsem_energi_data_service_import, "float", 3
                     )
                 )
+            else:
+                self._missing_input_entities = True
 
             # Fetch the current value from the energi data service export sensor
             if self._hsem_energi_data_service_export:
@@ -627,8 +644,9 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                         self, self._hsem_energi_data_service_export, "float", 3
                     )
                 )
+            else:
+                self._missing_input_entities = True
 
-            # Fetch the current value from the energi data service export sensor
             if self._hsem_huawei_solar_inverter_active_power_control:
                 self._hsem_huawei_solar_inverter_active_power_control_state = (
                     ha_get_entity_state_and_convert(
@@ -637,6 +655,8 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                         "string",
                     )
                 )
+            else:
+                self._missing_input_entities = True
 
             # Fetch the current value from the battery maximum charging power sensor
             if self._hsem_huawei_solar_batteries_maximum_charging_power:
@@ -648,6 +668,8 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                         0,
                     )
                 )
+            else:
+                self._missing_input_entities = True
 
             # Fetch the current value from the battery grid charge cutoff SOC sensor
             if self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc:
@@ -659,6 +681,8 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                         0,
                     )
                 )
+            else:
+                self._missing_input_entities = True
 
             # Fetch the current value from the battery rated capacity sensor
             if self._hsem_batteries_rated_capacity_max:
@@ -667,6 +691,8 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                         self, self._hsem_batteries_rated_capacity_max, "float", 0
                     )
                 )
+            else:
+                self._missing_input_entities = True
 
             # Fetch the current value from the battery TOU charging and discharging periods sensor
             if self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods:
@@ -697,7 +723,13 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                         for i in range(1, 11)
                         if f"Period {i}" in entity_data.attributes
                     ]
+                else:
+                    self._missing_input_entities = True
+            else:
+                self._missing_input_entities = True
+
         except Exception as e:
+            self._missing_input_entities = True
             _LOGGER.warning(
                 "Failed to fetch state for one or more sensors. Error: %s", str(e)
             )

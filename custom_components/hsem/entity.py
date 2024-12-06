@@ -28,7 +28,8 @@ class HSEMEntity(Entity):
         return {
             "identifiers": {(DOMAIN, self._config.entry_id)},
             "name": NAME,
-            "manufacturer": NAME,
+            "manufacturer": DOMAIN.upper(),
+            "model": "Custom Integration",
         }
 
     async def async_will_remove_from_hass(self):
