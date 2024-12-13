@@ -1358,7 +1358,10 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 if net_consumption < 0:
                     solar_surplus += abs(net_consumption)
 
-        _LOGGER.warning(f"Calculated solar surplus: {solar_surplus} kWh")
+        _LOGGER.warning(
+            f"Solar surplus after battery charge available: {solar_surplus} kWh"
+        )
+
         return solar_surplus
 
     async def _async_adjust_ac_charge_cutoff_soc(self, charged_energy, solar_surplus):
