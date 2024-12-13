@@ -404,11 +404,10 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             )
 
             # Calculate the remaining charge needed to reach full capacity (kWh)
-            self._hsem_batteries_remaining_charge = round(
+            self._hsem_batteries_remaining_charge = (
                 (100 - self._hsem_huawei_solar_batteries_state_of_capacity_state)
                 / 100
-                * (self._hsem_batteries_rated_capacity_max_state / 1000),
-                2,
+                * (self._hsem_batteries_rated_capacity_max_state / 1000)
             )
 
             # Calculate the maximum charge allowed from the grid based on cutoff SOC (kWh)
@@ -420,25 +419,18 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
             # Adjust remaining charge if it exceeds the max grid-allowed charge
             if self._hsem_batteries_remaining_charge > max_allowed_grid_charge:
-                self._hsem_batteries_remaining_charge = round(
-                    max_allowed_grid_charge, 2
-                )
+                self._hsem_batteries_remaining_charge = max_allowed_grid_charge
 
             # Calculate usable capacity (kWh)
-            self._hsem_batteries_usable_capacity = round(
-                (self._hsem_batteries_rated_capacity_max_state / 1000)
-                - (self._hsem_batteries_rated_capacity_min_state / 1000),
-                2,
-            )
+            self._hsem_batteries_usable_capacity = (
+                self._hsem_batteries_rated_capacity_max_state / 1000
+            ) - (self._hsem_batteries_rated_capacity_min_state / 1000)
 
             # Calculate current capacity (kWh)
-            self._hsem_batteries_current_capacity = round(
-                (
-                    self._hsem_huawei_solar_batteries_state_of_capacity_state
-                    / 100
-                    * (self._hsem_batteries_rated_capacity_max_state / 1000)
-                ),
-                2,
+            self._hsem_batteries_current_capacity = (
+                self._hsem_huawei_solar_batteries_state_of_capacity_state
+                / 100
+                * (self._hsem_batteries_rated_capacity_max_state / 1000)
             )
 
         # reset the recommendations
@@ -782,8 +774,6 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                     self._hsem_house_consumption_power_state
                     - self._hsem_solar_production_power_state
                 )
-
-            self._hsem_net_consumption = round(self._hsem_net_consumption, 2)
         else:
             self._hsem_net_consumption = 0.0
 
@@ -1198,9 +1188,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             if avg_house_consumption is None or solcast_pv_estimate is None:
                 estimated_net_consumption = 0.0
             else:
-                estimated_net_consumption = round(
-                    avg_house_consumption - solcast_pv_estimate, 2
-                )
+                estimated_net_consumption = avg_house_consumption - solcast_pv_estimate
 
             # calculate the estimated net consumption
             if time_range in self._hourly_calculations:
@@ -1315,27 +1303,22 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             )
 
             # Adjust energy to charge based on surplus power (net_consumption)
-            available_surplus = (
-                round(abs(net_consumption), 2) if net_consumption < 0 else 0
-            )
-            max_available_energy = round(
-                min(max_charge_per_hour, remaining_charge_needed + available_surplus), 2
+            available_surplus = abs(net_consumption) if net_consumption < 0 else 0
+            max_available_energy = min(
+                max_charge_per_hour, remaining_charge_needed + available_surplus
             )
 
             # Deduct surplus from the actual charge needed
-            actual_energy_to_charge = round(
-                max(0, max_available_energy - available_surplus), 2
-            )
+            actual_energy_to_charge = max(0, max_available_energy - available_surplus)
 
             # Mark hour for charging
             self._mark_hour_for_charging(time_range, actual_energy_to_charge, source)
-            charged_energy += actual_energy_to_charge
-            charged_energy = round(charged_energy, 2)
+            charged_energy += actual_energy_to_charge + available_surplus
 
             _LOGGER.warning(
                 f"Marked hour {time_range} for charging using {source}. "
-                f"Surplus Used: {available_surplus} kWh, Energy Charged: {actual_energy_to_charge} kWh, "
-                f"Total Charged: {charged_energy} kWh."
+                f"Surplus Used: {round(available_surplus,2)} kWh, Energy Charged: {round(actual_energy_to_charge,2)} kWh, "
+                f"Total Charged: {round(charged_energy,2)} kWh."
             )
 
         # Calculate total solar surplus after the charging hours
@@ -1375,8 +1358,11 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 if net_consumption < 0:
                     solar_surplus += abs(net_consumption)
 
-        _LOGGER.warning(f"Calculated solar surplus: {solar_surplus} kWh")
-        return round(solar_surplus, 2)
+        _LOGGER.warning(
+            f"Solar surplus after battery charge available: {solar_surplus} kWh"
+        )
+
+        return solar_surplus
 
     async def _async_adjust_ac_charge_cutoff_soc(self, charged_energy, solar_surplus):
         """
@@ -1413,7 +1399,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 adjusted_cutoff_soc = 100 - (surplus_ratio * (100 - min_cutoff_soc))
 
         # Update internal state
-        self._hsem_ac_charge_cutoff_percentage = round(adjusted_cutoff_soc, 2)
+        self._hsem_ac_charge_cutoff_percentage = adjusted_cutoff_soc
 
         _LOGGER.warning(
             f"Adjusted AC Grid Charge Cutoff SoC: {self._hsem_ac_charge_cutoff_percentage}% "

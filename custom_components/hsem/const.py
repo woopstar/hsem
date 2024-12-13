@@ -12,9 +12,7 @@ DEFAULT_HSEM_EV_CHARGER_TOU_MODES = ["00:00-00:01/1234567/+"]
 
 # Default TOU modes for solar energy consumption throughout the day
 DEFAULT_HSEM_DEFAULT_TOU_MODES = [
-    # "00:01-05:59/1234567/+",
-    "06:00-10:00/1234567/-",
-    # "15:00-16:59/1234567/+",
+    "06:00-11:59/1234567/-",
     "17:00-23:59/1234567/-",
 ]
 
