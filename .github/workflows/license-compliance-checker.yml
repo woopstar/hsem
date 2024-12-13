@@ -26,7 +26,7 @@ jobs:
       with:
         requirements: 'requirements-all.txt'
         fail: 'Copyleft'
-        exclude: '(?i)^(pylint|aio[-_]*).*'
+        exclude: '(?i)^(pylint|aio|homeassistant[-_]*).*'
     - name: Print report
       if: ${{ always() }}
       run: echo "${{ steps.license_check_report.outputs.report }}"
