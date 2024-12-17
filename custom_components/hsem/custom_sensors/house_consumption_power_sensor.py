@@ -77,6 +77,7 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
     def __init__(self, config_entry, hour_start, hour_end, async_add_entities):
         super().__init__(config_entry)
         self._available = False
+        self._missing_input_entities = True
         self._hsem_house_consumption_power = None
         self._hsem_house_consumption_power_state = 0.0
         self._hsem_ev_charger_power = None
@@ -129,6 +130,15 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
 
     @property
     def extra_state_attributes(self):
+
+        if self._missing_input_entities:
+            return {
+                "status": "error",
+                "description": "Some of the required input sensors from the config flow is missing or not reporting a state. Check your configuration and make sure input sensors are configured correctly.",
+                "last_updated": self._last_updated,
+                "unique_id": self._attr_unique_id,
+            }
+
         """Return the state attributes."""
         return {
             "house_consumption_power_entity": self._hsem_house_consumption_power,
@@ -253,16 +263,25 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
 
     async def _async_fetch_sensor_states(self):
         # Update the state of the sensor for house consumption power
-        if self._hsem_house_consumption_power:
-            self._hsem_house_consumption_power_state = ha_get_entity_state_and_convert(
-                self, self._hsem_house_consumption_power, "float"
-            )
+        # Reset
+        self._missing_input_entities = False
 
-        # Update the state of the sensor for EV charger power
-        if self._hsem_ev_charger_power:
-            self._hsem_ev_charger_power_state = ha_get_entity_state_and_convert(
-                self, self._hsem_ev_charger_power, "float"
-            )
+        try:
+            if self._hsem_house_consumption_power:
+                self._hsem_house_consumption_power_state = (
+                    ha_get_entity_state_and_convert(
+                        self, self._hsem_house_consumption_power, "float"
+                    )
+                )
+
+            # Update the state of the sensor for EV charger power
+            if self._hsem_ev_charger_power:
+                self._hsem_ev_charger_power_state = ha_get_entity_state_and_convert(
+                    self, self._hsem_ev_charger_power, "float"
+                )
+
+        except Exception as e:
+            self._missing_input_entities = True
 
     async def _async_add_integral_sensor(self):
         """Add an integral sensor dynamically to convert power to energy."""
