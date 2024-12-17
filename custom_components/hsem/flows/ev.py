@@ -44,10 +44,11 @@ async def validate_ev_step_input(hass, user_input):
     ]
 
     for field in optional_entity_fields:
-        entity_id = user_input.get(field)
-        if entity_id:
-            # Tjek om entiteten eksisterer
-            if not await async_entity_exists(hass, entity_id):
-                errors[field] = "entity_not_found"
+        if field in user_input:
+            entity_id = user_input.get(field)
+            if entity_id:
+                # Tjek om entiteten eksisterer
+                if not await async_entity_exists(hass, entity_id):
+                    errors[field] = "entity_not_found"
 
     return errors
