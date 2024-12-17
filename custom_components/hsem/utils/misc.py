@@ -33,6 +33,10 @@ class EntityNotFoundError(HomeAssistantError):
     """Exception raised when an entity is not found."""
 
 
+class EntityStateUnknown(HomeAssistantError):
+    """Exception raised when an entity is not found."""
+
+
 def generate_hash(input_sensor):
     """Generate an SHA-256 hash based on the input sensor's name."""
     return hashlib.sha256(input_sensor.encode("utf-8")).hexdigest()
@@ -186,27 +190,33 @@ def ha_get_entity_state_and_convert(
     state = self.hass.states.get(entity_id)
 
     try:
+
         if output_type is None:
+            if state.state == "unknown":
+                raise EntityNotFoundError(f"Entity '{entity_id}' state unknown.")
+
             return state
 
         if output_type.lower() == "float":
+            if state.state == "unknown":
+                raise EntityNotFoundError(f"Entity '{entity_id}' state unknown.")
             return round(convert_to_float(state.state), float_precision)
 
         if output_type.lower() == "boolean":
+            if state.state == "unknown":
+                raise EntityNotFoundError(f"Entity '{entity_id}' state unknown.")
+
             return convert_to_boolean(state.state)
 
         if output_type.lower() == "string":
             return str(state.state)
 
-        _LOGGER.warning(
+        _LOGGER.error(
             f"Unknown output type '{output_type}' for entity '{entity_id}'. Returning None."
         )
         return None
 
     except Exception as e:
-        _LOGGER.error(
-            f"Error converting state of entity '{entity_id}' to type '{output_type}'. Error: {e}"
-        )
         raise HomeAssistantError(
             f"Error converting state of entity '{entity_id}' to type '{output_type}': {e}"
         )
@@ -249,3 +259,10 @@ async def async_device_exists(hass, device_id):
     """Check if a device exists in Home Assistant."""
     device_registry = dr.async_get(hass)
     return device_registry.async_get(device_id) is not None
+
+
+async def async_logger(self, msg):
+    if self._hsem_verbose_logging:
+        _LOGGER.warning(msg)
+    else:
+        _LOGGER.debug(msg)
