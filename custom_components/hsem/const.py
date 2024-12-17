@@ -1,8 +1,8 @@
+import voluptuous as vol
+
 """
 This module defines constants used in the Huawei Solar Energy Management (HSEM) integration.
 """
-
-import voluptuous as vol
 
 DOMAIN = "hsem"  # Domain name for the integration
 NAME = "Huawei Solar Energy Management"  # Display name for the integration
@@ -28,9 +28,14 @@ DEFAULT_HSEM_MONTHS_WINTER_SPRING = [1, 2, 3, 4, 9, 10, 11, 12]
 # Default list of months considered summer
 DEFAULT_HSEM_MONTHS_SUMMER = [5, 6, 7, 8]
 
+# Minimum required version of Huawei Solar
+MIN_HUAWEI_SOLAR_VERSION = "1.5.0a1"
+
 DEFAULT_CONFIG_VALUES = {
     "device_name": NAME,
     "hsem_update_interval": 5,
+    "hsem_extended_attributes": False,
+    "hsem_verbose_logging": False,
     "hsem_batteries_conversion_loss": 10,
     "hsem_batteries_enable_charge_hours_day_end": "17:00:00",
     "hsem_batteries_enable_charge_hours_day_start": "12:00:00",
