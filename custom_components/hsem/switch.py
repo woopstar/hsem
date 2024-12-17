@@ -17,6 +17,14 @@ SWITCHES = {
         "name": "Night Charging",
         "description": "Enable or disable nighttime charge hours.",
     },
+    "hsem_extended_attributes": {
+        "name": "Extended Attributes",
+        "description": "Extend amount of attributes provided by the working mode sensor.",
+    },
+    "hsem_verbose_logging": {
+        "name": "Verbose Logging",
+        "description": "Enable to get verbose logging into the HA log.",
+    },
 }
 
 
