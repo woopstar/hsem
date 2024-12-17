@@ -17,5 +17,6 @@
     "documentation": "https://github.com/woopstar/hsem/blob/main/README.md",
     "iot_class": "cloud_polling",
     "issue_tracker": "https://github.com/woopstar/hsem/issues",
-    "version": "2.0.1"
+    "version": "2.0.1",
+    "huawei_solar": ">=1.5.0a1"
 }
