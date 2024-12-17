@@ -31,17 +31,17 @@
           "hsem_batteries_enable_charge_hours_night_end": "Specify the end time for nighttime charging hours (e.g., 06:00).",
           "hsem_batteries_enable_charge_hours_night_start": "Specify the start time for nighttime charging hours (e.g., 22:00)."
         },
-        "description": "Configure the charging hours for the batteries during day and night.",
+        "description": "Configure battery charging hours for daytime and nighttime. Users can enable specific time intervals (start to end) where the integration automatically determines the cheapest time to charge the battery. This optimization is only active during winter months, defined as January, February, March, April, September, October, November, and December (DEFAULT_HSEM_MONTHS_WINTER_SPRING).",
         "title": "Charging Hours"
       },
       "energidataservice": {
         "data": {
-          "hsem_energi_data_service_export": "Energy Data Service Export Sensor",
-          "hsem_energi_data_service_import": "Energy Data Service Import Sensor"
+          "hsem_energi_data_service_export": "Energy Data Service Export Price Sensor",
+          "hsem_energi_data_service_import": "Energy Data Service Import Price Sensor"
         },
         "data_description": {
-          "hsem_energi_data_service_export": "Select the sensor that provides energy export data to your energy data service.",
-          "hsem_energi_data_service_import": "Select the sensor that provides energy import data from your energy data service."
+          "hsem_energi_data_service_export": "Select the sensor that provides export prices from your Energy Data Service integration.",
+          "hsem_energi_data_service_import": "Select the sensor that provides import prices from your Energy Data Service integration."
         },
         "description": "Select energy data services for HSEM.",
         "title": "Energy Data Service Sensors"
@@ -64,7 +64,7 @@
         "data": {
           "hsem_batteries_conversion_loss": "Battery Conversion Loss (%)",
           "hsem_huawei_solar_batteries_grid_charge_cutoff_soc": "Huawei Batteries Grid Charge Cutoff SOC (%)",
-          "hsem_huawei_solar_batteries_maximum_charging_power": "Huawei Batteries Maximum Charging Power (kW)",
+          "hsem_huawei_solar_batteries_maximum_charging_power": "Huawei Batteries Maximum Charging Power (W)",
           "hsem_huawei_solar_batteries_rated_capacity": "Battery Max Capacity (Watt)",
           "hsem_huawei_solar_batteries_state_of_capacity": "Huawei Batteries State of Capacity Sensor",
           "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods": "Huawei Batteries TOU Charging and Discharging Periods",
@@ -75,10 +75,10 @@
           "hsem_huawei_solar_inverter_active_power_control": "Huawei Inverter Active Power Control Sensor"
         },
         "data_description": {
-          "hsem_batteries_conversion_loss": "Specify the conversion loss percentage for your batteries (e.g., 10 for 10%).",
+          "hsem_batteries_conversion_loss": "Specify the percentage of energy loss when charging the battery. This represents the conversion loss, typically between 5% and 10%, which occurs when importing energy from solar panels or the grid to the battery. It is used to calculate the actual time required to charge the battery.",
           "hsem_huawei_solar_batteries_grid_charge_cutoff_soc": "Specify the grid charge cutoff SOC percentage for your Huawei batteries.",
-          "hsem_huawei_solar_batteries_maximum_charging_power": "Enter the maximum charging power for your Huawei batteries in kilowatts (kW).",
-          "hsem_huawei_solar_batteries_rated_capacity": "Enter the rated capacity of your Huawei batteries in watts (W).",
+          "hsem_huawei_solar_batteries_maximum_charging_power": "Select the sensor that provides the maximum charging power for your Huawei batteries in kilowatts (W).",
+          "hsem_huawei_solar_batteries_rated_capacity": "Select the sensor that provides the total rated capacity of your Huawei batteries in watts (W).",
           "hsem_huawei_solar_batteries_state_of_capacity": "Select the sensor that provides the state of charge (SOC) of your Huawei batteries.",
           "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods": "Select the sensor that defines the Time-of-Use (TOU) charging and discharging periods for your Huawei batteries.",
           "hsem_huawei_solar_batteries_working_mode": "Select the sensor that indicates the current working mode of your Huawei batteries.",
@@ -141,7 +141,7 @@
           "hsem_house_consumption_energy_weight_3d": "Specify the weight percentage for the house consumption energy over the last 3 days.",
           "hsem_house_consumption_energy_weight_7d": "Specify the weight percentage for the house consumption energy over the last 7 days."
         },
-        "description": "Configure the weighted values for the house consumption energy. Must total 100%.",
+        "description": "Configure the weighted values for house consumption energy to estimate your average power usage. The system calculates the average consumption for each hour over 1, 3, 7, and 14 days. These averages are then weighted to provide a combined, weighted estimate. This approach helps to smooth out anomalies, such as unusually high consumption on a single day due to low prices, and provides a reliable prediction of your expected power usage in specific time intervals (e.g., between 16:00 and 17:00).",
         "title": "Weighted Values"
       }
     }
@@ -174,17 +174,17 @@
           "hsem_batteries_enable_charge_hours_night_end": "Specify the end time for nighttime charging hours (e.g., 06:00).",
           "hsem_batteries_enable_charge_hours_night_start": "Specify the start time for nighttime charging hours (e.g., 22:00)."
         },
-        "description": "Configure the charging hours for the batteries during day and night.",
+        "description": "Configure battery charging hours for daytime and nighttime. Users can enable specific time intervals (start to end) where the integration automatically determines the cheapest time to charge the battery. This optimization is only active during winter months, defined as January, February, March, April, September, October, November, and December (DEFAULT_HSEM_MONTHS_WINTER_SPRING).",
         "title": "Charging Hours"
       },
       "energidataservice": {
         "data": {
-          "hsem_energi_data_service_export": "Energy Data Service Export Sensor",
-          "hsem_energi_data_service_import": "Energy Data Service Import Sensor"
+          "hsem_energi_data_service_export": "Energy Data Service Export Price Sensor",
+          "hsem_energi_data_service_import": "Energy Data Service Import Price Sensor"
         },
         "data_description": {
-          "hsem_energi_data_service_export": "Select the sensor that provides energy export data to your energy data service.",
-          "hsem_energi_data_service_import": "Select the sensor that provides energy import data from your energy data service."
+          "hsem_energi_data_service_export": "Select the sensor that provides export prices from your Energy Data Service integration.",
+          "hsem_energi_data_service_import": "Select the sensor that provides import prices from your Energy Data Service integration."
         },
         "description": "Select energy data services for HSEM.",
         "title": "Energy Data Service Sensors"
@@ -222,14 +222,10 @@
           "hsem_huawei_solar_inverter_active_power_control": "Huawei Inverter Active Power Control Sensor"
         },
         "data_description": {
-          "hsem_batteries_conversion_loss": "Specify the conversion loss percentage for your batteries (e.g., 10 for 10%).",
-          "hsem_house_consumption_energy_weight_14d": "Specify the weight percentage for the house consumption energy over the last 14 days.",
-          "hsem_house_consumption_energy_weight_1d": "Specify the weight percentage for the house consumption energy over the last 1 day.",
-          "hsem_house_consumption_energy_weight_3d": "Specify the weight percentage for the house consumption energy over the last 3 days.",
-          "hsem_house_consumption_energy_weight_7d": "Specify the weight percentage for the house consumption energy over the last 7 days.",
+          "hsem_batteries_conversion_loss": "Specify the percentage of energy loss when charging the battery. This represents the conversion loss, typically between 5% and 10%, which occurs when importing energy from solar panels or the grid to the battery. It is used to calculate the actual time required to charge the battery.",
           "hsem_huawei_solar_batteries_grid_charge_cutoff_soc": "Specify the grid charge cutoff SOC percentage for your Huawei batteries.",
-          "hsem_huawei_solar_batteries_maximum_charging_power": "Enter the maximum charging power for your Huawei batteries in kilowatts (kW).",
-          "hsem_huawei_solar_batteries_rated_capacity": "Enter the rated capacity of your Huawei batteries in watts (W).",
+          "hsem_huawei_solar_batteries_maximum_charging_power": "Select the sensor that provides the maximum charging power for your Huawei batteries in kilowatts (W).",
+          "hsem_huawei_solar_batteries_rated_capacity": "Select the sensor that provides the total rated capacity of your Huawei batteries in watts (W).",
           "hsem_huawei_solar_batteries_state_of_capacity": "Select the sensor that provides the state of charge (SOC) of your Huawei batteries.",
           "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods": "Select the sensor that defines the Time-of-Use (TOU) charging and discharging periods for your Huawei batteries.",
           "hsem_huawei_solar_batteries_working_mode": "Select the sensor that indicates the current working mode of your Huawei batteries.",
@@ -292,7 +288,7 @@
           "hsem_house_consumption_energy_weight_3d": "Specify the weight percentage for the house consumption energy over the last 3 days.",
           "hsem_house_consumption_energy_weight_7d": "Specify the weight percentage for the house consumption energy over the last 7 days."
         },
-        "description": "Configure the weighted values for the house consumption energy. Must total 100%.",
+        "description": "Configure the weighted values for house consumption energy to estimate your average power usage. The system calculates the average consumption for each hour over 1, 3, 7, and 14 days. These averages are then weighted to provide a combined, weighted estimate. This approach helps to smooth out anomalies, such as unusually high consumption on a single day due to low prices, and provides a reliable prediction of your expected power usage in specific time intervals (e.g., between 16:00 and 17:00).",
         "title": "Weighted Values"
       }
     }
