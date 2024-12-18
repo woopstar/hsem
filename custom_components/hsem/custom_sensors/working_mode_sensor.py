@@ -11,6 +11,7 @@ Classes:
 import logging
 from datetime import datetime, timedelta
 
+import voluptuous as vol
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.core import State
 from homeassistant.helpers.event import async_track_time_interval
@@ -200,6 +201,10 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_ev_charger_status = get_config_value(
             self._config_entry, "hsem_ev_charger_status"
         )
+
+        if self._hsem_ev_charger_status == vol.UNDEFINED:
+            self._hsem_ev_charger_status = None
+
         self._hsem_solcast_pv_forecast_forecast_today = get_config_value(
             self._config_entry,
             "hsem_solcast_pv_forecast_forecast_today",
@@ -224,6 +229,10 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             self._config_entry,
             "hsem_ev_charger_power",
         )
+
+        if self._hsem_ev_charger_power == vol.UNDEFINED:
+            self._hsem_ev_charger_power = None
+
         self._hsem_batteries_conversion_loss = get_config_value(
             self._config_entry,
             "hsem_batteries_conversion_loss",

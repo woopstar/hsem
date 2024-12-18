@@ -23,6 +23,7 @@ import logging
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
+from sqlalchemy import null
 
 from custom_components.hsem.const import DEFAULT_CONFIG_VALUES, DOMAIN
 
@@ -53,9 +54,14 @@ def get_config_value(config_entry, key):
     if config_entry is None:
         return None
 
-    return config_entry.options.get(
+    data = config_entry.options.get(
         key, config_entry.data.get(key, DEFAULT_CONFIG_VALUES[key])
     )
+
+    if data is null or data is None:
+        return DEFAULT_CONFIG_VALUES[key]
+
+    return data
 
 
 def convert_to_float(state) -> float:
