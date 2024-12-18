@@ -26,6 +26,7 @@ Functions:
 import logging
 from datetime import datetime, timedelta
 
+import voluptuous as vol
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.components.sensor.const import SensorDeviceClass
 from homeassistant.components.utility_meter.const import (
@@ -183,6 +184,9 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
         self._hsem_ev_charger_power = get_config_value(
             self._config_entry, "hsem_ev_charger_power"
         )
+
+        if self._hsem_ev_charger_power == vol.UNDEFINED:
+            self._hsem_ev_charger_power = None
 
         self._hsem_house_power_includes_ev_charger_power = get_config_value(
             self._config_entry, "hsem_house_power_includes_ev_charger_power"
