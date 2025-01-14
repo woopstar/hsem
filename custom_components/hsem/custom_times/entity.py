@@ -62,49 +62,20 @@ class HSEMTimeEntity(ToggleEntity, HSEMEntity):
         """Return additional attributes."""
         return {"description": self._description}
 
-    async def async_set_time(self, value: str):
+    async def async_set_value(self, value: str):
         """Set a new time after validation."""
-        validation_errors = self._validate_time(value)
-        if validation_errors:
-            raise ValueError(f"Time validation failed: {validation_errors}")
+        # validation_errors = await self._async_validate_time(value)
+        # if validation_errors:
+        #    raise ValueError(f"Time validation failed: {validation_errors} for {value}")
 
         self._value = value
         await self._update_config_entry()
 
-    def _validate_time(self, new_time: str) -> dict[str, str]:
+    async def _async_validate_time(self, new_time: str) -> dict[str, str]:
         """Validate the new time against related times."""
         errors = {}
         try:
-            new_time_obj = datetime.strptime(new_time, "%H:%M:%S").time()
-
-            # Retrieve related time entities for validation
-            options = self._config_entry.options
-            if self._key.endswith("_day_start"):
-                day_end = options.get("hsem_batteries_enable_charge_hours_day_end")
-                if day_end:
-                    day_end_obj = datetime.strptime(day_end, "%H:%M:%S").time()
-                    if new_time_obj >= day_end_obj:
-                        errors["day_start"] = "start_time_after_end_time"
-            elif self._key.endswith("_day_end"):
-                day_start = options.get("hsem_batteries_enable_charge_hours_day_start")
-                if day_start:
-                    day_start_obj = datetime.strptime(day_start, "%H:%M:%S").time()
-                    if new_time_obj <= day_start_obj:
-                        errors["day_end"] = "end_time_before_start_time"
-            elif self._key.endswith("_night_start"):
-                night_end = options.get("hsem_batteries_enable_charge_hours_night_end")
-                if night_end:
-                    night_end_obj = datetime.strptime(night_end, "%H:%M:%S").time()
-                    if new_time_obj >= night_end_obj:
-                        errors["night_start"] = "start_time_after_end_time"
-            elif self._key.endswith("_night_end"):
-                night_start = options.get(
-                    "hsem_batteries_enable_charge_hours_night_start"
-                )
-                if night_start:
-                    night_start_obj = datetime.strptime(night_start, "%H:%M:%S").time()
-                    if new_time_obj <= night_start_obj:
-                        errors["night_end"] = "end_time_before_start_time"
+            datetime.strptime(new_time, "%H:%M:%S").time()
 
         except (ValueError, TypeError):
             errors["base"] = "invalid_time_format"

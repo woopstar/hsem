@@ -9,14 +9,6 @@ SWITCHES = {
         "name": "Read Only",
         "description": "Toggle read-only mode for the integration.",
     },
-    "hsem_batteries_enable_charge_hours_day": {
-        "name": "Day Charging",
-        "description": "Enable or disable daytime charge hours.",
-    },
-    "hsem_batteries_enable_charge_hours_night": {
-        "name": "Night Charging",
-        "description": "Enable or disable nighttime charge hours.",
-    },
     "hsem_extended_attributes": {
         "name": "Extended Attributes",
         "description": "Extend amount of attributes provided by the working mode sensor.",
@@ -24,6 +16,18 @@ SWITCHES = {
     "hsem_verbose_logging": {
         "name": "Verbose Logging",
         "description": "Enable to get verbose logging into the HA log.",
+    },
+    "hsem_batteries_enable_batteries_schedule_1": {
+        "name": "Batteries Discharge Schedule 1",
+        "description": "Enable or disable batteries schedule 1.",
+    },
+    "hsem_batteries_enable_batteries_schedule_2": {
+        "name": "Batteries Discharge Schedule 2",
+        "description": "Enable or disable batteries schedule 2.",
+    },
+    "hsem_batteries_enable_batteries_schedule_3": {
+        "name": "Batteries Discharge Schedule 3",
+        "description": "Enable or disable batteries schedule 3.",
     },
 }
 

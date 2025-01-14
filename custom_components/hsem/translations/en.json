@@ -14,25 +14,33 @@
       "start_time_after_end_time": "Start time must be before end time."
     },
     "step": {
-      "charge_hours": {
+      "batteries_schedule": {
         "data": {
-          "hsem_batteries_enable_charge_hours_day": "Enable Charging Hours Day",
-          "hsem_batteries_enable_charge_hours_day_end": "Charging Hours Day End Time",
-          "hsem_batteries_enable_charge_hours_day_start": "Charging Hours Day Start Time",
-          "hsem_batteries_enable_charge_hours_night": "Enable Charging Hours Night",
-          "hsem_batteries_enable_charge_hours_night_end": "Charging Hours Night End Time",
-          "hsem_batteries_enable_charge_hours_night_start": "Charging Hours Night Start Time"
+          "hsem_batteries_enable_batteries_schedule_1": "Enable Battery Schedule 1",
+          "hsem_batteries_enable_batteries_schedule_1_end": "Battery Schedule 1 End Time",
+          "hsem_batteries_enable_batteries_schedule_1_min_price_difference": "Minimum Price Difference for Schedule 1 (DKK)",
+          "hsem_batteries_enable_batteries_schedule_1_start": "Battery Schedule 1 Start Time",
+          "hsem_batteries_enable_batteries_schedule_2": "Enable Battery Schedule 2",
+          "hsem_batteries_enable_batteries_schedule_2_end": "Battery Schedule 2 End Time",
+          "hsem_batteries_enable_batteries_schedule_2_start": "Battery Schedule 2 Start Time",
+          "hsem_batteries_enable_batteries_schedule_3": "Enable Battery Schedule 3",
+          "hsem_batteries_enable_batteries_schedule_3_end": "Battery Schedule 3 End Time",
+          "hsem_batteries_enable_batteries_schedule_3_start": "Battery Schedule 3 Start Time"
         },
         "data_description": {
-          "hsem_batteries_enable_charge_hours_day": "Enable to set specific charging hours during the day.",
-          "hsem_batteries_enable_charge_hours_day_end": "Specify the end time for daytime charging hours (e.g., 15:00).",
-          "hsem_batteries_enable_charge_hours_day_start": "Specify the start time for daytime charging hours (e.g., 09:00).",
-          "hsem_batteries_enable_charge_hours_night": "Enable to set specific charging hours during the night.",
-          "hsem_batteries_enable_charge_hours_night_end": "Specify the end time for nighttime charging hours (e.g., 06:00).",
-          "hsem_batteries_enable_charge_hours_night_start": "Specify the start time for nighttime charging hours (e.g., 22:00)."
+          "hsem_batteries_enable_batteries_schedule_1": "Enable or disable the first battery discharge schedule.",
+          "hsem_batteries_enable_batteries_schedule_1_end": "Specify the end time for the first battery discharge schedule.",
+          "hsem_batteries_enable_batteries_schedule_1_min_price_difference": "Set the minimum price difference (in DKK) required for this schedule to activate.",
+          "hsem_batteries_enable_batteries_schedule_1_start": "Specify the start time for the first battery discharge schedule.",
+          "hsem_batteries_enable_batteries_schedule_2": "Enable or disable the second battery discharge schedule.",
+          "hsem_batteries_enable_batteries_schedule_2_end": "Specify the end time for the second battery discharge schedule.",
+          "hsem_batteries_enable_batteries_schedule_2_start": "Specify the start time for the second battery discharge schedule.",
+          "hsem_batteries_enable_batteries_schedule_3": "Enable or disable the third battery discharge schedule.",
+          "hsem_batteries_enable_batteries_schedule_3_end": "Specify the end time for the third battery discharge schedule.",
+          "hsem_batteries_enable_batteries_schedule_3_start": "Specify the start time for the third battery discharge schedule."
         },
-        "description": "Configure battery charging hours for daytime and nighttime. Users can enable specific time intervals (start to end) where the integration automatically determines the cheapest time to charge the battery. This optimization is only active during winter months, defined as January, February, March, April, September, October, November, and December (DEFAULT_HSEM_MONTHS_WINTER_SPRING).",
-        "title": "Charging Hours"
+        "description": "Configure up to three battery discharge schedules, including their activation times and optional minimum price differences for activation.",
+        "title": "Battery Discharge Schedules"
       },
       "energidataservice": {
         "data": {
@@ -157,25 +165,33 @@
       "start_time_after_end_time": "Start time must be before end time."
     },
     "step": {
-      "charge_hours": {
+      "batteries_schedule": {
         "data": {
-          "hsem_batteries_enable_charge_hours_day": "Enable Charging Hours Day",
-          "hsem_batteries_enable_charge_hours_day_end": "Charging Hours Day End Time",
-          "hsem_batteries_enable_charge_hours_day_start": "Charging Hours Day Start Time",
-          "hsem_batteries_enable_charge_hours_night": "Enable Charging Hours Night",
-          "hsem_batteries_enable_charge_hours_night_end": "Charging Hours Night End Time",
-          "hsem_batteries_enable_charge_hours_night_start": "Charging Hours Night Start Time"
+          "hsem_batteries_enable_batteries_schedule_1": "Enable Battery Schedule 1",
+          "hsem_batteries_enable_batteries_schedule_1_end": "Battery Schedule 1 End Time",
+          "hsem_batteries_enable_batteries_schedule_1_min_price_difference": "Minimum Price Difference for Schedule 1 (DKK)",
+          "hsem_batteries_enable_batteries_schedule_1_start": "Battery Schedule 1 Start Time",
+          "hsem_batteries_enable_batteries_schedule_2": "Enable Battery Schedule 2",
+          "hsem_batteries_enable_batteries_schedule_2_end": "Battery Schedule 2 End Time",
+          "hsem_batteries_enable_batteries_schedule_2_start": "Battery Schedule 2 Start Time",
+          "hsem_batteries_enable_batteries_schedule_3": "Enable Battery Schedule 3",
+          "hsem_batteries_enable_batteries_schedule_3_end": "Battery Schedule 3 End Time",
+          "hsem_batteries_enable_batteries_schedule_3_start": "Battery Schedule 3 Start Time"
         },
         "data_description": {
-          "hsem_batteries_enable_charge_hours_day": "Enable to set specific charging hours during the day.",
-          "hsem_batteries_enable_charge_hours_day_end": "Specify the end time for daytime charging hours (e.g., 15:00).",
-          "hsem_batteries_enable_charge_hours_day_start": "Specify the start time for daytime charging hours (e.g., 09:00).",
-          "hsem_batteries_enable_charge_hours_night": "Enable to set specific charging hours during the night.",
-          "hsem_batteries_enable_charge_hours_night_end": "Specify the end time for nighttime charging hours (e.g., 06:00).",
-          "hsem_batteries_enable_charge_hours_night_start": "Specify the start time for nighttime charging hours (e.g., 22:00)."
+          "hsem_batteries_enable_batteries_schedule_1": "Enable or disable the first battery discharge schedule.",
+          "hsem_batteries_enable_batteries_schedule_1_end": "Specify the end time for the first battery discharge schedule.",
+          "hsem_batteries_enable_batteries_schedule_1_min_price_difference": "Set the minimum price difference (in DKK) required for this schedule to activate.",
+          "hsem_batteries_enable_batteries_schedule_1_start": "Specify the start time for the first battery discharge schedule.",
+          "hsem_batteries_enable_batteries_schedule_2": "Enable or disable the second battery discharge schedule.",
+          "hsem_batteries_enable_batteries_schedule_2_end": "Specify the end time for the second battery discharge schedule.",
+          "hsem_batteries_enable_batteries_schedule_2_start": "Specify the start time for the second battery discharge schedule.",
+          "hsem_batteries_enable_batteries_schedule_3": "Enable or disable the third battery discharge schedule.",
+          "hsem_batteries_enable_batteries_schedule_3_end": "Specify the end time for the third battery discharge schedule.",
+          "hsem_batteries_enable_batteries_schedule_3_start": "Specify the start time for the third battery discharge schedule."
         },
-        "description": "Configure battery charging hours for daytime and nighttime. Users can enable specific time intervals (start to end) where the integration automatically determines the cheapest time to charge the battery. This optimization is only active during winter months, defined as January, February, March, April, September, October, November, and December (DEFAULT_HSEM_MONTHS_WINTER_SPRING).",
-        "title": "Charging Hours"
+        "description": "Configure up to three battery discharge schedules, including their activation times and optional minimum price differences for activation.",
+        "title": "Battery Discharge Schedules"
       },
       "energidataservice": {
         "data": {

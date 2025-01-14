@@ -8,9 +8,9 @@ from homeassistant import config_entries
 from homeassistant.core import callback
 
 from custom_components.hsem.const import DOMAIN, NAME
-from custom_components.hsem.flows.charge_hours import (
-    get_charge_hours_step_schema,
-    validate_charge_hours_input,
+from custom_components.hsem.flows.batteries_schedule import (
+    get_batteries_schedule_step_schema,
+    validate_batteries_schedule_input,
 )
 from custom_components.hsem.flows.energidataservice import (
     get_energidataservice_step_schema,
@@ -155,7 +155,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors = await validate_weighted_values_input(user_input)
             if not errors:
                 self._user_input.update(user_input)
-                return await self.async_step_charge_hours()
+                return await self.async_step_batteries_schedule()
 
         data_schema = await get_weighted_values_step_schema(None)
 
@@ -166,19 +166,19 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             last_step=False,
         )
 
-    async def async_step_charge_hours(self, user_input=None):
+    async def async_step_batteries_schedule(self, user_input=None):
         errors = {}
 
         if user_input is not None:
-            errors = await validate_charge_hours_input(user_input)
+            errors = await validate_batteries_schedule_input(user_input)
             if not errors:
                 self._user_input.update(user_input)
                 return await self.async_step_huawei_solar()
 
-        data_schema = await get_charge_hours_step_schema(None)
+        data_schema = await get_batteries_schedule_step_schema(None)
 
         return self.async_show_form(
-            step_id="charge_hours",
+            step_id="batteries_schedule",
             data_schema=data_schema,
             errors=errors,
             last_step=False,

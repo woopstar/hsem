@@ -21,7 +21,7 @@ class HSEMStatisticsSensor(StatisticsSensor, HSEMEntity):
         return UnitOfEnergy.KILO_WATT_HOUR
 
     @property
-    def device_class(self):
+    def state_class(self):
         return SensorStateClass.MEASUREMENT
 
     @property
