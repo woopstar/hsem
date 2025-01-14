@@ -24,7 +24,7 @@ jobs:
           git config user.email github-actions@github.com
           git add ./custom_components/hsem/manifest.json
           git commit -m "Updated manifest.json"
-          git push origin HEAD:main
+          git push origin HEAD:${{ github.event.release.target_commitish }}
       - name: Create zip
         run: |
           cd custom_components/hsem
