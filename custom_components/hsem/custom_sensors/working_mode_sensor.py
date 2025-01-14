@@ -1507,17 +1507,22 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                     avg_charge_import_price += price
                     charged_energy += energy_to_charge
 
+                    await async_logger(
+                        self,
+                        f"Hour: {time_range}. Import Price: {price}",
+                    )
+
             avg_charge_import = avg_charge_import_price / avg_charge_import_count
             avg_charge_diff = avg_import_price - avg_charge_import
 
             if avg_charge_import_count > 0:
                 await async_logger(
                     self,
-                    f"Charging from grid cost:"
-                    f"Average Charge Import Price: {round(avg_charge_import, 2)}",
-                    f"Average Import Price: {round(avg_import_price, 2)}",
-                    f"Charge Price Difference: {round(avg_charge_diff, 2)}",
-                    f"Min Price Difference: {round(min_price_diff, 2)}",
+                    f"Charging from grid cost calculation. "
+                    f"Average Charge Import Price: {round(avg_charge_import, 2)}, "
+                    f"Average Import Price: {round(avg_import_price, 2)}, "
+                    f"Charge Price Difference: {round(avg_charge_diff, 2)}, "
+                    f"Min Price Difference: {round(min_price_diff, 2)}, ",
                 )
 
         # Lets charge if price diff is enough
