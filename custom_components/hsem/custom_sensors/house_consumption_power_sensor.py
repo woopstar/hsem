@@ -48,6 +48,7 @@ from custom_components.hsem.entity import HSEMEntity
 from custom_components.hsem.utils.misc import (
     async_remove_entity_from_ha,
     async_resolve_entity_id_from_unique_id,
+    convert_to_float,
     get_config_value,
     ha_get_entity_state_and_convert,
 )
@@ -146,9 +147,11 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
         """Return the state attributes."""
         return {
             "house_consumption_power_entity": self._hsem_house_consumption_power,
-            "house_consumption_power_state": self._hsem_house_consumption_power_state,
+            "house_consumption_power_state": round(
+                self._hsem_house_consumption_power_state, 2
+            ),
             "ev_charger_power_entity": self._hsem_ev_charger_power,
-            "ev_charger_power_state": self._hsem_ev_charger_power_state,
+            "ev_charger_power_state": round(self._hsem_ev_charger_power_state, 2),
             "house_power_includes_ev_charger_power": self._hsem_house_power_includes_ev_charger_power,
             "hour_start": self._hour_start,
             "hour_end": self._hour_end,
@@ -164,11 +167,10 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
         # Get the last state of the sensor
         old_state = await self.async_get_last_state()
         if old_state is not None:
-            self._state = old_state.state
-            self._daily_values = old_state.attributes.get("daily_values", {})
+            self._state = round(convert_to_float(old_state.state), 2)
             self._last_updated = old_state.attributes.get("last_updated", None)
         else:
-            self._state = 0.0
+            self._state = 0.00
 
         # Initial update
         await self._async_handle_update(None)
@@ -219,12 +221,17 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
                 self._hsem_ev_charger_power_state, (int, float)
             ) and isinstance(self._hsem_house_consumption_power_state, (int, float)):
                 if self._hsem_house_power_includes_ev_charger_power:
-                    self._state = float(
-                        self._hsem_house_consumption_power_state
-                        - self._hsem_ev_charger_power_state
+                    self._state = round(
+                        float(
+                            self._hsem_house_consumption_power_state
+                            - self._hsem_ev_charger_power_state
+                        ),
+                        2,
                     )
                 else:
-                    self._state = float(self._hsem_house_consumption_power_state)
+                    self._state = round(
+                        float(self._hsem_house_consumption_power_state), 2
+                    )
 
         # Add energy sensor to convert power to energy
         await self._async_add_integral_sensor()
@@ -348,7 +355,6 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
             unique_id=integral_sensor_unique_id,
             unit_prefix="k",
             unit_time=UnitOfTime.HOURS,
-            # max_sub_interval=timedelta(minutes=1),
             max_sub_interval=timedelta(minutes=0),
             device_info=None,
             e_id=integral_sensor_entity_id,

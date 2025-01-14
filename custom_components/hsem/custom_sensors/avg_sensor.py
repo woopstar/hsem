@@ -41,7 +41,7 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
         self._last_updated = None
         self._config_entry = config_entry
         self._name = name
-        self._values = {}
+        self._measurements = {}
         self._tracked_entities = set()
 
     @property
@@ -54,7 +54,7 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
             "hour_end": self._hour_end,
             "last_updated": self._last_updated,
             "unique_id": self._attr_unique_id,
-            "values": self._values,
+            "measurements": self._measurements,
         }
 
     @property
@@ -77,6 +77,10 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
     def name(self):
         return self._name
 
+    @property
+    def should_poll(self):
+        return True
+
     async def async_update(self, event=None):
         """Manually trigger the sensor update."""
         return await self._async_handle_update(None)
@@ -87,16 +91,19 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
         if old_state is not None:
             self._state = float(old_state.state)
 
-            restored_values = old_state.attributes.get("values", {})
-            if isinstance(restored_values, dict):
-                self._values = {k: float(v) for k, v in restored_values.items()}
+            restored_measurements = old_state.attributes.get("measurements", {})
+
+            if isinstance(restored_measurements, dict):
+                self._measurements = {
+                    k: float(v) for k, v in restored_measurements.items()
+                }
             else:
-                self._values = {}
+                self._measurements = {}
 
             self._last_updated = old_state.attributes.get("last_updated", None)
         else:
-            self._state = 0.0
-            self._values = {}
+            self._state = 0.00
+            self._measurements = {}
 
         # Initial update
         await self._async_handle_update(None)
@@ -116,7 +123,7 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
 
     async def _async_handle_update(self, event):
         """Handle updates to the source sensor."""
-        self._state = 0.0
+        self._state = 0.00
 
         now = datetime.now()
 
@@ -124,12 +131,12 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
         await self._async_track_entities()
 
         await self._async_store_utility_meter_value()
-        await self._async_cleanup_old_values()
+        await self._async_cleanup_old_measurements()
 
-        # Calculate the average value from `self._values`
-        if self._values:
-            total = sum(self._values.values())
-            count = len(self._values)
+        # Calculate the average value from `self._measurements`
+        if self._measurements:
+            total = sum(self._measurements.values())
+            count = len(self._measurements)
             if count > 0:
                 self._state = round(total / count, 2)
 
@@ -151,13 +158,13 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
             utility_meter_value = None
 
         if utility_meter_value is not None and utility_meter_value >= 0:
-            self._values[current_date.isoformat()] = utility_meter_value
+            self._measurements[current_date.isoformat()] = round(utility_meter_value, 2)
         else:
-            self._values[current_date.isoformat()] = 0.0
+            self._measurements[current_date.isoformat()] = 0.00
 
-    async def _async_cleanup_old_values(self):
-        if self._values:
-            if len(self._values) > self._average:
-                sorted_dates = sorted(self._values.keys())
+    async def _async_cleanup_old_measurements(self):
+        if self._measurements:
+            if len(self._measurements) > self._average:
+                sorted_dates = sorted(self._measurements.keys())
                 for date in sorted_dates[: self._average]:
-                    del self._values[date]
+                    del self._measurements[date]

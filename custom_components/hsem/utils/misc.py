@@ -2,8 +2,10 @@
 This module provides utility functions for the Home Assistant custom integration.
 """
 
+import asyncio
 import hashlib
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, time
 from logging.handlers import RotatingFileHandler
 
@@ -39,6 +41,8 @@ HSEM_LOGGER.setLevel(logging.DEBUG)
 
 # Prevent the logger from propagating to the root logger
 HSEM_LOGGER.propagate = False
+
+LOG_EXECUTOR = ThreadPoolExecutor(max_workers=1)
 
 
 class EntityNotFoundError(HomeAssistantError):
@@ -299,4 +303,6 @@ async def async_logger(self, msg, level="debug"):
     """
     if self._hsem_verbose_logging:
         log_method = getattr(HSEM_LOGGER, level.lower(), HSEM_LOGGER.debug)
-        log_method(msg)
+
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(LOG_EXECUTOR, log_method, msg)

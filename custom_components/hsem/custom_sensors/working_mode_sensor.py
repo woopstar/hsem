@@ -157,10 +157,12 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_batteries_enable_batteries_schedule_2_start = None
         self._hsem_batteries_enable_batteries_schedule_2_end = None
         self._hsem_batteries_enable_batteries_schedule_2_needed_batteries_capacity = 0.0
+        self._hsem_batteries_enable_batteries_schedule_2_min_price_difference = 0.0
         self._hsem_batteries_enable_batteries_schedule_3 = False
         self._hsem_batteries_enable_batteries_schedule_3_start = None
         self._hsem_batteries_enable_batteries_schedule_3_end = None
         self._hsem_batteries_enable_batteries_schedule_3_needed_batteries_capacity = 0.0
+        self._hsem_batteries_enable_batteries_schedule_3_min_price_difference = 0.0
         self._hsem_entity_id_cache = {}
         self._attr_unique_id = get_working_mode_sensor_unique_id()
         self.entity_id = get_working_mode_sensor_entity_id()
@@ -300,6 +302,12 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_batteries_enable_batteries_schedule_2_end = get_config_value(
             self._config_entry, "hsem_batteries_enable_batteries_schedule_2_end"
         )
+        self._hsem_batteries_enable_batteries_schedule_2_min_price_difference = (
+            get_config_value(
+                self._config_entry,
+                "hsem_batteries_enable_batteries_schedule_2_min_price_difference",
+            )
+        )
         self._hsem_batteries_enable_batteries_schedule_3 = get_config_value(
             self._config_entry, "hsem_batteries_enable_batteries_schedule_3"
         )
@@ -308,6 +316,12 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         )
         self._hsem_batteries_enable_batteries_schedule_3_end = get_config_value(
             self._config_entry, "hsem_batteries_enable_batteries_schedule_3_end"
+        )
+        self._hsem_batteries_enable_batteries_schedule_3_min_price_difference = (
+            get_config_value(
+                self._config_entry,
+                "hsem_batteries_enable_batteries_schedule_3_min_price_difference",
+            )
         )
 
         if self._hsem_huawei_solar_device_id_inverter_2 is not None:
@@ -413,10 +427,12 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             "huawei_solar_batteries_enable_batteries_schedule_2_needed_batteries_capacity": self._hsem_batteries_enable_batteries_schedule_2_needed_batteries_capacity,
             "huawei_solar_batteries_enable_batteries_schedule_2_start": self._hsem_batteries_enable_batteries_schedule_2_start,
             "huawei_solar_batteries_enable_batteries_schedule_2": self._hsem_batteries_enable_batteries_schedule_2,
+            "huawei_solar_batteries_enable_batteries_schedule_2_min_price_difference": self._hsem_batteries_enable_batteries_schedule_2_min_price_difference,
             "huawei_solar_batteries_enable_batteries_schedule_3_end": self._hsem_batteries_enable_batteries_schedule_3_end,
             "huawei_solar_batteries_enable_batteries_schedule_3_needed_batteries_capacity": self._hsem_batteries_enable_batteries_schedule_3_needed_batteries_capacity,
             "huawei_solar_batteries_enable_batteries_schedule_3_start": self._hsem_batteries_enable_batteries_schedule_3_start,
             "huawei_solar_batteries_enable_batteries_schedule_3": self._hsem_batteries_enable_batteries_schedule_3,
+            "huawei_solar_batteries_enable_batteries_schedule_3_min_price_difference": self._hsem_batteries_enable_batteries_schedule_3_min_price_difference,
             "huawei_solar_batteries_grid_charge_cutoff_soc_state": self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state,
             "huawei_solar_batteries_maximum_charging_power_state": self._hsem_huawei_solar_batteries_maximum_charging_power_state,
             "huawei_solar_batteries_rated_capacity_max_state": self._hsem_batteries_rated_capacity_max_state,
@@ -1136,23 +1152,23 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 "avg_house_consumption"
             ] = avg_house_consumption
 
-            await async_logger(
-                self,
-                f"time_range: {time_range}, "
-                f"avg_house_consumption: {round(avg_house_consumption, 3)}, "
-                f"value_1d: {round(value_1d, 3)}, "
-                f"value_3d: {round(value_3d, 3)}, "
-                f"value_7d: {round(value_7d, 3)}, "
-                f"value_14d: {round(value_14d, 3)}, "
-                f"weighted_value_1d: {round(weighted_value_1d, 3)}, "
-                f"weighted_value_3d: {round(weighted_value_3d, 3)}, "
-                f"weighted_value_7d: {round(weighted_value_7d, 3)}, "
-                f"weighted_value_14d: {round(weighted_value_14d, 3)}, "
-                f"entity_id_1d: {entity_id_1d}, "
-                f"entity_id_3d: {entity_id_3d}, "
-                f"entity_id_7d: {entity_id_7d}, "
-                f"entity_id_14d: {entity_id_14d}, ",
-            )
+            # await async_logger(
+            #     self,
+            #     f"time_range: {time_range}, "
+            #     f"avg_house_consumption: {round(avg_house_consumption, 3)}, "
+            #     f"value_1d: {round(value_1d, 3)}, "
+            #     f"value_3d: {round(value_3d, 3)}, "
+            #     f"value_7d: {round(value_7d, 3)}, "
+            #     f"value_14d: {round(value_14d, 3)}, "
+            #     f"weighted_value_1d: {round(weighted_value_1d, 3)}, "
+            #     f"weighted_value_3d: {round(weighted_value_3d, 3)}, "
+            #     f"weighted_value_7d: {round(weighted_value_7d, 3)}, "
+            #     f"weighted_value_14d: {round(weighted_value_14d, 3)}, "
+            #     f"entity_id_1d: {entity_id_1d}, "
+            #     f"entity_id_3d: {entity_id_3d}, "
+            #     f"entity_id_7d: {entity_id_7d}, "
+            #     f"entity_id_14d: {entity_id_14d}, ",
+            # )
 
     async def _async_calculate_solcast_forecast(self):
         """Calculate the hourly Solcast PV estimate and update self._hourly_calculations without resetting avg_house_consumption."""
@@ -1306,7 +1322,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         )
 
     async def _async_find_best_time_to_charge(
-        self, start_hour=14, stop_hour=17, required_charge=0
+        self, start_hour=14, stop_hour=17, required_charge=0, min_price_diff=0
     ):
         """Find best time to charge based on prioritized conditions."""
         now = datetime.now()
@@ -1510,6 +1526,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                         self._hsem_batteries_enable_batteries_schedule_1_end
                     ),
                     "required_charge": self._hsem_batteries_enable_batteries_schedule_1_needed_batteries_capacity,
+                    "min_price_diff": self._hsem_batteries_enable_batteries_schedule_1_min_price_difference,
                 }
             )
         if self._hsem_batteries_enable_batteries_schedule_2:
@@ -1522,6 +1539,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                         self._hsem_batteries_enable_batteries_schedule_2_end
                     ),
                     "required_charge": self._hsem_batteries_enable_batteries_schedule_2_needed_batteries_capacity,
+                    "min_price_diff": self._hsem_batteries_enable_batteries_schedule_2_min_price_difference,
                 }
             )
         if self._hsem_batteries_enable_batteries_schedule_3:
@@ -1534,6 +1552,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                         self._hsem_batteries_enable_batteries_schedule_3_end
                     ),
                     "required_charge": self._hsem_batteries_enable_batteries_schedule_3_needed_batteries_capacity,
+                    "min_price_diff": self._hsem_batteries_enable_batteries_schedule_3_min_price_difference,
                 }
             )
 
@@ -1592,7 +1611,10 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             f"before {first_schedule_start_hour}:00.",
         )
         await self._async_find_best_time_to_charge(
-            now.hour, first_schedule_start_hour, total_required_charge
+            now.hour,
+            first_schedule_start_hour,
+            total_required_charge,
+            schedules[0]["min_price_diff"],
         )
 
         # Calculate remaining charge needs after each schedule window
@@ -1624,7 +1646,10 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                     f"between {schedule['end'].hour}:00 and {next_schedule_start_hour}:00.",
                 )
                 await self._async_find_best_time_to_charge(
-                    schedule["end"].hour, next_schedule_start_hour, remaining_charge
+                    schedule["end"].hour,
+                    next_schedule_start_hour,
+                    remaining_charge,
+                    schedule["min_price_diff"],
                 )
 
     async def _async_calculate_batteries_schedules(self):
@@ -1657,11 +1682,11 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                         estimated_net_consumption = self._hourly_calculations[
                             time_range
                         ]["estimated_net_consumption"]
-                        await async_logger(
-                            self,
-                            f"Hour: {time_range}. "
-                            f"Estimated Net Consumption: {round(estimated_net_consumption, 3)} kWh. ",
-                        )
+                        # await async_logger(
+                        #     self,
+                        #     f"Hour: {time_range}. "
+                        #     f"Estimated Net Consumption: {round(estimated_net_consumption, 3)} kWh. ",
+                        # )
 
                         needed_batteries_capacity += estimated_net_consumption
 

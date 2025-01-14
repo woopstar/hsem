@@ -5,9 +5,17 @@ This module defines the configuration flow for the HSEM integration in Home Assi
 from homeassistant import config_entries
 
 from custom_components.hsem.const import NAME
-from custom_components.hsem.flows.batteries_schedule import (
-    get_batteries_schedule_step_schema,
-    validate_batteries_schedule_input,
+from custom_components.hsem.flows.batteries_schedule_1 import (
+    get_batteries_schedule_1_step_schema,
+    validate_batteries_schedule_1_input,
+)
+from custom_components.hsem.flows.batteries_schedule_2 import (
+    get_batteries_schedule_2_step_schema,
+    validate_batteries_schedule_2_input,
+)
+from custom_components.hsem.flows.batteries_schedule_3 import (
+    get_batteries_schedule_3_step_schema,
+    validate_batteries_schedule_3_input,
 )
 from custom_components.hsem.flows.energidataservice import (
     get_energidataservice_step_schema,
@@ -148,7 +156,7 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
             errors = await validate_weighted_values_input(user_input)
             if not errors:
                 self._user_input.update(user_input)
-                return await self.async_step_batteries_schedule()
+                return await self.async_step_batteries_schedule_1()
 
         data_schema = await get_weighted_values_step_schema(self._config_entry)
 
@@ -159,19 +167,55 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
             last_step=False,
         )
 
-    async def async_step_batteries_schedule(self, user_input=None):
+    async def async_step_batteries_schedule_1(self, user_input=None):
         errors = {}
 
         if user_input is not None:
-            errors = await validate_batteries_schedule_input(user_input)
+            errors = await validate_batteries_schedule_1_input(user_input)
+            if not errors:
+                self._user_input.update(user_input)
+                return await self.async_step_batteries_schedule_2()
+
+        data_schema = await get_batteries_schedule_1_step_schema(self._config_entry)
+
+        return self.async_show_form(
+            step_id="batteries_schedule_1",
+            data_schema=data_schema,
+            errors=errors,
+            last_step=False,
+        )
+
+    async def async_step_batteries_schedule_2(self, user_input=None):
+        errors = {}
+
+        if user_input is not None:
+            errors = await validate_batteries_schedule_2_input(user_input)
+            if not errors:
+                self._user_input.update(user_input)
+                return await self.async_step_batteries_schedule_3()
+
+        data_schema = await get_batteries_schedule_2_step_schema(self._config_entry)
+
+        return self.async_show_form(
+            step_id="batteries_schedule_2",
+            data_schema=data_schema,
+            errors=errors,
+            last_step=False,
+        )
+
+    async def async_step_batteries_schedule_3(self, user_input=None):
+        errors = {}
+
+        if user_input is not None:
+            errors = await validate_batteries_schedule_3_input(user_input)
             if not errors:
                 self._user_input.update(user_input)
                 return await self.async_step_huawei_solar()
 
-        data_schema = await get_batteries_schedule_step_schema(self._config_entry)
+        data_schema = await get_batteries_schedule_3_step_schema(self._config_entry)
 
         return self.async_show_form(
-            step_id="batteries_schedule",
+            step_id="batteries_schedule_3",
             data_schema=data_schema,
             errors=errors,
             last_step=False,
