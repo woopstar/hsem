@@ -1482,6 +1482,8 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                     )
 
         # Third priority: Cheapest remaining hours considering partial solar contribution
+        await async_logger(self, f"Finding cheapest hours to import energy. ")
+
         charged_energy_before = charged_energy
         if charged_energy < required_charge:
             remaining_hours = [(t, p, nc) for t, p, nc in available_hours]
@@ -1509,7 +1511,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
                     await async_logger(
                         self,
-                        f"Hour: {time_range}. Import Price: {price}",
+                        f"Hour: {time_range}. Import Price: {round(price, 3)}",
                     )
 
             avg_charge_import = avg_charge_import_price / avg_charge_import_count
@@ -1520,14 +1522,20 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                     self,
                     f"Charging from grid cost calculation. "
                     f"Average Charge Import Price: {round(avg_charge_import, 2)}, "
-                    f"Average Import Price: {round(avg_import_price, 2)}, "
+                    f"Average Usage Price: {round(avg_import_price, 2)}, "
                     f"Charge Price Difference: {round(avg_charge_diff, 2)}, "
                     f"Min Price Difference: {round(min_price_diff, 2)}, ",
                 )
 
         # Lets charge if price diff is enough
         charged_energy = charged_energy_before
-        if charged_energy < required_charge and avg_charge_diff > min_price_diff:
+
+        min_price_check = True
+        if min_price_diff != 0:
+            if avg_charge_diff < min_price_diff:
+                min_price_check = False
+
+        if charged_energy < required_charge and min_price_check:
             remaining_hours = [(t, p, nc) for t, p, nc in available_hours]
             remaining_hours.sort(key=lambda x: x[1])  # Sort by price
 
@@ -1933,8 +1941,8 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 data["recommendation"] = Recommendations.MaximizeSelfConsumption.value
 
             # Between 17 and 21 we always want to BatteriesDischargeMode
-            elif 17 <= start_hour < 21:
-                data["recommendation"] = Recommendations.BatteriesDischargeMode.value
+            # elif 17 <= start_hour < 21:
+            #    data["recommendation"] = Recommendations.BatteriesDischargeMode.value
 
             else:
                 if current_month in DEFAULT_HSEM_MONTHS_WINTER_SPRING:
