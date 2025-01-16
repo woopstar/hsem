@@ -17,7 +17,7 @@ from homeassistant.core import State
 from homeassistant.helpers.event import async_track_time_interval
 
 from custom_components.hsem.const import (
-    DEFAULT_HSEM_DEFAULT_TOU_MODES,
+    DEFAULT_HSEM_BATTERIES_WAIT_MODE,
     DEFAULT_HSEM_EV_CHARGER_TOU_MODES,
     DEFAULT_HSEM_MONTHS_SUMMER,
     DEFAULT_HSEM_MONTHS_WINTER_SPRING,
@@ -948,11 +948,11 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             )
         elif (
             self._hourly_calculations.get(current_time_range, {}).get("recommendation")
-            == Recommendations.TimeOfUse.value
+            == Recommendations.BatteriesWaitMode.value
         ):
             # Winter/Spring settings
             if current_month in DEFAULT_HSEM_MONTHS_WINTER_SPRING:
-                tou_modes = DEFAULT_HSEM_DEFAULT_TOU_MODES
+                tou_modes = DEFAULT_HSEM_BATTERIES_WAIT_MODE
                 working_mode = WorkingModes.TimeOfUse.value
                 state = Recommendations.TimeOfUse.value
                 _LOGGER.debug(
@@ -1946,7 +1946,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
             else:
                 if current_month in DEFAULT_HSEM_MONTHS_WINTER_SPRING:
-                    data["recommendation"] = Recommendations.TimeOfUse.value
+                    data["recommendation"] = Recommendations.BatteriesWaitMode.value
 
                 if current_month in DEFAULT_HSEM_MONTHS_SUMMER:
                     data["recommendation"] = (
