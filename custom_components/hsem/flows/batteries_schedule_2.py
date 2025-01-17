@@ -53,12 +53,6 @@ async def validate_batteries_schedule_2_input(user_input):
     """Validate user input."""
     errors = {}
 
-    required_fields = [
-        "hsem_batteries_enable_batteries_schedule_2",
-        "hsem_batteries_enable_batteries_schedule_2_start",
-        "hsem_batteries_enable_batteries_schedule_2_end",
-    ]
-
     try:
         # Validate schedule 2 if enabled
         if "hsem_batteries_enable_batteries_schedule_2" in user_input:

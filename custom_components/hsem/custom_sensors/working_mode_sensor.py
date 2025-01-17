@@ -1482,7 +1482,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                     )
 
         # Third priority: Cheapest remaining hours considering partial solar contribution
-        await async_logger(self, f"Finding cheapest hours to import energy. ")
+        await async_logger(self, "Finding cheapest hours to import energy. ")
 
         charged_energy_before = charged_energy
         if charged_energy < required_charge:
@@ -1531,9 +1531,8 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         charged_energy = charged_energy_before
 
         min_price_check = True
-        if min_price_diff != 0:
-            if avg_charge_diff < min_price_diff:
-                min_price_check = False
+        if min_price_diff != 0 and avg_charge_diff < min_price_diff:
+            min_price_check = False
 
         if charged_energy < required_charge and min_price_check:
             remaining_hours = [(t, p, nc) for t, p, nc in available_hours]
@@ -1734,7 +1733,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 )
 
     async def _async_calculate_batteries_schedules(self):
-        await async_logger(self, f"Setting up batteries discharging schedules. ")
+        await async_logger(self, "Setting up batteries discharging schedules. ")
 
         if self._hsem_batteries_enable_batteries_schedule_1:
             start = datetime.strptime(
@@ -1746,7 +1745,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
             if start > end:
                 await async_logger(
-                    self, f"Invalid schedule 1. Start time is greater than end time. "
+                    self, "Invalid schedule 1. Start time is greater than end time. "
                 )
             else:
                 needed_batteries_capacity = 0.0
@@ -1807,7 +1806,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
             if start > end:
                 await async_logger(
-                    self, f"Invalid schedule 2. Start time is greater than end time. "
+                    self, "Invalid schedule 2. Start time is greater than end time. "
                 )
             else:
                 needed_batteries_capacity = 0.0
@@ -1849,7 +1848,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
                 await async_logger(
                     self,
-                    f"Enabling batteries discharging schedule 2. "
+                    "Enabling batteries discharging schedule 2. "
                     f"Start: {convert_to_time(self._hsem_batteries_enable_batteries_schedule_2_start)}, "
                     f"End: {convert_to_time(self._hsem_batteries_enable_batteries_schedule_2_end)}, "
                     f"Average Import Price: {round(avg_import_price / hours_count, 2)} DKK, "
@@ -1867,7 +1866,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
             if start > end:
                 await async_logger(
-                    self, f"Invalid schedule 3. Start time is greater than end time. "
+                    self, "Invalid schedule 3. Start time is greater than end time. "
                 )
             else:
                 needed_batteries_capacity = 0.0
@@ -1909,7 +1908,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
                 await async_logger(
                     self,
-                    f"Enabling batteries discharging schedule 3. "
+                    "Enabling batteries discharging schedule 3. "
                     f"Start: {convert_to_time(self._hsem_batteries_enable_batteries_schedule_3_start)}, "
                     f"End: {convert_to_time(self._hsem_batteries_enable_batteries_schedule_3_end)}, "
                     f"Average Import Price: {round(avg_import_price / hours_count, 2)} DKK, "
@@ -1927,7 +1926,6 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             import_price = data["import_price"]
             export_price = data["export_price"]
             net_consumption = data["estimated_net_consumption"]
-            start_hour = int(hour.split("-")[0])
 
             if data["recommendation"] is not None:
                 continue
@@ -1939,10 +1937,6 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             # Maximize Self Consumption
             elif net_consumption < 0:
                 data["recommendation"] = Recommendations.MaximizeSelfConsumption.value
-
-            # Between 17 and 21 we always want to BatteriesDischargeMode
-            # elif 17 <= start_hour < 21:
-            #    data["recommendation"] = Recommendations.BatteriesDischargeMode.value
 
             else:
                 if current_month in DEFAULT_HSEM_MONTHS_WINTER_SPRING:

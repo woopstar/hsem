@@ -151,7 +151,7 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
             utility_meter_value = ha_get_entity_state_and_convert(
                 self, self._tracked_entity, "float"
             )
-        except Exception as e:
+        except Exception:
             utility_meter_value = None
 
         if utility_meter_value is not None and utility_meter_value >= 0:
