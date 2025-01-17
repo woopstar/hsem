@@ -88,10 +88,11 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
     async def async_added_to_hass(self):
         # Get the last state of the sensor
         old_state = await self.async_get_last_state()
+
         if old_state is not None:
             self._state = float(old_state.state)
 
-            restored_measurements = old_state.attributes.get("measurements", {})
+            restored_measurements = old_state.attributes.get("measurements", None)
 
             if isinstance(restored_measurements, dict):
                 self._measurements = {
@@ -101,9 +102,6 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
                 self._measurements = {}
 
             self._last_updated = old_state.attributes.get("last_updated", None)
-        else:
-            self._state = 0.00
-            self._measurements = {}
 
         # Initial update
         await self._async_handle_update(None)
@@ -131,7 +129,6 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
         await self._async_track_entities()
 
         await self._async_store_utility_meter_value()
-        await self._async_cleanup_old_measurements()
 
         # Calculate the average value from `self._measurements`
         if self._measurements:
@@ -162,8 +159,10 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
         else:
             self._measurements[current_date.isoformat()] = 0.00
 
+        await self._async_cleanup_old_measurements()
+
     async def _async_cleanup_old_measurements(self):
-        if self._measurements:
+        if self._measurements and self._average > 0:
             if len(self._measurements) > self._average:
                 sorted_dates = sorted(self._measurements.keys())
                 for date in sorted_dates[: self._average]:
