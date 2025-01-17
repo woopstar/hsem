@@ -1677,7 +1677,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         if total_required_charge <= 0:
             await async_logger(
                 self,
-                f"Skipping charge as the batteries already has sufficient capacity. ",
+                "Skipping charge as the batteries already has sufficient capacity. ",
             )
             return
 

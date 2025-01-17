@@ -1,5 +1,3 @@
-from datetime import datetime
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import ToggleEntity
@@ -64,20 +62,6 @@ class HSEMTimeEntity(ToggleEntity, HSEMEntity):
 
     async def async_set_value(self, value: str):
         """Set a new time after validation."""
-        # validation_errors = await self._async_validate_time(value)
-        # if validation_errors:
-        #    raise ValueError(f"Time validation failed: {validation_errors} for {value}")
 
         self._value = value
         await self._update_config_entry()
-
-    async def _async_validate_time(self, new_time: str) -> dict[str, str]:
-        """Validate the new time against related times."""
-        errors = {}
-        try:
-            datetime.strptime(new_time, "%H:%M:%S").time()
-
-        except (ValueError, TypeError):
-            errors["base"] = "invalid_time_format"
-
-        return errors
