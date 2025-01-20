@@ -885,7 +885,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             state = Recommendations.ForceExport.value
             await async_logger(
                 self,
-                f"Import price is negative. Setting TOU Periods: {tou_modes} and Working Mode: {working_mode}",
+                f"# Recommendation for {current_time_range} is that Import price is negative. Setting TOU Periods: {tou_modes} and Working Mode: {working_mode}",
             )
         elif (
             self._hourly_calculations.get(current_time_range, {}).get("recommendation")
@@ -905,7 +905,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             state = Recommendations.EVSmartCharging.value
             await async_logger(
                 self,
-                f"EV Charger is active. Setting TOU Periods: {tou_modes} and Working Mode: {working_mode}",
+                f"# Recommendation for {current_time_range} is EV Charger is active. Setting TOU Periods: {tou_modes} and Working Mode: {working_mode}",
             )
         elif (
             self._hourly_calculations.get(current_time_range, {}).get("recommendation")
@@ -924,7 +924,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             state = Recommendations.BatteriesChargeSolar.value
             await async_logger(
                 self,
-                f"Positive net consumption. Working Mode: {working_mode}, Solar Production: {self._hsem_solar_production_power_state}, House Consumption: {self._hsem_house_consumption_power_state}, Net Consumption: {self._hsem_net_consumption}",
+                f"# Recommendation for {current_time_range} is due to positive net consumption. Working Mode: {working_mode}, Solar Production: {self._hsem_solar_production_power_state}, House Consumption: {self._hsem_house_consumption_power_state}, Net Consumption: {self._hsem_net_consumption}",
             )
         elif (
             self._hourly_calculations.get(current_time_range, {}).get("recommendation")

@@ -168,5 +168,11 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
         """Cleanup old measurements."""
 
         sorted_dates = sorted(self._measurements.keys())
-        for date in sorted_dates[: self._average]:
-            del self._measurements[date]
+
+        if len(sorted_dates) > self._average:
+            # Calculate how many items to remove
+            items_to_remove = len(sorted_dates) - self._average
+
+            # Remove the oldest dates (they come first in the sorted list)
+            for date in sorted_dates[:items_to_remove]:
+                del self._measurements[date]
