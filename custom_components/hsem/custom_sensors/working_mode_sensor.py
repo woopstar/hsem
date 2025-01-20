@@ -921,20 +921,20 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         elif self._hsem_net_consumption < 0:
             # Positive net consumption. Charge battery from Solar
             working_mode = WorkingModes.MaximizeSelfConsumption.value
-            state = Recommendations.MaximizeSelfConsumption.value
+            state = Recommendations.BatteriesChargeSolar.value
             await async_logger(
                 self,
                 f"Positive net consumption. Working Mode: {working_mode}, Solar Production: {self._hsem_solar_production_power_state}, House Consumption: {self._hsem_house_consumption_power_state}, Net Consumption: {self._hsem_net_consumption}",
             )
         elif (
             self._hourly_calculations.get(current_time_range, {}).get("recommendation")
-            == Recommendations.MaximizeSelfConsumption.value
+            == Recommendations.BatteriesChargeSolar.value
         ):
             working_mode = WorkingModes.MaximizeSelfConsumption.value
-            state = Recommendations.MaximizeSelfConsumption.value
+            state = Recommendations.BatteriesChargeSolar.value
             await async_logger(
                 self,
-                f"# Recommendation for {current_time_range} is to set working mode to Maximize Self Consumption",
+                f"# Recommendation for {current_time_range} is to set working mode to Maximize Self Consumption to charge batteries from solar",
             )
         elif (
             self._hourly_calculations.get(current_time_range, {}).get("recommendation")
@@ -962,7 +962,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             # Summer settings
             if current_month in DEFAULT_HSEM_MONTHS_SUMMER:
                 working_mode = WorkingModes.MaximizeSelfConsumption.value
-                state = Recommendations.MaximizeSelfConsumption.value
+                state = Recommendations.BatteriesChargeSolar.value
                 _LOGGER.debug(f"Default summer settings. Working Mode: {working_mode}")
 
         # Apply TOU periods if working mode is TOU
@@ -1934,18 +1934,16 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             if export_price > import_price:
                 data["recommendation"] = Recommendations.FullyFedToGrid.value
 
-            # Maximize Self Consumption
+            # MSC
             elif net_consumption < 0:
-                data["recommendation"] = Recommendations.MaximizeSelfConsumption.value
+                data["recommendation"] = Recommendations.BatteriesChargeSolar.value
 
             else:
                 if current_month in DEFAULT_HSEM_MONTHS_WINTER_SPRING:
                     data["recommendation"] = Recommendations.BatteriesWaitMode.value
 
                 if current_month in DEFAULT_HSEM_MONTHS_SUMMER:
-                    data["recommendation"] = (
-                        Recommendations.MaximizeSelfConsumption.value
-                    )
+                    data["recommendation"] = Recommendations.BatteriesChargeSolar.value
 
     async def _async_calculate_energy_needs(self):
         """Calculate the energy needs for the day."""

@@ -41,7 +41,7 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
         self._last_updated = None
         self._config_entry = config_entry
         self._name = name
-        self._measurements = {}
+        self._measurements = None
         self._tracked_entities = set()
 
     @property
@@ -85,6 +85,11 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
         """Manually trigger the sensor update."""
         return await self._async_handle_update(None)
 
+    def parse_date(self, date_str):
+        # Strip any time component if it exists
+        date_part = date_str.split("T")[0] if "T" in date_str else date_str
+        return datetime.strptime(date_part, "%Y-%m-%d").date().isoformat()
+
     async def async_added_to_hass(self):
         # Get the last state of the sensor
         old_state = await self.async_get_last_state()
@@ -94,12 +99,11 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
 
             restored_measurements = old_state.attributes.get("measurements", None)
 
-            if isinstance(restored_measurements, dict):
+            if restored_measurements is not None:
                 self._measurements = {
-                    k: float(v) for k, v in restored_measurements.items()
+                    self.parse_date(k): round(float(v), 2)
+                    for k, v in restored_measurements.items()
                 }
-            else:
-                self._measurements = {}
 
             self._last_updated = old_state.attributes.get("last_updated", None)
 
@@ -131,7 +135,7 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
         await self._async_store_utility_meter_value()
 
         # Calculate the average value from `self._measurements`
-        if self._measurements:
+        if self._measurements is not None:
             total = sum(self._measurements.values())
             count = len(self._measurements)
             if count > 0:
@@ -154,16 +158,15 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
         except Exception:
             utility_meter_value = None
 
-        if utility_meter_value is not None and utility_meter_value >= 0:
+        if utility_meter_value is not None:
             self._measurements[current_date.isoformat()] = round(utility_meter_value, 2)
-        else:
-            self._measurements[current_date.isoformat()] = 0.00
 
-        await self._async_cleanup_old_measurements()
+        if self._measurements is not None and len(self._measurements) > self._average:
+            await self._async_cleanup_old_measurements()
 
     async def _async_cleanup_old_measurements(self):
-        if self._measurements and self._average > 0:
-            if len(self._measurements) > self._average:
-                sorted_dates = sorted(self._measurements.keys())
-                for date in sorted_dates[: self._average]:
-                    del self._measurements[date]
+        """Cleanup old measurements."""
+
+        sorted_dates = sorted(self._measurements.keys())
+        for date in sorted_dates[: self._average]:
+            del self._measurements[date]

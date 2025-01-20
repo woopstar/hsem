@@ -447,7 +447,7 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
             utility_meter_sensor
         )
 
-    async def _async_add_energy_average_sensors(self, avg=3):
+    async def _async_add_energy_average_sensors(self, avg):
         """Add a template sensor for the energy average over a given number of days."""
         avg_energy_sensor_name = get_energy_average_sensor_name(
             self._hour_start, self._hour_end, avg
