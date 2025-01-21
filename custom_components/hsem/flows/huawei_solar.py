@@ -8,7 +8,7 @@ from custom_components.hsem.utils.misc import (
 )
 
 
-async def get_huawei_solar_step_schema(config_entry):
+async def get_huawei_solar_step_schema(config_entry) -> vol.Schema:
     """Return the data schema for the 'huawei_solar' step."""
     return vol.Schema(
         {
@@ -93,7 +93,7 @@ async def get_huawei_solar_step_schema(config_entry):
     )
 
 
-async def validate_huawei_solar_input(hass, user_input):
+async def validate_huawei_solar_input(hass, user_input) -> dict[str, str]:
     """Validate user input for the 'huawei_solar' step."""
     errors = {}
 

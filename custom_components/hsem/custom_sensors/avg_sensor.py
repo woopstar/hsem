@@ -1,10 +1,14 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
+from typing import Any
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.components.sensor.const import SensorStateClass
 from homeassistant.const import UnitOfEnergy
-from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.helpers.event import (
+    async_track_state_change_event,
+    async_track_time_interval,
+)
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from custom_components.hsem.entity import HSEMEntity
@@ -19,6 +23,11 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
     _attr_icon = "mdi:calculator"
     _attr_has_entity_name = True
 
+    # Exclude all attributes from recording except state, last_updated and measurements
+    _unrecorded_attributes = frozenset(
+        ["tracked_entity", "average", "hour_start", "hour_end", "unique_id"]
+    )
+
     def __init__(
         self,
         config_entry,
@@ -29,7 +38,7 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
         name,
         unique_id,
         entity_id,
-    ):
+    ) -> None:
         super().__init__(config_entry)
         self._hour_start = hour_start
         self._hour_end = hour_end
@@ -45,7 +54,7 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
         self._tracked_entities = set()
 
     @property
-    def extra_state_attributes(self):
+    def extra_state_attributes(self) -> dict[str, Any]:
         """Return the state attributes."""
         return {
             "tracked_entity": self._tracked_entity,
@@ -58,39 +67,41 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
         }
 
     @property
-    def state(self):
+    def state(self) -> float | None:
         return self._state
 
     @property
-    def unit_of_measurement(self):
+    def unit_of_measurement(self) -> str:
         return UnitOfEnergy.KILO_WATT_HOUR
 
     @property
-    def state_class(self):
+    def state_class(self) -> str:
         return SensorStateClass.MEASUREMENT
 
     @property
-    def unique_id(self):
+    def unique_id(self) -> str | None:
         return self._attr_unique_id
 
     @property
-    def name(self):
+    def name(self) -> str:
         return self._name
 
     @property
-    def should_poll(self):
+    def should_poll(self) -> bool:
         return True
 
-    async def async_update(self, event=None):
+    async def async_update(self, event=None) -> None:
         """Manually trigger the sensor update."""
         return await self._async_handle_update(None)
 
-    def parse_date(self, date_str):
+    def parse_date(self, date_str) -> str:
         # Strip any time component if it exists
         date_part = date_str.split("T")[0] if "T" in date_str else date_str
         return datetime.strptime(date_part, "%Y-%m-%d").date().isoformat()
 
-    async def async_added_to_hass(self):
+    async def async_added_to_hass(self) -> None:
+        """Handle when sensor is added to Home Assistant."""
+
         # Get the last state of the sensor
         old_state = await self.async_get_last_state()
 
@@ -107,13 +118,17 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
 
             self._last_updated = old_state.attributes.get("last_updated", None)
 
+        # Register new timer
+        async_track_time_interval(
+            self.hass, self._async_handle_update, timedelta(minutes=5)
+        )
+
         # Initial update
         await self._async_handle_update(None)
 
-        """Handle when sensor is added to Home Assistant."""
-        return await super().async_added_to_hass()
+        await super().async_added_to_hass()
 
-    async def _async_track_entities(self):
+    async def _async_track_entities(self) -> None:
         if self._tracked_entity:
             if self._tracked_entity not in self._tracked_entities:
                 async_track_state_change_event(
@@ -123,7 +138,7 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
                 )
                 self._tracked_entities.add(self._tracked_entity)
 
-    async def _async_handle_update(self, event):
+    async def _async_handle_update(self, event) -> None:
         """Handle updates to the source sensor."""
         self._state = 0.00
 
@@ -144,9 +159,9 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
         self._last_updated = now.isoformat()
 
         # Trigger an update in Home Assistant
-        return self.async_write_ha_state()
+        self.async_write_ha_state()
 
-    async def _async_store_utility_meter_value(self):
+    async def _async_store_utility_meter_value(self) -> None:
         """Store the utility meter's value for the current day after the hour is over."""
         now = datetime.now()
         current_date = now.date()
@@ -158,21 +173,24 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
         except Exception:
             utility_meter_value = None
 
-        if utility_meter_value is not None:
-            self._measurements[current_date.isoformat()] = round(utility_meter_value, 2)
+        if utility_meter_value is not None and self._measurements is not None:
+            self._measurements[current_date.isoformat()] = round(
+                float(utility_meter_value), 2
+            )
 
         if self._measurements is not None and len(self._measurements) > self._average:
             await self._async_cleanup_old_measurements()
 
-    async def _async_cleanup_old_measurements(self):
+    async def _async_cleanup_old_measurements(self) -> None:
         """Cleanup old measurements."""
 
-        sorted_dates = sorted(self._measurements.keys())
+        if self._measurements is not None:
+            sorted_dates = sorted(self._measurements.keys())
 
-        if len(sorted_dates) > self._average:
-            # Calculate how many items to remove
-            items_to_remove = len(sorted_dates) - self._average
+            if len(sorted_dates) > self._average:
+                # Calculate how many items to remove
+                items_to_remove = len(sorted_dates) - self._average
 
-            # Remove the oldest dates (they come first in the sorted list)
-            for date in sorted_dates[:items_to_remove]:
-                del self._measurements[date]
+                # Remove the oldest dates (they come first in the sorted list)
+                for date in sorted_dates[:items_to_remove]:
+                    del self._measurements[date]

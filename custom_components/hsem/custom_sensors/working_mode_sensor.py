@@ -10,11 +10,17 @@ Classes:
 
 import logging
 from datetime import datetime, timedelta
+from typing import Any
 
 import voluptuous as vol
 from homeassistant.components.sensor import SensorEntity
+from homeassistant.const import MATCH_ALL
 from homeassistant.core import State
-from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.event import (
+    async_track_state_change_event,
+    async_track_time_change,
+    async_track_time_interval,
+)
 
 from custom_components.hsem.const import (
     DEFAULT_HSEM_BATTERIES_WAIT_MODE,
@@ -57,7 +63,10 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
     _attr_icon = "mdi:chart-timeline-variant"
     _attr_has_entity_name = True
 
-    def __init__(self, config_entry):
+    # Exclude all attributes from recording except standard ones
+    _unrecorded_attributes = frozenset([MATCH_ALL])
+
+    def __init__(self, config_entry) -> None:
         super().__init__(config_entry)
 
         # set config entry and state
@@ -118,12 +127,12 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_house_consumption_energy_weight_14d = None
         self._hsem_batteries_rated_capacity_min_state = None
         self._hsem_batteries_rated_capacity_max = None
-        self._hsem_batteries_rated_capacity_max_state = None
+        self._hsem_batteries_rated_capacity_max_state = 0.0
         self._hourly_calculations = {
             f"{hour:02d}-{(hour + 1) % 24:02d}": {
                 "avg_house_consumption": 0.0,
                 "solcast_pv_estimate": 0.0,
-                "estimated_net_consumption": 0.0,
+                "estimated_net_consumption": None,
                 "estimated_cost": 0.0,
                 "batteries_charged": 0.0,
                 "import_price": 0.0,
@@ -176,11 +185,13 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         )
         self._hsem_batteries_enable_batteries_schedule_3_min_price_difference = 0.0
         self._hsem_entity_id_cache = {}
+        self._tracked_entities = set()
+        self._timer = None
         self._attr_unique_id = get_working_mode_sensor_unique_id()
         self.entity_id = get_working_mode_sensor_entity_id()
         self._update_settings()
 
-    def _update_settings(self):
+    def _update_settings(self) -> None:
         """Fetch updated settings from config_entry options."""
         self._read_only = get_config_value(self._config_entry, "hsem_read_only")
 
@@ -256,9 +267,11 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         if self._hsem_ev_charger_power == vol.UNDEFINED:
             self._hsem_ev_charger_power = None
 
-        self._hsem_batteries_conversion_loss = get_config_value(
-            self._config_entry,
-            "hsem_batteries_conversion_loss",
+        self._hsem_batteries_conversion_loss = convert_to_float(
+            get_config_value(
+                self._config_entry,
+                "hsem_batteries_conversion_loss",
+            )
         )
 
         self._hsem_huawei_solar_batteries_maximum_charging_power = get_config_value(
@@ -275,17 +288,25 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods",
             )
         )
-        self._hsem_house_consumption_energy_weight_1d = get_config_value(
-            self._config_entry, "hsem_house_consumption_energy_weight_1d"
+        self._hsem_house_consumption_energy_weight_1d = convert_to_int(
+            get_config_value(
+                self._config_entry, "hsem_house_consumption_energy_weight_1d"
+            )
         )
-        self._hsem_house_consumption_energy_weight_3d = get_config_value(
-            self._config_entry, "hsem_house_consumption_energy_weight_3d"
+        self._hsem_house_consumption_energy_weight_3d = convert_to_int(
+            get_config_value(
+                self._config_entry, "hsem_house_consumption_energy_weight_3d"
+            )
         )
-        self._hsem_house_consumption_energy_weight_7d = get_config_value(
-            self._config_entry, "hsem_house_consumption_energy_weight_7d"
+        self._hsem_house_consumption_energy_weight_7d = convert_to_int(
+            get_config_value(
+                self._config_entry, "hsem_house_consumption_energy_weight_7d"
+            )
         )
-        self._hsem_house_consumption_energy_weight_14d = get_config_value(
-            self._config_entry, "hsem_house_consumption_energy_weight_14d"
+        self._hsem_house_consumption_energy_weight_14d = convert_to_int(
+            get_config_value(
+                self._config_entry, "hsem_house_consumption_energy_weight_14d"
+            )
         )
         self._hsem_batteries_rated_capacity_max = get_config_value(
             self._config_entry, "hsem_huawei_solar_batteries_rated_capacity"
@@ -346,27 +367,27 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         )
 
     @property
-    def name(self):
+    def name(self) -> str:
         return get_working_mode_sensor_name()
 
     @property
-    def unique_id(self):
+    def unique_id(self) -> str | None:
         return self._attr_unique_id
 
     @property
-    def state(self):
+    def state(self) -> str | None:
         return self._state
 
     @property
-    def should_poll(self):
+    def should_poll(self) -> bool:
         return False
 
     @property
-    def available(self):
+    def available(self) -> bool:
         return self._available
 
     @property
-    def extra_state_attributes(self):
+    def extra_state_attributes(self) -> dict[str, Any]:
         """Return the state attributes."""
 
         if self._missing_input_entities:
@@ -489,7 +510,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             )
         }
 
-    async def _async_handle_update(self, event):
+    async def _async_handle_update(self, event) -> None:
         """Handle the sensor state update (for both manual and state change)."""
 
         await async_logger(self, "------ Updating working mode sensor state...")
@@ -576,9 +597,9 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         )
 
         # Trigger an update in Home Assistant
-        return self.async_write_ha_state()
+        self.async_write_ha_state()
 
-    async def _async_calculate_remaining_battery_capacity(self):
+    async def _async_calculate_remaining_battery_capacity(self) -> None:
         # Calculate remaining battery capacity and max allowed charge from grid if all necessary values are available
         if isinstance(
             self._hsem_batteries_rated_capacity_max_state, (int, float)
@@ -613,7 +634,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 2,
             )
 
-    async def _async_calculate_compare_price_intervals(self):
+    async def _async_calculate_compare_price_intervals(self) -> None:
         self._hsem_is_night_price_lower_than_morning = (
             await self._async_compare_price_intervals(0, 6, 6, 10)
         )
@@ -633,7 +654,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             await self._async_compare_price_intervals(10, 17, 21, 23)
         )
 
-    async def _async_fetch_entity_states(self):
+    async def _async_fetch_entity_states(self) -> None:
         # Fetch the current value from the EV charger status sensor
 
         # Reset
@@ -753,11 +774,15 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
             # Fetch the current value from the battery rated capacity sensor
             if self._hsem_batteries_rated_capacity_max:
-                self._hsem_batteries_rated_capacity_max_state = (
+                self._hsem_batteries_rated_capacity_max_state = convert_to_float(
                     ha_get_entity_state_and_convert(
                         self, self._hsem_batteries_rated_capacity_max, "float", 0
                     )
                 )
+                self._hsem_batteries_rated_capacity_max_state = convert_to_float(
+                    self._hsem_batteries_rated_capacity_max_state
+                )
+
             else:
                 self._missing_input_entities = True
 
@@ -798,8 +823,23 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         except Exception as e:
             self._missing_input_entities = True
 
-    async def _async_calculate_net_consumption(self):
+        if self._hsem_ev_charger_status:
+            if self._hsem_ev_charger_status not in self._tracked_entities:
+                await async_logger(
+                    self,
+                    f"Starting to track state changes for {self._hsem_ev_charger_status}",
+                )
+
+                async_track_state_change_event(
+                    self.hass,
+                    [self._hsem_ev_charger_status],
+                    self._async_handle_update,
+                )
+                self._tracked_entities.add(self._hsem_ev_charger_power)
+
+    async def _async_calculate_net_consumption(self) -> None:
         # Calculate the net consumption without the EV charger power
+
         if isinstance(
             self._hsem_solar_production_power_state, (int, float)
         ) and isinstance(self._hsem_house_consumption_power_state, (int, float)):
@@ -832,8 +872,9 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         else:
             self._hsem_net_consumption = 0.0
 
-    async def _async_set_inverter_power_control(self):
+    async def _async_set_inverter_power_control(self) -> None:
         # Determine the grid export power percentage based on the state
+
         if not isinstance(self._hsem_energi_data_service_export_state, (int, float)):
             return
 
@@ -862,7 +903,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                         self, inverter_id, export_power_percentage
                     )
 
-    async def _async_set_working_mode(self):
+    async def _async_set_working_mode(self) -> None:
 
         # Determine the current month and hour
         now = datetime.now()
@@ -999,13 +1040,13 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
         self._state = state
 
-    async def _async_reset_recommendations(self):
+    async def _async_reset_recommendations(self) -> None:
         """Reset the recommendations for each hour of the day."""
         self._hourly_calculations = {
             f"{hour:02d}-{(hour + 1) % 24:02d}": {
                 "avg_house_consumption": 0.0,
                 "solcast_pv_estimate": 0.0,
-                "estimated_net_consumption": 0.0,
+                "estimated_net_consumption": None,
                 "estimated_cost": 0.0,
                 "batteries_charged": 0.0,
                 "import_price": 0.0,
@@ -1016,7 +1057,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             for hour in range(24)
         }
 
-    async def _async_calculate_hourly_data(self):
+    async def _async_calculate_hourly_data(self) -> None:
         """Calculate the weighted hourly data for the sensor using both 3-day and 7-day HouseConsumptionEnergyAverageSensors."""
 
         if self._hsem_house_consumption_energy_weight_1d is None:
@@ -1109,22 +1150,22 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             # Fetch values for 1d, 3d, 7d, and 14d if available
             try:
                 if entity_id_1d is not None:
-                    value_1d = ha_get_entity_state_and_convert(
-                        self, entity_id_1d, "float", 3
+                    value_1d = convert_to_float(
+                        ha_get_entity_state_and_convert(self, entity_id_1d, "float", 3)
                     )
                 if entity_id_3d is not None:
-                    value_3d = ha_get_entity_state_and_convert(
-                        self, entity_id_3d, "float", 3
+                    value_3d = convert_to_float(
+                        ha_get_entity_state_and_convert(self, entity_id_3d, "float", 3)
                     )
 
                 if entity_id_7d is not None:
-                    value_7d = ha_get_entity_state_and_convert(
-                        self, entity_id_7d, "float", 3
+                    value_7d = convert_to_float(
+                        ha_get_entity_state_and_convert(self, entity_id_7d, "float", 3)
                     )
 
                 if entity_id_14d is not None:
-                    value_14d = ha_get_entity_state_and_convert(
-                        self, entity_id_14d, "float", 3
+                    value_14d = convert_to_float(
+                        ha_get_entity_state_and_convert(self, entity_id_14d, "float", 3)
                     )
             except ValueError:
                 value_1d = None
@@ -1188,8 +1229,11 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             #     f"entity_id_14d: {entity_id_14d}, ",
             # )
 
-    async def _async_calculate_solcast_forecast(self):
+    async def _async_calculate_solcast_forecast(self) -> None:
         """Calculate the hourly Solcast PV estimate and update self._hourly_calculations without resetting avg_house_consumption."""
+        if not self._hsem_solcast_pv_forecast_forecast_today:
+            return
+
         solcast_sensor = self.hass.states.get(
             self._hsem_solcast_pv_forecast_forecast_today
         )
@@ -1213,7 +1257,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                     pv_estimate, 3
                 )
 
-    async def _async_calculate_hourly_import_price(self):
+    async def _async_calculate_hourly_import_price(self) -> None:
         """Calculate the estimated import price for each hour of the day."""
         if self._hsem_energi_data_service_import is None:
             return
@@ -1242,6 +1286,10 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
                 if (
                     self._hourly_calculations[time_range]["estimated_net_consumption"]
+                    is not None
+                    and self._hourly_calculations[time_range][
+                        "estimated_net_consumption"
+                    ]
                     > 0
                 ):
                     self._hourly_calculations[time_range]["estimated_cost"] = round(
@@ -1258,7 +1306,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             f"Updated hourly calculations with import prices: {self._hourly_calculations}"
         )
 
-    async def _async_calculate_hourly_export_price(self):
+    async def _async_calculate_hourly_export_price(self) -> None:
         """Calculate the estimated import price for each hour of the day."""
         if self._hsem_energi_data_service_export is None:
             return
@@ -1286,6 +1334,10 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 self._hourly_calculations[time_range]["export_price"] = price
                 if (
                     self._hourly_calculations[time_range]["estimated_net_consumption"]
+                    is not None
+                    and self._hourly_calculations[time_range][
+                        "estimated_net_consumption"
+                    ]
                     < 0
                 ):
                     self._hourly_calculations[time_range]["estimated_cost"] = round(
@@ -1303,7 +1355,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             f"Updated hourly calculations with export prices: {self._hourly_calculations}"
         )
 
-    async def _async_calculate_hourly_net_consumption(self):
+    async def _async_calculate_hourly_net_consumption(self) -> None:
         """Calculate the estimated net consumption for each hour of the day."""
 
         for hour, data in self._hourly_calculations.items():
@@ -1343,10 +1395,10 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self,
         start_hour=14,
         stop_hour=17,
-        required_charge=0,
-        min_price_diff=0,
-        avg_import_price=0,
-    ):
+        required_charge=0.0,
+        min_price_diff=0.0,
+        avg_import_price=0.0,
+    ) -> None:
         """Find best time to charge based on prioritized conditions."""
         now = datetime.now()
 
@@ -1576,7 +1628,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             f"Total energy charged: {round(charged_energy, 2)} kWh. ",
         )
 
-    async def _async_calculate_batteries_schedules_best_charge_time(self):
+    async def _async_calculate_batteries_schedules_best_charge_time(self) -> None:
         """
         Calculate the best times to charge batteries based on active schedules.
         Identifies the cheapest charging times to meet the combined energy needs of all schedules,
@@ -1732,7 +1784,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                     schedule["avg_import_price"],
                 )
 
-    async def _async_calculate_batteries_schedules(self):
+    async def _async_calculate_batteries_schedules(self) -> None:
         await async_logger(self, "Setting up batteries discharging schedules. ")
 
         if self._hsem_batteries_enable_batteries_schedule_1:
@@ -1767,6 +1819,9 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                         estimated_net_consumption = self._hourly_calculations[
                             time_range
                         ]["estimated_net_consumption"]
+
+                        if estimated_net_consumption is None:
+                            estimated_net_consumption = 0.0
 
                         avg_import_price += import_price
                         needed_batteries_capacity += estimated_net_consumption
@@ -1829,6 +1884,9 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                             time_range
                         ]["estimated_net_consumption"]
 
+                        if estimated_net_consumption is None:
+                            estimated_net_consumption = 0.0
+
                         avg_import_price += import_price
                         needed_batteries_capacity += estimated_net_consumption
                         needed_batteries_capacity_cost += (
@@ -1889,6 +1947,9 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                             time_range
                         ]["estimated_net_consumption"]
 
+                        if estimated_net_consumption is None:
+                            estimated_net_consumption = 0.0
+
                         avg_import_price += import_price
                         needed_batteries_capacity += estimated_net_consumption
                         needed_batteries_capacity_cost += (
@@ -1916,7 +1977,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                     f"Needed Batteries Capacity Cost: {round(needed_batteries_capacity_cost, 2)} DKK, ",
                 )
 
-    async def _async_optimization_strategy(self):
+    async def _async_optimization_strategy(self) -> None:
         """Calculate the optimization strategy for each hour of the day."""
 
         now = datetime.now()
@@ -1935,7 +1996,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 data["recommendation"] = Recommendations.FullyFedToGrid.value
 
             # MSC
-            elif net_consumption < 0:
+            elif net_consumption is not None and net_consumption < 0:
                 data["recommendation"] = Recommendations.BatteriesChargeSolar.value
 
             else:
@@ -1945,7 +2006,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 if current_month in DEFAULT_HSEM_MONTHS_SUMMER:
                     data["recommendation"] = Recommendations.BatteriesChargeSolar.value
 
-    async def _async_calculate_energy_needs(self):
+    async def _async_calculate_energy_needs(self) -> None:
         """Calculate the energy needs for the day."""
 
         # Define time ranges and labels
@@ -1958,20 +2019,22 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         }
 
         # Calculate energy needs for each time range
-        self._energy_needs = {
-            label: round(
-                sum(
-                    self._hourly_calculations[hour]["estimated_net_consumption"]
-                    for hour in hours
-                ),
-                2,
-            )
-            for label, hours in time_ranges.items()
-        }
+        self._energy_needs = {}
+        for label, hours in time_ranges.items():
+            total_consumption = 0.0
+            for hour in hours:
+                if hour in self._hourly_calculations:
+                    net_consumption = self._hourly_calculations[hour].get(
+                        "estimated_net_consumption"
+                    )
+                    if net_consumption is not None:
+                        total_consumption += net_consumption
+
+            self._energy_needs[label] = round(total_consumption, 2)
 
     async def _async_compare_price_intervals(
         self, start_hour_1, end_hour_1, start_hour_2, end_hour_2
-    ):
+    ) -> bool:
         """
         Compares the sum of import prices between two intervals.
 
@@ -2010,20 +2073,88 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         # Return True if interval 1's total price is less than interval 2's
         return total_price_1 < total_price_2
 
-    async def async_update(self):
+    async def async_update(self) -> None:
         """Manually trigger the sensor update."""
         return await self._async_handle_update(None)
 
-    async def async_added_to_hass(self):
+    async def async_options_updated(self, config_entry) -> None:
+        """Handle options update from configuration change."""
+        self._update_settings()
+
+        return await self._async_handle_update(None)
+
+    # Function to update timer interval
+    async def _async_update_timer_interval(self) -> None:
+        # Cancel existing timer if it exists
+        if self._timer is not None:
+            self._timer()
+
+        # Set interval based on missing_input_entities
+        interval = (
+            timedelta(seconds=5)
+            if self._missing_input_entities
+            else timedelta(minutes=self._update_interval)
+        )
+
+        # Register new timer and store reference
+        self._timer = async_track_time_interval(
+            self.hass, self._async_handle_update, interval
+        )
+
+        await async_logger(
+            self,
+            f"Timer interval updated to: {interval} (missing_input_entities: {self._missing_input_entities})",
+        )
+
+    async def async_added_to_hass(self) -> None:
+        """Handle the sensor being added to Home Assistant."""
+        # Keep track of the registered timer
+
         # Initial update
         await self._async_handle_update(None)
 
-        # Schedule a periodic update every minute
-        async_track_time_interval(
+        # Setup timer
+        await self._async_update_timer_interval()
+
+        # Schedule updates at the start of every hour
+        async_track_time_change(
             self.hass,
             self._async_handle_update,
-            timedelta(minutes=self._update_interval),
+            hour="*",  # Every hour
+            minute=1,  # At minute 1
+            second=0,  # At second 0
         )
 
-        """Handle the sensor being added to Home Assistant."""
-        return await super().async_added_to_hass()
+        # Wrap the original handle_update to update timer interval after each update
+        original_handle_update = self._async_handle_update
+
+        async def wrapped_handle_update(event):
+            await original_handle_update(event)
+            await self._async_update_timer_interval()
+
+        self._async_handle_update = wrapped_handle_update
+
+        await super().async_added_to_hass()
+
+    # async def async_added_to_hass(self):
+    #     # Initial update
+    #     await self._async_handle_update(None)
+
+    #     # Schedule a periodic update every minute
+    #     async_track_time_interval(
+    #         self.hass,
+    #         self._async_handle_update,
+    #         timedelta(minutes=self._update_interval),
+    #     )
+
+    #     # Schedule updates at the start of every hour
+    #     async_track_time_change(
+    #         self.hass,
+    #         self._async_handle_update,
+    #         hour="*",  # Every hour
+    #         minute=1,  # At minute 1
+    #         second=0,  # At second 0
+    #     )
+
+    #     """Handle the sensor being added to Home Assistant."""
+    #     return await super().async_added_to_hass()

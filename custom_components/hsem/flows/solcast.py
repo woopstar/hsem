@@ -4,7 +4,7 @@ from homeassistant.helpers.selector import selector
 from custom_components.hsem.utils.misc import async_entity_exists, get_config_value
 
 
-async def get_solcast_step_schema(config_entry):
+async def get_solcast_step_schema(config_entry) -> vol.Schema:
     """Return the data schema for the 'solcast' step."""
     return vol.Schema(
         {
@@ -24,7 +24,7 @@ async def get_solcast_step_schema(config_entry):
     )
 
 
-async def validate_solcast_step_input(hass, user_input):
+async def validate_solcast_step_input(hass, user_input) -> dict[str, str]:
     """Validate user input for the 'solcast' step."""
     errors = {}
 

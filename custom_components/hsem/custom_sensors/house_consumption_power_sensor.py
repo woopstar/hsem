@@ -25,6 +25,7 @@ Functions:
 
 import logging
 from datetime import datetime, timedelta
+from typing import Any
 
 import voluptuous as vol
 from homeassistant.components.sensor import SensorEntity
@@ -76,7 +77,23 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
     _attr_icon = "mdi:flash"
     _attr_has_entity_name = True
 
-    def __init__(self, config_entry, hour_start, hour_end, async_add_entities):
+    # List all attributes to exclude from recording, except state and last_updated
+    _unrecorded_attributes = frozenset(
+        [
+            "status",
+            "description",
+            "unique_id",
+            "house_consumption_power_entity",
+            "house_consumption_power_state",
+            "ev_charger_power_entity",
+            "ev_charger_power_state",
+            "house_power_includes_ev_charger_power",
+            "hour_start",
+            "hour_end",
+        ]
+    )
+
+    def __init__(self, config_entry, hour_start, hour_end, async_add_entities) -> None:
         super().__init__(config_entry)
         self._available = False
         self._missing_input_entities = True
@@ -106,35 +123,35 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
         self._update_settings()
 
     @property
-    def name(self):
+    def name(self) -> str:
         return self._name
 
     @property
-    def unit_of_measurement(self):
+    def unit_of_measurement(self) -> str:
         return UnitOfPower.WATT
 
     @property
-    def device_class(self):
+    def device_class(self) -> str:
         return SensorDeviceClass.POWER
 
     @property
-    def unique_id(self):
+    def unique_id(self) -> str | None:
         return self._attr_unique_id
 
     @property
-    def state(self):
+    def state(self) -> float | None:
         return self._state
 
     @property
-    def should_poll(self):
+    def should_poll(self) -> bool:
         return True
 
     @property
-    def available(self):
+    def available(self) -> bool:
         return self._available
 
     @property
-    def extra_state_attributes(self):
+    def extra_state_attributes(self) -> dict[str, Any]:
 
         if self._missing_input_entities:
             return {
@@ -159,12 +176,20 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
             "unique_id": self._attr_unique_id,
         }
 
-    async def async_update(self, event=None):
+    async def async_update(self, event=None) -> None:
         """Manually trigger the sensor update."""
-        return await self._async_handle_update(None)
+        await self._async_handle_update(None)
 
-    async def async_added_to_hass(self):
+    async def async_options_updated(self, config_entry) -> None:
+        """Handle options update from configuration change."""
+
+        self._update_settings()
+
+        await self._async_handle_update(None)
+
+    async def async_added_to_hass(self) -> None:
         # Get the last state of the sensor
+
         old_state = await self.async_get_last_state()
         if old_state is not None:
             self._state = round(convert_to_float(old_state.state), 2)
@@ -175,15 +200,10 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
         # Initial update
         await self._async_handle_update(None)
 
-        # Schedule a periodic update every minute
-        # async_track_time_interval(
-        #    self.hass, self._async_handle_update, timedelta(seconds=1)
-        # )
-
         """Handle when sensor is added to Home Assistant."""
-        return await super().async_added_to_hass()
+        await super().async_added_to_hass()
 
-    def _update_settings(self):
+    def _update_settings(self) -> None:
         """Fetch updated settings from config_entry options."""
         self._hsem_house_consumption_power = get_config_value(
             self._config_entry, "hsem_house_consumption_power"
@@ -200,7 +220,7 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
             self._config_entry, "hsem_house_power_includes_ev_charger_power"
         )
 
-    async def _async_handle_update(self, event):
+    async def _async_handle_update(self, event) -> None:
         """Handle updates to the source sensor."""
         self._state = None
 
@@ -255,11 +275,9 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
             self._state_previous = self._state
 
             # Trigger an update in Home Assistant
-            return self.async_write_ha_state()
-        else:
-            return None
+            self.async_write_ha_state()
 
-    async def _async_track_entities(self):
+    async def _async_track_entities(self) -> None:
         # Track state changes for the source sensor
         if self._hsem_house_consumption_power:
             if self._hsem_house_consumption_power not in self._tracked_entities:
@@ -283,14 +301,14 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
                 )
                 self._tracked_entities.add(self._hsem_ev_charger_power)
 
-    async def _async_fetch_sensor_states(self):
+    async def _async_fetch_sensor_states(self) -> None:
         # Update the state of the sensor for house consumption power
-        # Reset
+
         self._missing_input_entities = False
 
         try:
             if self._hsem_house_consumption_power:
-                self._hsem_house_consumption_power_state = (
+                self._hsem_house_consumption_power_state = convert_to_float(
                     ha_get_entity_state_and_convert(
                         self, self._hsem_house_consumption_power, "float"
                     )
@@ -298,14 +316,16 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
 
             # Update the state of the sensor for EV charger power
             if self._hsem_ev_charger_power:
-                self._hsem_ev_charger_power_state = ha_get_entity_state_and_convert(
-                    self, self._hsem_ev_charger_power, "float"
+                self._hsem_ev_charger_power_state = convert_to_float(
+                    ha_get_entity_state_and_convert(
+                        self, self._hsem_ev_charger_power, "float"
+                    )
                 )
 
         except Exception as e:
             self._missing_input_entities = True
 
-    async def _async_add_integral_sensor(self):
+    async def _async_add_integral_sensor(self) -> None:
         """Add an integral sensor dynamically to convert power to energy."""
 
         # Create the name and unique id for the integral sensor
@@ -365,7 +385,7 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
         # Add the integral sensor to Home Assistant
         self._async_add_entities([integral_sensor])
 
-    async def _async_add_utility_meter_sensor(self):
+    async def _async_add_utility_meter_sensor(self) -> None:
         """Add a utility meter sensor dynamically."""
 
         # Create the name and unique id for the avg sensor
@@ -447,7 +467,7 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
             utility_meter_sensor
         )
 
-    async def _async_add_energy_average_sensors(self, avg):
+    async def _async_add_energy_average_sensors(self, avg) -> None:
         """Add a template sensor for the energy average over a given number of days."""
         avg_energy_sensor_name = get_energy_average_sensor_name(
             self._hour_start, self._hour_end, avg

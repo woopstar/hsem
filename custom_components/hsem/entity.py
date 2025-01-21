@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 import homeassistant.helpers.device_registry as dr
 import homeassistant.helpers.entity_registry as er
@@ -17,13 +18,13 @@ class HSEMEntity(Entity):
     _attr_icon = "mdi:flash"
     _attr_has_entity_name = True
 
-    def __init__(self, config_entry):
+    def __init__(self, config_entry) -> None:
         """Initialize the HSEM"""
         super().__init__()
         self._config = config_entry
 
     @property
-    def device_info(self):
+    def device_info(self) -> dict[str, Any]:
         """Return the device information"""
         return {
             "identifiers": {(DOMAIN, self._config.entry_id)},
@@ -32,9 +33,9 @@ class HSEMEntity(Entity):
             "model": "Custom Integration",
         }
 
-    async def async_will_remove_from_hass(self):
+    async def async_will_remove_from_hass(self) -> None:
         """Entity being removed from hass."""
-        return await super().async_will_remove_from_hass()
+        await super().async_will_remove_from_hass()
 
     async def async_added_to_hass(self) -> None:
         """Attach the entity to same device as the source entity."""
@@ -54,4 +55,4 @@ class HSEMEntity(Entity):
         _LOGGER.debug("Binding %s to device %s", self.entity_id, device_id)
         entity_reg.async_update_entity(self.entity_id, device_id=device_id)
 
-        return await super().async_added_to_hass()
+        await super().async_added_to_hass()

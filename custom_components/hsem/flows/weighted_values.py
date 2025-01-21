@@ -4,7 +4,7 @@ from homeassistant.helpers.selector import selector
 from custom_components.hsem.utils.misc import get_config_value
 
 
-async def get_weighted_values_step_schema(config_entry):
+async def get_weighted_values_step_schema(config_entry) -> vol.Schema:
     """Return the data schema for the 'weighted_values' step."""
     return vol.Schema(
         {
@@ -76,7 +76,7 @@ async def get_weighted_values_step_schema(config_entry):
     )
 
 
-async def validate_weighted_values_input(user_input):
+async def validate_weighted_values_input(user_input) -> dict[str, str]:
     """Validate user input for the 'weighted_values' step."""
     errors = {}
 

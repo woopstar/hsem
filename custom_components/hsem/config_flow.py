@@ -268,6 +268,6 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     @callback
-    def async_get_options_flow(config_entry):
+    def async_get_options_flow(config_entry) -> HSEMOptionsFlow:
         """Return the options flow."""
         return HSEMOptionsFlow(config_entry)

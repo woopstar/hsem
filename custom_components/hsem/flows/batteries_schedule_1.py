@@ -6,7 +6,7 @@ from homeassistant.helpers.selector import selector
 from custom_components.hsem.utils.misc import get_config_value
 
 
-async def get_batteries_schedule_1_step_schema(config_entry):
+async def get_batteries_schedule_1_step_schema(config_entry) -> vol.Schema:
     """Return the data schema for the 'batteries_schedule' step."""
     return vol.Schema(
         {
@@ -49,7 +49,7 @@ async def get_batteries_schedule_1_step_schema(config_entry):
     )
 
 
-async def validate_batteries_schedule_1_input(user_input):
+async def validate_batteries_schedule_1_input(user_input) -> dict[str, str]:
     """Validate user input."""
     errors = {}
 

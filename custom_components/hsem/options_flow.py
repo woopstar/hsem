@@ -47,11 +47,11 @@ from custom_components.hsem.flows.weighted_values import (
 class HSEMOptionsFlow(config_entries.OptionsFlow):
     """Options flow for HSEM."""
 
-    def __init__(self, config_entry):
+    def __init__(self, config_entry) -> None:
         self._config_entry = config_entry
         self._user_input = {}
 
-    def update_config_entry_data(self):
+    def update_config_entry_data(self) -> None:
         """Update config_entry.data with the latest configuration values from options."""
         updated_data = {**self._config_entry.data, **self._config_entry.options}
         self.hass.config_entries.async_update_entry(

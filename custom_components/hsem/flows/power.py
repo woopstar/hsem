@@ -4,7 +4,7 @@ from homeassistant.helpers.selector import selector
 from custom_components.hsem.utils.misc import async_entity_exists, get_config_value
 
 
-async def get_power_step_schema(config_entry):
+async def get_power_step_schema(config_entry) -> vol.Schema:
     """Return the data schema for the 'power' step."""
     return vol.Schema(
         {
@@ -20,7 +20,7 @@ async def get_power_step_schema(config_entry):
     )
 
 
-async def validate_power_step_input(hass, user_input):
+async def validate_power_step_input(hass, user_input) -> dict[str, str]:
     """Validate user input for the 'power' step."""
     errors = {}
 

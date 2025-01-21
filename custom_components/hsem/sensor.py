@@ -2,6 +2,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from custom_components.hsem.const import DOMAIN
 from custom_components.hsem.custom_sensors.house_consumption_power_sensor import (
     HSEMHouseConsumptionPowerSensor,
 )
@@ -21,6 +22,13 @@ async def async_setup_entry(
 
     # Setup working mode sensor
     working_mode_sensor = HSEMWorkingModeSensor(config_entry)
+
+    # Store reference to working mode sensor
+    if config_entry.entry_id not in hass.data[DOMAIN]:
+        hass.data[DOMAIN][config_entry.entry_id] = {}
+    hass.data[DOMAIN][config_entry.entry_id][
+        "working_mode_sensor"
+    ] = working_mode_sensor
 
     async_add_entities([working_mode_sensor])
 
