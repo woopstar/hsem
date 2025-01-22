@@ -211,7 +211,7 @@ async def async_set_select_option(self, entity_id, option) -> None:
 
 def ha_get_entity_state_and_convert(
     self, entity_id, output_type=None, float_precision=2
-) -> float | bool | str | None:
+) -> float | int | bool | str | None:
     """Get the state of an entity."""
 
     if entity_id is None:
@@ -234,6 +234,11 @@ def ha_get_entity_state_and_convert(
             if state.state == "unknown":
                 raise EntityNotFoundError(f"Entity '{entity_id}' state unknown.")
             return round(convert_to_float(state.state), float_precision)
+
+        if output_type.lower() == "int":
+            if state.state == "unknown":
+                raise EntityNotFoundError(f"Entity '{entity_id}' state unknown.")
+            return convert_to_int(state.state)
 
         if output_type.lower() == "boolean":
             if state.state == "unknown":

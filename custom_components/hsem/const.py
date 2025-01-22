@@ -13,12 +13,6 @@ DEFAULT_HSEM_EV_CHARGER_TOU_MODES = ["00:00-00:01/1234567/+"]
 # Default TOU modes for letting the battery wait
 DEFAULT_HSEM_BATTERIES_WAIT_MODE = ["00:00-00:01/1234567/+"]
 
-# Default TOU modes for solar energy consumption throughout the day
-DEFAULT_HSEM_DEFAULT_TOU_MODES = [
-    "06:00-11:59/1234567/-",
-    "17:00-23:59/1234567/-",
-]
-
 # TOU mode for force charging the battery
 DEFAULT_HSEM_TOU_MODES_FORCE_CHARGE = ["00:00-23:59/1234567/+"]
 

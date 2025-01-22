@@ -705,11 +705,13 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             # Fetch the current value from the state of capacity sensor
             if self._hsem_huawei_solar_batteries_state_of_capacity:
                 self._hsem_huawei_solar_batteries_state_of_capacity_state = (
-                    ha_get_entity_state_and_convert(
-                        self,
-                        self._hsem_huawei_solar_batteries_state_of_capacity,
-                        "float",
-                        0,
+                    convert_to_float(
+                        ha_get_entity_state_and_convert(
+                            self,
+                            self._hsem_huawei_solar_batteries_state_of_capacity,
+                            "float",
+                            0,
+                        )
                     )
                 )
             else:
@@ -1712,6 +1714,23 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             f"Current Useable Batteries Capacity: {self._hsem_batteries_current_capacity} kWh.",
         )
 
+        if self._hsem_huawei_solar_batteries_state_of_capacity_state == 100:
+            await async_logger(
+                self,
+                "Skipping charge as the batteries are already at 100% capacity. ",
+            )
+            return
+
+        if (
+            self._hsem_batteries_current_capacity
+            == self._hsem_batteries_usable_capacity
+        ):
+            await async_logger(
+                self,
+                "Skipping charge as the batteries are already at capacity. ",
+            )
+            return
+
         # Subtract current battery usable capacity
         total_required_charge = max(
             0, total_required_charge - self._hsem_batteries_current_capacity
@@ -2075,13 +2094,13 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
     async def async_update(self) -> None:
         """Manually trigger the sensor update."""
-        return await self._async_handle_update(None)
+        await self._async_handle_update(None)
 
     async def async_options_updated(self, config_entry) -> None:
         """Handle options update from configuration change."""
         self._update_settings()
 
-        return await self._async_handle_update(None)
+        await self._async_handle_update(None)
 
     # Function to update timer interval
     async def _async_update_timer_interval(self) -> None:
@@ -2103,7 +2122,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
         await async_logger(
             self,
-            f"Timer interval updated to: {interval} (missing_input_entities: {self._missing_input_entities})",
+            f"Update interval set to: {interval} (missing_input_entities: {self._missing_input_entities})",
         )
 
     async def async_added_to_hass(self) -> None:
