@@ -916,6 +916,9 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         tou_modes = None
         state = None
         working_mode = None
+        needed_batteries_capacity = (
+            await self._async_find_next_batteries_schedule_capacity(current_hour_start)
+        )
 
         # Determine the appropriate TOU modes and working mode state. In priority order:
         if (
@@ -930,6 +933,9 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 self,
                 f"# Recommendation for {current_time_range} is that Import price is negative. Setting TOU Periods: {tou_modes} and Working Mode: {working_mode}",
             )
+            self._hourly_calculations[current_time_range][
+                "recommendation"
+            ] = Recommendations.ForceExport.value
         elif (
             self._hourly_calculations.get(current_time_range, {}).get("recommendation")
             == Recommendations.BatteriesChargeGrid.value
@@ -950,6 +956,21 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 self,
                 f"# Recommendation for {current_time_range} is EV Charger is active. Setting TOU Periods: {tou_modes} and Working Mode: {working_mode}",
             )
+            self._hourly_calculations[current_time_range][
+                "recommendation"
+            ] = Recommendations.EVSmartCharging.value
+        elif (
+            convert_to_float(self._hsem_huawei_solar_batteries_state_of_capacity_state)
+            >= 100
+            and self._hsem_batteries_current_capacity > needed_batteries_capacity
+            and needed_batteries_capacity > 0
+        ):
+            working_mode = WorkingModes.MaximizeSelfConsumption.value
+            state = Recommendations.BatteriesDischargeMode.value
+            await async_logger(
+                self,
+                f"# Recommendation for {current_time_range} is more batteries capacity that needed for battery schedule.. Working Mode: {working_mode} and recommended state: {state}. Needed Batteries Capacity: {needed_batteries_capacity}, Current Batteries Capacity: {self._hsem_batteries_current_capacity}",
+            )
         elif (
             self._hourly_calculations.get(current_time_range, {}).get("recommendation")
             == Recommendations.ForceBatteriesDischarge.value
@@ -969,6 +990,9 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 self,
                 f"# Recommendation for {current_time_range} is due to positive net consumption. Working Mode: {working_mode}, Solar Production: {self._hsem_solar_production_power_state}, House Consumption: {self._hsem_house_consumption_power_state}, Net Consumption: {self._hsem_net_consumption}",
             )
+            self._hourly_calculations[current_time_range][
+                "recommendation"
+            ] = Recommendations.BatteriesChargeSolar.value
         elif (
             self._hourly_calculations.get(current_time_range, {}).get("recommendation")
             == Recommendations.BatteriesChargeSolar.value
@@ -2025,6 +2049,65 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 if current_month in DEFAULT_HSEM_MONTHS_SUMMER:
                     data["recommendation"] = Recommendations.BatteriesChargeSolar.value
 
+    async def _async_find_next_batteries_schedule_capacity(
+        self, current_hour: int
+    ) -> float:
+        """
+        Find the required battery capacity for the next active schedule.
+
+        Args:
+            current_hour (int): The current hour of the day.
+
+        Returns:
+            float: The needed battery capacity (kWh) for the next schedule.
+        """
+        schedules = []
+
+        if self._hsem_batteries_enable_batteries_schedule_1:
+            start_time = convert_to_time(
+                self._hsem_batteries_enable_batteries_schedule_1_start
+            )
+            if start_time is not None:
+                schedules.append(
+                    {
+                        "start": start_time.hour,
+                        "needed_capacity": self._hsem_batteries_enable_batteries_schedule_1_needed_batteries_capacity,
+                    }
+                )
+        if self._hsem_batteries_enable_batteries_schedule_2:
+            start_time = convert_to_time(
+                self._hsem_batteries_enable_batteries_schedule_2_start
+            )
+            if start_time is not None:
+                schedules.append(
+                    {
+                        "start": start_time.hour,
+                        "needed_capacity": self._hsem_batteries_enable_batteries_schedule_2_needed_batteries_capacity,
+                    }
+                )
+        if self._hsem_batteries_enable_batteries_schedule_3:
+            start_time = convert_to_time(
+                self._hsem_batteries_enable_batteries_schedule_3_start
+            )
+            if start_time is not None:
+                schedules.append(
+                    {
+                        "start": start_time.hour,
+                        "needed_capacity": self._hsem_batteries_enable_batteries_schedule_3_needed_batteries_capacity,
+                    }
+                )
+
+        # Filter schedules that start after the current hour
+        upcoming_schedules = [s for s in schedules if s["start"] > current_hour]
+
+        if not upcoming_schedules:
+            return 0.0  # No upcoming schedules, return 0
+
+        # Find the next schedule
+        next_schedule = min(upcoming_schedules, key=lambda s: s["start"])
+
+        return next_schedule["needed_capacity"]
+
     async def _async_calculate_energy_needs(self) -> None:
         """Calculate the energy needs for the day."""
 
@@ -2139,9 +2222,9 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         async_track_time_change(
             self.hass,
             self._async_handle_update,
-            hour="*",  # Every hour
-            minute=1,  # At minute 1
-            second=0,  # At second 0
+            hour="*",
+            minute=0,
+            second=10,
         )
 
         # Wrap the original handle_update to update timer interval after each update
@@ -2154,26 +2237,3 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self._async_handle_update = wrapped_handle_update
 
         await super().async_added_to_hass()
-
-    # async def async_added_to_hass(self):
-    #     # Initial update
-    #     await self._async_handle_update(None)
-
-    #     # Schedule a periodic update every minute
-    #     async_track_time_interval(
-    #         self.hass,
-    #         self._async_handle_update,
-    #         timedelta(minutes=self._update_interval),
-    #     )
-
-    #     # Schedule updates at the start of every hour
-    #     async_track_time_change(
-    #         self.hass,
-    #         self._async_handle_update,
-    #         hour="*",  # Every hour
-    #         minute=1,  # At minute 1
-    #         second=0,  # At second 0
-    #     )
-
-    #     """Handle the sensor being added to Home Assistant."""
-    #     return await super().async_added_to_hass()
