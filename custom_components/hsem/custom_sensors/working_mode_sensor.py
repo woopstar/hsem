@@ -837,7 +837,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                     [self._hsem_ev_charger_status],
                     self._async_handle_update,
                 )
-                self._tracked_entities.add(self._hsem_ev_charger_power)
+                self._tracked_entities.add(self._hsem_ev_charger_status)
 
     async def _async_calculate_net_consumption(self) -> None:
         # Calculate the net consumption without the EV charger power
@@ -916,8 +916,9 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         tou_modes = None
         state = None
         working_mode = None
-        needed_batteries_capacity = (
-            await self._async_find_next_batteries_schedule_capacity(current_hour_start)
+        needed_batteries_capacity = round(
+            await self._async_find_next_batteries_schedule_capacity(current_hour_start),
+            2,
         )
 
         # Determine the appropriate TOU modes and working mode state. In priority order:
@@ -960,9 +961,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 "recommendation"
             ] = Recommendations.EVSmartCharging.value
         elif (
-            convert_to_float(self._hsem_huawei_solar_batteries_state_of_capacity_state)
-            >= 100
-            and self._hsem_batteries_current_capacity > needed_batteries_capacity
+            self._hsem_batteries_current_capacity > needed_batteries_capacity
             and needed_batteries_capacity > 0
         ):
             working_mode = WorkingModes.MaximizeSelfConsumption.value
@@ -971,6 +970,9 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 self,
                 f"# Recommendation for {current_time_range} is more batteries capacity that needed for battery schedule.. Working Mode: {working_mode} and recommended state: {state}. Needed Batteries Capacity: {needed_batteries_capacity}, Current Batteries Capacity: {self._hsem_batteries_current_capacity}",
             )
+            self._hourly_calculations[current_time_range][
+                "recommendation"
+            ] = Recommendations.BatteriesDischargeMode.value
         elif (
             self._hourly_calculations.get(current_time_range, {}).get("recommendation")
             == Recommendations.ForceBatteriesDischarge.value
@@ -2053,13 +2055,13 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self, current_hour: int
     ) -> float:
         """
-        Find the required battery capacity for the next active schedule.
+        Find the total required battery capacity for all upcoming active schedules.
 
         Args:
             current_hour (int): The current hour of the day.
 
         Returns:
-            float: The needed battery capacity (kWh) for the next schedule.
+            float: The total needed battery capacity (kWh) for all upcoming schedules.
         """
         schedules = []
 
@@ -2103,10 +2105,10 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         if not upcoming_schedules:
             return 0.0  # No upcoming schedules, return 0
 
-        # Find the next schedule
-        next_schedule = min(upcoming_schedules, key=lambda s: s["start"])
+        # Sum up the needed capacity for all upcoming schedules
+        total_needed_capacity = sum(s["needed_capacity"] for s in upcoming_schedules)
 
-        return next_schedule["needed_capacity"]
+        return total_needed_capacity
 
     async def _async_calculate_energy_needs(self) -> None:
         """Calculate the energy needs for the day."""
