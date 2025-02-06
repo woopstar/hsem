@@ -835,7 +835,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 async_track_state_change_event(
                     self.hass,
                     [self._hsem_ev_charger_status],
-                    self._async_handle_update,
+                    self._async_handle_ev_charger_status_update,
                 )
                 self._tracked_entities.add(self._hsem_ev_charger_status)
 
@@ -873,6 +873,30 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 )
         else:
             self._hsem_net_consumption = 0.0
+
+    async def _async_handle_ev_charger_status_update(self, event) -> None:
+        """Handle state change event for EV charger status."""
+        old_state = event.data.get("old_state")
+        new_state = event.data.get("new_state")
+
+        if old_state is None or new_state is None:
+            return  # Ignore invalid states
+
+        old_value = ha_get_entity_state_and_convert(
+            self, old_state.entity_id, "boolean"
+        )
+
+        new_value = ha_get_entity_state_and_convert(
+            self, new_state.entity_id, "boolean"
+        )
+
+        if old_value != new_value:
+            self._hsem_ev_charger_status_state = new_value
+            await async_logger(
+                self,
+                f"EV charger status changed from {old_value} to {new_value}, triggering update.",
+            )
+            await self._async_handle_update(event)
 
     async def _async_set_inverter_power_control(self) -> None:
         # Determine the grid export power percentage based on the state
@@ -1565,6 +1589,8 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         await async_logger(self, "Finding cheapest hours to import energy. ")
 
         charged_energy_before = charged_energy
+        min_price_check = True
+
         if charged_energy < required_charge:
             remaining_hours = [(t, p, nc) for t, p, nc in available_hours]
             remaining_hours.sort(key=lambda x: x[1])  # Sort by price
@@ -1597,6 +1623,9 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             avg_charge_import = avg_charge_import_price / avg_charge_import_count
             avg_charge_diff = avg_import_price - avg_charge_import
 
+            if min_price_diff != 0 and avg_charge_diff < min_price_diff:
+                min_price_check = False
+
             if avg_charge_import_count > 0:
                 await async_logger(
                     self,
@@ -1609,10 +1638,6 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
         # Lets charge if price diff is enough
         charged_energy = charged_energy_before
-
-        min_price_check = True
-        if min_price_diff != 0 and avg_charge_diff < min_price_diff:
-            min_price_check = False
 
         if charged_energy < required_charge and min_price_check:
             remaining_hours = [(t, p, nc) for t, p, nc in available_hours]
