@@ -1,24 +1,13 @@
 """
 This module provides utility functions for the Home Assistant custom integration.
-
-Functions:
-    generate_hash(input_sensor):
-        Generate an SHA-256 hash based on the input sensor's name.
-
-    get_config_value(config_entry, key, default_value=None):
-        Get the configuration value from options or fall back to the initial data.
-
-    convert_to_float(state):
-        Resolve the input sensor state and cast it to a float.
-
-    convert_to_boolean(state):
-        Resolve the input sensor state and cast it to a boolean.
-
-    async_resolve_entity_id_from_unique_id(self, unique_entity_id, domain="sensor"):
 """
 
+import asyncio
 import hashlib
 import logging
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, time
+from logging.handlers import RotatingFileHandler
 
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr
@@ -29,21 +18,43 @@ from custom_components.hsem.const import DEFAULT_CONFIG_VALUES, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
+# Create a separate logger for async_logger
+HSEM_LOGGER = logging.getLogger("hsem_logger")
+LOG_FILE_PATH = "/config/hsem.log"
+LOG_FILE_MAX_BYTES = 10 * 1024 * 1024  # 10 MB
+LOG_FILE_BACKUP_COUNT = 2  # Keep 3 backup files
+
+# Configure the rotating file handler
+file_handler = RotatingFileHandler(
+    LOG_FILE_PATH,
+    maxBytes=LOG_FILE_MAX_BYTES,
+    backupCount=LOG_FILE_BACKUP_COUNT,
+)
+
+# Set the log format and level
+formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+file_handler.setFormatter(formatter)
+
+# Attach the file handler to the logger
+HSEM_LOGGER.addHandler(file_handler)
+HSEM_LOGGER.setLevel(logging.DEBUG)
+
+# Prevent the logger from propagating to the root logger
+HSEM_LOGGER.propagate = False
+
+LOG_EXECUTOR = ThreadPoolExecutor(max_workers=1)
+
 
 class EntityNotFoundError(HomeAssistantError):
     """Exception raised when an entity is not found."""
 
 
-class EntityStateUnknown(HomeAssistantError):
-    """Exception raised when an entity is not found."""
-
-
-def generate_hash(input_sensor):
+def generate_hash(input_sensor) -> str:
     """Generate an SHA-256 hash based on the input sensor's name."""
     return hashlib.sha256(input_sensor.encode("utf-8")).hexdigest()
 
 
-def get_config_value(config_entry, key):
+def get_config_value(config_entry, key) -> str | None:
     """Get the configuration value from options or fall back to the initial data."""
     if key not in DEFAULT_CONFIG_VALUES:
         raise KeyError(f"Key '{key}' not found in DEFAULT_VALUES")
@@ -62,6 +73,19 @@ def get_config_value(config_entry, key):
         return DEFAULT_CONFIG_VALUES[key]
 
     return data
+
+
+def convert_to_time(time_value) -> time | None:
+    """
+    Convert a time value (str or datetime.time) to a datetime.time object.
+    """
+    if isinstance(time_value, time):
+        return time_value
+
+    if isinstance(time_value, str):
+        return datetime.strptime(time_value, "%H:%M:%S").time()
+
+    return None
 
 
 def convert_to_float(state) -> float:
@@ -131,7 +155,7 @@ def convert_to_boolean(state) -> bool:
 
 async def async_resolve_entity_id_from_unique_id(
     self, unique_entity_id, domain="sensor"
-):
+) -> str | None:
     """
     Resolve the entity_id from the unique_id using the entity registry.
 
@@ -156,7 +180,7 @@ async def async_resolve_entity_id_from_unique_id(
         return None
 
 
-async def async_set_select_option(self, entity_id, option):
+async def async_set_select_option(self, entity_id, option) -> None:
     """Set the selected option for an entity."""
 
     # Check if entity_id exists
@@ -187,10 +211,13 @@ async def async_set_select_option(self, entity_id, option):
 
 def ha_get_entity_state_and_convert(
     self, entity_id, output_type=None, float_precision=2
-):
+) -> float | int | bool | str | None:
     """Get the state of an entity."""
+
+    if entity_id is None:
+        return None
+
     if not self.hass.states.get(entity_id):
-        _LOGGER.warning(f"Entity '{entity_id}' not found. Raising exception.")
         raise EntityNotFoundError(f"Entity '{entity_id}' not found in Home Assistant.")
 
     state = self.hass.states.get(entity_id)
@@ -207,6 +234,11 @@ def ha_get_entity_state_and_convert(
             if state.state == "unknown":
                 raise EntityNotFoundError(f"Entity '{entity_id}' state unknown.")
             return round(convert_to_float(state.state), float_precision)
+
+        if output_type.lower() == "int":
+            if state.state == "unknown":
+                raise EntityNotFoundError(f"Entity '{entity_id}' state unknown.")
+            return convert_to_int(state.state)
 
         if output_type.lower() == "boolean":
             if state.state == "unknown":
@@ -228,7 +260,7 @@ def ha_get_entity_state_and_convert(
         )
 
 
-async def async_remove_entity_from_ha(self, entity_unique_id):
+async def async_remove_entity_from_ha(self, entity_unique_id) -> bool:
     """
     Remove an existing entity in Home Assistant based on its unique ID.
 
@@ -256,19 +288,26 @@ async def async_remove_entity_from_ha(self, entity_unique_id):
         return False
 
 
-async def async_entity_exists(hass, entity_id):
+async def async_entity_exists(hass, entity_id) -> bool:
     """Check if an entity exists in Home Assistant."""
     return hass.states.get(entity_id) is not None
 
 
-async def async_device_exists(hass, device_id):
+async def async_device_exists(hass, device_id) -> bool:
     """Check if a device exists in Home Assistant."""
     device_registry = dr.async_get(hass)
     return device_registry.async_get(device_id) is not None
 
 
-async def async_logger(self, msg):
+async def async_logger(self, msg, level="debug") -> None:
+    """
+    Log a message to a dedicated file-based logger.
+
+    :param msg: The message to log.
+    :param level: The log level ('debug', 'info', 'warning', 'error', 'critical').
+    """
     if self._hsem_verbose_logging:
-        _LOGGER.warning(msg)
-    else:
-        _LOGGER.debug(msg)
+        log_method = getattr(HSEM_LOGGER, level.lower(), HSEM_LOGGER.debug)
+
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(LOG_EXECUTOR, log_method, msg)

@@ -30,7 +30,7 @@ from homeassistant.exceptions import HomeAssistantError
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_set_grid_export_power_pct(self, device_id, power_percentage):
+async def async_set_grid_export_power_pct(self, device_id, power_percentage) -> None:
     """Set the maximum grid export power percentage and handle errors."""
 
     # Check if the service exists
@@ -76,7 +76,7 @@ async def async_set_grid_export_power_pct(self, device_id, power_percentage):
         raise HomeAssistantError(f"Unexpected error: {err}")
 
 
-async def async_set_tou_periods(self, batteries_id, tou_modes):
+async def async_set_tou_periods(self, batteries_id, tou_modes) -> None:
     """Set the TOU modes for the specified batteries."""
 
     # Convert the list of TOU modes into the required format

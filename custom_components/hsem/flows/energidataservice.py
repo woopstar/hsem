@@ -4,7 +4,7 @@ from homeassistant.helpers.selector import selector
 from custom_components.hsem.utils.misc import async_entity_exists, get_config_value
 
 
-async def get_energidataservice_step_schema(config_entry):
+async def get_energidataservice_step_schema(config_entry) -> vol.Schema:
     return vol.Schema(
         {
             vol.Required(
@@ -23,7 +23,7 @@ async def get_energidataservice_step_schema(config_entry):
     )
 
 
-async def validate_energidataservice_input(hass, user_input):
+async def validate_energidataservice_input(hass, user_input) -> dict[str, str]:
     errors = {}
 
     required_fields = [

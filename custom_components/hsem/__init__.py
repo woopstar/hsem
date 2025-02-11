@@ -62,6 +62,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][entry.entry_id] = {}
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
+    # Add update listner for options
+    entry.async_on_unload(entry.add_update_listener(async_update_options))
+
     _LOGGER.info("HSEM integration successfully set up.")
     return True
 
@@ -76,3 +79,16 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data[DOMAIN].pop(entry.entry_id, None)
 
     return unload_ok
+
+
+async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Handle options update."""
+    _LOGGER.debug("Options update triggered for HSEM: %s", entry.entry_id)
+
+    # Get the working mode sensor from hass data
+    if entry.entry_id in hass.data[DOMAIN]:
+        working_mode_sensor = hass.data[DOMAIN][entry.entry_id].get(
+            "working_mode_sensor"
+        )
+        if working_mode_sensor:
+            await working_mode_sensor.async_options_updated(entry)
