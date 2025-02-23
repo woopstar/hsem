@@ -173,7 +173,10 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
         except Exception:
             utility_meter_value = None
 
-        if utility_meter_value is not None and self._measurements is not None:
+        if self._measurements is None:
+            self._measurements = {}
+
+        if utility_meter_value is not None:
             self._measurements[current_date.isoformat()] = round(
                 float(utility_meter_value), 2
             )
