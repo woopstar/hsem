@@ -1,0 +1,73 @@
+---
+- name: "breaking-change"
+  color: b60205
+  description: "Something in the release is breaking current functionality"
+- name: "bug"
+  color: d73a4a
+  description: "Something isn't working"
+- name: "bug-fix"
+  color: 4ad73a
+  description: "Fixed things that didn’t work but now do"
+- name: "dependencies"
+  color: 9F5E8B
+  description: "Updates to dependencies"
+- name: "documentation"
+  color: 0075ca
+  description: "Improvements or additions to documentation"
+- name: "duplicate"
+  color: 799799
+  description: "This issue or pull request already exists"
+- name: "enhancement"
+  color: 0E8A16
+  description: "New feature or request"
+- name: "help-wanted"
+  color: D46EE9
+  description: "Extra attention is needed"
+- name: "invalid"
+  color: 46311F
+  description: "This doesn't seem right"
+- name: "LOCKED"
+  color: ff0000
+  description: "This thread is locked"
+
+- name: "major"
+  color: 2fff00
+  description: "Bump major version number"
+- name: "minor"
+  color: fdff12
+  description: "Bump minor version number"
+- name: "patch"
+  color: ff9a00
+  description: "Bump patch version number"
+
+- name: "pr-on-hold"
+  color: 8c3d24
+  description: "This PR is on hold and not scheduled for merge currently"
+- name: "question"
+  color: 9d59d4
+  description: "Further information is requested"
+- name: "skip-changelog"
+  color: f1a7f4
+  description: "Skips changelog on release"
+- name: "wontfix"
+  color: 424742
+  description: "This will not be worked on"
+
+- name: "size/XS"
+  color: b8bab8
+  description: "Denotes a PR that changes 0-9 lines"
+- name: "size/S"
+  color: b8bab8
+  description: "Denotes a PR that changes 10-29 lines"
+- name: "size/M"
+  color: b8bab8
+  description: "Denotes a PR that changes 30-99 lines"
+- name: "size/L"
+  color: b8bab8
+  description: "Denotes a PR that changes 100-499 lines"
+- name: "size/XL"
+  color: b8bab8
+  description: "Denotes a PR that changes 500-999 lines"
+- name: "size/XXL"
+  color: b8bab8
+  description: "Denotes a PR that changes 1000+ lines"
