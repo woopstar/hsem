@@ -19,6 +19,22 @@ async def get_energidataservice_step_schema(config_entry) -> vol.Schema:
                     config_entry, "hsem_energi_data_service_export"
                 ),
             ): selector({"entity": {"domain": "sensor"}}),
+            vol.Required(
+                "hsem_energi_data_service_export_min_price",
+                default=get_config_value(
+                    config_entry, "hsem_energi_data_service_export_min_price"
+                ),
+            ): selector(
+                {
+                    "number": {
+                        "min": -10.00,
+                        "max": 0,
+                        "step": 0.01,
+                        "unit_of_measurement": "DKK",
+                        "mode": "slider",
+                    }
+                }
+            ),
         }
     )
 
@@ -29,6 +45,7 @@ async def validate_energidataservice_input(hass, user_input) -> dict[str, str]:
     required_fields = [
         "hsem_energi_data_service_import",
         "hsem_energi_data_service_export",
+        "hsem_energi_data_service_export_min_price",
     ]
 
     for field in required_fields:
