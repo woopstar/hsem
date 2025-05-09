@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+
+set -e
+
+sudo chown -R vscode:vscode /workspaces
+
+cd "$(dirname "$0")/.."
+
+python3 -m pip install --requirement requirements.txt
+
+sudo apt-get update
+# For Python 3.11
+#sudo apt-get install -y ffmpeg libpcap0.8
+# For Python 3.12
+#sudo apt-get install -y ffmpeg libturbojpeg0-dev libpcap0.8
