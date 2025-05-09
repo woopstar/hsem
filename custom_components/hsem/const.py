@@ -45,6 +45,7 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_batteries_enable_batteries_schedule_3": False,
     "hsem_energi_data_service_export": "sensor.energi_data_service_produktion",
     "hsem_energi_data_service_import": "sensor.energi_data_service",
+    "hsem_energi_data_service_export_min_price": -0.15,
     "hsem_ev_charger_power": vol.UNDEFINED,
     "hsem_ev_charger_status": vol.UNDEFINED,
     "hsem_extended_attributes": False,

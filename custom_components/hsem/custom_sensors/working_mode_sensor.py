@@ -91,6 +91,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_solcast_pv_forecast_forecast_today = None
         self._hsem_energi_data_service_import = None
         self._hsem_energi_data_service_export = None
+        self._hsem_energi_data_service_export_min_price = None
         self._hsem_huawei_solar_inverter_active_power_control = None
         self._hsem_huawei_solar_batteries_working_mode_state = None
         self._hsem_huawei_solar_batteries_state_of_capacity_state = None
@@ -250,6 +251,12 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_energi_data_service_export = get_config_value(
             self._config_entry,
             "hsem_energi_data_service_export",
+        )
+        self._hsem_energi_data_service_export_min_price = convert_to_float(
+            get_config_value(
+                self._config_entry,
+                "hsem_energi_data_service_export_min_price",
+            )
         )
         self._hsem_huawei_solar_inverter_active_power_control = get_config_value(
             self._config_entry,
@@ -441,6 +448,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             "batteries_usable_capacity": self._hsem_batteries_usable_capacity,
             "energi_data_service_export_state": self._hsem_energi_data_service_export_state,
             "energi_data_service_import_state": self._hsem_energi_data_service_import_state,
+            "energi_data_service_export_min_price": self._hsem_energi_data_service_export_min_price,
             "energy_needs": self._energy_needs,
             "ev_charger_power_state": self._hsem_ev_charger_power_state,
             "ev_charger_status_state": self._hsem_ev_charger_status_state,
@@ -948,7 +956,11 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         # Determine the appropriate TOU modes and working mode state. In priority order:
         if (
             isinstance(self._hsem_energi_data_service_import_state, (int, float))
-            and self._hsem_energi_data_service_import_state < 0
+            and isinstance(
+                self._hsem_energi_data_service_export_min_price, (int, float)
+            )
+            and self._hsem_energi_data_service_import_state
+            < self._hsem_energi_data_service_export_min_price
         ):
             # Negative import price. Force charge battery
             tou_modes = DEFAULT_HSEM_TOU_MODES_FORCE_CHARGE

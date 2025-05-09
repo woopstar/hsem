@@ -65,10 +65,12 @@
       "energidataservice": {
         "data": {
           "hsem_energi_data_service_export": "Energy Data Service Export Price Sensor",
+          "hsem_energi_data_service_export_min_price": "Export Minimum Price Required (DKK)",
           "hsem_energi_data_service_import": "Energy Data Service Import Price Sensor"
         },
         "data_description": {
           "hsem_energi_data_service_export": "Select the sensor that provides export prices from your Energy Data Service integration.",
+          "hsem_energi_data_service_export_min_price": "Set the minimum price for export from your Energy Data Service integration.",
           "hsem_energi_data_service_import": "Select the sensor that provides import prices from your Energy Data Service integration."
         },
         "description": "Select energy data services for HSEM.",
@@ -236,10 +238,12 @@
       "energidataservice": {
         "data": {
           "hsem_energi_data_service_export": "Energy Data Service Export Price Sensor",
+          "hsem_energi_data_service_export_min_price": "Export Minimum Price Required (DKK)",
           "hsem_energi_data_service_import": "Energy Data Service Import Price Sensor"
         },
         "data_description": {
           "hsem_energi_data_service_export": "Select the sensor that provides export prices from your Energy Data Service integration.",
+          "hsem_energi_data_service_export_min_price": "Set the minimum price for export from your Energy Data Service integration.",
           "hsem_energi_data_service_import": "Select the sensor that provides import prices from your Energy Data Service integration."
         },
         "description": "Select energy data services for HSEM.",
