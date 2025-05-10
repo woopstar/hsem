@@ -13,7 +13,7 @@ coverage.xml
 notes.txt
 .venv
 .DS_Store
-sync.sh
+scripts/sync.*
 
 # Home Assistant configuration
 config/*
