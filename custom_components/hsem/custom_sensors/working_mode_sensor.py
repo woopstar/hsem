@@ -912,8 +912,16 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         if not isinstance(self._hsem_energi_data_service_export_state, (int, float)):
             return
 
+        if not isinstance(
+            self._hsem_energi_data_service_export_min_price, (int, float)
+        ):
+            return
+
         export_power_percentage = (
-            100 if self._hsem_energi_data_service_export_state > 0 else 0
+            100
+            if self._hsem_energi_data_service_export_state
+            > self._hsem_energi_data_service_export_min_price
+            else 0
         )
 
         # List of inverters to update
@@ -956,11 +964,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         # Determine the appropriate TOU modes and working mode state. In priority order:
         if (
             isinstance(self._hsem_energi_data_service_import_state, (int, float))
-            and isinstance(
-                self._hsem_energi_data_service_export_min_price, (int, float)
-            )
-            and self._hsem_energi_data_service_import_state
-            < self._hsem_energi_data_service_export_min_price
+            and self._hsem_energi_data_service_import_state < 0
         ):
             # Negative import price. Force charge battery
             tou_modes = DEFAULT_HSEM_TOU_MODES_FORCE_CHARGE
