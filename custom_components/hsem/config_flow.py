@@ -8,17 +8,10 @@ from homeassistant import config_entries
 from homeassistant.core import callback
 
 from custom_components.hsem.const import DOMAIN, NAME
-from custom_components.hsem.flows.batteries_schedule_1 import (
-    get_batteries_schedule_1_step_schema,
-    validate_batteries_schedule_1_input,
-)
-from custom_components.hsem.flows.batteries_schedule_2 import (
-    get_batteries_schedule_2_step_schema,
-    validate_batteries_schedule_2_input,
-)
-from custom_components.hsem.flows.batteries_schedule_3 import (
-    get_batteries_schedule_3_step_schema,
-    validate_batteries_schedule_3_input,
+from custom_components.hsem.flows.batteries_schedule import (
+    MAX_SCHEDULES,
+    get_batteries_schedule_step_schema,
+    validate_batteries_schedule_input,
 )
 from custom_components.hsem.flows.energidataservice import (
     get_energidataservice_step_schema,
@@ -163,7 +156,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors = await validate_weighted_values_input(user_input)
             if not errors:
                 self._user_input.update(user_input)
-                return await self.async_step_batteries_schedule_1()
+                return await self.async_step_batteries_schedules()
 
         data_schema = await get_weighted_values_step_schema(None)
 
@@ -174,55 +167,39 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             last_step=False,
         )
 
-    async def async_step_batteries_schedule_1(self, user_input=None):
+    async def async_step_batteries_schedules(self, user_input=None):
+        """
+        Handle the dynamic battery schedules step.
+
+        Parameters:
+        user_input: The user input dictionary.
+
+        Returns:
+        The next step or the form to display.
+        """
         errors = {}
+        schedule_number = self._user_input.get("current_schedule", 1)
 
         if user_input is not None:
-            errors = await validate_batteries_schedule_1_input(user_input)
+            errors = await validate_batteries_schedule_input(
+                user_input, schedule_number
+            )
             if not errors:
                 self._user_input.update(user_input)
-                return await self.async_step_batteries_schedule_2()
 
-        data_schema = await get_batteries_schedule_1_step_schema(None)
+                # Move to the next schedule or the next step
+                if schedule_number < MAX_SCHEDULES:
+                    self._user_input["current_schedule"] = schedule_number + 1
+                    return await self.async_step_batteries_schedules()
+                else:
+                    return await self.async_step_huawei_solar()
 
-        return self.async_show_form(
-            step_id="batteries_schedule_1",
-            data_schema=data_schema,
-            errors=errors,
-            last_step=False,
+        data_schema = await get_batteries_schedule_step_schema(
+            self.context, schedule_number
         )
 
-    async def async_step_batteries_schedule_2(self, user_input=None):
-        errors = {}
-
-        if user_input is not None:
-            errors = await validate_batteries_schedule_2_input(user_input)
-            if not errors:
-                self._user_input.update(user_input)
-                return await self.async_step_batteries_schedule_3()
-
-        data_schema = await get_batteries_schedule_2_step_schema(None)
-
         return self.async_show_form(
-            step_id="batteries_schedule_2",
-            data_schema=data_schema,
-            errors=errors,
-            last_step=False,
-        )
-
-    async def async_step_batteries_schedule_3(self, user_input=None):
-        errors = {}
-
-        if user_input is not None:
-            errors = await validate_batteries_schedule_3_input(user_input)
-            if not errors:
-                self._user_input.update(user_input)
-                return await self.async_step_huawei_solar()
-
-        data_schema = await get_batteries_schedule_3_step_schema(None)
-
-        return self.async_show_form(
-            step_id="batteries_schedule_3",
+            step_id="batteries_schedules",
             data_schema=data_schema,
             errors=errors,
             last_step=False,

@@ -168,7 +168,8 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self.entity_id = get_working_mode_sensor_entity_id()
         self._update_settings()
 
-        # Initialize battery schedules as a list of BatterySchedule objects
+        # Dynamically determine the number of battery schedules
+        self._max_battery_schedules = self._get_max_battery_schedules()
         self._battery_schedules: list[BatterySchedule] = [
             BatterySchedule(
                 enabled=False,
@@ -179,8 +180,23 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 needed_batteries_capacity_cost=0.0,
                 min_price_difference=0.0,
             )
-            for _ in range(3)  # Default to 3 schedules, can be expanded
+            for _ in range(self._max_battery_schedules)
         ]
+
+    def _get_max_battery_schedules(self) -> int:
+        """
+        Determine the maximum number of battery schedules based on the configuration.
+
+        Returns:
+        int: The maximum number of battery schedules.
+        """
+        max_schedules = 0
+        while True:
+            key = f"hsem_batteries_enable_batteries_schedule_{max_schedules + 1}"
+            if get_config_value(self._config_entry, key) is None:
+                break
+            max_schedules += 1
+        return max_schedules
 
     def _update_settings(self) -> None:
         """Fetch updated settings from config_entry options."""
@@ -355,7 +371,8 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
         # Log updated settings
         _LOGGER.debug(
-            f"Updated settings: input_sensor={self._hsem_huawei_solar_batteries_working_mode}"
+            f"Updated settings: max_battery_schedules={self._max_battery_schedules}, "
+            f"input_sensor={self._hsem_huawei_solar_batteries_working_mode}"
         )
 
     @property
@@ -464,6 +481,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             "net_consumption_with_ev": self._hsem_net_consumption_with_ev,
             "net_consumption": self._hsem_net_consumption,
             "solar_production_power_state": self._hsem_solar_production_power_state,
+            "battery_schedules_count": self._max_battery_schedules,
             "battery_schedules": [
                 {
                     "enabled": schedule.enabled,
@@ -1092,6 +1110,15 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         list[BatterySchedule]: A list of BatterySchedule objects.
         """
         return self._battery_schedules
+
+    def get_battery_schedules_count(self) -> int:
+        """
+        Retrieve the number of configured battery schedules.
+
+        Returns:
+        int: The number of battery schedules.
+        """
+        return self._max_battery_schedules
 
     async def _async_reset_recommendations(self) -> None:
         """Reset the recommendations for each hour of the day."""
