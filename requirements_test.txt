@@ -2,5 +2,7 @@ pytest>=7.0.0
 pytest-asyncio>=0.20.0
 pytest-cov>=4.0.0
 pytest-timeout>=2.1.0
-pytest-homeassistant-custom-component==0.13.195
+pytest-homeassistant-custom-component==0.13.244
 colorlog==6.9.0
+voluptuous==0.15.2
+pytz==2025.2

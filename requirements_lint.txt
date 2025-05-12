@@ -1,4 +1,8 @@
 flake8>=6.0.0
 pylint>=2.15.0
-pytest-homeassistant-custom-component==0.13.195
+pytest-homeassistant-custom-component==0.13.244
 colorlog==6.9.0
+black==25.1.0
+isort==6.0.1
+voluptuous==0.15.2
+pytz==2025.2
