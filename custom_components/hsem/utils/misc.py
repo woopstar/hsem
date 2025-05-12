@@ -5,10 +5,10 @@ This module provides utility functions for the Home Assistant custom integration
 import asyncio
 import hashlib
 import logging
-import os
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, time
 from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr
@@ -21,35 +21,38 @@ _LOGGER = logging.getLogger(__name__)
 
 # Create a separate logger for async_logger
 HSEM_LOGGER = logging.getLogger("hsem_logger")
-LOG_FILE_PATH = "/config/hsem.log"
+
+# Configure the logger
+LOG_FILE_NAME = "hsem.log"
 LOG_FILE_MAX_BYTES = 10 * 1024 * 1024  # 10 MB
 LOG_FILE_BACKUP_COUNT = 2  # Keep 3 backup files
-
-# Configure the rotating file handler
-file_handler = RotatingFileHandler(
-    LOG_FILE_PATH,
-    maxBytes=LOG_FILE_MAX_BYTES,
-    backupCount=LOG_FILE_BACKUP_COUNT,
-)
-
-# Set the log format and level
-formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-file_handler.setFormatter(formatter)
-
-# Check if we are running tests using tox
-if not os.getenv("TOX_ENV"):
-    # Attach the file handler to the logger
-    HSEM_LOGGER.addHandler(file_handler)
-HSEM_LOGGER.setLevel(logging.DEBUG)
-
-# Prevent the logger from propagating to the root logger
-HSEM_LOGGER.propagate = False
-
 LOG_EXECUTOR = ThreadPoolExecutor(max_workers=1)
 
 
 class EntityNotFoundError(HomeAssistantError):
     """Exception raised when an entity is not found."""
+
+
+async def async_setup_logger(hass):
+    log_file_path = get_log_file_path(hass)
+
+    file_handler = RotatingFileHandler(
+        log_file_path,
+        maxBytes=LOG_FILE_MAX_BYTES,
+        backupCount=LOG_FILE_BACKUP_COUNT,
+    )
+
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    file_handler.setFormatter(formatter)
+
+    if not HSEM_LOGGER.handlers:
+        HSEM_LOGGER.addHandler(file_handler)
+        HSEM_LOGGER.setLevel(logging.DEBUG)
+        HSEM_LOGGER.propagate = False
+
+
+def get_log_file_path(hass) -> Path:
+    return Path(hass.config.config_dir) / "hsem.log"
 
 
 def generate_hash(input_sensor) -> str:

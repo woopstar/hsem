@@ -10,6 +10,7 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 
 from custom_components.hsem.const import DOMAIN, MIN_HUAWEI_SOLAR_VERSION
+from custom_components.hsem.utils.misc import async_setup_logger
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -43,6 +44,9 @@ async def check_huawei_solar_version(hass: HomeAssistant) -> bool:
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Set up the HSEM integration."""
+    _LOGGER.debug("Setting up HSEM integration...")
+    await async_setup_logger(hass)
+
     if not await check_huawei_solar_version(hass):
         _LOGGER.error(
             "Failed to set up HSEM due to missing or incompatible Huawei Solar version."
