@@ -1,2 +1,4 @@
 flake8>=6.0.0
 pylint>=2.15.0
+pytest-homeassistant-custom-component==0.13.195
+colorlog==6.9.0

@@ -1,3 +1,4 @@
+import math
 from datetime import time
 
 import pytest
@@ -48,10 +49,16 @@ def test_battery_schedule_model():
     assert schedule.enabled is True
     assert schedule.start == time(6, 0)
     assert schedule.end == time(10, 0)
-    assert schedule.avg_import_price == 0.15
-    assert schedule.needed_batteries_capacity == 5.0
-    assert schedule.needed_batteries_capacity_cost == 0.75
-    assert schedule.min_price_difference == 0.05
+    assert math.isclose(schedule.avg_import_price, 0.15, rel_tol=1e-09, abs_tol=1e-09)
+    assert math.isclose(
+        schedule.needed_batteries_capacity, 5.0, rel_tol=1e-09, abs_tol=1e-09
+    )
+    assert math.isclose(
+        schedule.needed_batteries_capacity_cost, 0.75, rel_tol=1e-09, abs_tol=1e-09
+    )
+    assert math.isclose(
+        schedule.min_price_difference, 0.05, rel_tol=1e-09, abs_tol=1e-09
+    )
 
 
 def test_hsem_working_mode_sensor_battery_schedules(mock_config_entry):
@@ -66,27 +73,45 @@ def test_hsem_working_mode_sensor_battery_schedules(mock_config_entry):
     assert schedule_1.enabled is True
     assert schedule_1.start == time(6, 0)
     assert schedule_1.end == time(10, 0)
-    assert schedule_1.avg_import_price == 0.15
-    assert schedule_1.needed_batteries_capacity == 5.0
-    assert schedule_1.needed_batteries_capacity_cost == 0.75
-    assert schedule_1.min_price_difference == 0.05
+    assert math.isclose(schedule_1.avg_import_price, 0.15, rel_tol=1e-09, abs_tol=1e-09)
+    assert math.isclose(
+        schedule_1.needed_batteries_capacity, 5.0, rel_tol=1e-09, abs_tol=1e-09
+    )
+    assert math.isclose(
+        schedule_1.needed_batteries_capacity_cost, 0.75, rel_tol=1e-09, abs_tol=1e-09
+    )
+    assert math.isclose(
+        schedule_1.min_price_difference, 0.05, rel_tol=1e-09, abs_tol=1e-09
+    )
 
     # Validate the second schedule
     schedule_2 = sensor._battery_schedules[1]
     assert schedule_2.enabled is True
     assert schedule_2.start == time(12, 0)
     assert schedule_2.end == time(16, 0)
-    assert schedule_2.avg_import_price == 0.20
-    assert schedule_2.needed_batteries_capacity == 8.0
-    assert schedule_2.needed_batteries_capacity_cost == 1.60
-    assert schedule_2.min_price_difference == 0.10
+    assert math.isclose(schedule_2.avg_import_price, 0.20, rel_tol=1e-09, abs_tol=1e-09)
+    assert math.isclose(
+        schedule_2.needed_batteries_capacity, 8.0, rel_tol=1e-09, abs_tol=1e-09
+    )
+    assert math.isclose(
+        schedule_2.needed_batteries_capacity_cost, 1.60, rel_tol=1e-09, abs_tol=1e-09
+    )
+    assert math.isclose(
+        schedule_2.min_price_difference, 0.10, rel_tol=1e-09, abs_tol=1e-09
+    )
 
     # Validate the third schedule (disabled by default)
     schedule_3 = sensor._battery_schedules[2]
     assert schedule_3.enabled is False
     assert schedule_3.start == time.min
     assert schedule_3.end == time.max
-    assert schedule_3.avg_import_price == 0.0
-    assert schedule_3.needed_batteries_capacity == 0.0
-    assert schedule_3.needed_batteries_capacity_cost == 0.0
-    assert schedule_3.min_price_difference == 0.0
+    assert math.isclose(schedule_3.avg_import_price, 0.0, rel_tol=1e-09, abs_tol=1e-09)
+    assert math.isclose(
+        schedule_3.needed_batteries_capacity, 0.0, rel_tol=1e-09, abs_tol=1e-09
+    )
+    assert math.isclose(
+        schedule_3.needed_batteries_capacity_cost, 0.0, rel_tol=1e-09, abs_tol=1e-09
+    )
+    assert math.isclose(
+        schedule_3.min_price_difference, 0.0, rel_tol=1e-09, abs_tol=1e-09
+    )
