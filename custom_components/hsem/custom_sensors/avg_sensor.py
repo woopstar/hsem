@@ -192,6 +192,11 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
         Cleanup old measurements to maintain the specified average period.
         """
         if self._measurements:
+            # Ensure self._average is a positive integer
+            if not isinstance(self._average, int) or self._average <= 0:
+                _LOGGER.error("Invalid value for self._average: %s", self._average)
+                return
+
             # Remove the oldest entries exceeding the average period
             sorted_dates = sorted(self._measurements.keys())
             excess_entries = len(sorted_dates) - self._average
