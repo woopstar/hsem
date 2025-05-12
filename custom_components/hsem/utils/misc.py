@@ -71,9 +71,14 @@ def get_config_value(config_entry, key) -> str | None:
     if config_entry is None:
         return None
 
-    data = config_entry.options.get(
-        key, config_entry.data.get(key, DEFAULT_CONFIG_VALUES[key])
-    )
+    data = None
+    if hasattr(config_entry, "options"):
+        data = config_entry.options.get(
+            key, config_entry.data.get(key, DEFAULT_CONFIG_VALUES[key])
+        )
+    else:
+        if hasattr(config_entry, "data"):
+            data = config_entry.data.get(key, DEFAULT_CONFIG_VALUES[key])
 
     if data is null or data is None:
         return DEFAULT_CONFIG_VALUES[key]
