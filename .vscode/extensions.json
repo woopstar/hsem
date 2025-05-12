@@ -1,0 +1,31 @@
+{
+    "recommendations": [
+        "ms-python.black-formatter",
+        "ms-vscode-remote.remote-containers",
+        "ms-azuretools.vscode-containers",
+        "usernamehw.errorlens",
+        "esphome.esphome-vscode",
+        "github.vscode-github-actions",
+        "github.copilot",
+        "github.copilot-chat",
+        "github.vscode-pull-request-github",
+        "codezombiech.gitignore",
+        "keesschollaart.vscode-home-assistant",
+        "oderwat.indent-rainbow",
+        "ms-python.isort",
+        "emilast.logfilehighlighter",
+        "lukas-tr.materialdesignicons-intellisense",
+        "pkief.material-icon-theme",
+        "esbenp.prettier-vscode",
+        "ms-python.vscode-pylance",
+        "ms-python.python",
+        "ms-python.debugpy",
+        "ms-vscode-remote.remote-ssh",
+        "ms-vscode-remote.remote-ssh-edit",
+        "ms-vscode.remote-explorer",
+        "richie5um2.vscode-sort-json",
+        "tomblind.scm-buttons-vscode",
+        "netcorext.uuid-generator",
+        "redhat.vscode-yaml"
+    ]
+}

@@ -830,7 +830,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             else:
                 self._missing_input_entities = True
 
-        except Exception as e:
+        except Exception:
             self._missing_input_entities = True
 
         if self._hsem_ev_charger_status:

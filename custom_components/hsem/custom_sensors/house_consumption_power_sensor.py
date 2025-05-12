@@ -322,7 +322,7 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
                     )
                 )
 
-        except Exception as e:
+        except Exception:
             self._missing_input_entities = True
 
     async def _async_add_integral_sensor(self) -> None:
