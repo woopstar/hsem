@@ -5,6 +5,7 @@ This module provides utility functions for the Home Assistant custom integration
 import asyncio
 import hashlib
 import logging
+import os
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, time
 from logging.handlers import RotatingFileHandler
@@ -35,8 +36,10 @@ file_handler = RotatingFileHandler(
 formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
 file_handler.setFormatter(formatter)
 
-# Attach the file handler to the logger
-HSEM_LOGGER.addHandler(file_handler)
+# Check if we are running tests using tox
+if not os.getenv("TOX_ENV"):
+    # Attach the file handler to the logger
+    HSEM_LOGGER.addHandler(file_handler)
 HSEM_LOGGER.setLevel(logging.DEBUG)
 
 # Prevent the logger from propagating to the root logger
