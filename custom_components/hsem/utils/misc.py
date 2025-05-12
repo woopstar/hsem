@@ -75,9 +75,12 @@ def get_config_value(config_entry, key) -> str | None:
     return data
 
 
-def convert_to_time(time_value) -> time | None:
+def convert_to_time(time_value) -> time:
     """
     Convert a time value (str or datetime.time) to a datetime.time object.
+
+    Raises:
+        ValueError: If the input is not a valid time or string representation of time.
     """
     if isinstance(time_value, time):
         return time_value
@@ -85,7 +88,7 @@ def convert_to_time(time_value) -> time | None:
     if isinstance(time_value, str):
         return datetime.strptime(time_value, "%H:%M:%S").time()
 
-    return None
+    raise ValueError(f"Unsupported type for time conversion: {type(time_value)}")
 
 
 def convert_to_float(state) -> float:

@@ -18,7 +18,10 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
-    """A template sensor for Home Assistant."""
+    """A template sensor for Home Assistant.
+
+    This sensor calculates the average value of a tracked entity over a specified period.
+    """
 
     _attr_icon = "mdi:calculator"
     _attr_has_entity_name = True
@@ -94,10 +97,23 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
         """Manually trigger the sensor update."""
         return await self._async_handle_update(None)
 
-    def parse_date(self, date_str) -> str:
+    def parse_date(self, date_str: str) -> str:
+        """
+        Parse a date string and return it in ISO format.
+
+        Parameters:
+        date_str (str): The date string to parse.
+
+        Returns:
+        str: The parsed date in ISO format.
+        """
         # Strip any time component if it exists
-        date_part = date_str.split("T")[0] if "T" in date_str else date_str
-        return datetime.strptime(date_part, "%Y-%m-%d").date().isoformat()
+        try:
+            date_part = date_str.split("T")[0] if "T" in date_str else date_str
+            return datetime.strptime(date_part, "%Y-%m-%d").date().isoformat()
+        except ValueError:
+            _LOGGER.warning("Invalid date string: %s", date_str)
+            return datetime.now().date().isoformat()
 
     async def async_added_to_hass(self) -> None:
         """Handle when sensor is added to Home Assistant."""
@@ -138,8 +154,13 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
                 )
                 self._tracked_entities.add(self._tracked_entity)
 
-    async def _async_handle_update(self, event) -> None:
-        """Handle updates to the source sensor."""
+    async def _async_handle_update(self, event: Any) -> None:
+        """
+        Handle updates to the source sensor.
+
+        Parameters:
+        event (Any): The event triggering the update.
+        """
         self._state = 0.00
 
         now = datetime.now()
@@ -147,22 +168,41 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
         # Track state changes for the source sensors. Also if they change.
         await self._async_track_entities()
 
+        # Store the utility meter value
         await self._async_store_utility_meter_value()
 
         # Calculate the average value from `self._measurements`
-        if self._measurements is not None:
+        if self._measurements:
             total = sum(self._measurements.values())
             count = len(self._measurements)
             if count > 0:
                 self._state = round(total / count, 2)
+            else:
+                _LOGGER.warning("No measurements available for averaging.")
+        else:
+            _LOGGER.warning("Measurements dictionary is empty.")
 
         self._last_updated = now.isoformat()
 
         # Trigger an update in Home Assistant
         self.async_write_ha_state()
 
+    async def _async_cleanup_old_measurements(self) -> None:
+        """
+        Cleanup old measurements to maintain the specified average period.
+        """
+        if self._measurements:
+            # Remove the oldest entries exceeding the average period
+            sorted_dates = sorted(self._measurements.keys())
+            excess_entries = len(sorted_dates) - self._average
+            for date in sorted_dates[:excess_entries]:
+                del self._measurements[date]
+                _LOGGER.debug("Removed old measurement for date: %s", date)
+
     async def _async_store_utility_meter_value(self) -> None:
-        """Store the utility meter's value for the current day after the hour is over."""
+        """
+        Store the utility meter's value for the current day after the hour is over.
+        """
         now = datetime.now()
         current_date = now.date()
 
@@ -170,7 +210,8 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
             utility_meter_value = ha_get_entity_state_and_convert(
                 self, self._tracked_entity, "float"
             )
-        except Exception:
+        except Exception as e:
+            _LOGGER.error("Failed to fetch utility meter value: %s", e)
             utility_meter_value = None
 
         if self._measurements is None:
@@ -180,20 +221,9 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
             self._measurements[current_date.isoformat()] = round(
                 float(utility_meter_value), 2
             )
+        else:
+            _LOGGER.warning("Utility meter value is None.")
 
-        if self._measurements is not None and len(self._measurements) > self._average:
+        # Cleanup old measurements if necessary
+        if len(self._measurements) > self._average:
             await self._async_cleanup_old_measurements()
-
-    async def _async_cleanup_old_measurements(self) -> None:
-        """Cleanup old measurements."""
-
-        if self._measurements is not None:
-            sorted_dates = sorted(self._measurements.keys())
-
-            if len(sorted_dates) > self._average:
-                # Calculate how many items to remove
-                items_to_remove = len(sorted_dates) - self._average
-
-                # Remove the oldest dates (they come first in the sorted list)
-                for date in sorted_dates[:items_to_remove]:
-                    del self._measurements[date]
