@@ -8,6 +8,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, time
 from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr
@@ -20,33 +21,38 @@ _LOGGER = logging.getLogger(__name__)
 
 # Create a separate logger for async_logger
 HSEM_LOGGER = logging.getLogger("hsem_logger")
-LOG_FILE_PATH = "/config/hsem.log"
+
+# Configure the logger
+LOG_FILE_NAME = "hsem.log"
 LOG_FILE_MAX_BYTES = 10 * 1024 * 1024  # 10 MB
 LOG_FILE_BACKUP_COUNT = 2  # Keep 3 backup files
-
-# Configure the rotating file handler
-file_handler = RotatingFileHandler(
-    LOG_FILE_PATH,
-    maxBytes=LOG_FILE_MAX_BYTES,
-    backupCount=LOG_FILE_BACKUP_COUNT,
-)
-
-# Set the log format and level
-formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-file_handler.setFormatter(formatter)
-
-# Attach the file handler to the logger
-HSEM_LOGGER.addHandler(file_handler)
-HSEM_LOGGER.setLevel(logging.DEBUG)
-
-# Prevent the logger from propagating to the root logger
-HSEM_LOGGER.propagate = False
-
 LOG_EXECUTOR = ThreadPoolExecutor(max_workers=1)
 
 
 class EntityNotFoundError(HomeAssistantError):
     """Exception raised when an entity is not found."""
+
+
+async def async_setup_logger(hass):
+    log_file_path = get_log_file_path(hass)
+
+    file_handler = RotatingFileHandler(
+        log_file_path,
+        maxBytes=LOG_FILE_MAX_BYTES,
+        backupCount=LOG_FILE_BACKUP_COUNT,
+    )
+
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    file_handler.setFormatter(formatter)
+
+    if not HSEM_LOGGER.handlers:
+        HSEM_LOGGER.addHandler(file_handler)
+        HSEM_LOGGER.setLevel(logging.DEBUG)
+        HSEM_LOGGER.propagate = False
+
+
+def get_log_file_path(hass) -> Path:
+    return Path(hass.config.config_dir) / "hsem.log"
 
 
 def generate_hash(input_sensor) -> str:
@@ -65,9 +71,14 @@ def get_config_value(config_entry, key) -> str | None:
     if config_entry is None:
         return None
 
-    data = config_entry.options.get(
-        key, config_entry.data.get(key, DEFAULT_CONFIG_VALUES[key])
-    )
+    data = None
+    if hasattr(config_entry, "options"):
+        data = config_entry.options.get(
+            key, config_entry.data.get(key, DEFAULT_CONFIG_VALUES[key])
+        )
+    else:
+        if hasattr(config_entry, "data"):
+            data = config_entry.data.get(key, DEFAULT_CONFIG_VALUES[key])
 
     if data is null or data is None:
         return DEFAULT_CONFIG_VALUES[key]
@@ -75,9 +86,12 @@ def get_config_value(config_entry, key) -> str | None:
     return data
 
 
-def convert_to_time(time_value) -> time | None:
+def convert_to_time(time_value) -> time:
     """
     Convert a time value (str or datetime.time) to a datetime.time object.
+
+    Raises:
+        ValueError: If the input is not a valid time or string representation of time.
     """
     if isinstance(time_value, time):
         return time_value
@@ -85,7 +99,7 @@ def convert_to_time(time_value) -> time | None:
     if isinstance(time_value, str):
         return datetime.strptime(time_value, "%H:%M:%S").time()
 
-    return None
+    raise ValueError(f"Unsupported type for time conversion: {type(time_value)}")
 
 
 def convert_to_float(state) -> float:
