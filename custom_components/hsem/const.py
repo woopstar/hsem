@@ -57,6 +57,7 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_house_power_includes_ev_charger_power": True,
     "hsem_huawei_solar_batteries_grid_charge_cutoff_soc": "number.batteries_grid_charge_cutoff_soc",
     "hsem_huawei_solar_batteries_maximum_charging_power": "number.batteries_maximum_charging_power",
+    "hsem_huawei_solar_batteries_maximum_discharging_power": "number.batteries_maximum_discharging_power",
     "hsem_huawei_solar_batteries_rated_capacity": "sensor.batteries_rated_capacity",
     "hsem_huawei_solar_batteries_state_of_capacity": "sensor.batteries_state_of_capacity",
     "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods": "sensor.batteries_tou_charging_and_discharging_periods",

@@ -13,7 +13,7 @@ from custom_components.hsem.const import DOMAIN, MIN_HUAWEI_SOLAR_VERSION
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = [Platform.SENSOR, Platform.SWITCH, Platform.TIME]
+PLATFORMS = [Platform.SENSOR, Platform.SWITCH, Platform.TIME, Platform.SELECT]
 
 
 async def check_huawei_solar_version(hass: HomeAssistant) -> bool:
