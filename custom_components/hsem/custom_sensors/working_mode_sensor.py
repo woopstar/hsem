@@ -1032,6 +1032,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             (
                 isinstance(self._hsem_energi_data_service_import_state, (int, float))
                 and self._hsem_energi_data_service_import_state < 0
+                and self._hsem_force_working_mode_state == "auto"
             )
             or self._hsem_force_working_mode_state == Recommendations.ForceExport.value
         ):
@@ -1047,8 +1048,13 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 "recommendation"
             ] = Recommendations.ForceExport.value
         elif (
-            self._hourly_calculations.get(current_time_range, {}).get("recommendation")
-            == Recommendations.BatteriesChargeGrid.value
+            (
+                self._hourly_calculations.get(current_time_range, {}).get(
+                    "recommendation"
+                )
+                == Recommendations.BatteriesChargeGrid.value
+                and self._hsem_force_working_mode_state == "auto"
+            )
             or self._hsem_force_working_mode_state
             == Recommendations.BatteriesChargeGrid.value
         ):
@@ -1060,7 +1066,10 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 f"# Recommendation for {current_time_range} is to force charge the batteries. Setting TOU Periods: {tou_modes} and Working Mode: {working_mode}",
             )
         elif (
-            self._hsem_ev_charger_status_state
+            (
+                self._hsem_ev_charger_status_state
+                and self._hsem_force_working_mode_state == "auto"
+            )
             or self._hsem_force_working_mode_state
             == Recommendations.EVSmartCharging.value
         ):
@@ -1091,6 +1100,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             (
                 self._hsem_batteries_current_capacity > needed_batteries_capacity
                 and needed_batteries_capacity > 0
+                and self._hsem_force_working_mode_state == "auto"
             )
             or self._hsem_force_working_mode_state
             == Recommendations.BatteriesDischargeMode.value
@@ -1105,8 +1115,13 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 "recommendation"
             ] = Recommendations.BatteriesDischargeMode.value
         elif (
-            self._hourly_calculations.get(current_time_range, {}).get("recommendation")
-            == Recommendations.ForceBatteriesDischarge.value
+            (
+                self._hourly_calculations.get(current_time_range, {}).get(
+                    "recommendation"
+                )
+                == Recommendations.ForceBatteriesDischarge.value
+                and self._hsem_force_working_mode_state == "auto"
+            )
             or self._hsem_force_working_mode_state
             == Recommendations.ForceBatteriesDischarge.value
         ):
@@ -1117,7 +1132,10 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 self,
                 f"# Recommendation for {current_time_range} is to force discharge the batteries. Setting TOU Periods: {tou_modes} and Working Mode: {working_mode}",
             )
-        elif self._hsem_net_consumption < 0:
+        elif (
+            self._hsem_net_consumption < 0
+            and self._hsem_force_working_mode_state == "auto"
+        ):
             # Positive net consumption. Charge battery from Solar
             working_mode = WorkingModes.MaximizeSelfConsumption.value
             state = Recommendations.BatteriesChargeSolar.value
@@ -1129,8 +1147,13 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 "recommendation"
             ] = Recommendations.BatteriesChargeSolar.value
         elif (
-            self._hourly_calculations.get(current_time_range, {}).get("recommendation")
-            == Recommendations.BatteriesChargeSolar.value
+            (
+                self._hourly_calculations.get(current_time_range, {}).get(
+                    "recommendation"
+                )
+                == Recommendations.BatteriesChargeSolar.value
+                and self._hsem_force_working_mode_state == "auto"
+            )
             or self._hsem_force_working_mode_state
             == Recommendations.BatteriesChargeSolar.value
         ):
@@ -1141,8 +1164,13 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 f"# Recommendation for {current_time_range} is to set working mode to Maximize Self Consumption to charge batteries from solar",
             )
         elif (
-            self._hourly_calculations.get(current_time_range, {}).get("recommendation")
-            == Recommendations.BatteriesDischargeMode.value
+            (
+                self._hourly_calculations.get(current_time_range, {}).get(
+                    "recommendation"
+                )
+                == Recommendations.BatteriesDischargeMode.value
+                and self._hsem_force_working_mode_state == "auto"
+            )
             or self._hsem_force_working_mode_state
             == Recommendations.BatteriesDischargeMode.value
         ):
@@ -1153,7 +1181,14 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 f"# Recommendation for {current_time_range} is to set working mode to Maximize Self Consumption to enable batteries discharge to cover load",
             )
         elif (
-            self._hourly_calculations.get(current_time_range, {}).get("recommendation")
+            (
+                self._hourly_calculations.get(current_time_range, {}).get(
+                    "recommendation"
+                )
+                == Recommendations.BatteriesWaitMode.value
+                and self._hsem_force_working_mode_state == "auto"
+            )
+            or self._hsem_force_working_mode_state
             == Recommendations.BatteriesWaitMode.value
         ):
             # Winter/Spring settings
