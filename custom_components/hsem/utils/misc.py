@@ -118,6 +118,12 @@ def convert_to_boolean(state) -> bool:
     if state is None:
         return False
 
+    if isinstance(state, bool):
+        return state
+
+    if isinstance(state, int):
+        return state != 0
+
     state_map = {
         "on": True,
         "true": True,
@@ -144,7 +150,8 @@ def convert_to_boolean(state) -> bool:
     }
 
     # Convert the state to lowercase for case-insensitive comparison
-    state_value_lower = state.lower()
+    if isinstance(state, str):
+        state_value_lower = state.lower()
 
     # Check if the state is in the mapping and return the corresponding boolean
     if state_value_lower in state_map:
@@ -178,6 +185,38 @@ async def async_resolve_entity_id_from_unique_id(
             f"Entity with unique_id {unique_entity_id} not found in registry."
         )
         return None
+
+
+async def async_set_number_value(self, entity_id, value) -> None:
+    """
+    Set the value for a number entity.
+
+    Parameters:
+    - entity_id (str): The entity_id of the number entity.
+    - value (float|int): The value to set.
+    """
+    entity = self.hass.states.get(entity_id)
+
+    if entity is None:
+        _LOGGER.error(f"Entity with id {entity_id} not found.")
+        return
+
+    try:
+        await self.hass.services.async_call(
+            "number",
+            "set_value",
+            {
+                "entity_id": entity_id,
+                "value": value,
+            },
+            blocking=True,
+        )
+        _LOGGER.debug(f"Set value '{value}' for number entity_id '{entity_id}'")
+    except Exception as err:
+        _LOGGER.error(
+            f"Failed to set value '{value}' for number entity_id '{entity_id}': {err}"
+        )
+        raise
 
 
 async def async_set_select_option(self, entity_id, option) -> None:
