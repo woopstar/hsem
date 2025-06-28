@@ -39,7 +39,9 @@ from custom_components.hsem.utils.huawei import (
 from custom_components.hsem.utils.misc import (
     async_logger,
     async_resolve_entity_id_from_unique_id,
+    async_set_number_value,
     async_set_select_option,
+    convert_to_boolean,
     convert_to_float,
     convert_to_int,
     convert_to_time,
@@ -267,10 +269,13 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             self._config_entry,
             "hsem_huawei_solar_inverter_active_power_control",
         )
-        self._hsem_house_power_includes_ev_charger_power = get_config_value(
-            self._config_entry,
-            "hsem_house_power_includes_ev_charger_power",
+        self._hsem_house_power_includes_ev_charger_power = convert_to_boolean(
+            get_config_value(
+                self._config_entry,
+                "hsem_house_power_includes_ev_charger_power",
+            )
         )
+
         self._hsem_ev_charger_power = get_config_value(
             self._config_entry,
             "hsem_ev_charger_power",
@@ -923,24 +928,31 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 else 0.0
             )
 
-            if self._hsem_house_power_includes_ev_charger_power is not None:
+            if self._hsem_house_power_includes_ev_charger_power:
                 self._hsem_net_consumption_with_ev = (
                     self._hsem_house_consumption_power_state
                     - self._hsem_solar_production_power_state
                 )
                 self._hsem_net_consumption = (
                     self._hsem_house_consumption_power_state
-                    - (self._hsem_solar_production_power_state - ev_charger_power_state)
+                    - self._hsem_solar_production_power_state
+                    - ev_charger_power_state
                 )
             else:
                 self._hsem_net_consumption_with_ev = (
                     self._hsem_house_consumption_power_state
-                    - (self._hsem_solar_production_power_state + ev_charger_power_state)
+                    - self._hsem_solar_production_power_state
+                    + ev_charger_power_state
                 )
                 self._hsem_net_consumption = (
                     self._hsem_house_consumption_power_state
                     - self._hsem_solar_production_power_state
                 )
+
+            await async_logger(
+                self,
+                f"Net consumption calculated: {self._hsem_net_consumption}, with EV: {self._hsem_net_consumption_with_ev}, hsem_house_power_includes_ev_charger_power: {self._hsem_house_power_includes_ev_charger_power}, hsem_house_consumption_power_state: {self._hsem_house_consumption_power_state}, hsem_solar_production_power_state: {self._hsem_solar_production_power_state}, ev_charger_power_state: {ev_charger_power_state}",
+            )
         else:
             self._hsem_net_consumption = 0.0
 
@@ -1025,7 +1037,15 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
         # Set maximum discharging power for batteries if EV charger is not active
         if not self._hsem_ev_charger_status_state:
-            self._hsem_huawei_solar_batteries_maximum_discharging_power_state = 5000
+            if (
+                self._hsem_huawei_solar_batteries_maximum_discharging_power_state
+                != 5000
+            ):
+                await async_set_number_value(
+                    self,
+                    self._hsem_huawei_solar_batteries_maximum_discharging_power,
+                    5000,
+                )
 
         # Determine the appropriate TOU modes and working mode state. In priority order:
         if (
@@ -1077,17 +1097,26 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             tou_modes = DEFAULT_HSEM_EV_CHARGER_TOU_MODES
             working_mode = WorkingModes.TimeOfUse.value
             state = Recommendations.EVSmartCharging.value
-            house_power = convert_to_int(self._hsem_house_consumption_power_state)
+            house_power = convert_to_int(self._hsem_net_consumption)
 
-            # Calculate discharge power to match house consumption and round up to nearest 100W
+            # Calculate discharge power to match house consumption and round up to nearest 150W
             batteries_discharge_power = convert_to_int(
-                100 * math.ceil(float(house_power) / 100)
+                150 * math.ceil(float(house_power) / 150)
             )
+
+            if batteries_discharge_power < 50:
+                batteries_discharge_power = 50
 
             # Set maximum discharging power for batteries
-            self._hsem_huawei_solar_batteries_maximum_discharging_power_state = (
-                batteries_discharge_power
-            )
+            if (
+                self._hsem_huawei_solar_batteries_maximum_discharging_power_state
+                != batteries_discharge_power
+            ):
+                await async_set_number_value(
+                    self,
+                    self._hsem_huawei_solar_batteries_maximum_discharging_power,
+                    batteries_discharge_power,
+                )
 
             await async_logger(
                 self,
