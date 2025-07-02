@@ -36,7 +36,7 @@ async def get_ev_step_schema(config_entry) -> vol.Schema:
             ): selector(
                 {
                     "number": {
-                        "min": 0,
+                        "min": 50,
                         "max": 5000,
                         "step": 1,
                         "unit_of_measurement": "kWh",

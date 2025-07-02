@@ -88,8 +88,8 @@
           "hsem_ev_charger_power": "Select the sensor that measures the power consumption of your EV charger.",
           "hsem_ev_charger_status": "Select the sensor or entity that indicates whether the EV charger is active (e.g., a switch or sensor).",
           "hsem_house_power_includes_ev_charger_power": "Enable this if the house consumption power sensor already includes the EV charger power consumption.",
-          "hsem_ev_charger_force_max_discharge_power": "Enable this if you want to force the EV charger to use the maximum discharge power.",
-          "hsem_ev_charger_max_discharge_power": "Set the maximum discharge power for the EV charger."
+          "hsem_ev_charger_force_max_discharge_power": "Enable this if you want to force a specific maximum discharge power for the Huawei batteries while EV is charging.",
+          "hsem_ev_charger_max_discharge_power": "Set the maximum discharge power for the Huawei batteries while EV is charging."
         },
         "description": "Configure EV Charger settings for HSEM.",
         "title": "EV Charger Settings (Optional)"
@@ -267,8 +267,8 @@
           "hsem_ev_charger_power": "Select the sensor that measures the power consumption of your EV charger.",
           "hsem_ev_charger_status": "Select the sensor or entity that indicates whether the EV charger is active (e.g., a switch or sensor).",
           "hsem_house_power_includes_ev_charger_power": "Enable this if the house consumption power sensor already includes the EV charger power consumption.",
-          "hsem_ev_charger_force_max_discharge_power": "Enable this if you want to force the EV charger to use the maximum discharge power.",
-          "hsem_ev_charger_max_discharge_power": "Set the maximum discharge power for the EV charger."
+          "hsem_ev_charger_force_max_discharge_power": "Enable this if you want to force a specific maximum discharge power for the Huawei batteries while EV is charging.",
+          "hsem_ev_charger_max_discharge_power": "Set the maximum discharge power for the Huawei batteries while EV is charging."
         },
         "description": "Configure EV Charger settings for HSEM.",
         "title": "EV Charger Settings (Optional)"

@@ -1126,6 +1126,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             elif (
                 self._hsem_ev_charger_power_state is not None
                 and convert_to_int(self._hsem_ev_charger_power_state) > 0
+                and not self._hsem_ev_charger_force_max_discharge_power
             ):
                 working_mode = WorkingModes.MaximizeSelfConsumption.value
                 state = Recommendations.EVSmartCharging.value
