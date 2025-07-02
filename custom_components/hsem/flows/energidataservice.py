@@ -50,12 +50,12 @@ async def validate_energidataservice_input(hass, user_input) -> dict[str, str]:
         if field not in user_input:
             errors[field] = "required"
 
-    required_fields_entities = [
+    optional_entity_fields = [
         "hsem_energi_data_service_import",
         "hsem_energi_data_service_export",
     ]
 
-    for field in required_fields_entities:
+    for field in optional_entity_fields:
         if field not in user_input:
             errors[field] = "required"
         else:

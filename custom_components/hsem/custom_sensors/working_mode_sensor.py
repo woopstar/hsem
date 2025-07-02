@@ -110,6 +110,8 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_house_power_includes_ev_charger_power = None
         self._hsem_ev_charger_status_state = False
         self._hsem_ev_charger_power_state = False
+        self._hsem_ev_charger_force_max_discharge_power = None
+        self.hsem_ev_charger_max_discharge_power = None
         self._hsem_house_consumption_power_state = 0.0
         self._hsem_solar_production_power_state = 0.0
         self._hsem_huawei_solar_inverter_active_power_control_state = None
@@ -273,6 +275,18 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             get_config_value(
                 self._config_entry,
                 "hsem_house_power_includes_ev_charger_power",
+            )
+        )
+        self._hsem_ev_charger_force_max_discharge_power = convert_to_boolean(
+            get_config_value(
+                self._config_entry,
+                "hsem_ev_charger_force_max_discharge_power",
+            )
+        )
+        self._hsem_ev_charger_max_discharge_power = convert_to_int(
+            get_config_value(
+                self._config_entry,
+                "hsem_ev_charger_max_discharge_power",
             )
         )
 
@@ -470,6 +484,8 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             "energy_needs": self._energy_needs,
             "ev_charger_power_state": self._hsem_ev_charger_power_state,
             "ev_charger_status_state": self._hsem_ev_charger_status_state,
+            "ev_charger_max_discharge_power_state": self._hsem_ev_charger_max_discharge_power,
+            "ev_charger_force_max_discharge_power": self._hsem_ev_charger_force_max_discharge_power,
             "force_working_mode_state": self._hsem_force_working_mode_state,
             "hourly_calculations": self._hourly_calculations,
             "house_consumption_energy_weight_14d": self._hsem_house_consumption_energy_weight_14d,
@@ -1093,30 +1109,52 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             or self._hsem_force_working_mode_state
             == Recommendations.EVSmartCharging.value
         ):
-            # EV Charger is active. Disable battery discharge
-            tou_modes = DEFAULT_HSEM_EV_CHARGER_TOU_MODES
-            working_mode = WorkingModes.TimeOfUse.value
-            state = Recommendations.EVSmartCharging.value
-            house_power = convert_to_int(self._hsem_net_consumption)
+            if self._hsem_ev_charger_force_max_discharge_power:
+                working_mode = WorkingModes.MaximizeSelfConsumption.value
+                state = Recommendations.EVSmartCharging.value
+                # Set maximum discharging power for batteries
+                if (
+                    self._hsem_huawei_solar_batteries_maximum_discharging_power_state
+                    != self._hsem_ev_charger_max_discharge_power
+                ):
+                    await async_set_number_value(
+                        self,
+                        self._hsem_huawei_solar_batteries_maximum_discharging_power,
+                        self._hsem_ev_charger_max_discharge_power,
+                    )
 
-            # Calculate discharge power to match house consumption and round up to nearest 150W
-            batteries_discharge_power = convert_to_int(
-                150 * math.ceil(float(house_power) / 150)
-            )
-
-            if batteries_discharge_power < 50:
-                batteries_discharge_power = 50
-
-            # Set maximum discharging power for batteries
-            if (
-                self._hsem_huawei_solar_batteries_maximum_discharging_power_state
-                != batteries_discharge_power
+            elif (
+                self._hsem_ev_charger_power_state is not None
+                and convert_to_int(self._hsem_ev_charger_power_state) > 0
+                and not self._hsem_ev_charger_force_max_discharge_power
             ):
-                await async_set_number_value(
-                    self,
-                    self._hsem_huawei_solar_batteries_maximum_discharging_power,
-                    batteries_discharge_power,
+                working_mode = WorkingModes.MaximizeSelfConsumption.value
+                state = Recommendations.EVSmartCharging.value
+                house_power = convert_to_int(self._hsem_net_consumption)
+
+                # Calculate discharge power to match house consumption and round up to nearest 150W
+                batteries_discharge_power = convert_to_int(
+                    150 * math.ceil(float(house_power) / 150)
                 )
+
+                if batteries_discharge_power < 50:
+                    batteries_discharge_power = 50
+
+                # Set maximum discharging power for batteries
+                if (
+                    self._hsem_huawei_solar_batteries_maximum_discharging_power_state
+                    != batteries_discharge_power
+                ):
+                    await async_set_number_value(
+                        self,
+                        self._hsem_huawei_solar_batteries_maximum_discharging_power,
+                        batteries_discharge_power,
+                    )
+            else:
+                # EV Charger is active. Disable battery discharge
+                tou_modes = DEFAULT_HSEM_EV_CHARGER_TOU_MODES
+                working_mode = WorkingModes.TimeOfUse.value
+                state = Recommendations.EVSmartCharging.value
 
             await async_logger(
                 self,

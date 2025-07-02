@@ -22,6 +22,28 @@ async def get_ev_step_schema(config_entry) -> vol.Schema:
                     config_entry, "hsem_house_power_includes_ev_charger_power"
                 ),
             ): selector({"boolean": {}}),
+            vol.Required(
+                "hsem_ev_charger_force_max_discharge_power",
+                default=get_config_value(
+                    config_entry, "hsem_ev_charger_force_max_discharge_power"
+                ),
+            ): selector({"boolean": {}}),
+            vol.Required(
+                "hsem_ev_charger_max_discharge_power",
+                default=get_config_value(
+                    config_entry, "hsem_ev_charger_max_discharge_power"
+                ),
+            ): selector(
+                {
+                    "number": {
+                        "min": 50,
+                        "max": 5000,
+                        "step": 1,
+                        "unit_of_measurement": "kWh",
+                        "mode": "slider",
+                    }
+                }
+            ),
         }
     )
 
@@ -32,6 +54,8 @@ async def validate_ev_step_input(hass, user_input) -> dict[str, str]:
 
     required_fields = [
         "hsem_house_power_includes_ev_charger_power",
+        "hsem_ev_charger_max_discharge_power",
+        "hsem_ev_charger_force_max_discharge_power",
     ]
 
     for field in required_fields:

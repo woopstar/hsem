@@ -48,6 +48,8 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_energi_data_service_export_min_price": -0.15,
     "hsem_ev_charger_power": vol.UNDEFINED,
     "hsem_ev_charger_status": vol.UNDEFINED,
+    "hsem_ev_charger_force_max_discharge_power": False,
+    "hsem_ev_charger_max_discharge_power": 0,
     "hsem_extended_attributes": False,
     "hsem_house_consumption_energy_weight_14d": 10,
     "hsem_house_consumption_energy_weight_1d": 25,
