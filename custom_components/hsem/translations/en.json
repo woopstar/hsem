@@ -80,12 +80,16 @@
         "data": {
           "hsem_ev_charger_power": "EV Charger Power Sensor",
           "hsem_ev_charger_status": "EV Charger Status Sensor",
-          "hsem_house_power_includes_ev_charger_power": "House Power Includes EV Charger Power"
+          "hsem_house_power_includes_ev_charger_power": "House Power Includes EV Charger Power",
+          "hsem_ev_charger_force_max_discharge_power": "EV Charger Force Max Discharge Power",
+          "hsem_ev_charger_max_discharge_power": "EV Charger Max Discharge Power"
         },
         "data_description": {
           "hsem_ev_charger_power": "Select the sensor that measures the power consumption of your EV charger.",
           "hsem_ev_charger_status": "Select the sensor or entity that indicates whether the EV charger is active (e.g., a switch or sensor).",
-          "hsem_house_power_includes_ev_charger_power": "Enable this if the house consumption power sensor already includes the EV charger power consumption."
+          "hsem_house_power_includes_ev_charger_power": "Enable this if the house consumption power sensor already includes the EV charger power consumption.",
+          "hsem_ev_charger_force_max_discharge_power": "Enable this if you want to force the EV charger to use the maximum discharge power.",
+          "hsem_ev_charger_max_discharge_power": "Set the maximum discharge power for the EV charger."
         },
         "description": "Configure EV Charger settings for HSEM.",
         "title": "EV Charger Settings (Optional)"
@@ -102,7 +106,8 @@
           "hsem_huawei_solar_device_id_batteries": "Huawei Batteries Device",
           "hsem_huawei_solar_device_id_inverter_1": "Huawei Inverter 1 Device",
           "hsem_huawei_solar_device_id_inverter_2": "Huawei Inverter 2 Device",
-          "hsem_huawei_solar_inverter_active_power_control": "Huawei Inverter Active Power Control Sensor"
+          "hsem_huawei_solar_inverter_active_power_control": "Huawei Inverter Active Power Control Sensor",
+          "hsem_huawei_solar_batteries_maximum_discharging_power": "Huawei Batteries Maximum Discharging Power (W)"
         },
         "data_description": {
           "hsem_batteries_conversion_loss": "Specify the percentage of energy loss when charging the battery. This represents the conversion loss, typically between 5% and 10%, which occurs when importing energy from solar panels or the grid to the battery. It is used to calculate the actual time required to charge the battery.",
@@ -115,7 +120,8 @@
           "hsem_huawei_solar_device_id_batteries": "Select your Huawei battery device.",
           "hsem_huawei_solar_device_id_inverter_1": "Select your primary Huawei inverter device.",
           "hsem_huawei_solar_device_id_inverter_2": "Select your secondary Huawei inverter device, if applicable.",
-          "hsem_huawei_solar_inverter_active_power_control": "Select the sensor that controls the active power output of your Huawei inverter."
+          "hsem_huawei_solar_inverter_active_power_control": "Select the sensor that controls the active power output of your Huawei inverter.",
+          "hsem_huawei_solar_batteries_maximum_discharging_power": "Select the sensor that provides the maximum discharging power for your Huawei batteries."
         },
         "description": "Configure the working mode for Huawei solar batteries.",
         "title": "Huawei Solar Sensors"
@@ -253,12 +259,16 @@
         "data": {
           "hsem_ev_charger_power": "EV Charger Power Sensor",
           "hsem_ev_charger_status": "EV Charger Status Sensor",
-          "hsem_house_power_includes_ev_charger_power": "House Power Includes EV Charger Power"
+          "hsem_house_power_includes_ev_charger_power": "House Power Includes EV Charger Power",
+          "hsem_ev_charger_force_max_discharge_power": "EV Charger Force Max Discharge Power",
+          "hsem_ev_charger_max_discharge_power": "EV Charger Max Discharge Power"
         },
         "data_description": {
           "hsem_ev_charger_power": "Select the sensor that measures the power consumption of your EV charger.",
           "hsem_ev_charger_status": "Select the sensor or entity that indicates whether the EV charger is active (e.g., a switch or sensor).",
-          "hsem_house_power_includes_ev_charger_power": "Enable this if the house consumption power sensor already includes the EV charger power consumption."
+          "hsem_house_power_includes_ev_charger_power": "Enable this if the house consumption power sensor already includes the EV charger power consumption.",
+          "hsem_ev_charger_force_max_discharge_power": "Enable this if you want to force the EV charger to use the maximum discharge power.",
+          "hsem_ev_charger_max_discharge_power": "Set the maximum discharge power for the EV charger."
         },
         "description": "Configure EV Charger settings for HSEM.",
         "title": "EV Charger Settings (Optional)"
@@ -279,7 +289,8 @@
           "hsem_huawei_solar_device_id_batteries": "Huawei Batteries Device",
           "hsem_huawei_solar_device_id_inverter_1": "Huawei Inverter 1 Device",
           "hsem_huawei_solar_device_id_inverter_2": "Huawei Inverter 2 Device",
-          "hsem_huawei_solar_inverter_active_power_control": "Huawei Inverter Active Power Control Sensor"
+          "hsem_huawei_solar_inverter_active_power_control": "Huawei Inverter Active Power Control Sensor",
+          "hsem_huawei_solar_batteries_maximum_discharging_power": "Huawei Batteries Maximum Discharging Power (W)"
         },
         "data_description": {
           "hsem_batteries_conversion_loss": "Specify the percentage of energy loss when charging the battery. This represents the conversion loss, typically between 5% and 10%, which occurs when importing energy from solar panels or the grid to the battery. It is used to calculate the actual time required to charge the battery.",
@@ -292,7 +303,8 @@
           "hsem_huawei_solar_device_id_batteries": "Select your Huawei battery device.",
           "hsem_huawei_solar_device_id_inverter_1": "Select your primary Huawei inverter device.",
           "hsem_huawei_solar_device_id_inverter_2": "Select your secondary Huawei inverter device, if applicable.",
-          "hsem_huawei_solar_inverter_active_power_control": "Select the sensor that controls the active power output of your Huawei inverter."
+          "hsem_huawei_solar_inverter_active_power_control": "Select the sensor that controls the active power output of your Huawei inverter.",
+          "hsem_huawei_solar_batteries_maximum_discharging_power": "Select the sensor that provides the maximum discharging power for your Huawei batteries."
         },
         "description": "Configure the working mode for Huawei solar batteries.",
         "title": "Huawei Solar Sensors"
