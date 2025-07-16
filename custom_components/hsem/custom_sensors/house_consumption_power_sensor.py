@@ -178,7 +178,7 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
 
     async def async_update(self, event=None) -> None:
         """Manually trigger the sensor update."""
-        await self._async_handle_update(None)
+        await self._async_handle_update(event)
 
     async def async_options_updated(self, config_entry) -> None:
         """Handle options update from configuration change."""
@@ -220,7 +220,7 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
             self._config_entry, "hsem_house_power_includes_ev_charger_power"
         )
 
-    async def _async_handle_update(self, event) -> None:
+    async def _async_handle_update(self, event=None) -> None:
         """Handle updates to the source sensor."""
         self._state = None
 

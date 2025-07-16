@@ -6,9 +6,12 @@ on:
 env:
   DEP_PATH: ./requirements.txt
 
+permissions: read-all
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions: write-all
     steps:
       - name: Check out master
         uses: actions/checkout@v4

@@ -10,10 +10,13 @@ on:
   pull_request:
     types: [opened, reopened, synchronize]
 
+permissions: read-all
+
 jobs:
   update_release_draft:
     name: Update release draft
     runs-on: ubuntu-latest
+    permissions: write-all
     steps:
       - name: Checkout
         uses: actions/checkout@v4
