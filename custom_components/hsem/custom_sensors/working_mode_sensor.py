@@ -1002,7 +1002,6 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
         # Determine the current month and hour
         now = datetime.now()
-        current_month = now.month
         current_hour_start = now.hour
         current_hour_end = (current_hour_start + 1) % 24
         current_time_range = f"{current_hour_start:02d}-{current_hour_end:02d}"
@@ -2237,7 +2236,6 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         for hour, data in self._hourly_calculations.items():
             import_price = data["import_price"]
             export_price = data["export_price"]
-            net_consumption = data["estimated_net_consumption"]
 
             # Fully Fed to Grid due to export price being higher than import price
             if export_price > import_price:
