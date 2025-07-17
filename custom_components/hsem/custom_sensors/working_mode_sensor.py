@@ -585,9 +585,6 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 # calculate the hourly export price
                 await self._async_calculate_hourly_export_price()
 
-                # calculate the optimization strategy
-                await self._async_optimization_strategy()
-
                 # calculate the energy needs
                 await self._async_calculate_energy_needs()
 
@@ -596,6 +593,9 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
                 # calculate the best charge time for batteries
                 await self._async_calculate_batteries_schedules_best_charge_time()
+
+                # calculate the final optimization strategy
+                await self._async_optimization_strategy()
 
             # Set the inverter power control mode
             if (
@@ -2277,11 +2277,13 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
             # Negative net consumption means we have solar surplus to charge batteries while covering the house
             if net_consumption is not None and net_consumption < 0:
-                charged += net_consumption
+                charged += (
+                    net_consumption * -1
+                )  # Convert negative to positive for charging
                 data["recommendation"] = Recommendations.BatteriesChargeSolar.value
                 await async_logger(
                     self,
-                    f"Hour: {hour} | Charging from solar surplus. Net Consumption: {net_consumption} | Total charged: {charged} kWh.",
+                    f"Hour: {hour} | Charging from solar surplus. Net Consumption: {net_consumption} | Import Price: {data['import_price']} | Total charged: {charged} kWh.",
                 )
 
         # So did we charge the battery totally?
@@ -2312,12 +2314,20 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                     )
 
                 if current_month in DEFAULT_HSEM_MONTHS_SUMMER:
-                    data["recommendation"] = Recommendations.BatteriesChargeSolar.value
-                    await async_logger(
-                        self,
-                        f"Hour: {hour} | Summer: setting recommendation to BatteriesChargeSolar.",
-                    )
-
+                    if data["solcast_pv_estimate"] > 0:
+                        data["recommendation"] = (
+                            Recommendations.BatteriesChargeSolar.value
+                        )
+                        await async_logger(
+                            self,
+                            f"Hour: {hour} | Summer: solar estimate: {data['solcast_pv_estimate']} kWh, setting recommendation to BatteriesChargeSolar.",
+                        )
+                    else:
+                        data["recommendation"] = Recommendations.BatteriesWaitMode.value
+                        await async_logger(
+                            self,
+                            f"Hour: {hour} | Summer: no solar estimate, setting recommendation to BatteriesWaitMode.",
+                        )
         await async_logger(
             self, "Completed optimization strategy for all remaining hours."
         )
