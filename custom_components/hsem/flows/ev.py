@@ -39,7 +39,7 @@ async def get_ev_step_schema(config_entry) -> vol.Schema:
                         "min": 50,
                         "max": 5000,
                         "step": 1,
-                        "unit_of_measurement": "kWh",
+                        "unit_of_measurement": "W",
                         "mode": "slider",
                     }
                 }

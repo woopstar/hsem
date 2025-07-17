@@ -1,7 +1,7 @@
 name: SonarCloud Scan
 
-on:
-  push:
+#on:
+#  push:
 
 jobs:
   build:
