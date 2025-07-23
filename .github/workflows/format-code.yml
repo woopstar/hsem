@@ -5,10 +5,13 @@ on:
     branches:
       - main
 
+permissions: read-all
+
 jobs:
   format:
     name: Format with black and isort
     runs-on: ubuntu-latest
+    permissions: write-all
     steps:
       - name: Checkout
         uses: actions/checkout@v4

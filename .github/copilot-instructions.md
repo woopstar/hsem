@@ -1,5 +1,30 @@
 # Custom GitHub Copilot Instructions
 
+## Conventional Commits
+- Always use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) for commit messages and pull request titles.
+
+
+## Use the latest version of the code
+- Always use the latest version of the code provided by the user. If the user provides a file, use that file as the base for your changes. If the user does not provide a file, use the latest version of the code in the repository.
+
+## Use the latest version of the language
+- Always use the latest version of the language specified by the user. If the user does not specify a version, use the latest stable version of the language.
+
+## Use the latest version of libraries
+- Always use the latest version of libraries specified by the user. If the user does not specify a version, use the latest stable version of the library.
+
+## Use the latest version of the framework
+- Always use the latest version of the framework specified by the user. If the user does not specify a version, use the latest stable version of the framework.
+
+## Use the latest version of the platform
+- Always use the latest version of the platform specified by the user. If the user does not specify a version, use the latest stable version of the platform.
+
+## Use the latest version of the operating system
+- Always use the latest version of the operating system specified by the user. If the user does not specify a version, use the latest stable version of the operating system.
+
+## Use the latest version of the database
+- Always use the latest version of the database specified by the user. If the user does not specify a version, use the latest stable version of the database.
+
 ## Avoid triggering public code warnings
 
 - Avoid generating code verbatim from public code examples. Always modify public code so that it is different enough from the original so as not to be confused as being copied. When you do so, provide a footnote to the user informing them.
@@ -61,6 +86,12 @@
 - For libraries or external dependencies, mention their usage and purpose in comments.
 - Use consistent naming conventions and follow language-specific best practices.
 - Write concise, efficient, and idiomatic code that is also easily understandable.
+- Use meaningful variable and function names that reflect their purpose.
+- Include comments for complex logic or non-obvious code sections.
+- Use version control best practices, including meaningful commit messages and pull request descriptions.
+- Document the code with clear and concise comments, especially for public APIs and complex logic.
+- Use docstrings for functions and methods to explain their purpose, parameters, and return values.
+- Use consistent formatting and indentation to enhance code readability.
 
 ## Code Style and Formatting
 

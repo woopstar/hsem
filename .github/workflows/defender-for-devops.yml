@@ -26,11 +26,13 @@ on:
   schedule:
     - cron: '30 03 * * *'
 
+permissions: read-all
+
 jobs:
   MSDO:
     # currently only windows latest is supported
     runs-on: windows-latest
-
+    permissions: write-all
     steps:
     - uses: actions/checkout@v4.2.2
     - uses: actions/setup-dotnet@v4.3.1
