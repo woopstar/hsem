@@ -574,7 +574,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         ):
             self._state = Recommendations.MissingInputEntities.value
 
-            await async_logger(self, f"Missing input entities, skipping calculations.")
+            await async_logger(self, "Missing input entities, skipping calculations.")
         else:
             if self._hsem_force_working_mode_state == "auto":
 
@@ -1332,7 +1332,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             )
             return
 
-        await async_logger(self, f"Calculating hourly data for energy averages...")
+        await async_logger(self, "Calculating hourly data for energy averages...")
 
         for hour, data in self._hourly_calculations.items():
             hour_start = int(hour.split("-")[0])
@@ -1488,15 +1488,15 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             self._hsem_solcast_pv_forecast_forecast_today
         )
         if not solcast_sensor:
-            await async_logger(self, f"Solcast forecast sensor not found.")
+            await async_logger(self, "Solcast forecast sensor not found.")
             return
 
         detailed_forecast = solcast_sensor.attributes.get("detailedForecast", [])
         if not detailed_forecast:
-            await async_logger(self, f"Detailed forecast data is missing or empty.")
+            await async_logger(self, "Detailed forecast data is missing or empty.")
             return
 
-        await async_logger(self, f"Calculating hourly Solcast PV estimates...")
+        await async_logger(self, "Calculating hourly Solcast PV estimates...")
 
         for period in detailed_forecast:
             period_start = period.get("period_start")
@@ -1520,18 +1520,18 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
         if not import_price_sensor:
             await async_logger(
-                self, f"hsem_energi_data_service_import sensor not found."
+                self, "hsem_energi_data_service_import sensor not found."
             )
             return
 
         detailed_raw_today = import_price_sensor.attributes.get("raw_today", [])
         if not detailed_raw_today:
             await async_logger(
-                self, f"Detailed raw data is missing or empty for import prices."
+                self, "Detailed raw data is missing or empty for import prices."
             )
             return
 
-        await async_logger(self, f"Calculating hourly import prices...")
+        await async_logger(self, "Calculating hourly import prices...")
 
         for period in detailed_raw_today:
             period_start = period.get("hour")
@@ -1574,18 +1574,18 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         )
         if not export_price_sensor:
             await async_logger(
-                self, f"hsem_energi_data_service_export sensor not found."
+                self, "hsem_energi_data_service_export sensor not found."
             )
             return
 
         detailed_raw_today = export_price_sensor.attributes.get("raw_today", [])
         if not detailed_raw_today:
             await async_logger(
-                self, f"Detailed raw data is missing or empty for export prices."
+                self, "Detailed raw data is missing or empty for export prices."
             )
             return
 
-        await async_logger(self, f"Calculating hourly export prices...")
+        await async_logger(self, "Calculating hourly export prices...")
 
         for period in detailed_raw_today:
             period_start = period.get("hour")
@@ -2504,12 +2504,6 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
         # Initial update
         await self._async_handle_update(None)
-
-        # self._timer = async_track_time_interval(
-        #    self.hass,
-        #    self._async_handle_update,
-        #    timedelta(minutes=self._update_interval),
-        # )
 
         # Schedule updates at the start of every hour
         async_track_time_change(
