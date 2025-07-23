@@ -21,8 +21,8 @@ _LOGGER = logging.getLogger(__name__)
 # Create a separate logger for async_logger
 HSEM_LOGGER = logging.getLogger("hsem_logger")
 LOG_FILE_PATH = "/config/hsem.log"
-LOG_FILE_MAX_BYTES = 10 * 1024 * 1024  # 10 MB
-LOG_FILE_BACKUP_COUNT = 2  # Keep 3 backup files
+LOG_FILE_MAX_BYTES = 5 * 1024 * 1024  # 5 MB
+LOG_FILE_BACKUP_COUNT = 1  # Keep 1 backup files
 
 # Configure the rotating file handler
 file_handler = RotatingFileHandler(
@@ -43,6 +43,8 @@ HSEM_LOGGER.setLevel(logging.DEBUG)
 HSEM_LOGGER.propagate = False
 
 LOG_EXECUTOR = ThreadPoolExecutor(max_workers=1)
+
+_entity_id_from_unique_id_cache = {}
 
 
 class EntityNotFoundError(HomeAssistantError):
@@ -170,6 +172,18 @@ async def async_resolve_entity_id_from_unique_id(
     :param domain: The domain of the entity (e.g., 'sensor').
     :return: The resolved entity_id or None if not found.
     """
+
+    global _entity_id_from_unique_id_cache
+
+    cache_key = (DOMAIN, domain, unique_entity_id)
+
+    # Check cache first
+    entity_id = _entity_id_from_unique_id_cache.get(cache_key)
+    if entity_id:
+        if self.hass.states.get(entity_id) is not None:
+            return entity_id
+        del _entity_id_from_unique_id_cache[cache_key]
+
     # Get the entity registry
     registry = er.async_get(self.hass)
 
@@ -178,6 +192,9 @@ async def async_resolve_entity_id_from_unique_id(
 
     # Log the resolved entity_id for debugging purposes
     if entry:
+        # Store in cache
+        _entity_id_from_unique_id_cache[cache_key] = entry
+
         _LOGGER.debug(f"Resolved entity_id for unique_id {unique_entity_id}: {entry}")
         return entry
     else:
