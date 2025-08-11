@@ -1,15 +1,18 @@
 name: Tests
 
-on:
-  push:
-    branches: [ main, dev ]
-  pull_request:
-    branches: [ main, dev ]
+#on:
+#  push:
+#    branches: [ main, dev ]
+#  pull_request:
+#    branches: [ main, dev ]
+
+permissions: read-all
 
 jobs:
   tests:
     name: Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
+    permissions: write-all
     strategy:
       matrix:
         python-version: ["3.13"]
