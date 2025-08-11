@@ -178,7 +178,7 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
 
     async def async_update(self, event=None) -> None:
         """Manually trigger the sensor update."""
-        await self._async_handle_update(None)
+        await self._async_handle_update(event)
 
     async def async_options_updated(self, config_entry) -> None:
         """Handle options update from configuration change."""
@@ -220,7 +220,7 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
             self._config_entry, "hsem_house_power_includes_ev_charger_power"
         )
 
-    async def _async_handle_update(self, event) -> None:
+    async def _async_handle_update(self, event=None) -> None:
         """Handle updates to the source sensor."""
         self._state = None
 
@@ -376,7 +376,7 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
             unit_prefix="k",
             unit_time=UnitOfTime.HOURS,
             max_sub_interval=timedelta(minutes=0),
-            device_info=None,
+            hass=self.hass,
             e_id=integral_sensor_entity_id,
             id=integral_sensor_unique_id,
             config_entry=self._config_entry,
@@ -450,7 +450,7 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
             tariff_entity=None,
             tariff=None,
             unique_id=utility_meter_unique_id,
-            device_info=None,
+            hass=self.hass,
             sensor_always_available=True,
             id=utility_meter_unique_id,
             e_id=utility_meter_entity_id,

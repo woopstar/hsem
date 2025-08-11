@@ -92,7 +92,7 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
 
     async def async_update(self, event=None) -> None:
         """Manually trigger the sensor update."""
-        return await self._async_handle_update(None)
+        return await self._async_handle_update(event)
 
     def parse_date(self, date_str) -> str:
         # Strip any time component if it exists
@@ -138,7 +138,7 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
                 )
                 self._tracked_entities.add(self._tracked_entity)
 
-    async def _async_handle_update(self, event) -> None:
+    async def _async_handle_update(self, event=None) -> None:
         """Handle updates to the source sensor."""
         self._state = 0.00
 
@@ -150,7 +150,7 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
         await self._async_store_utility_meter_value()
 
         # Calculate the average value from `self._measurements`
-        if self._measurements is not None:
+        if self._measurements:
             total = sum(self._measurements.values())
             count = len(self._measurements)
             if count > 0:

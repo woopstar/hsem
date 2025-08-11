@@ -13,6 +13,7 @@ class Recommendations(Enum):
     An enumeration representing various recommendations for energy management.
     """
 
+    TimePassed = "time_passed"
     BatteriesChargeGrid = "batteries_charge_grid"
     BatteriesChargeSolar = "batteries_charge_solar"
     BatteriesDischargeMode = "batteries_discharge_mode"
@@ -21,6 +22,4 @@ class Recommendations(Enum):
     ForceBatteriesDischarge = "force_batteries_discharge"
     ForceExport = "force_export"
     FullyFedToGrid = "fully_fed_to_grid"
-    MaximizeSelfConsumption = "maximise_self_consumption"
     MissingInputEntities = "missing_input_entities"
-    TimeOfUse = "time_of_use_luna2000"

@@ -1,7 +1,7 @@
 name: Dependencies license compliance checker
 
-on:
-  push:
+#on:
+#  push:
 
 jobs:
   license_check:

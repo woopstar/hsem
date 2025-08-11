@@ -9,10 +9,13 @@ on:
       - .github/sync-labels.yml
   workflow_dispatch:
 
+permissions: read-all
+
 jobs:
   labels:
     name: ♻️ Sync labels
     runs-on: ubuntu-latest
+    permissions: write-all
     steps:
       - name: ⤵️ Check out code from GitHub
         uses: actions/checkout@v4.2.2
