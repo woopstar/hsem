@@ -2313,8 +2313,8 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         # Loop through hourly_calculations sorted by import_price to charge batteries from solar while import price is highest
         sorted_hours = sorted(
             self._hourly_calculations.items(),
-            key=lambda item: item[1].get("import_price", 0),
-            reverse=True,
+            key=lambda item: item[1].get("export_price", 0),
+            reverse=False,
         )
         for hour, data in sorted_hours:
             if charged >= batteries_needed_charge:
@@ -2333,7 +2333,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 data["recommendation"] = Recommendations.BatteriesChargeSolar.value
                 await async_logger(
                     self,
-                    f"Hour: {hour} | Charging from solar surplus. Net Consumption: {net_consumption} | Import Price: {data['import_price']} | Total charged: {round(charged, 3)} kWh.",
+                    f"Hour: {hour} | Charging from solar surplus. Net Consumption: {net_consumption} | Import Price: {data['import_price']} | Export Price: {data['export_price']} | Total charged: {round(charged, 3)} kWh.",
                 )
 
         # So did we charge the battery totally?
@@ -2377,7 +2377,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                     data["recommendation"] = Recommendations.BatteriesChargeSolar.value
                     await async_logger(
                         self,
-                        f"Hour: {hour} | Summer: solar estimate: {round(data['solcast_pv_estimate'], 3)} kWh, setting recommendation to BatteriesChargeSolar. | Import Price: {data['import_price']} | Net Consumption: {net_consumption}",
+                        f"Hour: {hour} | Summer: solar estimate: {round(data['solcast_pv_estimate'], 3)} kWh, setting recommendation to BatteriesChargeSolar. | Import Price: {data['import_price']} | Export Price: {data['export_price']} | Net Consumption: {net_consumption}",
                     )
                 else:
                     data["recommendation"] = (
@@ -2385,7 +2385,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                     )
                     await async_logger(
                         self,
-                        f"Hour: {hour} | Summer: no solar estimate, setting recommendation to BatteriesDischargeMode. | Import Price: {data['import_price']} | Net Consumption: {net_consumption}",
+                        f"Hour: {hour} | Summer: no solar estimate, setting recommendation to BatteriesDischargeMode. | Import Price: {data['import_price']} | Export Price: {data['export_price']} | Net Consumption: {net_consumption}",
                     )
         await async_logger(
             self, "Completed optimization strategy for all remaining hours."
