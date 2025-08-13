@@ -14,7 +14,7 @@ jobs:
     permissions: write-all
     steps:
       - name: Check out master
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: pyupio/safety-action
         uses: pyupio/safety-action@v1.0.1
