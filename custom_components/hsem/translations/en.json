@@ -18,13 +18,13 @@
         "data": {
           "hsem_batteries_enable_batteries_schedule_1": "Enable Battery Schedule 1",
           "hsem_batteries_enable_batteries_schedule_1_end": "Battery Schedule 1 End Time",
-          "hsem_batteries_enable_batteries_schedule_1_min_price_difference": "Minimum Price Difference for Schedule 1 (DKK)",
+          "hsem_batteries_enable_batteries_schedule_1_min_price_difference": "Minimum Price Difference for Schedule 1",
           "hsem_batteries_enable_batteries_schedule_1_start": "Battery Schedule 1 Start Time"
         },
         "data_description": {
           "hsem_batteries_enable_batteries_schedule_1": "Enable or disable the first battery discharge schedule.",
           "hsem_batteries_enable_batteries_schedule_1_end": "Specify the end time for the first battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_1_min_price_difference": "Set the minimum price difference (in DKK) required for this schedule to activate.",
+          "hsem_batteries_enable_batteries_schedule_1_min_price_difference": "Set the minimum price difference required for this schedule to activate.",
           "hsem_batteries_enable_batteries_schedule_1_start": "Specify the start time for the first battery discharge schedule."
         },
         "description": "Configure battery discharge schedules 1, including it's activation time and optional minimum price differences for activation.",
@@ -34,13 +34,13 @@
         "data": {
           "hsem_batteries_enable_batteries_schedule_2": "Enable Battery Schedule 2",
           "hsem_batteries_enable_batteries_schedule_2_end": "Battery Schedule 2 End Time",
-          "hsem_batteries_enable_batteries_schedule_2_min_price_difference": "Minimum Price Difference for Schedule 2 (DKK)",
+          "hsem_batteries_enable_batteries_schedule_2_min_price_difference": "Minimum Price Difference for Schedule 2",
           "hsem_batteries_enable_batteries_schedule_2_start": "Battery Schedule 2 Start Time"
         },
         "data_description": {
           "hsem_batteries_enable_batteries_schedule_2": "Enable or disable the second battery discharge schedule.",
           "hsem_batteries_enable_batteries_schedule_2_end": "Specify the end time for the second battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_2_min_price_difference": "Set the minimum price difference (in DKK) required for this schedule to activate.",
+          "hsem_batteries_enable_batteries_schedule_2_min_price_difference": "Set the minimum price difference required for this schedule to activate.",
           "hsem_batteries_enable_batteries_schedule_2_start": "Specify the start time for the second battery discharge schedule."
         },
         "description": "Configure battery discharge schedules 2, including it's activation time and optional minimum price differences for activation.",
@@ -50,13 +50,13 @@
         "data": {
           "hsem_batteries_enable_batteries_schedule_3": "Enable Battery Schedule 3",
           "hsem_batteries_enable_batteries_schedule_3_end": "Battery Schedule 3 End Time",
-          "hsem_batteries_enable_batteries_schedule_3_min_price_difference": "Minimum Price Difference for Schedule 3 (DKK)",
+          "hsem_batteries_enable_batteries_schedule_3_min_price_difference": "Minimum Price Difference for Schedule 3",
           "hsem_batteries_enable_batteries_schedule_3_start": "Battery Schedule 3 Start Time"
         },
         "data_description": {
           "hsem_batteries_enable_batteries_schedule_3": "Enable or disable the third battery discharge schedule.",
           "hsem_batteries_enable_batteries_schedule_3_end": "Specify the end time for the third battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_3_min_price_difference": "Set the minimum price difference (in DKK) required for this schedule to activate.",
+          "hsem_batteries_enable_batteries_schedule_3_min_price_difference": "Set the minimum price difference required for this schedule to activate.",
           "hsem_batteries_enable_batteries_schedule_3_start": "Specify the start time for the third battery discharge schedule."
         },
         "description": "Configure battery discharge schedules 3, including it's activation time and optional minimum price differences for activation.",
@@ -65,7 +65,7 @@
       "energidataservice": {
         "data": {
           "hsem_energi_data_service_export": "Energy Data Service Export Price Sensor",
-          "hsem_energi_data_service_export_min_price": "Export Minimum Price Required (DKK)",
+          "hsem_energi_data_service_export_min_price": "Export Minimum Price Required",
           "hsem_energi_data_service_import": "Energy Data Service Import Price Sensor"
         },
         "data_description": {
@@ -197,13 +197,13 @@
         "data": {
           "hsem_batteries_enable_batteries_schedule_1": "Enable Battery Schedule 1",
           "hsem_batteries_enable_batteries_schedule_1_end": "Battery Schedule 1 End Time",
-          "hsem_batteries_enable_batteries_schedule_1_min_price_difference": "Minimum Price Difference for Schedule 1 (DKK)",
+          "hsem_batteries_enable_batteries_schedule_1_min_price_difference": "Minimum Price Difference for Schedule 1",
           "hsem_batteries_enable_batteries_schedule_1_start": "Battery Schedule 1 Start Time"
         },
         "data_description": {
           "hsem_batteries_enable_batteries_schedule_1": "Enable or disable the first battery discharge schedule.",
           "hsem_batteries_enable_batteries_schedule_1_end": "Specify the end time for the first battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_1_min_price_difference": "Set the minimum price difference (in DKK) required for this schedule to activate.",
+          "hsem_batteries_enable_batteries_schedule_1_min_price_difference": "Set the minimum price difference required for this schedule to activate.",
           "hsem_batteries_enable_batteries_schedule_1_start": "Specify the start time for the first battery discharge schedule."
         },
         "description": "Configure battery discharge schedules 1, including it's activation time and optional minimum price differences for activation.",
@@ -213,13 +213,13 @@
         "data": {
           "hsem_batteries_enable_batteries_schedule_2": "Enable Battery Schedule 2",
           "hsem_batteries_enable_batteries_schedule_2_end": "Battery Schedule 2 End Time",
-          "hsem_batteries_enable_batteries_schedule_2_min_price_difference": "Minimum Price Difference for Schedule 2 (DKK)",
+          "hsem_batteries_enable_batteries_schedule_2_min_price_difference": "Minimum Price Difference for Schedule 2",
           "hsem_batteries_enable_batteries_schedule_2_start": "Battery Schedule 2 Start Time"
         },
         "data_description": {
           "hsem_batteries_enable_batteries_schedule_2": "Enable or disable the second battery discharge schedule.",
           "hsem_batteries_enable_batteries_schedule_2_end": "Specify the end time for the second battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_2_min_price_difference": "Set the minimum price difference (in DKK) required for this schedule to activate.",
+          "hsem_batteries_enable_batteries_schedule_2_min_price_difference": "Set the minimum price difference required for this schedule to activate.",
           "hsem_batteries_enable_batteries_schedule_2_start": "Specify the start time for the second battery discharge schedule."
         },
         "description": "Configure battery discharge schedules 2, including it's activation time and optional minimum price differences for activation.",
@@ -229,13 +229,13 @@
         "data": {
           "hsem_batteries_enable_batteries_schedule_3": "Enable Battery Schedule 3",
           "hsem_batteries_enable_batteries_schedule_3_end": "Battery Schedule 3 End Time",
-          "hsem_batteries_enable_batteries_schedule_3_min_price_difference": "Minimum Price Difference for Schedule 3 (DKK)",
+          "hsem_batteries_enable_batteries_schedule_3_min_price_difference": "Minimum Price Difference for Schedule 3",
           "hsem_batteries_enable_batteries_schedule_3_start": "Battery Schedule 3 Start Time"
         },
         "data_description": {
           "hsem_batteries_enable_batteries_schedule_3": "Enable or disable the third battery discharge schedule.",
           "hsem_batteries_enable_batteries_schedule_3_end": "Specify the end time for the third battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_3_min_price_difference": "Set the minimum price difference (in DKK) required for this schedule to activate.",
+          "hsem_batteries_enable_batteries_schedule_3_min_price_difference": "Set the minimum price difference required for this schedule to activate.",
           "hsem_batteries_enable_batteries_schedule_3_start": "Specify the start time for the third battery discharge schedule."
         },
         "description": "Configure battery discharge schedules 3, including it's activation time and optional minimum price differences for activation.",
@@ -244,7 +244,7 @@
       "energidataservice": {
         "data": {
           "hsem_energi_data_service_export": "Energy Data Service Export Price Sensor",
-          "hsem_energi_data_service_export_min_price": "Export Minimum Price Required (DKK)",
+          "hsem_energi_data_service_export_min_price": "Export Minimum Price Required",
           "hsem_energi_data_service_import": "Energy Data Service Import Price Sensor"
         },
         "data_description": {
