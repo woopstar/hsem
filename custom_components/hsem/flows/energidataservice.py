@@ -30,7 +30,6 @@ async def get_energidataservice_step_schema(config_entry) -> vol.Schema:
                         "min": -10.00,
                         "max": 0,
                         "step": 0.01,
-                        "unit_of_measurement": "DKK",
                         "mode": "slider",
                     }
                 }
