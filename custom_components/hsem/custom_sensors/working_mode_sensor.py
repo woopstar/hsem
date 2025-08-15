@@ -895,7 +895,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 async_track_state_change_event(
                     self.hass,
                     [self._hsem_ev_charger_status],
-                    self._async_handle_ev_charger_status_update,
+                    self._async_handle_update,
                 )
                 self._tracked_entities.add(self._hsem_ev_charger_status)
 
