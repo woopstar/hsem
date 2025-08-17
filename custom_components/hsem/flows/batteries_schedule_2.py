@@ -40,7 +40,6 @@ async def get_batteries_schedule_2_step_schema(config_entry) -> vol.Schema:
                         "min": 0,
                         "max": 5,
                         "step": 0.01,
-                        "unit_of_measurement": "DKK",
                         "mode": "box",
                     }
                 }
