@@ -155,12 +155,13 @@ def convert_to_boolean(state) -> bool:
     if isinstance(state, str):
         state_value_lower = state.lower()
 
-    # Check if the state is in the mapping and return the corresponding boolean
-    if state_value_lower in state_map:
-        return state_map[state_value_lower]
-    else:
-        return False
+        # Check if the state is in the mapping and return the corresponding boolean
+        if state_value_lower in state_map:
+            return state_map[state_value_lower]
+        else:
+            return False
 
+    return False
 
 async def async_resolve_entity_id_from_unique_id(
     self, unique_entity_id, domain="sensor"
