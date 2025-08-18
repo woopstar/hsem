@@ -9,7 +9,6 @@ Classes:
 """
 
 import logging
-import math
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -644,7 +643,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
         # Update last update time
         self._last_updated = now.isoformat()
-        self._next_update = (now + timedelta(minutes=self._update_interval)).isoformat()
+        self._next_update = (now + interval).isoformat()
         self._available = True
 
         await async_logger(
@@ -1010,15 +1009,20 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         )
 
         # Set maximum discharging power for batteries if EV charger is not active
+        if self._hsem_batteries_usable_capacity < 10:
+            max_power = 2500
+        else:
+            max_power = 5000
+
         if not self._hsem_ev_charger_status_state:
             if (
                 self._hsem_huawei_solar_batteries_maximum_discharging_power_state
-                != 5000
+                != max_power
             ):
                 await async_set_number_value(
                     self,
                     self._hsem_huawei_solar_batteries_maximum_discharging_power,
-                    5000,
+                    max_power,
                 )
 
         # Determine the appropriate TOU modes and working mode state. In priority order:
@@ -1070,6 +1074,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             if self._hsem_ev_charger_force_max_discharge_power:
                 working_mode = WorkingModes.MaximizeSelfConsumption.value
                 state = Recommendations.EVSmartCharging.value
+
                 # Set maximum discharging power for batteries
                 if (
                     self._hsem_huawei_solar_batteries_maximum_discharging_power_state
@@ -1088,7 +1093,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
             await async_logger(
                 self,
-                f"# Recommendation for {current_time_range} is EV Charger is active. Setting TOU Periods: {tou_modes} and Working Mode: {working_mode}, House Power: {house_power}, Batteries Discharge Power: {batteries_discharge_power}",
+                f"# Recommendation for {current_time_range} is EV Charger is active. Setting TOU Periods: {tou_modes} and Working Mode: {working_mode}",
             )
             self._hourly_calculations[current_time_range][
                 "recommendation"
@@ -1589,9 +1594,12 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             if avg_house_consumption is None:
                 estimated_net_consumption = None
             else:
-                estimated_net_consumption = round(
-                    avg_house_consumption - solcast_pv_estimate, 3
-                )
+                if self._hsem_ev_charger_status_state:
+                    estimated_net_consumption = round(avg_house_consumption, 3)
+                else:
+                    estimated_net_consumption = round(
+                        avg_house_consumption - solcast_pv_estimate, 3
+                    )
 
             # calculate the estimated net consumption
             if time_range in self._hourly_calculations:
@@ -1922,7 +1930,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         await async_logger(
             self,
             f"Total Required Charge: {round(total_required_charge, 2)} kWh. "
-            f"Current Useable Batteries Capacity: {self._hsem_batteries_current_capacity} kWh.",
+            f"Current Batteries Capacity: {self._hsem_batteries_current_capacity} kWh.",
         )
 
         if self._hsem_huawei_solar_batteries_state_of_capacity_state == 100:
@@ -2076,9 +2084,9 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                     f"Enabling batteries discharging schedule 1. "
                     f"Start: {convert_to_time(self._hsem_batteries_enable_batteries_schedule_1_start)}, "
                     f"End: {convert_to_time(self._hsem_batteries_enable_batteries_schedule_1_end)}, "
-                    f"Average Import Price: {round(avg_import_price / hours_count, 2)} DKK, "
+                    f"Average Import Price: {round(avg_import_price / hours_count, 2)}, "
                     f"Needed Batteries Capacity: {round(needed_batteries_capacity, 2)} kWh, "
-                    f"Needed Batteries Capacity Cost: {round(needed_batteries_capacity_cost, 2)} DKK, ",
+                    f"Needed Batteries Capacity Cost: {round(needed_batteries_capacity_cost, 2)}, ",
                 )
 
         if self._hsem_batteries_enable_batteries_schedule_2:
@@ -2139,9 +2147,9 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                     "Enabling batteries discharging schedule 2. "
                     f"Start: {convert_to_time(self._hsem_batteries_enable_batteries_schedule_2_start)}, "
                     f"End: {convert_to_time(self._hsem_batteries_enable_batteries_schedule_2_end)}, "
-                    f"Average Import Price: {round(avg_import_price / hours_count, 2)} DKK, "
+                    f"Average Import Price: {round(avg_import_price / hours_count, 2)}, "
                     f"Needed Batteries Capacity: {round(needed_batteries_capacity, 2)} kWh, "
-                    f"Needed Batteries Capacity Cost: {round(needed_batteries_capacity_cost, 2)} DKK, ",
+                    f"Needed Batteries Capacity Cost: {round(needed_batteries_capacity_cost, 2)}, ",
                 )
 
         if self._hsem_batteries_enable_batteries_schedule_3:
@@ -2202,9 +2210,9 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                     "Enabling batteries discharging schedule 3. "
                     f"Start: {convert_to_time(self._hsem_batteries_enable_batteries_schedule_3_start)}, "
                     f"End: {convert_to_time(self._hsem_batteries_enable_batteries_schedule_3_end)}, "
-                    f"Average Import Price: {round(avg_import_price / hours_count, 2)} DKK, "
+                    f"Average Import Price: {round(avg_import_price / hours_count, 2)}, "
                     f"Needed Batteries Capacity: {round(needed_batteries_capacity, 2)} kWh, "
-                    f"Needed Batteries Capacity Cost: {round(needed_batteries_capacity_cost, 2)} DKK, ",
+                    f"Needed Batteries Capacity Cost: {round(needed_batteries_capacity_cost, 2)}, ",
                 )
 
     async def _async_set_batteries_exceeded_time(self) -> None:
