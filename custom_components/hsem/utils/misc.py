@@ -368,3 +368,20 @@ async def async_logger(self, msg, level="debug") -> None:
 
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(LOG_EXECUTOR, log_method, msg)
+
+def get_max_discharge_power(usable_capacity: int) -> int:
+    """
+    Return max discharge power in WATT based on Huawei batteries max rated capacity.
+    Supports both old (S0: 5/10/15 kWh) and new (S1: 7/14/21 kWh) series.
+    """
+    mapping = {
+        # Old batteries (S0)
+        5000: 2500,
+        10000: 5000,
+        15000: 5000,
+        # New batteries (S1)
+        7000: 3500,
+        14000: 7000,
+        21000: 10500,
+    }
+    return mapping.get(usable_capacity, 2500)
