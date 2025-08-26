@@ -1010,7 +1010,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         )
 
         # Set maximum discharging power for batteries if EV charger is not active
-        max_discharge_power = get_max_discharge_power(self._hsem_batteries_rated_capacity_max_state)
+        max_discharge_power = get_max_discharge_power(convert_to_int(self._hsem_batteries_rated_capacity_max_state))
 
         if not self._hsem_ev_charger_status_state:
             if (
