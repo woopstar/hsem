@@ -21,6 +21,7 @@ from homeassistant.helpers.event import (
     async_track_time_change,
     async_track_time_interval,
 )
+from homeassistant.util import dt as dt_util
 
 from custom_components.hsem.const import (
     DEFAULT_HSEM_BATTERIES_WAIT_MODE,
@@ -1463,113 +1464,128 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 )
 
     async def _async_calculate_hourly_import_price(self) -> None:
-        """Calculate the estimated import price for each hour of the day."""
+        """Calculate the estimated import price for each hour of the current day."""
         if self._hsem_energi_data_service_import is None:
             return
 
-        import_price_sensor = self.hass.states.get(
-            self._hsem_energi_data_service_import
-        )
-
-        if not import_price_sensor:
-            await async_logger(
-                self, "hsem_energi_data_service_import sensor not found."
-            )
+        import_price_state = self.hass.states.get(self._hsem_energi_data_service_import)
+        if not import_price_state:
+            await async_logger(self, "Import price sensor not found.")
             return
 
-        detailed_raw_today = import_price_sensor.attributes.get("raw_today", [])
+        attrs = import_price_state.attributes or {}
+
+        # Support both legacy 'raw_today' format and new 'prices' list
+        detailed_raw_today = attrs.get("raw_today")
+        source = "raw_today"
         if not detailed_raw_today:
-            await async_logger(
-                self, "Detailed raw data is missing or empty for import prices."
+            detailed_raw_today = attrs.get("prices", []) or attrs.get(
+                "prices_today", []
             )
+            source = "prices"
+
+        if not detailed_raw_today:
+            await async_logger(self, "No detailed raw data found for import prices.")
             return
 
         await async_logger(self, "Calculating hourly import prices...")
 
-        for period in detailed_raw_today:
-            period_start = period.get("hour")
-            price = period.get("price", 0.0)
-            time_range = f"{period_start.hour:02d}-{(period_start.hour + 1) % 24:02d}"
+        today_local = dt_util.now().date()
 
-            # Only update "import_price" in the existing dictionary entry
+        for period in detailed_raw_today:
+            # Handle both formats
+            start_val = period.get("start") or period.get("hour") or period.get("time")
+            price = float(period.get("price", 0.0))
+
+            start_dt = dt_util.parse_datetime(start_val)
+            if not start_dt:
+                continue
+
+            start_dt = dt_util.as_local(start_dt)
+
+            # If source is 'prices', keep only entries for today
+            if source == "prices" and start_dt.date() != today_local:
+                continue
+
+            time_range = f"{start_dt.hour:02d}-{(start_dt.hour + 1) % 24:02d}"
+
             if time_range in self._hourly_calculations:
                 self._hourly_calculations[time_range]["import_price"] = price
 
-                if (
-                    self._hourly_calculations[time_range]["estimated_net_consumption"]
-                    is not None
-                    and self._hourly_calculations[time_range][
-                        "estimated_net_consumption"
-                    ]
-                    > 0
-                ):
+                net = self._hourly_calculations[time_range].get(
+                    "estimated_net_consumption"
+                )
+                if net is not None and net > 0:
                     self._hourly_calculations[time_range]["estimated_cost"] = round(
-                        (
-                            price
-                            * self._hourly_calculations[time_range][
-                                "estimated_net_consumption"
-                            ]
-                        ),
-                        2,
+                        price * net, 2
                     )
 
         _LOGGER.debug(
-            f"Updated hourly calculations with import prices: {self._hourly_calculations}"
+            "Updated hourly calculations with import prices: %s",
+            self._hourly_calculations,
         )
 
     async def _async_calculate_hourly_export_price(self) -> None:
-        """Calculate the estimated import price for each hour of the day."""
+        """Calculate the estimated export price for each hour of the current day."""
         if self._hsem_energi_data_service_export is None:
             return
 
-        export_price_sensor = self.hass.states.get(
-            self._hsem_energi_data_service_export
-        )
-        if not export_price_sensor:
-            await async_logger(
-                self, "hsem_energi_data_service_export sensor not found."
-            )
+        export_price_state = self.hass.states.get(self._hsem_energi_data_service_export)
+        if not export_price_state:
+            await async_logger(self, "Export price sensor not found.")
             return
 
-        detailed_raw_today = export_price_sensor.attributes.get("raw_today", [])
+        attrs = export_price_state.attributes or {}
+
+        # Support both legacy 'raw_today' format and new 'prices' list
+        detailed_raw_today = attrs.get("raw_today")
+        source = "raw_today"
         if not detailed_raw_today:
-            await async_logger(
-                self, "Detailed raw data is missing or empty for export prices."
+            detailed_raw_today = attrs.get("prices", []) or attrs.get(
+                "prices_today", []
             )
+            source = "prices"
+
+        if not detailed_raw_today:
+            await async_logger(self, "No detailed raw data found for export prices.")
             return
 
         await async_logger(self, "Calculating hourly export prices...")
 
+        today_local = dt_util.now().date()
+
         for period in detailed_raw_today:
-            period_start = period.get("hour")
-            price = period.get("price", 0.0)
-            time_range = f"{period_start.hour:02d}-{(period_start.hour + 1) % 24:02d}"
+            # Handle both formats
+            start_val = period.get("start") or period.get("hour") or period.get("time")
+            price = float(period.get("price", 0.0))
 
-            # Only update "import_price" in the existing dictionary entry
+            start_dt = dt_util.parse_datetime(start_val)
+            if not start_dt:
+                continue
+
+            start_dt = dt_util.as_local(start_dt)
+
+            # If source is 'prices', keep only entries for today
+            if source == "prices" and start_dt.date() != today_local:
+                continue
+
+            time_range = f"{start_dt.hour:02d}-{(start_dt.hour + 1) % 24:02d}"
+
             if time_range in self._hourly_calculations:
-
                 self._hourly_calculations[time_range]["export_price"] = price
-                if (
-                    self._hourly_calculations[time_range]["estimated_net_consumption"]
-                    is not None
-                    and self._hourly_calculations[time_range][
-                        "estimated_net_consumption"
-                    ]
-                    < 0
-                ):
+
+                net = self._hourly_calculations[time_range].get(
+                    "estimated_net_consumption"
+                )
+                if net is not None and net < 0:
+                    # Negative net means export; cost is revenue (positive)
                     self._hourly_calculations[time_range]["estimated_cost"] = round(
-                        (
-                            -1
-                            * price
-                            * self._hourly_calculations[time_range][
-                                "estimated_net_consumption"
-                            ]
-                        ),
-                        2,
+                        -price * net, 2
                     )
 
         _LOGGER.debug(
-            f"Updated hourly calculations with export prices: {self._hourly_calculations}"
+            "Updated hourly calculations with export prices: %s",
+            self._hourly_calculations,
         )
 
     async def _async_calculate_hourly_net_consumption(self) -> None:
