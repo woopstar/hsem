@@ -1497,13 +1497,19 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             start_val = period.get("start") or period.get("hour") or period.get("time")
             price = float(period.get("price", 0.0))
 
-            start_dt = dt_util.parse_datetime(start_val)
-            if not start_dt:
-                continue
+            # Handle both datetime and string
+            if isinstance(start_val, datetime):
+                start_dt = dt_util.as_local(start_val)
+            else:
+                if start_val is None:
+                    continue
+                dt_parsed = dt_util.parse_datetime(
+                    start_val if isinstance(start_val, str) else str(start_val)
+                )
+                if not dt_parsed:
+                    continue
+                start_dt = dt_util.as_local(dt_parsed)
 
-            start_dt = dt_util.as_local(start_dt)
-
-            # If source is 'prices', keep only entries for today
             if source == "prices" and start_dt.date() != today_local:
                 continue
 
@@ -1559,13 +1565,19 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             start_val = period.get("start") or period.get("hour") or period.get("time")
             price = float(period.get("price", 0.0))
 
-            start_dt = dt_util.parse_datetime(start_val)
-            if not start_dt:
-                continue
+            # Handle both datetime and string
+            if isinstance(start_val, datetime):
+                start_dt = dt_util.as_local(start_val)
+            else:
+                if start_val is None:
+                    continue
+                dt_parsed = dt_util.parse_datetime(
+                    start_val if isinstance(start_val, str) else str(start_val)
+                )
+                if not dt_parsed:
+                    continue
+                start_dt = dt_util.as_local(dt_parsed)
 
-            start_dt = dt_util.as_local(start_dt)
-
-            # If source is 'prices', keep only entries for today
             if source == "prices" and start_dt.date() != today_local:
                 continue
 
