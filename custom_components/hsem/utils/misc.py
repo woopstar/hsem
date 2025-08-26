@@ -163,6 +163,7 @@ def convert_to_boolean(state) -> bool:
 
     return False
 
+
 async def async_resolve_entity_id_from_unique_id(
     self, unique_entity_id, domain="sensor"
 ) -> str | None:
@@ -368,6 +369,7 @@ async def async_logger(self, msg, level="debug") -> None:
 
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(LOG_EXECUTOR, log_method, msg)
+
 
 def get_max_discharge_power(usable_capacity: int) -> int:
     """
