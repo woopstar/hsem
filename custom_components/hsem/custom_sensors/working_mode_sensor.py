@@ -46,6 +46,7 @@ from custom_components.hsem.utils.misc import (
     convert_to_time,
     generate_hash,
     get_config_value,
+    get_max_discharge_power,
     ha_get_entity_state_and_convert,
 )
 from custom_components.hsem.utils.recommendations import Recommendations
@@ -1009,20 +1010,17 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         )
 
         # Set maximum discharging power for batteries if EV charger is not active
-        if self._hsem_batteries_usable_capacity < 10:
-            max_power = 2500
-        else:
-            max_power = 5000
+        max_discharge_power = get_max_discharge_power(self._hsem_batteries_rated_capacity_max_state)
 
         if not self._hsem_ev_charger_status_state:
             if (
                 self._hsem_huawei_solar_batteries_maximum_discharging_power_state
-                != max_power
+                != max_discharge_power
             ):
                 await async_set_number_value(
                     self,
                     self._hsem_huawei_solar_batteries_maximum_discharging_power,
-                    max_power,
+                    max_discharge_power,
                 )
 
         # Determine the appropriate TOU modes and working mode state. In priority order:
