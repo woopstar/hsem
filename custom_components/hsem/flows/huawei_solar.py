@@ -96,6 +96,13 @@ async def get_huawei_solar_step_schema(config_entry) -> vol.Schema:
                     }
                 }
             ),
+            vol.Required(
+                "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou",
+                default=get_config_value(
+                    config_entry,
+                    "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou",
+                ),
+            ): selector({"entity": {"domain": "select"}}),
         }
     )
 
@@ -116,6 +123,7 @@ async def validate_huawei_solar_input(hass, user_input) -> dict[str, str]:
         "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods",
         "hsem_huawei_solar_batteries_rated_capacity",
         "hsem_batteries_conversion_loss",
+        "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou",
     ]
 
     for field in required_fields:
@@ -133,6 +141,7 @@ async def validate_huawei_solar_input(hass, user_input) -> dict[str, str]:
             "hsem_huawei_solar_batteries_grid_charge_cutoff_soc",
             "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods",
             "hsem_huawei_solar_batteries_rated_capacity",
+            "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou",
         ]
 
         for field in entity_fields:

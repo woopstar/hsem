@@ -107,7 +107,8 @@
           "hsem_huawei_solar_device_id_inverter_1": "Huawei Inverter 1 Device",
           "hsem_huawei_solar_device_id_inverter_2": "Huawei Inverter 2 Device",
           "hsem_huawei_solar_inverter_active_power_control": "Huawei Inverter Active Power Control Sensor",
-          "hsem_huawei_solar_batteries_maximum_discharging_power": "Huawei Batteries Maximum Discharging Power (W)"
+          "hsem_huawei_solar_batteries_maximum_discharging_power": "Huawei Batteries Maximum Discharging Power (W)",
+          "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Huawei Batteries Excess PV energy use in TOU"
         },
         "data_description": {
           "hsem_batteries_conversion_loss": "Specify the percentage of energy loss when charging the battery. This represents the conversion loss, typically between 5% and 10%, which occurs when importing energy from solar panels or the grid to the battery. It is used to calculate the actual time required to charge the battery.",
@@ -121,7 +122,8 @@
           "hsem_huawei_solar_device_id_inverter_1": "Select your primary Huawei inverter device.",
           "hsem_huawei_solar_device_id_inverter_2": "Select your secondary Huawei inverter device, if applicable.",
           "hsem_huawei_solar_inverter_active_power_control": "Select the sensor that controls the active power output of your Huawei inverter.",
-          "hsem_huawei_solar_batteries_maximum_discharging_power": "Select the sensor that provides the maximum discharging power for your Huawei batteries."
+          "hsem_huawei_solar_batteries_maximum_discharging_power": "Select the sensor that provides the maximum discharging power for your Huawei batteries.",
+          "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Select the sensor that provides setting for excess PV energy use in TOU periods."
         },
         "description": "Configure the working mode for Huawei solar batteries.",
         "title": "Huawei Solar Sensors"
@@ -290,7 +292,8 @@
           "hsem_huawei_solar_device_id_inverter_1": "Huawei Inverter 1 Device",
           "hsem_huawei_solar_device_id_inverter_2": "Huawei Inverter 2 Device",
           "hsem_huawei_solar_inverter_active_power_control": "Huawei Inverter Active Power Control Sensor",
-          "hsem_huawei_solar_batteries_maximum_discharging_power": "Huawei Batteries Maximum Discharging Power (W)"
+          "hsem_huawei_solar_batteries_maximum_discharging_power": "Huawei Batteries Maximum Discharging Power (W)",
+          "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Huawei Batteries Excess PV energy use in TOU"
         },
         "data_description": {
           "hsem_batteries_conversion_loss": "Specify the percentage of energy loss when charging the battery. This represents the conversion loss, typically between 5% and 10%, which occurs when importing energy from solar panels or the grid to the battery. It is used to calculate the actual time required to charge the battery.",
@@ -304,7 +307,8 @@
           "hsem_huawei_solar_device_id_inverter_1": "Select your primary Huawei inverter device.",
           "hsem_huawei_solar_device_id_inverter_2": "Select your secondary Huawei inverter device, if applicable.",
           "hsem_huawei_solar_inverter_active_power_control": "Select the sensor that controls the active power output of your Huawei inverter.",
-          "hsem_huawei_solar_batteries_maximum_discharging_power": "Select the sensor that provides the maximum discharging power for your Huawei batteries."
+          "hsem_huawei_solar_batteries_maximum_discharging_power": "Select the sensor that provides the maximum discharging power for your Huawei batteries.",
+          "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Select the sensor that provides setting for excess PV energy use in TOU periods."
         },
         "description": "Configure the working mode for Huawei solar batteries.",
         "title": "Huawei Solar Sensors"

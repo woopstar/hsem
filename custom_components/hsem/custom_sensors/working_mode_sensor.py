@@ -92,6 +92,8 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_solar_production_power = None
         self._hsem_ev_charger_status = None
         self._hsem_ev_charger_power = None
+        self._hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou = None
+        self._hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou_state = None
         self._hsem_solcast_pv_forecast_forecast_today = None
         self._hsem_energi_data_service_import = None
         self._hsem_energi_data_service_export = None
@@ -224,6 +226,12 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         )
         self._hsem_huawei_solar_batteries_working_mode = get_config_value(
             self._config_entry, "hsem_huawei_solar_batteries_working_mode"
+        )
+        self._hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou = (
+            get_config_value(
+                self._config_entry,
+                "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou",
+            )
         )
         self._hsem_huawei_solar_batteries_state_of_capacity = get_config_value(
             self._config_entry,
@@ -449,6 +457,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 "ev_charger_status_entity": self._hsem_ev_charger_status,
                 "force_working_mode_entity": self._hsem_force_working_mode,
                 "house_consumption_power_entity": self._hsem_house_consumption_power,
+                "huawei_solar_batteries_excess_pv_energy_use_in_tou": self._hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou,
                 "huawei_solar_batteries_grid_charge_cutoff_soc_entity": self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc,
                 "huawei_solar_batteries_maximum_charging_power_entity": self._hsem_huawei_solar_batteries_maximum_charging_power,
                 "huawei_solar_batteries_maximum_discharging_power_entity": self._hsem_huawei_solar_batteries_maximum_discharging_power,
@@ -488,6 +497,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             "house_consumption_energy_weight_7d": self._hsem_house_consumption_energy_weight_7d,
             "house_consumption_power_state": self._hsem_house_consumption_power_state,
             "house_power_includes_ev_charger_power": self._hsem_house_power_includes_ev_charger_power,
+            "huawei_solar_batteries_excess_pv_energy_use_in_tou_state": self._hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou_state,
             "huawei_solar_batteries_enable_batteries_schedule_1_end": self._hsem_batteries_enable_batteries_schedule_1_end,
             "huawei_solar_batteries_enable_batteries_schedule_1_needed_batteries_capacity": self._hsem_batteries_enable_batteries_schedule_1_needed_batteries_capacity,
             "huawei_solar_batteries_enable_batteries_schedule_1_needed_batteries_capacity_cost": self._hsem_batteries_enable_batteries_schedule_1_needed_batteries_capacity_cost,
@@ -745,6 +755,18 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 self._hsem_huawei_solar_batteries_working_mode_state = (
                     ha_get_entity_state_and_convert(
                         self, self._hsem_huawei_solar_batteries_working_mode, "string"
+                    )
+                )
+            else:
+                self._missing_input_entities = True
+
+            # fetch the current value from the excess pv energy use in tou sensor
+            if self._hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou:
+                self._hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou_state = (
+                    ha_get_entity_state_and_convert(
+                        self,
+                        self._hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou,
+                        "string",
                     )
                 )
             else:
@@ -1135,20 +1157,20 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 self,
                 f"# Recommendation for {current_time_range} is to force discharge the batteries. Setting TOU Periods: {tou_modes} and Working Mode: {working_mode}",
             )
-        elif (
-            self._hsem_net_consumption < 0
-            and self._hsem_force_working_mode_state == "auto"
-        ):
-            # Positive net consumption. Charge battery from Solar
-            working_mode = WorkingModes.MaximizeSelfConsumption.value
-            state = Recommendations.BatteriesChargeSolar.value
-            await async_logger(
-                self,
-                f"# Recommendation for {current_time_range} is due to positive net consumption. Working Mode: {working_mode}, Solar Production: {self._hsem_solar_production_power_state}, House Consumption: {self._hsem_house_consumption_power_state}, Net Consumption: {self._hsem_net_consumption}",
-            )
-            self._hourly_calculations[current_time_range][
-                "recommendation"
-            ] = Recommendations.BatteriesChargeSolar.value
+        # elif (
+        #     self._hsem_net_consumption < 0
+        #     and self._hsem_force_working_mode_state == "auto"
+        # ):
+        #     # Positive net consumption. Charge battery from Solar
+        #     working_mode = WorkingModes.MaximizeSelfConsumption.value
+        #     state = Recommendations.BatteriesChargeSolar.value
+        #     await async_logger(
+        #         self,
+        #         f"# Recommendation for {current_time_range} is due to positive net consumption. Working Mode: {working_mode}, Solar Production: {self._hsem_solar_production_power_state}, House Consumption: {self._hsem_house_consumption_power_state}, Net Consumption: {self._hsem_net_consumption}",
+        #     )
+        #     self._hourly_calculations[current_time_range][
+        #         "recommendation"
+        #     ] = Recommendations.BatteriesChargeSolar.value
         elif (
             (
                 self._hourly_calculations.get(current_time_range, {}).get(
@@ -1208,6 +1230,28 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             #    working_mode = WorkingModes.MaximizeSelfConsumption.value
             #    state = Recommendations.BatteriesChargeSolar.value
             #    _LOGGER.debug(f"Default summer settings. Working Mode: {working_mode}")
+
+        # Set pv excess in tou
+        if state == Recommendations.BatteriesWaitMode.value:
+            if (
+                self._hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou_state
+                != "fed_to_grid"
+            ):
+                await async_set_select_option(
+                    self,
+                    self._hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou,
+                    "fed_to_grid",
+                )
+        else:
+            if (
+                self._hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou_state
+                != "charge"
+            ):
+                await async_set_select_option(
+                    self,
+                    self._hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou,
+                    "charge",
+                )
 
         # Apply TOU periods if working mode is TOU
         if working_mode == WorkingModes.TimeOfUse.value:
