@@ -143,11 +143,13 @@
       "solcast": {
         "data": {
           "hsem_solcast_pv_forecast_forecast_today": "Solcast PV Forecast Today Sensor",
-          "hsem_solcast_pv_forecast_forecast_tomorrow": "Solcast PV Forecast Tomorrow Sensor"
+          "hsem_solcast_pv_forecast_forecast_tomorrow": "Solcast PV Forecast Tomorrow Sensor",
+          "hsem_solcast_pv_forecast_forecast_likelihood": "Solcast PV Forecast Preferred forecast likelihood to use"
         },
         "data_description": {
           "hsem_solcast_pv_forecast_forecast_today": "Select the sensor that provides today's PV production forecast from Solcast.",
-          "hsem_solcast_pv_forecast_forecast_tomorrow": "Select the sensor that provides tomorrow's PV production forecast from Solcast."
+          "hsem_solcast_pv_forecast_forecast_tomorrow": "Select the sensor that provides tomorrow's PV production forecast from Solcast.",
+          "hsem_solcast_pv_forecast_forecast_likelihood": "Select the preferred forecast likelihood to use for Solcast PV forecasts."
         },
         "description": "Select Solcast forecast sensors.",
         "title": "Solcast Sensors"
@@ -342,11 +344,13 @@
       "solcast": {
         "data": {
           "hsem_solcast_pv_forecast_forecast_today": "Solcast PV Forecast Today Sensor",
-          "hsem_solcast_pv_forecast_forecast_tomorrow": "Solcast PV Forecast Tomorrow Sensor"
+          "hsem_solcast_pv_forecast_forecast_tomorrow": "Solcast PV Forecast Tomorrow Sensor",
+          "hsem_solcast_pv_forecast_forecast_likelihood": "Solcast PV Forecast Preferred forecast likelihood to use"
         },
         "data_description": {
           "hsem_solcast_pv_forecast_forecast_today": "Select the sensor that provides today's PV production forecast from Solcast.",
-          "hsem_solcast_pv_forecast_forecast_tomorrow": "Select the sensor that provides tomorrow's PV production forecast from Solcast."
+          "hsem_solcast_pv_forecast_forecast_tomorrow": "Select the sensor that provides tomorrow's PV production forecast from Solcast.",
+          "hsem_solcast_pv_forecast_forecast_likelihood": "Select the preferred forecast likelihood to use for Solcast PV forecasts."
         },
         "description": "Select Solcast forecast sensors.",
         "title": "Solcast Sensors"

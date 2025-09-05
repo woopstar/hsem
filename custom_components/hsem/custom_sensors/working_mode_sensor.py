@@ -95,6 +95,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou = None
         self._hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou_state = None
         self._hsem_solcast_pv_forecast_forecast_today = None
+        self._hsem_solcast_pv_forecast_forecast_likelihood = None
         self._hsem_energi_data_service_import = None
         self._hsem_energi_data_service_export = None
         self._hsem_energi_data_service_export_min_price = None
@@ -212,6 +213,11 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
         self._update_interval = convert_to_int(
             get_config_value(self._config_entry, "hsem_update_interval")
+        )
+
+        self._hsem_solcast_pv_forecast_forecast_likelihood = get_config_value(
+            self._config_entry,
+            "hsem_solcast_pv_forecast_forecast_likelihood",
         )
 
         self._hsem_huawei_solar_device_id_inverter_1 = get_config_value(
@@ -529,6 +535,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             "huawei_solar_batteries_tou_charging_and_discharging_periods_state": self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_state,
             "huawei_solar_batteries_working_mode_state": self._hsem_huawei_solar_batteries_working_mode_state,
             "huawei_solar_inverter_active_power_control_state_state": self._hsem_huawei_solar_inverter_active_power_control_state,
+            "solcast_pv_forecast_forecast_likelihood": self._hsem_solcast_pv_forecast_forecast_likelihood,
             "last_changed_mode": self._last_changed_mode,
             "last_updated": self._last_updated,
             "net_consumption_with_ev": self._hsem_net_consumption_with_ev,
@@ -1498,7 +1505,19 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
         for period in detailed_forecast:
             period_start = period.get("period_start")
-            pv_estimate = period.get("pv_estimate", 0.0)
+
+            if (
+                self._hsem_solcast_pv_forecast_forecast_likelihood is None
+                or self._hsem_solcast_pv_forecast_forecast_likelihood == "pv_estimate"
+            ):
+                pv_estimate = period.get("pv_estimate", 0.0)
+            elif self._hsem_solcast_pv_forecast_forecast_likelihood == "pv_estimate90":
+                pv_estimate = period.get("pv_estimate90", 0.0)
+            elif self._hsem_solcast_pv_forecast_forecast_likelihood == "pv_estimate10":
+                pv_estimate = period.get("pv_estimate10", 0.0)
+            else:
+                pv_estimate = period.get("pv_estimate", 0.0)
+
             time_range = f"{period_start.hour:02d}-{(period_start.hour + 1) % 24:02d}"
 
             # Only update "solcast_pv_estimate" in the existing dictionary entry
