@@ -20,6 +20,19 @@ async def get_solcast_step_schema(config_entry) -> vol.Schema:
                     config_entry, "hsem_solcast_pv_forecast_forecast_tomorrow"
                 ),
             ): selector({"entity": {"domain": "sensor"}}),
+            vol.Required(
+                "hsem_solcast_pv_forecast_forecast_likelihood",
+                default=get_config_value(
+                    config_entry,
+                    "hsem_solcast_pv_forecast_forecast_likelihood",
+                ),
+            ): selector(
+                {
+                    "select": {
+                        "options": ["pv_estimate", "pv_estimate10", "pv_estimate90"]
+                    }
+                }
+            ),
         }
     )
 

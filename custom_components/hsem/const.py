@@ -73,6 +73,7 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_solar_production_power": "sensor.power_inverter_input_total",
     "hsem_solcast_pv_forecast_forecast_today": "sensor.solcast_pv_forecast_forecast_today",
     "hsem_solcast_pv_forecast_forecast_tomorrow": "sensor.solcast_pv_forecast_forecast_tomorrow",
+    "hsem_solcast_pv_forecast_forecast_likelihood": "pv_estimate",
     "hsem_update_interval": 5,
     "hsem_verbose_logging": False,
 }
