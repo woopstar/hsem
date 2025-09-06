@@ -20,10 +20,10 @@ DEFAULT_HSEM_TOU_MODES_FORCE_CHARGE = ["00:00-23:59/1234567/+"]
 DEFAULT_HSEM_TOU_MODES_FORCE_DISCHARGE = ["00:00-23:59/1234567/-"]
 
 # Default list of months considered winter and spring
-DEFAULT_HSEM_MONTHS_WINTER_SPRING = [1, 2, 3, 4, 9, 10, 11, 12]
+DEFAULT_HSEM_MONTHS_WINTER_SPRING = [1, 2, 3, 4, 10, 11, 12]
 
 # Default list of months considered summer
-DEFAULT_HSEM_MONTHS_SUMMER = [5, 6, 7, 8]
+DEFAULT_HSEM_MONTHS_SUMMER = [5, 6, 7, 8, 9]
 
 # Minimum required version of Huawei Solar
 MIN_HUAWEI_SOLAR_VERSION = "1.5.0a1"
