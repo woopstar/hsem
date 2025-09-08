@@ -135,7 +135,7 @@
         "data_description": {
           "hsem_months_winter": "Select the months that should be considered as Winter/Spring for the seasonal working mode adjustments. You can select multiple months."
         },
-        "description": "Configure the months that are considered as Winter/Spring. During these months, the system will prioritize charging the batteries from grid energy to ensure sufficient battery levels during periods of lower solar production.",
+        "description": "Configure the months that are considered as Winter/Spring. During these months, the system will prioritize charging the batteries from grid energy to ensure sufficient battery levels during periods of lower solar production. Remaining months will be considered as Summer/Autum months.",
         "title": "Winter/Spring Months"
       },
       "power": {
@@ -346,7 +346,7 @@
         "data_description": {
           "hsem_months_winter": "Select the months that should be considered as Winter/Spring for the seasonal working mode adjustments. You can select multiple months."
         },
-        "description": "Configure the months that are considered as Winter/Spring. During these months, the system will prioritize charging the batteries from grid energy to ensure sufficient battery levels during periods of lower solar production.",
+        "description": "Configure the months that are considered as Winter/Spring. During these months, the system will prioritize charging the batteries from grid energy to ensure sufficient battery levels during periods of lower solar production. Remaining months will be considered as Summer/Autum months.",
         "title": "Winter/Spring Months"
       },
       "power": {
