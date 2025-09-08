@@ -33,6 +33,7 @@ from custom_components.hsem.flows.init import (
     get_init_step_schema,
     validate_init_step_input,
 )
+from custom_components.hsem.flows.months import get_months_schema, validate_months_input
 from custom_components.hsem.flows.power import (
     get_power_step_schema,
     validate_power_step_input,
@@ -90,12 +91,42 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors = await validate_energidataservice_input(self.hass, user_input)
             if not errors:
                 self._user_input.update(user_input)
-                return await self.async_step_power()
+                return await self.async_step_months()
 
         data_schema = await get_energidataservice_step_schema(None)
 
         return self.async_show_form(
             step_id="energidataservice",
+            data_schema=data_schema,
+            errors=errors,
+            last_step=False,
+        )
+
+    async def async_step_months(self, user_input=None):
+        errors = {}
+
+        if user_input is not None:
+            errors = await validate_months_input(self.hass, user_input)
+            if not errors:
+                self._user_input.update(user_input)
+
+                all_months = [str(m) for m in range(1, 13)]
+                winter_months_selected = list(
+                    dict.fromkeys(self._user_input.get("hsem_months_winter", []))
+                )
+                remaining = [
+                    str(m) for m in all_months if str(m) not in winter_months_selected
+                ]
+
+                user_input["hsem_months_summer"] = remaining
+                self._user_input.update(user_input)
+
+                return await self.async_step_power()
+
+        data_schema = await get_months_schema(None)
+
+        return self.async_show_form(
+            step_id="months",
             data_schema=data_schema,
             errors=errors,
             last_step=False,

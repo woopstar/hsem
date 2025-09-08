@@ -78,18 +78,18 @@
       },
       "ev": {
         "data": {
+          "hsem_ev_charger_force_max_discharge_power": "EV Charger Force Max Discharge Power",
+          "hsem_ev_charger_max_discharge_power": "EV Charger Max Discharge Power",
           "hsem_ev_charger_power": "EV Charger Power Sensor",
           "hsem_ev_charger_status": "EV Charger Status Sensor",
-          "hsem_house_power_includes_ev_charger_power": "House Power Includes EV Charger Power",
-          "hsem_ev_charger_force_max_discharge_power": "EV Charger Force Max Discharge Power",
-          "hsem_ev_charger_max_discharge_power": "EV Charger Max Discharge Power"
+          "hsem_house_power_includes_ev_charger_power": "House Power Includes EV Charger Power"
         },
         "data_description": {
+          "hsem_ev_charger_force_max_discharge_power": "Enable this if you want to force a specific maximum discharge power for the Huawei batteries while EV is charging.",
+          "hsem_ev_charger_max_discharge_power": "Set the maximum discharge power for the Huawei batteries while EV is charging.",
           "hsem_ev_charger_power": "Select the sensor that measures the power consumption of your EV charger.",
           "hsem_ev_charger_status": "Select the sensor or entity that indicates whether the EV charger is active (e.g., a switch or sensor).",
-          "hsem_house_power_includes_ev_charger_power": "Enable this if the house consumption power sensor already includes the EV charger power consumption.",
-          "hsem_ev_charger_force_max_discharge_power": "Enable this if you want to force a specific maximum discharge power for the Huawei batteries while EV is charging.",
-          "hsem_ev_charger_max_discharge_power": "Set the maximum discharge power for the Huawei batteries while EV is charging."
+          "hsem_house_power_includes_ev_charger_power": "Enable this if the house consumption power sensor already includes the EV charger power consumption."
         },
         "description": "Configure EV Charger settings for HSEM.",
         "title": "EV Charger Settings (Optional)"
@@ -97,8 +97,10 @@
       "huawei_solar": {
         "data": {
           "hsem_batteries_conversion_loss": "Battery Conversion Loss (%)",
+          "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Huawei Batteries Excess PV energy use in TOU",
           "hsem_huawei_solar_batteries_grid_charge_cutoff_soc": "Huawei Batteries Grid Charge Cutoff SOC (%)",
           "hsem_huawei_solar_batteries_maximum_charging_power": "Huawei Batteries Maximum Charging Power (W)",
+          "hsem_huawei_solar_batteries_maximum_discharging_power": "Huawei Batteries Maximum Discharging Power (W)",
           "hsem_huawei_solar_batteries_rated_capacity": "Battery Max Capacity (Watt)",
           "hsem_huawei_solar_batteries_state_of_capacity": "Huawei Batteries State of Capacity Sensor",
           "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods": "Huawei Batteries TOU Charging and Discharging Periods",
@@ -106,14 +108,14 @@
           "hsem_huawei_solar_device_id_batteries": "Huawei Batteries Device",
           "hsem_huawei_solar_device_id_inverter_1": "Huawei Inverter 1 Device",
           "hsem_huawei_solar_device_id_inverter_2": "Huawei Inverter 2 Device",
-          "hsem_huawei_solar_inverter_active_power_control": "Huawei Inverter Active Power Control Sensor",
-          "hsem_huawei_solar_batteries_maximum_discharging_power": "Huawei Batteries Maximum Discharging Power (W)",
-          "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Huawei Batteries Excess PV energy use in TOU"
+          "hsem_huawei_solar_inverter_active_power_control": "Huawei Inverter Active Power Control Sensor"
         },
         "data_description": {
           "hsem_batteries_conversion_loss": "Specify the percentage of energy loss when charging the battery. This represents the conversion loss, typically between 5% and 10%, which occurs when importing energy from solar panels or the grid to the battery. It is used to calculate the actual time required to charge the battery.",
+          "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Select the sensor that provides setting for excess PV energy use in TOU periods.",
           "hsem_huawei_solar_batteries_grid_charge_cutoff_soc": "Specify the grid charge cutoff SOC percentage for your Huawei batteries.",
           "hsem_huawei_solar_batteries_maximum_charging_power": "Select the sensor that provides the maximum charging power for your Huawei batteries in kilowatts (W).",
+          "hsem_huawei_solar_batteries_maximum_discharging_power": "Select the sensor that provides the maximum discharging power for your Huawei batteries.",
           "hsem_huawei_solar_batteries_rated_capacity": "Select the sensor that provides the total rated capacity of your Huawei batteries in watts (W).",
           "hsem_huawei_solar_batteries_state_of_capacity": "Select the sensor that provides the state of charge (SOC) of your Huawei batteries.",
           "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods": "Select the sensor that defines the Time-of-Use (TOU) charging and discharging periods for your Huawei batteries.",
@@ -121,12 +123,20 @@
           "hsem_huawei_solar_device_id_batteries": "Select your Huawei battery device.",
           "hsem_huawei_solar_device_id_inverter_1": "Select your primary Huawei inverter device.",
           "hsem_huawei_solar_device_id_inverter_2": "Select your secondary Huawei inverter device, if applicable.",
-          "hsem_huawei_solar_inverter_active_power_control": "Select the sensor that controls the active power output of your Huawei inverter.",
-          "hsem_huawei_solar_batteries_maximum_discharging_power": "Select the sensor that provides the maximum discharging power for your Huawei batteries.",
-          "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Select the sensor that provides setting for excess PV energy use in TOU periods."
+          "hsem_huawei_solar_inverter_active_power_control": "Select the sensor that controls the active power output of your Huawei inverter."
         },
         "description": "Configure the working mode for Huawei solar batteries.",
         "title": "Huawei Solar Sensors"
+      },
+      "months": {
+        "data": {
+          "hsem_months_winter": "Months considered as Winter/Spring"
+        },
+        "data_description": {
+          "hsem_months_winter": "Select the months that should be considered as Winter/Spring for the seasonal working mode adjustments. You can select multiple months."
+        },
+        "description": "Configure the months that are considered as Winter/Spring. During these months, the system will prioritize charging the batteries from grid energy to ensure sufficient battery levels during periods of lower solar production. Remaining months will be considered as Summer/Autum months.",
+        "title": "Winter/Spring Months"
       },
       "power": {
         "data": {
@@ -142,14 +152,14 @@
       },
       "solcast": {
         "data": {
+          "hsem_solcast_pv_forecast_forecast_likelihood": "Solcast PV Forecast Preferred forecast likelihood to use",
           "hsem_solcast_pv_forecast_forecast_today": "Solcast PV Forecast Today Sensor",
-          "hsem_solcast_pv_forecast_forecast_tomorrow": "Solcast PV Forecast Tomorrow Sensor",
-          "hsem_solcast_pv_forecast_forecast_likelihood": "Solcast PV Forecast Preferred forecast likelihood to use"
+          "hsem_solcast_pv_forecast_forecast_tomorrow": "Solcast PV Forecast Tomorrow Sensor"
         },
         "data_description": {
+          "hsem_solcast_pv_forecast_forecast_likelihood": "Select the preferred forecast likelihood to use for Solcast PV forecasts.",
           "hsem_solcast_pv_forecast_forecast_today": "Select the sensor that provides today's PV production forecast from Solcast.",
-          "hsem_solcast_pv_forecast_forecast_tomorrow": "Select the sensor that provides tomorrow's PV production forecast from Solcast.",
-          "hsem_solcast_pv_forecast_forecast_likelihood": "Select the preferred forecast likelihood to use for Solcast PV forecasts."
+          "hsem_solcast_pv_forecast_forecast_tomorrow": "Select the sensor that provides tomorrow's PV production forecast from Solcast."
         },
         "description": "Select Solcast forecast sensors.",
         "title": "Solcast Sensors"
@@ -261,18 +271,18 @@
       },
       "ev": {
         "data": {
+          "hsem_ev_charger_force_max_discharge_power": "EV Charger Force Max Discharge Power",
+          "hsem_ev_charger_max_discharge_power": "EV Charger Max Discharge Power",
           "hsem_ev_charger_power": "EV Charger Power Sensor",
           "hsem_ev_charger_status": "EV Charger Status Sensor",
-          "hsem_house_power_includes_ev_charger_power": "House Power Includes EV Charger Power",
-          "hsem_ev_charger_force_max_discharge_power": "EV Charger Force Max Discharge Power",
-          "hsem_ev_charger_max_discharge_power": "EV Charger Max Discharge Power"
+          "hsem_house_power_includes_ev_charger_power": "House Power Includes EV Charger Power"
         },
         "data_description": {
+          "hsem_ev_charger_force_max_discharge_power": "Enable this if you want to force a specific maximum discharge power for the Huawei batteries while EV is charging.",
+          "hsem_ev_charger_max_discharge_power": "Set the maximum discharge power for the Huawei batteries while EV is charging.",
           "hsem_ev_charger_power": "Select the sensor that measures the power consumption of your EV charger.",
           "hsem_ev_charger_status": "Select the sensor or entity that indicates whether the EV charger is active (e.g., a switch or sensor).",
-          "hsem_house_power_includes_ev_charger_power": "Enable this if the house consumption power sensor already includes the EV charger power consumption.",
-          "hsem_ev_charger_force_max_discharge_power": "Enable this if you want to force a specific maximum discharge power for the Huawei batteries while EV is charging.",
-          "hsem_ev_charger_max_discharge_power": "Set the maximum discharge power for the Huawei batteries while EV is charging."
+          "hsem_house_power_includes_ev_charger_power": "Enable this if the house consumption power sensor already includes the EV charger power consumption."
         },
         "description": "Configure EV Charger settings for HSEM.",
         "title": "EV Charger Settings (Optional)"
@@ -284,8 +294,10 @@
           "hsem_house_consumption_energy_weight_1d": "House Consumption Energy Weight 1 Day",
           "hsem_house_consumption_energy_weight_3d": "House Consumption Energy Weight 3 Days",
           "hsem_house_consumption_energy_weight_7d": "House Consumption Energy Weight 7 Days",
+          "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Huawei Batteries Excess PV energy use in TOU",
           "hsem_huawei_solar_batteries_grid_charge_cutoff_soc": "Huawei Batteries Grid Charge Cutoff SOC (%)",
           "hsem_huawei_solar_batteries_maximum_charging_power": "Huawei Batteries Maximum Charging Power (kW)",
+          "hsem_huawei_solar_batteries_maximum_discharging_power": "Huawei Batteries Maximum Discharging Power (W)",
           "hsem_huawei_solar_batteries_rated_capacity": "Battery Max Capacity (Watt)",
           "hsem_huawei_solar_batteries_state_of_capacity": "Huawei Batteries State of Capacity Sensor",
           "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods": "Huawei Batteries TOU Charging and Discharging Periods",
@@ -293,14 +305,14 @@
           "hsem_huawei_solar_device_id_batteries": "Huawei Batteries Device",
           "hsem_huawei_solar_device_id_inverter_1": "Huawei Inverter 1 Device",
           "hsem_huawei_solar_device_id_inverter_2": "Huawei Inverter 2 Device",
-          "hsem_huawei_solar_inverter_active_power_control": "Huawei Inverter Active Power Control Sensor",
-          "hsem_huawei_solar_batteries_maximum_discharging_power": "Huawei Batteries Maximum Discharging Power (W)",
-          "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Huawei Batteries Excess PV energy use in TOU"
+          "hsem_huawei_solar_inverter_active_power_control": "Huawei Inverter Active Power Control Sensor"
         },
         "data_description": {
           "hsem_batteries_conversion_loss": "Specify the percentage of energy loss when charging the battery. This represents the conversion loss, typically between 5% and 10%, which occurs when importing energy from solar panels or the grid to the battery. It is used to calculate the actual time required to charge the battery.",
+          "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Select the sensor that provides setting for excess PV energy use in TOU periods.",
           "hsem_huawei_solar_batteries_grid_charge_cutoff_soc": "Specify the grid charge cutoff SOC percentage for your Huawei batteries.",
           "hsem_huawei_solar_batteries_maximum_charging_power": "Select the sensor that provides the maximum charging power for your Huawei batteries in kilowatts (W).",
+          "hsem_huawei_solar_batteries_maximum_discharging_power": "Select the sensor that provides the maximum discharging power for your Huawei batteries.",
           "hsem_huawei_solar_batteries_rated_capacity": "Select the sensor that provides the total rated capacity of your Huawei batteries in watts (W).",
           "hsem_huawei_solar_batteries_state_of_capacity": "Select the sensor that provides the state of charge (SOC) of your Huawei batteries.",
           "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods": "Select the sensor that defines the Time-of-Use (TOU) charging and discharging periods for your Huawei batteries.",
@@ -308,9 +320,7 @@
           "hsem_huawei_solar_device_id_batteries": "Select your Huawei battery device.",
           "hsem_huawei_solar_device_id_inverter_1": "Select your primary Huawei inverter device.",
           "hsem_huawei_solar_device_id_inverter_2": "Select your secondary Huawei inverter device, if applicable.",
-          "hsem_huawei_solar_inverter_active_power_control": "Select the sensor that controls the active power output of your Huawei inverter.",
-          "hsem_huawei_solar_batteries_maximum_discharging_power": "Select the sensor that provides the maximum discharging power for your Huawei batteries.",
-          "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Select the sensor that provides setting for excess PV energy use in TOU periods."
+          "hsem_huawei_solar_inverter_active_power_control": "Select the sensor that controls the active power output of your Huawei inverter."
         },
         "description": "Configure the working mode for Huawei solar batteries.",
         "title": "Huawei Solar Sensors"
@@ -329,6 +339,16 @@
         "description": "Update the settings for HSEM",
         "title": "Update Huawei Solar Energy Management"
       },
+      "months": {
+        "data": {
+          "hsem_months_winter": "Months considered as Winter/Spring"
+        },
+        "data_description": {
+          "hsem_months_winter": "Select the months that should be considered as Winter/Spring for the seasonal working mode adjustments. You can select multiple months."
+        },
+        "description": "Configure the months that are considered as Winter/Spring. During these months, the system will prioritize charging the batteries from grid energy to ensure sufficient battery levels during periods of lower solar production. Remaining months will be considered as Summer/Autum months.",
+        "title": "Winter/Spring Months"
+      },
       "power": {
         "data": {
           "hsem_house_consumption_power": "House Consumption Power Sensor",
@@ -343,14 +363,14 @@
       },
       "solcast": {
         "data": {
+          "hsem_solcast_pv_forecast_forecast_likelihood": "Solcast PV Forecast Preferred forecast likelihood to use",
           "hsem_solcast_pv_forecast_forecast_today": "Solcast PV Forecast Today Sensor",
-          "hsem_solcast_pv_forecast_forecast_tomorrow": "Solcast PV Forecast Tomorrow Sensor",
-          "hsem_solcast_pv_forecast_forecast_likelihood": "Solcast PV Forecast Preferred forecast likelihood to use"
+          "hsem_solcast_pv_forecast_forecast_tomorrow": "Solcast PV Forecast Tomorrow Sensor"
         },
         "data_description": {
+          "hsem_solcast_pv_forecast_forecast_likelihood": "Select the preferred forecast likelihood to use for Solcast PV forecasts.",
           "hsem_solcast_pv_forecast_forecast_today": "Select the sensor that provides today's PV production forecast from Solcast.",
-          "hsem_solcast_pv_forecast_forecast_tomorrow": "Select the sensor that provides tomorrow's PV production forecast from Solcast.",
-          "hsem_solcast_pv_forecast_forecast_likelihood": "Select the preferred forecast likelihood to use for Solcast PV forecasts."
+          "hsem_solcast_pv_forecast_forecast_tomorrow": "Select the sensor that provides tomorrow's PV production forecast from Solcast."
         },
         "description": "Select Solcast forecast sensors.",
         "title": "Solcast Sensors"
@@ -370,6 +390,24 @@
         },
         "description": "Configure the weighted values for house consumption energy to estimate your average power usage. The system calculates the average consumption for each hour over 1, 3, 7, and 14 days. These averages are then weighted to provide a combined, weighted estimate. This approach helps to smooth out anomalies, such as unusually high consumption on a single day due to low prices, and provides a reliable prediction of your expected power usage in specific time intervals (e.g., between 16:00 and 17:00).",
         "title": "Weighted Values"
+      }
+    }
+  },
+  "selector": {
+    "months": {
+      "options": {
+        "1": "January",
+        "10": "October",
+        "11": "November",
+        "12": "December",
+        "2": "February",
+        "3": "March",
+        "4": "April",
+        "5": "May",
+        "6": "June",
+        "7": "July",
+        "8": "August",
+        "9": "September"
       }
     }
   }

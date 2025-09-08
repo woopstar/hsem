@@ -26,8 +26,6 @@ from homeassistant.util import dt as dt_util
 from custom_components.hsem.const import (
     DEFAULT_HSEM_BATTERIES_WAIT_MODE,
     DEFAULT_HSEM_EV_CHARGER_TOU_MODES,
-    DEFAULT_HSEM_MONTHS_SUMMER,
-    DEFAULT_HSEM_MONTHS_WINTER_SPRING,
     DEFAULT_HSEM_TOU_MODES_FORCE_CHARGE,
     DEFAULT_HSEM_TOU_MODES_FORCE_DISCHARGE,
 )
@@ -197,11 +195,27 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self._timer_interval = None
         self._attr_unique_id = get_working_mode_sensor_unique_id()
         self.entity_id = get_working_mode_sensor_entity_id()
+        self._hsem_months_winter = []
+        self._hsem_months_summer = []
         self._update_settings()
 
     def _update_settings(self) -> None:
         """Fetch updated settings from config_entry options."""
         self._read_only = get_config_value(self._config_entry, "hsem_read_only")
+
+        self._hsem_months_winter = get_config_value(
+            self._config_entry, "hsem_months_winter"
+        )
+
+        self._hsem_months_summer = get_config_value(
+            self._config_entry, "hsem_months_summer"
+        )
+
+        if not isinstance(self._hsem_months_winter, list):
+            self._hsem_months_winter = []
+
+        if not isinstance(self._hsem_months_summer, list):
+            self._hsem_months_summer = []
 
         self._hsem_extended_attributes = get_config_value(
             self._config_entry, "hsem_extended_attributes"
@@ -541,6 +555,8 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             "net_consumption_with_ev": self._hsem_net_consumption_with_ev,
             "net_consumption": self._hsem_net_consumption,
             "solar_production_power_state": self._hsem_solar_production_power_state,
+            "months_winter": self._hsem_months_winter,
+            "months_summer": self._hsem_months_summer,
         }
 
         status = {
@@ -2412,14 +2428,14 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             #        f"Hour: {hour} | Batteries fully charged from PV, setting recommendation to BatteriesWaitMode to force export the solar power. | Import Price: {data['import_price']} | Net Consumption: {net_consumption}",
             #    )
             # else:
-            if current_month in DEFAULT_HSEM_MONTHS_WINTER_SPRING:
+            if str(current_month) in str(self._hsem_months_winter):
                 data["recommendation"] = Recommendations.BatteriesWaitMode.value
                 await async_logger(
                     self,
                     f"Hour: {hour} | Winter/Spring: Setting recommendation to BatteriesWaitMode.",
                 )
 
-            if current_month in DEFAULT_HSEM_MONTHS_SUMMER:
+            if str(current_month) in str(self._hsem_months_summer):
                 if data["solcast_pv_estimate"] > 0:
                     data["recommendation"] = Recommendations.BatteriesChargeSolar.value
                     await async_logger(

@@ -19,17 +19,13 @@ DEFAULT_HSEM_TOU_MODES_FORCE_CHARGE = ["00:00-23:59/1234567/+"]
 # TOU mode for force dicharging the battery
 DEFAULT_HSEM_TOU_MODES_FORCE_DISCHARGE = ["00:00-23:59/1234567/-"]
 
-# Default list of months considered winter and spring
-DEFAULT_HSEM_MONTHS_WINTER_SPRING = [1, 2, 3, 4, 10, 11, 12]
-
-# Default list of months considered summer
-DEFAULT_HSEM_MONTHS_SUMMER = [5, 6, 7, 8, 9]
-
 # Minimum required version of Huawei Solar
 MIN_HUAWEI_SOLAR_VERSION = "1.5.0a1"
 
 DEFAULT_CONFIG_VALUES = {
     "device_name": NAME,
+    "hsem_months_winter": ["1", "2", "3", "4", "10", "11", "12"],
+    "hsem_months_summer": ["5", "6", "7", "8", "9"],
     "hsem_batteries_conversion_loss": 10,
     "hsem_batteries_enable_batteries_schedule_1_end": "09:00:00",
     "hsem_batteries_enable_batteries_schedule_1_min_price_difference": 0.00,
