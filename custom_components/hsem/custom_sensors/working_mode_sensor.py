@@ -160,6 +160,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         }
 
         self._missing_input_entities = True
+        self._missing_input_entities_list = []
         self._hsem_batteries_enable_batteries_schedule_1 = False
         self._hsem_batteries_enable_batteries_schedule_1_start = None
         self._hsem_batteries_enable_batteries_schedule_1_end = None
@@ -452,6 +453,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             return {
                 "status": "error",
                 "description": "Some of the required input sensors from the config flow is missing or not reporting a state yet. Check your configuration and make sure input sensors are configured correctly.",
+                "missing_input_entities": self._missing_input_entities_list,
                 "force_working_mode_entity": self._hsem_force_working_mode,
                 "force_working_mode_state": self._hsem_force_working_mode_state,
                 "last_updated": self._last_updated,
@@ -724,11 +726,10 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             )
 
     async def _async_fetch_entity_states(self) -> None:
-        # Fetch the current value from the EV charger status sensor
-
-        # Reset
+        # Reset status
         self._missing_input_entities = False
 
+        # Resolve force working mode once
         if self._hsem_force_working_mode is None:
             self._hsem_force_working_mode = (
                 await async_resolve_entity_id_from_unique_id(
@@ -736,173 +737,108 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 )
             )
 
-        try:
-            if self._hsem_force_working_mode:
-                self._hsem_force_working_mode_state = ha_get_entity_state_and_convert(
-                    self, self._hsem_force_working_mode, "string"
-                )
-
-            if self._hsem_ev_charger_status:
-                self._hsem_ev_charger_status_state = ha_get_entity_state_and_convert(
-                    self, self._hsem_ev_charger_status, "boolean"
-                )
-
-            # Fetch the current value from the battery maximum charging power sensor
-            if self._hsem_ev_charger_power:
-                self._hsem_ev_charger_power_state = ha_get_entity_state_and_convert(
-                    self, self._hsem_ev_charger_power, "float"
-                )
-
-            # Fetch the current value from the house consumption power sensor
-            if self._hsem_house_consumption_power:
-                self._hsem_house_consumption_power_state = (
-                    ha_get_entity_state_and_convert(
-                        self, self._hsem_house_consumption_power, "float"
-                    )
-                )
-            else:
+        def _read_entity(entity_id, conv_type=None, decimals=3, label=""):
+            """Read entity state safely and track any errors."""
+            if not entity_id:
                 self._missing_input_entities = True
-
-            # Fetch the current value from the solar production power sensor
-            if self._hsem_solar_production_power:
-                self._hsem_solar_production_power_state = (
-                    ha_get_entity_state_and_convert(
-                        self, self._hsem_solar_production_power, "float"
-                    )
+                self._missing_input_entities_list.append(
+                    f"Missing entity: {label or entity_id}"
                 )
-            else:
+                return None
+            try:
+                return ha_get_entity_state_and_convert(
+                    self, entity_id, conv_type, decimals
+                )
+            except Exception as e:
                 self._missing_input_entities = True
-
-            # fetch the current value from the working mode sensor
-            if self._hsem_huawei_solar_batteries_working_mode:
-                self._hsem_huawei_solar_batteries_working_mode_state = (
-                    ha_get_entity_state_and_convert(
-                        self, self._hsem_huawei_solar_batteries_working_mode, "string"
-                    )
+                self._missing_input_entities_list.append(
+                    f"Error reading {label or entity_id}: {type(e).__name__}: {e}"
                 )
-            else:
-                self._missing_input_entities = True
+                return None
 
-            # fetch the current value from the excess pv energy use in tou sensor
-            if self._hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou:
-                self._hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou_state = (
-                    ha_get_entity_state_and_convert(
-                        self,
-                        self._hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou,
-                        "string",
-                    )
-                )
-            else:
-                self._missing_input_entities = True
+        # Read each entity using the helper
+        self._hsem_force_working_mode_state = _read_entity(
+            self._hsem_force_working_mode, "string", label="hsem_force_working_mode"
+        )
+        self._hsem_ev_charger_status_state = _read_entity(
+            self._hsem_ev_charger_status, "boolean", label="hsem_ev_charger_status"
+        )
+        self._hsem_ev_charger_power_state = _read_entity(
+            self._hsem_ev_charger_power, "float", label="hsem_ev_charger_power"
+        )
+        self._hsem_house_consumption_power_state = _read_entity(
+            self._hsem_house_consumption_power,
+            "float",
+            label="hsem_house_consumption_power",
+        )
+        self._hsem_solar_production_power_state = _read_entity(
+            self._hsem_solar_production_power,
+            "float",
+            label="hsem_solar_production_power",
+        )
+        self._hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou_state = (
+            _read_entity(
+                self._hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou,
+                "string",
+                label="excess_pv_energy_use_in_tou",
+            )
+        )
+        self._hsem_huawei_solar_batteries_working_mode_state = _read_entity(
+            self._hsem_huawei_solar_batteries_working_mode,
+            "string",
+            label="batteries_working_mode",
+        )
+        self._hsem_huawei_solar_batteries_state_of_capacity_state = _read_entity(
+            self._hsem_huawei_solar_batteries_state_of_capacity,
+            "float",
+            label="state_of_capacity",
+        )
+        self._hsem_energi_data_service_import_state = _read_entity(
+            self._hsem_energi_data_service_import, "float", 3, label="eds_import"
+        )
+        self._hsem_energi_data_service_export_state = _read_entity(
+            self._hsem_energi_data_service_export, "float", 3, label="eds_export"
+        )
+        self._hsem_huawei_solar_inverter_active_power_control_state = _read_entity(
+            self._hsem_huawei_solar_inverter_active_power_control,
+            "string",
+            label="inverter_active_power_control",
+        )
+        self._hsem_huawei_solar_batteries_maximum_charging_power_state = _read_entity(
+            self._hsem_huawei_solar_batteries_maximum_charging_power,
+            "float",
+            label="max_charging_power",
+        )
+        self._hsem_huawei_solar_batteries_maximum_discharging_power_state = (
+            _read_entity(
+                self._hsem_huawei_solar_batteries_maximum_discharging_power,
+                "float",
+                label="max_discharging_power",
+            )
+        )
+        self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state = _read_entity(
+            self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc,
+            "float",
+            label="grid_charge_cutoff_soc",
+        )
+        self._hsem_batteries_rated_capacity_max_state = convert_to_float(
+            _read_entity(
+                self._hsem_batteries_rated_capacity_max,
+                "float",
+                label="batteries_rated_capacity_max",
+            )
+        )
 
-            # Fetch the current value from the state of capacity sensor
-            if self._hsem_huawei_solar_batteries_state_of_capacity:
-                self._hsem_huawei_solar_batteries_state_of_capacity_state = (
-                    convert_to_float(
-                        ha_get_entity_state_and_convert(
-                            self,
-                            self._hsem_huawei_solar_batteries_state_of_capacity,
-                            "float",
-                            0,
-                        )
-                    )
-                )
-            else:
-                self._missing_input_entities = True
-
-            # Fetch the current value from the energi data service import sensor
-            if self._hsem_energi_data_service_import:
-                self._hsem_energi_data_service_import_state = (
-                    ha_get_entity_state_and_convert(
-                        self, self._hsem_energi_data_service_import, "float", 3
-                    )
-                )
-            else:
-                self._missing_input_entities = True
-
-            # Fetch the current value from the energi data service export sensor
-            if self._hsem_energi_data_service_export:
-                self._hsem_energi_data_service_export_state = (
-                    ha_get_entity_state_and_convert(
-                        self, self._hsem_energi_data_service_export, "float", 3
-                    )
-                )
-            else:
-                self._missing_input_entities = True
-
-            if self._hsem_huawei_solar_inverter_active_power_control:
-                self._hsem_huawei_solar_inverter_active_power_control_state = (
-                    ha_get_entity_state_and_convert(
-                        self,
-                        self._hsem_huawei_solar_inverter_active_power_control,
-                        "string",
-                    )
-                )
-            else:
-                self._missing_input_entities = True
-
-            # Fetch the current value from the battery maximum charging power sensor
-            if self._hsem_huawei_solar_batteries_maximum_charging_power:
-                self._hsem_huawei_solar_batteries_maximum_charging_power_state = (
-                    ha_get_entity_state_and_convert(
-                        self,
-                        self._hsem_huawei_solar_batteries_maximum_charging_power,
-                        "float",
-                        0,
-                    )
-                )
-            else:
-                self._missing_input_entities = True
-
-            # Fetch the current value from the battery maximum discharging power sensor
-            if self._hsem_huawei_solar_batteries_maximum_discharging_power:
-                self._hsem_huawei_solar_batteries_maximum_discharging_power_state = (
-                    ha_get_entity_state_and_convert(
-                        self,
-                        self._hsem_huawei_solar_batteries_maximum_discharging_power,
-                        "float",
-                        0,
-                    )
-                )
-            else:
-                self._missing_input_entities = True
-
-            # Fetch the current value from the battery grid charge cutoff SOC sensor
-            if self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc:
-                self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state = (
-                    ha_get_entity_state_and_convert(
-                        self,
-                        self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc,
-                        "float",
-                        0,
-                    )
-                )
-            else:
-                self._missing_input_entities = True
-
-            # Fetch the current value from the battery rated capacity sensor
-            if self._hsem_batteries_rated_capacity_max:
-                self._hsem_batteries_rated_capacity_max_state = convert_to_float(
-                    ha_get_entity_state_and_convert(
-                        self, self._hsem_batteries_rated_capacity_max, "float", 0
-                    )
-                )
-                self._hsem_batteries_rated_capacity_max_state = convert_to_float(
-                    self._hsem_batteries_rated_capacity_max_state
-                )
-
-            else:
-                self._missing_input_entities = True
-
-            # Fetch the current value from the battery TOU charging and discharging periods sensor
-            if self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods:
+        # Special handling for TOU charging/discharging periods
+        if self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods:
+            try:
                 entity_data = ha_get_entity_state_and_convert(
                     self,
                     self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods,
                     None,
                 )
 
-                # Reset state and periods attributes
+                # Reset both values first
                 self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_state = (
                     None
                 )
@@ -910,14 +846,10 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                     None
                 )
 
-                # Ensure entity_data is valid and a State object
                 if isinstance(entity_data, State):
-                    # Set the state directly
                     self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_state = (
                         entity_data.state
                     )
-
-                    # Gather period values from attributes using a list comprehension
                     self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_periods = [
                         entity_data.attributes[f"Period {i}"]
                         for i in range(1, 11)
@@ -925,39 +857,44 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                     ]
                 else:
                     self._missing_input_entities = True
-            else:
+                    self._missing_input_entities_list.append(
+                        "TOU periods entity is not of type State"
+                    )
+            except Exception as e:
                 self._missing_input_entities = True
-
-        except Exception:
+                self._missing_input_entities_list.append(
+                    f"Error reading TOU periods: {type(e).__name__}: {e}"
+                )
+        else:
             self._missing_input_entities = True
+            self._missing_input_entities_list.append("Missing entity: TOU periods")
 
-        if self._hsem_ev_charger_status:
-            if self._hsem_ev_charger_status not in self._tracked_entities:
-                await async_logger(
-                    self,
-                    f"Starting to track state changes for {self._hsem_ev_charger_status}",
-                )
+        # Register state listeners (unchanged)
+        if (
+            self._hsem_ev_charger_status
+            and self._hsem_ev_charger_status not in self._tracked_entities
+        ):
+            await async_logger(
+                self,
+                f"Starting to track state changes for {self._hsem_ev_charger_status}",
+            )
+            async_track_state_change_event(
+                self.hass, [self._hsem_ev_charger_status], self._async_handle_update
+            )
+            self._tracked_entities.add(self._hsem_ev_charger_status)
 
-                async_track_state_change_event(
-                    self.hass,
-                    [self._hsem_ev_charger_status],
-                    self._async_handle_update,
-                )
-                self._tracked_entities.add(self._hsem_ev_charger_status)
-
-        if self._hsem_force_working_mode:
-            if self._hsem_force_working_mode not in self._tracked_entities:
-                await async_logger(
-                    self,
-                    f"Starting to track state changes for {self._hsem_force_working_mode}",
-                )
-
-                async_track_state_change_event(
-                    self.hass,
-                    [self._hsem_force_working_mode],
-                    self._async_handle_update,
-                )
-                self._tracked_entities.add(self._hsem_force_working_mode)
+        if (
+            self._hsem_force_working_mode
+            and self._hsem_force_working_mode not in self._tracked_entities
+        ):
+            await async_logger(
+                self,
+                f"Starting to track state changes for {self._hsem_force_working_mode}",
+            )
+            async_track_state_change_event(
+                self.hass, [self._hsem_force_working_mode], self._async_handle_update
+            )
+            self._tracked_entities.add(self._hsem_force_working_mode)
 
     async def _async_calculate_net_consumption(self) -> None:
         # Calculate the net consumption without the EV charger power
