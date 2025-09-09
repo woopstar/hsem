@@ -24,10 +24,41 @@ from homeassistant.helpers.event import (
 from homeassistant.util import dt as dt_util
 
 from custom_components.hsem.const import (
+    BASELINE_7D_SHARE,
+    BASELINE_14D_SHARE,
+    CAP7_DOWN,
+    CAP7_UP,
+    CAP14_DOWN,
+    CAP14_UP,
+    CHANGE3_LIMIT_DOWN_FACTOR,
+    CHANGE3_LIMIT_UP_FACTOR,
+    CHANGE_LIMIT_DOWN_FACTOR,
+    CHANGE_LIMIT_UP_FACTOR,
     DEFAULT_HSEM_BATTERIES_WAIT_MODE,
     DEFAULT_HSEM_EV_CHARGER_TOU_MODES,
     DEFAULT_HSEM_TOU_MODES_FORCE_CHARGE,
     DEFAULT_HSEM_TOU_MODES_FORCE_DISCHARGE,
+    RELIABILITY_EPS,
+    RELIABILITY_SCALE_STRENGTH,
+    SPIKE1_RATIO_MAX,
+    SPIKE1_RATIO_MIN,
+    SPIKE1_REDIST_TO_3D,
+    SPIKE1_REDIST_TO_7D,
+    SPIKE1_REDIST_TO_14D,
+    SPIKE1_REDUCE_FRACTION_MAX,
+    SPIKE3_RATIO_MAX,
+    SPIKE3_RATIO_MIN,
+    SPIKE3_REDIST_TO_7D,
+    SPIKE3_REDIST_TO_14D,
+    SPIKE3_REDUCE_FRACTION_MAX,
+    SPIKE7_RATIO_MAX,
+    SPIKE7_RATIO_MIN,
+    SPIKE7_REDIST_TO_14D,
+    SPIKE7_REDUCE_FRACTION_MAX,
+    SPIKE14_RATIO_MAX,
+    SPIKE14_RATIO_MIN,
+    SPIKE14_REDIST_TO_7D,
+    SPIKE14_REDUCE_FRACTION_MAX,
 )
 from custom_components.hsem.entity import HSEMEntity
 from custom_components.hsem.utils.huawei import (
@@ -1327,7 +1358,9 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         }
 
     async def _async_calculate_hourly_data(self) -> None:
-        """Calculate the weighted hourly data for the sensor using both 3-day and 7-day HouseConsumptionEnergyAverageSensors."""
+        """Calculate the weighted hourly data for the sensor using 1/3/7/14-day HouseConsumptionEnergyAverageSensors,
+        with spike-aware dynamic reweighting, capping of 1d/3d/7d/14d vs baseline, and reliability-based weight scaling.
+        """
 
         if self._hsem_house_consumption_energy_weight_1d is None:
             await async_logger(
@@ -1360,7 +1393,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             hour_end = int(hour.split("-")[1])
             time_range = f"{hour_start:02d}-{hour_end:02d}"
 
-            # Construct unique_ids for the 3d, 7d, and 14d sensors
+            # Construct unique_ids for the 1d, 3d, 7d, and 14d sensors
             unique_id_1d = get_energy_average_sensor_unique_id(hour_start, hour_end, 1)
             unique_id_3d = get_energy_average_sensor_unique_id(hour_start, hour_end, 3)
             unique_id_7d = get_energy_average_sensor_unique_id(hour_start, hour_end, 7)
@@ -1368,7 +1401,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 hour_start, hour_end, 14
             )
 
-            # Resolve entity_ids for 3d, 7d, and 14d sensors
+            # Resolve entity_ids
             if unique_id_1d not in self._hsem_entity_id_cache:
                 entity_id_1d = await async_resolve_entity_id_from_unique_id(
                     self, unique_id_1d
@@ -1391,7 +1424,6 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 entity_id_7d = await async_resolve_entity_id_from_unique_id(
                     self, unique_id_7d
                 )
-
                 if entity_id_7d is not None:
                     self._hsem_entity_id_cache[unique_id_7d] = entity_id_7d
             else:
@@ -1401,13 +1433,12 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 entity_id_14d = await async_resolve_entity_id_from_unique_id(
                     self, unique_id_14d
                 )
-
                 if entity_id_14d is not None:
                     self._hsem_entity_id_cache[unique_id_14d] = entity_id_14d
             else:
                 entity_id_14d = self._hsem_entity_id_cache[unique_id_14d]
 
-            # Default values for sensors in case they are missing
+            # Defaults
             value_1d = None
             value_3d = None
             value_7d = None
@@ -1418,7 +1449,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             weighted_value_14d = None
             avg_house_consumption = None
 
-            # Fetch values for 1d, 3d, 7d, and 14d if available
+            # Fetch values
             try:
                 if entity_id_1d is not None:
                     value_1d = convert_to_float(
@@ -1428,22 +1459,22 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                     value_3d = convert_to_float(
                         ha_get_entity_state_and_convert(self, entity_id_3d, "float", 3)
                     )
-
                 if entity_id_7d is not None:
                     value_7d = convert_to_float(
                         ha_get_entity_state_and_convert(self, entity_id_7d, "float", 3)
                     )
-
                 if entity_id_14d is not None:
                     value_14d = convert_to_float(
                         ha_get_entity_state_and_convert(self, entity_id_14d, "float", 3)
                     )
             except ValueError:
-                value_1d = None
-                value_3d = None
-                value_7d = None
-                value_14d = None
+                value_1d = value_3d = value_7d = value_14d = None
                 avg_house_consumption = None
+
+            value_1d = max(0.0, value_1d) if value_1d is not None else None
+            value_3d = max(0.0, value_3d) if value_3d is not None else None
+            value_7d = max(0.0, value_7d) if value_7d is not None else None
+            value_14d = max(0.0, value_14d) if value_14d is not None else None
 
             if (
                 value_1d is not None
@@ -1455,18 +1486,154 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 and entity_id_7d is not None
                 and entity_id_14d is not None
             ):
-                weighted_value_1d = value_1d * (
-                    self._hsem_house_consumption_energy_weight_1d / 100
+                # Read configured weights (percent)
+                w1 = int(self._hsem_house_consumption_energy_weight_1d)
+                w3 = int(self._hsem_house_consumption_energy_weight_3d)
+                w7 = int(self._hsem_house_consumption_energy_weight_7d)
+                w14 = int(self._hsem_house_consumption_energy_weight_14d)
+                w_total_config = w1 + w3 + w7 + w14
+
+                if w_total_config == 0:
+                    await async_logger(
+                        self, "All weights sum to 0. Skipping calculation."
+                    )
+                    continue
+
+                # --- Mild capping between 7d and 14d (fail-safe) ---
+                value_7d_eff = max(
+                    CAP7_DOWN * value_14d, min(value_7d, CAP7_UP * value_14d)
                 )
-                weighted_value_3d = value_3d * (
-                    self._hsem_house_consumption_energy_weight_3d / 100
+                value_14d_eff = max(
+                    CAP14_DOWN * value_7d_eff, min(value_14d, CAP14_UP * value_7d_eff)
                 )
-                weighted_value_7d = value_7d * (
-                    self._hsem_house_consumption_energy_weight_7d / 100
+
+                # --- Baseline and capping for 1d/3d vs calm baseline ---
+                baseline = (
+                    BASELINE_7D_SHARE * value_7d_eff
+                    + BASELINE_14D_SHARE * value_14d_eff
                 )
-                weighted_value_14d = value_14d * (
-                    self._hsem_house_consumption_energy_weight_14d / 100
+
+                lower1 = baseline * CHANGE_LIMIT_DOWN_FACTOR
+                upper1 = baseline * CHANGE_LIMIT_UP_FACTOR
+                value_1d_eff = max(lower1, min(value_1d, upper1))
+
+                lower3 = baseline * CHANGE3_LIMIT_DOWN_FACTOR
+                upper3 = baseline * CHANGE3_LIMIT_UP_FACTOR
+                value_3d_eff = max(lower3, min(value_3d, upper3))
+
+                # --- Spike detection severities (0..1) ---
+                ratio1 = (
+                    (value_1d / value_7d_eff)
+                    if (value_7d_eff and value_7d_eff > 0)
+                    else 1.0
                 )
+                if ratio1 <= SPIKE1_RATIO_MIN:
+                    sev1 = 0.0
+                elif ratio1 >= SPIKE1_RATIO_MAX:
+                    sev1 = 1.0
+                else:
+                    sev1 = (ratio1 - SPIKE1_RATIO_MIN) / (
+                        SPIKE1_RATIO_MAX - SPIKE1_RATIO_MIN
+                    )
+
+                ratio3 = (
+                    (value_3d / value_7d_eff)
+                    if (value_7d_eff and value_7d_eff > 0)
+                    else 1.0
+                )
+                if ratio3 <= SPIKE3_RATIO_MIN:
+                    sev3 = 0.0
+                elif ratio3 >= SPIKE3_RATIO_MAX:
+                    sev3 = 1.0
+                else:
+                    sev3 = (ratio3 - SPIKE3_RATIO_MIN) / (
+                        SPIKE3_RATIO_MAX - SPIKE3_RATIO_MIN
+                    )
+
+                ratio7 = (
+                    (value_7d_eff / value_14d_eff)
+                    if (value_14d_eff and value_14d_eff > 0)
+                    else 1.0
+                )
+                if ratio7 <= SPIKE7_RATIO_MIN:
+                    sev7 = 0.0
+                elif ratio7 >= SPIKE7_RATIO_MAX:
+                    sev7 = 1.0
+                else:
+                    sev7 = (ratio7 - SPIKE7_RATIO_MIN) / (
+                        SPIKE7_RATIO_MAX - SPIKE7_RATIO_MIN
+                    )
+
+                ratio14 = (
+                    (value_14d_eff / value_7d_eff)
+                    if (value_7d_eff and value_7d_eff > 0)
+                    else 1.0
+                )
+                if ratio14 <= SPIKE14_RATIO_MIN:
+                    sev14 = 0.0
+                elif ratio14 >= SPIKE14_RATIO_MAX:
+                    sev14 = 1.0
+                else:
+                    sev14 = (ratio14 - SPIKE14_RATIO_MIN) / (
+                        SPIKE14_RATIO_MAX - SPIKE14_RATIO_MIN
+                    )
+
+                # --- Dynamic reweighting (all relative to configured weights) ---
+                # 1d → redistribute to 3d/7d/14d
+                freed1 = w1 * (SPIKE1_REDUCE_FRACTION_MAX * sev1)
+                w1_eff = w1 - freed1
+                w3_eff = w3 + freed1 * SPIKE1_REDIST_TO_3D
+                w7_eff = w7 + freed1 * SPIKE1_REDIST_TO_7D
+                w14_eff = w14 + freed1 * SPIKE1_REDIST_TO_14D
+
+                # 3d → redistribute to 7d/14d
+                freed3 = w3_eff * (SPIKE3_REDUCE_FRACTION_MAX * sev3)
+                w3_eff = w3_eff - freed3
+                w7_eff = w7_eff + freed3 * SPIKE3_REDIST_TO_7D
+                w14_eff = w14_eff + freed3 * SPIKE3_REDIST_TO_14D
+
+                # 7d too high vs 14d → redistribute a little to 14d
+                freed7 = w7_eff * (SPIKE7_REDUCE_FRACTION_MAX * sev7)
+                w7_eff = w7_eff - freed7
+                w14_eff = w14_eff + freed7 * SPIKE7_REDIST_TO_14D
+
+                # 14d too high vs 7d → redistribute a little to 7d
+                freed14 = w14_eff * (SPIKE14_REDUCE_FRACTION_MAX * sev14)
+                w14_eff = w14_eff - freed14
+                w7_eff = w7_eff + freed14 * SPIKE14_REDIST_TO_7D
+
+                # --- Reliability-based scaling (down-weight disagreement), then renormalize ---
+                rel1 = 1.0 / (RELIABILITY_EPS + abs(value_1d_eff - value_7d_eff))
+                rel3 = 1.0 / (RELIABILITY_EPS + abs(value_3d_eff - value_7d_eff))
+                rel7 = 1.0 / (RELIABILITY_EPS + abs(value_7d_eff - value_14d_eff))
+                rel14 = 1.0 / (RELIABILITY_EPS + abs(value_14d_eff - value_7d_eff))
+
+                rel1 = 1.0 + (rel1 - 1.0) * RELIABILITY_SCALE_STRENGTH
+                rel3 = 1.0 + (rel3 - 1.0) * RELIABILITY_SCALE_STRENGTH
+                rel7 = 1.0 + (rel7 - 1.0) * RELIABILITY_SCALE_STRENGTH
+                rel14 = 1.0 + (rel14 - 1.0) * RELIABILITY_SCALE_STRENGTH
+
+                w1_eff *= rel1
+                w3_eff *= rel3
+                w7_eff *= rel7
+                w14_eff *= rel14
+
+                w_sum_eff = w1_eff + w3_eff + w7_eff + w14_eff
+                if w_sum_eff > 0:
+                    scale_back = w_total_config / w_sum_eff
+                    w1_eff *= scale_back
+                    w3_eff *= scale_back
+                    w7_eff *= scale_back
+                    w14_eff *= scale_back
+                else:
+                    # nothing to weight with; keep configured weights
+                    w1_eff, w3_eff, w7_eff, w14_eff = w1, w3, w7, w14
+
+                # Weighted sum (percent → factor); note capped short windows
+                weighted_value_1d = value_1d_eff * (w1_eff / 100)
+                weighted_value_3d = value_3d_eff * (w3_eff / 100)
+                weighted_value_7d = value_7d_eff * (w7_eff / 100)
+                weighted_value_14d = value_14d_eff * (w14_eff / 100)
 
                 avg_house_consumption = round(
                     (
@@ -1481,24 +1648,6 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             self._hourly_calculations[time_range][
                 "avg_house_consumption"
             ] = avg_house_consumption
-
-            # await async_logger(
-            #     self,
-            #     f"time_range: {time_range}, "
-            #     f"avg_house_consumption: {round(avg_house_consumption, 3)}, "
-            #     f"value_1d: {round(value_1d, 3)}, "
-            #     f"value_3d: {round(value_3d, 3)}, "
-            #     f"value_7d: {round(value_7d, 3)}, "
-            #     f"value_14d: {round(value_14d, 3)}, "
-            #     f"weighted_value_1d: {round(weighted_value_1d, 3)}, "
-            #     f"weighted_value_3d: {round(weighted_value_3d, 3)}, "
-            #     f"weighted_value_7d: {round(weighted_value_7d, 3)}, "
-            #     f"weighted_value_14d: {round(weighted_value_14d, 3)}, "
-            #     f"entity_id_1d: {entity_id_1d}, "
-            #     f"entity_id_3d: {entity_id_3d}, "
-            #     f"entity_id_7d: {entity_id_7d}, "
-            #     f"entity_id_14d: {entity_id_14d}, ",
-            # )
 
     async def _async_calculate_solcast_forecast(self) -> None:
         """Calculate the hourly Solcast PV estimate and update self._hourly_calculations without resetting avg_house_consumption."""
