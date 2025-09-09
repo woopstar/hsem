@@ -339,40 +339,85 @@ Battery schedules are a core feature of HSEM, allowing you to automate when your
 **Example Schedule:**
 - Discharge battery from 17:00 to 21:00 if the price difference between charging and discharging exceeds your configured threshold.
 
-For more details and advanced configuration, see the [Configuration Guide](docs/configuration.md).
-
 ---
 
 ## Weighted & Average Consumption Sensors
 
-HSEM uses a set of custom sensors to calculate expected house consumption for each hour of the day. These sensors track your energy usage over different time windows (1, 3, 7, and 14 days) and combine them using configurable weights to produce a more accurate and robust forecast.
+HSEM uses a set of custom sensors to calculate **expected house consumption** for each hour of the day.
+These sensors track your energy usage over different time windows (1, 3, 7, and 14 days) and combine them using **adaptive weighting, spike detection, and reliability scaling** to produce a highly robust and realistic forecast.
 
-**How it works:**
-- For each hour (e.g., 17:00-18:00), HSEM creates four sensors:
-  - 1-day average consumption
-  - 3-day average consumption
-  - 7-day average consumption
-  - 14-day average consumption
-- Each sensor calculates the average energy used in that hour over its respective period.
-- HSEM then applies user-configurable weights to each average and sums them to produce a weighted expected consumption value for that hour.
+### **How it works**
 
-**Why use weighted averages?**
-- Short-term averages (1d, 3d) quickly adapt to recent changes in usage.
-- Long-term averages (7d, 14d) smooth out anomalies and provide stability.
-- Weighting allows you to balance responsiveness and stability for more reliable predictions.
+For each hour (e.g., `17:00-18:00`), HSEM creates four sensors:
 
-**How to configure:**
-- You can adjust the weights for each period in the HSEM configuration.
-- The sum of all weights should be 100.
-- Example: 1d=40, 3d=30, 7d=20, 14d=10.
+* 1-day average consumption
+* 3-day average consumption
+* 7-day average consumption
+* 14-day average consumption
 
-**Usage in optimization:**
-- The weighted expected consumption for each hour is used to:
-  - Forecast household energy needs.
-  - Plan battery charging/discharging schedules.
-  - Optimize grid import/export and solar utilization.
+Each sensor calculates the average energy used in that hour over its respective period.
+The values are then combined through several steps:
 
-For more details on sensor setup and customization, see the [Configuration Guide](docs/configuration.md).
+1. **Baseline capping**
+
+   * 1d and 3d values are capped relative to a calm baseline (a mix of 7d and 14d).
+   * This prevents extreme spikes (e.g., a one-off oven or EV charging session) from dominating the forecast.
+
+2. **Spike-aware reweighting**
+
+   * If short-term averages (1d, 3d) deviate strongly from mid- and long-term averages, some of their weight is automatically redistributed to more stable periods.
+   * Likewise, if 7d and 14d diverge, weights are slightly adjusted to maintain balance.
+
+3. **Reliability scaling**
+
+   * Sensors that show high disagreement with others are temporarily down-weighted.
+   * This creates a self-correcting system that adapts to both short-term changes and long-term trends.
+
+4. **Final normalization**
+
+   * The adjusted weights are renormalized so they always sum to the configured total (default: 100).
+   * The final weighted sum becomes the **expected hourly consumption**.
+
+### **Why this matters**
+
+* **Stability:**
+  Long-term averages smooth out noise and create a stable baseline for forecasts.
+
+* **Responsiveness:**
+  Short-term averages adapt quickly when household usage changes.
+
+* **Resilience to anomalies:**
+  Spike detection and capping prevent unusual days from misleading the forecast.
+
+* **Better decisions:**
+  A more accurate consumption profile enables smarter automation for:
+
+  * Battery charging/discharging
+  * Grid import/export planning
+  * Solar utilization and self-consumption maximization
+
+### **Default weight recommendations**
+
+The sum of all weights **must equal 100**.
+
+| Mode               | 1 Day | 3 Days | 7 Days | 14 Days |
+| ------------------ | ----- | ------ | ------ | ------- |
+| Balanced (default) | 25    | 30     | 30     | 15      |
+| Conservative       | 20    | 30     | 35     | 15      |
+| Fast-reacting      | 30    | 30     | 25     | 15      |
+
+> Adjust these values in the HSEM configuration to match your household patterns.
+
+### **Example**
+
+Suppose your household has a sudden spike yesterday between 17:00 and 18:00 due to EV charging.
+
+* Without spike detection, the system might assume you will do the same today and inflate the forecast.
+* With the new adaptive weighting:
+
+  * The 1d sensor is capped and partially down-weighted.
+  * More weight shifts to 7d and 14d averages, preserving stability.
+  * The final forecast reflects typical behavior rather than a one-off event.
 
 ---
 
