@@ -759,6 +759,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
     async def _async_fetch_entity_states(self) -> None:
         # Reset status
         self._missing_input_entities = False
+        self._missing_input_entities_list = []
 
         # Resolve force working mode once
         if self._hsem_force_working_mode is None:
