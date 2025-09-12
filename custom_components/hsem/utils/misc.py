@@ -77,7 +77,7 @@ def get_config_value(config_entry, key) -> str | None:
     return data
 
 
-def convert_to_time(time_value) -> time | None:
+def convert_to_time(time_value) -> time:
     """
     Convert a time value (str or datetime.time) to a datetime.time object.
     """
@@ -87,7 +87,7 @@ def convert_to_time(time_value) -> time | None:
     if isinstance(time_value, str):
         return datetime.strptime(time_value, "%H:%M:%S").time()
 
-    return None
+    return time()
 
 
 def convert_to_float(state) -> float:
@@ -181,7 +181,7 @@ async def async_resolve_entity_id_from_unique_id(
 
     if self.hass is None:
         return None
-    
+
     # Check cache first
     entity_id = _entity_id_from_unique_id_cache.get(cache_key)
     if entity_id:
