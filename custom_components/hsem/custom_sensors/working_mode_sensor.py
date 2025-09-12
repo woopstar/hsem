@@ -733,9 +733,13 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             )
 
             # Calculate usable capacity (kWh)
+            #self._hsem_batteries_usable_capacity = round(
+            #    (self._hsem_batteries_rated_capacity_max_state / 1000)
+            #    - (self._hsem_batteries_rated_capacity_min_state / 1000),
+            #    2,
+            #)
             self._hsem_batteries_usable_capacity = round(
-                (self._hsem_batteries_rated_capacity_max_state / 1000)
-                - (self._hsem_batteries_rated_capacity_min_state / 1000),
+                (self._hsem_batteries_rated_capacity_max_state / 1000),
                 2,
             )
 
