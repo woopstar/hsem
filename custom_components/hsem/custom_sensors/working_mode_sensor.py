@@ -733,18 +733,10 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             )
 
             # Calculate usable capacity (kWh)
-            #self._hsem_batteries_usable_capacity = round(
-            #    (self._hsem_batteries_rated_capacity_max_state / 1000)
-            #    - (self._hsem_batteries_rated_capacity_min_state / 1000),
-            #    2,
-            #)
             self._hsem_batteries_usable_capacity = round(
                 (self._hsem_batteries_rated_capacity_max_state / 1000),
                 2,
             )
-
-            # Calculate the buffer in kWh
-            buffer = self._hsem_batteries_rated_capacity_min_state / 1000
 
             # Calculate current capacity (kWh)
             self._hsem_batteries_current_capacity = round(
@@ -754,8 +746,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                         self._hsem_huawei_solar_batteries_state_of_capacity_state
                         / 100
                         * (self._hsem_batteries_rated_capacity_max_state / 1000)
-                    )
-                    - buffer,
+                    ),
                 ),
                 2,
             )
