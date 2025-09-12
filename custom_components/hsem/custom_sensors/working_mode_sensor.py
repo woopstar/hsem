@@ -792,12 +792,16 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_force_working_mode_state = _read_entity(
             self._hsem_force_working_mode, "string", label="hsem_force_working_mode"
         )
-        self._hsem_ev_charger_status_state = _read_entity(
-            self._hsem_ev_charger_status, "boolean", label="hsem_ev_charger_status"
-        )
-        self._hsem_ev_charger_power_state = _read_entity(
-            self._hsem_ev_charger_power, "float", label="hsem_ev_charger_power"
-        )
+        if self._hsem_force_working_mode_state is None:
+            self._hsem_force_working_mode_state = "auto"
+        if self._hsem_ev_charger_status:
+            self._hsem_ev_charger_status_state = _read_entity(
+                self._hsem_ev_charger_status, "boolean", label="hsem_ev_charger_status"
+            )
+        if self._hsem_ev_charger_power:
+            self._hsem_ev_charger_power_state = _read_entity(
+                self._hsem_ev_charger_power, "float", label="hsem_ev_charger_power"
+            )
         self._hsem_house_consumption_power_state = _read_entity(
             self._hsem_house_consumption_power,
             "float",
