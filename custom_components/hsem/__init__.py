@@ -2,6 +2,7 @@
 This module initializes the custom component for Home Assistant.
 """
 
+import inspect
 import logging
 from importlib.metadata import PackageNotFoundError, version
 
@@ -85,10 +86,15 @@ async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Handle options update."""
     _LOGGER.debug("Options update triggered for HSEM: %s", entry.entry_id)
 
-    # Get the working mode sensor from hass data
-    if entry.entry_id in hass.data[DOMAIN]:
-        working_mode_sensor = hass.data[DOMAIN][entry.entry_id].get(
-            "working_mode_sensor"
-        )
-        if working_mode_sensor:
-            await working_mode_sensor.async_options_updated(entry)
+    domain_data = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    if not isinstance(domain_data, dict):
+        return
+
+    for obj in domain_data.values():
+        method = getattr(obj, "async_options_updated", None)
+        if not callable(method):
+            continue
+
+        result = method(entry)  # may be None, sync, or coroutine
+        if inspect.isawaitable(result):
+            await result
