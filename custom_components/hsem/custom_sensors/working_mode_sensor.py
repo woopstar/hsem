@@ -809,7 +809,8 @@ class HSEMWorkingModeSensorNew(SensorEntity, HSEMEntity):
             if obj.estimated_battery_capacity > 0:
                 obj.estimated_battery_soc = round(
                     obj.estimated_battery_capacity
-                    / self._hsem_batteries_usable_capacity,
+                    / self._hsem_batteries_usable_capacity
+                    * 100,
                     2,
                 )
 
