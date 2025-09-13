@@ -807,9 +807,10 @@ class HSEMWorkingModeSensorNew(SensorEntity, HSEMEntity):
         # Calculate estimated battery state of charge (SoC) as a percentage
         for obj in self._hourly_recommendations:
             if obj.estimated_battery_capacity > 0:
-                obj.estimated_battery_soc = convert_to_int(
+                obj.estimated_battery_soc = round(
                     obj.estimated_battery_capacity
-                    / self._hsem_batteries_usable_capacity
+                    / self._hsem_batteries_usable_capacity,
+                    2,
                 )
 
     async def _async_set_time_passed(self) -> None:
