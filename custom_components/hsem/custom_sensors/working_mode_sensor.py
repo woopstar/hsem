@@ -1730,7 +1730,7 @@ class HSEMWorkingModeSensorNew(SensorEntity, HSEMEntity):
                 )
 
             if str(current_month) in str(self._hsem_months_summer):
-                if rec.estimated_net_consumption < 0:
+                if rec.estimated_net_consumption <= 0.1:
                     rec.recommendation = Recommendations.BatteriesChargeSolar.value
                     await async_logger(
                         self,
@@ -2123,12 +2123,6 @@ class HSEMWorkingModeSensorNew(SensorEntity, HSEMEntity):
                 self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_periods = (
                     None
                 )
-
-                if entity_data is None:
-                    raise ValueError("Entity state is None")
-
-                if not isinstance(entity_data, State):
-                    raise ValueError("Entity data could not be retrieved")
 
                 if isinstance(entity_data, State):
                     self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_state = (
