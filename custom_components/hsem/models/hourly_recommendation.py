@@ -10,6 +10,7 @@ class HourlyRecommendation:
     end: datetime
     estimated_battery_capacity: float
     estimated_battery_soc: float
+    estimated_cost: float
     estimated_net_consumption: float
     export_price: float
     import_price: float
