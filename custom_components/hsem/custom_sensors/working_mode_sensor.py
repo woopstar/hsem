@@ -510,8 +510,6 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
             await self._async_calculate_hourly_estimated_cost()
 
-            await self._async_calculate_estimated_batteries_capacity()
-
             midnights = [
                 r
                 for r in self._hourly_recommendations
@@ -529,6 +527,8 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                     await self._async_calculate_batteries_schedules_best_charge_time(
                         r.start.astimezone(self._tz)
                     )
+
+            await self._async_calculate_estimated_batteries_capacity()
 
             await self._async_set_time_passed()
 
@@ -1473,21 +1473,19 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             and rec.recommendation is None
         ]
 
-        # First priority: Negative import prices
-        sorted_filtered = [
-            rec for rec in filtered_hourly_recommendations if rec.import_price < 0
-        ]
-
-        # Sort based on negative import price.
-        sorted_filtered.sort(key=lambda x: x.import_price)
-
+        # Total energy charged
         charged_energy = 0.0
 
+        # First priority: Negative import prices
+        sorted_filtered = [
+            rec
+            for rec in filtered_hourly_recommendations
+            if rec.recommendation is None and rec.import_price < 0
+        ]
+        sorted_filtered.sort(key=lambda x: x.import_price)
+
         for rec in sorted_filtered:
-            if (
-                rec.import_price >= 0
-                or charged_energy >= battery_schedule.needed_batteries_capacity
-            ):
+            if charged_energy >= battery_schedule.needed_batteries_capacity:
                 break
 
             energy_to_charge = min(
@@ -1509,21 +1507,14 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                     f"Total energy charged: {round(charged_energy, 2)} kWh. ",
                 )
 
-        if charged_energy >= battery_schedule.needed_batteries_capacity:
-            await async_logger(
-                self,
-                f"Charging complete. Total energy charged: {round(charged_energy, 2)} kWh. ",
-            )
-            return
-        else:
+        # Second priority: Solar surplus
+        if charged_energy < battery_schedule.needed_batteries_capacity:
             await async_logger(
                 self,
                 f"Charged energy after negative price consideration: {round(charged_energy, 2)} kWh. "
                 f"Still need to charge: {round(battery_schedule.needed_batteries_capacity - charged_energy, 2)} kWh. ",
             )
 
-        # Second priority: Solar surplus
-        if charged_energy < battery_schedule.needed_batteries_capacity:
             sorted_filtered = [
                 rec
                 for rec in filtered_hourly_recommendations
@@ -1559,19 +1550,6 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                         f"Net Consumption: {round(rec.estimated_net_consumption, 2)} kWh. ",
                     )
 
-        if charged_energy >= battery_schedule.needed_batteries_capacity:
-            await async_logger(
-                self,
-                f"Charging complete. Total energy charged: {round(charged_energy, 2)} kWh. ",
-            )
-            return
-        else:
-            await async_logger(
-                self,
-                f"Charged energy after solar surplus consideration: {round(charged_energy, 2)} kWh. "
-                f"Still need to charge: {round(battery_schedule.needed_batteries_capacity - charged_energy, 2)} kWh. ",
-            )
-
         # Third priority: Cheapest remaining hours considering partial solar contribution
         charged_energy_before = charged_energy
         min_price_check = True
@@ -1579,6 +1557,12 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         # Calculate average import price of the schedule
         # and average import price of the charging intervals
         if charged_energy < battery_schedule.needed_batteries_capacity:
+            await async_logger(
+                self,
+                f"Charged energy after solar surplus consideration: {round(charged_energy, 2)} kWh. "
+                f"Still need to charge: {round(battery_schedule.needed_batteries_capacity - charged_energy, 2)} kWh. ",
+            )
+
             sorted_filtered = [
                 rec
                 for rec in filtered_hourly_recommendations
