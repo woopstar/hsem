@@ -91,7 +91,7 @@ from custom_components.hsem.utils.sensornames import (
 from custom_components.hsem.utils.workingmodes import WorkingModes
 
 
-class HSEMWorkingModeSensorNew(SensorEntity, HSEMEntity):
+class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
     # Define the attributes of the entity
     _attr_icon = "mdi:chart-timeline-variant"
     _attr_has_entity_name = True
@@ -119,6 +119,7 @@ class HSEMWorkingModeSensorNew(SensorEntity, HSEMEntity):
 
         self._attr_unique_id = get_working_mode_sensor_unique_id()
         self.entity_id = get_working_mode_sensor_entity_id()
+        self._name = get_working_mode_sensor_name()
         self._tz = None
         self._last_updated = None
         self._next_update = None
@@ -229,7 +230,6 @@ class HSEMWorkingModeSensorNew(SensorEntity, HSEMEntity):
         self._hsem_solcast_pv_forecast_forecast_likelihood = None
         self._hsem_months_winter = []
         self._hsem_months_summer = []
-        self._name = get_working_mode_sensor_name()
 
     @property
     def name(self) -> str:
