@@ -17,5 +17,5 @@
     "documentation": "https://github.com/woopstar/hsem/blob/main/README.md",
     "iot_class": "cloud_polling",
     "issue_tracker": "https://github.com/woopstar/hsem/issues",
-    "version": "3.5.0-beta7"
+    "version": "3.5.0"
 }
