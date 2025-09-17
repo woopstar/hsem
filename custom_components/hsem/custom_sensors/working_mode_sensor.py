@@ -115,6 +115,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self._timer_interval = None
 
         self._hourly_recommendations = []
+        self._hourly_recommendation = None
         self._batteries_schedules = []
 
         self._attr_unique_id = get_working_mode_sensor_unique_id()
@@ -314,6 +315,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             "ev_charger_max_discharge_power_state": self._hsem_ev_charger_max_discharge_power,
             "ev_charger_force_max_discharge_power": self._hsem_ev_charger_force_max_discharge_power,
             "force_working_mode_state": self._hsem_force_working_mode_state,
+            "hourly_recommendation": self._hourly_recommendation,
             "hourly_recommendations": self._hourly_recommendations,
             "house_consumption_energy_weight_14d": self._hsem_house_consumption_energy_weight_14d,
             "house_consumption_energy_weight_1d": self._hsem_house_consumption_energy_weight_1d,
@@ -418,6 +420,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self._update_settings()
 
         # Reset recommendations
+        self._hourly_recommendation = None
         self._hourly_recommendations = self._generate_recommendation_intervals(
             self._recommendation_interval_minutes, self._recommendation_interval_length
         )
@@ -510,6 +513,8 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
             await self._async_calculate_hourly_estimated_cost()
 
+            await self._async_calculate_estimated_batteries_capacity()
+
             midnights = [
                 r
                 for r in self._hourly_recommendations
@@ -562,6 +567,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 )
 
             if hourly_recommendation:
+                self._hourly_recommendation = hourly_recommendation
                 self._state = hourly_recommendation.recommendation
             else:
                 self._state = None
