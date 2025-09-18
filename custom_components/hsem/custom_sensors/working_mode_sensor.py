@@ -633,8 +633,12 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         if convert_to_float(self._hsem_energi_data_service_import_state) < 0:
             hourly_recommendation.recommendation = Recommendations.ForceExport.value
 
-        # EV is charging
-        elif self._hsem_ev_charger_status_state:
+        # EV is charging and we are not to force charge from grid
+        elif (
+            self._hsem_ev_charger_status_state
+            and hourly_recommendation.recommendation
+            != Recommendations.BatteriesChargeGrid.value
+        ):
             hourly_recommendation.recommendation = Recommendations.EVSmartCharging.value
 
         # If we have more capacity on our battery to cover the remaining schedules, lets change to discharge mode.
