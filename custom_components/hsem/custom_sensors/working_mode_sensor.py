@@ -632,14 +632,19 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         # Negative import price. Force export everyting to earn money.
         if convert_to_float(self._hsem_energi_data_service_import_state) < 0:
             hourly_recommendation.recommendation = Recommendations.ForceExport.value
+            return
+
+        # Charging batteries from grid is more important than EV Smart Charging
+        elif (
+            hourly_recommendation.recommendation
+            == Recommendations.BatteriesChargeGrid.value
+        ):
+            return
 
         # EV is charging and we are not to force charge from grid
-        elif (
-            self._hsem_ev_charger_status_state
-            and hourly_recommendation.recommendation
-            != Recommendations.BatteriesChargeGrid.value
-        ):
+        elif self._hsem_ev_charger_status_state:
             hourly_recommendation.recommendation = Recommendations.EVSmartCharging.value
+            return
 
         # If we have more capacity on our battery to cover the remaining schedules, lets change to discharge mode.
         elif (
@@ -650,6 +655,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             hourly_recommendation.recommendation = (
                 Recommendations.BatteriesDischargeMode.value
             )
+            return
 
     async def _async_set_inverter_and_batteries_settings(
         self, hourly_recommendation
