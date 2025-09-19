@@ -1498,7 +1498,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             for rec in filtered_hourly_recommendations
             if rec.recommendation is None and rec.import_price < 0
         ]
-        sorted_filtered.sort(key=lambda x: x.import_price)
+        sorted_filtered.sort(key=lambda x: (x.import_price, x.start))
 
         for rec in sorted_filtered:
             if charged_energy >= battery_schedule.needed_batteries_capacity:
@@ -1538,7 +1538,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 and rec.recommendation
                 is None  # TODO: 0.2 -> in config. This is 200w buffer.
             ]
-            sorted_filtered.sort(key=lambda x: x.estimated_net_consumption)
+            sorted_filtered.sort(key=lambda x: (x.estimated_net_consumption, x.start))
 
             for rec in sorted_filtered:
                 if charged_energy >= battery_schedule.needed_batteries_capacity:
@@ -1584,7 +1584,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 for rec in filtered_hourly_recommendations
                 if rec.recommendation is None
             ]
-            sorted_filtered.sort(key=lambda x: x.import_price)
+            sorted_filtered.sort(key=lambda x: (x.import_price, x.start))
 
             avg_charge_import_price = 0.0
             avg_charge_import_count = 0
@@ -1663,7 +1663,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 for rec in filtered_hourly_recommendations
                 if rec.recommendation == None
             ]
-            sorted_filtered.sort(key=lambda x: x.import_price)
+            sorted_filtered.sort(key=lambda x: (x.import_price, x.start))
 
             for rec in sorted_filtered:
                 if charged_energy >= battery_schedule.needed_batteries_capacity:
