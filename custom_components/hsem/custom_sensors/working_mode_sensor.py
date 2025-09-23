@@ -380,6 +380,10 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
             recommendation = HourlyRecommendation(
                 avg_house_consumption=0.0,
+                avg_house_consumption_1d=0.0,
+                avg_house_consumption_3d=0.0,
+                avg_house_consumption_7d=0.0,
+                avg_house_consumption_14d=0.0,
                 batteries_charged=0.0,
                 end=interval_end,
                 estimated_battery_capacity=0.0,
@@ -943,7 +947,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 ).astimezone(self._tz)
 
                 if obj.start.date() == dt_key.date() and obj_hour == dt_key:
-                    setattr(obj, object_attr, round(value, 3))
+                    setattr(obj, object_attr, round(value, 5))
 
     async def _async_calculate_avg_house_consumption(self) -> bool:
         """Calculate the weighted hourly data for the sensor using 1/3/7/14-day HouseConsumptionEnergyAverageSensors,
@@ -1281,14 +1285,26 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 3,
             )
 
+            scale_to_interval = 60 / self._recommendation_interval_minutes
+
             for obj in self._hourly_recommendations:
                 # if obj.start.hour == hour_start and obj.end.hour == hour_end:
                 if int(obj.start.hour) == int(hour_start):
-                    # obj.avg_house_consumption = round(avg_house_consumption, 3)
-                    interval_consumption = avg_house_consumption / (
-                        60 / self._recommendation_interval_minutes
+                    obj.avg_house_consumption = round(
+                        avg_house_consumption / scale_to_interval, 3
                     )
-                    obj.avg_house_consumption = round(interval_consumption, 3)
+                    obj.avg_house_consumption_1d = round(
+                        value_1d / scale_to_interval, 3
+                    )
+                    obj.avg_house_consumption_3d = round(
+                        value_3d / scale_to_interval, 3
+                    )
+                    obj.avg_house_consumption_7d = round(
+                        value_7d / scale_to_interval, 3
+                    )
+                    obj.avg_house_consumption_14d = round(
+                        value_14d / scale_to_interval, 3
+                    )
 
         return True
 
@@ -1496,7 +1512,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         sorted_filtered = [
             rec
             for rec in filtered_hourly_recommendations
-            if rec.recommendation is None and rec.import_price < 0
+            if rec.recommendation is None and rec.import_price < 0.000
         ]
         sorted_filtered.sort(key=lambda x: (x.import_price, x.start))
 

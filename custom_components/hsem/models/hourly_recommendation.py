@@ -6,6 +6,10 @@ from typing import Any
 @dataclass
 class HourlyRecommendation:
     avg_house_consumption: float
+    avg_house_consumption_1d: float
+    avg_house_consumption_3d: float
+    avg_house_consumption_7d: float
+    avg_house_consumption_14d: float
     batteries_charged: float
     end: datetime
     estimated_battery_capacity: float
