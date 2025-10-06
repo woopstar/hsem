@@ -11,7 +11,19 @@ async def get_ev_step_schema(config_entry) -> vol.Schema:
             vol.Optional(
                 "hsem_ev_charger_status",
                 default=get_config_value(config_entry, "hsem_ev_charger_status"),
-            ): selector({"entity": {"domain": ["sensor", "switch", "input_boolean"]}}),
+            ): selector(
+                {
+                    "entity": {
+                        "domain": [
+                            "sensor",
+                            "switch",
+                            "input_boolean",
+                            "binary_sensor",
+                            "button",
+                        ]
+                    }
+                }
+            ),
             vol.Optional(
                 "hsem_ev_charger_power",
                 default=get_config_value(config_entry, "hsem_ev_charger_power"),
@@ -44,6 +56,48 @@ async def get_ev_step_schema(config_entry) -> vol.Schema:
                     }
                 }
             ),
+            vol.Optional(
+                "hsem_ev_soc",
+                default=get_config_value(config_entry, "hsem_ev_soc"),
+            ): selector(
+                {
+                    "entity": {
+                        "domain": ["sensor", "switch", "input_boolean", "input_number"]
+                    }
+                }
+            ),
+            vol.Optional(
+                "hsem_ev_soc_target",
+                default=get_config_value(config_entry, "hsem_ev_soc_target"),
+            ): selector(
+                {
+                    "entity": {
+                        "domain": ["sensor", "switch", "input_boolean", "input_number"]
+                    }
+                }
+            ),
+            vol.Optional(
+                "hsem_ev_connected",
+                default=get_config_value(config_entry, "hsem_ev_connected"),
+            ): selector(
+                {
+                    "entity": {
+                        "domain": [
+                            "sensor",
+                            "switch",
+                            "input_boolean",
+                            "button",
+                            "binary_sensor",
+                        ]
+                    }
+                }
+            ),
+            vol.Required(
+                "hsem_ev_allow_charge_past_target_soc",
+                default=get_config_value(
+                    config_entry, "hsem_ev_allow_charge_past_target_soc"
+                ),
+            ): selector({"boolean": {}}),
         }
     )
 
@@ -56,6 +110,7 @@ async def validate_ev_step_input(hass, user_input) -> dict[str, str]:
         "hsem_house_power_includes_ev_charger_power",
         "hsem_ev_charger_max_discharge_power",
         "hsem_ev_charger_force_max_discharge_power",
+        "hsem_ev_allow_charge_past_target_soc",
     ]
 
     for field in required_fields:
@@ -65,6 +120,9 @@ async def validate_ev_step_input(hass, user_input) -> dict[str, str]:
     optional_entity_fields = [
         "hsem_ev_charger_status",
         "hsem_ev_charger_power",
+        "hsem_ev_soc",
+        "hsem_ev_soc_target",
+        "hsem_ev_connected",
     ]
 
     for field in optional_entity_fields:
