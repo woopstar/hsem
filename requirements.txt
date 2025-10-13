@@ -2,4 +2,4 @@ voluptuous==0.15.2
 pytz==2025.2
 homeassistant==2025.7.2
 black==25.1.0
-isort==6.0.1
+isort==7.0.0
