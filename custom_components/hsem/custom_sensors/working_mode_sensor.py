@@ -1121,7 +1121,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                     value_14d = convert_to_float(
                         ha_get_entity_state_and_convert(self, entity_id_14d, "float", 3)
                     )
-            except ValueError:
+            except Exception as e:
                 value_1d = None
                 value_3d = None
                 value_7d = None
