@@ -29,6 +29,10 @@ SWITCHES = {
         "name": "Batteries Discharge Schedule 3",
         "description": "Enable or disable batteries schedule 3.",
     },
+    "hsem_ev_charger_force_max_discharge_power": {
+        "name": "EV Charger Force Max Discharge Power",
+        "description": "Enable this if you want to force a specific maximum discharge power for the Huawei batteries while EV is charging.",
+    },
 }
 
 
