@@ -44,6 +44,7 @@ To use this package, you need the following integrations:
 
 - [Huawei Solar PEES package by JensenNick](https://github.com/JensenNick/huawei_solar_pees) (optional but recommended)
 - [Smoothing Analytics Sensors by woopstar](https://github.com/woopstar/smoothing_analytics_sensors) (optional but recommended)
+- [EV Smart Charging by jonasbkarlsson](https://github.com/jonasbkarlsson/ev_smart_charging) (optional but recommended)
 
 ### Default disabled sensors
 

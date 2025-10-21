@@ -27,8 +27,8 @@ async def get_energidataservice_step_schema(config_entry) -> vol.Schema:
             ): selector(
                 {
                     "number": {
-                        "min": -10.00,
-                        "max": 0,
+                        "min": -2.00,
+                        "max": 2.00,
                         "step": 0.01,
                         "mode": "slider",
                     }

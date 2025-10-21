@@ -20,15 +20,19 @@ async def async_setup_entry(
     Set up HSEM sensors from a config entry.
     """
 
+    # Initialize domain data if not already present
+    if DOMAIN not in hass.data:
+        hass.data[DOMAIN] = {}
+
+    if config_entry.entry_id not in hass.data[DOMAIN]:
+        hass.data[DOMAIN][config_entry.entry_id] = {}
+
     # Setup working mode sensor
     working_mode_sensor = HSEMWorkingModeSensor(config_entry)
 
-    # Store reference to working mode sensor
-    if config_entry.entry_id not in hass.data[DOMAIN]:
-        hass.data[DOMAIN][config_entry.entry_id] = {}
-    hass.data[DOMAIN][config_entry.entry_id][
-        "working_mode_sensor"
-    ] = working_mode_sensor
+    # hass.data[DOMAIN][config_entry.entry_id][
+    #    "working_mode_sensor"
+    # ] = working_mode_sensor
 
     async_add_entities([working_mode_sensor])
 
