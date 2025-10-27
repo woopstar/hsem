@@ -1,5 +1,5 @@
 voluptuous==0.15.2
 pytz==2025.2
-homeassistant==2025.10.3
+homeassistant==2025.10.4
 black==25.9.0
 isort==7.0.0
