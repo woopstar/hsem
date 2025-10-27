@@ -15,7 +15,7 @@ jobs:
     permissions: write-all
     strategy:
       matrix:
-        python-version: ["3.13"]
+        python-version: ["3.13.5"]
 
     steps:
       - uses: actions/checkout@v4

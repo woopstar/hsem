@@ -155,6 +155,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_ev_connected_state = None
         self._hsem_ev_allow_charge_past_target_soc = False
         self._hsem_solcast_pv_forecast_forecast_today = None
+        self._hsem_solcast_pv_forecast_forecast_tomorrow = None
         self._hsem_energi_data_service_import = None
         self._hsem_energi_data_service_export = None
         self._hsem_energi_data_service_export_min_price = None
@@ -310,6 +311,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 "read_only": self._read_only,
                 "solar_production_power_entity": self._hsem_solar_production_power,
                 "solcast_pv_forecast_forecast_today_entity": self._hsem_solcast_pv_forecast_forecast_today,
+                "solcast_pv_forecast_forecast_tomorrow_entity": self._hsem_solcast_pv_forecast_forecast_tomorrow,
                 "unique_id": self._attr_unique_id,
                 "update_interval": self._update_interval,
             }
@@ -484,7 +486,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
             for attr in ["forecast", "raw_tomorrow", "raw_today"]:
                 await self._async_update_hourly_data(
-                    "sensor.energi_data_service",
+                    self._hsem_energi_data_service_import,
                     "import_price",
                     "price",
                     attr,
@@ -493,7 +495,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 )
 
                 await self._async_update_hourly_data(
-                    "sensor.energi_data_service_produktion",
+                    self._hsem_energi_data_service_export,
                     "export_price",
                     "price",
                     attr,
@@ -511,7 +513,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             share = 60 / self._recommendation_interval_minutes
 
             await self._async_update_hourly_data(
-                "sensor.solcast_pv_forecast_forecast_today",
+                self._hsem_solcast_pv_forecast_forecast_today,
                 "solcast_pv_estimate",
                 self._hsem_solcast_pv_forecast_forecast_likelihood,
                 "detailedForecast",
@@ -520,7 +522,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             )
 
             await self._async_update_hourly_data(
-                "sensor.solcast_pv_forecast_forecast_tomorrow",
+                self._hsem_solcast_pv_forecast_forecast_tomorrow,
                 "solcast_pv_estimate",
                 self._hsem_solcast_pv_forecast_forecast_likelihood,
                 "detailedForecast",
@@ -910,13 +912,16 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
     async def _async_update_hourly_data(
         self,
-        sensor_id: str,
+        sensor_id: str | None,
         object_attr: str,
         sensor_field: str,
         sensor_list_attr: str,
         key_field: str,
         share: float,
     ) -> None:
+
+        if sensor_id is None:
+            return
 
         sensor_state = self.hass.states.get(sensor_id)
 
@@ -1910,6 +1915,10 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_solcast_pv_forecast_forecast_today = get_config_value(
             self._config_entry,
             "hsem_solcast_pv_forecast_forecast_today",
+        )
+        self._hsem_solcast_pv_forecast_forecast_tomorrow = get_config_value(
+            self._config_entry,
+            "hsem_solcast_pv_forecast_forecast_tomorrow",
         )
         self._hsem_energi_data_service_import = get_config_value(
             self._config_entry,
