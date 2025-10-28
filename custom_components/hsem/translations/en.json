@@ -78,6 +78,7 @@
       },
       "ev": {
         "data": {
+          "hsem_ev_second_enabled": "Enable Second EV Charger",
           "hsem_ev_charger_force_max_discharge_power": "EV Charger Force Max Discharge Power",
           "hsem_ev_charger_max_discharge_power": "EV Charger Max Discharge Power",
           "hsem_ev_charger_power": "EV Charger Power Sensor",
@@ -89,6 +90,7 @@
           "hsem_ev_allow_charge_past_target_soc": "Allow Charging Past Target SoC (Advanced)"
         },
         "data_description": {
+          "hsem_ev_second_enabled": "Enable or disable the configuration for a second EV charger.",
           "hsem_ev_charger_force_max_discharge_power": "Enable this if you want to force a specific maximum discharge power for the Huawei batteries while EV is charging.",
           "hsem_ev_charger_max_discharge_power": "Set the maximum discharge power for the Huawei batteries while EV is charging.",
           "hsem_ev_charger_power": "Select the sensor that measures the power consumption of your EV charger.",
@@ -101,6 +103,30 @@
         },
         "description": "Configure EV Charger settings for HSEM.",
         "title": "EV Charger Settings (Optional)"
+      },
+      "ev_second": {
+        "data": {
+          "hsem_ev_second_charger_force_max_discharge_power": "Second EV Charger Force Max Discharge Power",
+          "hsem_ev_second_charger_max_discharge_power": "Second EV Charger Max Discharge Power",
+          "hsem_ev_second_charger_power": "Second EV Charger Power Sensor",
+          "hsem_ev_second_charger_status": "Second EV Charger Status Sensor",
+          "hsem_ev_second_soc": "Second EV State of Charge (SoC) Sensor",
+          "hsem_ev_second_soc_target": "Second EV State of Charge (SoC) Target Sensor",
+          "hsem_ev_second_connected": "Second EV Connected Sensor",
+          "hsem_ev_second_allow_charge_past_target_soc": "Allow Charging Past Target SoC For Second EV (Advanced)"
+        },
+        "data_description": {
+          "hsem_ev_second_charger_force_max_discharge_power": "Enable this if you want to force a specific maximum discharge power for the Huawei batteries while EV is charging.",
+          "hsem_ev_second_charger_max_discharge_power": "Set the maximum discharge power for the Huawei batteries while EV is charging.",
+          "hsem_ev_second_charger_power": "Select the sensor that measures the power consumption of your EV charger.",
+          "hsem_ev_second_charger_status": "Select the sensor or entity that indicates whether the EV charger is active (e.g., a switch or sensor).",
+          "hsem_ev_second_soc": "Select the sensor that provides the current state of charge (SoC) of your EV battery.",
+          "hsem_ev_second_soc_target": "Select the sensor that provides the target state of charge (SoC) for your EV battery.",
+          "hsem_ev_second_connected": "Select the sensor or entity that indicates whether the EV is connected to the charger.",
+          "hsem_ev_second_allow_charge_past_target_soc": "Enable this option if you want to allow the system to continue charging the EV battery even after it has reached the target state of charge (SoC). This can be useful in scenarios where you want to ensure the EV is fully charged regardless of the target setting."
+        },
+        "description": "Configure Second EV Charger settings for HSEM.",
+        "title": "Second EV Charger Settings (Optional)"
       },
       "huawei_solar": {
         "data": {
@@ -279,6 +305,7 @@
       },
       "ev": {
         "data": {
+          "hsem_ev_second_enabled": "Enable Second EV Charger",
           "hsem_ev_charger_force_max_discharge_power": "EV Charger Force Max Discharge Power",
           "hsem_ev_charger_max_discharge_power": "EV Charger Max Discharge Power",
           "hsem_ev_charger_power": "EV Charger Power Sensor",
@@ -290,6 +317,7 @@
           "hsem_ev_allow_charge_past_target_soc": "Allow Charging Past Target SoC (Advanced)"
         },
         "data_description": {
+          "hsem_ev_second_enabled": "Enable or disable the configuration for a second EV charger.",
           "hsem_ev_charger_force_max_discharge_power": "Enable this if you want to force a specific maximum discharge power for the Huawei batteries while EV is charging.",
           "hsem_ev_charger_max_discharge_power": "Set the maximum discharge power for the Huawei batteries while EV is charging.",
           "hsem_ev_charger_power": "Select the sensor that measures the power consumption of your EV charger.",
@@ -302,6 +330,30 @@
         },
         "description": "Configure EV Charger settings for HSEM.",
         "title": "EV Charger Settings (Optional)"
+      },
+      "ev_second": {
+        "data": {
+          "hsem_ev_second_charger_force_max_discharge_power": "Second EV Charger Force Max Discharge Power",
+          "hsem_ev_second_charger_max_discharge_power": "Second EV Charger Max Discharge Power",
+          "hsem_ev_second_charger_power": "Second EV Charger Power Sensor",
+          "hsem_ev_second_charger_status": "Second EV Charger Status Sensor",
+          "hsem_ev_second_soc": "Second EV State of Charge (SoC) Sensor",
+          "hsem_ev_second_soc_target": "Second EV State of Charge (SoC) Target Sensor",
+          "hsem_ev_second_connected": "Second EV Connected Sensor",
+          "hsem_ev_second_allow_charge_past_target_soc": "Allow Charging Past Target SoC For Second EV (Advanced)"
+        },
+        "data_description": {
+          "hsem_ev_second_charger_force_max_discharge_power": "Enable this if you want to force a specific maximum discharge power for the Huawei batteries while EV is charging.",
+          "hsem_ev_second_charger_max_discharge_power": "Set the maximum discharge power for the Huawei batteries while EV is charging.",
+          "hsem_ev_second_charger_power": "Select the sensor that measures the power consumption of your EV charger.",
+          "hsem_ev_second_charger_status": "Select the sensor or entity that indicates whether the EV charger is active (e.g., a switch or sensor).",
+          "hsem_ev_second_soc": "Select the sensor that provides the current state of charge (SoC) of your EV battery.",
+          "hsem_ev_second_soc_target": "Select the sensor that provides the target state of charge (SoC) for your EV battery.",
+          "hsem_ev_second_connected": "Select the sensor or entity that indicates whether the EV is connected to the charger.",
+          "hsem_ev_second_allow_charge_past_target_soc": "Enable this option if you want to allow the system to continue charging the EV battery even after it has reached the target state of charge (SoC). This can be useful in scenarios where you want to ensure the EV is fully charged regardless of the target setting."
+        },
+        "description": "Configure Second EV Charger settings for HSEM.",
+        "title": "Second EV Charger Settings (Optional)"
       },
       "huawei_solar": {
         "data": {

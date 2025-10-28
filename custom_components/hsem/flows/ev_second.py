@@ -4,17 +4,13 @@ from homeassistant.helpers.selector import selector
 from custom_components.hsem.utils.misc import async_entity_exists, get_config_value
 
 
-async def get_ev_step_schema(config_entry) -> vol.Schema:
+async def get_ev_second_step_schema(config_entry) -> vol.Schema:
     """Return the data schema for the 'misc' step."""
     return vol.Schema(
         {
-            vol.Required(
-                "hsem_ev_second_enabled",
-                default=get_config_value(config_entry, "hsem_ev_second_enabled"),
-            ): selector({"boolean": {}}),
             vol.Optional(
-                "hsem_ev_charger_status",
-                default=get_config_value(config_entry, "hsem_ev_charger_status"),
+                "hsem_ev_second_charger_status",
+                default=get_config_value(config_entry, "hsem_ev_second_charger_status"),
             ): selector(
                 {
                     "entity": {
@@ -29,25 +25,19 @@ async def get_ev_step_schema(config_entry) -> vol.Schema:
                 }
             ),
             vol.Optional(
-                "hsem_ev_charger_power",
-                default=get_config_value(config_entry, "hsem_ev_charger_power"),
+                "hsem_ev_second_charger_power",
+                default=get_config_value(config_entry, "hsem_ev_second_charger_power"),
             ): selector({"entity": {"domain": "sensor"}}),
             vol.Required(
-                "hsem_house_power_includes_ev_charger_power",
+                "hsem_ev_second_charger_force_max_discharge_power",
                 default=get_config_value(
-                    config_entry, "hsem_house_power_includes_ev_charger_power"
+                    config_entry, "hsem_ev_second_charger_force_max_discharge_power"
                 ),
             ): selector({"boolean": {}}),
             vol.Required(
-                "hsem_ev_charger_force_max_discharge_power",
+                "hsem_ev_second_charger_max_discharge_power",
                 default=get_config_value(
-                    config_entry, "hsem_ev_charger_force_max_discharge_power"
-                ),
-            ): selector({"boolean": {}}),
-            vol.Required(
-                "hsem_ev_charger_max_discharge_power",
-                default=get_config_value(
-                    config_entry, "hsem_ev_charger_max_discharge_power"
+                    config_entry, "hsem_ev_second_charger_max_discharge_power"
                 ),
             ): selector(
                 {
@@ -61,8 +51,8 @@ async def get_ev_step_schema(config_entry) -> vol.Schema:
                 }
             ),
             vol.Optional(
-                "hsem_ev_soc",
-                default=get_config_value(config_entry, "hsem_ev_soc"),
+                "hsem_ev_second_soc",
+                default=get_config_value(config_entry, "hsem_ev_second_soc"),
             ): selector(
                 {
                     "entity": {
@@ -71,8 +61,8 @@ async def get_ev_step_schema(config_entry) -> vol.Schema:
                 }
             ),
             vol.Optional(
-                "hsem_ev_soc_target",
-                default=get_config_value(config_entry, "hsem_ev_soc_target"),
+                "hsem_ev_second_soc_target",
+                default=get_config_value(config_entry, "hsem_ev_second_soc_target"),
             ): selector(
                 {
                     "entity": {
@@ -81,8 +71,8 @@ async def get_ev_step_schema(config_entry) -> vol.Schema:
                 }
             ),
             vol.Optional(
-                "hsem_ev_connected",
-                default=get_config_value(config_entry, "hsem_ev_connected"),
+                "hsem_ev_second_connected",
+                default=get_config_value(config_entry, "hsem_ev_second_connected"),
             ): selector(
                 {
                     "entity": {
@@ -97,24 +87,23 @@ async def get_ev_step_schema(config_entry) -> vol.Schema:
                 }
             ),
             vol.Required(
-                "hsem_ev_allow_charge_past_target_soc",
+                "hsem_ev_second_allow_charge_past_target_soc",
                 default=get_config_value(
-                    config_entry, "hsem_ev_allow_charge_past_target_soc"
+                    config_entry, "hsem_ev_second_allow_charge_past_target_soc"
                 ),
             ): selector({"boolean": {}}),
         }
     )
 
 
-async def validate_ev_step_input(hass, user_input) -> dict[str, str]:
+async def validate_ev_second_step_input(hass, user_input) -> dict[str, str]:
     """Validate user input for the 'misc' step."""
     errors = {}
 
     required_fields = [
-        "hsem_house_power_includes_ev_charger_power",
-        "hsem_ev_charger_max_discharge_power",
-        "hsem_ev_charger_force_max_discharge_power",
-        "hsem_ev_allow_charge_past_target_soc",
+        "hsem_ev_second_charger_max_discharge_power",
+        "hsem_ev_second_charger_force_max_discharge_power",
+        "hsem_ev_second_allow_charge_past_target_soc",
     ]
 
     for field in required_fields:
@@ -122,11 +111,11 @@ async def validate_ev_step_input(hass, user_input) -> dict[str, str]:
             errors[field] = "required"
 
     optional_entity_fields = [
-        "hsem_ev_charger_status",
-        "hsem_ev_charger_power",
-        "hsem_ev_soc",
-        "hsem_ev_soc_target",
-        "hsem_ev_connected",
+        "hsem_ev_second_charger_status",
+        "hsem_ev_second_charger_power",
+        "hsem_ev_second_soc",
+        "hsem_ev_second_soc_target",
+        "hsem_ev_second_connected",
     ]
 
     for field in optional_entity_fields:

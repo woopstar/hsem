@@ -143,6 +143,8 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_huawei_solar_batteries_state_of_capacity = None
         self._hsem_house_consumption_power = None
         self._hsem_solar_production_power = None
+
+        # First EV Charger
         self._hsem_ev_charger_status = None
         self._hsem_ev_charger_power = None
         self._hsem_ev_charger_status_state = False
@@ -154,6 +156,25 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_ev_connected = None
         self._hsem_ev_connected_state = None
         self._hsem_ev_allow_charge_past_target_soc = False
+        self._hsem_ev_charger_force_max_discharge_power = None
+        self._hsem_ev_charger_max_discharge_power = 0
+
+        # Second EV Charger
+        self._hsem_ev_second_enabled = False
+        self._hsem_ev_second_charger_status = None
+        self._hsem_ev_second_charger_power = None
+        self._hsem_ev_second_charger_status_state = False
+        self._hsem_ev_second_charger_power_state = False
+        self._hsem_ev_second_soc = None
+        self._hsem_ev_second_soc_state = None
+        self._hsem_ev_second_soc_target = None
+        self._hsem_ev_second_soc_target_state = None
+        self._hsem_ev_second_connected = None
+        self._hsem_ev_second_connected_state = None
+        self._hsem_ev_second_allow_charge_past_target_soc = False
+        self._hsem_ev_second_charger_force_max_discharge_power = None
+        self._hsem_ev_second_charger_max_discharge_power = 0
+
         self._hsem_solcast_pv_forecast_forecast_today = None
         self._hsem_solcast_pv_forecast_forecast_tomorrow = None
         self._hsem_energi_data_service_import = None
@@ -175,8 +196,6 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         )
         self._hsem_house_power_includes_ev_charger_power = None
 
-        self._hsem_ev_charger_force_max_discharge_power = None
-        self._hsem_ev_charger_max_discharge_power = None
         self._hsem_house_consumption_power_state = 0.0
         self._hsem_solar_production_power_state = 0.0
         self._hsem_huawei_solar_inverter_active_power_control_state = None
@@ -237,7 +256,9 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_batteries_enable_batteries_schedule_3_min_price_difference = 0.0
         self._hsem_force_working_mode = None
         self._hsem_force_working_mode_state = "auto"
-        self._hsem_solcast_pv_forecast_forecast_likelihood = None
+        self._hsem_solcast_pv_forecast_forecast_likelihood = DEFAULT_CONFIG_VALUES[
+            "hsem_solcast_pv_forecast_forecast_likelihood"
+        ]
         self._hsem_months_winter = []
         self._hsem_months_summer = []
 
@@ -294,6 +315,11 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 "ev_soc_entity": self._hsem_ev_soc,
                 "ev_soc_target_entity": self._hsem_ev_soc_target,
                 "ev_connected_entity": self._hsem_ev_connected,
+                "ev_second_charger_power_entity": self._hsem_ev_second_charger_power,
+                "ev_second_charger_status_entity": self._hsem_ev_second_charger_status,
+                "ev_second_soc_entity": self._hsem_ev_second_soc,
+                "ev_second_soc_target_entity": self._hsem_ev_second_soc_target,
+                "ev_second_connected_entity": self._hsem_ev_second_connected,
                 "force_working_mode_entity": self._hsem_force_working_mode,
                 "house_consumption_power_entity": self._hsem_house_consumption_power,
                 "huawei_solar_batteries_grid_charge_cutoff_soc_entity": self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc,
@@ -331,6 +357,15 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             "ev_allow_charge_past_target_soc": self._hsem_ev_allow_charge_past_target_soc,
             "ev_charger_max_discharge_power_state": self._hsem_ev_charger_max_discharge_power,
             "ev_charger_force_max_discharge_power": self._hsem_ev_charger_force_max_discharge_power,
+            "ev_second_enabled": self._hsem_ev_second_enabled,
+            "ev_second_charger_power_state": self._hsem_ev_second_charger_power_state,
+            "ev_second_charger_status_state": self._hsem_ev_second_charger_status_state,
+            "ev_second_soc_state": self._hsem_ev_second_soc_state,
+            "ev_second_soc_target_state": self._hsem_ev_second_soc_target_state,
+            "ev_second_connected_state": self._hsem_ev_second_connected_state,
+            "ev_second_allow_charge_past_target_soc": self._hsem_ev_second_allow_charge_past_target_soc,
+            "ev_second_charger_max_discharge_power_state": self._hsem_ev_second_charger_max_discharge_power,
+            "ev_second_charger_force_max_discharge_power": self._hsem_ev_second_charger_force_max_discharge_power,
             "force_working_mode_state": self._hsem_force_working_mode_state,
             "hourly_recommendation": self._hourly_recommendation,
             "hourly_recommendations": self._hourly_recommendations,
@@ -484,49 +519,29 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             # Manipulate all the recommendations.
             share = 1
 
-            for attr in ["forecast", "raw_tomorrow", "raw_today"]:
-                await self._async_update_hourly_data(
-                    self._hsem_energi_data_service_import,
-                    "import_price",
-                    "price",
-                    attr,
-                    "hour",
-                    share,
-                )
+            # Try for import price
+            await self._async_update_hourly_data(
+                self._hsem_energi_data_service_import, "import_price", share
+            )
 
-                await self._async_update_hourly_data(
-                    self._hsem_energi_data_service_export,
-                    "export_price",
-                    "price",
-                    attr,
-                    "hour",
-                    share,
-                )
-
-            if self._hsem_solcast_pv_forecast_forecast_likelihood is None:
-                self._hsem_solcast_pv_forecast_forecast_likelihood = (
-                    DEFAULT_CONFIG_VALUES[
-                        "hsem_solcast_pv_forecast_forecast_likelihood"
-                    ]
-                )
+            # Try for export price
+            await self._async_update_hourly_data(
+                self._hsem_energi_data_service_export, "export_price", share
+            )
 
             share = 60 / self._recommendation_interval_minutes
 
+            # Try for solcast pv forecast today
             await self._async_update_hourly_data(
                 self._hsem_solcast_pv_forecast_forecast_today,
                 "solcast_pv_estimate",
-                self._hsem_solcast_pv_forecast_forecast_likelihood,
-                "detailedForecast",
-                "period_start",
                 share,
             )
 
+            # Try for solcast pv forecast tomorrow
             await self._async_update_hourly_data(
                 self._hsem_solcast_pv_forecast_forecast_tomorrow,
                 "solcast_pv_estimate",
-                self._hsem_solcast_pv_forecast_forecast_likelihood,
-                "detailedForecast",
-                "period_start",
                 share,
             )
 
@@ -662,8 +677,11 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         ):
             return
 
-        # EV is charging and we are not to force charge from grid
-        elif self._hsem_ev_charger_status_state:
+        # Either of the EVs is charging and we are not to force charge from grid
+        elif (
+            self._hsem_ev_charger_status_state
+            or self._hsem_ev_second_charger_status_state
+        ):
             hourly_recommendation.recommendation = Recommendations.EVSmartCharging.value
             return
 
@@ -689,7 +707,10 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             convert_to_int(self._hsem_batteries_rated_capacity_max_state)
         )
 
-        if not self._hsem_ev_charger_status_state:
+        if (
+            not self._hsem_ev_charger_status_state
+            or not self._hsem_ev_second_charger_status_state
+        ):
             if (
                 self._hsem_huawei_solar_batteries_maximum_discharging_power_state
                 != max_discharge_power
@@ -708,7 +729,10 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 tou_modes = DEFAULT_HSEM_TOU_MODES_FORCE_CHARGE
                 working_mode = WorkingModes.TimeOfUse.value
             case Recommendations.EVSmartCharging.value:
-                if self._hsem_ev_charger_force_max_discharge_power:
+                if (
+                    self._hsem_ev_charger_force_max_discharge_power
+                    or self._hsem_ev_second_charger_force_max_discharge_power
+                ):
                     working_mode = WorkingModes.MaximizeSelfConsumption.value
                 else:
                     tou_modes = DEFAULT_HSEM_EV_CHARGER_TOU_MODES
@@ -729,18 +753,27 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         if (
             hourly_recommendation.recommendation
             == Recommendations.EVSmartCharging.value
-            and self._hsem_ev_charger_force_max_discharge_power
+            and (
+                self._hsem_ev_charger_force_max_discharge_power
+                or self._hsem_ev_second_charger_force_max_discharge_power
+            )
         ):
+
+            # Set to the max discharge power of both chargers
+            max_discharge_power = max(
+                self._hsem_ev_charger_max_discharge_power,
+                self._hsem_ev_second_charger_max_discharge_power,
+            )
 
             # Set maximum discharging power for batteries
             if (
                 self._hsem_huawei_solar_batteries_maximum_discharging_power_state
-                != self._hsem_ev_charger_max_discharge_power
+                != max_discharge_power
             ):
                 await async_set_number_value(
                     self,
                     self._hsem_huawei_solar_batteries_maximum_discharging_power,
-                    self._hsem_ev_charger_max_discharge_power,
+                    max_discharge_power,
                 )
 
         # Set pv excess in tou
@@ -913,12 +946,30 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
     async def _async_update_hourly_data(
         self,
         sensor_id: str | None,
-        object_attr: str,
-        sensor_field: str,
-        sensor_list_attr: str,
-        key_field: str,
+        recommendations_field_to_update: str,
         share: float,
     ) -> None:
+        """Update hourly data from the specified sensor for the given recommendations field."""
+
+        # Define the data sources and their corresponding key-value mappings
+        data_sources = {
+            # energi_data_service templates
+            "forecast": {"k": "hour", "v": "price"},
+            "raw_tomorrow": {"k": "hour", "v": "price"},
+            "raw_today": {"k": "hour", "v": "price"},
+            # stromligning
+            "prices": {"k": "start", "v": "price"},
+            # ev_smart_charging templates
+            "prices_today": {"k": "start", "v": "price"},
+            "prices_today": {"k": "time", "v": "price"},
+            "prices_tomorrow": {"k": "start", "v": "price"},
+            "prices_tomorrow": {"k": "time", "v": "price"},
+            # Solcast
+            "detailedForecast": {
+                "k": "period_start",
+                "v": self._hsem_solcast_pv_forecast_forecast_likelihood,
+            },
+        }
 
         if sensor_id is None:
             return
@@ -931,43 +982,57 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             )
             return
 
-        sensor_data = sensor_state.attributes.get(sensor_list_attr) or []
-        if not sensor_data:
-            return
+        for attr, kv in data_sources.items():
+            sensor_data = sensor_state.attributes.get(attr) or []
 
-        await async_logger(self, f"Updating data for {object_attr}...")
-
-        for data in sensor_data:
-            v = data.get(key_field)
-            if not v:
+            # Attribute does not exist in this sensor, skip to next
+            if not sensor_data:
                 continue
 
-            if isinstance(v, datetime):
-                dt_key = v
-            else:
-                dt_key = datetime.fromisoformat(str(v))
+            await async_logger(
+                self, f"Updating data for {recommendations_field_to_update}..."
+            )
 
-            try:
-                dt_key = dt_key.replace(minute=0, second=0, microsecond=0).astimezone(
-                    self._tz
-                )
-            except Exception as e:
-                continue
+            for data in sensor_data:
 
-            value = convert_to_float(data.get(sensor_field))
-            if value is None:
-                continue
+                # Get the value from the data based on the key mapping from data_sources
+                v = data.get(kv["k"])
 
-            # Adjust value based on share (e.g., if data is in smaller intervals)
-            value = value / share
+                # Skip if no key found for the attribute
+                if not v:
+                    continue
 
-            for obj in self._hourly_recommendations:
-                obj_hour = obj.start.replace(
-                    minute=0, second=0, microsecond=0
-                ).astimezone(self._tz)
+                # Parse datetime key
+                if isinstance(v, datetime):
+                    dt_key = v
+                else:
+                    dt_key = datetime.fromisoformat(str(v))
 
-                if obj.start.date() == dt_key.date() and obj_hour == dt_key:
-                    setattr(obj, object_attr, round(value, 5))
+                # Normalize datetime to hour start in the correct timezone
+                try:
+                    dt_key = dt_key.replace(
+                        minute=0, second=0, microsecond=0
+                    ).astimezone(self._tz)
+                except Exception as e:
+                    continue
+
+                value = convert_to_float(data.get(kv["v"]))
+
+                # Skip if no value found for the attribute
+                if value is None:
+                    continue
+
+                # Adjust value based on share (e.g., if data is in smaller intervals)
+                value = value / share
+
+                for obj in self._hourly_recommendations:
+                    obj_hour = obj.start.replace(
+                        minute=0, second=0, microsecond=0
+                    ).astimezone(self._tz)
+
+                    if obj.start.date() == dt_key.date() and obj_hour == dt_key:
+                        setattr(obj, recommendations_field_to_update, round(value, 5))
+        return
 
     async def _async_calculate_avg_house_consumption(self) -> bool:
         """Calculate the weighted hourly data for the sensor using 1/3/7/14-day HouseConsumptionEnergyAverageSensors,
@@ -1948,12 +2013,15 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             self._config_entry,
             "hsem_solcast_pv_forecast_forecast_likelihood",
         )
+
+        # First EV charger related settings
         self._hsem_ev_charger_force_max_discharge_power = convert_to_boolean(
             get_config_value(
                 self._config_entry,
                 "hsem_ev_charger_force_max_discharge_power",
             )
         )
+
         self._hsem_ev_charger_max_discharge_power = convert_to_int(
             get_config_value(
                 self._config_entry,
@@ -2004,6 +2072,65 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
         if self._hsem_ev_connected == vol.UNDEFINED:
             self._hsem_ev_connected = None
+
+        # Second EV charger related settings
+        self._hsem_ev_second_charger_force_max_discharge_power = convert_to_boolean(
+            get_config_value(
+                self._config_entry,
+                "hsem_ev_second_charger_force_max_discharge_power",
+            )
+        )
+
+        self._hsem_ev_second_charger_max_discharge_power = convert_to_int(
+            get_config_value(
+                self._config_entry,
+                "hsem_ev_second_charger_max_discharge_power",
+            )
+        )
+
+        self._hsem_ev_second_charger_status = get_config_value(
+            self._config_entry, "hsem_ev_second_charger_status"
+        )
+
+        if self._hsem_ev_second_charger_status == vol.UNDEFINED:
+            self._hsem_ev_second_charger_status = None
+
+        self._hsem_ev_second_charger_power = get_config_value(
+            self._config_entry,
+            "hsem_ev_second_charger_power",
+        )
+
+        if self._hsem_ev_second_charger_power == vol.UNDEFINED:
+            self._hsem_ev_second_charger_power = None
+
+        self._hsem_ev_second_soc = get_config_value(
+            self._config_entry,
+            "hsem_ev_second_soc",
+        )
+        if self._hsem_ev_second_soc == vol.UNDEFINED:
+            self._hsem_ev_second_soc = None
+
+        self._hsem_ev_second_allow_charge_past_target_soc = convert_to_boolean(
+            get_config_value(
+                self._config_entry,
+                "hsem_ev_second_allow_charge_past_target_soc",
+            )
+        )
+        self._hsem_ev_second_soc_target = get_config_value(
+            self._config_entry,
+            "hsem_ev_second_soc_target",
+        )
+
+        if self._hsem_ev_second_soc_target == vol.UNDEFINED:
+            self._hsem_ev_second_soc_target = None
+
+        self._hsem_ev_second_connected = get_config_value(
+            self._config_entry,
+            "hsem_ev_second_connected",
+        )
+
+        if self._hsem_ev_second_connected == vol.UNDEFINED:
+            self._hsem_ev_second_connected = None
 
         self._hsem_batteries_conversion_loss = convert_to_float(
             get_config_value(
@@ -2143,6 +2270,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         if self._hsem_force_working_mode_state is None:
             self._hsem_force_working_mode_state = "auto"
 
+        # First EV
         if self._hsem_ev_charger_status:
             self._hsem_ev_charger_status_state = convert_to_boolean(
                 _read_entity(
@@ -2175,6 +2303,50 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             self._hsem_ev_connected_state = convert_to_boolean(
                 _read_entity(
                     self._hsem_ev_connected, "boolean", label="hsem_ev_connected"
+                )
+            )
+
+        # Second EV
+        if self._hsem_ev_second_charger_status:
+            self._hsem_ev_second_charger_status_state = convert_to_boolean(
+                _read_entity(
+                    self._hsem_ev_second_charger_status,
+                    "boolean",
+                    label="hsem_ev_second_charger_status",
+                )
+            )
+
+        if self._hsem_ev_second_charger_power:
+            self._hsem_ev_second_charger_power_state = convert_to_float(
+                _read_entity(
+                    self._hsem_ev_second_charger_power,
+                    "float",
+                    label="hsem_ev_second_charger_power",
+                )
+            )
+
+        if self._hsem_ev_second_soc:
+            self._hsem_ev_second_soc_state = convert_to_float(
+                _read_entity(
+                    self._hsem_ev_second_soc, "float", label="hsem_ev_second_soc"
+                )
+            )
+
+        if self._hsem_ev_second_soc_target:
+            self._hsem_ev_second_soc_target_state = convert_to_float(
+                _read_entity(
+                    self._hsem_ev_second_soc_target,
+                    "float",
+                    label="hsem_ev_second_soc_target",
+                )
+            )
+
+        if self._hsem_ev_second_connected:
+            self._hsem_ev_second_connected_state = convert_to_boolean(
+                _read_entity(
+                    self._hsem_ev_second_connected,
+                    "boolean",
+                    label="hsem_ev_second_connected",
                 )
             )
 
@@ -2330,6 +2502,35 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             )
             self._tracked_entities.add(self._hsem_ev_connected)
 
+        # Second EV tracking
+        if (
+            self._hsem_ev_second_charger_status
+            and self._hsem_ev_second_charger_status not in self._tracked_entities
+        ):
+            await async_logger(
+                self,
+                f"Starting to track state changes for {self._hsem_ev_second_charger_status}",
+            )
+            async_track_state_change_event(
+                self.hass,
+                [self._hsem_ev_second_charger_status],
+                self._async_handle_update,
+            )
+            self._tracked_entities.add(self._hsem_ev_second_charger_status)
+
+        if (
+            self._hsem_ev_second_connected is not None
+            and self._hsem_ev_second_connected not in self._tracked_entities
+        ):
+            await async_logger(
+                self,
+                f"Starting to track state changes for {self._hsem_ev_second_connected}",
+            )
+            async_track_state_change_event(
+                self.hass, [self._hsem_ev_second_connected], self._async_handle_update
+            )
+            self._tracked_entities.add(self._hsem_ev_second_connected)
+
         if (
             self._hsem_force_working_mode
             and self._hsem_force_working_mode not in self._tracked_entities
@@ -2387,6 +2588,13 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 else 0.0
             )
 
+            # Add second EV charger power if available
+            ev_charger_power_state += (
+                self._hsem_ev_second_charger_power_state
+                if isinstance(self._hsem_ev_second_charger_power_state, (int, float))
+                else 0.0
+            )
+
             if self._hsem_house_power_includes_ev_charger_power:
                 self._hsem_net_consumption_with_ev = (
                     self._hsem_house_consumption_power_state
@@ -2415,7 +2623,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
             await async_logger(
                 self,
-                f"Net consumption calculated: {self._hsem_net_consumption}, with EV: {self._hsem_net_consumption_with_ev}, hsem_house_power_includes_ev_charger_power: {self._hsem_house_power_includes_ev_charger_power}, hsem_house_consumption_power_state: {self._hsem_house_consumption_power_state}, hsem_solar_production_power_state: {self._hsem_solar_production_power_state}, ev_charger_power_state: {ev_charger_power_state}",
+                f"Net consumption calculated: {self._hsem_net_consumption}, with EVs: {self._hsem_net_consumption_with_ev}, hsem_house_power_includes_ev_charger_power: {self._hsem_house_power_includes_ev_charger_power}, hsem_house_consumption_power_state: {self._hsem_house_consumption_power_state}, hsem_solar_production_power_state: {self._hsem_solar_production_power_state}, ev_charger_power_state: {ev_charger_power_state}",
             )
         else:
             self._hsem_net_consumption = 0.0
@@ -2455,6 +2663,24 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                     and isinstance(self._hsem_ev_soc_target_state, (int, float))
                     and self._hsem_ev_allow_charge_past_target_soc
                     and self._hsem_ev_soc_state < 100
+                ):
+                    export_power_percentage = 100
+
+            if self._hsem_ev_second_connected_state:
+                # EV SoC is less than target soc, allow carge to car
+                if (
+                    isinstance(self._hsem_ev_second_soc_state, (int, float))
+                    and isinstance(self._hsem_ev_second_soc_target_state, (int, float))
+                    and self._hsem_ev_second_soc_state
+                    < self._hsem_ev_second_soc_target_state
+                ):
+                    export_power_percentage = 100
+                # EV is at or above target soc, but we allow charge past target soc
+                elif (
+                    isinstance(self._hsem_ev_second_soc_state, (int, float))
+                    and isinstance(self._hsem_ev_second_soc_target_state, (int, float))
+                    and self._hsem_ev_second_allow_charge_past_target_soc
+                    and self._hsem_ev_second_soc_state < 100
                 ):
                     export_power_percentage = 100
 
