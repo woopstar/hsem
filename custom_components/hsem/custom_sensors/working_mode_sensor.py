@@ -1013,7 +1013,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                     dt_key = dt_key.replace(
                         minute=0, second=0, microsecond=0
                     ).astimezone(self._tz)
-                except Exception as e:
+                except Exception:  # noqa: TRY302
                     continue
 
                 value = convert_to_float(data.get(kv["v"]))
