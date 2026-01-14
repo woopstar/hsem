@@ -126,9 +126,9 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self._next_update = None
         self._hsem_avg_house_consumption_entity_id_cache = {}
         # Number of minutes per recommendation interval (e.g., 60 means hourly intervals)
-        self._recommendation_interval_minutes = 15
+        self._hsem_recommendation_interval_minutes = 15
         # Total number of intervals to generate recommendations for (e.g., 48 means 2 days of hourly intervals)
-        self._recommendation_interval_length = 48
+        self._hsem_recommendation_interval_length = 48
 
         self._tracked_entities = set()
         self._update_settings()
@@ -180,6 +180,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_energi_data_service_import = None
         self._hsem_energi_data_service_export = None
         self._hsem_energi_data_service_export_min_price = None
+        self._hsem_energi_data_service_update_interval = 15
         self._hsem_huawei_solar_inverter_active_power_control = None
         self._hsem_huawei_solar_batteries_working_mode_state = None
         self._hsem_huawei_solar_batteries_state_of_capacity_state = None
@@ -340,6 +341,8 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 "solcast_pv_forecast_forecast_tomorrow_entity": self._hsem_solcast_pv_forecast_forecast_tomorrow,
                 "unique_id": self._attr_unique_id,
                 "update_interval": self._update_interval,
+                "recommendation_interval_minutes": self._hsem_recommendation_interval_minutes,
+                "recommendation_interval_length": self._hsem_recommendation_interval_length,
             }
 
         attributes = {
@@ -349,6 +352,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             "energi_data_service_export_state": self._hsem_energi_data_service_export_state,
             "energi_data_service_import_state": self._hsem_energi_data_service_import_state,
             "energi_data_service_export_min_price": self._hsem_energi_data_service_export_min_price,
+            "energi_data_service_update_interval": self._hsem_energi_data_service_update_interval,
             "ev_charger_power_state": self._hsem_ev_charger_power_state,
             "ev_charger_status_state": self._hsem_ev_charger_status_state,
             "ev_soc_state": self._hsem_ev_soc_state,
@@ -478,7 +482,8 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         # Reset recommendations
         self._hourly_recommendation = None
         self._hourly_recommendations = self._generate_recommendation_intervals(
-            self._recommendation_interval_minutes, self._recommendation_interval_length
+            self._hsem_recommendation_interval_minutes,
+            self._hsem_recommendation_interval_length,
         )
 
         await self._async_fetch_entity_states()
@@ -517,7 +522,10 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             await self._async_calculate_remaining_battery_capacity()
 
             # Manipulate all the recommendations.
-            share = 1
+            share = (
+                self._hsem_energi_data_service_update_interval
+                / self._hsem_recommendation_interval_minutes
+            )
 
             # Try for import price
             await self._async_update_hourly_data(
@@ -529,7 +537,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 self._hsem_energi_data_service_export, "export_price", share
             )
 
-            share = 60 / self._recommendation_interval_minutes
+            share = 60 / self._hsem_recommendation_interval_minutes
 
             # Try for solcast pv forecast today
             await self._async_update_hourly_data(
@@ -1370,7 +1378,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 3,
             )
 
-            scale_to_interval = 60 / self._recommendation_interval_minutes
+            scale_to_interval = 60 / self._hsem_recommendation_interval_minutes
 
             for obj in self._hourly_recommendations:
                 # if obj.start.hour == hour_start and obj.end.hour == hour_end:
@@ -1554,7 +1562,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
         # Adjust max charge per hour based on recommendation interval
         max_charge_per_interval = max_charge_per_hour / (
-            60 / self._recommendation_interval_minutes
+            60 / self._hsem_recommendation_interval_minutes
         )
 
         if max_charge_per_interval <= 0:
@@ -1926,6 +1934,20 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
         self._hsem_months_summer = get_config_value(
             self._config_entry, "hsem_months_summer"
+        )
+
+        self._hsem_recommendation_interval_length = convert_to_int(
+            get_config_value(self._config_entry, "hsem_recommendation_interval_length")
+        )
+
+        self._hsem_recommendation_interval_minutes = convert_to_int(
+            get_config_value(self._config_entry, "hsem_recommendation_interval_minutes")
+        )
+
+        self._hsem_energi_data_service_update_interval = convert_to_int(
+            get_config_value(
+                self._config_entry, "hsem_energi_data_service_update_interval"
+            )
         )
 
         if not isinstance(self._hsem_months_winter, list):

@@ -66,11 +66,13 @@
         "data": {
           "hsem_energi_data_service_export": "Energy Data Service Export Price Sensor",
           "hsem_energi_data_service_export_min_price": "Export Minimum Price Required",
+          "hsem_energi_data_service_update_interval": "Energy Data Service Export Price Update Interval (minutes)",
           "hsem_energi_data_service_import": "Energy Data Service Import Price Sensor"
         },
         "data_description": {
           "hsem_energi_data_service_export": "Select the sensor that provides export prices from your Energy Data Service integration.",
           "hsem_energi_data_service_export_min_price": "Set the minimum price for export from your Energy Data Service integration.",
+          "hsem_energi_data_service_update_interval": "Set the update interval in minutes from your Energy Data Service integration.",
           "hsem_energi_data_service_import": "Select the sensor that provides import prices from your Energy Data Service integration."
         },
         "description": "Select energy data services for HSEM.",
@@ -78,52 +80,52 @@
       },
       "ev": {
         "data": {
-          "hsem_ev_second_enabled": "Enable Second EV Charger",
+          "hsem_ev_allow_charge_past_target_soc": "Allow Charging Past Target SoC (Advanced)",
           "hsem_ev_charger_force_max_discharge_power": "EV Charger Force Max Discharge Power",
           "hsem_ev_charger_max_discharge_power": "EV Charger Max Discharge Power",
           "hsem_ev_charger_power": "EV Charger Power Sensor",
           "hsem_ev_charger_status": "EV Charger Status Sensor",
-          "hsem_house_power_includes_ev_charger_power": "House Power Includes EV Charger Power",
+          "hsem_ev_connected": "EV Connected Sensor",
+          "hsem_ev_second_enabled": "Enable Second EV Charger",
           "hsem_ev_soc": "EV State of Charge (SoC) Sensor",
           "hsem_ev_soc_target": "EV State of Charge (SoC) Target Sensor",
-          "hsem_ev_connected": "EV Connected Sensor",
-          "hsem_ev_allow_charge_past_target_soc": "Allow Charging Past Target SoC (Advanced)"
+          "hsem_house_power_includes_ev_charger_power": "House Power Includes EV Charger Power"
         },
         "data_description": {
-          "hsem_ev_second_enabled": "Enable or disable the configuration for a second EV charger.",
+          "hsem_ev_allow_charge_past_target_soc": "Enable this option if you want to allow the system to continue charging the EV battery even after it has reached the target state of charge (SoC). This can be useful in scenarios where you want to ensure the EV is fully charged regardless of the target setting.",
           "hsem_ev_charger_force_max_discharge_power": "Enable this if you want to force a specific maximum discharge power for the Huawei batteries while EV is charging.",
           "hsem_ev_charger_max_discharge_power": "Set the maximum discharge power for the Huawei batteries while EV is charging.",
           "hsem_ev_charger_power": "Select the sensor that measures the power consumption of your EV charger.",
           "hsem_ev_charger_status": "Select the sensor or entity that indicates whether the EV charger is active (e.g., a switch or sensor).",
-          "hsem_house_power_includes_ev_charger_power": "Enable this if the house consumption power sensor already includes the EV charger power consumption.",
+          "hsem_ev_connected": "Select the sensor or entity that indicates whether the EV is connected to the charger.",
+          "hsem_ev_second_enabled": "Enable or disable the configuration for a second EV charger.",
           "hsem_ev_soc": "Select the sensor that provides the current state of charge (SoC) of your EV battery.",
           "hsem_ev_soc_target": "Select the sensor that provides the target state of charge (SoC) for your EV battery.",
-          "hsem_ev_connected": "Select the sensor or entity that indicates whether the EV is connected to the charger.",
-          "hsem_ev_allow_charge_past_target_soc": "Enable this option if you want to allow the system to continue charging the EV battery even after it has reached the target state of charge (SoC). This can be useful in scenarios where you want to ensure the EV is fully charged regardless of the target setting."
+          "hsem_house_power_includes_ev_charger_power": "Enable this if the house consumption power sensor already includes the EV charger power consumption."
         },
         "description": "Configure EV Charger settings for HSEM.",
         "title": "EV Charger Settings (Optional)"
       },
       "ev_second": {
         "data": {
+          "hsem_ev_second_allow_charge_past_target_soc": "Allow Charging Past Target SoC For Second EV (Advanced)",
           "hsem_ev_second_charger_force_max_discharge_power": "Second EV Charger Force Max Discharge Power",
           "hsem_ev_second_charger_max_discharge_power": "Second EV Charger Max Discharge Power",
           "hsem_ev_second_charger_power": "Second EV Charger Power Sensor",
           "hsem_ev_second_charger_status": "Second EV Charger Status Sensor",
-          "hsem_ev_second_soc": "Second EV State of Charge (SoC) Sensor",
-          "hsem_ev_second_soc_target": "Second EV State of Charge (SoC) Target Sensor",
           "hsem_ev_second_connected": "Second EV Connected Sensor",
-          "hsem_ev_second_allow_charge_past_target_soc": "Allow Charging Past Target SoC For Second EV (Advanced)"
+          "hsem_ev_second_soc": "Second EV State of Charge (SoC) Sensor",
+          "hsem_ev_second_soc_target": "Second EV State of Charge (SoC) Target Sensor"
         },
         "data_description": {
+          "hsem_ev_second_allow_charge_past_target_soc": "Enable this option if you want to allow the system to continue charging the EV battery even after it has reached the target state of charge (SoC). This can be useful in scenarios where you want to ensure the EV is fully charged regardless of the target setting.",
           "hsem_ev_second_charger_force_max_discharge_power": "Enable this if you want to force a specific maximum discharge power for the Huawei batteries while EV is charging.",
           "hsem_ev_second_charger_max_discharge_power": "Set the maximum discharge power for the Huawei batteries while EV is charging.",
           "hsem_ev_second_charger_power": "Select the sensor that measures the power consumption of your EV charger.",
           "hsem_ev_second_charger_status": "Select the sensor or entity that indicates whether the EV charger is active (e.g., a switch or sensor).",
-          "hsem_ev_second_soc": "Select the sensor that provides the current state of charge (SoC) of your EV battery.",
-          "hsem_ev_second_soc_target": "Select the sensor that provides the target state of charge (SoC) for your EV battery.",
           "hsem_ev_second_connected": "Select the sensor or entity that indicates whether the EV is connected to the charger.",
-          "hsem_ev_second_allow_charge_past_target_soc": "Enable this option if you want to allow the system to continue charging the EV battery even after it has reached the target state of charge (SoC). This can be useful in scenarios where you want to ensure the EV is fully charged regardless of the target setting."
+          "hsem_ev_second_soc": "Select the sensor that provides the current state of charge (SoC) of your EV battery.",
+          "hsem_ev_second_soc_target": "Select the sensor that provides the target state of charge (SoC) for your EV battery."
         },
         "description": "Configure Second EV Charger settings for HSEM.",
         "title": "Second EV Charger Settings (Optional)"
@@ -161,6 +163,24 @@
         },
         "description": "Configure the working mode for Huawei solar batteries.",
         "title": "Huawei Solar Sensors"
+      },
+      "init": {
+        "data": {
+          "device_name": "Name",
+          "hsem_read_only": "Read Only",
+          "hsem_recommendation_interval_length": "Recommendation Interval Length",
+          "hsem_recommendation_interval_minutes": "Recommendation Interval Minutes",
+          "hsem_update_interval": "Update interval"
+        },
+        "data_description": {
+          "device_name": "Enter a unique name for this device.",
+          "hsem_read_only": "Enable this option to set the integration to read-only mode, preventing it from sending commands to devices.",
+          "hsem_recommendation_interval_length": "The length in minutes of each recommendation interval used to calculate optimal battery usage.",
+          "hsem_recommendation_interval_minutes": "The number of recommendation intervals to consider when calculating optimal battery usage.",
+          "hsem_update_interval": "The update interval in minutes for the working mode sensor."
+        },
+        "description": "Update the settings for HSEM",
+        "title": "Update Huawei Solar Energy Management"
       },
       "months": {
         "data": {
@@ -293,11 +313,13 @@
         "data": {
           "hsem_energi_data_service_export": "Energy Data Service Export Price Sensor",
           "hsem_energi_data_service_export_min_price": "Export Minimum Price Required",
+          "hsem_energi_data_service_update_interval": "Energy Data Service Export Price Update Interval (minutes)",
           "hsem_energi_data_service_import": "Energy Data Service Import Price Sensor"
         },
         "data_description": {
           "hsem_energi_data_service_export": "Select the sensor that provides export prices from your Energy Data Service integration.",
           "hsem_energi_data_service_export_min_price": "Set the minimum price for export from your Energy Data Service integration.",
+          "hsem_energi_data_service_update_interval": "Set the update interval in minutes from your Energy Data Service integration.",
           "hsem_energi_data_service_import": "Select the sensor that provides import prices from your Energy Data Service integration."
         },
         "description": "Select energy data services for HSEM.",
@@ -305,52 +327,52 @@
       },
       "ev": {
         "data": {
-          "hsem_ev_second_enabled": "Enable Second EV Charger",
+          "hsem_ev_allow_charge_past_target_soc": "Allow Charging Past Target SoC (Advanced)",
           "hsem_ev_charger_force_max_discharge_power": "EV Charger Force Max Discharge Power",
           "hsem_ev_charger_max_discharge_power": "EV Charger Max Discharge Power",
           "hsem_ev_charger_power": "EV Charger Power Sensor",
           "hsem_ev_charger_status": "EV Charger Status Sensor",
-          "hsem_house_power_includes_ev_charger_power": "House Power Includes EV Charger Power",
+          "hsem_ev_connected": "EV Connected Sensor",
+          "hsem_ev_second_enabled": "Enable Second EV Charger",
           "hsem_ev_soc": "EV State of Charge (SoC) Sensor",
           "hsem_ev_soc_target": "EV State of Charge (SoC) Target Sensor",
-          "hsem_ev_connected": "EV Connected Sensor",
-          "hsem_ev_allow_charge_past_target_soc": "Allow Charging Past Target SoC (Advanced)"
+          "hsem_house_power_includes_ev_charger_power": "House Power Includes EV Charger Power"
         },
         "data_description": {
-          "hsem_ev_second_enabled": "Enable or disable the configuration for a second EV charger.",
+          "hsem_ev_allow_charge_past_target_soc": "Enable this option if you want to allow the system to continue charging the EV battery even after it has reached the target state of charge (SoC). This can be useful in scenarios where you want to ensure the EV is fully charged regardless of the target setting.",
           "hsem_ev_charger_force_max_discharge_power": "Enable this if you want to force a specific maximum discharge power for the Huawei batteries while EV is charging.",
           "hsem_ev_charger_max_discharge_power": "Set the maximum discharge power for the Huawei batteries while EV is charging.",
           "hsem_ev_charger_power": "Select the sensor that measures the power consumption of your EV charger.",
           "hsem_ev_charger_status": "Select the sensor or entity that indicates whether the EV charger is active (e.g., a switch or sensor).",
-          "hsem_house_power_includes_ev_charger_power": "Enable this if the house consumption power sensor already includes the EV charger power consumption.",
+          "hsem_ev_connected": "Select the sensor or entity that indicates whether the EV is connected to the charger.",
+          "hsem_ev_second_enabled": "Enable or disable the configuration for a second EV charger.",
           "hsem_ev_soc": "Select the sensor that provides the current state of charge (SoC) of your EV battery.",
           "hsem_ev_soc_target": "Select the sensor that provides the target state of charge (SoC) for your EV battery.",
-          "hsem_ev_connected": "Select the sensor or entity that indicates whether the EV is connected to the charger.",
-          "hsem_ev_allow_charge_past_target_soc": "Enable this option if you want to allow the system to continue charging the EV battery even after it has reached the target state of charge (SoC). This can be useful in scenarios where you want to ensure the EV is fully charged regardless of the target setting."
+          "hsem_house_power_includes_ev_charger_power": "Enable this if the house consumption power sensor already includes the EV charger power consumption."
         },
         "description": "Configure EV Charger settings for HSEM.",
         "title": "EV Charger Settings (Optional)"
       },
       "ev_second": {
         "data": {
+          "hsem_ev_second_allow_charge_past_target_soc": "Allow Charging Past Target SoC For Second EV (Advanced)",
           "hsem_ev_second_charger_force_max_discharge_power": "Second EV Charger Force Max Discharge Power",
           "hsem_ev_second_charger_max_discharge_power": "Second EV Charger Max Discharge Power",
           "hsem_ev_second_charger_power": "Second EV Charger Power Sensor",
           "hsem_ev_second_charger_status": "Second EV Charger Status Sensor",
-          "hsem_ev_second_soc": "Second EV State of Charge (SoC) Sensor",
-          "hsem_ev_second_soc_target": "Second EV State of Charge (SoC) Target Sensor",
           "hsem_ev_second_connected": "Second EV Connected Sensor",
-          "hsem_ev_second_allow_charge_past_target_soc": "Allow Charging Past Target SoC For Second EV (Advanced)"
+          "hsem_ev_second_soc": "Second EV State of Charge (SoC) Sensor",
+          "hsem_ev_second_soc_target": "Second EV State of Charge (SoC) Target Sensor"
         },
         "data_description": {
+          "hsem_ev_second_allow_charge_past_target_soc": "Enable this option if you want to allow the system to continue charging the EV battery even after it has reached the target state of charge (SoC). This can be useful in scenarios where you want to ensure the EV is fully charged regardless of the target setting.",
           "hsem_ev_second_charger_force_max_discharge_power": "Enable this if you want to force a specific maximum discharge power for the Huawei batteries while EV is charging.",
           "hsem_ev_second_charger_max_discharge_power": "Set the maximum discharge power for the Huawei batteries while EV is charging.",
           "hsem_ev_second_charger_power": "Select the sensor that measures the power consumption of your EV charger.",
           "hsem_ev_second_charger_status": "Select the sensor or entity that indicates whether the EV charger is active (e.g., a switch or sensor).",
-          "hsem_ev_second_soc": "Select the sensor that provides the current state of charge (SoC) of your EV battery.",
-          "hsem_ev_second_soc_target": "Select the sensor that provides the target state of charge (SoC) for your EV battery.",
           "hsem_ev_second_connected": "Select the sensor or entity that indicates whether the EV is connected to the charger.",
-          "hsem_ev_second_allow_charge_past_target_soc": "Enable this option if you want to allow the system to continue charging the EV battery even after it has reached the target state of charge (SoC). This can be useful in scenarios where you want to ensure the EV is fully charged regardless of the target setting."
+          "hsem_ev_second_soc": "Select the sensor that provides the current state of charge (SoC) of your EV battery.",
+          "hsem_ev_second_soc_target": "Select the sensor that provides the target state of charge (SoC) for your EV battery."
         },
         "description": "Configure Second EV Charger settings for HSEM.",
         "title": "Second EV Charger Settings (Optional)"
@@ -397,11 +419,15 @@
         "data": {
           "device_name": "Name",
           "hsem_read_only": "Read Only",
+          "hsem_recommendation_interval_length": "Recommendation Interval Length",
+          "hsem_recommendation_interval_minutes": "Recommendation Interval Minutes",
           "hsem_update_interval": "Update interval"
         },
         "data_description": {
           "device_name": "Enter a unique name for this device.",
           "hsem_read_only": "Enable this option to set the integration to read-only mode, preventing it from sending commands to devices.",
+          "hsem_recommendation_interval_length": "The length in minutes of each recommendation interval used to calculate optimal battery usage.",
+          "hsem_recommendation_interval_minutes": "The number of recommendation intervals to consider when calculating optimal battery usage.",
           "hsem_update_interval": "The update interval in minutes for the working mode sensor."
         },
         "description": "Update the settings for HSEM",
@@ -476,6 +502,17 @@
         "7": "July",
         "8": "August",
         "9": "September"
+      }
+    },
+    "update_interval_minutes": {
+      "options": {
+        "1": "1 minute",
+        "10": "10 minutes",
+        "15": "15 minutes",
+        "30": "30 minutes",
+        "45": "45 minutes",
+        "5": "5 minutes",
+        "60": "60 minutes"
       }
     }
   }
