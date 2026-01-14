@@ -34,6 +34,26 @@ async def get_energidataservice_step_schema(config_entry) -> vol.Schema:
                     }
                 }
             ),
+            vol.Required(
+                "hsem_energi_data_service_update_interval",
+                default=str(
+                    get_config_value(
+                        config_entry, "hsem_energi_data_service_update_interval"
+                    )
+                ),
+            ): selector(
+                {
+                    "select": {
+                        "multiple": False,
+                        "translation_key": "update_interval_minutes",
+                        "mode": "list",
+                        "options": [
+                            "15",
+                            "60",
+                        ],
+                    }
+                }
+            ),
         }
     )
 
@@ -43,6 +63,7 @@ async def validate_energidataservice_input(hass, user_input) -> dict[str, str]:
 
     required_fields = [
         "hsem_energi_data_service_export_min_price",
+        "hsem_energi_data_service_update_interval",
     ]
 
     for field in required_fields:
