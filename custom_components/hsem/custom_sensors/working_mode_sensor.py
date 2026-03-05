@@ -973,6 +973,10 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             "prices_tomorrow": {"k": "start", "v": "price"},
             "prices_tomorrow": {"k": "time", "v": "price"},
             # Solcast
+            "detailedHourly": {
+                "k": "period_start",
+                "v": self._hsem_solcast_pv_forecast_forecast_likelihood,
+            },
             "detailedForecast": {
                 "k": "period_start",
                 "v": self._hsem_solcast_pv_forecast_forecast_likelihood,
