@@ -1,5 +1,5 @@
-"""
-This module defines the HSEMWorkingModeSensorNew class, which is a custom sensor entity for Home Assistant.
+"""This module defines the HSEMWorkingModeSensorNew class, which is a custom sensor entity for Home Assistant.
+
 The sensor monitors various attributes related to solar energy production, battery status, and energy consumption,
 and calculates the optimal working mode for the system.
 
@@ -192,9 +192,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_state = (
             None
         )
-        self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_periods = (
-            None
-        )
+        self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_periods = None
         self._hsem_house_power_includes_ev_charger_power = None
 
         self._hsem_house_consumption_power_state = 0.0
@@ -233,27 +231,21 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_batteries_enable_batteries_schedule_1_end = None
         self._hsem_batteries_enable_batteries_schedule_1_avg_import_price = 0.0
         self._hsem_batteries_enable_batteries_schedule_1_needed_batteries_capacity = 0.0
-        self._hsem_batteries_enable_batteries_schedule_1_needed_batteries_capacity_cost = (
-            0.0
-        )
+        self._hsem_batteries_enable_batteries_schedule_1_needed_batteries_capacity_cost = 0.0
         self._hsem_batteries_enable_batteries_schedule_1_min_price_difference = 0.0
         self._hsem_batteries_enable_batteries_schedule_2 = False
         self._hsem_batteries_enable_batteries_schedule_2_start = None
         self._hsem_batteries_enable_batteries_schedule_2_end = None
         self._hsem_batteries_enable_batteries_schedule_2_avg_import_price = 0.0
         self._hsem_batteries_enable_batteries_schedule_2_needed_batteries_capacity = 0.0
-        self._hsem_batteries_enable_batteries_schedule_2_needed_batteries_capacity_cost = (
-            0.0
-        )
+        self._hsem_batteries_enable_batteries_schedule_2_needed_batteries_capacity_cost = 0.0
         self._hsem_batteries_enable_batteries_schedule_2_min_price_difference = 0.0
         self._hsem_batteries_enable_batteries_schedule_3 = False
         self._hsem_batteries_enable_batteries_schedule_3_start = None
         self._hsem_batteries_enable_batteries_schedule_3_end = None
         self._hsem_batteries_enable_batteries_schedule_3_avg_import_price = 0.0
         self._hsem_batteries_enable_batteries_schedule_3_needed_batteries_capacity = 0.0
-        self._hsem_batteries_enable_batteries_schedule_3_needed_batteries_capacity_cost = (
-            0.0
-        )
+        self._hsem_batteries_enable_batteries_schedule_3_needed_batteries_capacity_cost = 0.0
         self._hsem_batteries_enable_batteries_schedule_3_min_price_difference = 0.0
         self._hsem_force_working_mode = None
         self._hsem_force_working_mode_state = "auto"
@@ -516,7 +508,6 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 f"Force working mode is activated. Setting working mode to {str(self._hsem_force_working_mode_state)}",
             )
         else:
-
             await self._async_calculate_net_consumption()
 
             await self._async_calculate_remaining_battery_capacity()
@@ -766,7 +757,6 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 or self._hsem_ev_second_charger_force_max_discharge_power
             )
         ):
-
             # Set to the max discharge power of both chargers
             max_discharge_power = max(
                 self._hsem_ev_charger_max_discharge_power,
@@ -896,8 +886,8 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 )
 
     async def _async_set_time_passed(self) -> None:
-        """
-        Mark hourly recommendation intervals that have already passed as 'TimePassed'.
+        """Mark hourly recommendation intervals that have already passed as 'TimePassed'.
+
         This indicates that for these intervals, the battery or system cannot take further action,
         and recommendations for those times are no longer relevant.
         """
@@ -1006,7 +996,6 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             )
 
             for data in sensor_data:
-
                 # Get the value from the data based on the key mapping from data_sources
                 v = data.get(kv["k"])
 
@@ -1047,8 +1036,9 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         return
 
     async def _async_calculate_avg_house_consumption(self) -> bool:
-        """Calculate the weighted hourly data for the sensor using 1/3/7/14-day HouseConsumptionEnergyAverageSensors,
-        with spike-aware dynamic reweighting, capping of 1d/3d/7d/14d vs baseline, and reliability-based weight scaling.
+        """Calculate the weighted hourly data for the sensor using 1/3/7/14-day HouseConsumptionEnergyAverageSensors.
+
+        With spike-aware dynamic reweighting, capping of 1d/3d/7d/14d vs baseline, and reliability-based weight scaling.
         """
 
         if self._hsem_house_consumption_energy_weight_1d is None:
@@ -1168,7 +1158,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 self._missing_input_entities_list.append(str(unique_id_14d))
                 await async_logger(
                     self,
-                    f"One of the required sensors for average house consumptions load is not ready/found. Waiting for next update.",
+                    "One of the required sensors for average house consumptions load is not ready/found. Waiting for next update.",
                 )
                 return False
 
@@ -1203,7 +1193,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                     value_14d = convert_to_float(
                         ha_get_entity_state_and_convert(self, entity_id_14d, "float", 3)
                     )
-            except Exception as e:
+            except Exception:
                 value_1d = None
                 value_3d = None
                 value_7d = None
@@ -1222,7 +1212,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 self._missing_input_entities_list.append(str(entity_id_14d))
                 await async_logger(
                     self,
-                    f"One of the required sensors for average house consumptions load is not ready/found. Waiting for next update.",
+                    "One of the required sensors for average house consumptions load is not ready/found. Waiting for next update.",
                 )
                 return False
 
@@ -1406,8 +1396,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         return True
 
     async def _async_calculate_batteries_schedules(self, start_time=None) -> None:
-        """
-        Calculate and update the batteries schedules based on the current configuration.
+        """Calculate and update the batteries schedules based on the current configuration.
 
         This method updates each schedule in `self._batteries_schedules` with calculated values for
         `needed_batteries_capacity`, `needed_batteries_capacity_cost`, and `avg_import_price`.
@@ -1416,7 +1405,6 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         now = start_time or datetime.now().astimezone(self._tz)
 
         for schedule in self._batteries_schedules:
-
             if not schedule.enabled:
                 continue
 
@@ -1471,11 +1459,12 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
     async def _async_calculate_batteries_schedules_best_charge_time(
         self, start_time=None
     ) -> None:
-        """
-        Calculate the best times to charge batteries based on active schedules.
+        """Calculate the best times to charge batteries based on active schedules.
+
         Identifies the cheapest charging times to meet the combined energy needs of all schedules,
         while respecting battery capacity and current charge.
         """
+
         # now = datetime.now().astimezone(self._tz)
         now = start_time or datetime.now().astimezone(self._tz)
 
@@ -1756,12 +1745,12 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         if min_price_check:
             await async_logger(
                 self,
-                f"Minimum price difference condition met. Proceeding with grid charging.",
+                "Minimum price difference condition met. Proceeding with grid charging.",
             )
         else:
             await async_logger(
                 self,
-                f"Minimum price difference condition NOT met. Skipping grid charging.",
+                "Minimum price difference condition NOT met. Skipping grid charging.",
             )
 
         # Reset charged energy to the value before the avg calculation and actually apply the recommendations
@@ -1774,7 +1763,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             sorted_filtered = [
                 rec
                 for rec in filtered_hourly_recommendations
-                if rec.recommendation == None
+                if rec.recommendation is None
             ]
             sorted_filtered.sort(key=lambda x: (x.import_price, x.start))
 
@@ -1852,7 +1841,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
         await async_logger(
             self,
-            f"Batteries needed charge: {round(batteries_needed_charge,2)} kWh | Current capacity: {self._hsem_batteries_current_capacity} kWh | Usable capacity: {self._hsem_batteries_usable_capacity} kWh",
+            f"Batteries needed charge: {round(batteries_needed_charge, 2)} kWh | Current capacity: {self._hsem_batteries_current_capacity} kWh | Usable capacity: {self._hsem_batteries_usable_capacity} kWh",
         )
 
         charged = 0.0
@@ -1898,7 +1887,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             if rec.recommendation is not None:
                 await async_logger(
                     self,
-                    f"Interval: {rec.start.date()} {rec.start.time()} {rec.end.time()} | Recommendation already set to {rec.recommendation }. Skipping.",
+                    f"Interval: {rec.start.date()} {rec.start.time()} {rec.end.time()} | Recommendation already set to {rec.recommendation}. Skipping.",
                 )
                 continue
 
@@ -2435,12 +2424,10 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         )
         self._hsem_huawei_solar_batteries_maximum_discharging_power_state = (
             convert_to_float(
-                (
-                    _read_entity(
-                        self._hsem_huawei_solar_batteries_maximum_discharging_power,
-                        "float",
-                        label="max_discharging_power",
-                    )
+                _read_entity(
+                    self._hsem_huawei_solar_batteries_maximum_discharging_power,
+                    "float",
+                    label="max_discharging_power",
                 )
             )
         )
@@ -2471,17 +2458,11 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 )
 
                 # Reset both values first
-                self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_state = (
-                    None
-                )
-                self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_periods = (
-                    None
-                )
+                self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_state = None
+                self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_periods = None
 
                 if isinstance(entity_data, State):
-                    self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_state = (
-                        entity_data.state
-                    )
+                    self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_state = entity_data.state
                     self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_periods = [
                         entity_data.attributes[f"Period {i}"]
                         for i in range(1, 11)
@@ -2606,7 +2587,6 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         if isinstance(
             self._hsem_solar_production_power_state, (int, float)
         ) and isinstance(self._hsem_house_consumption_power_state, (int, float)):
-
             # Treat EV charger power state as 0.0 if it's None
             ev_charger_power_state = (
                 self._hsem_ev_charger_power_state
