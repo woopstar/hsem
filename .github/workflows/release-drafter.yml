@@ -15,6 +15,7 @@ permissions: read-all
 jobs:
   update_release_draft:
     name: Update release draft
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions: write-all
     steps:
@@ -24,7 +25,5 @@ jobs:
           fetch-depth: 0
       - name: Create Release
         uses: release-drafter/release-drafter@v7
-        with:
-          disable-releaser: github.ref != 'refs/heads/main'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
