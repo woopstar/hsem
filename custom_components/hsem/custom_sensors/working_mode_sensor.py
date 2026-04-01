@@ -182,6 +182,8 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_energi_data_service_export_min_price = None
         self._hsem_energi_data_service_update_interval = 15
         self._hsem_huawei_solar_inverter_active_power_control = None
+        self._hsem_huawei_solar_batteries_end_of_discharge_soc = None
+        self._hsem_huawei_solar_batteries_end_of_discharge_soc_state = None
         self._hsem_huawei_solar_batteries_working_mode_state = None
         self._hsem_huawei_solar_batteries_state_of_capacity_state = None
         self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc = None
@@ -323,6 +325,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 "ev_second_connected_entity": self._hsem_ev_second_connected,
                 "force_working_mode_entity": self._hsem_force_working_mode,
                 "house_consumption_power_entity": self._hsem_house_consumption_power,
+                "hsem_huawei_solar_batteries_end_of_discharge_soc_entity": self._hsem_huawei_solar_batteries_end_of_discharge_soc,
                 "huawei_solar_batteries_grid_charge_cutoff_soc_entity": self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc,
                 "huawei_solar_batteries_maximum_charging_power_entity": self._hsem_huawei_solar_batteries_maximum_charging_power,
                 "huawei_solar_batteries_maximum_discharging_power_entity": self._hsem_huawei_solar_batteries_maximum_discharging_power,
@@ -1988,6 +1991,10 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_huawei_solar_batteries_working_mode = get_config_value(
             self._config_entry, "hsem_huawei_solar_batteries_working_mode"
         )
+        self._hsem_huawei_solar_batteries_end_of_discharge_soc = get_config_value(
+            self._config_entry,
+            "hsem_huawei_solar_batteries_end_of_discharge_soc",
+        )
         self._hsem_huawei_solar_batteries_state_of_capacity = get_config_value(
             self._config_entry,
             "hsem_huawei_solar_batteries_state_of_capacity",
@@ -2407,6 +2414,13 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 label="state_of_capacity",
             )
         )
+        self._hsem_huawei_solar_batteries_end_of_discharge_soc_state = convert_to_float(
+            _read_entity(
+                self._hsem_huawei_solar_batteries_end_of_discharge_soc,
+                "float",
+                label="end_of_discharge_soc",
+            )
+        )
         self._hsem_energi_data_service_import_state = convert_to_float(
             _read_entity(
                 self._hsem_energi_data_service_import, "float", 3, label="eds_import"
@@ -2567,33 +2581,53 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             self._tracked_entities.add(self._hsem_force_working_mode)
 
     async def _async_calculate_remaining_battery_capacity(self) -> None:
-        # Calculate remaining battery capacity and max allowed charge from grid if all necessary values are available
+        # Calculate remaining battery capacity accounting for the discharge reserve (minimum SOC)."""
         if isinstance(
             self._hsem_batteries_rated_capacity_max_state, (int, float)
         ) and isinstance(
             self._hsem_huawei_solar_batteries_state_of_capacity_state, (int, float)
         ):
-            self._hsem_batteries_rated_capacity_min_state = (
-                self._hsem_batteries_rated_capacity_max_state * 0.05
+            # Rated battery capacity in kWh
+            rated_kwh = self._hsem_batteries_rated_capacity_max_state / 1000.0
+
+            # End-of-discharge SOC (%) - the minimum discharge floor (default to 5% if not set)
+            end_of_discharge_soc = (
+                self._hsem_huawei_solar_batteries_end_of_discharge_soc_state
             )
 
-            # Calculate usable capacity (kWh)
-            self._hsem_batteries_usable_capacity = round(
-                (self._hsem_batteries_rated_capacity_max_state / 1000),
-                2,
-            )
+            if end_of_discharge_soc is None or end_of_discharge_soc <= 0:
+                end_of_discharge_soc = 5.0
 
-            # Calculate current capacity (kWh)
-            self._hsem_batteries_current_capacity = round(
-                max(
-                    0,
-                    (
-                        self._hsem_huawei_solar_batteries_state_of_capacity_state
-                        / 100
-                        * (self._hsem_batteries_rated_capacity_max_state / 1000)
-                    ),
-                ),
-                2,
+            # Energy reserve that must not be discharged (kWh)
+            reserve_kwh = rated_kwh * (end_of_discharge_soc / 100.0)
+
+            # Usable capacity = total capacity minus the reserve
+            usable_kwh = max(rated_kwh - reserve_kwh, 0.0)
+
+            # Current energy based on current SOC (%)
+            current_soc_percent = (
+                self._hsem_huawei_solar_batteries_state_of_capacity_state
+            )
+            current_kwh = (current_soc_percent / 100.0) * rated_kwh
+
+            # Available capacity for discharge = current energy minus the reserve
+            available_discharge_kwh = max(current_kwh - reserve_kwh, 0.0)
+
+            # Store the reserve as min state for transparency in attributes
+            self._hsem_batteries_rated_capacity_min_state = round(reserve_kwh, 3)
+
+            # Set the usable and current capacity (used by the optimizer)
+            self._hsem_batteries_usable_capacity = round(usable_kwh, 2)
+            self._hsem_batteries_current_capacity = round(available_discharge_kwh, 2)
+
+            await async_logger(
+                self,
+                f"Battery capacity calculated: Rated={round(rated_kwh, 2)}kWh, "
+                f"End-of-Discharge SOC={end_of_discharge_soc}%, "
+                f"Reserve={round(reserve_kwh, 2)}kWh, "
+                f"Usable={round(usable_kwh, 2)}kWh, "
+                f"Current SOC={round(current_soc_percent, 1)}%, "
+                f"Current Available={round(available_discharge_kwh, 2)}kWh",
             )
 
     async def _async_calculate_net_consumption(self) -> None:
