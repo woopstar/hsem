@@ -982,6 +982,8 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 "k": "period_start",
                 "v": self._hsem_solcast_pv_forecast_forecast_likelihood,
             },
+            # EPEX Spot
+            "data": {"k": "start_time", "v": "price_per_kwh"},
         }
 
         if sensor_id is None:
