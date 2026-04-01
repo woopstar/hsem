@@ -1866,12 +1866,13 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             if charged >= batteries_needed_charge:
                 break
 
-            # Negative net consumption means we have solar surplus to charge batteries while covering the house
-            if rec.estimated_net_consumption < 0:
+            # Negative net consumption above 100w means we have solar surplus to charge batteries while covering the house
+            if rec.estimated_net_consumption <= 0.1:
                 charged += (
                     rec.estimated_net_consumption * -1
                 )  # Convert negative to positive for charging
                 rec.recommendation = Recommendations.BatteriesChargeSolar.value
+                rec.batteries_charged = round(charged, 3)
                 await async_logger(
                     self,
                     f"Interval: {rec.start.date()} {rec.start.time()} {rec.end.time()} | Charging from solar surplus. Net Consumption: {rec.estimated_net_consumption} | Import Price: {rec.import_price} | Export Price: {rec.export_price} | Total charged: {round(charged, 3)} kWh.",
