@@ -1872,7 +1872,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 break
 
             # Negative net consumption above 100w means we have solar surplus to charge batteries while covering the house
-            if rec.estimated_net_consumption <= 0.1:
+            if rec.estimated_net_consumption <= -0.1:
                 charged += (
                     rec.estimated_net_consumption * -1
                 )  # Convert negative to positive for charging
