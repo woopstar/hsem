@@ -14,6 +14,20 @@
       "start_time_after_end_time": "Start time must be before end time."
     },
     "step": {
+      "batteries_excess_export": {
+        "data": {
+          "hsem_batteries_excess_export_enable": "Enable Excess Export",
+          "hsem_batteries_excess_export_min_price_difference": "Minimum Price Difference for Excess Export",
+          "hsem_batteries_excess_export_sensor": "Excess Export Sensor"
+        },
+        "data_description": {
+          "hsem_batteries_excess_export_enable": "Enable or disable the excess export feature, which allows the system to export excess energy to the grid when certain conditions are met.",
+          "hsem_batteries_excess_export_min_price_difference": "Set the minimum price difference required for the excess export feature to activate. This ensures that energy is only exported when it is financially beneficial.",
+          "hsem_batteries_excess_export_sensor": "Select the sensor that measures the excess energy available for export to the grid."
+        },
+        "description": "Configure settings for exporting excess energy to the grid, including activation and price conditions.",
+        "title": "Excess Export Settings"
+      },
       "batteries_schedule_1": {
         "data": {
           "hsem_batteries_enable_batteries_schedule_1": "Enable Battery Schedule 1",
@@ -263,6 +277,20 @@
       "start_time_after_end_time": "Start time must be before end time."
     },
     "step": {
+      "batteries_excess_export": {
+        "data": {
+          "hsem_batteries_excess_export_enable": "Enable Excess Export",
+          "hsem_batteries_excess_export_min_price_difference": "Minimum Price Difference for Excess Export",
+          "hsem_batteries_excess_export_sensor": "Excess Export Sensor"
+        },
+        "data_description": {
+          "hsem_batteries_excess_export_enable": "Enable or disable the excess export feature, which allows the system to export excess energy to the grid when certain conditions are met.",
+          "hsem_batteries_excess_export_min_price_difference": "Set the minimum price difference required for the excess export feature to activate. This ensures that energy is only exported when it is financially beneficial.",
+          "hsem_batteries_excess_export_sensor": "Select the sensor that measures the excess energy available for export to the grid."
+        },
+        "description": "Configure settings for exporting excess energy to the grid, including activation and price conditions.",
+        "title": "Excess Export Settings"
+      },
       "batteries_schedule_1": {
         "data": {
           "hsem_batteries_enable_batteries_schedule_1": "Enable Battery Schedule 1",
