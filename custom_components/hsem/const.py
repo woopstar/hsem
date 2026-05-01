@@ -23,6 +23,11 @@ MIN_HUAWEI_SOLAR_VERSION = "1.5.0a1"
 DEFAULT_CONFIG_VALUES = {
     "device_name": NAME,
     "hsem_batteries_conversion_loss": 10,
+    "hsem_batteries_enable_excess_export": False,
+    "hsem_batteries_excess_export_discharge_buffer": False,
+    "hsem_batteries_excess_export_price_threshold": False,
+    "hsem_batteries_purchase_price": 0.0,
+    "hsem_batteries_expected_cycles": 6000,
     "hsem_batteries_enable_batteries_schedule_1_end": "09:00:00",
     "hsem_batteries_enable_batteries_schedule_1_min_price_difference": 0.00,
     "hsem_batteries_enable_batteries_schedule_1_start": "07:00:00",

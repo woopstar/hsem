@@ -87,6 +87,36 @@ async def get_huawei_solar_step_schema(config_entry) -> vol.Schema:
                 ),
             ): selector({"entity": {"domain": ["sensor", "input_number"]}}),
             vol.Required(
+                "hsem_batteries_purchase_price",
+                default=get_config_value(
+                    config_entry, "hsem_batteries_purchase_price"
+                ),
+            ): selector(
+                {
+                    "number": {
+                        "min": 0,
+                        "max": 100000,
+                        "step": 100,
+                        "mode": "box",
+                    }
+                }
+            ),
+            vol.Required(
+                "hsem_batteries_expected_cycles",
+                default=get_config_value(
+                    config_entry, "hsem_batteries_expected_cycles"
+                ),
+            ): selector(
+                {
+                    "number": {
+                        "min": 1,
+                        "max": 20000,
+                        "step": 100,
+                        "mode": "box",
+                    }
+                }
+            ),
+            vol.Required(
                 "hsem_batteries_conversion_loss",
                 default=get_config_value(
                     config_entry, "hsem_batteries_conversion_loss"
@@ -128,6 +158,8 @@ async def validate_huawei_solar_input(hass, user_input) -> dict[str, str]:
         "hsem_huawei_solar_batteries_grid_charge_cutoff_soc",
         "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods",
         "hsem_huawei_solar_batteries_rated_capacity",
+        "hsem_batteries_purchase_price",
+        "hsem_batteries_expected_cycles",
         "hsem_batteries_conversion_loss",
         "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou",
         "hsem_huawei_solar_batteries_end_of_discharge_soc",

@@ -3,11 +3,33 @@ from datetime import datetime
 import voluptuous as vol
 from homeassistant.helpers.selector import selector
 
-from custom_components.hsem.utils.misc import get_config_value
+from custom_components.hsem.utils.misc import (
+    calculate_recommended_threshold,
+    convert_to_float,
+    convert_to_int,
+    get_config_value,
+)
 
 
 async def get_batteries_schedule_3_step_schema(config_entry) -> vol.Schema:
     """Return the data schema for the 'batteries_schedule' step."""
+
+    # Calculate recommended threshold as default if not already set
+    purchase_price = convert_to_float(
+        get_config_value(config_entry, "hsem_batteries_purchase_price") or 0.0
+    )
+    expected_cycles = convert_to_int(
+        get_config_value(config_entry, "hsem_batteries_expected_cycles") or 6000
+    )
+    usable_capacity = 10.0  # Default assumption for calculation
+    conversion_loss = convert_to_float(
+        get_config_value(config_entry, "hsem_batteries_conversion_loss") or 10.0
+    )
+
+    recommended = calculate_recommended_threshold(
+        purchase_price, expected_cycles, usable_capacity, conversion_loss
+    )
+
     return vol.Schema(
         {
             vol.Required(
@@ -33,7 +55,8 @@ async def get_batteries_schedule_3_step_schema(config_entry) -> vol.Schema:
                 default=get_config_value(
                     config_entry,
                     "hsem_batteries_enable_batteries_schedule_3_min_price_difference",
-                ),
+                )
+                or recommended,
             ): selector(
                 {
                     "number": {

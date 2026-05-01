@@ -6,6 +6,10 @@ from homeassistant import config_entries
 from homeassistant.core import callback
 
 from custom_components.hsem.const import DOMAIN, NAME
+from custom_components.hsem.flows.batteries_excess_export import (
+    get_batteries_excess_export_step_schema,
+    validate_batteries_excess_export_input,
+)
 from custom_components.hsem.flows.batteries_schedule_1 import (
     get_batteries_schedule_1_step_schema,
     validate_batteries_schedule_1_input,
@@ -218,12 +222,47 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors = await validate_weighted_values_input(user_input)
             if not errors:
                 self._user_input.update(user_input)
-                return await self.async_step_batteries_schedule_1()
+                return await self.async_step_huawei_solar()
 
         data_schema = await get_weighted_values_step_schema(None)
 
         return self.async_show_form(
             step_id="weighted_values",
+            data_schema=data_schema,
+            errors=errors,
+            last_step=False,
+        )
+
+    async def async_step_huawei_solar(self, user_input=None):
+        errors = {}
+
+        if user_input is not None:
+            errors = await validate_huawei_solar_input(self.hass, user_input)
+            if not errors:
+                final_data = {**self._user_input, **user_input}
+
+                # Ensure that optional inverter_id is set to an empty string if not provided
+                final_data["hsem_huawei_solar_device_id_inverter_2"] = final_data.get(
+                    "hsem_huawei_solar_device_id_inverter_2", ""
+                )
+
+                # Ensure that optional ev_charger_status is set to an empty string if not provided
+                final_data["hsem_ev_charger_status"] = final_data.get(
+                    "hsem_ev_charger_status", None
+                )
+                final_data["hsem_ev_charger_power"] = final_data.get(
+                    "hsem_ev_charger_power", None
+                )
+
+                # Set unique ID for this config flow based on DOMAIN
+                await self.async_set_unique_id(str(uuid.uuid4()))
+
+                return await self.async_step_batteries_schedule_1()
+
+        data_schema = await get_huawei_solar_step_schema(None)
+
+        return self.async_show_form(
+            step_id="huawei_solar",
             data_schema=data_schema,
             errors=errors,
             last_step=False,
@@ -272,7 +311,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors = await validate_batteries_schedule_3_input(user_input)
             if not errors:
                 self._user_input.update(user_input)
-                return await self.async_step_huawei_solar()
+                return await self.async_step_batteries_excess_export()
 
         data_schema = await get_batteries_schedule_3_step_schema(None)
 
@@ -283,39 +322,23 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             last_step=False,
         )
 
-    async def async_step_huawei_solar(self, user_input=None):
+    async def async_step_batteries_excess_export(self, user_input=None):
         errors = {}
 
         if user_input is not None:
-            errors = await validate_huawei_solar_input(self.hass, user_input)
+            errors = await validate_batteries_excess_export_input(user_input)
             if not errors:
-                final_data = {**self._user_input, **user_input}
-
-                # Ensure that optional inverter_id is set to an empty string if not provided
-                final_data["hsem_huawei_solar_device_id_inverter_2"] = final_data.get(
-                    "hsem_huawei_solar_device_id_inverter_2", ""
-                )
-
-                # Ensure that optional ev_charger_status is set to an empty string if not provided
-                final_data["hsem_ev_charger_status"] = final_data.get(
-                    "hsem_ev_charger_status", None
-                )
-                final_data["hsem_ev_charger_power"] = final_data.get(
-                    "hsem_ev_charger_power", None
-                )
-
-                # Set unique ID for this config flow based on DOMAIN
-                await self.async_set_unique_id(str(uuid.uuid4()))
+                self._user_input.update(user_input)
 
                 return self.async_create_entry(
-                    title=final_data.get("device_name", NAME),
-                    data=final_data,
+                    title=self._user_input.get("device_name", NAME),
+                    data=self._user_input,
                 )
 
-        data_schema = await get_huawei_solar_step_schema(None)
+        data_schema = await get_batteries_excess_export_step_schema(None)
 
         return self.async_show_form(
-            step_id="huawei_solar",
+            step_id="batteries_excess_export",
             data_schema=data_schema,
             errors=errors,
             last_step=True,
