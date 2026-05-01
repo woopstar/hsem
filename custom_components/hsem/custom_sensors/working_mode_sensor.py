@@ -37,7 +37,6 @@ from custom_components.hsem.const import (
     DEFAULT_HSEM_BATTERIES_WAIT_MODE,
     DEFAULT_HSEM_EV_CHARGER_TOU_MODES,
     DEFAULT_HSEM_TOU_MODES_FORCE_CHARGE,
-    DEFAULT_HSEM_TOU_MODES_FORCE_DISCHARGE,
     RELIABILITY_EPS,
     RELIABILITY_SCALE_STRENGTH,
     SPIKE1_RATIO_MAX,
@@ -784,9 +783,6 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             case Recommendations.BatteriesChargeSolar.value:
                 working_mode = WorkingModes.MaximizeSelfConsumption.value
             case Recommendations.ForceBatteriesDischarge.value:
-                tou_modes = DEFAULT_HSEM_TOU_MODES_FORCE_DISCHARGE
-                working_mode = WorkingModes.TimeOfUse.value
-            case Recommendations.ExcessBatteryExport.value:
                 # Excess battery export uses direct forcible discharge API
                 # Calculate target SOC based on remaining energy needed for rest of day
                 if (
@@ -2047,7 +2043,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 )
 
                 if energy_to_discharge > 0:
-                    rec.recommendation = Recommendations.ExcessBatteryExport.value
+                    rec.recommendation = Recommendations.ForceBatteriesDischarge.value
                     discharged += energy_to_discharge
 
                     await async_logger(
