@@ -411,9 +411,8 @@ def calculate_recommended_threshold(
     capacity_loss = 0.30
 
     # 1. Depreciation cost per kWh
-    depreciation = (
-        (purchase_price * capacity_loss)
-        / (expected_cycles * usable_capacity)
+    depreciation = (purchase_price * capacity_loss) / (
+        expected_cycles * usable_capacity
     )
 
     # 2. Conversion loss cost (approx 10% of current import price)

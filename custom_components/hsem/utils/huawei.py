@@ -120,3 +120,64 @@ async def async_set_tou_periods(self, batteries_id, tou_modes) -> None:
         # Handle any other unexpected errors
         _LOGGER.error(f"An unexpected error occurred: {err}")
         raise HomeAssistantError(f"Unexpected error: {err}")
+
+
+async def async_set_forcible_discharge(
+    self, device_id: str, target_soc: int, power: int
+) -> None:
+    """Set forcible discharge for the battery at specified power and target SOC.
+
+    Args:
+        device_id (str): The device ID of the battery (e.g. sensor.luna2000_xxx).
+        target_soc (int): The target SOC level to discharge to (0-100).
+        power (int): The maximum discharge power in watts.
+    """
+
+    # Validate input parameters
+    if not isinstance(target_soc, int) or not (0 <= target_soc <= 100):
+        raise ValueError(
+            f"target_soc must be an integer between 0 and 100, got {target_soc}"
+        )
+
+    if not isinstance(power, int) or power < 0:
+        raise ValueError(f"power must be a non-negative integer, got {power}")
+
+    # Check if the service exists
+    if not self.hass.services.has_service("huawei_solar", "set_forcible_discharge"):
+        _LOGGER.error("Service huawei_solar.set_forcible_discharge not found")
+        return
+
+    try:
+        # Send the service call to set forcible discharge
+        await self.hass.services.async_call(
+            "huawei_solar",
+            "set_forcible_discharge",
+            {
+                "device_id": device_id,  # Device ID of the battery
+                "target_soc": target_soc,  # Target SOC in percentage (0-100)
+                "power": power,  # Maximum discharge power in watts
+            },
+            blocking=False,  # Non-blocking call to avoid performance issues
+        )
+
+        # Log success message
+        _LOGGER.debug(
+            f"Set forcible discharge for device {device_id} to {target_soc}% SOC at {power}W"
+        )
+
+    except vol.MultipleInvalid as err:
+        # Handle validation errors
+        _LOGGER.error(
+            f"Invalid input data for forcible discharge: {err}. Check device_id, target_soc, or power."
+        )
+        raise HomeAssistantError(f"Invalid input data: {err}")
+
+    except HomeAssistantError as err:
+        # Handle general Home Assistant errors
+        _LOGGER.error(f"Home Assistant error while setting forcible discharge: {err}")
+        raise
+
+    except Exception as err:
+        # Handle any other unexpected errors
+        _LOGGER.error(f"An unexpected error occurred during forcible discharge: {err}")
+        raise HomeAssistantError(f"Unexpected error: {err}")

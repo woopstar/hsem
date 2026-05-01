@@ -64,6 +64,7 @@ from custom_components.hsem.entity import HSEMEntity
 from custom_components.hsem.models.battery_schedule import BatterySchedule
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.utils.huawei import (
+    async_set_forcible_discharge,
     async_set_grid_export_power_pct,
     async_set_tou_periods,
 )
@@ -785,6 +786,40 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             case Recommendations.ForceBatteriesDischarge.value:
                 tou_modes = DEFAULT_HSEM_TOU_MODES_FORCE_DISCHARGE
                 working_mode = WorkingModes.TimeOfUse.value
+            case Recommendations.ExcessBatteryExport.value:
+                # Excess battery export uses direct forcible discharge API
+                # Calculate target SOC based on remaining energy needed for rest of day
+                if (
+                    self._hsem_batteries_usable_capacity > 0
+                    and self._current_required_battery >= 0
+                    and self._hsem_huawei_solar_device_id_batteries
+                ):
+                    target_soc = int(
+                        (
+                            self._current_required_battery
+                            / self._hsem_batteries_usable_capacity
+                        )
+                        * 100
+                    )
+                    target_soc = max(0, min(100, target_soc))  # Clamp 0-100
+
+                    max_discharge_power = get_max_discharge_power(
+                        convert_to_int(self._hsem_batteries_rated_capacity_max_state)
+                    )
+
+                    await async_set_forcible_discharge(
+                        self,
+                        self._hsem_huawei_solar_device_id_batteries,
+                        target_soc,
+                        max_discharge_power,
+                    )
+
+                    await async_logger(
+                        self,
+                        f"Excess battery export: Set forcible discharge to {target_soc}% SOC "
+                        f"at {max_discharge_power}W power.",
+                    )
+                return
             case Recommendations.BatteriesWaitMode.value:
                 tou_modes = DEFAULT_HSEM_BATTERIES_WAIT_MODE
                 working_mode = WorkingModes.TimeOfUse.value
@@ -2012,13 +2047,13 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 )
 
                 if energy_to_discharge > 0:
-                    rec.recommendation = Recommendations.ForceBatteriesDischarge.value
+                    rec.recommendation = Recommendations.ExcessBatteryExport.value
                     discharged += energy_to_discharge
 
                     await async_logger(
                         self,
                         f"Interval: {rec.start.date()} {rec.start.time()} {rec.end.time()} | "
-                        f"Excess export: Force discharge. "
+                        f"Excess battery export recommended. "
                         f"Import Price: {rec.import_price} | Export Price: {rec.export_price} | "
                         f"Energy to discharge: {round(energy_to_discharge, 2)} kWh | "
                         f"Total discharged: {round(discharged, 2)} kWh.",

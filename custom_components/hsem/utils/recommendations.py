@@ -19,6 +19,7 @@ class Recommendations(Enum):
     BatteriesDischargeMode = "batteries_discharge_mode"
     BatteriesWaitMode = "batteries_wait_mode"
     EVSmartCharging = "ev_smart_charging"
+    ExcessBatteryExport = "excess_battery_export"
     ForceBatteriesDischarge = "force_batteries_discharge"
     ForceExport = "force_export"
     FullyFedToGrid = "fully_fed_to_grid"
