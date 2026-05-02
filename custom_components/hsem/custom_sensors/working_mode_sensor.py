@@ -797,6 +797,10 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                         )
                         * 100
                     )
+                    buffer_pct = 1 + (
+                        self._hsem_batteries_excess_export_discharge_buffer / 100
+                    )
+                    target_soc = int(target_soc * buffer_pct)
                     target_soc = max(0, min(100, target_soc))  # Clamp 0-100
 
                     max_discharge_power = get_max_discharge_power(
@@ -1886,32 +1890,45 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         )
 
     async def _async_calculate_required_battery_for_rest_of_day(self) -> float:
-        """Calculate the total energy needed to cover the rest of the day including buffer.
+        """Calculate the total energy needed until excess solar becomes available.
 
-        This function looks ahead from the current time to the end of the day and
-        calculates how much battery capacity is needed to cover the consumption,
-        accounting for solar production and a safety buffer.
+        This function scans forward from the current time through the hourly
+        recommendations (up to 72 hours) to find when excess solar becomes available
+        (negative estimated_net_consumption). It calculates the battery capacity needed
+        only until that point, making it more economically correct and generic.
+
+        The key insight: Battery is only "excess" when we have surplus solar in the
+        forecast. This function finds the first point where excess solar appears and
+        returns only the battery needed to reach that point.
 
         Returns:
-            float: Required battery capacity in kWh to cover the rest of the day.
+            float: Required battery capacity in kWh needed until excess solar appears,
+                    or until end of forecast if no excess solar is found.
         """
         now = datetime.now().astimezone(self._tz)
         required_capacity = 0.0
+        excess_solar_found_at = None
 
         for rec in self._hourly_recommendations:
             # Only look at future intervals from now onwards
             if rec.start < now:
                 continue
 
-            # Calculate net consumption needed from battery
-            # (positive means we need energy, negative means we have surplus solar)
+            # Check if we have excess solar power at this hour
+            if rec.estimated_net_consumption < 0:
+                # Excess solar found! Battery is not needed beyond this point
+                excess_solar_found_at = rec.start
+                await async_logger(
+                    self,
+                    f"Excess solar detected at {rec.start}: "
+                    f"estimated_net_consumption={round(rec.estimated_net_consumption, 2)} kWh. "
+                    f"Battery not needed beyond this point.",
+                )
+                break
+
+            # Only accumulate positive net consumption (deficit hours)
             if rec.estimated_net_consumption > 0:
                 required_capacity += rec.estimated_net_consumption
-            # If net consumption is negative but there's still household load,
-            # we might need some battery backup despite solar
-            elif rec.estimated_net_consumption < 0 and rec.avg_house_consumption > 0:
-                # In case solar forecast is overly optimistic, keep small buffer
-                required_capacity += max(0, rec.avg_house_consumption * 0.05)
 
         # Add safety buffer (percentage of usable capacity)
         buffer_kwh = self._hsem_batteries_usable_capacity * (
@@ -1921,8 +1938,9 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
         await async_logger(
             self,
-            f"Required battery for rest of day: {round(required_capacity, 2)} kWh "
+            f"Required battery until excess solar: {round(required_capacity, 2)} kWh "
             f"(with {self._hsem_batteries_excess_export_discharge_buffer}% buffer). "
+            f"Excess solar found at: {excess_solar_found_at if excess_solar_found_at else 'end of forecast'}. "
             f"Current capacity: {round(self._hsem_batteries_current_capacity, 2)} kWh.",
         )
 
