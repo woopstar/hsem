@@ -1,5 +1,4 @@
-"""
-This module provides utility functions for interacting with Huawei solar inverters
+"""This module provides utility functions for interacting with Huawei solar inverters
 via Home Assistant services. It includes functions to set the maximum grid export
 power percentage and to configure Time-of-Use (TOU) periods for batteries.
 

@@ -11,9 +11,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class HSEMEntity(Entity):
-    """
-    HSEMEntity is a base class for HSEM (Device) entities that extends RestoreEntity.
-    """
+    """HSEMEntity is a base class for HSEM (Device) entities that extends RestoreEntity."""
 
     _attr_icon = "mdi:flash"
     _attr_has_entity_name = True

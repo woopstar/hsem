@@ -1,6 +1,4 @@
-"""
-This module provides utility functions for the Home Assistant custom integration.
-"""
+"""This module provides utility functions for the Home Assistant custom integration."""
 
 import asyncio
 import hashlib
@@ -78,9 +76,7 @@ def get_config_value(config_entry, key) -> str | None:
 
 
 def convert_to_time(time_value) -> time:
-    """
-    Convert a time value (str or datetime.time) to a datetime.time object.
-    """
+    """Convert a time value (str or datetime.time) to a datetime.time object."""
     if isinstance(time_value, time):
         return time_value
 
@@ -167,8 +163,7 @@ def convert_to_boolean(state) -> bool:
 async def async_resolve_entity_id_from_unique_id(
     self, unique_entity_id, domain="sensor"
 ) -> str | None:
-    """
-    Resolve the entity_id from the unique_id using the entity registry.
+    """Resolve the entity_id from the unique_id using the entity registry.
 
     :param unique_entity_id: Unique ID of the entity to resolve.
     :param domain: The domain of the entity (e.g., 'sensor').
@@ -210,12 +205,12 @@ async def async_resolve_entity_id_from_unique_id(
 
 
 async def async_set_number_value(self, entity_id, value) -> None:
-    """
-    Set the value for a number entity.
+    """Set the value for a number entity.
 
     Parameters:
     - entity_id (str): The entity_id of the number entity.
     - value (float|int): The value to set.
+
     """
     entity = self.hass.states.get(entity_id)
 
@@ -321,8 +316,7 @@ def ha_get_entity_state_and_convert(
 
 
 async def async_remove_entity_from_ha(self, entity_unique_id) -> bool:
-    """
-    Remove an existing entity in Home Assistant based on its unique ID.
+    """Remove an existing entity in Home Assistant based on its unique ID.
 
     :param entity_unique_id: The unique ID of the entity to be removed.
     """
@@ -360,8 +354,7 @@ async def async_device_exists(hass, device_id) -> bool:
 
 
 async def async_logger(self, msg, level="debug") -> None:
-    """
-    Log a message to a dedicated file-based logger.
+    """Log a message to a dedicated file-based logger.
 
     :param msg: The message to log.
     :param level: The log level ('debug', 'info', 'warning', 'error', 'critical').
@@ -374,8 +367,7 @@ async def async_logger(self, msg, level="debug") -> None:
 
 
 def get_max_discharge_power(usable_capacity: int) -> int:
-    """
-    Return max discharge power in WATT based on Huawei batteries max rated capacity.
+    """Return max discharge power in WATT based on Huawei batteries max rated capacity.
     Supports both old (S0: 5/10/15 kWh) and new (S1: 7/14/21 kWh) series.
     """
     mapping = {

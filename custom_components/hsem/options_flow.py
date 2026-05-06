@@ -1,6 +1,4 @@
-"""
-This module defines the configuration flow for the HSEM integration in Home Assistant.
-"""
+"""This module defines the configuration flow for the HSEM integration in Home Assistant."""
 
 from homeassistant import config_entries
 

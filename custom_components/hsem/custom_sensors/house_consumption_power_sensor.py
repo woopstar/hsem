@@ -1,5 +1,4 @@
-"""
-Module for the HouseConsumptionPowerSensor class.
+"""Module for the HouseConsumptionPowerSensor class.
 
 This module defines the HouseConsumptionPowerSensor class, which represents a sensor
 that tracks power consumption per hour block in a Home Assistant environment.

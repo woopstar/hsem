@@ -1,5 +1,4 @@
-"""
-Selector entity for forcing a working mode in the HSEM integration.
+"""Selector entity for forcing a working mode in the HSEM integration.
 
 This module defines a selector entity that allows users to choose a working mode,
 including an "Auto" option as default. The available working modes are imported
@@ -14,8 +13,7 @@ from custom_components.hsem.entity import HSEMEntity
 
 
 class HSEMWorkingModeSelector(SelectEntity, HSEMEntity):
-    """
-    Selector entity for forcing a specific working mode.
+    """Selector entity for forcing a specific working mode.
 
     Presents all working modes plus an "Auto" option.
     """
@@ -51,11 +49,11 @@ class HSEMWorkingModeSelector(SelectEntity, HSEMEntity):
         return self._attr_current_option
 
     async def async_select_option(self, option: str) -> None:
-        """
-        Handle user selecting a new option.
+        """Handle user selecting a new option.
 
         Parameters:
         option (str): The selected working mode.
+
         """
         if option not in self._attr_options:
             raise ValueError(f"Invalid option: {option}")
