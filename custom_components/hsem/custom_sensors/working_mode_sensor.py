@@ -2699,6 +2699,27 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         else:
             self._hsem_net_consumption = 0.0
 
+    def _parse_inverter_power_control_limit_state(
+        self, power_control_state: float | int | bool | str | None
+    ) -> int | None:
+        """Parse the inverter active power control state into a percentage."""
+        if not isinstance(power_control_state, str):
+            return None
+
+        normalized_state = power_control_state.strip().lower()
+        if normalized_state == "unlimited":
+            return 100
+
+        if "%" in normalized_state:
+            normalized_state = normalized_state.replace("%", "")
+            normalized_state = normalized_state.replace("limited to", "")
+            try:
+                return int(round(float(normalized_state.strip())))
+            except ValueError:
+                return None
+
+        return None
+
     async def _async_set_inverter_power_control(self) -> None:
         # Determine the grid export power percentage based on the state
 
@@ -2761,14 +2782,18 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             self._hsem_huawei_solar_device_id_inverter_2,
         ]
 
+        current_export_control_pct = self._parse_inverter_power_control_limit_state(
+            self._hsem_huawei_solar_inverter_active_power_control_state
+        )
+
+        await async_logger(
+            self,
+            f"Determined export power percentage: {export_power_percentage}% based on export price: {self._hsem_energi_data_service_export_state} and min required export price: {self._hsem_energi_data_service_export_min_price}, EV connected: {self._hsem_ev_connected_state}, EV SoC: {self._hsem_ev_soc_state}, EV SoC target: {self._hsem_ev_soc_target_state}, EV allow charge past target soc: {self._hsem_ev_allow_charge_past_target_soc}, EV second connected: {self._hsem_ev_second_connected_state}, EV second SoC: {self._hsem_ev_second_soc_state}, EV second SoC target: {self._hsem_ev_second_soc_target_state}, EV second allow charge past target soc: {self._hsem_ev_second_allow_charge_past_target_soc}",
+        )
+
         if (
-            self._hsem_huawei_solar_inverter_active_power_control_state
-            == "Limited to 100.0%"
-            and export_power_percentage != 100
-        ) or (
-            self._hsem_huawei_solar_inverter_active_power_control_state
-            == "Limited to 0.0%"
-            and export_power_percentage != 0
+            current_export_control_pct is not None
+            and current_export_control_pct != export_power_percentage
         ):
             for inverter_id in inverters:
                 if inverter_id is not None:
