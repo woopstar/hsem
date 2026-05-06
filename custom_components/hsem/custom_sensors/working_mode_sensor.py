@@ -194,7 +194,9 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_state = (
             None
         )
-        self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_periods = None
+        self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_periods = (
+            None
+        )
         self._hsem_house_power_includes_ev_charger_power = None
 
         self._hsem_house_consumption_power_state = 0.0
@@ -233,21 +235,27 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_batteries_enable_batteries_schedule_1_end = None
         self._hsem_batteries_enable_batteries_schedule_1_avg_import_price = 0.0
         self._hsem_batteries_enable_batteries_schedule_1_needed_batteries_capacity = 0.0
-        self._hsem_batteries_enable_batteries_schedule_1_needed_batteries_capacity_cost = 0.0
+        self._hsem_batteries_enable_batteries_schedule_1_needed_batteries_capacity_cost = (
+            0.0
+        )
         self._hsem_batteries_enable_batteries_schedule_1_min_price_difference = 0.0
         self._hsem_batteries_enable_batteries_schedule_2 = False
         self._hsem_batteries_enable_batteries_schedule_2_start = None
         self._hsem_batteries_enable_batteries_schedule_2_end = None
         self._hsem_batteries_enable_batteries_schedule_2_avg_import_price = 0.0
         self._hsem_batteries_enable_batteries_schedule_2_needed_batteries_capacity = 0.0
-        self._hsem_batteries_enable_batteries_schedule_2_needed_batteries_capacity_cost = 0.0
+        self._hsem_batteries_enable_batteries_schedule_2_needed_batteries_capacity_cost = (
+            0.0
+        )
         self._hsem_batteries_enable_batteries_schedule_2_min_price_difference = 0.0
         self._hsem_batteries_enable_batteries_schedule_3 = False
         self._hsem_batteries_enable_batteries_schedule_3_start = None
         self._hsem_batteries_enable_batteries_schedule_3_end = None
         self._hsem_batteries_enable_batteries_schedule_3_avg_import_price = 0.0
         self._hsem_batteries_enable_batteries_schedule_3_needed_batteries_capacity = 0.0
-        self._hsem_batteries_enable_batteries_schedule_3_needed_batteries_capacity_cost = 0.0
+        self._hsem_batteries_enable_batteries_schedule_3_needed_batteries_capacity_cost = (
+            0.0
+        )
         self._hsem_batteries_enable_batteries_schedule_3_min_price_difference = 0.0
         self._hsem_force_working_mode = None
         self._hsem_force_working_mode_state = "auto"
@@ -952,30 +960,38 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
     ) -> None:
         """Update hourly data from the specified sensor for the given recommendations field."""
 
-        # Define the data sources and their corresponding key-value mappings
+        # Define the data sources with a list of key-value mapping options per source
         data_sources = {
             # energi_data_service templates
-            "forecast": {"k": "hour", "v": "price"},
-            "raw_tomorrow": {"k": "hour", "v": "price"},
-            "raw_today": {"k": "hour", "v": "price"},
+            "forecast": [{"k": "hour", "v": "price"}],
+            "raw_tomorrow": [{"k": "hour", "v": "price"}],
+            "raw_today": [{"k": "hour", "v": "price"}],
             # stromligning
-            "prices": {"k": "start", "v": "price"},
-            # ev_smart_charging templates
-            "prices_today": {"k": "start", "v": "price"},
-            "prices_today": {"k": "time", "v": "price"},
-            "prices_tomorrow": {"k": "start", "v": "price"},
-            "prices_tomorrow": {"k": "time", "v": "price"},
+            "prices": [{"k": "start", "v": "price"}],
+            # ev_smart_charging templates - try both "start" and "time" as time keys
+            "prices_today": [
+                {"k": "start", "v": "price"},
+                {"k": "time", "v": "price"},
+            ],
+            "prices_tomorrow": [
+                {"k": "start", "v": "price"},
+                {"k": "time", "v": "price"},
+            ],
             # Solcast
-            "detailedHourly": {
-                "k": "period_start",
-                "v": self._hsem_solcast_pv_forecast_forecast_likelihood,
-            },
-            "detailedForecast": {
-                "k": "period_start",
-                "v": self._hsem_solcast_pv_forecast_forecast_likelihood,
-            },
+            "detailedHourly": [
+                {
+                    "k": "period_start",
+                    "v": self._hsem_solcast_pv_forecast_forecast_likelihood,
+                }
+            ],
+            "detailedForecast": [
+                {
+                    "k": "period_start",
+                    "v": self._hsem_solcast_pv_forecast_forecast_likelihood,
+                }
+            ],
             # EPEX Spot
-            "data": {"k": "start_time", "v": "price_per_kwh"},
+            "data": [{"k": "start_time", "v": "price_per_kwh"}],
         }
 
         if sensor_id is None:
@@ -989,7 +1005,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             )
             return
 
-        for attr, kv in data_sources.items():
+        for attr, kv_list in data_sources.items():
             sensor_data = sensor_state.attributes.get(attr) or []
 
             # Attribute does not exist in this sensor, skip to next
@@ -1001,43 +1017,49 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             )
 
             for data in sensor_data:
-                # Get the value from the data based on the key mapping from data_sources
-                v = data.get(kv["k"])
+                # Try each key-value mapping option for this source
+                for kv in kv_list:
+                    # Get the value from the data based on the key mapping
+                    v = data.get(kv["k"])
 
-                # Skip if no key found for the attribute
-                if not v:
-                    continue
+                    # Skip if no key found for this mapping
+                    if not v:
+                        continue
 
-                # Parse datetime key
-                if isinstance(v, datetime):
-                    dt_key = v
-                else:
-                    dt_key = datetime.fromisoformat(str(v))
+                    # Parse datetime key
+                    if isinstance(v, datetime):
+                        dt_key = v
+                    else:
+                        dt_key = datetime.fromisoformat(str(v))
 
-                # Normalize datetime to hour start in the correct timezone
-                try:
-                    dt_key = dt_key.replace(
-                        minute=0, second=0, microsecond=0
-                    ).astimezone(self._tz)
-                except Exception:  # noqa: TRY302
-                    continue
+                    # Normalize datetime to hour start in the correct timezone
+                    try:
+                        dt_key = dt_key.replace(
+                            minute=0, second=0, microsecond=0
+                        ).astimezone(self._tz)
+                    except Exception:  # noqa: TRY302
+                        continue
 
-                value = convert_to_float(data.get(kv["v"]))
+                    value = convert_to_float(data.get(kv["v"]))
 
-                # Skip if no value found for the attribute
-                if value is None:
-                    continue
+                    # Skip if no value found for the attribute
+                    if value is None:
+                        continue
 
-                # Adjust value based on share (e.g., if data is in smaller intervals)
-                value = value / share
+                    # Adjust value based on share (e.g., if data is in smaller intervals)
+                    value = value / share
 
-                for obj in self._hourly_recommendations:
-                    obj_hour = obj.start.replace(
-                        minute=0, second=0, microsecond=0
-                    ).astimezone(self._tz)
+                    for obj in self._hourly_recommendations:
+                        obj_hour = obj.start.replace(
+                            minute=0, second=0, microsecond=0
+                        ).astimezone(self._tz)
 
-                    if obj.start.date() == dt_key.date() and obj_hour == dt_key:
-                        setattr(obj, recommendations_field_to_update, round(value, 5))
+                        if obj.start.date() == dt_key.date() and obj_hour == dt_key:
+                            setattr(
+                                obj, recommendations_field_to_update, round(value, 5)
+                            )
+                            # Once we find a match and update, break to next data item
+                            break
         return
 
     async def _async_calculate_avg_house_consumption(self) -> bool:
@@ -2475,11 +2497,17 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 )
 
                 # Reset both values first
-                self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_state = None
-                self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_periods = None
+                self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_state = (
+                    None
+                )
+                self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_periods = (
+                    None
+                )
 
                 if isinstance(entity_data, State):
-                    self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_state = entity_data.state
+                    self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_state = (
+                        entity_data.state
+                    )
                     self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_periods = [
                         entity_data.attributes[f"Period {i}"]
                         for i in range(1, 11)
