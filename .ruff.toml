@@ -3,6 +3,7 @@
 target-version = "py313"
 line-length = 88
 
+[lint]
 select = [
     "B007", # Loop control variable {name} not used within loop body
     "B014", # Exception handler with duplicate exception
@@ -39,13 +40,13 @@ ignore = [
     "E731",  # do not assign a lambda expression, use a def
 ]
 
-[flake8-pytest-style]
+[lint.flake8-pytest-style]
 fixture-parentheses = false
 
-[pyupgrade]
+[lint.pyupgrade]
 keep-runtime-typing = true
 
-[mccabe]
+[lint.mccabe]
 max-complexity = 25
 
 [format]
