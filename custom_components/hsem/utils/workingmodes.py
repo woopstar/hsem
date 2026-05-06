@@ -1,5 +1,4 @@
-"""
-This module defines the `WorkingModes` enumeration for different working modes.
+"""This module defines the `WorkingModes` enumeration for different working modes.
 
 Classes:
     WorkingModes (Enum): An enumeration representing various working modes.

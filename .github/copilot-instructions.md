@@ -1,7 +1,66 @@
 # Custom GitHub Copilot Instructions
 
+## Solve One Issue Per Branch
+- Each branch should solve **one** issue from the GitHub issue tracker.
+- Use the branch naming convention: `<type>/<issue-number>-<description>`
+- Examples: `feat/123-add-feature`, `fix/456-resolve-bug`, `chore/789-update-docs`
+- Do not combine multiple issues in a single branch or PR.
+
 ## Conventional Commits
 - Always use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) for commit messages and pull request titles.
+- Format: `<type>(<scope>): <description>`
+- Types: `feat`, `fix`, `chore`, `docs`, `refactor`, `perf`, `test`, `ci`
+- Scopes should be specific to the domain being changed (e.g., `sensor`, `flow`, `config`)
+- Always include `Fixes #<ISSUE_NUMBER>` in the PR description
+
+## Use the Latest Version
+- Always use the latest version of the code provided by the user.
+- Use the latest stable versions of all languages and frameworks.
+- Use the latest stable versions of all libraries unless constrained by requirements.
+
+## Code Quality
+- All code MUST use safe and secure coding practices.
+- All code MUST be fully optimized for performance and maintainability.
+- Avoid clear passwords, hardcoded secrets, and common security gaps.
+- Follow PEP 8 and the project's style guide.
+- Write type hints for all function parameters and return types.
+- Include docstrings for all public modules, classes, functions, and methods.
+
+## Write Modular Code
+- Break code into modules and components for easy reuse.
+- Maximize code reuse (DRY principle).
+- Minimize technical debt.
+
+## Python Instructions
+- Use snake_case for variable and function names.
+- Use CamelCase for class names.
+- Include type hints for function parameters and return types.
+- Write docstrings following PEP 257 conventions.
+- Use f-strings for formatting instead of .format() or %.
+- Prefer duck-typing tests (hasattr) over isinstance checks.
+- Use modern Python 3.9+ syntax.
+- Use the union operator (|) for type unions instead of typing.Union.
+- Use pathlib for path operations instead of os.path.
+- Explicitly set encoding='utf-8' when using open() in text mode.
+- Prefer argparse over optparse.
+- Use itertools for common iterable operations.
+
+## Always Provide File Names
+- Always provide the complete file path in responses.
+- Help users understand where code changes should be placed.
+
+## Avoid Triggering Public Code Warnings
+- Avoid generating code verbatim from public sources.
+- Modify public code examples to be sufficiently different.
+- Provide attribution when using public patterns.
+
+## Do Not
+- Do not refactor planner or safety logic.
+- Do not change runtime behavior unless specifically requested.
+- Do not fix unrelated bugs in the same PR.
+- Do not reformat the entire codebase unless required by tooling setup.
+- Do not generate code without understanding the context first.
+
 
 
 ## Use the latest version of the code

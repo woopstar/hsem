@@ -1,5 +1,4 @@
-"""
-This module defines the `Recommendations` enumeration for various energy management recommendations.
+"""This module defines the `Recommendations` enumeration for various energy management recommendations.
 
 Classes:
     Recommendations (Enum): Represents different working modes or strategies for energy management.
@@ -9,9 +8,7 @@ from enum import Enum
 
 
 class Recommendations(Enum):
-    """
-    An enumeration representing various recommendations for energy management.
-    """
+    """An enumeration representing various recommendations for energy management."""
 
     TimePassed = "time_passed"
     BatteriesChargeGrid = "batteries_charge_grid"

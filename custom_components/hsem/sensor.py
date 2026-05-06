@@ -16,9 +16,7 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """
-    Set up HSEM sensors from a config entry.
-    """
+    """Set up HSEM sensors from a config entry."""
 
     # Initialize domain data if not already present
     if DOMAIN not in hass.data:

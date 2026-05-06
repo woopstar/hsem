@@ -1,6 +1,4 @@
-"""
-This module initializes the custom component for Home Assistant.
-"""
+"""This module initializes the custom component for Home Assistant."""
 
 import inspect
 import logging

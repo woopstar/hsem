@@ -1,12 +1,14 @@
 # The contents of this file is based on https://github.com/home-assistant/core/blob/dev/pyproject.toml
 
 target-version = "py313"
+line-length = 88
 
+[lint]
 select = [
     "B007", # Loop control variable {name} not used within loop body
     "B014", # Exception handler with duplicate exception
-    "C",  # complexity
-    "D",  # docstrings
+    # "C",  # complexity
+    # "D",  # docstrings
     "E",  # pycodestyle
     "F",  # pyflakes/autoflake
     "ICN001", # import concentions; {name} should be imported as {asname}
@@ -38,11 +40,17 @@ ignore = [
     "E731",  # do not assign a lambda expression, use a def
 ]
 
-[flake8-pytest-style]
+[lint.flake8-pytest-style]
 fixture-parentheses = false
 
-[pyupgrade]
+[lint.pyupgrade]
 keep-runtime-typing = true
 
-[mccabe]
+[lint.mccabe]
 max-complexity = 25
+
+[format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+skip-magic-trailing-comma = false
