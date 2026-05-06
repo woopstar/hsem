@@ -99,7 +99,7 @@ jobs:
           pytest tests/ --timeout=30 --cov=custom_components.hsem --cov-report=xml
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v6
         if: matrix.python-version == '3.13'
         with:
           files: ./coverage.xml
