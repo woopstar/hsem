@@ -37,7 +37,6 @@ from custom_components.hsem.const import (
     DEFAULT_HSEM_BATTERIES_WAIT_MODE,
     DEFAULT_HSEM_EV_CHARGER_TOU_MODES,
     DEFAULT_HSEM_TOU_MODES_FORCE_CHARGE,
-    DEFAULT_HSEM_TOU_MODES_FORCE_DISCHARGE,
     RELIABILITY_EPS,
     RELIABILITY_SCALE_STRENGTH,
     SPIKE1_RATIO_MAX,
@@ -64,6 +63,7 @@ from custom_components.hsem.entity import HSEMEntity
 from custom_components.hsem.models.battery_schedule import BatterySchedule
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.utils.huawei import (
+    async_set_forcible_discharge,
     async_set_grid_export_power_pct,
     async_set_tou_periods,
 )
@@ -72,6 +72,7 @@ from custom_components.hsem.utils.misc import (
     async_resolve_entity_id_from_unique_id,
     async_set_number_value,
     async_set_select_option,
+    calculate_recommended_threshold,
     convert_to_boolean,
     convert_to_float,
     convert_to_int,
@@ -257,6 +258,13 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             0.0
         )
         self._hsem_batteries_enable_batteries_schedule_3_min_price_difference = 0.0
+        self._hsem_batteries_enable_excess_export = False
+        self._hsem_batteries_excess_export_discharge_buffer = 10
+        self._hsem_batteries_excess_export_price_threshold = 0.10
+        self._hsem_batteries_purchase_price = 0.0
+        self._hsem_batteries_expected_cycles = 6000
+        self._hsem_batteries_recommended_min_price_threshold = 0.0
+        self._current_required_battery = 0.0
         self._hsem_force_working_mode = None
         self._hsem_force_working_mode_state = "auto"
         self._hsem_solcast_pv_forecast_forecast_likelihood = DEFAULT_CONFIG_VALUES[
@@ -352,6 +360,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             "batteries_conversion_loss": self._hsem_batteries_conversion_loss,
             "batteries_current_capacity": self._hsem_batteries_current_capacity,
             "batteries_usable_capacity": self._hsem_batteries_usable_capacity,
+            "batteries_recommended_min_price_threshold": self._hsem_batteries_recommended_min_price_threshold,
             "energi_data_service_export_state": self._hsem_energi_data_service_export_state,
             "energi_data_service_import_state": self._hsem_energi_data_service_import_state,
             "energi_data_service_export_min_price": self._hsem_energi_data_service_export_min_price,
@@ -402,6 +411,9 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             "solar_production_power_state": self._hsem_solar_production_power_state,
             "months_winter": self._hsem_months_winter,
             "months_summer": self._hsem_months_summer,
+            "batteries_enable_excess_export": self._hsem_batteries_enable_excess_export,
+            "batteries_excess_export_discharge_buffer": self._hsem_batteries_excess_export_discharge_buffer,
+            "batteries_excess_export_price_threshold": self._hsem_batteries_excess_export_price_threshold,
         }
 
         status = {
@@ -481,6 +493,25 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         now = datetime.now().astimezone(self._tz)
 
         self._update_settings()
+
+        # Log recommended threshold for battery export/schedules
+        self._hsem_batteries_recommended_min_price_threshold = (
+            calculate_recommended_threshold(
+                self._hsem_batteries_purchase_price,
+                self._hsem_batteries_expected_cycles,
+                self._hsem_batteries_usable_capacity,
+                self._hsem_batteries_conversion_loss,
+                self._hsem_energi_data_service_import_state,
+            )
+        )
+
+        if self._hsem_batteries_recommended_min_price_threshold > 0:
+            await async_logger(
+                self,
+                f"Recommended price threshold for battery export/schedules: "
+                f"{self._hsem_batteries_recommended_min_price_threshold} (based on depreciation and losses). "
+                f"Current config: {self._hsem_batteries_excess_export_price_threshold}",
+            )
 
         # Reset recommendations
         self._hourly_recommendation = None
@@ -752,8 +783,43 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             case Recommendations.BatteriesChargeSolar.value:
                 working_mode = WorkingModes.MaximizeSelfConsumption.value
             case Recommendations.ForceBatteriesDischarge.value:
-                tou_modes = DEFAULT_HSEM_TOU_MODES_FORCE_DISCHARGE
-                working_mode = WorkingModes.TimeOfUse.value
+                # Excess battery export uses direct forcible discharge API
+                # Calculate target SOC based on remaining energy needed for rest of day
+                if (
+                    self._hsem_batteries_usable_capacity > 0
+                    and self._current_required_battery >= 0
+                    and self._hsem_huawei_solar_device_id_batteries
+                ):
+                    target_soc = int(
+                        (
+                            self._current_required_battery
+                            / self._hsem_batteries_usable_capacity
+                        )
+                        * 100
+                    )
+                    buffer_pct = 1 + (
+                        self._hsem_batteries_excess_export_discharge_buffer / 100
+                    )
+                    target_soc = int(target_soc * buffer_pct)
+                    target_soc = max(0, min(100, target_soc))  # Clamp 0-100
+
+                    max_discharge_power = get_max_discharge_power(
+                        convert_to_int(self._hsem_batteries_rated_capacity_max_state)
+                    )
+
+                    await async_set_forcible_discharge(
+                        self,
+                        self._hsem_huawei_solar_device_id_batteries,
+                        target_soc,
+                        max_discharge_power,
+                    )
+
+                    await async_logger(
+                        self,
+                        f"Excess battery export: Set forcible discharge to {target_soc}% SOC "
+                        f"at {max_discharge_power}W power.",
+                    )
+                return
             case Recommendations.BatteriesWaitMode.value:
                 tou_modes = DEFAULT_HSEM_BATTERIES_WAIT_MODE
                 working_mode = WorkingModes.TimeOfUse.value
@@ -1692,7 +1758,8 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                         f"Energy charged: {round(energy_to_charge, 2)} kWh. "
                         f"Total energy charged: {round(charged_energy, 2)} kWh. "
                         f"Available Solar: {round(available_solar, 2)} kWh. "
-                        f"Net Consumption: {round(rec.estimated_net_consumption, 2)} kWh. ",
+                        f"Net Consumption: {round(rec.estimated_net_consumption, 2)} kWh. "
+                        f"Import Price: {rec.import_price}",
                     )
 
         # Third priority: Cheapest remaining hours considering partial solar contribution
@@ -1836,6 +1903,196 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             f"Total energy charged: {round(charged_energy, 2)} kWh. ",
         )
 
+    async def _async_calculate_required_battery_for_rest_of_day(self) -> float:
+        """Calculate the total energy needed until excess solar becomes available.
+
+        This function scans forward from the current time through the hourly
+        recommendations (up to 72 hours) to find when excess solar becomes available
+        (negative estimated_net_consumption). It calculates the battery capacity needed
+        only until that point, making it more economically correct and generic.
+
+        The key insight: Battery is only "excess" when we have surplus solar in the
+        forecast. This function finds the first point where excess solar appears and
+        returns only the battery needed to reach that point.
+
+        Returns:
+            float: Required battery capacity in kWh needed until excess solar appears,
+                    or until end of forecast if no excess solar is found.
+        """
+        now = datetime.now().astimezone(self._tz)
+        required_capacity = 0.0
+        excess_solar_found_at = None
+
+        for rec in self._hourly_recommendations:
+            # Only look at future intervals from now onwards
+            if rec.start < now:
+                continue
+
+            # Check if we have excess solar power at this hour
+            if rec.estimated_net_consumption < 0:
+                # Excess solar found! Battery is not needed beyond this point
+                excess_solar_found_at = rec.start
+                await async_logger(
+                    self,
+                    f"Excess solar detected at {rec.start}: "
+                    f"estimated_net_consumption={round(rec.estimated_net_consumption, 2)} kWh. "
+                    f"Battery not needed beyond this point.",
+                )
+                break
+
+            # Only accumulate positive net consumption (deficit hours)
+            if rec.estimated_net_consumption > 0:
+                required_capacity += rec.estimated_net_consumption
+
+        # Add safety buffer (percentage of usable capacity)
+        buffer_kwh = self._hsem_batteries_usable_capacity * (
+            self._hsem_batteries_excess_export_discharge_buffer / 100
+        )
+        required_capacity += buffer_kwh
+
+        await async_logger(
+            self,
+            f"Required battery until excess solar: {round(required_capacity, 2)} kWh "
+            f"(with {self._hsem_batteries_excess_export_discharge_buffer}% buffer). "
+            f"Excess solar found at: {excess_solar_found_at if excess_solar_found_at else 'end of forecast'}. "
+            f"Current capacity: {round(self._hsem_batteries_current_capacity, 2)} kWh.",
+        )
+
+        return required_capacity
+
+    async def _async_apply_excess_battery_export(self) -> None:
+        """Apply force export recommendations for excess battery energy.
+
+        This function identifies when the battery has excess energy beyond what's
+        needed to cover the rest of the day, and marks intervals for forced discharge
+        at high export prices. The logic considers:
+        - Solar vs. grid charged battery (price threshold applies only to grid-charged)
+        - Export price vs. import price difference
+        - Maximum discharge rate capability
+        - Safety buffer to maintain in battery
+        """
+        if not self._hsem_batteries_enable_excess_export:
+            return
+
+        now = datetime.now().astimezone(self._tz)
+        required_battery = (
+            await self._async_calculate_required_battery_for_rest_of_day()
+        )
+        self._current_required_battery = required_battery
+
+        # Check if we have excess battery beyond the required amount
+        excess_battery = self._hsem_batteries_current_capacity - required_battery
+
+        if excess_battery <= 0.0:
+            await async_logger(
+                self,
+                f"No excess battery for export. Current: {round(self._hsem_batteries_current_capacity, 2)} kWh, "
+                f"Required: {round(required_battery, 2)} kWh.",
+            )
+            return
+
+        await async_logger(
+            self,
+            f"Excess battery detected: {round(excess_battery, 2)} kWh available for export. "
+            f"Current: {round(self._hsem_batteries_current_capacity, 2)} kWh, "
+            f"Required: {round(required_battery, 2)} kWh.",
+        )
+
+        # Calculate max discharge per interval
+        conversion_loss_factor = 1 - (
+            convert_to_float(self._hsem_batteries_conversion_loss) / 100
+        )
+        max_discharge_per_hour = (
+            get_max_discharge_power(
+                convert_to_int(self._hsem_batteries_rated_capacity_max_state)
+            )
+            / 1000
+        ) * conversion_loss_factor
+
+        max_discharge_per_interval = max_discharge_per_hour / (
+            60 / self._hsem_recommendation_interval_minutes
+        )
+
+        # Track if battery was charged from solar (any BatteriesChargeSolar recommendations)
+        solar_charged_in_session = False
+        for rec in self._hourly_recommendations:
+            if rec.recommendation == Recommendations.BatteriesChargeSolar.value:
+                solar_charged_in_session = True
+                break
+
+        await async_logger(
+            self,
+            f"Battery charged from solar in this session: {solar_charged_in_session}. "
+            f"Max discharge per interval: {round(max_discharge_per_interval, 2)} kWh.",
+        )
+
+        # Sort recommendations by export price (descending) to prioritize discharge at peak export prices
+        sorted_recommendations = sorted(
+            self._hourly_recommendations,
+            key=lambda x: (
+                x.export_price if x.export_price is not None else 0,
+                x.start,
+            ),
+            reverse=True,
+        )
+
+        discharged = 0.0
+
+        for rec in sorted_recommendations:
+            if discharged >= excess_battery:
+                break
+
+            # Skip if recommendation is already set
+            if rec.recommendation is not None:
+                continue
+
+            # Only look at future intervals from now onwards
+            if rec.start < now:
+                continue
+
+            # Check if we should discharge at this interval
+            should_discharge = False
+
+            if solar_charged_in_session:
+                # Solar-charged battery: discharge at all export prices (opportunistic)
+                should_discharge = rec.export_price > 0.0
+            else:
+                # Grid-charged battery: only discharge if price difference justifies losses
+                price_difference = (
+                    rec.export_price - rec.import_price
+                    if rec.import_price is not None
+                    else rec.export_price
+                )
+                should_discharge = (
+                    price_difference
+                    >= self._hsem_batteries_excess_export_price_threshold
+                )
+
+            if should_discharge:
+                # Calculate discharge amount for this interval
+                energy_to_discharge = min(
+                    max_discharge_per_interval, excess_battery - discharged
+                )
+
+                if energy_to_discharge > 0:
+                    rec.recommendation = Recommendations.ForceBatteriesDischarge.value
+                    discharged += energy_to_discharge
+
+                    await async_logger(
+                        self,
+                        f"Interval: {rec.start.date()} {rec.start.time()} {rec.end.time()} | "
+                        f"Excess battery export recommended. "
+                        f"Import Price: {rec.import_price} | Export Price: {rec.export_price} | "
+                        f"Energy to discharge: {round(energy_to_discharge, 2)} kWh | "
+                        f"Total discharged: {round(discharged, 2)} kWh.",
+                    )
+
+        await async_logger(
+            self,
+            f"Excess battery export strategy completed. "
+            f"Total excess energy marked for export: {round(discharged, 2)} kWh / {round(excess_battery, 2)} kWh.",
+        )
+
     async def _async_optimization_strategy(self) -> None:
         """Calculate the optimization strategy for each hour of the day."""
 
@@ -1845,6 +2102,9 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         await async_logger(
             self, "Starting optimization strategy for all remaining hours."
         )
+
+        # Apply excess battery export optimization if enabled
+        await self._async_apply_excess_battery_export()
 
         for rec in self._hourly_recommendations:
             if (
@@ -1916,6 +2176,27 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 await async_logger(
                     self,
                     f"Interval: {rec.start.date()} {rec.start.time()} {rec.end.time()} | Recommendation already set to {rec.recommendation}. Skipping.",
+                )
+                continue
+
+            # Protection: If we have a future forced export and we are still above required battery,
+            # avoid aggressive discharge (BatteriesDischargeMode) to preserve excess.
+            has_future_forced_export = any(
+                r.recommendation == Recommendations.ForceBatteriesDischarge.value
+                and r.start > rec.start
+                for r in self._hourly_recommendations
+            )
+
+            if (
+                has_future_forced_export
+                and self._hsem_batteries_current_capacity
+                > self._current_required_battery
+            ):
+                rec.recommendation = Recommendations.BatteriesWaitMode.value
+                await async_logger(
+                    self,
+                    f"Interval: {rec.start.date()} {rec.start.time()} {rec.end.time()} | "
+                    f"Preserving excess battery for future forced export. Setting to BatteriesWaitMode.",
                 )
                 continue
 
@@ -2271,6 +2552,26 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 self._config_entry,
                 "hsem_batteries_enable_batteries_schedule_3_min_price_difference",
             )
+        )
+
+        self._hsem_batteries_enable_excess_export = get_config_value(
+            self._config_entry, "hsem_batteries_enable_excess_export"
+        )
+        self._hsem_batteries_excess_export_discharge_buffer = convert_to_float(
+            get_config_value(
+                self._config_entry, "hsem_batteries_excess_export_discharge_buffer"
+            )
+        )
+        self._hsem_batteries_excess_export_price_threshold = convert_to_float(
+            get_config_value(
+                self._config_entry, "hsem_batteries_excess_export_price_threshold"
+            )
+        )
+        self._hsem_batteries_purchase_price = convert_to_float(
+            get_config_value(self._config_entry, "hsem_batteries_purchase_price")
+        )
+        self._hsem_batteries_expected_cycles = convert_to_int(
+            get_config_value(self._config_entry, "hsem_batteries_expected_cycles")
         )
 
         if self._hsem_huawei_solar_device_id_inverter_2 is not None:

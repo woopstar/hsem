@@ -382,3 +382,31 @@ def get_max_discharge_power(usable_capacity: int) -> int:
         21000: 10500,
     }
     return mapping.get(usable_capacity, 2500)
+
+
+def calculate_recommended_threshold(
+    purchase_price: float,
+    expected_cycles: int,
+    usable_capacity: float,
+    conversion_loss: float,
+    import_price: float = 0.0,
+) -> float:
+    """Calculate the recommended price threshold based on battery depreciation and losses.
+
+    Formula: (Purchase Price * Capacity Loss) / (Cycles * Capacity) + (Avg Import Price * Loss %)
+    """
+    if purchase_price <= 0 or expected_cycles <= 0 or usable_capacity <= 0:
+        return 0.0
+
+    # Capacity loss is typically 30% over lifetime for LiFePO4
+    capacity_loss = 0.30
+
+    # 1. Depreciation cost per kWh
+    depreciation = (purchase_price * capacity_loss) / (
+        expected_cycles * usable_capacity
+    )
+
+    # 2. Conversion loss cost (approx 10% of current import price)
+    conversion_loss_cost = import_price * (conversion_loss / 100)
+
+    return round(depreciation + conversion_loss_cost, 3)

@@ -14,6 +14,20 @@
       "start_time_after_end_time": "Start time must be before end time."
     },
     "step": {
+      "batteries_excess_export": {
+        "data": {
+          "hsem_batteries_enable_excess_export": "Enable Excess Battery Export",
+          "hsem_batteries_excess_export_discharge_buffer": "Discharge Buffer (%)",
+          "hsem_batteries_excess_export_price_threshold": "Price Threshold (EUR/kWh)"
+        },
+        "data_description": {
+          "hsem_batteries_enable_excess_export": "Enable or disable the excess battery export feature, which automatically exports excess battery capacity to the grid when economically beneficial.",
+          "hsem_batteries_excess_export_discharge_buffer": "Set the safety buffer percentage to maintain minimum battery reserves (0-50%). Default is 10% to ensure adequate capacity for unexpected demand.",
+          "hsem_batteries_excess_export_price_threshold": "Set the minimum price difference (in EUR/kWh) required for exporting grid-charged battery energy. Solar-charged battery is exported at any positive price. The recommended threshold is calculated based on battery depreciation costs."
+        },
+        "description": "Configure excess battery export settings to automatically sell excess energy to the grid when economically beneficial.",
+        "title": "Excess Battery Export"
+      },
       "batteries_schedule_1": {
         "data": {
           "hsem_batteries_enable_batteries_schedule_1": "Enable Battery Schedule 1",
@@ -263,6 +277,20 @@
       "start_time_after_end_time": "Start time must be before end time."
     },
     "step": {
+      "batteries_excess_export": {
+        "data": {
+          "hsem_batteries_enable_excess_export": "Enable Excess Battery Export",
+          "hsem_batteries_excess_export_discharge_buffer": "Discharge Buffer (%)",
+          "hsem_batteries_excess_export_price_threshold": "Price Threshold (EUR/kWh)"
+        },
+        "data_description": {
+          "hsem_batteries_enable_excess_export": "Enable or disable the excess battery export feature, which automatically exports excess battery capacity to the grid when economically beneficial.",
+          "hsem_batteries_excess_export_discharge_buffer": "Set the safety buffer percentage to maintain minimum battery reserves (0-50%). Default is 10% to ensure adequate capacity for unexpected demand.",
+          "hsem_batteries_excess_export_price_threshold": "Set the minimum price difference (in EUR/kWh) required for exporting grid-charged battery energy. Solar-charged battery is exported at any positive price. The recommended threshold is calculated based on battery depreciation costs."
+        },
+        "description": "Configure excess battery export settings to automatically sell excess energy to the grid when economically beneficial.",
+        "title": "Excess Battery Export"
+      },
       "batteries_schedule_1": {
         "data": {
           "hsem_batteries_enable_batteries_schedule_1": "Enable Battery Schedule 1",
