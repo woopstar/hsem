@@ -284,7 +284,6 @@ def ha_get_entity_state_and_convert(
     state = self.hass.states.get(entity_id)
 
     try:
-
         if output_type is None:
             if state.state == "unknown":
                 raise EntityNotFoundError(f"Entity '{entity_id}' state unknown.")

@@ -194,9 +194,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_state = (
             None
         )
-        self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_periods = (
-            None
-        )
+        self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_periods = None
         self._hsem_house_power_includes_ev_charger_power = None
 
         self._hsem_house_consumption_power_state = 0.0
@@ -235,27 +233,21 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_batteries_enable_batteries_schedule_1_end = None
         self._hsem_batteries_enable_batteries_schedule_1_avg_import_price = 0.0
         self._hsem_batteries_enable_batteries_schedule_1_needed_batteries_capacity = 0.0
-        self._hsem_batteries_enable_batteries_schedule_1_needed_batteries_capacity_cost = (
-            0.0
-        )
+        self._hsem_batteries_enable_batteries_schedule_1_needed_batteries_capacity_cost = 0.0
         self._hsem_batteries_enable_batteries_schedule_1_min_price_difference = 0.0
         self._hsem_batteries_enable_batteries_schedule_2 = False
         self._hsem_batteries_enable_batteries_schedule_2_start = None
         self._hsem_batteries_enable_batteries_schedule_2_end = None
         self._hsem_batteries_enable_batteries_schedule_2_avg_import_price = 0.0
         self._hsem_batteries_enable_batteries_schedule_2_needed_batteries_capacity = 0.0
-        self._hsem_batteries_enable_batteries_schedule_2_needed_batteries_capacity_cost = (
-            0.0
-        )
+        self._hsem_batteries_enable_batteries_schedule_2_needed_batteries_capacity_cost = 0.0
         self._hsem_batteries_enable_batteries_schedule_2_min_price_difference = 0.0
         self._hsem_batteries_enable_batteries_schedule_3 = False
         self._hsem_batteries_enable_batteries_schedule_3_start = None
         self._hsem_batteries_enable_batteries_schedule_3_end = None
         self._hsem_batteries_enable_batteries_schedule_3_avg_import_price = 0.0
         self._hsem_batteries_enable_batteries_schedule_3_needed_batteries_capacity = 0.0
-        self._hsem_batteries_enable_batteries_schedule_3_needed_batteries_capacity_cost = (
-            0.0
-        )
+        self._hsem_batteries_enable_batteries_schedule_3_needed_batteries_capacity_cost = 0.0
         self._hsem_batteries_enable_batteries_schedule_3_min_price_difference = 0.0
         self._hsem_force_working_mode = None
         self._hsem_force_working_mode_state = "auto"
@@ -2483,17 +2475,11 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 )
 
                 # Reset both values first
-                self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_state = (
-                    None
-                )
-                self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_periods = (
-                    None
-                )
+                self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_state = None
+                self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_periods = None
 
                 if isinstance(entity_data, State):
-                    self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_state = (
-                        entity_data.state
-                    )
+                    self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_state = entity_data.state
                     self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_periods = [
                         entity_data.attributes[f"Period {i}"]
                         for i in range(1, 11)
