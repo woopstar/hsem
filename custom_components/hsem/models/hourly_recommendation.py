@@ -21,3 +21,5 @@ class HourlyRecommendation:
     recommendation: Any | None
     solcast_pv_estimate: float
     start: datetime
+    adaptive_consumption_prediction: float | None = None
+    adaptive_consumption_confidence: float = 0.0

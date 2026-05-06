@@ -8,7 +8,7 @@ Classes:
     solar energy production and consumption.
 """
 
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -58,6 +58,9 @@ from custom_components.hsem.const import (
     SPIKE14_RATIO_MIN,
     SPIKE14_REDIST_TO_7D,
     SPIKE14_REDUCE_FRACTION_MAX,
+)
+from custom_components.hsem.custom_sensors.adaptive_consumption_predictor import (
+    AdaptiveConsumptionPredictor,
 )
 from custom_components.hsem.entity import HSEMEntity
 from custom_components.hsem.models.battery_schedule import BatterySchedule
@@ -216,6 +219,13 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_house_consumption_energy_weight_3d = 20
         self._hsem_house_consumption_energy_weight_7d = 15
         self._hsem_house_consumption_energy_weight_14d = 10
+
+        # Initialize adaptive consumption predictor for improved power predictions
+        self._adaptive_consumption_predictor = AdaptiveConsumptionPredictor(
+            tau_days=7.0, min_samples=3, max_days_lookback=60
+        )
+        self._adaptive_consumption_confidence = 0.0
+
         self._hsem_batteries_rated_capacity_min_state = None
         self._hsem_batteries_rated_capacity_max = None
         self._hsem_batteries_rated_capacity_max_state = 0.0
@@ -972,18 +982,32 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 obj.recommendation = Recommendations.TimePassed.value
 
     async def _async_calculate_hourly_net_consumption(self) -> None:
-        """Calculate the estimated net consumption for each hour of the day."""
+        """Calculate the estimated net consumption for each hour of the day.
+
+        Uses adaptive consumption prediction if available and confident,
+        otherwise falls back to weighted average consumption.
+        """
 
         for obj in self._hourly_recommendations:
-            if obj.avg_house_consumption is None:
+            # Determine which consumption value to use
+            consumption = obj.avg_house_consumption
+
+            # Prefer adaptive prediction if available and confident (>0.5 confidence)
+            if (
+                obj.adaptive_consumption_prediction is not None
+                and obj.adaptive_consumption_confidence > 0.5
+            ):
+                consumption = obj.adaptive_consumption_prediction
+
+            if consumption is None:
                 continue
 
             if obj.solcast_pv_estimate:
                 obj.estimated_net_consumption = round(
-                    obj.avg_house_consumption - obj.solcast_pv_estimate, 3
+                    consumption - obj.solcast_pv_estimate, 3
                 )
             else:
-                obj.estimated_net_consumption = round(obj.avg_house_consumption, 3)
+                obj.estimated_net_consumption = round(consumption, 3)
 
         await async_logger(
             self, "Updated hourly calculations with Estimated Net Consumption"
@@ -1119,6 +1143,73 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                             # Once we find a match and update, break to next data item
                             break
         return
+
+    async def _async_get_consumption_measurements(
+        self, hour_start: int, hour_end: int
+    ) -> dict[date, float] | None:
+        """
+        Extract daily consumption measurements from an avg_sensor entity.
+
+        Retrieves the 1d avg_sensor state attributes which contain a history of
+        daily measurements. Converts ISO date strings to date objects for use with
+        AdaptiveConsumptionPredictor.
+
+        Parameters:
+        -----------
+        hour_start : int
+            Start hour (0-23) for the avg_sensor.
+        hour_end : int
+            End hour (0-23) for the avg_sensor.
+
+        Returns:
+        --------
+        dict[date, float] | None
+            Dict mapping date → consumption (kWh), or None if unavailable.
+        """
+        # Get the 1d avg_sensor entity ID (which has historical measurements)
+        unique_id_1d = get_energy_average_sensor_unique_id(hour_start, hour_end, 1)
+
+        if unique_id_1d not in self._hsem_avg_house_consumption_entity_id_cache:
+            entity_id_1d = await async_resolve_entity_id_from_unique_id(
+                self, unique_id_1d
+            )
+            if entity_id_1d is not None:
+                self._hsem_avg_house_consumption_entity_id_cache[unique_id_1d] = (
+                    entity_id_1d
+                )
+        else:
+            entity_id_1d = self._hsem_avg_house_consumption_entity_id_cache[
+                unique_id_1d
+            ]
+
+        if entity_id_1d is None:
+            return None
+
+        # Try to get the measurements attribute from the entity state
+        try:
+            state = self.hass.states.get(entity_id_1d)
+            if state is None:
+                return None
+
+            measurements_raw = state.attributes.get("measurements", None)
+            if not isinstance(measurements_raw, dict):
+                return None
+
+            # Convert ISO date strings to date objects
+            measurements = {}
+            for date_str, consumption in measurements_raw.items():
+                try:
+                    # Parse ISO date string (YYYY-MM-DD)
+                    measurement_date = date.fromisoformat(date_str)
+                    measurement_value = float(consumption)
+                    measurements[measurement_date] = measurement_value
+                except (ValueError, TypeError):
+                    # Skip invalid entries
+                    continue
+
+            return measurements if measurements else None
+        except Exception:
+            return None
 
     async def _async_calculate_avg_house_consumption(self) -> bool:
         """Calculate the weighted hourly data for the sensor using 1/3/7/14-day HouseConsumptionEnergyAverageSensors.
@@ -1457,6 +1548,33 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 3,
             )
 
+            # Try to use adaptive predictor for improved consumption prediction
+            predictor_consumption = None
+            try:
+                measurements = await self._async_get_consumption_measurements(
+                    hour_start, hour_end
+                )
+                if measurements is not None and len(measurements) >= 3:
+                    # Scale hourly sensor value to full day equivalent for predictor
+                    # (predictor expects daily kWh values)
+                    predictor_result = self._adaptive_consumption_predictor.predict(
+                        measurements
+                    )
+                    if predictor_result is not None:
+                        # Scale from daily to hourly interval
+                        scale_to_interval = (
+                            60 / self._hsem_recommendation_interval_minutes
+                        )
+                        predictor_consumption = round(
+                            predictor_result / scale_to_interval, 3
+                        )
+                        self._adaptive_consumption_confidence = (
+                            self._adaptive_consumption_predictor.prediction_confidence
+                        )
+            except Exception:
+                # Silently fall back to weighted average if predictor fails
+                pass
+
             scale_to_interval = 60 / self._hsem_recommendation_interval_minutes
 
             for obj in self._hourly_recommendations:
@@ -1477,6 +1595,12 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                     obj.avg_house_consumption_14d = round(
                         value_14d / scale_to_interval, 3
                     )
+                    # Add adaptive predictor confidence and prediction if available
+                    if predictor_consumption is not None:
+                        obj.adaptive_consumption_prediction = predictor_consumption
+                        obj.adaptive_consumption_confidence = (
+                            self._adaptive_consumption_confidence
+                        )
 
         return True
 

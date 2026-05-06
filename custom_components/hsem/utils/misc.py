@@ -145,7 +145,6 @@ def convert_to_boolean(state) -> bool:
         "unlocked": True,
         "paused": False,
         "continue": True,
-        "in_progress": True,
     }
 
     # Convert the state to lowercase for case-insensitive comparison
