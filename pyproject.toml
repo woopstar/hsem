@@ -8,12 +8,12 @@ version = "1.0.0"
 description = "Home Solar Energy Manager - Energy optimization for home battery systems"
 readme = "README.md"
 license = {text = "MIT"}
-requires-python = ">=3.9"
+requires-python = ">=3.13"
 dependencies = []
 
 [tool.ruff]
 line-length = 100
-target-version = "py39"
+target-version = "py313"
 include = ["custom_components/**/*.py", "tests/**/*.py", "scripts/**/*.py"]
 exclude = [
     ".git",
@@ -60,7 +60,7 @@ markers = [
 ]
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.13"
 warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
