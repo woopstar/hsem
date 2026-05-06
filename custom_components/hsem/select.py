@@ -1,5 +1,4 @@
-"""
-Selector entity for forcing a working mode in the HSEM integration.
+"""Selector entity for forcing a working mode in the HSEM integration.
 
 This module defines a selector entity that allows users to choose a working mode,
 including an "Auto" option as default. The available working modes are imported

@@ -1026,30 +1026,38 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
     ) -> None:
         """Update hourly data from the specified sensor for the given recommendations field."""
 
-        # Define the data sources and their corresponding key-value mappings
+        # Define the data sources with a list of key-value mapping options per source
         data_sources = {
             # energi_data_service templates
-            "forecast": {"k": "hour", "v": "price"},
-            "raw_tomorrow": {"k": "hour", "v": "price"},
-            "raw_today": {"k": "hour", "v": "price"},
+            "forecast": [{"k": "hour", "v": "price"}],
+            "raw_tomorrow": [{"k": "hour", "v": "price"}],
+            "raw_today": [{"k": "hour", "v": "price"}],
             # stromligning
-            "prices": {"k": "start", "v": "price"},
-            # ev_smart_charging templates
-            "prices_today": {"k": "start", "v": "price"},
-            "prices_today": {"k": "time", "v": "price"},
-            "prices_tomorrow": {"k": "start", "v": "price"},
-            "prices_tomorrow": {"k": "time", "v": "price"},
+            "prices": [{"k": "start", "v": "price"}],
+            # ev_smart_charging templates - try both "start" and "time" as time keys
+            "prices_today": [
+                {"k": "start", "v": "price"},
+                {"k": "time", "v": "price"},
+            ],
+            "prices_tomorrow": [
+                {"k": "start", "v": "price"},
+                {"k": "time", "v": "price"},
+            ],
             # Solcast
-            "detailedHourly": {
-                "k": "period_start",
-                "v": self._hsem_solcast_pv_forecast_forecast_likelihood,
-            },
-            "detailedForecast": {
-                "k": "period_start",
-                "v": self._hsem_solcast_pv_forecast_forecast_likelihood,
-            },
+            "detailedHourly": [
+                {
+                    "k": "period_start",
+                    "v": self._hsem_solcast_pv_forecast_forecast_likelihood,
+                }
+            ],
+            "detailedForecast": [
+                {
+                    "k": "period_start",
+                    "v": self._hsem_solcast_pv_forecast_forecast_likelihood,
+                }
+            ],
             # EPEX Spot
-            "data": {"k": "start_time", "v": "price_per_kwh"},
+            "data": [{"k": "start_time", "v": "price_per_kwh"}],
         }
 
         if sensor_id is None:
@@ -1063,7 +1071,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             )
             return
 
-        for attr, kv in data_sources.items():
+        for attr, kv_list in data_sources.items():
             sensor_data = sensor_state.attributes.get(attr) or []
 
             # Attribute does not exist in this sensor, skip to next
@@ -1075,43 +1083,49 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             )
 
             for data in sensor_data:
-                # Get the value from the data based on the key mapping from data_sources
-                v = data.get(kv["k"])
+                # Try each key-value mapping option for this source
+                for kv in kv_list:
+                    # Get the value from the data based on the key mapping
+                    v = data.get(kv["k"])
 
-                # Skip if no key found for the attribute
-                if not v:
-                    continue
+                    # Skip if no key found for this mapping
+                    if not v:
+                        continue
 
-                # Parse datetime key
-                if isinstance(v, datetime):
-                    dt_key = v
-                else:
-                    dt_key = datetime.fromisoformat(str(v))
+                    # Parse datetime key
+                    if isinstance(v, datetime):
+                        dt_key = v
+                    else:
+                        dt_key = datetime.fromisoformat(str(v))
 
-                # Normalize datetime to hour start in the correct timezone
-                try:
-                    dt_key = dt_key.replace(
-                        minute=0, second=0, microsecond=0
-                    ).astimezone(self._tz)
-                except Exception:  # noqa: TRY302
-                    continue
+                    # Normalize datetime to hour start in the correct timezone
+                    try:
+                        dt_key = dt_key.replace(
+                            minute=0, second=0, microsecond=0
+                        ).astimezone(self._tz)
+                    except Exception:  # noqa: TRY302
+                        continue
 
-                value = convert_to_float(data.get(kv["v"]))
+                    value = convert_to_float(data.get(kv["v"]))
 
-                # Skip if no value found for the attribute
-                if value is None:
-                    continue
+                    # Skip if no value found for the attribute
+                    if value is None:
+                        continue
 
-                # Adjust value based on share (e.g., if data is in smaller intervals)
-                value = value / share
+                    # Adjust value based on share (e.g., if data is in smaller intervals)
+                    value = value / share
 
-                for obj in self._hourly_recommendations:
-                    obj_hour = obj.start.replace(
-                        minute=0, second=0, microsecond=0
-                    ).astimezone(self._tz)
+                    for obj in self._hourly_recommendations:
+                        obj_hour = obj.start.replace(
+                            minute=0, second=0, microsecond=0
+                        ).astimezone(self._tz)
 
-                    if obj.start.date() == dt_key.date() and obj_hour == dt_key:
-                        setattr(obj, recommendations_field_to_update, round(value, 5))
+                        if obj.start.date() == dt_key.date() and obj_hour == dt_key:
+                            setattr(
+                                obj, recommendations_field_to_update, round(value, 5)
+                            )
+                            # Once we find a match and update, break to next data item
+                            break
         return
 
     async def _async_calculate_avg_house_consumption(self) -> bool:
@@ -2986,6 +3000,27 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         else:
             self._hsem_net_consumption = 0.0
 
+    def _parse_inverter_power_control_limit_state(
+        self, power_control_state: float | int | bool | str | None
+    ) -> int | None:
+        """Parse the inverter active power control state into a percentage."""
+        if not isinstance(power_control_state, str):
+            return None
+
+        normalized_state = power_control_state.strip().lower()
+        if normalized_state == "unlimited":
+            return 100
+
+        if "%" in normalized_state:
+            normalized_state = normalized_state.replace("%", "")
+            normalized_state = normalized_state.replace("limited to", "")
+            try:
+                return int(round(float(normalized_state.strip())))
+            except ValueError:
+                return None
+
+        return None
+
     async def _async_set_inverter_power_control(self) -> None:
         # Determine the grid export power percentage based on the state
 
@@ -3048,14 +3083,18 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             self._hsem_huawei_solar_device_id_inverter_2,
         ]
 
+        current_export_control_pct = self._parse_inverter_power_control_limit_state(
+            self._hsem_huawei_solar_inverter_active_power_control_state
+        )
+
+        await async_logger(
+            self,
+            f"Determined export power percentage: {export_power_percentage}% based on export price: {self._hsem_energi_data_service_export_state} and min required export price: {self._hsem_energi_data_service_export_min_price}, EV connected: {self._hsem_ev_connected_state}, EV SoC: {self._hsem_ev_soc_state}, EV SoC target: {self._hsem_ev_soc_target_state}, EV allow charge past target soc: {self._hsem_ev_allow_charge_past_target_soc}, EV second connected: {self._hsem_ev_second_connected_state}, EV second SoC: {self._hsem_ev_second_soc_state}, EV second SoC target: {self._hsem_ev_second_soc_target_state}, EV second allow charge past target soc: {self._hsem_ev_second_allow_charge_past_target_soc}",
+        )
+
         if (
-            self._hsem_huawei_solar_inverter_active_power_control_state
-            == "Limited to 100.0%"
-            and export_power_percentage != 100
-        ) or (
-            self._hsem_huawei_solar_inverter_active_power_control_state
-            == "Limited to 0.0%"
-            and export_power_percentage != 0
+            current_export_control_pct is not None
+            and current_export_control_pct != export_power_percentage
         ):
             for inverter_id in inverters:
                 if inverter_id is not None:

@@ -41,7 +41,6 @@ async def async_setup_entry(
     """Set up time entities for the HSEM integration."""
     time_entities = []
     for key, data in TIMES.items():
-
         current_value = str(get_config_value(config_entry, key))
         time_entities.append(
             HSEMTimeEntity(
