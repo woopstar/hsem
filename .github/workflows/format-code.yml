@@ -9,7 +9,7 @@ permissions: read-all
 
 jobs:
   format:
-    name: Format with black and isort
+    name: Format with Ruff
     runs-on: ubuntu-latest
     permissions: write-all
     steps:
@@ -17,31 +17,40 @@ jobs:
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
+
       - name: Set up Python 3.13.5
         uses: actions/setup-python@v6
         with:
           python-version: 3.13.5
-      - name: Cache
+
+      - name: Cache pip dependencies
         uses: actions/cache@v5.0.5
         with:
           path: ~/.cache/pip
-          key: pip-format
+          key: pip-ruff-${{ hashFiles('**/requirements_lint.txt') }}
+          restore-keys: |
+            pip-ruff-
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip wheel
-          python -m pip install --upgrade black isort
-      - name: Pull again
+          pip install -r requirements_lint.txt
+
+      - name: Pull latest changes
         run: git pull || true
-      - name: Run formatting
-        run: |
-          python -m isort -v --multi-line 3 --trailing-comma -l 88 --recursive .
-          python -m black -v .
-      - name: Commit files
+
+      - name: Format code with ruff
+        run: ruff format .
+
+      - name: Lint and auto-fix with ruff
+        run: ruff check . --fix
+
+      - name: Commit formatted files
         run: |
           if [ $(git diff HEAD | wc -l) -gt 30 ]
           then
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git config user.name "GitHub Actions"
-          git commit -m "Run formatting" -a || true
-          git push || true
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git config user.name "GitHub Actions"
+            git commit -m "chore: format code with ruff" -a || true
+            git push || true
           fi
