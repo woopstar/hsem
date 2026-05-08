@@ -335,7 +335,9 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     data=self._user_input,
                 )
 
-        data_schema = await get_batteries_excess_export_step_schema(None)
+        data_schema = await get_batteries_excess_export_step_schema(
+            None, self._user_input
+        )
 
         return self.async_show_form(
             step_id="batteries_excess_export",

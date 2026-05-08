@@ -13,6 +13,7 @@ notes.txt
 .venv
 .DS_Store
 scripts/sync.*
+.tox
 
 # Home Assistant configuration
 config/*
