@@ -11,6 +11,7 @@ __pycache__
 coverage.xml
 notes.txt
 .venv
+.tox
 .DS_Store
 scripts/sync.*
 

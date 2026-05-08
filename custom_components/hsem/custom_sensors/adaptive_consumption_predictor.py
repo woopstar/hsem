@@ -217,7 +217,9 @@ class AdaptiveConsumptionPredictor:
 
         num_samples_factor = min(len(valid_measurements) / 20.0, 1.0)  # Scale 0-20
         consistency_factor = max(0.0, 1.0 - cv)  # Higher when consistent
-        self._prediction_confidence = 0.7 * consistency_factor + 0.3 * num_samples_factor
+        self._prediction_confidence = (
+            0.7 * consistency_factor + 0.3 * num_samples_factor
+        )
 
         self._last_prediction = prediction
         return prediction
@@ -262,9 +264,9 @@ class AdaptiveConsumptionPredictor:
         adaptive_pred = self.predict(measurements)
         if adaptive_pred is None:
             return {
-                'prediction': None,
-                'confidence': 0.0,
-                'error': 'Insufficient data',
+                "prediction": None,
+                "confidence": 0.0,
+                "error": "Insufficient data",
             }
 
         # Compute comparison with traditional fixed weights
@@ -281,8 +283,8 @@ class AdaptiveConsumptionPredictor:
                     else 0
                 )
                 comparison_result = {
-                    'traditional_prediction': traditional_pred,
-                    'difference_pct': diff_pct,
+                    "traditional_prediction": traditional_pred,
+                    "difference_pct": diff_pct,
                 }
 
         # Compute sample statistics
@@ -301,12 +303,12 @@ class AdaptiveConsumptionPredictor:
             time_range = 0
 
         return {
-            'prediction': adaptive_pred,
-            'confidence': self._prediction_confidence,
-            'num_samples': len(valid_measurements),
-            'time_range_days': time_range,
-            'comparison': comparison_result,
-            'tau_days': self.tau_days,
+            "prediction": adaptive_pred,
+            "confidence": self._prediction_confidence,
+            "num_samples": len(valid_measurements),
+            "time_range_days": time_range,
+            "comparison": comparison_result,
+            "tau_days": self.tau_days,
         }
 
     @staticmethod
@@ -331,10 +333,10 @@ class AdaptiveConsumptionPredictor:
         """
         today = date.today()
         windows = {
-            '1d': 1,
-            '3d': 3,
-            '7d': 7,
-            '14d': 14,
+            "1d": 1,
+            "3d": 3,
+            "7d": 7,
+            "14d": 14,
         }
 
         window_values = {}
@@ -358,12 +360,9 @@ class AdaptiveConsumptionPredictor:
             return None
 
         total_weighted = sum(
-            window_values.get(window, 0) * weights.get(window, 0)
-            for window in weights.keys()
+            window_values.get(window, 0) * weights.get(window, 0) for window in weights
         )
-        total_weight = sum(
-            weights.get(window, 0) for window in window_values.keys()
-        )
+        total_weight = sum(weights.get(window, 0) for window in window_values)
 
         return total_weighted / total_weight if total_weight > 0 else None
 
@@ -391,7 +390,7 @@ class AdaptiveConsumptionPredictor:
         """
         tau_candidates = [2.0, 3.0, 4.0, 5.0, 7.0, 10.0, 14.0, 21.0]
         best_tau = 7.0
-        best_error = float('inf')
+        best_error = float("inf")
 
         for tau in tau_candidates:
             self.tau_days = tau
@@ -409,7 +408,7 @@ class AdaptiveConsumptionPredictor:
 
 
 # Example usage and validation
-if __name__ == '__main__':
+if __name__ == "__main__":
     """
     Example: Compare adaptive decay model vs. traditional fixed weights.
     """
@@ -429,17 +428,19 @@ if __name__ == '__main__':
 
     # Current HSEM weights
     current_weights = {
-        '1d': 0.25,
-        '3d': 0.30,
-        '7d': 0.30,
-        '14d': 0.15,
+        "1d": 0.25,
+        "3d": 0.30,
+        "7d": 0.30,
+        "14d": 0.15,
     }
 
     # Test different tau values
-    print("Comparison of Adaptive vs. Traditional Weighting")
-    print("=" * 70)
-    print(f"{'tau (days)':<12} {'Prediction':<15} {'Confidence':<15} vs Current")
-    print("-" * 70)
+    _LOGGER.info("Comparison of Adaptive vs. Traditional Weighting")
+    _LOGGER.info("=" * 70)
+    _LOGGER.info(
+        "%-12s %-15s %-15s vs Current", "tau (days)", "Prediction", "Confidence"
+    )
+    _LOGGER.info("-" * 70)
 
     for tau in [3.0, 5.0, 7.0, 10.0, 14.0]:
         predictor = AdaptiveConsumptionPredictor(tau_days=tau)
@@ -448,12 +449,15 @@ if __name__ == '__main__':
             comparison_weights=current_weights,
         )
 
-        if result['prediction'] is not None:
-            diff_pct = result['comparison'].get('difference_pct', 0)
-            print(
-                f"{tau:<12.1f} {result['prediction']:<15.2f} "
-                f"{result['confidence']:<15.2f} {diff_pct:+.1f}%"
+        if result["prediction"] is not None:
+            diff_pct = result["comparison"].get("difference_pct", 0)
+            _LOGGER.info(
+                "%-12.1f %-15.2f %-15.2f %+.1f%%",
+                tau,
+                result["prediction"],
+                result["confidence"],
+                diff_pct,
             )
 
-    print("\nNote: Optimal tau typically 5-10 days for household consumption.")
-    print("Tune tau based on your specific consumption pattern and variability.")
+    _LOGGER.info("Note: Optimal tau typically 5-10 days for household consumption.")
+    _LOGGER.info("Tune tau based on your specific consumption pattern and variability.")

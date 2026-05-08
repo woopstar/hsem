@@ -88,9 +88,7 @@ async def get_huawei_solar_step_schema(config_entry) -> vol.Schema:
             ): selector({"entity": {"domain": ["sensor", "input_number"]}}),
             vol.Required(
                 "hsem_batteries_purchase_price",
-                default=get_config_value(
-                    config_entry, "hsem_batteries_purchase_price"
-                ),
+                default=get_config_value(config_entry, "hsem_batteries_purchase_price"),
             ): selector(
                 {
                     "number": {

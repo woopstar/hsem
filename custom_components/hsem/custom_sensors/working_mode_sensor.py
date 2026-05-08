@@ -799,11 +799,10 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                         )
                         * 100
                     )
-                    buffer_pct = 1 + (
-                        self._hsem_batteries_excess_export_discharge_buffer / 100
-                    )
-                    target_soc = int(target_soc * buffer_pct)
-                    target_soc = max(0, min(100, target_soc))  # Clamp 0-100
+                    # `_current_required_battery` already includes the
+                    # configured discharge buffer. Keep a minimum 10%
+                    # safety floor for forecast uncertainty.
+                    target_soc = max(10, min(100, target_soc))
 
                     max_discharge_power = get_max_discharge_power(
                         convert_to_int(self._hsem_batteries_rated_capacity_max_state)

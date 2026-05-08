@@ -4,23 +4,44 @@ import voluptuous as vol
 from homeassistant.helpers.selector import selector
 
 from custom_components.hsem.utils.misc import (
-    get_config_value,
     calculate_recommended_threshold,
+    convert_to_float,
+    convert_to_int,
+    get_config_value,
 )
 
 
-async def get_batteries_excess_export_step_schema(config_entry) -> vol.Schema:
-    """Return the data schema for the 'batteries_excess_export' step."""
+async def get_batteries_excess_export_step_schema(
+    config_entry, user_input: dict | None = None
+) -> vol.Schema:
+    """Return the data schema for the 'batteries_excess_export' step.
 
-    # Calculate recommended threshold as default if not already set
-    purchase_price = get_config_value(config_entry, "hsem_batteries_purchase_price") or 0.0
-    expected_cycles = get_config_value(config_entry, "hsem_batteries_expected_cycles") or 6000
-    # We can't easily get the current usable capacity from the config_entry as it's a sensor
-    # So we use a reasonable default or 0.0 which will result in 0.0 recommended threshold
-    # In a real scenario, we might want to fetch the sensor state here.
-    usable_capacity = 10.0  # Default assumption for calculation
-    conversion_loss = get_config_value(config_entry, "hsem_batteries_conversion_loss") or 10.0
-    
+    Args:
+        config_entry: Existing config entry (used during options flow editing).
+        user_input: Accumulated user input dict from previous config flow steps.
+    """
+
+    # Calculate recommended threshold as default if not already set.
+    # Priority: config_entry (existing config) > user_input (from previous steps) > defaults
+    purchase_price = convert_to_float(
+        get_config_value(config_entry, "hsem_batteries_purchase_price")
+        or (user_input.get("hsem_batteries_purchase_price") if user_input else None)
+        or 0.0
+    )
+    expected_cycles = convert_to_int(
+        get_config_value(config_entry, "hsem_batteries_expected_cycles")
+        or (user_input.get("hsem_batteries_expected_cycles") if user_input else None)
+        or 6000
+    )
+    conversion_loss = convert_to_float(
+        get_config_value(config_entry, "hsem_batteries_conversion_loss")
+        or (user_input.get("hsem_batteries_conversion_loss") if user_input else None)
+        or 10.0
+    )
+    # Usable capacity is typically a sensor value not available during config setup.
+    # Using a reasonable default; actual value will be used in working_mode_sensor.
+    usable_capacity = 10.0
+
     recommended = calculate_recommended_threshold(
         purchase_price, expected_cycles, usable_capacity, conversion_loss
     )
@@ -53,7 +74,8 @@ async def get_batteries_excess_export_step_schema(config_entry) -> vol.Schema:
                 "hsem_batteries_excess_export_price_threshold",
                 default=get_config_value(
                     config_entry, "hsem_batteries_excess_export_price_threshold"
-                ) or recommended,
+                )
+                or recommended,
             ): selector(
                 {
                     "number": {
