@@ -7,7 +7,16 @@
   description: "Something isn't working"
 - name: "bug-fix"
   color: 4ad73a
-  description: "Fixed things that didn’t work but now do"
+  description: "Fixed things that didn't work but now do"
+- name: "build"
+  color: 1d76db
+  description: "Changes to the build system or CI/CD pipeline"
+- name: "chore"
+  color: fef2c0
+  description: "Maintenance tasks, cleanup, and housekeeping"
+- name: "config"
+  color: e4e669
+  description: "Configuration changes"
 - name: "dependencies"
   color: 9F5E8B
   description: "Updates to dependencies"
