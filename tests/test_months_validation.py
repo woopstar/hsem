@@ -1,0 +1,203 @@
+"""Tests for month validation and month matching logic."""
+
+import pytest
+
+# Mock the logging to avoid file creation errors during testing
+import logging
+from logging.handlers import RotatingFileHandler
+
+# Monkey-patch RotatingFileHandler to use NullHandler during tests
+original_rotating_handler = RotatingFileHandler
+
+
+class MockRotatingFileHandler(logging.NullHandler):
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+
+
+# Replace RotatingFileHandler with mock
+logging.handlers.RotatingFileHandler = MockRotatingFileHandler
+
+from custom_components.hsem.flows.months import (
+    _convert_months_to_int,
+    validate_months_input,
+)
+
+
+class TestConvertMonthsToInt:
+    """Test month conversion to integers."""
+
+    def test_convert_string_months_to_int(self):
+        """Test converting string months to integers."""
+        result = _convert_months_to_int(["1", "2", "3"])
+        assert result == [1, 2, 3]
+
+    def test_convert_int_months(self):
+        """Test that integer months pass through correctly."""
+        result = _convert_months_to_int([1, 2, 3])
+        assert result == [1, 2, 3]
+
+    def test_convert_mixed_string_and_int_months(self):
+        """Test converting mixed string and integer months."""
+        result = _convert_months_to_int(["1", 2, "3", 4])
+        assert result == [1, 2, 3, 4]
+
+    def test_january_only_matches_one(self):
+        """Test that January (1) only matches month 1, not 10, 11, 12."""
+        result = _convert_months_to_int(["1"])
+        assert result == [1]
+        assert 10 not in result
+        assert 11 not in result
+        assert 12 not in result
+
+    def test_october_only_matches_ten(self):
+        """Test that October only matches 10, not 1 via string containment."""
+        result = _convert_months_to_int(["10"])
+        assert result == [10]
+        assert 1 not in result
+
+    def test_all_valid_months(self):
+        """Test all valid month numbers 1-12."""
+        result = _convert_months_to_int([str(i) for i in range(1, 13)])
+        assert result == list(range(1, 13))
+
+    def test_invalid_month_zero(self):
+        """Test that month 0 is rejected."""
+        with pytest.raises(ValueError, match="Month must be between 1 and 12"):
+            _convert_months_to_int(["0"])
+
+    def test_invalid_month_thirteen(self):
+        """Test that month 13 is rejected."""
+        with pytest.raises(ValueError, match="Month must be between 1 and 12"):
+            _convert_months_to_int(["13"])
+
+    def test_invalid_month_negative(self):
+        """Test that negative months are rejected."""
+        with pytest.raises(ValueError, match="Month must be between 1 and 12"):
+            _convert_months_to_int(["-1"])
+
+    def test_invalid_month_non_numeric(self):
+        """Test that non-numeric month values are rejected."""
+        with pytest.raises(ValueError, match="Invalid month value"):
+            _convert_months_to_int(["abc"])
+
+    def test_invalid_month_float(self):
+        """Test that float values are converted if they represent valid months."""
+        result = _convert_months_to_int(["1.0", "6.5"])
+        assert result == [1, 6]
+
+    def test_empty_list(self):
+        """Test that empty list returns empty list."""
+        result = _convert_months_to_int([])
+        assert result == []
+
+    def test_duplicate_months(self):
+        """Test that duplicate months are preserved."""
+        result = _convert_months_to_int(["1", "1", "2"])
+        assert result == [1, 1, 2]
+
+
+@pytest.mark.asyncio
+class TestValidateMonthsInput:
+    """Test month validation in config flow."""
+
+    async def test_validate_valid_winter_months(self):
+        """Test validation passes for valid winter months."""
+        user_input = {"hsem_months_winter": ["1", "2", "3", "4", "10", "11", "12"]}
+        errors = await validate_months_input(None, user_input)
+        assert not errors
+
+    async def test_validate_valid_partial_winter_months(self):
+        """Test validation passes for partial winter months."""
+        user_input = {"hsem_months_winter": ["1", "2", "3"]}
+        errors = await validate_months_input(None, user_input)
+        assert not errors
+
+    async def test_validate_missing_winter_months(self):
+        """Test validation fails when winter months are missing."""
+        user_input = {}
+        errors = await validate_months_input(None, user_input)
+        assert "hsem_months_winter" in errors
+        assert errors["hsem_months_winter"] == "required"
+
+    async def test_validate_invalid_month_zero(self):
+        """Test validation fails for month 0."""
+        user_input = {"hsem_months_winter": ["0"]}
+        errors = await validate_months_input(None, user_input)
+        assert "hsem_months_winter" in errors
+
+    async def test_validate_invalid_month_thirteen(self):
+        """Test validation fails for month 13."""
+        user_input = {"hsem_months_winter": ["13"]}
+        errors = await validate_months_input(None, user_input)
+        assert "hsem_months_winter" in errors
+
+    async def test_validate_invalid_month_string(self):
+        """Test validation fails for non-numeric month."""
+        user_input = {"hsem_months_winter": ["abc"]}
+        errors = await validate_months_input(None, user_input)
+        assert "hsem_months_winter" in errors
+
+    async def test_validate_empty_winter_months(self):
+        """Test validation fails when winter months list is empty."""
+        user_input = {"hsem_months_winter": []}
+        errors = await validate_months_input(None, user_input)
+        assert "hsem_months_winter" in errors
+        assert "at least one month" in errors["hsem_months_winter"].lower()
+
+    async def test_validate_all_months_winter(self):
+        """Test validation fails when all months are winter (no summer)."""
+        user_input = {"hsem_months_winter": [str(i) for i in range(1, 13)]}
+        errors = await validate_months_input(None, user_input)
+        assert "hsem_months_winter" in errors
+        assert "summer season" in errors["hsem_months_winter"].lower()
+
+    async def test_validate_integer_months(self):
+        """Test validation works with integer month values."""
+        user_input = {"hsem_months_winter": [1, 2, 3, 4, 10, 11, 12]}
+        errors = await validate_months_input(None, user_input)
+        assert not errors
+
+    async def test_validate_mixed_string_and_int(self):
+        """Test validation works with mixed string and integer months."""
+        user_input = {"hsem_months_winter": ["1", 2, "3", 4]}
+        errors = await validate_months_input(None, user_input)
+        assert not errors
+
+
+class TestMonthMembership:
+    """Test that month membership checks work correctly (not string containment)."""
+
+    def test_january_not_in_october_november_december_string(self):
+        """
+        Test that January (1) doesn't match in string "['10', '11', '12']".
+        This was the original bug: "1" in "['10', '11', '12']" was True.
+        """
+        # Old buggy way (string containment)
+        winter_str = str(["10", "11", "12"])
+        assert "1" in winter_str  # This is True! (String containment bug)
+
+        # New correct way (integer membership)
+        winter_int = [10, 11, 12]
+        assert 1 not in winter_int  # This is correct
+
+    def test_all_months_as_integers(self):
+        """Test that months work correctly as integers."""
+        winter_months = [1, 2, 3, 4, 10, 11, 12]
+        summer_months = [5, 6, 7, 8, 9]
+
+        # Test each valid month
+        for month in range(1, 13):
+            if month in winter_months:
+                assert month not in summer_months
+            else:
+                assert month in summer_months
+
+    def test_october_november_december_not_in_january_winter(self):
+        """Test that October, November, December don't match January check."""
+        winter_months = [1]  # Only January
+
+        assert 1 in winter_months
+        assert 10 not in winter_months
+        assert 11 not in winter_months
+        assert 12 not in winter_months

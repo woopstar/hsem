@@ -1911,14 +1911,14 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 )
                 continue
 
-            if str(current_month) in str(self._hsem_months_winter):
+            if current_month in self._hsem_months_winter:
                 rec.recommendation = Recommendations.BatteriesWaitMode.value
                 await async_logger(
                     self,
                     f"Interval: {rec.start.date()} {rec.start.time()} {rec.end.time()} | Winter/Spring: Setting recommendation to BatteriesWaitMode.",
                 )
 
-            if str(current_month) in str(self._hsem_months_summer):
+            if current_month in self._hsem_months_summer:
                 if rec.estimated_net_consumption <= 0.1:
                     rec.recommendation = Recommendations.BatteriesChargeSolar.value
                     await async_logger(
@@ -1936,6 +1936,27 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         await async_logger(
             self, "Completed optimization strategy for all remaining hours."
         )
+
+    @staticmethod
+    def _convert_month_list_to_int(months: list) -> list[int]:
+        """Convert a list of month values (strings or ints) to integers.
+
+        Args:
+            months: List of month values
+
+        Returns:
+            List of integer month values (1-12)
+        """
+        result = []
+        for month in months:
+            try:
+                month_int = int(month)
+                if 1 <= month_int <= 12:
+                    result.append(month_int)
+            except (ValueError, TypeError):
+                # Skip invalid month values
+                continue
+        return result
 
     def _update_settings(self) -> None:
         """Fetch updated settings from config_entry options."""
@@ -1965,9 +1986,19 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
         if not isinstance(self._hsem_months_winter, list):
             self._hsem_months_winter = []
+        else:
+            # Convert months to integers
+            self._hsem_months_winter = self._convert_month_list_to_int(
+                self._hsem_months_winter
+            )
 
         if not isinstance(self._hsem_months_summer, list):
             self._hsem_months_summer = []
+        else:
+            # Convert months to integers
+            self._hsem_months_summer = self._convert_month_list_to_int(
+                self._hsem_months_summer
+            )
 
         self._hsem_extended_attributes = get_config_value(
             self._config_entry, "hsem_extended_attributes"
