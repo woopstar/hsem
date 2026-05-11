@@ -108,6 +108,30 @@ def is_time_in_window(current: time, start: time, end: time) -> bool:
     return current >= start or current < end
 
 
+def next_window_start_dt(now: datetime, window_start: time) -> datetime:
+    """Return the next upcoming datetime when a discharge/charge window begins.
+
+    Anchors ``window_start`` to today's date and advances by one day when that
+    moment has already passed, so the returned datetime is always strictly in
+    the future relative to ``now``.
+
+    This enables cross-date-boundary charge planning: a 07:00 discharge
+    window configured for the next calendar day is correctly resolved when
+    it is currently, say, 22:00 on the previous day.
+
+    Args:
+        now: Current timezone-aware datetime.
+        window_start: Wall-clock start time of the discharge/charge window.
+
+    Returns:
+        Timezone-aware datetime of the next occurrence of *window_start*.
+    """
+    candidate = datetime.combine(now.date(), window_start).replace(tzinfo=now.tzinfo)
+    if candidate <= now:
+        candidate += timedelta(days=1)
+    return candidate
+
+
 def interval_ends_before_window_start(
     interval_end: datetime,
     window_start: time,
@@ -128,17 +152,7 @@ def interval_ends_before_window_start(
     Returns:
         True if the interval ends before the window starts.
     """
-    # Build a timezone-aware datetime for the window start anchored to today.
-    window_start_dt = datetime.combine(now.date(), window_start).replace(
-        tzinfo=now.tzinfo
-    )
-
-    # If the window start is in the past compared to *now* the window belongs
-    # to tomorrow (cross-midnight case where window_start < now.time()).
-    if window_start_dt <= now:
-        window_start_dt += timedelta(days=1)
-
-    return interval_end <= window_start_dt
+    return interval_end <= next_window_start_dt(now, window_start)
 
 
 def convert_to_float(state) -> float:

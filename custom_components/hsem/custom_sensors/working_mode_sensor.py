@@ -83,6 +83,7 @@ from custom_components.hsem.utils.misc import (
     get_max_discharge_power,
     ha_get_entity_state_and_convert,
     interval_ends_before_window_start,
+    next_window_start_dt,
 )
 from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.sensornames import (
@@ -1437,9 +1438,17 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
     async def _async_calculate_batteries_schedules(self, start_time=None) -> None:
         """Calculate and update the batteries schedules based on the current configuration.
 
-        This method updates each schedule in `self._batteries_schedules` with calculated values for
-        `needed_batteries_capacity`, `needed_batteries_capacity_cost`, and `avg_import_price`.
-        It also sets the `recommendation` attribute for relevant intervals in `self._hourly_recommendations`.
+        This method updates each schedule in ``self._batteries_schedules`` with
+        calculated values for ``needed_batteries_capacity``,
+        ``needed_batteries_capacity_cost``, and ``avg_import_price``.
+        It also sets the ``recommendation`` attribute for relevant intervals in
+        ``self._hourly_recommendations``.
+
+        Cross-date-boundary support: a discharge window such as 07:00-09:00 can
+        fall on the *next* calendar day when planning starts late the evening
+        before (e.g. 22:00).  We resolve the window to its next upcoming
+        occurrence via ``next_window_start_dt`` so that those intervals are
+        correctly identified regardless of which calendar date they land on.
         """
         now = start_time or datetime.now().astimezone(self._tz)
 
@@ -1452,17 +1461,33 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             avg_import_price = 0.0
             count = 0
 
+            # Resolve the absolute start/end datetimes for this discharge window.
+            # ``next_window_start_dt`` always returns a future moment so the
+            # window date may be today or tomorrow depending on wall-clock time.
+            window_start_abs = next_window_start_dt(now, schedule.start)
+            # The window end is on the same date as the start unless end <= start
+            # (cross-midnight discharge window).
+            if schedule.end > schedule.start:
+                window_end_abs = datetime.combine(
+                    window_start_abs.date(), schedule.end
+                ).replace(tzinfo=now.tzinfo)
+            else:
+                # Cross-midnight: end falls on the following calendar day
+                window_end_abs = datetime.combine(
+                    (window_start_abs + timedelta(days=1)).date(), schedule.end
+                ).replace(tzinfo=now.tzinfo)
+
             for recommendation in self._hourly_recommendations:
-                if (
-                    recommendation.start.date() < now.date()
-                    or recommendation.end.date() > now.date()
-                ):
+                rec_start = recommendation.start.astimezone(self._tz)
+                rec_end = recommendation.end.astimezone(self._tz)
+
+                # Skip intervals that lie entirely in the past
+                if rec_end <= now:
                     continue
 
-                r_start = recommendation.start.time()
-                r_end = recommendation.end.time()
-
-                if r_start >= schedule.start and r_end <= schedule.end:
+                # Include the interval when it falls completely inside the
+                # discharge window [window_start_abs, window_end_abs).
+                if rec_start >= window_start_abs and rec_end <= window_end_abs:
                     recommendation.recommendation = (
                         Recommendations.BatteriesDischargeMode.value
                     )
@@ -1488,8 +1513,8 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             await async_logger(
                 self,
                 f"Enabling batteries discharging schedule for {now}. "
-                f"Start: {schedule.start}, "
-                f"End: {schedule.end}, "
+                f"Start: {schedule.start} (resolved: {window_start_abs}), "
+                f"End: {schedule.end} (resolved: {window_end_abs}), "
                 f"Average Import Price: {round(avg_import_price, 2)}, "
                 f"Needed Batteries Capacity: {round(needed_batteries_capacity, 2)} kWh, "
                 f"Needed Batteries Capacity Cost: {round(needed_batteries_capacity_cost, 2)}, ",
@@ -1523,18 +1548,21 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         schedules = []
 
         # Filter schedules that are still relevant: keep enabled schedules whose
-        # start time has not yet been reached (i.e. there is still pre-charge
-        # time available).
+        # next upcoming start datetime is strictly in the future relative to *now*.
         #
-        # The original code used ``s.start > now.time() and now.time() < s.end``
-        # which incorrectly excluded cross-midnight windows (e.g. 23:00-02:00)
-        # once the clock passed midnight.  Using only ``now.time() < s.start``
-        # is correct for both same-day and cross-midnight windows because:
-        #  - same-day 07:00-09:00 @ 06:00 → 06:00 < 07:00 ✓ included
-        #  - cross-midnight 23:00-02:00 @ 21:00 → 21:00 < 23:00 ✓ included
-        #  - cross-midnight 23:00-02:00 @ 00:30 → 00:30 < 23:00 ✗ excluded
+        # We use ``next_window_start_dt`` (which always returns a future moment)
+        # instead of a raw wall-clock comparison so that next-day discharge
+        # windows (e.g. a 07:00 window configured while it is currently 22:00)
+        # are correctly included in pre-charge planning:
+        #
+        #  - same-day 07:00 @ 06:00 → next_window_start = today 07:00 > 06:00 ✓
+        #  - next-day  07:00 @ 22:00 → next_window_start = tomorrow 07:00 > 22:00 ✓
+        #  - cross-midnight 23:00 @ 21:00 → next_window_start = today 23:00 > 21:00 ✓
+        #  - cross-midnight 23:00 @ 00:30 → next_window_start = tomorrow 23:00 > 00:30 ✓
         schedules = [
-            s for s in self._batteries_schedules if s.enabled and now.time() < s.start
+            s
+            for s in self._batteries_schedules
+            if s.enabled and next_window_start_dt(now, s.start) > now
         ]
         await async_logger(
             self,
@@ -1544,14 +1572,19 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         if not schedules:
             return
 
-        # Sort the schedules by start time
-        schedules.sort(key=lambda s: s.start)
+        # Sort schedules by their next absolute start datetime so that a same-day
+        # 07:00 window is handled before a next-day 07:00 window when both appear
+        # in the list (uncommon but possible when the horizon spans >24 h).
+        schedules.sort(key=lambda s: next_window_start_dt(now, s.start))
 
         # Calculate the total required charge across all schedules
         total_required_charge = sum(s.needed_batteries_capacity for s in schedules)
-        first_schedule = datetime.combine(now, schedules[0].start).astimezone(self._tz)
+        # Resolve the first schedule's start to an absolute datetime that may
+        # fall on the next calendar day (cross-date-boundary support).
+        first_schedule_dt = next_window_start_dt(now, schedules[0].start)
         item = next(
-            (r for r in self._hourly_recommendations if r.start == first_schedule), None
+            (r for r in self._hourly_recommendations if r.start == first_schedule_dt),
+            None,
         )
 
         if item is not None:
