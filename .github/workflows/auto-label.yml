@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2025 Andreas Krüger
+
+name: Auto Label PRs from Conventional Commits
+
+on:
+  pull_request:
+    branches: [main]
+    types:
+      [opened, reopened, labeled, unlabeled]
+  workflow_dispatch:
+
+permissions: read-all
+
+jobs:
+  label:
+    name: Assign PR Labels
+    runs-on: ubuntu-latest
+    permissions: write-all
+    if: github.event.pull_request.merged == false
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Execute assign labels
+        id: action-assign-labels
+        uses: mauroalderete/action-assign-labels@v1
+        with:
+          pull-request-number: ${{ github.event.pull_request.number }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          conventional-commits: |
+            conventional-commits:
+              - type: 'fix'
+                nouns: ['FIX', 'Fix', 'fix', 'FIXED', 'Fixed', 'fixed']
+                labels: ['bug']
+              - type: 'feature'
+                nouns: ['FEATURE', 'Feature', 'feature', 'FEAT', 'Feat', 'feat']
+                labels: ['feature']
+              - type: 'breaking_change'
+                nouns: ['BREAKING CHANGE', 'BREAKING', 'MAJOR']
+                labels: ['BREAKING CHANGE']
+              - type: 'documentation'
+                nouns: ['doc','docu','document','documentation']
+                labels: ['documentation']
+              - type: 'build'
+                nouns: ['build','rebuild']
+                labels: ['build']
+              - type: 'config'
+                nouns: ['config', 'conf', 'cofiguration', 'configure']
+                labels: ['config']
+          maintain-labels-not-matched: false
+          apply-changes: true

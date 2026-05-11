@@ -72,6 +72,7 @@ from custom_components.hsem.utils.misc import (
     async_resolve_entity_id_from_unique_id,
     async_set_number_value,
     async_set_select_option,
+    convert_months_to_int,
     convert_to_boolean,
     convert_to_float,
     convert_to_int,
@@ -666,7 +667,6 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
     async def _async_update_current_hourly_recommendation(
         self, hourly_recommendation
     ) -> None:
-
         # Negative import price. Force export everyting to earn money.
         if convert_to_float(self._hsem_energi_data_service_import_state) < 0:
             hourly_recommendation.recommendation = Recommendations.ForceExport.value
@@ -1811,7 +1811,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
                     await async_logger(
                         self,
-                        f"Charge interval: {rec.start.date()} {rec.start.time()} - {rec.end.time()}. "
+                        f"Charge interval: {rec.start.date()} {rec.start.time()} {rec.end.time()}. "
                         f"Charging from grid. "
                         f"Energy charged: {round(energy_to_charge, 2)} kWh. "
                         f"Total energy charged: {round(charged_energy, 2)} kWh. "
@@ -1869,6 +1869,10 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self._hourly_recommendations.sort(key=lambda x: x.export_price)
         for rec in self._hourly_recommendations:
             if rec.recommendation is not None:
+                await async_logger(
+                    self,
+                    f"Interval: {rec.start.date()} {rec.start.time()} {rec.end.time()} | Recommendation already set to {rec.recommendation}. Skipping.",
+                )
                 continue
 
             if rec.start.date() != now.date():
@@ -1911,14 +1915,14 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 )
                 continue
 
-            if str(current_month) in str(self._hsem_months_winter):
+            if self._hsem_months_winter and current_month in self._hsem_months_winter:
                 rec.recommendation = Recommendations.BatteriesWaitMode.value
                 await async_logger(
                     self,
                     f"Interval: {rec.start.date()} {rec.start.time()} {rec.end.time()} | Winter/Spring: Setting recommendation to BatteriesWaitMode.",
                 )
 
-            if str(current_month) in str(self._hsem_months_summer):
+            if self._hsem_months_summer and current_month in self._hsem_months_summer:
                 if rec.estimated_net_consumption <= 0.1:
                     rec.recommendation = Recommendations.BatteriesChargeSolar.value
                     await async_logger(
@@ -1965,9 +1969,15 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
         if not isinstance(self._hsem_months_winter, list):
             self._hsem_months_winter = []
+        else:
+            # Convert months to integers
+            self._hsem_months_winter = convert_months_to_int(self._hsem_months_winter)
 
         if not isinstance(self._hsem_months_summer, list):
             self._hsem_months_summer = []
+        else:
+            # Convert months to integers
+            self._hsem_months_summer = convert_months_to_int(self._hsem_months_summer)
 
         self._hsem_extended_attributes = get_config_value(
             self._config_entry, "hsem_extended_attributes"
