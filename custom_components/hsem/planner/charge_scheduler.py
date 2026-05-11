@@ -411,7 +411,8 @@ def apply_optimization_strategy(
     ):
         if charged >= batteries_needed_charge:
             break
-        if rec.estimated_net_consumption <= -0.1:
+        # v5.1.0 threshold: <= 0.1 (charge even near-zero-consumption slots)
+        if rec.estimated_net_consumption <= 0.1:
             charged += abs(rec.estimated_net_consumption)
             rec.recommendation = Recommendations.BatteriesChargeSolar.value
             rec.batteries_charged = round(charged, 3)

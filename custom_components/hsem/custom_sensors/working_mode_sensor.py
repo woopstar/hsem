@@ -186,7 +186,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 "ev_second_connected_entity": cfg.ev_second.connected_entity,
                 "force_working_mode_entity": live.force_working_mode,
                 "house_consumption_power_entity": cfg.house_consumption_power,
-                "huawei_solar_batteries_end_of_discharge_soc_entity": cfg.huawei_solar_batteries_end_of_discharge_soc,
+                "hsem_huawei_solar_batteries_end_of_discharge_soc_entity": cfg.huawei_solar_batteries_end_of_discharge_soc,
                 "huawei_solar_batteries_grid_charge_cutoff_soc_entity": cfg.huawei_solar_batteries_grid_charge_cutoff_soc,
                 "huawei_solar_batteries_maximum_charging_power_entity": cfg.huawei_solar_batteries_maximum_charging_power,
                 "huawei_solar_batteries_maximum_discharging_power_entity": cfg.huawei_solar_batteries_maximum_discharging_power,
