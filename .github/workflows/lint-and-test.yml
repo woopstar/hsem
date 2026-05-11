@@ -54,13 +54,14 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/.cache/pip
-          key: pip-typing-${{ hashFiles('**/requirements_typing.txt') }}
+          key: pip-typing-${{ hashFiles('**/requirements.txt', '**/requirements_typing.txt') }}
           restore-keys: |
             pip-typing-
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          pip install -r requirements.txt
           pip install -r requirements_typing.txt
 
       - name: Type check with mypy
