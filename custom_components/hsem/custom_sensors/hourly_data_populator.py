@@ -13,41 +13,12 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from custom_components.hsem.const import (
-    BASELINE_7D_SHARE,
-    BASELINE_14D_SHARE,
-    CAP7_DOWN,
-    CAP7_UP,
-    CAP14_DOWN,
-    CAP14_UP,
-    CHANGE3_LIMIT_DOWN_FACTOR,
-    CHANGE3_LIMIT_UP_FACTOR,
-    CHANGE_LIMIT_DOWN_FACTOR,
-    CHANGE_LIMIT_UP_FACTOR,
-    RELIABILITY_EPS,
-    RELIABILITY_SCALE_STRENGTH,
-    SPIKE1_RATIO_MAX,
-    SPIKE1_RATIO_MIN,
-    SPIKE1_REDIST_TO_3D,
-    SPIKE1_REDIST_TO_7D,
-    SPIKE1_REDIST_TO_14D,
-    SPIKE1_REDUCE_FRACTION_MAX,
-    SPIKE3_RATIO_MAX,
-    SPIKE3_RATIO_MIN,
-    SPIKE3_REDIST_TO_7D,
-    SPIKE3_REDIST_TO_14D,
-    SPIKE3_REDUCE_FRACTION_MAX,
-    SPIKE7_RATIO_MAX,
-    SPIKE7_RATIO_MIN,
-    SPIKE7_REDIST_TO_14D,
-    SPIKE7_REDUCE_FRACTION_MAX,
-    SPIKE14_RATIO_MAX,
-    SPIKE14_RATIO_MIN,
-    SPIKE14_REDIST_TO_7D,
-    SPIKE14_REDUCE_FRACTION_MAX,
-)
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.sensor_config import SensorConfig
+
+# Delegate the spike-aware weighting algorithm to the canonical implementation
+# in planner.slot_population so the logic lives in exactly one place.
+from custom_components.hsem.planner.slot_population import weighted_avg_consumption
 from custom_components.hsem.utils.logger import async_logger
 from custom_components.hsem.utils.misc import (
     async_resolve_entity_id_from_unique_id,
@@ -212,7 +183,7 @@ async def async_populate_avg_house_consumption(
             await async_logger(sensor, "All weights sum to 0. Skipping calculation.")
             continue
 
-        avg = _compute_weighted_average(
+        avg = weighted_avg_consumption(
             v1,
             v3,
             v7,
@@ -221,7 +192,6 @@ async def async_populate_avg_house_consumption(
             int(w3),
             int(w7),
             int(w14),
-            w_total_config,
         )
 
         for obj in recommendations:
@@ -339,110 +309,5 @@ async def _async_update_hourly_field(
                         setattr(obj, field_name, round(value, 5))
 
 
-def _compute_weighted_average(
-    v1: float,
-    v3: float,
-    v7: float,
-    v14: float,
-    w1: int,
-    w3: int,
-    w7: int,
-    w14: int,
-    w_total: int,
-) -> float:
-    """Apply spike-aware dynamic reweighting and return the weighted consumption average.
-
-    This is the extracted pure-Python core of
-    ``_async_calculate_avg_house_consumption`` — the HA I/O is handled by the
-    caller; this function only does arithmetic.
-
-    Args:
-        v1..v14: Raw consumption values for 1/3/7/14-day windows (kWh/hour).
-        w1..w14: Configured integer weights (percent, must sum to w_total).
-        w_total: Expected total of all weights (used for normalisation).
-
-    Returns:
-        Weighted average consumption in kWh/hour.
-    """
-    # --- Mild capping between 7d and 14d ---
-    v7_eff = max(CAP7_DOWN * v14, min(v7, CAP7_UP * v14))
-    v14_eff = max(CAP14_DOWN * v7_eff, min(v14, CAP14_UP * v7_eff))
-
-    # --- Baseline capping for 1d/3d ---
-    baseline = BASELINE_7D_SHARE * v7_eff + BASELINE_14D_SHARE * v14_eff
-    v1_eff = max(
-        baseline * CHANGE_LIMIT_DOWN_FACTOR, min(v1, baseline * CHANGE_LIMIT_UP_FACTOR)
-    )
-    v3_eff = max(
-        baseline * CHANGE3_LIMIT_DOWN_FACTOR,
-        min(v3, baseline * CHANGE3_LIMIT_UP_FACTOR),
-    )
-
-    # --- Spike severity 0..1 ---
-    def _sev(ratio, lo, hi):
-        if ratio <= lo:
-            return 0.0
-        if ratio >= hi:
-            return 1.0
-        return (ratio - lo) / (hi - lo)
-
-    r1 = (v1 / v7_eff) if v7_eff > 0 else 1.0
-    r3 = (v3 / v7_eff) if v7_eff > 0 else 1.0
-    r7 = (v7_eff / v14_eff) if v14_eff > 0 else 1.0
-    r14 = (v14_eff / v7_eff) if v7_eff > 0 else 1.0
-
-    sev1 = _sev(r1, SPIKE1_RATIO_MIN, SPIKE1_RATIO_MAX)
-    sev3 = _sev(r3, SPIKE3_RATIO_MIN, SPIKE3_RATIO_MAX)
-    sev7 = _sev(r7, SPIKE7_RATIO_MIN, SPIKE7_RATIO_MAX)
-    sev14 = _sev(r14, SPIKE14_RATIO_MIN, SPIKE14_RATIO_MAX)
-
-    # --- Dynamic reweighting ---
-    freed1 = w1 * (SPIKE1_REDUCE_FRACTION_MAX * sev1)
-    w1_eff = w1 - freed1
-    w3_eff = w3 + freed1 * SPIKE1_REDIST_TO_3D
-    w7_eff = w7 + freed1 * SPIKE1_REDIST_TO_7D
-    w14_eff = w14 + freed1 * SPIKE1_REDIST_TO_14D
-
-    freed3 = w3_eff * (SPIKE3_REDUCE_FRACTION_MAX * sev3)
-    w3_eff -= freed3
-    w7_eff += freed3 * SPIKE3_REDIST_TO_7D
-    w14_eff += freed3 * SPIKE3_REDIST_TO_14D
-
-    freed7 = w7_eff * (SPIKE7_REDUCE_FRACTION_MAX * sev7)
-    w7_eff -= freed7
-    w14_eff += freed7 * SPIKE7_REDIST_TO_14D
-
-    freed14 = w14_eff * (SPIKE14_REDUCE_FRACTION_MAX * sev14)
-    w14_eff -= freed14
-    w7_eff += freed14 * SPIKE14_REDIST_TO_7D
-
-    # --- Reliability scaling ---
-    eps = RELIABILITY_EPS
-    strength = RELIABILITY_SCALE_STRENGTH
-    rel1 = 1.0 + (1.0 / (eps + abs(v1_eff - v7_eff)) - 1.0) * strength
-    rel3 = 1.0 + (1.0 / (eps + abs(v3_eff - v7_eff)) - 1.0) * strength
-    rel7 = 1.0 + (1.0 / (eps + abs(v7_eff - v14_eff)) - 1.0) * strength
-    rel14 = 1.0 + (1.0 / (eps + abs(v14_eff - v7_eff)) - 1.0) * strength
-
-    w1_eff *= rel1
-    w3_eff *= rel3
-    w7_eff *= rel7
-    w14_eff *= rel14
-
-    w_sum = w1_eff + w3_eff + w7_eff + w14_eff
-    if w_sum > 0:
-        scale = w_total / w_sum
-        w1_eff *= scale
-        w3_eff *= scale
-        w7_eff *= scale
-        w14_eff *= scale
-    else:
-        w1_eff, w3_eff, w7_eff, w14_eff = float(w1), float(w3), float(w7), float(w14)
-
-    return round(
-        v1_eff * (w1_eff / 100)
-        + v3_eff * (w3_eff / 100)
-        + v7_eff * (w7_eff / 100)
-        + v14_eff * (w14_eff / 100),
-        3,
-    )
+# _compute_weighted_average has been removed. The canonical implementation lives
+# in planner.slot_population.weighted_avg_consumption and is imported above.
