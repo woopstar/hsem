@@ -11,7 +11,8 @@
       "invalid_sensor": "Invalid input sensor. Please choose a valid sensor.",
       "only_one_entry_allowed": "Only one configuration of HSEM is allowed.",
       "required": "This field is required.",
-      "start_time_after_end_time": "Start time must be before end time."
+      "start_time_after_end_time": "Start time must be before end time.",
+      "start_time_equals_end_time": "Start time and end time cannot be the same \u2014 this creates a zero-length window. Disable the schedule instead."
     },
     "step": {
       "batteries_excess_export": {
@@ -274,7 +275,8 @@
       "invalid_sensor": "Invalid input sensor. Please choose a valid sensor.",
       "only_one_entry_allowed": "Only one configuration of HSEM is allowed.",
       "required": "This field is required.",
-      "start_time_after_end_time": "Start time must be before end time."
+      "start_time_after_end_time": "Start time must be before end time.",
+      "start_time_equals_end_time": "Start time and end time cannot be the same — this creates a zero-length window. Disable the schedule instead."
     },
     "step": {
       "batteries_excess_export": {

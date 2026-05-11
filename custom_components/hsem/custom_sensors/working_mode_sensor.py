@@ -82,6 +82,7 @@ from custom_components.hsem.utils.misc import (
     get_config_value,
     get_max_discharge_power,
     ha_get_entity_state_and_convert,
+    interval_ends_before_window_start,
 )
 from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.sensornames import (
@@ -1565,11 +1566,19 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         # Gather all active schedules
         schedules = []
 
-        # Filter schedules that are still relevant
+        # Filter schedules that are still relevant: keep enabled schedules whose
+        # start time has not yet been reached (i.e. there is still pre-charge
+        # time available).
+        #
+        # The original code used ``s.start > now.time() and now.time() < s.end``
+        # which incorrectly excluded cross-midnight windows (e.g. 23:00-02:00)
+        # once the clock passed midnight.  Using only ``now.time() < s.start``
+        # is correct for both same-day and cross-midnight windows because:
+        #  - same-day 07:00-09:00 @ 06:00 → 06:00 < 07:00 ✓ included
+        #  - cross-midnight 23:00-02:00 @ 21:00 → 21:00 < 23:00 ✓ included
+        #  - cross-midnight 23:00-02:00 @ 00:30 → 00:30 < 23:00 ✗ excluded
         schedules = [
-            s
-            for s in self._batteries_schedules
-            if s.start > now.time() and now.time() < s.end and s.enabled
+            s for s in self._batteries_schedules if s.enabled and now.time() < s.start
         ]
         await async_logger(
             self,
@@ -1664,12 +1673,22 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         #     and rec.start.time() >= now.time()
         #     and rec.recommendation is None
         # ]
+        # Filter recommendation intervals that fall *before* the charge window
+        # starts.  We use absolute timezone-aware datetimes so that cross-midnight
+        # windows (e.g. battery_schedule.start = 23:00, now = 21:00) are handled
+        # correctly:
+        #   - rec.end > now  → interval hasn't fully passed yet
+        #   - interval_ends_before_window_start → interval ends before the
+        #     charge window begins (resolves window start to the correct calendar
+        #     date accounting for midnight crossings)
+        #   - rec.recommendation is None → slot not already assigned
         filtered_hourly_recommendations = [
             rec
             for rec in self._hourly_recommendations
-            if rec.start.date() == now.date()
-            and rec.end.time() < battery_schedule.start
-            and rec.end.time() > now.time()
+            if rec.end.astimezone(self._tz) > now
+            and interval_ends_before_window_start(
+                rec.end.astimezone(self._tz), battery_schedule.start, now
+            )
             and rec.recommendation is None
         ]
 

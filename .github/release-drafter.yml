@@ -7,30 +7,32 @@ exclude-labels:
 categories:
   - title: '⚒️ Breaking Changes'
     labels:
-      - breaking-change
+      - 'breaking-change'
 
   - title: '🚀 Features'
     labels:
-      - 'feature request'
       - 'enhancement'
 
   - title: '🐛 Bug Fixes'
     labels:
-      - 'fix'
-      - 'bugfix'
       - 'bug'
+      - 'bug-fix'
 
-  - title: '🧬 Changes to Charge Owner informations'
+  - title: '📖 Documentation'
     labels:
-      - chargeowner
-      - chargeowners
+      - 'documentation'
 
-  - title: '🧬 New Charge Owner(s) added'
+  - title: '🔧 Configuration'
     labels:
-      - 'new chargeowner'
+      - 'config'
+
+  - title: '🏗️ Build & CI'
+    labels:
+      - 'build'
 
   - title: '🧰 Maintenance'
-    label: 'chore'
+    labels:
+      - 'chore'
 
   - title: '📦 Dependencies'
     labels:
@@ -56,6 +58,23 @@ autolabeler:
   - label: 'bug'
     branch:
       - '/fix\/.+/'
-  - label: 'feature request'
+  - label: 'enhancement'
     branch:
+      - '/feat\/.+/'
       - '/feature\/.+/'
+  - label: 'breaking-change'
+    branch:
+      - '/breaking\/.+/'
+  - label: 'documentation'
+    branch:
+      - '/docs\/.+/'
+  - label: 'chore'
+    branch:
+      - '/chore\/.+/'
+  - label: 'build'
+    branch:
+      - '/build\/.+/'
+      - '/ci\/.+/'
+  - label: 'dependencies'
+    branch:
+      - '/deps\/.+/'

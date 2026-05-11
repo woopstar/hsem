@@ -84,12 +84,12 @@ async def validate_batteries_schedule_2_input(user_input) -> dict[str, str]:
                 )
                 end = user_input.get("hsem_batteries_enable_batteries_schedule_2_end")
 
-                # Ensure values are valid times and start < end
+                # Allow cross-midnight windows (start >= end is valid, e.g. 23:00-02:00)
                 start_time = datetime.strptime(start, "%H:%M:%S").time()
                 end_time = datetime.strptime(end, "%H:%M:%S").time()
 
-                if start_time >= end_time:
-                    errors["base"] = "start_time_after_end_time"
+                if start_time == end_time:
+                    errors["base"] = "start_time_equals_end_time"
     except (ValueError, TypeError):
         errors["base"] = "invalid_time_format"
 

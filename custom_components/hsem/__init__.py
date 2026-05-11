@@ -4,6 +4,8 @@ import inspect
 import logging
 from importlib.metadata import PackageNotFoundError, version
 
+from packaging.version import InvalidVersion, Version
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
@@ -15,6 +17,23 @@ _LOGGER = logging.getLogger(__name__)
 PLATFORMS = [Platform.SENSOR, Platform.SWITCH, Platform.TIME, Platform.SELECT]
 
 
+def _parse_version(version_str: str) -> Version | None:
+    """Parse a version string into a packaging Version object.
+
+    Args:
+        version_str: The version string to parse (e.g. "1.10.0", "1.5.0a1").
+
+    Returns:
+        A ``packaging.version.Version`` instance, or ``None`` if the string is
+        not a valid PEP 440 version.
+    """
+    try:
+        return Version(version_str)
+    except InvalidVersion:
+        _LOGGER.warning("Invalid version string encountered: '%s'", version_str)
+        return None
+
+
 async def check_huawei_solar_version(hass: HomeAssistant) -> bool:
     """Check the version of the Huawei Solar integration asynchronously."""
 
@@ -24,16 +43,35 @@ async def check_huawei_solar_version(hass: HomeAssistant) -> bool:
         except PackageNotFoundError:
             return None
 
-    installed_version = await hass.async_add_executor_job(_get_version)
+    installed_version_str = await hass.async_add_executor_job(_get_version)
 
-    if installed_version is None:
+    if installed_version_str is None:
         _LOGGER.error("Huawei Solar integration is not installed.")
         return False
 
-    if installed_version < MIN_HUAWEI_SOLAR_VERSION:
+    installed_version = _parse_version(installed_version_str)
+    required_version = _parse_version(MIN_HUAWEI_SOLAR_VERSION)
+
+    if installed_version is None:
         _LOGGER.error(
-            f"Huawei Solar version {installed_version} is installed, "
-            f"but version {MIN_HUAWEI_SOLAR_VERSION} or higher is required."
+            "Could not parse installed Huawei Solar version: '%s'.",
+            installed_version_str,
+        )
+        return False
+
+    if required_version is None:
+        _LOGGER.error(
+            "Could not parse required Huawei Solar version constant: '%s'.",
+            MIN_HUAWEI_SOLAR_VERSION,
+        )
+        return False
+
+    if installed_version < required_version:
+        _LOGGER.error(
+            "Huawei Solar version %s is installed, "
+            "but version %s or higher is required.",
+            installed_version_str,
+            MIN_HUAWEI_SOLAR_VERSION,
         )
         return False
 
