@@ -81,7 +81,10 @@ from custom_components.hsem.utils.misc import (
     generate_hash,
     get_config_value,
     get_max_discharge_power,
+    get_next_schedule_start_datetime,
     ha_get_entity_state_and_convert,
+    is_interval_within_schedule,
+    time_in_schedule,
 )
 from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.sensornames import (
@@ -1496,29 +1499,29 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             count = 0
 
             for recommendation in self._hourly_recommendations:
-                if (
-                    recommendation.start.date() < now.date()
-                    or recommendation.end.date() > now.date()
+                # Use timezone-aware datetime comparison instead of date-based filtering
+                # This allows schedules to cross midnight (e.g., 23:00-02:00)
+                if not is_interval_within_schedule(
+                    recommendation.start,
+                    recommendation.end,
+                    schedule.start,
+                    schedule.end,
                 ):
                     continue
 
-                r_start = recommendation.start.time()
-                r_end = recommendation.end.time()
+                recommendation.recommendation = (
+                    Recommendations.BatteriesDischargeMode.value
+                )
 
-                if r_start >= schedule.start and r_end <= schedule.end:
-                    recommendation.recommendation = (
-                        Recommendations.BatteriesDischargeMode.value
-                    )
-
-                    avg_import_price += recommendation.import_price
-                    needed_batteries_capacity += (
-                        recommendation.estimated_net_consumption
-                    )
-                    needed_batteries_capacity_cost += (
-                        recommendation.estimated_net_consumption
-                        * recommendation.import_price
-                    )
-                    count += 1
+                avg_import_price += recommendation.import_price
+                needed_batteries_capacity += (
+                    recommendation.estimated_net_consumption
+                )
+                needed_batteries_capacity_cost += (
+                    recommendation.estimated_net_consumption
+                    * recommendation.import_price
+                )
+                count += 1
 
             schedule.needed_batteries_capacity = round(needed_batteries_capacity, 3)
             schedule.needed_batteries_capacity_cost = round(
@@ -1565,11 +1568,12 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         # Gather all active schedules
         schedules = []
 
-        # Filter schedules that are still relevant
+        # Filter schedules that are still relevant.
+        # Use time_in_schedule to support cross-midnight schedules (e.g., 23:00-02:00).
         schedules = [
             s
             for s in self._batteries_schedules
-            if s.start > now.time() and now.time() < s.end and s.enabled
+            if not time_in_schedule(now.time(), s.start, s.end) and s.enabled
         ]
         await async_logger(
             self,
@@ -1584,7 +1588,8 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
         # Calculate the total required charge across all schedules
         total_required_charge = sum(s.needed_batteries_capacity for s in schedules)
-        first_schedule = datetime.combine(now, schedules[0].start).astimezone(self._tz)
+        # Get the next occurrence of the first schedule's start time (handles cross-midnight)
+        first_schedule = get_next_schedule_start_datetime(now, schedules[0].start)
         item = next(
             (r for r in self._hourly_recommendations if r.start == first_schedule), None
         )
@@ -1655,21 +1660,21 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         #    f"Max charge per hour: {round(max_charge_per_hour, 2)} kWh. ",
         # )
 
-        # Only allow recommendations before the charging schedule starts
-        # filtered_hourly_recommendations = [
-        #     rec
-        #     for rec in self._hourly_recommendations
-        #     if rec.start.date() == now.date()
-        #     and rec.end.time() < battery_schedule.start.time()
-        #     and rec.start.time() >= now.time()
-        #     and rec.recommendation is None
-        # ]
+        # Only allow recommendations before the charging schedule starts.
+        # Use timezone-aware datetime comparisons to support cross-midnight schedules.
+        # Get the next occurrence of the schedule start time
+        schedule_start_dt = get_next_schedule_start_datetime(
+            now, battery_schedule.start
+        )
+
         filtered_hourly_recommendations = [
             rec
             for rec in self._hourly_recommendations
-            if rec.start.date() == now.date()
-            and rec.end.time() < battery_schedule.start
-            and rec.end.time() > now.time()
+            # Interval must start from now onwards
+            if rec.start >= now
+            # Interval must end before the schedule starts (using full datetime for accuracy)
+            and rec.end <= schedule_start_dt
+            # Interval must not have been assigned a recommendation yet
             and rec.recommendation is None
         ]
 

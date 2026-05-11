@@ -410,6 +410,92 @@ def get_max_discharge_power(usable_capacity: int) -> int:
     return mapping.get(usable_capacity, 2500)
 
 
+def is_interval_within_schedule(
+    interval_start: datetime,
+    interval_end: datetime,
+    schedule_start: time,
+    schedule_end: time,
+) -> bool:
+    """Check if a datetime interval falls within a time-based schedule, supporting cross-midnight schedules.
+
+    Args:
+        interval_start: Start datetime of the interval (timezone-aware).
+        interval_end: End datetime of the interval (timezone-aware).
+        schedule_start: Start time of the schedule (e.g., 23:00).
+        schedule_end: End time of the schedule (e.g., 02:00, crossing midnight).
+
+    Returns:
+        True if the interval is fully contained within the schedule window, False otherwise.
+    """
+    # Convert datetime to time for comparison
+    start_time = interval_start.time()
+    end_time = interval_end.time()
+
+    # Case 1: Schedule does NOT cross midnight (e.g., 10:00-15:00)
+    if schedule_start <= schedule_end:
+        return schedule_start <= start_time and end_time <= schedule_end
+
+    # Case 2: Schedule crosses midnight (e.g., 23:00-02:00)
+    # The interval is within the schedule if it's either:
+    # a) After schedule_start on any day, OR
+    # b) Before schedule_end on any day
+    return start_time >= schedule_start or end_time <= schedule_end
+
+
+def time_in_schedule(
+    check_time: time, schedule_start: time, schedule_end: time
+) -> bool:
+    """Check if a time falls within a schedule, supporting cross-midnight schedules.
+
+    Args:
+        check_time: The time to check.
+        schedule_start: Start time of the schedule.
+        schedule_end: End time of the schedule.
+
+    Returns:
+        True if check_time is within the schedule window, False otherwise.
+    """
+    # Case 1: Schedule does NOT cross midnight
+    if schedule_start <= schedule_end:
+        return schedule_start <= check_time <= schedule_end
+
+    # Case 2: Schedule crosses midnight
+    return check_time >= schedule_start or check_time <= schedule_end
+
+
+def get_next_schedule_start_datetime(
+    reference_datetime: datetime, schedule_start: time
+) -> datetime:
+    """Get the next occurrence of a schedule start time from a reference datetime.
+
+    Handles cross-midnight schedules correctly. For example:
+    - If reference is 2026-05-11 22:00 and schedule_start is 23:00, returns 2026-05-11 23:00
+    - If reference is 2026-05-11 23:30 and schedule_start is 23:00, returns 2026-05-12 23:00
+
+    Args:
+        reference_datetime: Reference datetime (timezone-aware).
+        schedule_start: Start time of the schedule.
+
+    Returns:
+        The next occurrence of schedule_start as a timezone-aware datetime.
+    """
+    from datetime import timedelta
+
+    # Try to create datetime for today at schedule_start
+    candidate = reference_datetime.replace(
+        hour=schedule_start.hour,
+        minute=schedule_start.minute,
+        second=schedule_start.second,
+        microsecond=schedule_start.microsecond,
+    )
+
+    # If the candidate time is in the past, use tomorrow's occurrence
+    if candidate <= reference_datetime:
+        candidate += timedelta(days=1)
+
+    return candidate
+
+
 def calculate_recommended_threshold(
     purchase_price: float,
     expected_cycles: int,
