@@ -30,8 +30,8 @@ from custom_components.hsem.models.sensor_config import (
     EVChargerConfig,
     SensorConfig,
 )
+from custom_components.hsem.utils.logger import async_logger
 from custom_components.hsem.utils.misc import (
-    async_logger,
     async_resolve_entity_id_from_unique_id,
     convert_months_to_int,
     convert_to_boolean,

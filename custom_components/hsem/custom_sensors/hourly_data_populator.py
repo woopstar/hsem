@@ -48,8 +48,8 @@ from custom_components.hsem.const import (
 )
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.sensor_config import SensorConfig
+from custom_components.hsem.utils.logger import async_logger
 from custom_components.hsem.utils.misc import (
-    async_logger,
     async_resolve_entity_id_from_unique_id,
     convert_to_float,
     ha_get_entity_state_and_convert,

@@ -25,8 +25,8 @@ from custom_components.hsem.utils.huawei import (
     async_set_grid_export_power_pct,
     async_set_tou_periods,
 )
+from custom_components.hsem.utils.logger import async_logger
 from custom_components.hsem.utils.misc import (
-    async_logger,
     async_set_number_value,
     async_set_select_option,
     convert_to_int,

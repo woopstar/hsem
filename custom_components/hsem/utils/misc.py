@@ -1,12 +1,8 @@
 """This module provides utility functions for the Home Assistant custom integration."""
 
-import asyncio
 import hashlib
 import logging
-import sys
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, time, timedelta
-from logging.handlers import RotatingFileHandler
 
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr
@@ -15,34 +11,15 @@ from sqlalchemy import null
 
 from custom_components.hsem.const import DEFAULT_CONFIG_VALUES, DOMAIN
 
+# Re-export async_logger from its dedicated module so that existing callers
+# importing it from utils.misc continue to work without changes.
+from custom_components.hsem.utils.logger import (  # noqa: F401
+    HSEM_LOGGER,
+    LOG_EXECUTOR,
+    async_logger,
+)
+
 _LOGGER = logging.getLogger(__name__)
-
-# Create a separate logger for async_logger
-HSEM_LOGGER = logging.getLogger("hsem_logger")
-LOG_FILE_PATH = "/config/hsem.log"
-LOG_FILE_MAX_BYTES = 5 * 1024 * 1024  # 5 MB
-LOG_FILE_BACKUP_COUNT = 1  # Keep 1 backup files
-
-# Configure the rotating file handler
-if "pytest" not in sys.modules:
-    file_handler = RotatingFileHandler(
-        LOG_FILE_PATH,
-        maxBytes=LOG_FILE_MAX_BYTES,
-        backupCount=LOG_FILE_BACKUP_COUNT,
-    )
-
-    # Set the log format and level
-    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-    file_handler.setFormatter(formatter)
-
-    # Attach the file handler to the logger
-    HSEM_LOGGER.addHandler(file_handler)
-HSEM_LOGGER.setLevel(logging.DEBUG)
-
-# Prevent the logger from propagating to the root logger
-HSEM_LOGGER.propagate = False
-
-LOG_EXECUTOR = ThreadPoolExecutor(max_workers=1)
 
 _entity_id_from_unique_id_cache = {}
 
@@ -445,19 +422,6 @@ async def async_device_exists(hass, device_id) -> bool:
     """Check if a device exists in Home Assistant."""
     device_registry = dr.async_get(hass)
     return device_registry.async_get(device_id) is not None
-
-
-async def async_logger(self, msg, level="debug") -> None:
-    """Log a message to a dedicated file-based logger.
-
-    :param msg: The message to log.
-    :param level: The log level ('debug', 'info', 'warning', 'error', 'critical').
-    """
-    if self._hsem_verbose_logging:
-        log_method = getattr(HSEM_LOGGER, level.lower(), HSEM_LOGGER.debug)
-
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(LOG_EXECUTOR, log_method, msg)
 
 
 def get_max_discharge_power(usable_capacity: int) -> int:
