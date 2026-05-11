@@ -1,5 +1,42 @@
 # Custom GitHub Copilot Instructions
 
+## Standard Issue-Solving Workflow
+
+When asked to solve a GitHub issue, always follow these steps in order:
+
+0. **Checkout main and pull latest**
+   ```bash
+   git checkout main
+   git pull
+   ```
+1. **Read the GitHub issue** — Understand the problem fully before touching any code.
+2. **Create a branch** using the issue prefix and a short slug.
+   - Format: `<type>/<issue-prefix>-<slug>` — e.g., `fix/p0-01-month-matching`
+3. **Understand the relevant code** — Search and read the affected files before making changes.
+4. **Implement the smallest safe fix** — No unrelated changes, no broad refactors.
+5. **Add or update regression tests** — Cover the bug or new behavior.
+6. **Run the relevant tests** — `pytest tests/` or the targeted test file.
+7. **Run lint/type checks** — `ruff check . --fix` then `ruff format .`
+8. **Report a summary** including:
+   - Issue title
+   - Branch name
+   - Files changed
+   - What changed and why
+   - Tests added or updated
+   - Test and lint results
+9. **Create a pull request** linked to the issue using `Fixes #<ISSUE_NUMBER>` in the description.
+
+## Issue-Solving Rules
+- Always read `AGENTS.md` and `CLAUDE.md` before starting any issue work.
+- Solve **one issue only** per branch and PR.
+- Do **not** refactor unrelated code.
+- Keep behavior unchanged unless the issue explicitly states the current behavior is unsafe or wrong.
+- Prefer small, reviewable changes.
+- Add tests for every bug fix or new feature.
+- Do **not** skip tests unless the repo has no working test setup — if so, explain exactly why.
+- Do **not** close the issue manually. Link the PR using `Fixes #ISSUE_NUMBER`.
+- Ask the user before making any broad architectural changes.
+
 ## Solve One Issue Per Branch
 - Each branch should solve **one** issue from the GitHub issue tracker.
 - Use the branch naming convention: `<type>/<issue-number>-<description>`
