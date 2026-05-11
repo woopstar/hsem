@@ -39,7 +39,10 @@ from custom_components.hsem.flows.init import (
     get_init_step_schema,
     validate_init_step_input,
 )
-from custom_components.hsem.flows.months import get_months_schema, validate_months_input
+from custom_components.hsem.flows.months import (
+    get_months_schema,
+    validate_months_input,
+)
 from custom_components.hsem.flows.power import (
     get_power_step_schema,
     validate_power_step_input,
@@ -53,6 +56,7 @@ from custom_components.hsem.flows.weighted_values import (
     validate_weighted_values_input,
 )
 from custom_components.hsem.options_flow import HSEMOptionsFlow
+from custom_components.hsem.utils.misc import convert_months_to_int
 
 
 class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -114,18 +118,19 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             errors = await validate_months_input(self.hass, user_input)
             if not errors:
-                self._user_input.update(user_input)
-
-                all_months = [str(m) for m in range(1, 13)]
-                winter_months_selected = list(
-                    dict.fromkeys(self._user_input.get("hsem_months_winter", []))
+                # Convert winter months to integers
+                winter_months = convert_months_to_int(
+                    user_input.get("hsem_months_winter", [])
                 )
-                remaining = [
-                    str(m) for m in all_months if str(m) not in winter_months_selected
-                ]
-
-                user_input["hsem_months_summer"] = remaining
                 self._user_input.update(user_input)
+
+                # Calculate summer months as the complement of winter months
+                all_months = set(range(1, 13))
+                summer_months = sorted(list(all_months - set(winter_months)))
+
+                # Update both winter and summer months as integers
+                self._user_input["hsem_months_winter"] = winter_months
+                self._user_input["hsem_months_summer"] = summer_months
 
                 return await self.async_step_power()
 
