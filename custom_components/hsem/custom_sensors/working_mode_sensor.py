@@ -9,7 +9,7 @@ Classes:
 """
 
 import asyncio
-from datetime import datetime, time, timedelta
+from datetime import datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -63,6 +63,14 @@ from custom_components.hsem.const import (
 from custom_components.hsem.entity import HSEMEntity
 from custom_components.hsem.models.battery_schedule import BatterySchedule
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
+from custom_components.hsem.models.planner_inputs import (
+    BatteryScheduleInput,
+    HourlyConsumptionAverage,
+    PlannerInput,
+    PricePoint,
+    SolcastSlot,
+)
+from custom_components.hsem.planner import run_planner
 from custom_components.hsem.utils.huawei import (
     async_set_forcible_discharge,
     async_set_grid_export_power_pct,
@@ -600,35 +608,24 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 share,
             )
 
-            await self._async_calculate_hourly_net_consumption()
+            # --- Run the pure-Python planner engine ---
+            # Build PlannerInput from the HA state that was already fetched
+            # (prices, solcast, and consumption averages are in
+            # self._hourly_recommendations at this point).
+            planner_input = self._build_planner_input()
+            planner_output = run_planner(planner_input)
 
-            await self._async_calculate_hourly_estimated_cost()
+            # Log any engine warnings for observability
+            for warning in planner_output.warnings:
+                await async_logger(self, f"[planner] {warning}")
 
-            await self._async_calculate_estimated_batteries_capacity()
+            # Write engine decisions back into self._hourly_recommendations so
+            # that all downstream code (inverter writes, attributes) keeps working
+            # exactly as before.
+            self._apply_planner_output(planner_output)
 
-            midnights = [
-                r
-                for r in self._hourly_recommendations
-                if r.start.time() == time(0, 0, 0)
-            ]
-
-            for r in midnights:
-                if r.start < datetime.now().astimezone(self._tz):
-                    await self._async_calculate_batteries_schedules()
-                    await self._async_calculate_batteries_schedules_best_charge_time()
-                else:
-                    await self._async_calculate_batteries_schedules(
-                        r.start.astimezone(self._tz)
-                    )
-                    await self._async_calculate_batteries_schedules_best_charge_time(
-                        r.start.astimezone(self._tz)
-                    )
-
-            await self._async_calculate_estimated_batteries_capacity()
-
-            await self._async_set_time_passed()
-
-            await self._async_optimization_strategy()
+            # Keep internal bookkeeping in sync with engine output
+            self._current_required_battery = planner_output.required_capacity_kwh
 
             # Get the current recommendation we need to work from by sorting on time.
             self._hourly_recommendations.sort(key=lambda x: x.start)
@@ -3165,6 +3162,180 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                     await async_set_grid_export_power_pct(
                         self, inverter_id, export_power_percentage
                     )
+
+    def _build_planner_input(self) -> PlannerInput:
+        """Assemble a :class:`PlannerInput` from the current HA-fetched state.
+
+        This method is called *after* ``_async_fetch_entity_states``,
+        ``_async_setup_batteries_schedules``, ``_async_calculate_avg_house_consumption``,
+        and ``_async_update_hourly_data`` have already populated
+        ``self._hourly_recommendations`` with prices, Solcast estimates, and
+        per-hour consumption averages.  We simply read those values back out
+        into the pure-Python dataclasses so that the engine has no HA imports.
+        """
+        now = datetime.now().astimezone(self._tz)
+
+        # ---- Per-hour time-series: one entry per clock-hour (0-23) ----
+        # HourlyRecommendation slots may be at sub-hourly resolution; collect
+        # the first slot that starts at each clock-hour.
+        seen_hours: set[int] = set()
+        consumption_averages: list[HourlyConsumptionAverage] = []
+        price_points: list[PricePoint] = []
+        solcast_slots: list[SolcastSlot] = []
+
+        # The sensor stores per-slot values (divided by slots-per-hour).
+        # The engine's populate functions accept hourly totals and divide them
+        # back down internally.  So we multiply by slots-per-hour to recover
+        # the hourly totals before passing them in.
+        slots_per_hour = 60.0 / self._hsem_recommendation_interval_minutes
+
+        for rec in self._hourly_recommendations:
+            h = rec.start.hour
+            if h in seen_hours:
+                continue
+            seen_hours.add(h)
+
+            # Consumption: stored as per-slot kWh → recover hourly kWh
+            consumption_averages.append(
+                HourlyConsumptionAverage(
+                    hour=h,
+                    avg_1d=round(rec.avg_house_consumption_1d * slots_per_hour, 3),
+                    avg_3d=round(rec.avg_house_consumption_3d * slots_per_hour, 3),
+                    avg_7d=round(rec.avg_house_consumption_7d * slots_per_hour, 3),
+                    avg_14d=round(rec.avg_house_consumption_14d * slots_per_hour, 3),
+                )
+            )
+            # Prices: per-kWh rates — NOT scaled by slot duration.
+            # The sensor stores `eds_price / (eds_interval / slot_minutes)`.
+            # We recover the original EDS price by multiplying by that same ratio.
+            eds_share = (
+                self._hsem_energi_data_service_update_interval
+                / self._hsem_recommendation_interval_minutes
+            )
+            price_points.append(
+                PricePoint(
+                    hour=h,
+                    import_price=round(rec.import_price * eds_share, 5),
+                    export_price=round(rec.export_price * eds_share, 5),
+                )
+            )
+            # Solcast: stored as per-slot kWh → recover hourly kWh
+            solcast_slots.append(
+                SolcastSlot(
+                    hour=h,
+                    pv_estimate=round(rec.solcast_pv_estimate * slots_per_hour, 3),
+                )
+            )
+
+        # ---- Battery schedules ----
+        battery_schedules = [
+            BatteryScheduleInput(
+                enabled=s.enabled,
+                start=s.start,
+                end=s.end,
+                min_price_difference=s.min_price_difference_required,
+            )
+            for s in self._batteries_schedules
+        ]
+
+        return PlannerInput(
+            now_iso=now.isoformat(),
+            interval_minutes=self._hsem_recommendation_interval_minutes,
+            interval_length_hours=self._hsem_recommendation_interval_length,
+            # battery hardware
+            battery_soc_pct=convert_to_float(
+                self._hsem_huawei_solar_batteries_state_of_capacity_state
+            ),
+            battery_rated_capacity_kwh=convert_to_float(
+                self._hsem_batteries_rated_capacity_max_state
+            )
+            / 1000.0,
+            battery_end_of_discharge_soc_pct=convert_to_float(
+                self._hsem_huawei_solar_batteries_end_of_discharge_soc_state or 5.0
+            ),
+            battery_max_charge_power_w=convert_to_float(
+                self._hsem_huawei_solar_batteries_maximum_charging_power_state
+            ),
+            battery_max_discharge_power_w=convert_to_float(
+                self._hsem_huawei_solar_batteries_maximum_discharging_power_state
+            )
+            or None,
+            battery_conversion_loss_pct=convert_to_float(
+                self._hsem_batteries_conversion_loss
+            ),
+            # battery economics
+            battery_purchase_price=convert_to_float(
+                self._hsem_batteries_purchase_price
+            ),
+            battery_expected_cycles=convert_to_int(
+                self._hsem_batteries_expected_cycles
+            ),
+            # consumption weights
+            weight_1d=convert_to_int(self._hsem_house_consumption_energy_weight_1d),
+            weight_3d=convert_to_int(self._hsem_house_consumption_energy_weight_3d),
+            weight_7d=convert_to_int(self._hsem_house_consumption_energy_weight_7d),
+            weight_14d=convert_to_int(self._hsem_house_consumption_energy_weight_14d),
+            # time-series
+            consumption_averages=consumption_averages,
+            price_points=price_points,
+            solcast_slots=solcast_slots,
+            # schedules
+            battery_schedules=battery_schedules,
+            # excess export
+            excess_export_enabled=bool(self._hsem_batteries_enable_excess_export),
+            excess_export_discharge_buffer_pct=convert_to_float(
+                self._hsem_batteries_excess_export_discharge_buffer
+            ),
+            excess_export_price_threshold=convert_to_float(
+                self._hsem_batteries_excess_export_price_threshold
+            ),
+            # grid export control
+            export_min_price=convert_to_float(
+                self._hsem_energi_data_service_export_min_price
+            ),
+            # seasonal / mode
+            months_winter=list(self._hsem_months_winter or []),
+            house_power_includes_ev=bool(
+                self._hsem_house_power_includes_ev_charger_power
+            ),
+            is_read_only=bool(self._read_only),
+        )
+
+    def _apply_planner_output(self, output) -> None:
+        """Write :class:`PlannerOutput` decisions back into ``self._hourly_recommendations``.
+
+        The engine returns :class:`PlannedSlot` objects whose ``start`` matches
+        the ``start`` of the corresponding :class:`HourlyRecommendation`.  We
+        look up by start datetime and copy:
+
+        - ``recommendation``
+        - ``batteries_charged``
+        - ``estimated_net_consumption``
+        - ``estimated_cost``
+        - ``estimated_battery_capacity``
+        - ``estimated_battery_soc``
+
+        All fields that remain unchanged (prices, pv_estimate, avg_consumption) are
+        left as-is because the engine output values are identical to what HA already
+        wrote in during the I/O phase.
+        """
+        slot_by_start = {s.start: s for s in output.slots}
+
+        for rec in self._hourly_recommendations:
+            slot = slot_by_start.get(rec.start)
+            if slot is None:
+                continue
+            rec.recommendation = slot.recommendation
+            rec.batteries_charged = slot.batteries_charged
+            rec.estimated_net_consumption = slot.estimated_net_consumption
+            rec.estimated_cost = slot.estimated_cost
+            rec.estimated_battery_capacity = slot.estimated_battery_capacity
+            rec.estimated_battery_soc = slot.estimated_battery_soc
+
+        # Keep internal bookkeeping in sync
+        self._batteries_schedules_remaining_capacity_needed = sum(
+            s.needed_batteries_capacity for s in self._batteries_schedules if s.enabled
+        )
 
     async def _async_setup_batteries_schedules(self) -> None:
         self._batteries_schedules = []

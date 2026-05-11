@@ -164,6 +164,7 @@ class PlannerOutput:
     discharge_windows: list[DischargeWindow] = field(default_factory=list)
     current_recommendation: str | None = None
     battery_soc_at_end: float = 0.0
+    required_capacity_kwh: float = 0.0
     missing_inputs: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     extra: dict[str, Any] = field(default_factory=dict)

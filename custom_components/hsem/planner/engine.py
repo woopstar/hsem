@@ -946,6 +946,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         discharge_windows=discharge_windows,
         current_recommendation=current_recommendation,
         battery_soc_at_end=battery_soc_at_end,
+        required_capacity_kwh=required_capacity,
         missing_inputs=missing_inputs,
         warnings=warnings,
     )
