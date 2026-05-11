@@ -7,9 +7,9 @@ from logging.handlers import RotatingFileHandler
 import pytest
 
 from custom_components.hsem.flows.months import (
-    _convert_months_to_int,
     validate_months_input,
 )
+from custom_components.hsem.utils.misc import convert_months_to_int
 
 # Monkey-patch RotatingFileHandler to use NullHandler during tests
 original_rotating_handler = RotatingFileHandler
@@ -29,22 +29,22 @@ class TestConvertMonthsToInt:
 
     def test_convert_string_months_to_int(self):
         """Test converting string months to integers."""
-        result = _convert_months_to_int(["1", "2", "3"])
+        result = convert_months_to_int(["1", "2", "3"])
         assert result == [1, 2, 3]
 
     def test_convert_int_months(self):
         """Test that integer months pass through correctly."""
-        result = _convert_months_to_int([1, 2, 3])
+        result = convert_months_to_int([1, 2, 3])
         assert result == [1, 2, 3]
 
     def test_convert_mixed_string_and_int_months(self):
         """Test converting mixed string and integer months."""
-        result = _convert_months_to_int(["1", 2, "3", 4])
+        result = convert_months_to_int(["1", 2, "3", 4])
         assert result == [1, 2, 3, 4]
 
     def test_january_only_matches_one(self):
         """Test that January (1) only matches month 1, not 10, 11, 12."""
-        result = _convert_months_to_int(["1"])
+        result = convert_months_to_int(["1"])
         assert result == [1]
         assert 10 not in result
         assert 11 not in result
@@ -52,48 +52,48 @@ class TestConvertMonthsToInt:
 
     def test_october_only_matches_ten(self):
         """Test that October only matches 10, not 1 via string containment."""
-        result = _convert_months_to_int(["10"])
+        result = convert_months_to_int(["10"])
         assert result == [10]
         assert 1 not in result
 
     def test_all_valid_months(self):
         """Test all valid month numbers 1-12."""
-        result = _convert_months_to_int([str(i) for i in range(1, 13)])
+        result = convert_months_to_int([str(i) for i in range(1, 13)])
         assert result == list(range(1, 13))
 
     def test_invalid_month_zero(self):
         """Test that month 0 is rejected."""
         with pytest.raises(ValueError, match="Month must be between 1 and 12"):
-            _convert_months_to_int(["0"])
+            convert_months_to_int(["0"])
 
     def test_invalid_month_thirteen(self):
         """Test that month 13 is rejected."""
         with pytest.raises(ValueError, match="Month must be between 1 and 12"):
-            _convert_months_to_int(["13"])
+            convert_months_to_int(["13"])
 
     def test_invalid_month_negative(self):
         """Test that negative months are rejected."""
         with pytest.raises(ValueError, match="Month must be between 1 and 12"):
-            _convert_months_to_int(["-1"])
+            convert_months_to_int(["-1"])
 
     def test_invalid_month_non_numeric(self):
         """Test that non-numeric month values are rejected."""
         with pytest.raises(ValueError, match="Invalid month value"):
-            _convert_months_to_int(["abc"])
+            convert_months_to_int(["abc"])
 
     def test_invalid_month_float(self):
         """Test that float values are converted if they represent valid months."""
-        result = _convert_months_to_int(["1.0", "6.5"])
+        result = convert_months_to_int(["1.0", "6.5"])
         assert result == [1, 6]
 
     def test_empty_list(self):
         """Test that empty list returns empty list."""
-        result = _convert_months_to_int([])
+        result = convert_months_to_int([])
         assert result == []
 
     def test_duplicate_months(self):
         """Test that duplicate months are preserved."""
-        result = _convert_months_to_int(["1", "1", "2"])
+        result = convert_months_to_int(["1", "1", "2"])
         assert result == [1, 1, 2]
 
 

@@ -3,6 +3,7 @@
 import asyncio
 import hashlib
 import logging
+import sys
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, time
 from logging.handlers import RotatingFileHandler
@@ -23,18 +24,19 @@ LOG_FILE_MAX_BYTES = 5 * 1024 * 1024  # 5 MB
 LOG_FILE_BACKUP_COUNT = 1  # Keep 1 backup files
 
 # Configure the rotating file handler
-file_handler = RotatingFileHandler(
-    LOG_FILE_PATH,
-    maxBytes=LOG_FILE_MAX_BYTES,
-    backupCount=LOG_FILE_BACKUP_COUNT,
-)
+if "pytest" not in sys.modules:
+    file_handler = RotatingFileHandler(
+        LOG_FILE_PATH,
+        maxBytes=LOG_FILE_MAX_BYTES,
+        backupCount=LOG_FILE_BACKUP_COUNT,
+    )
 
-# Set the log format and level
-formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-file_handler.setFormatter(formatter)
+    # Set the log format and level
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    file_handler.setFormatter(formatter)
 
-# Attach the file handler to the logger
-HSEM_LOGGER.addHandler(file_handler)
+    # Attach the file handler to the logger
+    HSEM_LOGGER.addHandler(file_handler)
 HSEM_LOGGER.setLevel(logging.DEBUG)
 
 # Prevent the logger from propagating to the root logger
@@ -125,7 +127,7 @@ def convert_months_to_int(months: list) -> list[int]:
     result = []
     for month in months:
         try:
-            month_int = int(month)
+            month_int = int(float(month))
             if month_int < 1 or month_int > 12:
                 raise ValueError(f"Month must be between 1 and 12, got {month_int}")
             result.append(month_int)
