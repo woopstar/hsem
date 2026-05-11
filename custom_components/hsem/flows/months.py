@@ -44,9 +44,8 @@ async def validate_months_input(hass, user_input) -> dict[str, str]:
     for field in required_fields:
         if field not in user_input:
             errors[field] = "required"
-            continue
 
-    # Validate and convert months to integers
+    # If we have winter months, calculate summer months (all others)
     if "hsem_months_winter" in user_input:
         try:
             winter_months = convert_months_to_int(user_input["hsem_months_winter"])
@@ -54,8 +53,6 @@ async def validate_months_input(hass, user_input) -> dict[str, str]:
             errors["hsem_months_winter"] = str(e)
             return errors
 
-    # If we have winter months, calculate summer months (all others)
-    if "hsem_months_winter" in user_input:
         all_months = set(range(1, 13))
         summer_months = sorted(list(all_months - set(winter_months)))
 
