@@ -244,18 +244,18 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             errors = await validate_huawei_solar_input(self.hass, user_input)
             if not errors:
-                final_data = {**self._user_input, **user_input}
+                self._user_input.update(user_input)
 
                 # Ensure that optional inverter_id is set to an empty string if not provided
-                final_data["hsem_huawei_solar_device_id_inverter_2"] = final_data.get(
-                    "hsem_huawei_solar_device_id_inverter_2", ""
+                self._user_input["hsem_huawei_solar_device_id_inverter_2"] = (
+                    self._user_input.get("hsem_huawei_solar_device_id_inverter_2", "")
                 )
 
-                # Ensure that optional ev_charger_status is set to an empty string if not provided
-                final_data["hsem_ev_charger_status"] = final_data.get(
+                # Ensure that optional ev_charger_status is set to None if not provided
+                self._user_input["hsem_ev_charger_status"] = self._user_input.get(
                     "hsem_ev_charger_status", None
                 )
-                final_data["hsem_ev_charger_power"] = final_data.get(
+                self._user_input["hsem_ev_charger_power"] = self._user_input.get(
                     "hsem_ev_charger_power", None
                 )
 
