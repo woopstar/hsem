@@ -1,10 +1,15 @@
 """Tests for month validation and month matching logic."""
 
-import pytest
-
 # Mock the logging to avoid file creation errors during testing
 import logging
 from logging.handlers import RotatingFileHandler
+
+import pytest
+
+from custom_components.hsem.flows.months import (
+    _convert_months_to_int,
+    validate_months_input,
+)
 
 # Monkey-patch RotatingFileHandler to use NullHandler during tests
 original_rotating_handler = RotatingFileHandler
@@ -17,11 +22,6 @@ class MockRotatingFileHandler(logging.NullHandler):
 
 # Replace RotatingFileHandler with mock
 logging.handlers.RotatingFileHandler = MockRotatingFileHandler
-
-from custom_components.hsem.flows.months import (
-    _convert_months_to_int,
-    validate_months_input,
-)
 
 
 class TestConvertMonthsToInt:
