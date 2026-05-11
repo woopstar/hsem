@@ -12,7 +12,7 @@
       "only_one_entry_allowed": "Only one configuration of HSEM is allowed.",
       "required": "This field is required.",
       "start_time_after_end_time": "Start time must be before end time.",
-      "start_time_equals_end_time": "Start time and end time cannot be the same \u2014 this creates a zero-length window. Disable the schedule instead."
+      "start_time_equals_end_time": "Start time and end time cannot be the same — this creates a zero-length window. Disable the schedule instead."
     },
     "step": {
       "batteries_excess_export": {
@@ -148,6 +148,8 @@
       "huawei_solar": {
         "data": {
           "hsem_batteries_conversion_loss": "Battery Conversion Loss (%)",
+          "hsem_batteries_expected_cycles": "Expected Battery Cycles",
+          "hsem_batteries_purchase_price": "Battery Purchase Price (EUR)",
           "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Huawei Batteries Excess PV energy use in TOU",
           "hsem_huawei_solar_batteries_end_of_discharge_soc": "Huawei Batteries End of Discharge SOC (%)",
           "hsem_huawei_solar_batteries_grid_charge_cutoff_soc": "Huawei Batteries Grid Charge Cutoff SOC (%)",
@@ -164,6 +166,8 @@
         },
         "data_description": {
           "hsem_batteries_conversion_loss": "Specify the percentage of energy loss when charging the battery. This represents the conversion loss, typically between 5% and 10%, which occurs when importing energy from solar panels or the grid to the battery. It is used to calculate the actual time required to charge the battery.",
+          "hsem_batteries_expected_cycles": "Enter the expected number of full charge/discharge cycles over the battery's lifetime. Used to calculate depreciation cost per kWh and the recommended minimum export price threshold. Typical LiFePO4 batteries support 4000–8000 cycles.",
+          "hsem_batteries_purchase_price": "Enter the total purchase price of your battery system in EUR. Used together with expected cycles and usable capacity to calculate the depreciation cost per kWh and the recommended minimum export price threshold.",
           "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Select the sensor that provides setting for excess PV energy use in TOU periods.",
           "hsem_huawei_solar_batteries_end_of_discharge_soc": "Specify the end of discharge SOC percentage for your Huawei batteries. When the battery reaches this SOC level, it will stop discharging to prevent deep discharge and potential damage to the battery.",
           "hsem_huawei_solar_batteries_grid_charge_cutoff_soc": "Specify the grid charge cutoff SOC percentage for your Huawei batteries.",
@@ -412,6 +416,8 @@
       "huawei_solar": {
         "data": {
           "hsem_batteries_conversion_loss": "Battery Conversion Loss (%)",
+          "hsem_batteries_expected_cycles": "Expected Battery Cycles",
+          "hsem_batteries_purchase_price": "Battery Purchase Price (EUR)",
           "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Huawei Batteries Excess PV energy use in TOU",
           "hsem_huawei_solar_batteries_end_of_discharge_soc": "Huawei Batteries End of Discharge SOC (%)",
           "hsem_huawei_solar_batteries_grid_charge_cutoff_soc": "Huawei Batteries Grid Charge Cutoff SOC (%)",
@@ -428,6 +434,8 @@
         },
         "data_description": {
           "hsem_batteries_conversion_loss": "Specify the percentage of energy loss when charging the battery. This represents the conversion loss, typically between 5% and 10%, which occurs when importing energy from solar panels or the grid to the battery. It is used to calculate the actual time required to charge the battery.",
+          "hsem_batteries_expected_cycles": "Enter the expected number of full charge/discharge cycles over the battery's lifetime. Used to calculate depreciation cost per kWh and the recommended minimum export price threshold. Typical LiFePO4 batteries support 4000–8000 cycles.",
+          "hsem_batteries_purchase_price": "Enter the total purchase price of your battery system in EUR. Used together with expected cycles and usable capacity to calculate the depreciation cost per kWh and the recommended minimum export price threshold.",
           "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Select the sensor that provides setting for excess PV energy use in TOU periods.",
           "hsem_huawei_solar_batteries_end_of_discharge_soc": "Specify the end of discharge SOC percentage for your Huawei batteries. When the battery reaches this SOC level, it will stop discharging to prevent deep discharge and potential damage to the battery.",
           "hsem_huawei_solar_batteries_grid_charge_cutoff_soc": "Specify the grid charge cutoff SOC percentage for your Huawei batteries.",
