@@ -8,6 +8,7 @@ Classes:
     solar energy production and consumption.
 """
 
+import asyncio
 from datetime import datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -133,6 +134,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self._hsem_recommendation_interval_length = 48
 
         self._tracked_entities = set()
+        self._update_lock = asyncio.Lock()
         self._update_settings()
 
         # Initialize all attributes to None or some default value
@@ -468,7 +470,24 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self._next_update = (datetime.now().astimezone(self._tz) + interval).isoformat()
 
     async def _async_handle_update(self, event=None) -> None:
-        """Handle the sensor state update (for both manual and state change)."""
+        """Handle the sensor state update (for both manual and state change).
+
+        Concurrent calls are dropped: if an update cycle is already running the
+        incoming call is logged and returns immediately without executing,
+        preventing conflicting inverter writes.
+        """
+        if self._update_lock.locked():
+            await async_logger(
+                self,
+                "------ Update skipped: a previous update cycle is still running.",
+            )
+            return
+
+        async with self._update_lock:
+            await self._async_run_update_cycle(event)
+
+    async def _async_run_update_cycle(self, event=None) -> None:
+        """Execute the full update/apply cycle (must only be called while holding _update_lock)."""
 
         await async_logger(self, f"------ Updating {self._name} state...")
 
