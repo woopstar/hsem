@@ -193,6 +193,13 @@ No changes will be made to your battery or inverter until all required sensors a
   - **Considers battery depreciation cost per kWh** for economic optimization.
     See [this guide](https://github.com/woopstar/hsem/wiki/How-to-Calculate-the-Minimum-Charging-Price-for-a-Battery-Schedule) for details.
 
+- **Excess Battery Export**
+  - Automatically exports excess battery capacity when economically beneficial.
+  - Differentiates between solar-charged vs grid-charged battery energy.
+  - Configurable safety buffer to ensure adequate daily energy reserve.
+  - Calculates optimal export based on battery depreciation economics.
+  - Prevents counter-productive battery discharge when not beneficial.
+
 - **Weighted Consumption Forecasting**
   - Hourly house consumption averages over 1, 3, 7, and 14 days.
   - Weighted values smooth out anomalies and improve prediction accuracy.
@@ -237,7 +244,7 @@ The HSEM Working Mode Sensor supports multiple states to optimize your solar bat
 |------------------------------- |---------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------|
 | **Time Passed**                | The time has passed and no recommendations are given for the hour.              | When calculating the recommendations, this is the default recommendation for hours that have already passed during the day.  |
 | **Force Export**               | Forces battery charging when grid import prices are negative (i.e., you are paid to consume electricity), then exports stored energy to the grid for profit. | Beneficial when grid import prices are negative, allowing you to charge your battery at a profit and export energy.    |
-| **Force Batteries Charge**     | Charges battery during specified times, often when rates are low or solar is high.                                  | Preparing battery for high demand or taking advantage of low-cost charging times.                                      |
+| **Force Batteries Charge**      | Forces battery discharge to export excess capacity to the grid when economically beneficial.                        | Maximizing revenue from excess solar energy and preventing wasted battery capacity.                                    |
 | **EV Smart Charging**          | Avoids battery discharge when EV charger is active, ensuring solar or low-cost electricity fuels the EV.            | For households with EVs, ensuring EVs are charged without impacting battery reserves.                                  |
 | **Force Batteries Discharge**  | Discharges battery to supply power during high-cost periods, overriding other settings.                             | Reducing grid reliance during peak cost times or meeting specific power needs.                                         |
 | **Batteries Charge Solar**     | Charges battery from solar surplus when available.                                                                  | When solar production exceeds consumption, storing excess energy.                                                      |
@@ -339,6 +346,79 @@ Battery schedules are a core feature of HSEM, allowing you to automate when your
 
 **Example Schedule:**
 - Discharge battery from 17:00 to 21:00 if the price difference between charging and discharging exceeds your configured threshold.
+
+---
+
+## Excess Battery Export
+
+The Excess Battery Export feature automatically forces battery discharge to sell excess energy to the grid when economically beneficial, ensuring your battery capacity is not wasted and maximizing energy sales revenue.
+
+**Purpose:**
+- Maximize revenue by exporting excess battery capacity to the grid at optimal prices.
+- Prevent battery capacity from being wasted when you have more energy than needed for daily consumption.
+- Differentiate between solar-charged and grid-charged energy for better economic decisions.
+- Base pricing decisions on actual battery depreciation costs, not arbitrary thresholds.
+
+**How it Works:**
+
+1. **Calculate Required Battery:**
+   - HSEM calculates the minimum battery capacity needed to cover household consumption for the rest of the day.
+   - Includes a configurable safety buffer (default: 10%) to ensure adequate reserves for unexpected demand.
+
+2. **Identify Excess Capacity:**
+   - Compares current battery capacity against the calculated requirement.
+   - Any capacity above the requirement is marked as "excess" available for export.
+
+3. **Optimize Export Timing:**
+   - Identifies peak export price hours to maximize revenue.
+   - Respects battery maximum discharge rate to avoid overloading the system.
+   - Spreads discharge across multiple intervals if needed.
+
+4. **Differentiate Energy Source:**
+   - **Solar-charged battery:** Forces export at any positive export price (higher price = higher profit).
+   - **Grid-charged battery:** Only forces export if (export_price - import_price) ≥ configured threshold.
+   - This prevents selling grid-purchased energy at a loss.
+
+5. **Economic Threshold Calculation:**
+   - The price threshold is automatically calculated based on battery depreciation costs.
+   - Formula: Depreciation = (Battery_Purchase_Price × 0.30) / (Expected_Cycles × Usable_Capacity) + Conversion_Loss_Cost
+   - Users can view the recommended threshold during configuration.
+
+**Configuration Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| **Enable Excess Export** | Boolean | `false` | Enable or disable the excess export feature. |
+| **Discharge Buffer** | Percentage | `10%` | Safety buffer percentage to maintain battery reserves (0-50%). |
+| **Price Threshold** | EUR/kWh | Calculated | Minimum price difference required to export grid-charged battery (0.00-1.00). |
+| **Battery Purchase Price** | EUR | 48000 | Battery system purchase price (used to calculate depreciation). |
+| **Expected Cycles** | Number | 6000 | Expected battery cycle lifespan (used to calculate depreciation). |
+| **Conversion Loss** | Percentage | 10% | Battery conversion loss rate as percentage (used in threshold calculation). |
+
+**Example Scenarios:**
+
+**Scenario 1: Summer with High Solar Production**
+- Battery capacity: 100 kWh usable
+- Current state: 95 kWh
+- Consumption forecast (rest of day): 60 kWh
+- Buffer requirement: 10% = 10 kWh
+- Required capacity: 60 + 10 = 70 kWh
+- Excess capacity: 95 - 70 = 25 kWh available for export
+- Action: Export 25 kWh at peak prices (17:00-21:00)
+
+**Scenario 2: Grid-Charged Battery**
+- Battery was charged from grid at import price 0.15 EUR/kWh
+- Excess export available
+- Threshold: 0.10 EUR/kWh
+- If export price 0.25 EUR/kWh: profit = 0.25 - 0.15 = 0.10 EUR/kWh (meets threshold) → EXPORT
+- If export price 0.18 EUR/kWh: profit = 0.18 - 0.15 = 0.03 EUR/kWh (below threshold) → DON'T EXPORT
+
+**Best Practices:**
+- Enable this feature if you have variable export prices and often have battery capacity beyond daily needs.
+- Adjust the discharge buffer based on your comfort level (higher = more conservative, lower = more aggressive export).
+- Review the calculated price threshold during configuration; adjust if your battery economics differ significantly.
+- Allow HSEM to collect 14 days of data before relying solely on automated excess export decisions.
+- Monitor actual export revenue to ensure the feature is performing as expected.
 
 ---
 
