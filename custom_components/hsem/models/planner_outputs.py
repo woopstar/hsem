@@ -1,0 +1,192 @@
+"""Pure-Python dataclasses for HSEM planner outputs.
+
+These dataclasses represent every value that the planner produces after
+processing a :class:`~custom_components.hsem.models.planner_inputs.PlannerInput`.
+They carry *no* Home Assistant dependencies and can be compared, asserted on,
+and serialised in plain unit tests.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Any
+
+
+@dataclass
+class PlannedSlot:
+    """Planner decision for a single time slot.
+
+    This is a pure-Python counterpart to
+    :class:`~custom_components.hsem.models.hourly_recommendation.HourlyRecommendation`
+    that can be constructed and inspected without Home Assistant.
+
+    Attributes:
+        start:
+            Timezone-aware start of the slot.
+        end:
+            Timezone-aware end of the slot.
+        import_price:
+            Electricity import price in local currency/kWh.
+        export_price:
+            Electricity export price in local currency/kWh.
+        solcast_pv_estimate:
+            Forecast PV production in kWh for this slot.
+        avg_house_consumption:
+            Weighted (spike-aware) average house consumption in kWh.
+        avg_house_consumption_1d:
+            Raw 1-day average contribution in kWh.
+        avg_house_consumption_3d:
+            Raw 3-day average contribution in kWh.
+        avg_house_consumption_7d:
+            Raw 7-day average contribution in kWh.
+        avg_house_consumption_14d:
+            Raw 14-day average contribution in kWh.
+        estimated_net_consumption:
+            ``avg_house_consumption - solcast_pv_estimate`` in kWh.
+            Negative means solar surplus.
+        estimated_cost:
+            Estimated grid cost (positive = import cost, negative = export
+            revenue) in local currency for this slot.
+        estimated_battery_soc:
+            Estimated battery state-of-charge (%) at the *end* of the slot.
+        estimated_battery_capacity:
+            Estimated remaining usable battery capacity (kWh) at the *end*
+            of the slot.
+        batteries_charged:
+            Energy scheduled to be charged into the battery during this slot
+            (kWh, ≥ 0).
+        recommendation:
+            The ``Recommendations`` enum value chosen for this slot
+            (stored as its string value so the output stays framework-free)
+            or ``None`` if no decision has been made.
+    """
+
+    start: datetime
+    end: datetime
+    import_price: float = 0.0
+    export_price: float = 0.0
+    solcast_pv_estimate: float = 0.0
+    avg_house_consumption: float = 0.0
+    avg_house_consumption_1d: float = 0.0
+    avg_house_consumption_3d: float = 0.0
+    avg_house_consumption_7d: float = 0.0
+    avg_house_consumption_14d: float = 0.0
+    estimated_net_consumption: float = 0.0
+    estimated_cost: float = 0.0
+    estimated_battery_soc: float = 0.0
+    estimated_battery_capacity: float = 0.0
+    batteries_charged: float = 0.0
+    recommendation: str | None = None
+
+
+@dataclass
+class ChargeWindow:
+    """A contiguous block of slots assigned to battery charging.
+
+    Groups consecutive :class:`PlannedSlot` entries that share the same
+    charge recommendation so tests can reason about charge windows at a
+    higher level of abstraction.
+
+    Attributes:
+        start:
+            Start of the first charging slot.
+        end:
+            End of the last charging slot.
+        total_energy_kwh:
+            Total energy scheduled to be charged during this window.
+        avg_import_price:
+            Mean import price across all slots in the window.
+        recommendation:
+            The recommendation value that marks these slots (typically
+            ``"batteries_charge_grid"`` or ``"batteries_charge_solar"``).
+    """
+
+    start: datetime
+    end: datetime
+    total_energy_kwh: float = 0.0
+    avg_import_price: float = 0.0
+    recommendation: str = ""
+
+
+@dataclass
+class DischargeWindow:
+    """A contiguous block of slots assigned to battery discharging.
+
+    Attributes:
+        start:
+            Start of the first discharging slot.
+        end:
+            End of the last discharging slot.
+        avg_import_price:
+            Mean import price across all slots (proxy for discharge value).
+        recommendation:
+            The recommendation value that marks these slots (typically
+            ``"batteries_discharge_mode"`` or
+            ``"force_batteries_discharge"``).
+    """
+
+    start: datetime
+    end: datetime
+    avg_import_price: float = 0.0
+    recommendation: str = ""
+
+
+@dataclass
+class PlannerOutput:
+    """Complete output of one HSEM planning run.
+
+    Attributes:
+        slots:
+            Ordered list of per-slot decisions covering the full planning
+            horizon.  Ordered chronologically by ``start``.
+        charge_windows:
+            High-level view of charging windows derived from ``slots``.
+        discharge_windows:
+            High-level view of discharging windows derived from ``slots``.
+        current_recommendation:
+            Recommendation that would be applied *right now* (i.e. for the
+            slot whose ``start <= now < end``), or ``None`` if no matching
+            slot is found.
+        battery_soc_at_end:
+            Estimated battery SoC (%) at the end of the planning horizon.
+        missing_inputs:
+            Names / identifiers of any inputs that were absent or invalid
+            during planning.  An empty list means all inputs were present.
+        warnings:
+            Human-readable warning strings emitted during planning.
+        extra:
+            Arbitrary key-value pairs for debug / introspection purposes.
+    """
+
+    slots: list[PlannedSlot] = field(default_factory=list)
+    charge_windows: list[ChargeWindow] = field(default_factory=list)
+    discharge_windows: list[DischargeWindow] = field(default_factory=list)
+    current_recommendation: str | None = None
+    battery_soc_at_end: float = 0.0
+    required_capacity_kwh: float = 0.0
+    missing_inputs: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    extra: dict[str, Any] = field(default_factory=dict)
+
+    # ------------------------------------------------------------------
+    # Convenience helpers used by tests
+    # ------------------------------------------------------------------
+
+    def slots_with_recommendation(self, recommendation: str) -> list[PlannedSlot]:
+        """Return all slots whose recommendation equals *recommendation*."""
+        return [s for s in self.slots if s.recommendation == recommendation]
+
+    def charge_slot_count(self) -> int:
+        """Return the number of slots assigned to any type of charging."""
+        charge_values = {"batteries_charge_grid", "batteries_charge_solar"}
+        return sum(1 for s in self.slots if s.recommendation in charge_values)
+
+    def discharge_slot_count(self) -> int:
+        """Return the number of slots assigned to any type of discharging."""
+        discharge_values = {"batteries_discharge_mode", "force_batteries_discharge"}
+        return sum(1 for s in self.slots if s.recommendation in discharge_values)
+
+    def total_charged_energy_kwh(self) -> float:
+        """Sum of ``batteries_charged`` across all slots."""
+        return round(sum(s.batteries_charged for s in self.slots), 3)
