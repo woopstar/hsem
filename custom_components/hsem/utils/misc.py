@@ -110,6 +110,30 @@ def convert_to_int(state) -> int:
         return 0
 
 
+def convert_months_to_int(months: list) -> list[int]:
+    """Convert month values to integers.
+
+    Args:
+        months: List of month values (can be strings or integers)
+
+    Returns:
+        List of integer month values (1-12)
+
+    Raises:
+        ValueError: If any month is not a valid integer or outside range 1-12
+    """
+    result = []
+    for month in months:
+        try:
+            month_int = int(month)
+            if month_int < 1 or month_int > 12:
+                raise ValueError(f"Month must be between 1 and 12, got {month_int}")
+            result.append(month_int)
+        except (ValueError, TypeError) as e:
+            raise ValueError(f"Invalid month value: {month}. Error: {e}") from e
+    return result
+
+
 def convert_to_boolean(state) -> bool:
     """Resolve the input sensor state and cast it to a boolean."""
 

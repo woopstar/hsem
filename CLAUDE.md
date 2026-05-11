@@ -1,12 +1,15 @@
 # Claude Code Instructions for HSEM
 
-This document provides practical guidance for Claude Code (Claude-powered coding assistant) when working with the HSEM repository.
+This document provides practical guidance for Claude Code (Claude-powered coding assistant) when
+working with the HSEM repository.
 
-**Note:** This is a quick reference guide. For comprehensive rules, constraints, and standards, please refer to `AGENTS.md`.
+**Note:** This is a quick reference guide. For comprehensive rules, constraints, and standards,
+please refer to `AGENTS.md`.
 
 ## Quick Start
 
-1. **Read AGENTS.md first** — Understand the project's constraints, security rules, and Home Assistant compliance requirements
+1. **Read AGENTS.md first** — Understand the project's constraints, security rules, and Home
+   Assistant compliance requirements
 2. **Verify Python 3.13** — Ensure you're using Python 3.13 (see `.python-version`)
 3. **Create a feature branch** — Use format: `feat/<issue-number>-<description>`
 4. **Make focused changes** — Solve one issue at a time
@@ -17,11 +20,13 @@ This document provides practical guidance for Claude Code (Claude-powered coding
 ## Core Principles
 
 1. **One Issue Per Session**
+
    - Focus on a single GitHub issue at a time
    - Do not combine multiple issues in one session
    - Reference issue number in commits and PR description
 
 2. **Preserve Existing Behavior**
+
    - Do not refactor unrelated code
    - Do not modify planner logic or safety features unless specifically requested
    - Do not reformat entire directories unless required for tooling setup
@@ -33,6 +38,38 @@ This document provides practical guidance for Claude Code (Claude-powered coding
    - Write docstrings for all public modules, classes, and functions
    - Write tests for new functionality
    - Follow PEP 8 and PEP 257
+
+## Utility Function Centralization Rule
+
+**CRITICAL: Check for Code Duplication FIRST**
+
+When implementing a utility or helper function:
+
+1. **Search first**: Check if similar functionality exists in `utils/misc.py` or other utils modules
+2. **If used 2+ times**: The function MUST live in utils, NOT in multiple modules
+3. **Never duplicate**: Create the function in the appropriate utils module, then import it
+   everywhere
+4. **DRY Principle**: Do not repeat utility logic across multiple files
+
+**Example of WRONG approach (creates duplicates):**
+
+- Create `_convert_months_to_int()` in `flows/months.py`
+- Create `_convert_month_list_to_int()` in `working_mode_sensor.py`
+- ❌ Result: Two functions doing the same thing in different places
+
+**Example of CORRECT approach:**
+
+- Create `convert_months_to_int()` in `utils/misc.py` (centralized, public)
+- Import it in `flows/months.py`:
+  `from custom_components.hsem.utils.misc import convert_months_to_int`
+- Import it in `working_mode_sensor.py`:
+  `from custom_components.hsem.utils.misc import convert_months_to_int`
+- ✅ Result: Single source of truth, easier to maintain
+
+**Common mistake to avoid:**
+
+- Don't create private versions (`_function_name`) in multiple modules thinking they're isolated
+- Private functions should still be centralized if used in 2+ places
 
 ## Development Workflow
 
@@ -69,7 +106,8 @@ git push origin feat/<issue-number>-<description>
 Ensure your changes follow Home Assistant integration standards:
 
 - **Architecture**: Use config entries, setup/unload flows, and platform forwarding patterns
-- **Entities**: Implement entity model conventions (state, availability, device info, unique IDs, naming)
+- **Entities**: Implement entity model conventions (state, availability, device info, unique IDs,
+  naming)
 - **Data Updates**: Use `DataUpdateCoordinator` for periodic polling when needed
 - **Configuration**: Maintain `config_flow`, diagnostics, and translations as needed
 - **Quality**: Target at least Silver quality, aim for Gold
@@ -101,7 +139,8 @@ git status
 pre-commit run --all-files
 ```
 
-**If any of these checks fail, fix them before committing. Do not submit a PR with formatting or linting issues.**
+**If any of these checks fail, fix them before committing. Do not submit a PR with formatting or
+linting issues.**
 
 ## Type Hints and Documentation
 
@@ -159,6 +198,7 @@ pytest tests/test_module.py::test_function_name
 ```
 
 **Test guidelines:**
+
 - Use pytest as the test framework
 - Place tests in the `tests/` directory following the same structure as the source
 - Use meaningful test names that describe what is being tested
@@ -167,29 +207,20 @@ pytest tests/test_module.py::test_function_name
 
 ## What to Do
 
-✅ Focus on the specific issue assigned  
-✅ Use Python 3.13 and pass all ruff quality checks  
-✅ Write clear, maintainable code with type hints  
-✅ Include tests for new features and behavior changes  
-✅ Format and lint code before every commit (`ruff format .` then `ruff check . --fix`)  
-✅ Ask for clarification if requirements are unclear  
-✅ Document complex logic with comments  
-✅ Keep commits atomic and focused  
-✅ Reference `AGENTS.md` for comprehensive rules  
+✅ Focus on the specific issue assigned ✅ Use Python 3.13 and pass all ruff quality checks ✅ Write
+clear, maintainable code with type hints ✅ Include tests for new features and behavior changes ✅
+Format and lint code before every commit (`ruff format .` then `ruff check . --fix`) ✅ Ask for
+clarification if requirements are unclear ✅ Document complex logic with comments ✅ Keep commits
+atomic and focused ✅ Reference `AGENTS.md` for comprehensive rules
 
 ## What to Avoid
 
-❌ Submitting a PR without running `ruff format .` first  
-❌ Ignoring ruff linting warnings or errors  
-❌ Using Python versions other than 3.13  
-❌ Refactoring unrelated code  
-❌ Changing planner or safety features without explicit issue  
-❌ Reformatting code outside your changes  
-❌ Adding new dependencies without justification  
-❌ Changing logging levels or sensitive output  
-❌ Modifying configuration without issue requirement  
-❌ Committing secrets, API keys, or credentials  
-❌ Merging PRs without explicit permission  
+❌ Submitting a PR without running `ruff format .` first ❌ Ignoring ruff linting warnings or errors
+❌ Using Python versions other than 3.13 ❌ Refactoring unrelated code ❌ Changing planner or safety
+features without explicit issue ❌ Reformatting code outside your changes ❌ Adding new dependencies
+without justification ❌ Changing logging levels or sensitive output ❌ Modifying configuration
+without issue requirement ❌ Committing secrets, API keys, or credentials ❌ Merging PRs without
+explicit permission
 
 ## Security Considerations
 

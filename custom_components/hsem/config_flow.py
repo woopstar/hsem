@@ -38,7 +38,6 @@ from custom_components.hsem.flows.init import (
 from custom_components.hsem.flows.months import (
     get_months_schema,
     validate_months_input,
-    _convert_months_to_int,
 )
 from custom_components.hsem.flows.power import (
     get_power_step_schema,
@@ -53,6 +52,7 @@ from custom_components.hsem.flows.weighted_values import (
     validate_weighted_values_input,
 )
 from custom_components.hsem.options_flow import HSEMOptionsFlow
+from custom_components.hsem.utils.misc import convert_months_to_int
 
 
 class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -115,7 +115,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors = await validate_months_input(self.hass, user_input)
             if not errors:
                 # Convert winter months to integers
-                winter_months = _convert_months_to_int(
+                winter_months = convert_months_to_int(
                     user_input.get("hsem_months_winter", [])
                 )
                 self._user_input.update(user_input)

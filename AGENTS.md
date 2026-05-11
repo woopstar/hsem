@@ -1,6 +1,8 @@
 # AGENTS.md — Home Assistant Solar Energy Management
 
-This document is intended for AI coding agents (e.g., OpenAI Copilot, Claude Code) working in this repository. It defines setup, constraints, workflow, safety rules, and quality expectations for HSEM (Home Assistant Solar Energy Management) development.
+This document is intended for AI coding agents (e.g., OpenAI Copilot, Claude Code) working in this
+repository. It defines setup, constraints, workflow, safety rules, and quality expectations for HSEM
+(Home Assistant Solar Energy Management) development.
 
 Agents must follow this document strictly.
 
@@ -15,10 +17,13 @@ Agents must follow this document strictly.
 ## No-Assumption Rule (Facts Only)
 
 If required technical details are missing, the agent MUST:
-- Locate the information inside this repository, Home Assistant documentation, or referenced dependencies, or
+
+- Locate the information inside this repository, Home Assistant documentation, or referenced
+  dependencies, or
 - Explicitly request clarification before implementing a dependent solution.
 
 The agent must NOT:
+
 - Invent API endpoints or protocols
 - Guess authentication or service flows
 - Introduce undocumented environment variables
@@ -48,6 +53,7 @@ The agent must use the exact versions defined in the project configuration files
 Solar energy systems must be treated as external hardware interfaces.
 
 The agent must:
+
 - Avoid changes that require physical hardware validation unless:
   - Proper mocks are provided, or
   - A clear manual test plan is included.
@@ -58,6 +64,7 @@ The agent must:
 - Document assumptions about sensor data accuracy and availability.
 
 If credentials, API keys, or tokens are required:
+
 - Never commit them.
 - Never log them in plaintext.
 - Always load them from environment variables or secure storage.
@@ -69,29 +76,66 @@ If credentials, API keys, or tokens are required:
 - Prefer structured errors and logging where applicable.
 - Fail explicitly rather than silently ignoring errors.
 - Surface actionable error messages that help users understand and resolve issues.
-- ALWAYS test for race conditions in relevant async/concurrent flows before considering a change complete.
+- ALWAYS test for race conditions in relevant async/concurrent flows before considering a change
+  complete.
 
 ## Code Standards
 
 - Follow existing project formatting and naming conventions.
-- Do not introduce large refactors in the same change as functional modifications unless explicitly requested.
+- Do not introduce large refactors in the same change as functional modifications unless explicitly
+  requested.
 - Keep commits small and focused.
 - Avoid introducing new dependencies unless justified and discussed with the user.
 - Apply Python style rules as defined in the project configuration.
 - Run formatting and linting tools locally before committing.
+
+### Utility Function Centralization (No Duplication Rule)
+
+Utility and helper functions must NEVER be duplicated across modules. Follow these rules:
+
+**Rule: If a utility function is used in 2 or more modules, it belongs in `utils/`**
+
+1. **Before writing any utility function**, search existing code:
+
+   - Check `utils/misc.py` for similar functions
+   - Check other `utils/*.py` modules
+   - Search for regex patterns that might match the functionality
+
+2. **If found**: Import and reuse the existing function
+
+   - Never create a duplicate with a different name
+   - Never create a local version in your module
+
+3. **If NOT found AND will be used 2+ times**: Create in utils
+
+   - Add to `utils/misc.py` (or appropriate utils module)
+   - Use public name (no leading underscore for functions meant to be reused)
+   - Document with proper docstring
+   - Import in all locations that need it
+
+4. **If a one-off helper** that's ONLY used in one module:
+   - Can be private (`_function_name()`) in that module
+   - But if needs grow, refactor to utils immediately
+
+**Real Example - Month Conversion (Anti-pattern):**
 
 ## Home Assistant Compliance
 
 The integration MUST comply with Home Assistant integration standards and developer guidelines.
 
 The agent must:
-- Follow Home Assistant architecture patterns for config entries, setup/unload flows, and platform forwarding.
-- Implement entities according to Home Assistant entity model conventions (state, availability, device info, unique IDs, and naming).
+
+- Follow Home Assistant architecture patterns for config entries, setup/unload flows, and platform
+  forwarding.
+- Implement entities according to Home Assistant entity model conventions (state, availability,
+  device info, unique IDs, and naming).
 - Use `DataUpdateCoordinator` where periodic or shared polling is required.
 - Provide and maintain `config_flow`, diagnostics/repair handling (when relevant), and translations.
 - Keep `manifest.json` and supported features aligned with Home Assistant requirements.
-- Ensure changes maintain at least Home Assistant Silver quality expectations, and move toward Gold where feasible.
-- Add or update tests for behavior changes, especially setup flows, coordinator behavior, and entity state handling.
+- Ensure changes maintain at least Home Assistant Silver quality expectations, and move toward Gold
+  where feasible.
+- Add or update tests for behavior changes, especially setup flows, coordinator behavior, and entity
+  state handling.
 
 ## Git Workflow
 
@@ -105,13 +149,16 @@ docs/<issue-number>-<description>    - for documentation updates
 refactor/<issue-number>-<description> - for code refactoring
 ```
 
-All new branches MUST be based on the default branch (typically `main` or `master`), unless the user explicitly instructs otherwise.
+All new branches MUST be based on the default branch (typically `main` or `master`), unless the user
+explicitly instructs otherwise.
 
 All code changes MUST start from a dedicated branch following the naming convention above.
 
-The agent must NEVER push directly to the default branch and NEVER merge directly without explicit user permission.
+The agent must NEVER push directly to the default branch and NEVER merge directly without explicit
+user permission.
 
 Before creating a commit, the agent MUST report the result of:
+
 - `git status`
 - Any local linting or formatting checks
 - Relevant test runs for the change
@@ -121,6 +168,7 @@ Before creating a commit, the agent MUST report the result of:
 **REQUIRED: Code Quality Before Submission**
 
 Before submitting a PR, the agent MUST:
+
 - Run `ruff check . --fix` to lint and auto-fix issues
 - Run `ruff format .` to format code according to project standards
 - Run all tests locally: `pytest tests/`
@@ -128,6 +176,7 @@ Before submitting a PR, the agent MUST:
 - Commit changes with: `git commit -m "<type>(<scope>): <description>"`
 
 Each PR should include:
+
 - A clear, descriptive title following Conventional Commits format
 - A description of changes made
 - Test strategy (automated test coverage or manual testing plan)
@@ -138,15 +187,18 @@ Each PR should include:
 The agent must NOT merge a PR without explicit user permission.
 
 Before merging any PR, the agent MUST ensure:
+
 - All required CI/status checks are green/passing (including ruff format check)
 - Code review requirements are met (if applicable)
 - Tests are passing locally and in CI
 
-When a branch is merged, it should also be deleted locally and remotely after confirming changes are available in the default branch.
+When a branch is merged, it should also be deleted locally and remotely after confirming changes are
+available in the default branch.
 
 ## Security Constraints
 
 The agent must NOT:
+
 - Introduce telemetry without explicit approval
 - Send user data to third-party services
 - Add undocumented network endpoints
@@ -166,6 +218,7 @@ All cloud endpoints or external integrations must be clearly documented.
 ## When in Doubt
 
 The agent must stop and request clarification regarding:
+
 - Energy calculation logic or assumptions
 - Home Assistant integration architecture decisions
 - CI/CD expectations or tool configuration
@@ -174,6 +227,7 @@ The agent must stop and request clarification regarding:
 ## Definition of Done
 
 A change is considered complete when:
+
 - All relevant tests pass locally and in CI
 - New behavior is covered by tests (where feasible)
 - Code follows project style and conventions (enforced by ruff)
