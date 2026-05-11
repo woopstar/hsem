@@ -12,7 +12,6 @@ catch that class of mistake at CI time before it reaches production.
 import importlib
 import inspect
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -67,9 +66,7 @@ class TestFlowModulesImportCleanly:
         try:
             importlib.import_module(module_path)
         except ImportError as exc:
-            raise AssertionError(
-                f"Failed to import '{module_path}': {exc}"
-            ) from exc
+            raise AssertionError(f"Failed to import '{module_path}': {exc}") from exc
 
     def test_batteries_excess_export_importable(self):
         self._assert_importable("custom_components.hsem.flows.batteries_excess_export")
@@ -118,9 +115,7 @@ class TestUtilModulesImportCleanly:
         try:
             importlib.import_module(module_path)
         except ImportError as exc:
-            raise AssertionError(
-                f"Failed to import '{module_path}': {exc}"
-            ) from exc
+            raise AssertionError(f"Failed to import '{module_path}': {exc}") from exc
 
     def test_misc_importable(self):
         self._assert_importable("custom_components.hsem.utils.misc")
@@ -155,9 +150,7 @@ class TestTopLevelModulesImportCleanly:
         try:
             importlib.import_module("custom_components.hsem.options_flow")
         except ImportError as exc:
-            raise AssertionError(
-                f"options_flow failed to import: {exc}"
-            ) from exc
+            raise AssertionError(f"options_flow failed to import: {exc}") from exc
 
 
 # ---------------------------------------------------------------------------
@@ -242,12 +235,12 @@ class TestOptionsFlowUsesCorrectImport:
         # The function bound in options_flow's namespace must be the same object
         # as the one in utils.misc — not a re-export from flows.months.
         options_fn = getattr(options_flow, "convert_months_to_int", None)
-        assert options_fn is not None, (
-            "options_flow does not have 'convert_months_to_int' in its namespace"
-        )
-        assert options_fn is misc.convert_months_to_int, (
-            "'convert_months_to_int' in options_flow is not the function from utils.misc"
-        )
+        assert (
+            options_fn is not None
+        ), "options_flow does not have 'convert_months_to_int' in its namespace"
+        assert (
+            options_fn is misc.convert_months_to_int
+        ), "'convert_months_to_int' in options_flow is not the function from utils.misc"
 
     def test_options_flow_does_not_import_from_flows_months_private(self):
         """options_flow's source must not reference _convert_months_to_int."""
