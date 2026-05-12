@@ -63,6 +63,7 @@ from custom_components.hsem.models.planner_inputs import (
 )
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.planner import run_planner
+from custom_components.hsem.utils.inverter_verify import CycleApplySummary
 from custom_components.hsem.utils.logger import async_logger
 from custom_components.hsem.utils.misc import convert_to_float, convert_to_int
 from custom_components.hsem.utils.recommendations import Recommendations
@@ -108,6 +109,9 @@ class CoordinatorData:
     state: str | None = None
     last_updated: str | None = None
     next_update: str | None = None
+    #: Aggregated write-and-verify results from the most recent hardware apply cycle.
+    #: ``None`` before the first hardware-write cycle completes.
+    apply_summary: CycleApplySummary | None = None
 
 
 # ---------------------------------------------------------------------------

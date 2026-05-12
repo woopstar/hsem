@@ -4,6 +4,9 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from custom_components.hsem.const import DOMAIN
 from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
+from custom_components.hsem.custom_sensors.applier_status_sensor import (
+    HSEMApplierStatusSensor,
+)
 from custom_components.hsem.custom_sensors.battery_soc_sensor import (
     HSEMBatterySoCSensor,
 )
@@ -75,6 +78,9 @@ async def async_setup_entry(
     # Working-mode sensor — subscribes to coordinator updates and owns hardware writes.
     working_mode_sensor = HSEMWorkingModeSensor(config_entry, coordinator)
 
+    # Applier-status sensor — exposes write-and-verify results per cycle.
+    applier_status_sensor = HSEMApplierStatusSensor(config_entry, coordinator)
+
     async_add_entities(
         [
             degraded_mode_sensor,
@@ -89,6 +95,7 @@ async def async_setup_entry(
             battery_soc_sensor,
             force_mode_sensor,
             ev_charging_sensor,
+            applier_status_sensor,
             working_mode_sensor,
         ]
     )
