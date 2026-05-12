@@ -86,8 +86,9 @@ If credentials, API keys, or tokens are required:
   requested.
 - Keep commits small and focused.
 - Avoid introducing new dependencies unless justified and discussed with the user.
-- Apply Python style rules as defined in the project configuration.
-- Run formatting and linting tools locally before committing.
+- Apply Python style rules as defined in `pyproject.toml` and `tox.ini`.
+- Run `tox -e lint` locally before committing (runs isort, black, ruff format, ruff check).
+- See `CODE_QUALITY_STANDARDS.md` for full quality rules and conventions.
 - **Never use `==` or `!=` to compare floating-point values.** In production code use an epsilon
   guard (e.g. `abs(x) > 1e-9` instead of `x != 0`). In tests always use `pytest.approx()`.
 
@@ -171,8 +172,7 @@ Before creating a commit, the agent MUST report the result of:
 
 Before submitting a PR, the agent MUST:
 
-- Run `ruff check . --fix` to lint and auto-fix issues
-- Run `ruff format .` to format code according to project standards
+- Run `tox -e lint` to format and lint all code (runs isort, black, ruff format, and ruff check)
 - Run all tests locally: `pytest tests/`
 - Verify `git status` shows only intended changes
 - Commit changes with: `git commit -m "<type>(<scope>): <description>"`
@@ -205,7 +205,7 @@ PR after every meaningful commit:
 
 Before merging any PR, the agent MUST ensure:
 
-- All required CI/status checks are green/passing (including ruff format check)
+- All required CI/status checks are green/passing (including lint checks)
 - Code review requirements are met (if applicable)
 - Tests are passing locally and in CI
 
@@ -247,12 +247,11 @@ A change is considered complete when:
 
 - All relevant tests pass locally and in CI
 - New behavior is covered by tests (where feasible)
-- Code follows project style and conventions (enforced by ruff)
-- **Ruff format has been applied** (`ruff format .`)
-- **Ruff lint checks pass** (`ruff check .`)
+- Code follows project style and conventions (enforced by isort, black, and ruff)
+- **All lint checks pass** (`tox -e lint` — runs isort, black, ruff format, ruff check)
 - Documentation is updated if configuration, API, or user-facing changes are made
 - No secrets are committed
-- All linting and formatting checks pass (pre-commit and CI)
+- All linting and formatting checks pass (`tox -e lint` and CI)
 - The implementation adheres strictly to the No-Assumption Rule
 - The change aligns with Home Assistant integration standards
 - Code quality is enhanced (no technical debt introduced)

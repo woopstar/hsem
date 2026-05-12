@@ -7,7 +7,6 @@ integration tests; here we only test the deterministic helper.
 
 from __future__ import annotations
 
-
 from custom_components.hsem.custom_sensors.applier import _parse_power_control_pct
 
 

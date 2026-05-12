@@ -15,7 +15,6 @@ from custom_components.hsem.flows.batteries_excess_export import (
 )
 from custom_components.hsem.utils.misc import calculate_recommended_threshold
 
-
 # ---------------------------------------------------------------------------
 # Default constant value tests
 # ---------------------------------------------------------------------------

@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from homeassistant.exceptions import HomeAssistantError
+
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.sensor_config import SensorConfig
 
@@ -20,8 +22,6 @@ from custom_components.hsem.models.sensor_config import SensorConfig
 # in planner.slot_population so the logic lives in exactly one place.
 from custom_components.hsem.planner.slot_population import weighted_avg_consumption
 from custom_components.hsem.utils.logger import async_logger
-from homeassistant.exceptions import HomeAssistantError
-
 from custom_components.hsem.utils.misc import (
     async_resolve_entity_id_from_unique_id,
     convert_to_float,

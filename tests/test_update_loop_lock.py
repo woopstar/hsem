@@ -13,7 +13,6 @@ import asyncio
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Minimal stub that mimics only the locking API of HSEMWorkingModeSensor
 # ---------------------------------------------------------------------------
@@ -70,10 +69,11 @@ class TestUpdateLoopLock:
         end, so the only thing we need to confirm here is that the production
         class actually initialises the lock attribute.
         """
+        import inspect
+
         from custom_components.hsem.custom_sensors.working_mode_sensor import (
             HSEMWorkingModeSensor,
         )
-        import inspect
 
         source = inspect.getsource(HSEMWorkingModeSensor.__init__)
 

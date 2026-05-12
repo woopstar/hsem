@@ -6,11 +6,11 @@ import homeassistant.util.dt as dt_util
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.components.sensor.const import SensorStateClass
 from homeassistant.const import UnitOfEnergy
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import (
     async_track_state_change_event,
     async_track_time_interval,
 )
-from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from custom_components.hsem.entity import HSEMEntity

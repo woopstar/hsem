@@ -18,7 +18,6 @@ import pytest
 
 from custom_components.hsem.utils.misc import convert_to_float
 
-
 # ---------------------------------------------------------------------------
 # convert_to_float — return None for invalid / missing values
 # ---------------------------------------------------------------------------
@@ -171,10 +170,11 @@ class TestRecommendationResolverNullSafety:
     """resolve_current_recommendation must not raise when import price is None."""
 
     def _make_rec(self):
+        from datetime import UTC, datetime
+
         from custom_components.hsem.models.hourly_recommendation import (
             HourlyRecommendation,
         )
-        from datetime import datetime, UTC
 
         now = datetime(2024, 6, 15, 14, 0, tzinfo=UTC)
         end = datetime(2024, 6, 15, 15, 0, tzinfo=UTC)

@@ -6,6 +6,7 @@ tested with plain dataclasses — no Home Assistant required.
 
 from __future__ import annotations
 
+from datetime import UTC
 
 from custom_components.hsem.custom_sensors.recommendation_resolver import (
     resolve_current_recommendation,
@@ -13,8 +14,6 @@ from custom_components.hsem.custom_sensors.recommendation_resolver import (
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.live_state import EVLiveState, LiveState
 from custom_components.hsem.utils.recommendations import Recommendations
-from datetime import UTC
-
 
 # ---------------------------------------------------------------------------
 # Helpers

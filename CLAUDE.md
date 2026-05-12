@@ -13,7 +13,7 @@ please refer to `AGENTS.md`.
 2. **Verify Python 3.13** — Ensure you're using Python 3.13 (see `.python-version`)
 3. **Create a feature branch** — Use format: `feat/<issue-number>-<description>`
 4. **Make focused changes** — Solve one issue at a time
-5. **Run ruff before committing** — Format AND lint before any commit
+5. **Run `tox -e lint` before committing** — Runs isort, black, ruff format, and ruff check in one command
 6. **Run all checks** — Linting, formatting, tests, type checking
 7. **Submit PR for review** — Do not merge without explicit permission
 
@@ -33,11 +33,12 @@ please refer to `AGENTS.md`.
    - Keep changes focused and minimal
 
 3. **Code Quality**
-   - Run linting and formatting before committing
+   - Run `tox -e lint` before committing (single command: isort + black + ruff format + ruff check)
    - Include type hints for all public functions
    - Write docstrings for all public modules, classes, and functions
    - Write tests for new functionality
    - Follow PEP 8 and PEP 257
+   - See `CODE_QUALITY_STANDARDS.md` for full standards and conventions
 
 ## Utility Function Centralization Rule
 
@@ -95,13 +96,10 @@ git checkout -b feat/<issue-number>-<description>
 
 # 3. Make your changes and write tests
 
-# 4. Format code with ruff (REQUIRED)
-ruff format .
+# 4. Format and lint (REQUIRED - single command)
+tox -e lint
 
-# 5. Lint and auto-fix
-ruff check . --fix
-
-# 6. Run tests
+# 5. Run tests
 pytest tests/
 
 # 7. Verify changes
@@ -154,22 +152,19 @@ See `AGENTS.md` → **Home Assistant Compliance** section for detailed requireme
 **REQUIRED before every commit:**
 
 ```bash
-# Step 1: Format code with ruff (MUST be done)
-ruff format .
+# Step 1: Format and lint (MUST be done — isort + black + ruff format + ruff check)
+tox -e lint
 
-# Step 2: Lint and auto-fix
-ruff check . --fix
-
-# Step 3: Run tests
+# Step 2: Run tests
 pytest tests/
 
-# Step 4: Type checking
+# Step 3: Type checking
 mypy custom_components tests
 
-# Step 5: Verify no unintended changes
+# Step 4: Verify no unintended changes
 git status
 
-# Step 6: Use pre-commit hooks (optional, but recommended)
+# Step 5: Use pre-commit hooks (optional, but recommended)
 pre-commit run --all-files
 ```
 
@@ -249,7 +244,7 @@ atomic and focused ✅ Reference `AGENTS.md` for comprehensive rules
 
 ## What to Avoid
 
-❌ Submitting a PR without running `ruff format .` first ❌ Ignoring ruff linting warnings or errors
+❌ Submitting a PR without running `tox -e lint` first ❌ Ignoring lint warnings or errors
 ❌ Using Python versions other than 3.13 ❌ Refactoring unrelated code ❌ Changing planner or safety
 features without explicit issue ❌ Reformatting code outside your changes ❌ Adding new dependencies
 without justification ❌ Changing logging levels or sensitive output ❌ Modifying configuration
@@ -269,7 +264,7 @@ explicit permission
 - **General rules and constraints**: See `AGENTS.md`
 - **Home Assistant requirements**: See `AGENTS.md` → **Home Assistant Compliance**
 - **Python version issues**: Ensure you're using Python 3.13 from `.python-version`
-- **Ruff format errors**: Run `ruff check . --fix` to auto-fix most issues
+- **Lint/format errors**: Run `tox -e lint` to auto-fix most issues (isort, black, ruff format, ruff check)
 - **Unclear requirements**: Stop and ask for clarification before implementing
 - **Design decisions**: Refer to `docs/` directory for architecture notes
 - **Code quality**: When in doubt, run the full pre-commit checklist

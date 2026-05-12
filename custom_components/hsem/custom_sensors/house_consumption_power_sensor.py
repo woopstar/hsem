@@ -27,16 +27,15 @@ from datetime import timedelta
 from typing import Any
 
 import homeassistant.util.dt as dt_util
-
 import voluptuous as vol
 from homeassistant.components.sensor import SensorEntity
-from homeassistant.exceptions import HomeAssistantError
 from homeassistant.components.sensor.const import SensorDeviceClass
 from homeassistant.components.utility_meter.const import (
     DATA_TARIFF_SENSORS,
     DATA_UTILITY,
 )
 from homeassistant.const import UnitOfPower, UnitOfTime
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.restore_state import RestoreEntity
 

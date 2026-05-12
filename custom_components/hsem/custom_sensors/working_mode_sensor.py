@@ -18,7 +18,6 @@ from datetime import timedelta
 from typing import Any
 
 import homeassistant.util.dt as dt_util
-
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.const import MATCH_ALL
 from homeassistant.helpers.event import (

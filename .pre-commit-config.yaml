@@ -11,14 +11,15 @@ repos:
       - id: debug-statements
       - id: mixed-line-ending
 
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.3.5
+  - repo: local
     hooks:
-      - id: ruff
-        name: Lint with Ruff
-        args: [--fix]
-      - id: ruff-format
-        name: Format with Ruff
+      - id: lint
+        name: Format and lint (isort + black + ruff)
+        language: system
+        entry: tox
+        args: [-e, lint]
+        pass_filenames: false
+        always_run: true
 
   - repo: https://github.com/pre-commit/mirrors-prettier
     rev: v3.1.0

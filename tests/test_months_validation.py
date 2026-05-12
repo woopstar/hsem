@@ -5,9 +5,7 @@ from logging.handlers import RotatingFileHandler
 
 import pytest
 
-from custom_components.hsem.flows.months import (
-    validate_months_input,
-)
+from custom_components.hsem.flows.months import validate_months_input
 from custom_components.hsem.utils.misc import convert_months_to_int
 
 # Monkey-patch RotatingFileHandler to use NullHandler during tests

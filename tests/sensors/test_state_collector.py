@@ -20,7 +20,6 @@ from custom_components.hsem.custom_sensors.state_collector import (
 from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.sensor_config import SensorConfig
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
