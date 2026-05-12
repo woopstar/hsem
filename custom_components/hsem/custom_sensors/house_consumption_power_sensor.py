@@ -23,8 +23,10 @@ Functions:
 """
 
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from typing import Any
+
+import homeassistant.util.dt as dt_util
 
 import voluptuous as vol
 from homeassistant.components.sensor import SensorEntity
@@ -223,7 +225,7 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
         """Handle updates to the source sensor."""
         self._state = None
 
-        now = datetime.now(UTC)
+        now = dt_util.now()
 
         # Ensure config flow settings are reloaded if it changed.
         self._update_settings()

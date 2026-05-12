@@ -14,9 +14,10 @@ The heavy lifting is fully delegated to the pipeline modules:
 """
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any
-from zoneinfo import ZoneInfo
+
+import homeassistant.util.dt as dt_util
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.const import MATCH_ALL
@@ -92,7 +93,6 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self.entity_id = get_working_mode_sensor_entity_id()
         self._name = get_working_mode_sensor_name()
 
-        self._tz = None
         self._last_updated = None
         self._next_update = None
 
@@ -288,7 +288,6 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
     async def async_added_to_hass(self) -> None:
         """Handle the sensor being added to Home Assistant."""
-        self._tz = ZoneInfo(str(self.hass.config.time_zone))
         await self._async_handle_update(None)
         async_track_time_change(
             self.hass,
@@ -325,7 +324,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
     async def _async_run_update_cycle(self, event=None) -> None:
         """Execute the full collect → populate → plan → apply → resolve cycle."""
         await async_logger(self, f"------ Updating {self._name} state...")
-        now = datetime.now().astimezone(self._tz)
+        now = dt_util.now()
 
         # 1. Reload config
         self._cfg = build_sensor_config(self._config_entry)
@@ -381,7 +380,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         else:
             # 7. Populate prices and Solcast
             await async_populate_price_and_solcast(
-                self, self._hourly_recommendations, cfg, self._tz
+                self, self._hourly_recommendations, cfg, now.tzinfo
             )
 
             # 8. Run the pure-Python planner engine
@@ -445,7 +444,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
     def _build_planner_input(self) -> PlannerInput:
         """Assemble a :class:`PlannerInput` from the current HA-fetched state."""
         cfg = self._cfg
-        now = datetime.now().astimezone(self._tz)
+        now = dt_util.now()
 
         seen_hours: set[int] = set()
         consumption_averages: list[HourlyConsumptionAverage] = []
@@ -568,7 +567,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self, interval_minutes: int, total_hours: int
     ) -> list[HourlyRecommendation]:
         """Generate empty recommendation slots from midnight for ``total_hours`` hours."""
-        now = datetime.now().astimezone(self._tz)
+        now = dt_util.now()
         start_time = now.replace(hour=0, minute=0, second=0, microsecond=0)
         steps = int((total_hours * 60) / interval_minutes)
 
@@ -607,7 +606,7 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         if self._timer_interval != interval:
             self._timer_interval = interval
             await self._async_register_timer(interval)
-        self._next_update = (datetime.now().astimezone(self._tz) + interval).isoformat()
+        self._next_update = (dt_util.now() + interval).isoformat()
 
     async def _async_register_timer(self, interval: timedelta) -> None:
         """Cancel any existing timer and register a new periodic one."""
