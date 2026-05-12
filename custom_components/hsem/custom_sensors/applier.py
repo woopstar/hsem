@@ -41,6 +41,7 @@ from custom_components.hsem.const import (
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.sensor_config import SensorConfig
+from custom_components.hsem.utils.degraded_mode import hardware_writes_allowed
 from custom_components.hsem.utils.huawei import (
     async_set_forcible_discharge,
     async_set_grid_export_power_pct,
@@ -81,6 +82,11 @@ async def async_apply_inverter_power_control(
     within tolerance.  If any write fails all retries, further writes within this
     cycle are blocked and the failure is recorded in the returned summary.
 
+    This function includes its own safety gate as defense-in-depth.  Callers
+    (``working_mode_sensor``) are expected to gate writes too, but this
+    secondary check ensures no write ever reaches the inverter when
+    ``cfg.read_only`` is ``True`` or the degraded mode is ``Error``.
+
     Args:
         sensor: ``HSEMWorkingModeSensor`` instance for HA access and logging.
         cfg: Current sensor configuration.
@@ -88,9 +94,24 @@ async def async_apply_inverter_power_control(
 
     Returns:
         :class:`CycleApplySummary` with one :class:`ApplyResult` per inverter
-        write attempted.
+        write attempted.  Returns an empty summary immediately when blocked.
     """
     summary = CycleApplySummary()
+
+    # Defense-in-depth: block writes if read_only or degraded mode is Error.
+    if cfg.read_only:
+        await async_logger(
+            sensor,
+            "async_apply_inverter_power_control: skipped — read_only=True",
+        )
+        return summary
+    if not hardware_writes_allowed(live.degraded_mode):
+        await async_logger(
+            sensor,
+            f"async_apply_inverter_power_control: skipped — degraded mode: {live.degraded_mode.value}",
+            "warning",
+        )
+        return summary
 
     export_price = live.energi_data_service_export_price
     min_price = cfg.energi_data_service_export_min_price
@@ -208,9 +229,25 @@ async def async_apply_battery_settings(
 
     Returns:
         :class:`CycleApplySummary` with one :class:`ApplyResult` per write
-        attempted.
+        attempted.  Returns an empty summary immediately when blocked.
     """
     summary = CycleApplySummary()
+
+    # Defense-in-depth: block writes if read_only or degraded mode is Error.
+    if cfg.read_only:
+        await async_logger(
+            sensor,
+            "async_apply_battery_settings: skipped — read_only=True",
+        )
+        return summary
+    if not hardware_writes_allowed(live.degraded_mode):
+        await async_logger(
+            sensor,
+            f"async_apply_battery_settings: skipped — degraded mode: {live.degraded_mode.value}",
+            "warning",
+        )
+        return summary
+
     tou_modes = None
     working_mode = None
 

@@ -640,6 +640,10 @@ class TestMockServiceCalls:
 
         with (
             patch(
+                "custom_components.hsem.custom_sensors.working_mode_sensor.async_logger",
+                new_callable=AsyncMock,
+            ),
+            patch(
                 "custom_components.hsem.custom_sensors.applier.async_set_select_option",
                 new_callable=AsyncMock,
             ) as mock_select,
