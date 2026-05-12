@@ -153,9 +153,9 @@ RELIABILITY_SCALE_STRENGTH = 1.00  # 1.0 = full effect; lower to soften
 # slot as having usable solar generation when scheduling battery charge.
 # A slot must export at least this much excess before it is considered a
 # "solar surplus" charging opportunity.  Default matches v5.1.0 behaviour.
-SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH: float = -0.2
+SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH = -0.2
 
 # Maximum net consumption for a slot to be treated as "near-zero" or solar-
 # charged during seasonal optimisation.  Slots at or below this level are
 # charged from solar rather than from the grid.  Default matches v5.1.0.
-NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH: float = 0.1
+NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH = 0.1
