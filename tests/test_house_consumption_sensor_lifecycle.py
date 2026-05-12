@@ -672,16 +672,66 @@ class TestDerivedSensorLifecycle:
 
 
 # ---------------------------------------------------------------------------
-# 4. async_added_to_hass — no stale power restored on restart
+# 4. async_added_to_hass — state restore and availability on restart
 # ---------------------------------------------------------------------------
 
 
 class TestRestartBehaviour:
-    """On HA restart the power state must NOT be restored from the previous run."""
+    """On HA restart the previous power state is restored for display, but the
+    sensor is marked unavailable until the first live measurement so that the
+    IntegrationSensor does not accumulate the restored value as active power."""
 
     @pytest.mark.asyncio
-    async def test_state_not_restored_from_previous_run(self) -> None:
-        """async_added_to_hass must NOT set a numeric state from old_state."""
+    async def test_state_restored_from_previous_run(self) -> None:
+        """async_added_to_hass must restore the previous numeric state.
+
+        We suppress ``_async_handle_update`` with a no-op so we can inspect
+        ``_state`` exactly as it was set by the restore step, before the update
+        cycle would clear it (when outside the active window).
+        """
+        sensor, _ = _make_sensor(hour_start=18)
+        _attach_hass(sensor)
+
+        fake_old_state = MagicMock()
+        fake_old_state.state = "1234.5"
+        fake_old_state.attributes = {"last_updated": "2026-05-11T18:30:00"}
+
+        with (
+            patch.object(
+                sensor,
+                "async_get_last_state",
+                new=AsyncMock(return_value=fake_old_state),
+            ),
+            # No-op the update cycle so we can inspect the restored value directly.
+            patch.object(sensor, "_async_handle_update", new=AsyncMock()),
+            patch(
+                "custom_components.hsem.entity.HSEMEntity.async_added_to_hass",
+                new=AsyncMock(),
+            ),
+            patch(
+                "homeassistant.helpers.restore_state.RestoreEntity.async_added_to_hass",
+                new=AsyncMock(),
+            ),
+        ):
+            await sensor.async_added_to_hass()
+
+        # The restore step sets _state; the update cycle is suppressed so the
+        # value is visible here.
+        assert sensor._state == pytest.approx(1234.5), (
+            "Previous state must be restored by async_added_to_hass"
+        )
+        # _available must be False after restore (set explicitly before the update
+        # cycle) so the IntegrationSensor does not accumulate the restored value.
+        assert sensor._available is False
+
+    @pytest.mark.asyncio
+    async def test_sensor_unavailable_after_restore_outside_active_window(self) -> None:
+        """After restore + first update outside the active window, sensor is unavailable.
+
+        The restored state is cleared to ``None`` by the ``else`` branch in
+        ``_async_handle_update``, preventing the IntegrationSensor from
+        accumulating it.
+        """
         sensor, _ = _make_sensor(hour_start=18)
         _attach_hass(sensor)
 
@@ -690,7 +740,7 @@ class TestRestartBehaviour:
         fake_old_state.attributes = {"last_updated": "2026-05-11T18:30:00"}
 
         fake_now = MagicMock()
-        fake_now.hour = 3  # Outside active window at restart time
+        fake_now.hour = 3  # Outside active window
         fake_now.isoformat.return_value = "2026-05-12T03:00:00"
 
         with (
@@ -708,7 +758,6 @@ class TestRestartBehaviour:
                 new_callable=AsyncMock,
                 return_value=None,
             ),
-            # Suppress the full HA entity/restore chain which requires a bootstrapped runtime.
             patch(
                 "custom_components.hsem.entity.HSEMEntity.async_added_to_hass",
                 new=AsyncMock(),
@@ -720,21 +769,18 @@ class TestRestartBehaviour:
         ):
             await sensor.async_added_to_hass()
 
-        # After restart outside the active window the state must be None,
-        # NOT the previously measured 1234.5.
-        assert sensor._state is None, (
-            "Power state must not be restored on restart — it must be None "
-            "when outside the active hour window"
-        )
+        # After the update cycle outside the active window, state is None and
+        # sensor is unavailable — so the integral sensor won't accumulate it.
+        assert sensor._state is None
+        assert sensor._available is False
 
     @pytest.mark.asyncio
     async def test_last_updated_is_read_from_previous_run(self) -> None:
         """async_added_to_hass must read last_updated from the restored state.
 
-        Note: ``_last_updated`` is subsequently overwritten by the first
+        ``_last_updated`` is subsequently overwritten by the first
         ``_async_handle_update`` call (when ``_state_previous`` is None).
-        This test verifies the attribute is loaded from old_state *before* the
-        update cycle runs, by patching ``_async_handle_update`` to a no-op.
+        This test verifies the attribute is loaded before the update cycle runs.
         """
         sensor, _ = _make_sensor(hour_start=18)
         _attach_hass(sensor)
@@ -764,3 +810,42 @@ class TestRestartBehaviour:
             await sensor.async_added_to_hass()
 
         assert sensor._last_updated == saved_ts
+
+    @pytest.mark.asyncio
+    async def test_no_state_restored_when_no_previous_state(self) -> None:
+        """When there is no previous state (first boot), _state stays None."""
+        sensor, _ = _make_sensor(hour_start=18)
+        _attach_hass(sensor)
+
+        fake_now = MagicMock()
+        fake_now.hour = 3
+        fake_now.isoformat.return_value = "2026-05-12T03:00:00"
+
+        with (
+            patch.object(
+                sensor,
+                "async_get_last_state",
+                new=AsyncMock(return_value=None),
+            ),
+            patch(
+                "custom_components.hsem.custom_sensors.house_consumption_power_sensor.dt_util.now",
+                return_value=fake_now,
+            ),
+            patch(
+                "custom_components.hsem.custom_sensors.house_consumption_power_sensor.async_resolve_entity_id_from_unique_id",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "custom_components.hsem.entity.HSEMEntity.async_added_to_hass",
+                new=AsyncMock(),
+            ),
+            patch(
+                "homeassistant.helpers.restore_state.RestoreEntity.async_added_to_hass",
+                new=AsyncMock(),
+            ),
+        ):
+            await sensor.async_added_to_hass()
+
+        assert sensor._state is None
+        assert sensor._available is False

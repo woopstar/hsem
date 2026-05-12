@@ -186,20 +186,32 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
     async def async_added_to_hass(self) -> None:
         """Handle when sensor is added to Home Assistant.
 
-        We restore ``last_updated`` from the previous run for informational
-        purposes, but do NOT restore the power reading itself.  The state is
-        intentionally left as ``None`` here and will be set (or remain ``None``)
-        by the first ``_async_handle_update`` call depending on whether the
-        current hour matches this sensor's active window.  This prevents a
-        stale power value from being fed into the IntegrationSensor after a
-        restart when the active window has already passed.
+        Restores the previous state so HA does not show ``unknown`` immediately
+        after a restart.  The sensor is marked **unavailable** after restore so
+        that the downstream ``IntegrationSensor`` pauses accumulation until the
+        first live measurement is taken inside the active hour window.  Once the
+        active window is entered, ``_async_handle_update`` sets a real value and
+        flips ``_available`` to ``True``.
+
+        The ``else`` branch in ``_async_handle_update`` will reset ``_state``
+        to ``None`` (and ``_available`` to ``False``) as soon as a tick fires
+        outside the active window — so the restored value is only visible
+        briefly on restart and never feeds stale data into the energy integral.
         """
         old_state = await self.async_get_last_state()
         if old_state is not None:
+            restored = convert_to_float(old_state.state)
+            if restored is not None:
+                self._state = round(restored, 2)
             self._last_updated = old_state.attributes.get("last_updated", None)
 
-        # Initial update — sets self._state to a real value or None based on
-        # whether the current hour is inside this sensor's active window.
+        # Mark unavailable so the IntegrationSensor does not accumulate the
+        # restored value as live power before the first real measurement.
+        self._available = False
+
+        # Initial update — will set a live value (and available=True) when
+        # the current hour matches the active window, or reset state to None
+        # (and available=False) when outside it.
         await self._async_handle_update(None)
 
         await super().async_added_to_hass()
