@@ -28,11 +28,11 @@ async def get_batteries_excess_export_step_schema(
         or (user_input.get("hsem_batteries_purchase_price") if user_input else None)
         or 0.0
     )
-    expected_cycles = convert_to_int(
+    _cycles_ex = convert_to_int(
         get_config_value(config_entry, "hsem_batteries_expected_cycles")
         or (user_input.get("hsem_batteries_expected_cycles") if user_input else None)
-        or 6000
     )
+    expected_cycles = _cycles_ex if _cycles_ex is not None else 6000
     conversion_loss = convert_to_float(
         get_config_value(config_entry, "hsem_batteries_conversion_loss")
         or (user_input.get("hsem_batteries_conversion_loss") if user_input else None)

@@ -43,3 +43,29 @@ class TestParsePowerControlPct:
 
     def test_whitespace_stripped(self):
         assert _parse_power_control_pct("  Limited to 50%  ") == 50
+
+    # --- localization regression tests (bug fix) ---
+
+    def test_danish_unlimited(self):
+        """Danish HA translation of 'Unlimited'."""
+        assert _parse_power_control_pct("Ikke begrænset") == 100
+
+    def test_dutch_unlimited(self):
+        """Dutch HA translation of 'Unlimited'."""
+        assert _parse_power_control_pct("Onbeperkt") == 100
+
+    def test_german_unlimited(self):
+        """German HA translation of 'Unlimited'."""
+        assert _parse_power_control_pct("Unbegrenzt") == 100
+
+    def test_german_limited(self):
+        """German 'Begrenzt auf 80 %' should yield 80."""
+        assert _parse_power_control_pct("Begrenzt auf 80 %") == 80
+
+    def test_dutch_limited(self):
+        """Dutch 'Beperkt tot 75%' should yield 75."""
+        assert _parse_power_control_pct("Beperkt tot 75%") == 75
+
+    def test_fractional_localized(self):
+        """Localized percentage with decimal rounds correctly."""
+        assert _parse_power_control_pct("Begrenzt auf 79.6 %") == 80
