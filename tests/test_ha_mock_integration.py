@@ -45,8 +45,37 @@ from custom_components.hsem.coordinator import (
     CoordinatorData,
     HSEMDataUpdateCoordinator,
 )
+from custom_components.hsem.custom_sensors.battery_soc_sensor import (
+    HSEMBatterySoCSensor,
+)
 from custom_components.hsem.custom_sensors.degraded_mode_sensor import (
     HSEMDegradedModeSensor,
+)
+from custom_components.hsem.custom_sensors.ev_charging_sensor import (
+    HSEMEVChargingSensor,
+)
+from custom_components.hsem.custom_sensors.force_mode_sensor import HSEMForceModeSensor
+from custom_components.hsem.custom_sensors.hardware_writes_sensor import (
+    HSEMHardwareWritesSensor,
+)
+from custom_components.hsem.custom_sensors.last_updated_sensor import (
+    HSEMLastUpdatedSensor,
+)
+from custom_components.hsem.custom_sensors.missing_entities_sensor import (
+    HSEMMissingEntitiesSensor,
+)
+from custom_components.hsem.custom_sensors.net_consumption_sensor import (
+    HSEMNetConsumptionSensor,
+)
+from custom_components.hsem.custom_sensors.next_update_sensor import (
+    HSEMNextUpdateSensor,
+)
+from custom_components.hsem.custom_sensors.read_only_sensor import HSEMReadOnlySensor
+from custom_components.hsem.custom_sensors.recommendation_interval_sensor import (
+    HSEMRecommendationIntervalSensor,
+)
+from custom_components.hsem.custom_sensors.update_interval_sensor import (
+    HSEMUpdateIntervalSensor,
 )
 from custom_components.hsem.custom_sensors.working_mode_sensor import (
     HSEMWorkingModeSensor,
@@ -329,6 +358,104 @@ class TestEntitySetup:
         assert working.unique_id
         assert degraded.unique_id
         assert working.unique_id != degraded.unique_id
+
+    # ------------------------------------------------------------------
+    # HSEMReadOnlySensor
+    # ------------------------------------------------------------------
+
+    def test_read_only_sensor_initial_state_is_off(self) -> None:
+        """ReadOnlySensor must default to 'off' (writes enabled) before first cycle."""
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+
+        sensor = HSEMReadOnlySensor(config_entry, coord)
+
+        assert sensor.state == "off"
+
+    def test_read_only_sensor_should_not_poll(self) -> None:
+        """ReadOnlySensor must not poll independently (coordinator-driven)."""
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+
+        sensor = HSEMReadOnlySensor(config_entry, coord)
+
+        assert sensor.should_poll is False
+
+    def test_read_only_sensor_entity_category_is_diagnostic(self) -> None:
+        """ReadOnlySensor must carry the DIAGNOSTIC entity category."""
+        from homeassistant.const import EntityCategory
+
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+
+        sensor = HSEMReadOnlySensor(config_entry, coord)
+
+        assert sensor._attr_entity_category == EntityCategory.DIAGNOSTIC
+
+    def test_read_only_sensor_unique_id_differs_from_others(self) -> None:
+        """ReadOnlySensor unique_id must be distinct from working-mode and degraded sensors."""
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+
+        read_only = HSEMReadOnlySensor(config_entry, coord)
+        working = HSEMWorkingModeSensor(config_entry, coord)
+        degraded = HSEMDegradedModeSensor(config_entry, coord)
+
+        assert read_only.unique_id
+        assert read_only.unique_id != working.unique_id
+        assert read_only.unique_id != degraded.unique_id
+
+    def test_read_only_sensor_state_on_when_enabled(self) -> None:
+        """ReadOnlySensor must report 'on' when coordinator data has read_only=True."""
+        config_entry = make_fake_config_entry({"hsem_read_only": True})
+        coord = make_bare_coordinator(config_entry=config_entry)
+
+        cfg = SensorConfig()
+        cfg.read_only = True
+        cfg.recommendation_interval_minutes = 60
+        cfg.recommendation_interval_length = 24
+        cfg.update_interval = 5
+
+        coord.data = CoordinatorData(cfg=cfg, live=LiveState(), state=None)
+
+        sensor = HSEMReadOnlySensor(config_entry, coord)
+
+        assert sensor.state == "on"
+
+    def test_read_only_sensor_state_off_when_disabled(self) -> None:
+        """ReadOnlySensor must report 'off' when coordinator data has read_only=False."""
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+
+        cfg = SensorConfig()
+        cfg.read_only = False
+        cfg.recommendation_interval_minutes = 60
+        cfg.recommendation_interval_length = 24
+        cfg.update_interval = 5
+
+        coord.data = CoordinatorData(cfg=cfg, live=LiveState(), state=None)
+
+        sensor = HSEMReadOnlySensor(config_entry, coord)
+
+        assert sensor.state == "off"
+
+    def test_read_only_sensor_extra_attrs_include_update_interval(self) -> None:
+        """ReadOnlySensor extra_state_attributes must expose update_interval_minutes."""
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+
+        cfg = SensorConfig()
+        cfg.read_only = False
+        cfg.update_interval = 7
+
+        coord.data = CoordinatorData(cfg=cfg, live=LiveState(), state=None)
+
+        sensor = HSEMReadOnlySensor(config_entry, coord)
+        attrs = sensor.extra_state_attributes
+
+        assert attrs["update_interval_minutes"] == 7
+        assert attrs["hardware_writes_active"] is True
+        assert attrs["read_only"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -889,6 +1016,639 @@ class TestReadOnlyConfigReaderIntegration:
         cfg = build_sensor_config(config_entry)
 
         assert cfg.recommendation_interval_minutes == 15
+
+    def test_read_only_string_true_coerced_to_bool(self) -> None:
+        """build_sensor_config must coerce the string 'True' to bool True."""
+        from custom_components.hsem.custom_sensors.config_reader import (
+            build_sensor_config,
+        )
+
+        # Simulate a config entry that stored read_only as a string (old schema).
+        config_entry = make_fake_config_entry({"hsem_read_only": "True"})
+        cfg = build_sensor_config(config_entry)
+
+        assert cfg.read_only is True
+
+    def test_read_only_string_false_coerced_to_bool(self) -> None:
+        """build_sensor_config must coerce the string 'False' to bool False."""
+        from custom_components.hsem.custom_sensors.config_reader import (
+            build_sensor_config,
+        )
+
+        config_entry = make_fake_config_entry({"hsem_read_only": "False"})
+        cfg = build_sensor_config(config_entry)
+
+        assert cfg.read_only is False
+
+    def test_verbose_logging_boolean_coercion(self) -> None:
+        """build_sensor_config must coerce verbose_logging to bool."""
+        from custom_components.hsem.custom_sensors.config_reader import (
+            build_sensor_config,
+        )
+
+        config_entry = make_fake_config_entry({"hsem_verbose_logging": "True"})
+        cfg = build_sensor_config(config_entry)
+
+        assert cfg.verbose_logging is True
+
+    def test_extended_attributes_boolean_coercion(self) -> None:
+        """build_sensor_config must coerce extended_attributes to bool."""
+        from custom_components.hsem.custom_sensors.config_reader import (
+            build_sensor_config,
+        )
+
+        config_entry = make_fake_config_entry({"hsem_extended_attributes": "True"})
+        cfg = build_sensor_config(config_entry)
+
+        assert cfg.extended_attributes is True
+
+    def test_degraded_mode_sensor_exposes_read_only_attribute(self) -> None:
+        """DegradedModeSensor extra_state_attributes must include read_only_mode."""
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+
+        cfg = SensorConfig()
+        cfg.read_only = True
+        live = LiveState()
+        coord.data = CoordinatorData(cfg=cfg, live=live, state=None)
+
+        sensor = HSEMDegradedModeSensor(config_entry, coord)
+        attrs = sensor.extra_state_attributes
+
+        assert "read_only_mode" in attrs
+        assert attrs["read_only_mode"] is True
+
+
+# ---------------------------------------------------------------------------
+# TestAdditionalDiagnosticSensors
+# ---------------------------------------------------------------------------
+
+
+class TestAdditionalDiagnosticSensors:
+    """Tests for the five additional coordinator-driven diagnostic sensors."""
+
+    def _make_data(
+        self,
+        *,
+        next_update: str = "2026-05-12T12:00:00+02:00",
+        last_updated: str = "2026-05-12T11:55:00+02:00",
+        update_interval: int = 5,
+        missing: list[str] | None = None,
+        net_consumption_w: float = 250.0,
+        force_mode_state: str = "auto",
+    ) -> CoordinatorData:
+        """Build a minimal CoordinatorData for sensor tests."""
+        cfg = SensorConfig()
+        cfg.update_interval = update_interval
+
+        live = LiveState()
+        live.net_consumption_w = net_consumption_w
+        live.house_consumption_power_w = 800.0
+        live.solar_production_power_w = 550.0
+        live.net_consumption_with_ev_w = 250.0
+        live.force_working_mode_state = force_mode_state
+        if missing:
+            for label in missing:
+                live.add_missing_entity(label)
+
+        return CoordinatorData(
+            cfg=cfg,
+            live=live,
+            state="batteries_wait_mode",
+            next_update=next_update,
+            last_updated=last_updated,
+        )
+
+    # ------------------------------------------------------------------
+    # HSEMNextUpdateSensor
+    # ------------------------------------------------------------------
+
+    def test_next_update_sensor_is_diagnostic(self) -> None:
+        """NextUpdateSensor must carry the DIAGNOSTIC entity category."""
+        from homeassistant.const import EntityCategory
+
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        s = HSEMNextUpdateSensor(config_entry, coord)
+        assert s._attr_entity_category == EntityCategory.DIAGNOSTIC
+
+    def test_next_update_sensor_state_is_timestamp(self) -> None:
+        """NextUpdateSensor.state must return the next_update timestamp."""
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        coord.data = self._make_data(next_update="2026-05-12T13:00:00+02:00")
+        s = HSEMNextUpdateSensor(config_entry, coord)
+        assert s.state == "2026-05-12T13:00:00+02:00"
+
+    def test_next_update_sensor_no_data_returns_none(self) -> None:
+        """NextUpdateSensor.state must be None before first cycle."""
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        s = HSEMNextUpdateSensor(config_entry, coord)
+        assert s.state is None
+
+    def test_next_update_sensor_attrs_include_interval(self) -> None:
+        """NextUpdateSensor extra_state_attributes must include update_interval_minutes."""
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        coord.data = self._make_data(update_interval=15)
+        s = HSEMNextUpdateSensor(config_entry, coord)
+        assert s.extra_state_attributes["update_interval_minutes"] == 15
+
+    def test_next_update_sensor_unique_ids_distinct(self) -> None:
+        """All diagnostic sensor unique IDs must be distinct from each other."""
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        sensors = [
+            HSEMNextUpdateSensor(config_entry, coord),
+            HSEMMissingEntitiesSensor(config_entry, coord),
+            HSEMHardwareWritesSensor(config_entry, coord),
+            HSEMNetConsumptionSensor(config_entry, coord),
+            HSEMForceModeSensor(config_entry, coord),
+            HSEMReadOnlySensor(config_entry, coord),
+            HSEMDegradedModeSensor(config_entry, coord),
+        ]
+        uids = [s.unique_id for s in sensors]
+        assert len(uids) == len(set(uids)), "Duplicate unique_id found"
+
+    # ------------------------------------------------------------------
+    # HSEMMissingEntitiesSensor
+    # ------------------------------------------------------------------
+
+    def test_missing_entities_sensor_is_diagnostic(self) -> None:
+        """MissingEntitiesSensor must carry the DIAGNOSTIC entity category."""
+        from homeassistant.const import EntityCategory
+
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        s = HSEMMissingEntitiesSensor(config_entry, coord)
+        assert s._attr_entity_category == EntityCategory.DIAGNOSTIC
+
+    def test_missing_entities_zero_when_none_missing(self) -> None:
+        """MissingEntitiesSensor.state must be 0 when all entities are present."""
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        coord.data = self._make_data()
+        s = HSEMMissingEntitiesSensor(config_entry, coord)
+        assert s.state == 0
+
+    def test_missing_entities_count_reflects_list_length(self) -> None:
+        """MissingEntitiesSensor.state must equal len(missing_entities_list)."""
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        coord.data = self._make_data(
+            missing=[
+                "Missing entity: energi_data_service_import",
+                "Missing entity: solcast_pv_forecast_forecast_today",
+            ]
+        )
+        s = HSEMMissingEntitiesSensor(config_entry, coord)
+        assert s.state == 2
+
+    def test_missing_entities_attrs_contain_list(self) -> None:
+        """MissingEntitiesSensor extra_state_attributes must include the label list."""
+        label = "Missing entity: energi_data_service_import"
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        coord.data = self._make_data(missing=[label])
+        s = HSEMMissingEntitiesSensor(config_entry, coord)
+        assert label in s.extra_state_attributes["missing_entities_list"]
+
+    # ------------------------------------------------------------------
+    # HSEMHardwareWritesSensor
+    # ------------------------------------------------------------------
+
+    def test_hardware_writes_sensor_is_diagnostic(self) -> None:
+        """HardwareWritesSensor must carry the DIAGNOSTIC entity category."""
+        from homeassistant.const import EntityCategory
+
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        s = HSEMHardwareWritesSensor(config_entry, coord)
+        assert s._attr_entity_category == EntityCategory.DIAGNOSTIC
+
+    def test_hardware_writes_allowed_when_no_missing_entities(self) -> None:
+        """HardwareWritesSensor.state must be 'allowed' when no critical entities missing."""
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        coord.data = self._make_data()
+        s = HSEMHardwareWritesSensor(config_entry, coord)
+        assert s.state == "allowed"
+
+    def test_hardware_writes_blocked_when_critical_entity_missing(self) -> None:
+        """HardwareWritesSensor.state must be 'blocked' when a critical entity is absent."""
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        coord.data = self._make_data(
+            missing=["Missing entity: batteries_state_of_capacity"]
+        )
+        s = HSEMHardwareWritesSensor(config_entry, coord)
+        assert s.state == "blocked"
+
+    def test_hardware_writes_allowed_with_only_non_critical_missing(self) -> None:
+        """HardwareWritesSensor must be 'allowed' when only non-critical entities are absent."""
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        coord.data = self._make_data(
+            missing=["Missing entity: energi_data_service_import"]
+        )
+        s = HSEMHardwareWritesSensor(config_entry, coord)
+        assert s.state == "allowed"
+
+    # ------------------------------------------------------------------
+    # HSEMNetConsumptionSensor
+    # ------------------------------------------------------------------
+
+    def test_net_consumption_sensor_is_diagnostic(self) -> None:
+        """NetConsumptionSensor must carry the DIAGNOSTIC entity category."""
+        from homeassistant.const import EntityCategory
+
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        s = HSEMNetConsumptionSensor(config_entry, coord)
+        assert s._attr_entity_category == EntityCategory.DIAGNOSTIC
+
+    def test_net_consumption_native_value(self) -> None:
+        """NetConsumptionSensor.native_value must reflect live.net_consumption_w."""
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        coord.data = self._make_data(net_consumption_w=350.5)
+        s = HSEMNetConsumptionSensor(config_entry, coord)
+        assert s.native_value == pytest.approx(350.5)
+
+    def test_net_consumption_unit_is_watts(self) -> None:
+        """NetConsumptionSensor must use Watts as its unit."""
+        from homeassistant.const import UnitOfPower
+
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        s = HSEMNetConsumptionSensor(config_entry, coord)
+        assert s._attr_native_unit_of_measurement == UnitOfPower.WATT
+
+    def test_net_consumption_attrs_include_breakdown(self) -> None:
+        """NetConsumptionSensor extra_state_attributes must include house and solar components."""
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        coord.data = self._make_data()
+        s = HSEMNetConsumptionSensor(config_entry, coord)
+        attrs = s.extra_state_attributes
+        assert "house_consumption_w" in attrs
+        assert "solar_production_w" in attrs
+        assert "net_consumption_with_ev_w" in attrs
+        assert "ev_charging_active" in attrs
+
+    # ------------------------------------------------------------------
+    # HSEMForceModeSensor
+    # ------------------------------------------------------------------
+
+    def test_force_mode_sensor_is_diagnostic(self) -> None:
+        """ForceModeSensor must carry the DIAGNOSTIC entity category."""
+        from homeassistant.const import EntityCategory
+
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        s = HSEMForceModeSensor(config_entry, coord)
+        assert s._attr_entity_category == EntityCategory.DIAGNOSTIC
+
+    def test_force_mode_sensor_state_auto_when_not_overriding(self) -> None:
+        """ForceModeSensor.state must be 'auto' when no override is set."""
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        coord.data = self._make_data(force_mode_state="auto")
+        s = HSEMForceModeSensor(config_entry, coord)
+        assert s.state == "auto"
+
+    def test_force_mode_sensor_state_reflects_override(self) -> None:
+        """ForceModeSensor.state must reflect the active override value."""
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        coord.data = self._make_data(force_mode_state="batteries_charge_grid")
+        s = HSEMForceModeSensor(config_entry, coord)
+        assert s.state == "batteries_charge_grid"
+
+    def test_force_mode_sensor_override_active_attr(self) -> None:
+        """ForceModeSensor extra_state_attributes.override_active must be True when forced."""
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        coord.data = self._make_data(force_mode_state="batteries_charge_grid")
+        s = HSEMForceModeSensor(config_entry, coord)
+        assert s.extra_state_attributes["override_active"] is True
+
+    def test_force_mode_sensor_override_inactive_when_auto(self) -> None:
+        """ForceModeSensor extra_state_attributes.override_active must be False in auto."""
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        coord.data = self._make_data(force_mode_state="auto")
+        s = HSEMForceModeSensor(config_entry, coord)
+        assert s.extra_state_attributes["override_active"] is False
+
+    def test_force_mode_default_before_first_cycle(self) -> None:
+        """ForceModeSensor.state must default to 'auto' before the first cycle."""
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        s = HSEMForceModeSensor(config_entry, coord)
+        assert s.state == "auto"
+
+
+# ---------------------------------------------------------------------------
+# TestRemainingDiagnosticSensors — #2, #4, #8, #11, #12
+# ---------------------------------------------------------------------------
+
+
+class TestRemainingDiagnosticSensors:
+    """Tests for HSEMUpdateIntervalSensor, HSEMLastUpdatedSensor,
+    HSEMBatterySoCSensor, HSEMRecommendationIntervalSensor, HSEMEVChargingSensor."""
+
+    def _make_cfg(
+        self,
+        *,
+        update_interval: int = 5,
+        recommendation_interval_minutes: int = 15,
+        recommendation_interval_length: int = 48,
+        ev_second_enabled: bool = False,
+    ) -> SensorConfig:
+        cfg = SensorConfig()
+        cfg.update_interval = update_interval
+        cfg.recommendation_interval_minutes = recommendation_interval_minutes
+        cfg.recommendation_interval_length = recommendation_interval_length
+        cfg.ev_second_enabled = ev_second_enabled
+        return cfg
+
+    def _make_live(
+        self,
+        *,
+        soc_pct: float | None = 75.0,
+        ev_charging: bool = False,
+        ev_second_charging: bool = False,
+    ) -> LiveState:
+        from custom_components.hsem.models.live_state import EVLiveState
+
+        live = LiveState()
+        live.huawei_batteries_soc_pct = soc_pct
+        live.battery_current_capacity_kwh = 6.0
+        live.battery_usable_capacity_kwh = 9.0
+        live.huawei_batteries_rated_capacity_wh = 10000.0
+        live.huawei_batteries_end_of_discharge_soc_pct = 10.0
+        live.ev = EVLiveState(
+            is_charging=ev_charging,
+            power_w=7400.0 if ev_charging else 0.0,
+            soc_pct=55.0,
+        )
+        live.ev_second = EVLiveState(
+            is_charging=ev_second_charging, power_w=0.0, soc_pct=None
+        )
+        return live
+
+    def _make_data(
+        self, cfg: SensorConfig | None = None, live: LiveState | None = None
+    ) -> CoordinatorData:
+        return CoordinatorData(
+            cfg=cfg or self._make_cfg(),
+            live=live or self._make_live(),
+            state="batteries_wait_mode",
+            last_updated="2026-05-12T11:55:00+02:00",
+            next_update="2026-05-12T12:00:00+02:00",
+        )
+
+    # ------------------------------------------------------------------
+    # HSEMUpdateIntervalSensor (#2)
+    # ------------------------------------------------------------------
+
+    def test_update_interval_sensor_is_diagnostic(self) -> None:
+        from homeassistant.const import EntityCategory
+
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        s = HSEMUpdateIntervalSensor(config_entry, coord)
+        assert s._attr_entity_category == EntityCategory.DIAGNOSTIC
+
+    def test_update_interval_native_value(self) -> None:
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        coord.data = self._make_data(cfg=self._make_cfg(update_interval=15))
+        s = HSEMUpdateIntervalSensor(config_entry, coord)
+        assert s.native_value == 15
+
+    def test_update_interval_unit_is_minutes(self) -> None:
+        from homeassistant.const import UnitOfTime
+
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        s = HSEMUpdateIntervalSensor(config_entry, coord)
+        assert s._attr_native_unit_of_measurement == UnitOfTime.MINUTES
+
+    def test_update_interval_attrs_include_recommendation_settings(self) -> None:
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        coord.data = self._make_data(
+            cfg=self._make_cfg(
+                recommendation_interval_minutes=60, recommendation_interval_length=24
+            )
+        )
+        s = HSEMUpdateIntervalSensor(config_entry, coord)
+        attrs = s.extra_state_attributes
+        assert attrs["recommendation_interval_minutes"] == 60
+        assert attrs["recommendation_interval_length_hours"] == 24
+
+    def test_update_interval_none_before_first_cycle(self) -> None:
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        s = HSEMUpdateIntervalSensor(config_entry, coord)
+        assert s.native_value is None
+
+    # ------------------------------------------------------------------
+    # HSEMLastUpdatedSensor (#4)
+    # ------------------------------------------------------------------
+
+    def test_last_updated_sensor_is_diagnostic(self) -> None:
+        from homeassistant.const import EntityCategory
+
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        s = HSEMLastUpdatedSensor(config_entry, coord)
+        assert s._attr_entity_category == EntityCategory.DIAGNOSTIC
+
+    def test_last_updated_state_is_timestamp(self) -> None:
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        coord.data = self._make_data()
+        s = HSEMLastUpdatedSensor(config_entry, coord)
+        assert s.state == "2026-05-12T11:55:00+02:00"
+
+    def test_last_updated_none_before_first_cycle(self) -> None:
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        s = HSEMLastUpdatedSensor(config_entry, coord)
+        assert s.state is None
+
+    def test_last_updated_attrs_include_next_update(self) -> None:
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        coord.data = self._make_data()
+        s = HSEMLastUpdatedSensor(config_entry, coord)
+        assert s.extra_state_attributes["next_update"] == "2026-05-12T12:00:00+02:00"
+
+    # ------------------------------------------------------------------
+    # HSEMBatterySoCSensor (#8)
+    # ------------------------------------------------------------------
+
+    def test_battery_soc_sensor_is_diagnostic(self) -> None:
+        from homeassistant.const import EntityCategory
+
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        s = HSEMBatterySoCSensor(config_entry, coord)
+        assert s._attr_entity_category == EntityCategory.DIAGNOSTIC
+
+    def test_battery_soc_native_value(self) -> None:
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        coord.data = self._make_data(live=self._make_live(soc_pct=83.5))
+        s = HSEMBatterySoCSensor(config_entry, coord)
+        assert s.native_value == pytest.approx(83.5)
+
+    def test_battery_soc_unit_is_percent(self) -> None:
+        from homeassistant.const import PERCENTAGE
+
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        s = HSEMBatterySoCSensor(config_entry, coord)
+        assert s._attr_native_unit_of_measurement == PERCENTAGE
+
+    def test_battery_soc_none_when_unavailable(self) -> None:
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        coord.data = self._make_data(live=self._make_live(soc_pct=None))
+        s = HSEMBatterySoCSensor(config_entry, coord)
+        assert s.native_value is None
+
+    def test_battery_soc_attrs_include_capacity(self) -> None:
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        coord.data = self._make_data()
+        s = HSEMBatterySoCSensor(config_entry, coord)
+        attrs = s.extra_state_attributes
+        assert "battery_current_capacity_kwh" in attrs
+        assert "battery_usable_capacity_kwh" in attrs
+        assert "battery_rated_capacity_wh" in attrs
+        assert "end_of_discharge_soc_pct" in attrs
+
+    # ------------------------------------------------------------------
+    # HSEMRecommendationIntervalSensor (#11)
+    # ------------------------------------------------------------------
+
+    def test_recommendation_interval_sensor_is_diagnostic(self) -> None:
+        from homeassistant.const import EntityCategory
+
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        s = HSEMRecommendationIntervalSensor(config_entry, coord)
+        assert s._attr_entity_category == EntityCategory.DIAGNOSTIC
+
+    def test_recommendation_interval_native_value(self) -> None:
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        coord.data = self._make_data(
+            cfg=self._make_cfg(recommendation_interval_minutes=60)
+        )
+        s = HSEMRecommendationIntervalSensor(config_entry, coord)
+        assert s.native_value == 60
+
+    def test_recommendation_interval_unit_is_minutes(self) -> None:
+        from homeassistant.const import UnitOfTime
+
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        s = HSEMRecommendationIntervalSensor(config_entry, coord)
+        assert s._attr_native_unit_of_measurement == UnitOfTime.MINUTES
+
+    def test_recommendation_interval_attrs_total_slots(self) -> None:
+        """48h / 15min = 192 slots."""
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        coord.data = self._make_data(
+            cfg=self._make_cfg(
+                recommendation_interval_minutes=15, recommendation_interval_length=48
+            )
+        )
+        s = HSEMRecommendationIntervalSensor(config_entry, coord)
+        attrs = s.extra_state_attributes
+        assert attrs["total_planning_slots"] == 192
+        assert attrs["recommendation_interval_length_hours"] == 48
+
+    # ------------------------------------------------------------------
+    # HSEMEVChargingSensor (#12)
+    # ------------------------------------------------------------------
+
+    def test_ev_charging_sensor_is_diagnostic(self) -> None:
+        from homeassistant.const import EntityCategory
+
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        s = HSEMEVChargingSensor(config_entry, coord)
+        assert s._attr_entity_category == EntityCategory.DIAGNOSTIC
+
+    def test_ev_charging_off_when_not_charging(self) -> None:
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        coord.data = self._make_data(live=self._make_live(ev_charging=False))
+        s = HSEMEVChargingSensor(config_entry, coord)
+        assert s.state == "off"
+
+    def test_ev_charging_on_when_primary_is_charging(self) -> None:
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        coord.data = self._make_data(live=self._make_live(ev_charging=True))
+        s = HSEMEVChargingSensor(config_entry, coord)
+        assert s.state == "on"
+
+    def test_ev_charging_on_when_secondary_is_charging(self) -> None:
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        coord.data = self._make_data(
+            live=self._make_live(ev_charging=False, ev_second_charging=True)
+        )
+        s = HSEMEVChargingSensor(config_entry, coord)
+        assert s.state == "on"
+
+    def test_ev_charging_default_off_before_first_cycle(self) -> None:
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        s = HSEMEVChargingSensor(config_entry, coord)
+        assert s.state == "off"
+
+    def test_ev_charging_attrs_include_individual_states(self) -> None:
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        coord.data = self._make_data(live=self._make_live(ev_charging=True))
+        s = HSEMEVChargingSensor(config_entry, coord)
+        attrs = s.extra_state_attributes
+        assert attrs["ev_charging"] is True
+        assert "ev_power_w" in attrs
+        assert "ev_soc_pct" in attrs
+        assert "ev_second_enabled" in attrs
+        assert "ev_second_charging" in attrs
+
+    def test_all_12_diagnostic_sensors_have_distinct_unique_ids(self) -> None:
+        """All 12 coordinator-driven diagnostic sensors must have distinct unique IDs."""
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        sensors = [
+            HSEMDegradedModeSensor(config_entry, coord),
+            HSEMReadOnlySensor(config_entry, coord),
+            HSEMNextUpdateSensor(config_entry, coord),
+            HSEMLastUpdatedSensor(config_entry, coord),
+            HSEMUpdateIntervalSensor(config_entry, coord),
+            HSEMRecommendationIntervalSensor(config_entry, coord),
+            HSEMMissingEntitiesSensor(config_entry, coord),
+            HSEMHardwareWritesSensor(config_entry, coord),
+            HSEMNetConsumptionSensor(config_entry, coord),
+            HSEMBatterySoCSensor(config_entry, coord),
+            HSEMForceModeSensor(config_entry, coord),
+            HSEMEVChargingSensor(config_entry, coord),
+        ]
+        uids = [s.unique_id for s in sensors]
+        assert len(uids) == len(set(uids)), f"Duplicate unique_ids: {uids}"
 
 
 # ---------------------------------------------------------------------------

@@ -1,29 +1,20 @@
-"""Diagnostic sensor that exposes the HSEM system health / degraded-mode state.
+"""Diagnostic sensor that exposes whether a force-working-mode override is active.
 
-The sensor reports one of three states that mirror :class:`DegradedMode`:
+When the user sets the force-mode select to anything other than ``"auto"``, HSEM
+bypasses the planner entirely and sends the manual working mode directly to the
+inverter.  This sensor makes that override clearly visible on the device page.
 
-``ok``
-    All required input entities are present and readable.  HSEM is operating
-    normally; hardware writes are permitted.
+The state is the current value of the force-mode select entity:
 
-``degraded``
-    One or more *non-critical* entities are unavailable (e.g. electricity
-    price feed).  Read-only planner calculations continue on best-effort
-    values; hardware writes are still allowed because the battery state data
-    is intact.
-
-``error``
-    One or more *critical* entities are missing (battery SoC, max charge /
-    discharge power, rated capacity, or house consumption power).  Hardware
-    writes are **blocked** to prevent acting on incomplete state.
+- ``"auto"`` — no override; the planner controls the hardware.
+- Any other string — the named mode is being forced (e.g. ``"batteries_charge_grid"``).
 
 The sensor is a *diagnostic* entity (``entity_category = EntityCategory.DIAGNOSTIC``)
-so it appears in the *Diagnostic* section of the device page and is excluded
-from the default Lovelace dashboard.
+so it appears in the *Diagnostic* section of the device page and is excluded from
+the default Lovelace dashboard.
 
 This sensor subscribes to :class:`~custom_components.hsem.coordinator.HSEMDataUpdateCoordinator`
-and updates automatically after every coordinator cycle without any additional
-polling or push from the working-mode sensor.
+and updates automatically after every coordinator cycle.
 """
 
 from __future__ import annotations
@@ -40,33 +31,29 @@ from custom_components.hsem.coordinator import (
     HSEMDataUpdateCoordinator,
 )
 from custom_components.hsem.entity import HSEMEntity
-from custom_components.hsem.utils.degraded_mode import (
-    DegradedMode,
-    hardware_writes_allowed,
-)
 from custom_components.hsem.utils.sensornames import (
-    get_degraded_mode_sensor_entity_id,
-    get_degraded_mode_sensor_name,
-    get_degraded_mode_sensor_unique_id,
+    get_force_mode_sensor_entity_id,
+    get_force_mode_sensor_name,
+    get_force_mode_sensor_unique_id,
 )
 
 
-class HSEMDegradedModeSensor(
+class HSEMForceModeSensor(
     CoordinatorEntity[HSEMDataUpdateCoordinator],
     SensorEntity,
     HSEMEntity,
     RestoreEntity,
 ):
-    """Diagnostic sensor exposing the current HSEM system-health state.
+    """Diagnostic sensor exposing the current force-working-mode state.
 
-    The state is one of ``"ok"``, ``"degraded"``, or ``"error"`` — matching
-    the :attr:`DegradedMode.value` strings.
+    State is the raw value of the force-mode select: ``"auto"`` when no override
+    is active, otherwise the name of the forced working mode.
 
-    The sensor subscribes to the shared coordinator and is updated
-    automatically after every coordinator cycle.
+    The sensor subscribes to the shared coordinator and is updated automatically
+    after every coordinator cycle.
     """
 
-    _attr_icon = "mdi:shield-check"
+    _attr_icon = "mdi:hand-pointing-right"
     _attr_has_entity_name = True
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
@@ -75,7 +62,7 @@ class HSEMDegradedModeSensor(
         config_entry,
         coordinator: HSEMDataUpdateCoordinator,
     ) -> None:
-        """Initialise the sensor with an ``ok`` state.
+        """Initialise the force-mode sensor.
 
         Args:
             config_entry: The HSEM config entry.
@@ -86,11 +73,10 @@ class HSEMDegradedModeSensor(
 
         self._config_entry = config_entry
 
-        self._attr_unique_id = get_degraded_mode_sensor_unique_id()
-        self.entity_id = get_degraded_mode_sensor_entity_id()
-        self._name = get_degraded_mode_sensor_name()
+        self._attr_unique_id = get_force_mode_sensor_unique_id()
+        self.entity_id = get_force_mode_sensor_entity_id()
+        self._name = get_force_mode_sensor_name()
 
-        # Restored state used before the first coordinator cycle completes.
         self._restored_state: str | None = None
 
     # ------------------------------------------------------------------
@@ -109,12 +95,11 @@ class HSEMDegradedModeSensor(
 
     @property
     def state(self) -> str:
-        """Return the current health state string."""
+        """Return the force-mode select value (``'auto'`` when not overriding)."""
         data: CoordinatorData | None = self.coordinator.data
         if data is None or data.live is None:
-            # Fall back to restored state while waiting for first cycle.
-            return self._restored_state or DegradedMode.OK.value
-        return data.live.degraded_mode.value
+            return self._restored_state or "auto"
+        return data.live.force_working_mode_state
 
     @property
     def should_poll(self) -> bool:
@@ -130,20 +115,17 @@ class HSEMDegradedModeSensor(
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return diagnostic attributes visible on the entity detail page."""
+        """Return whether the override is active and the resolved entity ID."""
         data: CoordinatorData | None = self.coordinator.data
         if data is None or data.live is None:
             return {
-                "missing_entities": [],
-                "hardware_writes_blocked": False,
-                "read_only_mode": False,
+                "override_active": False,
+                "force_mode_entity_id": None,
             }
         live = data.live
-        cfg = data.cfg
         return {
-            "missing_entities": list(live.missing_entities_list),
-            "hardware_writes_blocked": not hardware_writes_allowed(live.degraded_mode),
-            "read_only_mode": bool(cfg.read_only) if cfg is not None else False,
+            "override_active": live.is_forced_mode,
+            "force_mode_entity_id": live.force_working_mode,
         }
 
     # ------------------------------------------------------------------
@@ -154,5 +136,9 @@ class HSEMDegradedModeSensor(
         """Restore previous state and register coordinator listener."""
         await super().async_added_to_hass()
         restored = await self.async_get_last_state()
-        if restored is not None and restored.state in {m.value for m in DegradedMode}:
+        if restored is not None and restored.state not in {
+            "unavailable",
+            "unknown",
+            None,
+        }:
             self._restored_state = restored.state

@@ -1,29 +1,19 @@
-"""Diagnostic sensor that exposes the HSEM system health / degraded-mode state.
+"""Diagnostic sensor that exposes the count of missing HSEM input entities.
 
-The sensor reports one of three states that mirror :class:`DegradedMode`:
+The state is an integer — the number of input entities that were absent or
+unreadable during the last coordinator cycle.  When the state is ``0`` all
+required entities are present.
 
-``ok``
-    All required input entities are present and readable.  HSEM is operating
-    normally; hardware writes are permitted.
-
-``degraded``
-    One or more *non-critical* entities are unavailable (e.g. electricity
-    price feed).  Read-only planner calculations continue on best-effort
-    values; hardware writes are still allowed because the battery state data
-    is intact.
-
-``error``
-    One or more *critical* entities are missing (battery SoC, max charge /
-    discharge power, rated capacity, or house consumption power).  Hardware
-    writes are **blocked** to prevent acting on incomplete state.
+This sensor makes the ``missing_entities_list`` automatable: users can trigger
+notifications or log entries as soon as any sensor disappears, without having to
+inspect the working-mode sensor attributes.
 
 The sensor is a *diagnostic* entity (``entity_category = EntityCategory.DIAGNOSTIC``)
-so it appears in the *Diagnostic* section of the device page and is excluded
-from the default Lovelace dashboard.
+so it appears in the *Diagnostic* section of the device page and is excluded from
+the default Lovelace dashboard.
 
 This sensor subscribes to :class:`~custom_components.hsem.coordinator.HSEMDataUpdateCoordinator`
-and updates automatically after every coordinator cycle without any additional
-polling or push from the working-mode sensor.
+and updates automatically after every coordinator cycle.
 """
 
 from __future__ import annotations
@@ -40,42 +30,39 @@ from custom_components.hsem.coordinator import (
     HSEMDataUpdateCoordinator,
 )
 from custom_components.hsem.entity import HSEMEntity
-from custom_components.hsem.utils.degraded_mode import (
-    DegradedMode,
-    hardware_writes_allowed,
-)
 from custom_components.hsem.utils.sensornames import (
-    get_degraded_mode_sensor_entity_id,
-    get_degraded_mode_sensor_name,
-    get_degraded_mode_sensor_unique_id,
+    get_missing_entities_sensor_entity_id,
+    get_missing_entities_sensor_name,
+    get_missing_entities_sensor_unique_id,
 )
 
 
-class HSEMDegradedModeSensor(
+class HSEMMissingEntitiesSensor(
     CoordinatorEntity[HSEMDataUpdateCoordinator],
     SensorEntity,
     HSEMEntity,
     RestoreEntity,
 ):
-    """Diagnostic sensor exposing the current HSEM system-health state.
+    """Diagnostic sensor exposing the count of missing HSEM input entities.
 
-    The state is one of ``"ok"``, ``"degraded"``, or ``"error"`` — matching
-    the :attr:`DegradedMode.value` strings.
+    State is an integer count of missing/unreadable entities.  ``0`` means all
+    required entities are present and readable.
 
-    The sensor subscribes to the shared coordinator and is updated
-    automatically after every coordinator cycle.
+    The sensor subscribes to the shared coordinator and is updated automatically
+    after every coordinator cycle.
     """
 
-    _attr_icon = "mdi:shield-check"
+    _attr_icon = "mdi:alert-circle-outline"
     _attr_has_entity_name = True
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_native_unit_of_measurement = None
 
     def __init__(
         self,
         config_entry,
         coordinator: HSEMDataUpdateCoordinator,
     ) -> None:
-        """Initialise the sensor with an ``ok`` state.
+        """Initialise the missing-entities sensor.
 
         Args:
             config_entry: The HSEM config entry.
@@ -86,11 +73,10 @@ class HSEMDegradedModeSensor(
 
         self._config_entry = config_entry
 
-        self._attr_unique_id = get_degraded_mode_sensor_unique_id()
-        self.entity_id = get_degraded_mode_sensor_entity_id()
-        self._name = get_degraded_mode_sensor_name()
+        self._attr_unique_id = get_missing_entities_sensor_unique_id()
+        self.entity_id = get_missing_entities_sensor_entity_id()
+        self._name = get_missing_entities_sensor_name()
 
-        # Restored state used before the first coordinator cycle completes.
         self._restored_state: str | None = None
 
     # ------------------------------------------------------------------
@@ -108,13 +94,17 @@ class HSEMDegradedModeSensor(
         return self._attr_unique_id
 
     @property
-    def state(self) -> str:
-        """Return the current health state string."""
+    def state(self) -> int:
+        """Return the number of missing input entities."""
         data: CoordinatorData | None = self.coordinator.data
         if data is None or data.live is None:
-            # Fall back to restored state while waiting for first cycle.
-            return self._restored_state or DegradedMode.OK.value
-        return data.live.degraded_mode.value
+            if self._restored_state is not None:
+                try:
+                    return int(self._restored_state)
+                except (ValueError, TypeError):
+                    pass
+            return 0
+        return len(data.live.missing_entities_list)
 
     @property
     def should_poll(self) -> bool:
@@ -130,20 +120,12 @@ class HSEMDegradedModeSensor(
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return diagnostic attributes visible on the entity detail page."""
+        """Return the full list of missing entity labels as an attribute."""
         data: CoordinatorData | None = self.coordinator.data
         if data is None or data.live is None:
-            return {
-                "missing_entities": [],
-                "hardware_writes_blocked": False,
-                "read_only_mode": False,
-            }
-        live = data.live
-        cfg = data.cfg
+            return {"missing_entities_list": []}
         return {
-            "missing_entities": list(live.missing_entities_list),
-            "hardware_writes_blocked": not hardware_writes_allowed(live.degraded_mode),
-            "read_only_mode": bool(cfg.read_only) if cfg is not None else False,
+            "missing_entities_list": list(data.live.missing_entities_list),
         }
 
     # ------------------------------------------------------------------
@@ -154,5 +136,9 @@ class HSEMDegradedModeSensor(
         """Restore previous state and register coordinator listener."""
         await super().async_added_to_hass()
         restored = await self.async_get_last_state()
-        if restored is not None and restored.state in {m.value for m in DegradedMode}:
+        if restored is not None and restored.state not in {
+            "unavailable",
+            "unknown",
+            None,
+        }:
             self._restored_state = restored.state
