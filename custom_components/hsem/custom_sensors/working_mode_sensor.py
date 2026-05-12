@@ -1,11 +1,16 @@
-"""This module defines the HSEMWorkingModeSensorNew class, which is a custom sensor entity for Home Assistant.
+"""Orchestrator for the HSEM working-mode sensor.
 
-The sensor monitors various attributes related to solar energy production, battery status, and energy consumption,
-and calculates the optimal working mode for the system.
+Single responsibility: coordinate the collect → populate → plan → apply →
+resolve pipeline and manage the HA entity lifecycle (timers, state tracking,
+attributes).
 
-Classes:
-    HSEMWorkingModeSensorNew(SensorEntity, HSEMEntity): Represents a custom sensor entity for monitoring and optimizing
-    solar energy production and consumption.
+The heavy lifting is fully delegated to the pipeline modules:
+
+- :mod:`state_collector` — reads config entry + HA entity states
+- :mod:`hourly_data_populator` — fills prices / Solcast / consumption into slots
+- :mod:`~custom_components.hsem.planner.engine` — pure-Python scheduling engine
+- :mod:`applier` — hardware writes to inverter / batteries
+- :mod:`recommendation_resolver` — real-time override of current-slot decision
 """
 
 import asyncio
@@ -13,55 +18,30 @@ from datetime import datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
-import voluptuous as vol
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.const import MATCH_ALL
-from homeassistant.core import State
 from homeassistant.helpers.event import (
-    async_track_state_change_event,
     async_track_time_change,
     async_track_time_interval,
 )
 
-from custom_components.hsem.const import (
-    BASELINE_7D_SHARE,
-    BASELINE_14D_SHARE,
-    CAP7_DOWN,
-    CAP7_UP,
-    CAP14_DOWN,
-    CAP14_UP,
-    CHANGE3_LIMIT_DOWN_FACTOR,
-    CHANGE3_LIMIT_UP_FACTOR,
-    CHANGE_LIMIT_DOWN_FACTOR,
-    CHANGE_LIMIT_UP_FACTOR,
-    DEFAULT_CONFIG_VALUES,
-    DEFAULT_HSEM_BATTERIES_WAIT_MODE,
-    DEFAULT_HSEM_EV_CHARGER_TOU_MODES,
-    DEFAULT_HSEM_TOU_MODES_FORCE_CHARGE,
-    RELIABILITY_EPS,
-    RELIABILITY_SCALE_STRENGTH,
-    SPIKE1_RATIO_MAX,
-    SPIKE1_RATIO_MIN,
-    SPIKE1_REDIST_TO_3D,
-    SPIKE1_REDIST_TO_7D,
-    SPIKE1_REDIST_TO_14D,
-    SPIKE1_REDUCE_FRACTION_MAX,
-    SPIKE3_RATIO_MAX,
-    SPIKE3_RATIO_MIN,
-    SPIKE3_REDIST_TO_7D,
-    SPIKE3_REDIST_TO_14D,
-    SPIKE3_REDUCE_FRACTION_MAX,
-    SPIKE7_RATIO_MAX,
-    SPIKE7_RATIO_MIN,
-    SPIKE7_REDIST_TO_14D,
-    SPIKE7_REDUCE_FRACTION_MAX,
-    SPIKE14_RATIO_MAX,
-    SPIKE14_RATIO_MIN,
-    SPIKE14_REDIST_TO_7D,
-    SPIKE14_REDUCE_FRACTION_MAX,
+from custom_components.hsem.custom_sensors.applier import (
+    async_apply_battery_settings,
+    async_apply_inverter_power_control,
+)
+from custom_components.hsem.custom_sensors.hourly_data_populator import (
+    async_populate_avg_house_consumption,
+    async_populate_price_and_solcast,
+)
+from custom_components.hsem.custom_sensors.recommendation_resolver import (
+    resolve_current_recommendation,
+)
+from custom_components.hsem.custom_sensors.state_collector import (
+    async_collect_live_state,
+    build_battery_schedules,
+    build_sensor_config,
 )
 from custom_components.hsem.entity import HSEMEntity
-from custom_components.hsem.models.battery_schedule import BatterySchedule
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.planner_inputs import (
     BatteryScheduleInput,
@@ -71,212 +51,72 @@ from custom_components.hsem.models.planner_inputs import (
     SolcastSlot,
 )
 from custom_components.hsem.planner import run_planner
-from custom_components.hsem.utils.huawei import (
-    async_set_forcible_discharge,
-    async_set_grid_export_power_pct,
-    async_set_tou_periods,
-)
+from custom_components.hsem.utils.logger import async_logger
 from custom_components.hsem.utils.misc import (
-    async_logger,
-    async_resolve_entity_id_from_unique_id,
-    async_set_number_value,
-    async_set_select_option,
     calculate_recommended_threshold,
-    convert_months_to_int,
-    convert_to_boolean,
     convert_to_float,
     convert_to_int,
-    convert_to_time,
-    generate_hash,
-    get_config_value,
-    get_max_discharge_power,
-    ha_get_entity_state_and_convert,
-    interval_ends_before_window_start,
-    next_window_start_dt,
 )
 from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.sensornames import (
-    get_energy_average_sensor_unique_id,
     get_working_mode_sensor_entity_id,
     get_working_mode_sensor_name,
     get_working_mode_sensor_unique_id,
 )
-from custom_components.hsem.utils.workingmodes import WorkingModes
 
 
 class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
-    # Define the attributes of the entity
+    """HA sensor entity that orchestrates the HSEM working-mode pipeline.
+
+    The sensor owns:
+    - The HA entity lifecycle (``async_added_to_hass``, timers, ``async_write_ha_state``)
+    - The update lock preventing concurrent execution
+    - The ``extra_state_attributes`` property
+    - Coordination of the five pipeline stages per update cycle
+
+    It intentionally contains **no** business logic of its own.
+    """
+
     _attr_icon = "mdi:chart-timeline-variant"
     _attr_has_entity_name = True
-
-    # Exclude all attributes from recording except standard ones
     _unrecorded_attributes = frozenset({MATCH_ALL})
 
     def __init__(self, config_entry) -> None:
         super().__init__(config_entry)
 
-        # set config entry and state
         self._config_entry = config_entry
         self._state = None
-        self._hsem_verbose_logging = True
-
-        # Initialize all attributes to None or some default value
-        self._read_only = False
         self._available = False
-        self._update_interval = 1
-        self._timer = None
-        self._timer_interval = None
-
-        self._hourly_recommendations = []
-        self._hourly_recommendation = None
-        self._batteries_schedules = []
 
         self._attr_unique_id = get_working_mode_sensor_unique_id()
         self.entity_id = get_working_mode_sensor_entity_id()
         self._name = get_working_mode_sensor_name()
+
         self._tz = None
         self._last_updated = None
         self._next_update = None
-        self._hsem_avg_house_consumption_entity_id_cache = {}
-        # Number of minutes per recommendation interval (e.g., 60 means hourly intervals)
-        self._hsem_recommendation_interval_minutes = 15
-        # Total number of intervals to generate recommendations for (e.g., 48 means 2 days of hourly intervals)
-        self._hsem_recommendation_interval_length = 48
 
-        self._tracked_entities = set()
         self._update_lock = asyncio.Lock()
-        self._update_settings()
+        self._timer = None
+        self._timer_interval = None
 
-        # Initialize all attributes to None or some default value
+        # Pipeline state
+        self._cfg = build_sensor_config(config_entry)
+        self._live = None  # LiveState, set each cycle
+        self._hourly_recommendations: list[HourlyRecommendation] = []
+        self._hourly_recommendation: HourlyRecommendation | None = None
+        self._batteries_schedules = []
         self._batteries_schedules_remaining_capacity_needed = 0.0
-        self._hsem_extended_attributes = False
-        self._hsem_huawei_solar_device_id_inverter_1 = None
-        self._hsem_huawei_solar_device_id_inverter_2 = None
-        self._hsem_huawei_solar_device_id_batteries = None
-        self._hsem_huawei_solar_batteries_working_mode = None
-        self._hsem_huawei_solar_batteries_state_of_capacity = None
-        self._hsem_house_consumption_power = None
-        self._hsem_solar_production_power = None
-
-        # First EV Charger
-        self._hsem_ev_charger_status = None
-        self._hsem_ev_charger_power = None
-        self._hsem_ev_charger_status_state = False
-        self._hsem_ev_charger_power_state = False
-        self._hsem_ev_soc = None
-        self._hsem_ev_soc_state = None
-        self._hsem_ev_soc_target = None
-        self._hsem_ev_soc_target_state = None
-        self._hsem_ev_connected = None
-        self._hsem_ev_connected_state = None
-        self._hsem_ev_allow_charge_past_target_soc = False
-        self._hsem_ev_charger_force_max_discharge_power = None
-        self._hsem_ev_charger_max_discharge_power = 0
-
-        # Second EV Charger
-        self._hsem_ev_second_enabled = False
-        self._hsem_ev_second_charger_status = None
-        self._hsem_ev_second_charger_power = None
-        self._hsem_ev_second_charger_status_state = False
-        self._hsem_ev_second_charger_power_state = False
-        self._hsem_ev_second_soc = None
-        self._hsem_ev_second_soc_state = None
-        self._hsem_ev_second_soc_target = None
-        self._hsem_ev_second_soc_target_state = None
-        self._hsem_ev_second_connected = None
-        self._hsem_ev_second_connected_state = None
-        self._hsem_ev_second_allow_charge_past_target_soc = False
-        self._hsem_ev_second_charger_force_max_discharge_power = None
-        self._hsem_ev_second_charger_max_discharge_power = 0
-
-        self._hsem_solcast_pv_forecast_forecast_today = None
-        self._hsem_solcast_pv_forecast_forecast_tomorrow = None
-        self._hsem_energi_data_service_import = None
-        self._hsem_energi_data_service_export = None
-        self._hsem_energi_data_service_export_min_price = None
-        self._hsem_energi_data_service_update_interval = 15
-        self._hsem_huawei_solar_inverter_active_power_control = None
-        self._hsem_huawei_solar_batteries_end_of_discharge_soc = None
-        self._hsem_huawei_solar_batteries_end_of_discharge_soc_state = None
-        self._hsem_huawei_solar_batteries_working_mode_state = None
-        self._hsem_huawei_solar_batteries_state_of_capacity_state = None
-        self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc = None
-        self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state = None
-        self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods = None
-        self._hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou_state = None
-        self._hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou = None
-        self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_state = (
-            None
-        )
-        self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_periods = None
-        self._hsem_house_power_includes_ev_charger_power = None
-
-        self._hsem_house_consumption_power_state = 0.0
-        self._hsem_solar_production_power_state = 0.0
-        self._hsem_huawei_solar_inverter_active_power_control_state = None
-        self._hsem_net_consumption = 0.0
-        self._hsem_net_consumption_with_ev = 0.0
-        self._hsem_huawei_solar_batteries_maximum_charging_power = None
-        self._hsem_huawei_solar_batteries_maximum_charging_power_state = None
-        self._hsem_huawei_solar_batteries_maximum_discharging_power = None
-        self._hsem_huawei_solar_batteries_maximum_discharging_power_state = None
-        self._hsem_batteries_conversion_loss = 0.0
-        self._hsem_batteries_usable_capacity = 0.0
-        self._hsem_batteries_current_capacity = 0.0
-        self._hsem_energi_data_service_import_state = 0.0
-        self._hsem_energi_data_service_export_state = 0.0
-        self._hsem_house_consumption_energy_weight_1d = 50
-        self._hsem_house_consumption_energy_weight_3d = 20
-        self._hsem_house_consumption_energy_weight_7d = 15
-        self._hsem_house_consumption_energy_weight_14d = 10
-        self._hsem_batteries_rated_capacity_min_state = None
-        self._hsem_batteries_rated_capacity_max = None
-        self._hsem_batteries_rated_capacity_max_state = 0.0
-        self._energy_needs = {
-            "0am_6am": 0.0,
-            "6am_10am": 0.0,
-            "10am_5pm": 0.0,
-            "5pm_9pm": 0.0,
-            "9pm_midnight": 0.0,
-        }
-
-        self._missing_input_entities = True
-        self._missing_input_entities_list = []
-        self._hsem_batteries_enable_batteries_schedule_1 = False
-        self._hsem_batteries_enable_batteries_schedule_1_start = None
-        self._hsem_batteries_enable_batteries_schedule_1_end = None
-        self._hsem_batteries_enable_batteries_schedule_1_avg_import_price = 0.0
-        self._hsem_batteries_enable_batteries_schedule_1_needed_batteries_capacity = 0.0
-        self._hsem_batteries_enable_batteries_schedule_1_needed_batteries_capacity_cost = 0.0
-        self._hsem_batteries_enable_batteries_schedule_1_min_price_difference = 0.0
-        self._hsem_batteries_enable_batteries_schedule_2 = False
-        self._hsem_batteries_enable_batteries_schedule_2_start = None
-        self._hsem_batteries_enable_batteries_schedule_2_end = None
-        self._hsem_batteries_enable_batteries_schedule_2_avg_import_price = 0.0
-        self._hsem_batteries_enable_batteries_schedule_2_needed_batteries_capacity = 0.0
-        self._hsem_batteries_enable_batteries_schedule_2_needed_batteries_capacity_cost = 0.0
-        self._hsem_batteries_enable_batteries_schedule_2_min_price_difference = 0.0
-        self._hsem_batteries_enable_batteries_schedule_3 = False
-        self._hsem_batteries_enable_batteries_schedule_3_start = None
-        self._hsem_batteries_enable_batteries_schedule_3_end = None
-        self._hsem_batteries_enable_batteries_schedule_3_avg_import_price = 0.0
-        self._hsem_batteries_enable_batteries_schedule_3_needed_batteries_capacity = 0.0
-        self._hsem_batteries_enable_batteries_schedule_3_needed_batteries_capacity_cost = 0.0
-        self._hsem_batteries_enable_batteries_schedule_3_min_price_difference = 0.0
-        self._hsem_batteries_enable_excess_export = False
-        self._hsem_batteries_excess_export_discharge_buffer = 10
-        self._hsem_batteries_excess_export_price_threshold = 0.10
-        self._hsem_batteries_purchase_price = 0.0
-        self._hsem_batteries_expected_cycles = 6000
-        self._hsem_batteries_recommended_min_price_threshold = 0.0
         self._current_required_battery = 0.0
-        self._hsem_force_working_mode = None
-        self._hsem_force_working_mode_state = "auto"
-        self._hsem_solcast_pv_forecast_forecast_likelihood = DEFAULT_CONFIG_VALUES[
-            "hsem_solcast_pv_forecast_forecast_likelihood"
-        ]
-        self._hsem_months_winter = []
-        self._hsem_months_summer = []
+
+        # Entity resolution cache
+        self._force_working_mode_entity: str | None = None
+        self._tracked_entities: set[str] = set()
+        self._avg_house_consumption_entity_id_cache: dict[str, str] = {}
+
+    # ------------------------------------------------------------------
+    # HA entity properties
+    # ------------------------------------------------------------------
 
     @property
     def name(self) -> str:
@@ -300,13 +140,21 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return the state attributes."""
+        """Return entity state attributes."""
+        cfg = self._cfg
+        live = self._live
 
-        if self._missing_input_entities:
+        if live is None or live.missing_entities:
             return {
                 "status": "error",
-                "description": "Some of the required input sensors from the config flow is missing or not reporting a state yet. Check your configuration and make sure input sensors are configured correctly.",
-                "missing_input_entities_list": self._missing_input_entities_list,
+                "description": (
+                    "Some of the required input sensors from the config flow is missing "
+                    "or not reporting a state yet. Check your configuration and make sure "
+                    "input sensors are configured correctly."
+                ),
+                "missing_input_entities_list": (
+                    live.missing_entities_list if live else []
+                ),
                 "last_updated": self._last_updated,
                 "next_update": self._next_update,
                 "unique_id": self._attr_unique_id,
@@ -321,356 +169,135 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 "unique_id": self._attr_unique_id,
             }
 
-        extended_attributes = {}
-        if self._hsem_extended_attributes:
-            extended_attributes = {
-                "energi_data_service_export_entity": self._hsem_energi_data_service_export,
-                "energi_data_service_import_entity": self._hsem_energi_data_service_import,
-                "ev_charger_power_entity": self._hsem_ev_charger_power,
-                "ev_charger_status_entity": self._hsem_ev_charger_status,
-                "ev_soc_entity": self._hsem_ev_soc,
-                "ev_soc_target_entity": self._hsem_ev_soc_target,
-                "ev_connected_entity": self._hsem_ev_connected,
-                "ev_second_charger_power_entity": self._hsem_ev_second_charger_power,
-                "ev_second_charger_status_entity": self._hsem_ev_second_charger_status,
-                "ev_second_soc_entity": self._hsem_ev_second_soc,
-                "ev_second_soc_target_entity": self._hsem_ev_second_soc_target,
-                "ev_second_connected_entity": self._hsem_ev_second_connected,
-                "force_working_mode_entity": self._hsem_force_working_mode,
-                "house_consumption_power_entity": self._hsem_house_consumption_power,
-                "huawei_solar_batteries_end_of_discharge_soc_entity": self._hsem_huawei_solar_batteries_end_of_discharge_soc,
-                "huawei_solar_batteries_grid_charge_cutoff_soc_entity": self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc,
-                "huawei_solar_batteries_maximum_charging_power_entity": self._hsem_huawei_solar_batteries_maximum_charging_power,
-                "huawei_solar_batteries_maximum_discharging_power_entity": self._hsem_huawei_solar_batteries_maximum_discharging_power,
-                "huawei_solar_batteries_rated_capacity_max_entity": self._hsem_batteries_rated_capacity_max,
-                "huawei_solar_batteries_state_of_capacity_entity": self._hsem_huawei_solar_batteries_state_of_capacity,
-                "huawei_solar_batteries_tou_charging_and_discharging_periods_entity": self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods,
-                "huawei_solar_batteries_working_mode_entity": self._hsem_huawei_solar_batteries_working_mode,
-                "huawei_solar_device_id_batteries_id": self._hsem_huawei_solar_device_id_batteries,
-                "huawei_solar_device_id_inverter_1_id": self._hsem_huawei_solar_device_id_inverter_1,
-                "huawei_solar_device_id_inverter_2_id": self._hsem_huawei_solar_device_id_inverter_2,
-                "huawei_solar_inverter_active_power_control_state_entity": self._hsem_huawei_solar_inverter_active_power_control,
+        extended = {}
+        if cfg.extended_attributes:
+            extended = {
+                "energi_data_service_export_entity": cfg.energi_data_service_export,
+                "energi_data_service_import_entity": cfg.energi_data_service_import,
+                "ev_charger_power_entity": cfg.ev.power_entity,
+                "ev_charger_status_entity": cfg.ev.status_entity,
+                "ev_soc_entity": cfg.ev.soc_entity,
+                "ev_soc_target_entity": cfg.ev.soc_target_entity,
+                "ev_connected_entity": cfg.ev.connected_entity,
+                "ev_second_charger_power_entity": cfg.ev_second.power_entity,
+                "ev_second_charger_status_entity": cfg.ev_second.status_entity,
+                "ev_second_soc_entity": cfg.ev_second.soc_entity,
+                "ev_second_soc_target_entity": cfg.ev_second.soc_target_entity,
+                "ev_second_connected_entity": cfg.ev_second.connected_entity,
+                "force_working_mode_entity": live.force_working_mode,
+                "house_consumption_power_entity": cfg.house_consumption_power,
+                "hsem_huawei_solar_batteries_end_of_discharge_soc_entity": cfg.huawei_solar_batteries_end_of_discharge_soc,
+                "huawei_solar_batteries_grid_charge_cutoff_soc_entity": cfg.huawei_solar_batteries_grid_charge_cutoff_soc,
+                "huawei_solar_batteries_maximum_charging_power_entity": cfg.huawei_solar_batteries_maximum_charging_power,
+                "huawei_solar_batteries_maximum_discharging_power_entity": cfg.huawei_solar_batteries_maximum_discharging_power,
+                "huawei_solar_batteries_rated_capacity_max_entity": cfg.huawei_solar_batteries_rated_capacity,
+                "huawei_solar_batteries_state_of_capacity_entity": cfg.huawei_solar_batteries_state_of_capacity,
+                "huawei_solar_batteries_tou_charging_and_discharging_periods_entity": cfg.huawei_solar_batteries_tou_charging_and_discharging_periods,
+                "huawei_solar_batteries_working_mode_entity": cfg.huawei_solar_batteries_working_mode,
+                "huawei_solar_device_id_batteries_id": cfg.huawei_solar_device_id_batteries,
+                "huawei_solar_device_id_inverter_1_id": cfg.huawei_solar_device_id_inverter_1,
+                "huawei_solar_device_id_inverter_2_id": cfg.huawei_solar_device_id_inverter_2,
+                "huawei_solar_inverter_active_power_control_state_entity": cfg.huawei_solar_inverter_active_power_control,
                 "next_update": self._next_update,
-                "read_only": self._read_only,
-                "solar_production_power_entity": self._hsem_solar_production_power,
-                "solcast_pv_forecast_forecast_today_entity": self._hsem_solcast_pv_forecast_forecast_today,
-                "solcast_pv_forecast_forecast_tomorrow_entity": self._hsem_solcast_pv_forecast_forecast_tomorrow,
+                "read_only": cfg.read_only,
+                "solar_production_power_entity": cfg.solar_production_power,
+                "solcast_pv_forecast_forecast_today_entity": cfg.solcast_pv_forecast_forecast_today,
+                "solcast_pv_forecast_forecast_tomorrow_entity": cfg.solcast_pv_forecast_forecast_tomorrow,
                 "unique_id": self._attr_unique_id,
-                "update_interval": self._update_interval,
-                "recommendation_interval_minutes": self._hsem_recommendation_interval_minutes,
-                "recommendation_interval_length": self._hsem_recommendation_interval_length,
+                "update_interval": cfg.update_interval,
+                "recommendation_interval_minutes": cfg.recommendation_interval_minutes,
+                "recommendation_interval_length": cfg.recommendation_interval_length,
             }
 
         attributes = {
-            "batteries_conversion_loss": self._hsem_batteries_conversion_loss,
-            "batteries_current_capacity": self._hsem_batteries_current_capacity,
-            "batteries_usable_capacity": self._hsem_batteries_usable_capacity,
-            "batteries_recommended_min_price_threshold": self._hsem_batteries_recommended_min_price_threshold,
-            "energi_data_service_export_state": self._hsem_energi_data_service_export_state,
-            "energi_data_service_import_state": self._hsem_energi_data_service_import_state,
-            "energi_data_service_export_min_price": self._hsem_energi_data_service_export_min_price,
-            "energi_data_service_update_interval": self._hsem_energi_data_service_update_interval,
-            "ev_charger_power_state": self._hsem_ev_charger_power_state,
-            "ev_charger_status_state": self._hsem_ev_charger_status_state,
-            "ev_soc_state": self._hsem_ev_soc_state,
-            "ev_soc_target_state": self._hsem_ev_soc_target_state,
-            "ev_connected_state": self._hsem_ev_connected_state,
-            "ev_allow_charge_past_target_soc": self._hsem_ev_allow_charge_past_target_soc,
-            "ev_charger_max_discharge_power_state": self._hsem_ev_charger_max_discharge_power,
-            "ev_charger_force_max_discharge_power": self._hsem_ev_charger_force_max_discharge_power,
-            "ev_second_enabled": self._hsem_ev_second_enabled,
-            "ev_second_charger_power_state": self._hsem_ev_second_charger_power_state,
-            "ev_second_charger_status_state": self._hsem_ev_second_charger_status_state,
-            "ev_second_soc_state": self._hsem_ev_second_soc_state,
-            "ev_second_soc_target_state": self._hsem_ev_second_soc_target_state,
-            "ev_second_connected_state": self._hsem_ev_second_connected_state,
-            "ev_second_allow_charge_past_target_soc": self._hsem_ev_second_allow_charge_past_target_soc,
-            "ev_second_charger_max_discharge_power_state": self._hsem_ev_second_charger_max_discharge_power,
-            "ev_second_charger_force_max_discharge_power": self._hsem_ev_second_charger_force_max_discharge_power,
-            "force_working_mode_state": self._hsem_force_working_mode_state,
+            "batteries_conversion_loss": cfg.batteries_conversion_loss,
+            "batteries_current_capacity": live.battery_current_capacity_kwh,
+            "batteries_usable_capacity": live.battery_usable_capacity_kwh,
+            "batteries_recommended_min_price_threshold": calculate_recommended_threshold(
+                cfg.batteries_purchase_price,
+                cfg.batteries_expected_cycles,
+                live.battery_usable_capacity_kwh,
+                cfg.batteries_conversion_loss,
+                live.energi_data_service_import_price,
+            ),
+            "energi_data_service_export_state": live.energi_data_service_export_price,
+            "energi_data_service_import_state": live.energi_data_service_import_price,
+            "energi_data_service_export_min_price": cfg.energi_data_service_export_min_price,
+            "energi_data_service_update_interval": cfg.energi_data_service_update_interval,
+            "ev_charger_power_state": live.ev.power_w,
+            "ev_charger_status_state": live.ev.is_charging,
+            "ev_soc_state": live.ev.soc_pct,
+            "ev_soc_target_state": live.ev.soc_target_pct,
+            "ev_connected_state": live.ev.is_connected,
+            "ev_allow_charge_past_target_soc": cfg.ev.allow_charge_past_target_soc,
+            "ev_charger_max_discharge_power_state": live.ev.max_discharge_power_w,
+            "ev_charger_force_max_discharge_power": live.ev.force_max_discharge_power,
+            "ev_second_enabled": cfg.ev_second_enabled,
+            "ev_second_charger_power_state": live.ev_second.power_w,
+            "ev_second_charger_status_state": live.ev_second.is_charging,
+            "ev_second_soc_state": live.ev_second.soc_pct,
+            "ev_second_soc_target_state": live.ev_second.soc_target_pct,
+            "ev_second_connected_state": live.ev_second.is_connected,
+            "ev_second_allow_charge_past_target_soc": cfg.ev_second.allow_charge_past_target_soc,
+            "ev_second_charger_max_discharge_power_state": live.ev_second.max_discharge_power_w,
+            "ev_second_charger_force_max_discharge_power": live.ev_second.force_max_discharge_power,
+            "force_working_mode_state": live.force_working_mode_state,
             "hourly_recommendation": self._hourly_recommendation,
             "hourly_recommendations": self._hourly_recommendations,
-            "house_consumption_energy_weight_14d": self._hsem_house_consumption_energy_weight_14d,
-            "house_consumption_energy_weight_1d": self._hsem_house_consumption_energy_weight_1d,
-            "house_consumption_energy_weight_3d": self._hsem_house_consumption_energy_weight_3d,
-            "house_consumption_energy_weight_7d": self._hsem_house_consumption_energy_weight_7d,
-            "house_consumption_power_state": self._hsem_house_consumption_power_state,
-            "house_power_includes_ev_charger_power": self._hsem_house_power_includes_ev_charger_power,
+            "house_consumption_energy_weight_14d": cfg.house_consumption_energy_weight_14d,
+            "house_consumption_energy_weight_1d": cfg.house_consumption_energy_weight_1d,
+            "house_consumption_energy_weight_3d": cfg.house_consumption_energy_weight_3d,
+            "house_consumption_energy_weight_7d": cfg.house_consumption_energy_weight_7d,
+            "house_consumption_power_state": live.house_consumption_power_w,
+            "house_power_includes_ev_charger_power": cfg.house_power_includes_ev_charger_power,
             "batteries_schedules_remaining_capacity_needed": self._batteries_schedules_remaining_capacity_needed,
             "batteries_schedules": self._batteries_schedules,
-            "huawei_solar_batteries_grid_charge_cutoff_soc_state": self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state,
-            "huawei_solar_batteries_maximum_charging_power_state": self._hsem_huawei_solar_batteries_maximum_charging_power_state,
-            "huawei_solar_batteries_maximum_discharging_power_state": self._hsem_huawei_solar_batteries_maximum_discharging_power_state,
-            "huawei_solar_batteries_rated_capacity_max_state": self._hsem_batteries_rated_capacity_max_state,
-            "huawei_solar_batteries_rated_capacity_min_state": self._hsem_batteries_rated_capacity_min_state,
-            "huawei_solar_batteries_state_of_capacity_state": self._hsem_huawei_solar_batteries_state_of_capacity_state,
-            "huawei_solar_batteries_tou_charging_and_discharging_periods_periods": self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_periods,
-            "huawei_solar_batteries_tou_charging_and_discharging_periods_state": self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_state,
-            "huawei_solar_batteries_working_mode_state": self._hsem_huawei_solar_batteries_working_mode_state,
-            "huawei_solar_inverter_active_power_control_state_state": self._hsem_huawei_solar_inverter_active_power_control_state,
-            "huawei_solar_batteries_excess_pv_energy_use_in_tou_state": self._hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou_state,
-            "solcast_pv_forecast_forecast_likelihood": self._hsem_solcast_pv_forecast_forecast_likelihood,
+            "huawei_solar_batteries_grid_charge_cutoff_soc_state": live.huawei_batteries_grid_charge_cutoff_soc_pct,
+            "huawei_solar_batteries_maximum_charging_power_state": live.huawei_batteries_max_charge_power_w,
+            "huawei_solar_batteries_maximum_discharging_power_state": live.huawei_batteries_max_discharge_power_w,
+            "huawei_solar_batteries_rated_capacity_max_state": live.huawei_batteries_rated_capacity_wh,
+            "huawei_solar_batteries_rated_capacity_min_state": live.battery_rated_capacity_min_kwh,
+            "huawei_solar_batteries_state_of_capacity_state": live.huawei_batteries_soc_pct,
+            "huawei_solar_batteries_tou_charging_and_discharging_periods_periods": live.tou_periods.periods,
+            "huawei_solar_batteries_tou_charging_and_discharging_periods_state": live.tou_periods.raw_state,
+            "huawei_solar_batteries_working_mode_state": live.huawei_batteries_working_mode,
+            "huawei_solar_inverter_active_power_control_state_state": live.huawei_inverter_active_power_control,
+            "huawei_solar_batteries_excess_pv_energy_use_in_tou_state": live.huawei_batteries_excess_pv_use_in_tou,
+            "solcast_pv_forecast_forecast_likelihood": cfg.solcast_pv_forecast_forecast_likelihood,
             "last_updated": self._last_updated,
-            "net_consumption_with_ev": self._hsem_net_consumption_with_ev,
-            "net_consumption": self._hsem_net_consumption,
-            "solar_production_power_state": self._hsem_solar_production_power_state,
-            "months_winter": self._hsem_months_winter,
-            "months_summer": self._hsem_months_summer,
-            "batteries_enable_excess_export": self._hsem_batteries_enable_excess_export,
-            "batteries_excess_export_discharge_buffer": self._hsem_batteries_excess_export_discharge_buffer,
-            "batteries_excess_export_price_threshold": self._hsem_batteries_excess_export_price_threshold,
+            "net_consumption_with_ev": live.net_consumption_with_ev_w,
+            "net_consumption": live.net_consumption_w,
+            "solar_production_power_state": live.solar_production_power_w,
+            "months_winter": cfg.months_winter,
+            "months_summer": cfg.months_summer,
+            "batteries_enable_excess_export": cfg.batteries_enable_excess_export,
+            "batteries_excess_export_discharge_buffer": cfg.batteries_excess_export_discharge_buffer,
+            "batteries_excess_export_price_threshold": cfg.batteries_excess_export_price_threshold,
         }
 
-        status = {
-            "status": "ok",
-        }
-        if self._read_only:
-            status = {
-                "status": "read_only",
-            }
+        status = {"status": "read_only" if cfg.read_only else "ok"}
 
-        # Return sorted attributes
         return {
             key: value
-            for key, value in sorted(
-                {**attributes, **extended_attributes, **status}.items()
-            )
+            for key, value in sorted({**attributes, **extended, **status}.items())
         }
 
-    def _generate_recommendation_intervals(
-        self, interval_minutes: int, total_hours: int
-    ) -> list[HourlyRecommendation]:
-        now = datetime.now().astimezone(self._tz)
+    # ------------------------------------------------------------------
+    # HA lifecycle
+    # ------------------------------------------------------------------
 
-        # Rund ned til nærmeste hele interval
-        # minutes_since_hour = floor(now.minute / interval_minutes) * interval_minutes
-        # start_time = now.replace(minute=minutes_since_hour, second=0, microsecond=0)
-        start_time = now.replace(hour=0, minute=0, second=0, microsecond=0)
-
-        intervals = []
-        steps = int((total_hours * 60) / interval_minutes)
-
-        for i in range(steps):
-            interval_start = start_time + timedelta(minutes=i * interval_minutes)
-            interval_end = interval_start + timedelta(minutes=interval_minutes)
-
-            recommendation = HourlyRecommendation(
-                avg_house_consumption=0.0,
-                avg_house_consumption_1d=0.0,
-                avg_house_consumption_3d=0.0,
-                avg_house_consumption_7d=0.0,
-                avg_house_consumption_14d=0.0,
-                batteries_charged=0.0,
-                end=interval_end,
-                estimated_battery_capacity=0.0,
-                estimated_battery_soc=0,
-                estimated_cost=0.0,
-                estimated_net_consumption=0.0,
-                export_price=0.0,
-                import_price=0.0,
-                recommendation=None,
-                solcast_pv_estimate=0.0,
-                start=interval_start,
-            )
-
-            intervals.append(recommendation)
-
-        return intervals
-
-    async def _set_update_interval(self, override_interval=None) -> None:
-        if override_interval:
-            interval = timedelta(minutes=override_interval)
-        else:
-            interval = timedelta(minutes=self._update_interval)
-
-        # only re-register if changed
-        if self._timer_interval != interval:
-            self._timer_interval = interval
-            await self._async_register_timer(interval)
-
-        self._next_update = (datetime.now().astimezone(self._tz) + interval).isoformat()
-
-    async def _async_handle_update(self, event=None) -> None:
-        """Handle the sensor state update (for both manual and state change).
-
-        Concurrent calls are dropped: if an update cycle is already running the
-        incoming call is logged and returns immediately without executing,
-        preventing conflicting inverter writes.
-        """
-        if self._update_lock.locked():
-            await async_logger(
-                self,
-                "------ Update skipped: a previous update cycle is still running.",
-            )
-            return
-
-        async with self._update_lock:
-            await self._async_run_update_cycle(event)
-
-    async def _async_run_update_cycle(self, event=None) -> None:
-        """Execute the full update/apply cycle (must only be called while holding _update_lock)."""
-
-        await async_logger(self, f"------ Updating {self._name} state...")
-
-        now = datetime.now().astimezone(self._tz)
-
-        self._update_settings()
-
-        # Log recommended threshold for battery export/schedules
-        self._hsem_batteries_recommended_min_price_threshold = (
-            calculate_recommended_threshold(
-                self._hsem_batteries_purchase_price,
-                self._hsem_batteries_expected_cycles,
-                self._hsem_batteries_usable_capacity,
-                self._hsem_batteries_conversion_loss,
-                self._hsem_energi_data_service_import_state,
-            )
+    async def async_added_to_hass(self) -> None:
+        """Handle the sensor being added to Home Assistant."""
+        self._tz = ZoneInfo(str(self.hass.config.time_zone))
+        await self._async_handle_update(None)
+        async_track_time_change(
+            self.hass,
+            self._async_handle_update,
+            hour="*",
+            minute=0,
+            second=10,
         )
-
-        if self._hsem_batteries_recommended_min_price_threshold > 0:
-            await async_logger(
-                self,
-                f"Recommended price threshold for battery export/schedules: "
-                f"{self._hsem_batteries_recommended_min_price_threshold} (based on depreciation and losses). "
-                f"Current config: {self._hsem_batteries_excess_export_price_threshold}",
-            )
-
-        # Reset recommendations
-        self._hourly_recommendation = None
-        self._hourly_recommendations = self._generate_recommendation_intervals(
-            self._hsem_recommendation_interval_minutes,
-            self._hsem_recommendation_interval_length,
-        )
-
-        await self._async_fetch_entity_states()
-
-        await self._async_setup_batteries_schedules()
-
-        # self._batteries_schedules = self._generate_batteries_schedules()
-        self._batteries_schedules.sort(key=lambda x: x.start)
-
-        if not await self._async_calculate_avg_house_consumption():
-            self._missing_input_entities = True
-
-        if self._missing_input_entities:
-            await self._set_update_interval(1)
-        else:
-            await self._set_update_interval()
-
-        if (
-            self._missing_input_entities
-            and self._hsem_force_working_mode_state == "auto"
-        ):
-            self._state = Recommendations.MissingInputEntities.value
-
-            await async_logger(self, "Missing input entities, skipping calculations.")
-        elif self._hsem_force_working_mode_state != "auto":
-            self._state = str(self._hsem_force_working_mode_state)
-
-            await async_logger(
-                self,
-                f"Force working mode is activated. Setting working mode to {str(self._hsem_force_working_mode_state)}",
-            )
-        else:
-            await self._async_calculate_net_consumption()
-
-            await self._async_calculate_remaining_battery_capacity()
-
-            # Manipulate all the recommendations.
-            share = (
-                self._hsem_energi_data_service_update_interval
-                / self._hsem_recommendation_interval_minutes
-            )
-
-            # Try for import price
-            await self._async_update_hourly_data(
-                self._hsem_energi_data_service_import, "import_price", share
-            )
-
-            # Try for export price
-            await self._async_update_hourly_data(
-                self._hsem_energi_data_service_export, "export_price", share
-            )
-
-            share = 60 / self._hsem_recommendation_interval_minutes
-
-            # Try for solcast pv forecast today
-            await self._async_update_hourly_data(
-                self._hsem_solcast_pv_forecast_forecast_today,
-                "solcast_pv_estimate",
-                share,
-            )
-
-            # Try for solcast pv forecast tomorrow
-            await self._async_update_hourly_data(
-                self._hsem_solcast_pv_forecast_forecast_tomorrow,
-                "solcast_pv_estimate",
-                share,
-            )
-
-            # --- Run the pure-Python planner engine ---
-            # Build PlannerInput from the HA state that was already fetched
-            # (prices, solcast, and consumption averages are in
-            # self._hourly_recommendations at this point).
-            planner_input = self._build_planner_input()
-            planner_output = run_planner(planner_input)
-
-            # Log any engine warnings for observability
-            for warning in planner_output.warnings:
-                await async_logger(self, f"[planner] {warning}")
-
-            # Write engine decisions back into self._hourly_recommendations so
-            # that all downstream code (inverter writes, attributes) keeps working
-            # exactly as before.
-            self._apply_planner_output(planner_output)
-
-            # Keep internal bookkeeping in sync with engine output
-            self._current_required_battery = planner_output.required_capacity_kwh
-
-            # Get the current recommendation we need to work from by sorting on time.
-            self._hourly_recommendations.sort(key=lambda x: x.start)
-            hourly_recommendation = next(
-                (
-                    rec
-                    for rec in self._hourly_recommendations
-                    if rec.start.astimezone(self._tz)
-                    <= now
-                    < rec.end.astimezone(self._tz)
-                ),
-                None,
-            )
-
-            await self._async_update_current_hourly_recommendation(
-                hourly_recommendation
-            )
-
-            await async_logger(
-                self, f"Current hourly recommendation: {hourly_recommendation}"
-            )
-
-            if not self._read_only:
-                await self._async_set_inverter_power_control()
-                await self._async_set_inverter_and_batteries_settings(
-                    hourly_recommendation
-                )
-
-            if hourly_recommendation:
-                self._hourly_recommendation = hourly_recommendation
-                self._state = hourly_recommendation.recommendation
-            else:
-                self._state = None
-
-        # Final sorting
-        self._hourly_recommendations.sort(key=lambda x: x.start)
-
-        # Update last update time
-        self._last_updated = now.isoformat()
-        self._available = True
-
-        await async_logger(self, f"------ Completed updating {self._name} state...")
-
-        # Trigger an update in Home Assistant
-        self.async_write_ha_state()
+        await super().async_added_to_hass()
 
     async def async_update(self, event=None) -> None:
         """Manually trigger the sensor update."""
@@ -680,2514 +307,156 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         """Handle options update from configuration change."""
         await self._async_handle_update(None)
 
-    async def _async_register_timer(self, interval: timedelta):
-        # cancel old timer if any
-        if self._timer:
-            self._timer()
-            self._timer = None
+    # ------------------------------------------------------------------
+    # Update pipeline
+    # ------------------------------------------------------------------
 
-        # register new one
-        self._timer = async_track_time_interval(
-            self.hass, self._async_handle_update, interval
+    async def _async_handle_update(self, event=None) -> None:
+        """Drop concurrent updates; run the update cycle while holding the lock."""
+        if self._update_lock.locked():
+            await async_logger(
+                self,
+                "------ Update skipped: a previous update cycle is still running.",
+            )
+            return
+        async with self._update_lock:
+            await self._async_run_update_cycle(event)
+
+    async def _async_run_update_cycle(self, event=None) -> None:
+        """Execute the full collect → populate → plan → apply → resolve cycle."""
+        await async_logger(self, f"------ Updating {self._name} state...")
+        now = datetime.now().astimezone(self._tz)
+
+        # 1. Reload config
+        self._cfg = build_sensor_config(self._config_entry)
+        cfg = self._cfg
+
+        # 2. Collect live HA state
+        self._live, self._force_working_mode_entity = await async_collect_live_state(
+            self,
+            cfg,
+            self._force_working_mode_entity,
+            self._tracked_entities,
+        )
+        live = self._live
+
+        # 3. Reset & regenerate recommendation slots
+        self._hourly_recommendation = None
+        self._hourly_recommendations = self._generate_recommendation_intervals(
+            cfg.recommendation_interval_minutes,
+            cfg.recommendation_interval_length,
         )
 
-        await async_logger(self, f"Updating HSEM with interval: {interval}.")
-
-    async def async_added_to_hass(self) -> None:
-        """Handle the sensor being added to Home Assistant."""
-
-        # Initialize timezone now that hass is available
-        self._tz = ZoneInfo(str(self.hass.config.time_zone))
-
-        # Initial update
-        await self._async_handle_update(None)
-
-        # Schedule updates at the start of every hour
-        async_track_time_change(
-            self.hass,
-            self._async_handle_update,
-            hour="*",
-            minute=0,
-            second=10,
-        )
-
-        await super().async_added_to_hass()
-
-    async def _async_update_current_hourly_recommendation(
-        self, hourly_recommendation
-    ) -> None:
-        # Negative import price. Force export everyting to earn money.
-        if convert_to_float(self._hsem_energi_data_service_import_state) < 0:
-            hourly_recommendation.recommendation = Recommendations.ForceExport.value
-            return
-
-        # Charging batteries from grid is more important than EV Smart Charging
-        elif (
-            hourly_recommendation.recommendation
-            == Recommendations.BatteriesChargeGrid.value
-        ):
-            return
-
-        # Either of the EVs is charging and we are not to force charge from grid
-        elif (
-            self._hsem_ev_charger_status_state
-            or self._hsem_ev_second_charger_status_state
-        ):
-            hourly_recommendation.recommendation = Recommendations.EVSmartCharging.value
-            return
-
-        # If we have more capacity on our battery to cover the remaining schedules, lets change to discharge mode.
-        elif (
-            self._batteries_schedules_remaining_capacity_needed > 0
-            and self._hsem_batteries_current_capacity
-            > self._batteries_schedules_remaining_capacity_needed
-        ):
-            hourly_recommendation.recommendation = (
-                Recommendations.BatteriesDischargeMode.value
-            )
-            return
-
-    async def _async_set_inverter_and_batteries_settings(
-        self, hourly_recommendation
-    ) -> None:
-        tou_modes = None
-        working_mode = None
-
-        # Set maximum discharging power for batteries if EV charger is not active
-        max_discharge_power = get_max_discharge_power(
-            convert_to_int(self._hsem_batteries_rated_capacity_max_state)
-        )
-
-        if (
-            not self._hsem_ev_charger_status_state
-            or not self._hsem_ev_second_charger_status_state
-        ):
-            if (
-                self._hsem_huawei_solar_batteries_maximum_discharging_power_state
-                != max_discharge_power
-            ):
-                await async_set_number_value(
-                    self,
-                    self._hsem_huawei_solar_batteries_maximum_discharging_power,
-                    max_discharge_power,
-                )
-
-        # Set mode based upon recommendation
-        match hourly_recommendation.recommendation:
-            case Recommendations.ForceExport.value:
-                working_mode = WorkingModes.FullyFedToGrid.value
-            case Recommendations.BatteriesChargeGrid.value:
-                tou_modes = DEFAULT_HSEM_TOU_MODES_FORCE_CHARGE
-                working_mode = WorkingModes.TimeOfUse.value
-            case Recommendations.EVSmartCharging.value:
-                if (
-                    self._hsem_ev_charger_force_max_discharge_power
-                    or self._hsem_ev_second_charger_force_max_discharge_power
-                ):
-                    working_mode = WorkingModes.MaximizeSelfConsumption.value
-                else:
-                    tou_modes = DEFAULT_HSEM_EV_CHARGER_TOU_MODES
-                    working_mode = WorkingModes.TimeOfUse.value
-            case Recommendations.BatteriesDischargeMode.value:
-                working_mode = WorkingModes.MaximizeSelfConsumption.value
-            case Recommendations.BatteriesChargeSolar.value:
-                working_mode = WorkingModes.MaximizeSelfConsumption.value
-            case Recommendations.ForceBatteriesDischarge.value:
-                # Excess battery export uses direct forcible discharge API
-                # Calculate target SOC based on remaining energy needed for rest of day
-                if (
-                    self._hsem_batteries_usable_capacity > 0
-                    and self._current_required_battery >= 0
-                    and self._hsem_huawei_solar_device_id_batteries
-                ):
-                    target_soc = int(
-                        (
-                            self._current_required_battery
-                            / self._hsem_batteries_usable_capacity
-                        )
-                        * 100
-                    )
-                    # `_current_required_battery` already includes the
-                    # configured discharge buffer. Keep a minimum 10%
-                    # safety floor for forecast uncertainty.
-                    target_soc = max(10, min(100, target_soc))  # Clamp 10 - 100
-
-                    max_discharge_power = get_max_discharge_power(
-                        convert_to_int(self._hsem_batteries_rated_capacity_max_state)
-                    )
-
-                    await async_set_forcible_discharge(
-                        self,
-                        self._hsem_huawei_solar_device_id_batteries,
-                        target_soc,
-                        max_discharge_power,
-                    )
-
-                    await async_logger(
-                        self,
-                        f"Excess battery export: Set forcible discharge to {target_soc}% SOC "
-                        f"at {max_discharge_power}W power.",
-                    )
-                return
-            case Recommendations.BatteriesWaitMode.value:
-                tou_modes = DEFAULT_HSEM_BATTERIES_WAIT_MODE
-                working_mode = WorkingModes.TimeOfUse.value
-            case _:
-                return
-
-        if (
-            hourly_recommendation.recommendation
-            == Recommendations.EVSmartCharging.value
-            and (
-                self._hsem_ev_charger_force_max_discharge_power
-                or self._hsem_ev_second_charger_force_max_discharge_power
-            )
-        ):
-            # Set to the max discharge power of both chargers
-            max_discharge_power = max(
-                self._hsem_ev_charger_max_discharge_power,
-                self._hsem_ev_second_charger_max_discharge_power,
-            )
-
-            # Set maximum discharging power for batteries
-            if (
-                self._hsem_huawei_solar_batteries_maximum_discharging_power_state
-                != max_discharge_power
-            ):
-                await async_set_number_value(
-                    self,
-                    self._hsem_huawei_solar_batteries_maximum_discharging_power,
-                    max_discharge_power,
-                )
-
-        # Set pv excess in tou
-        if (
-            hourly_recommendation.recommendation
-            == Recommendations.BatteriesWaitMode.value
-            or hourly_recommendation.recommendation == WorkingModes.FullyFedToGrid.value
-        ):
-            if (
-                self._hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou_state
-                != "fed_to_grid"
-            ):
-                await async_set_select_option(
-                    self,
-                    self._hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou,
-                    "fed_to_grid",
-                )
-        else:
-            if (
-                self._hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou_state
-                != "charge"
-            ):
-                await async_set_select_option(
-                    self,
-                    self._hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou,
-                    "charge",
-                )
-
-        # Apply TOU periods if working mode is TOU
-        if working_mode == WorkingModes.TimeOfUse.value and tou_modes:
-            if generate_hash(str(tou_modes)) != generate_hash(
-                str(
-                    self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_periods
-                )
-            ):
-                await async_set_tou_periods(
-                    self, self._hsem_huawei_solar_device_id_batteries, tou_modes
-                )
-
-        # Only apply working mode if it has changed
-        if (
-            working_mode
-            and self._hsem_huawei_solar_batteries_working_mode_state != working_mode
-        ):
-            await async_set_select_option(
-                self, self._hsem_huawei_solar_batteries_working_mode, working_mode
-            )
-
-    async def _async_calculate_estimated_batteries_capacity(self) -> None:
-        """Calculate the estimated battery capacity for each hour based on net consumption and charging."""
-
+        # 4. Build battery schedules from config
+        self._batteries_schedules = build_battery_schedules(cfg)
         self._batteries_schedules.sort(key=lambda x: x.start)
 
-        previous_capacity = 0.0
-        for obj in self._hourly_recommendations:
-            if (
-                obj.start.astimezone(self._tz)
-                <= datetime.now().astimezone(self._tz)
-                < obj.end.astimezone(self._tz)
-            ):
-                obj.estimated_battery_capacity = max(
-                    self._hsem_batteries_current_capacity
-                    - obj.estimated_net_consumption
-                    + obj.batteries_charged,
-                    0.0,
-                )
-
-                if (
-                    obj.estimated_battery_capacity
-                    > self._hsem_batteries_usable_capacity
-                ):
-                    obj.estimated_battery_capacity = (
-                        self._hsem_batteries_usable_capacity
-                    )
-
-                obj.estimated_battery_capacity = round(
-                    obj.estimated_battery_capacity, 3
-                )
-
-                previous_capacity = obj.estimated_battery_capacity
-
-            elif obj.start.astimezone(self._tz) >= datetime.now().astimezone(self._tz):
-                obj.estimated_battery_capacity = max(
-                    previous_capacity
-                    - obj.estimated_net_consumption
-                    + obj.batteries_charged,
-                    0.0,
-                )
-
-                if (
-                    obj.estimated_battery_capacity
-                    > self._hsem_batteries_usable_capacity
-                ):
-                    obj.estimated_battery_capacity = (
-                        self._hsem_batteries_usable_capacity
-                    )
-
-                obj.estimated_battery_capacity = round(
-                    obj.estimated_battery_capacity, 3
-                )
-
-                previous_capacity = obj.estimated_battery_capacity
-
-        # Calculate estimated battery state of charge (SoC) as a percentage
-        for obj in self._hourly_recommendations:
-            if obj.estimated_battery_capacity > 0:
-                obj.estimated_battery_soc = round(
-                    obj.estimated_battery_capacity
-                    / self._hsem_batteries_usable_capacity
-                    * 100,
-                    2,
-                )
-
-    async def _async_set_time_passed(self) -> None:
-        """Mark hourly recommendation intervals that have already passed as 'TimePassed'.
-
-        This indicates that for these intervals, the battery or system cannot take further action,
-        and recommendations for those times are no longer relevant.
-        """
-
-        await async_logger(
-            self, "Starting marking recommendations already passed as Time Passed."
-        )
-
-        for obj in self._hourly_recommendations:
-            # Mark recommendations as "TimePassed" for intervals before the current time,
-            # indicating these time slots are no longer actionable.
-            if obj.end.astimezone(self._tz) < datetime.now().astimezone(self._tz):
-                obj.recommendation = Recommendations.TimePassed.value
-
-    async def _async_calculate_hourly_net_consumption(self) -> None:
-        """Calculate the estimated net consumption for each hour of the day."""
-
-        for obj in self._hourly_recommendations:
-            if obj.avg_house_consumption is None:
-                continue
-
-            if obj.solcast_pv_estimate:
-                obj.estimated_net_consumption = round(
-                    obj.avg_house_consumption - obj.solcast_pv_estimate, 3
-                )
-            else:
-                obj.estimated_net_consumption = round(obj.avg_house_consumption, 3)
-
-        await async_logger(
-            self, "Updated hourly calculations with Estimated Net Consumption"
-        )
-
-    async def _async_calculate_hourly_estimated_cost(self) -> None:
-        """Calculate the estimated cost for each hour of the day based on net consumption and import/export prices."""
-
-        for obj in self._hourly_recommendations:
-            if obj.estimated_net_consumption is None:
-                continue
-
-            if obj.import_price is None or obj.export_price is None:
-                continue
-
-            if obj.estimated_net_consumption > 0:
-                obj.estimated_cost = round(
-                    obj.estimated_net_consumption * obj.import_price, 3
-                )
-            else:
-                obj.estimated_cost = round(
-                    obj.estimated_net_consumption * obj.export_price, 3
-                )
-
-        await async_logger(self, "Updated hourly calculations with Estimated Cost")
-
-    async def _async_update_hourly_data(
-        self,
-        sensor_id: str | None,
-        recommendations_field_to_update: str,
-        share: float,
-    ) -> None:
-        """Update hourly data from the specified sensor for the given recommendations field."""
-
-        # Define the data sources with a list of key-value mapping options per source
-        data_sources = {
-            # energi_data_service templates
-            "forecast": [{"k": "hour", "v": "price"}],
-            "raw_tomorrow": [{"k": "hour", "v": "price"}],
-            "raw_today": [{"k": "hour", "v": "price"}],
-            # stromligning
-            "prices": [{"k": "start", "v": "price"}],
-            # ev_smart_charging templates - try both "start" and "time" as time keys
-            "prices_today": [
-                {"k": "start", "v": "price"},
-                {"k": "time", "v": "price"},
-            ],
-            "prices_tomorrow": [
-                {"k": "start", "v": "price"},
-                {"k": "time", "v": "price"},
-            ],
-            # Solcast
-            "detailedHourly": [
-                {
-                    "k": "period_start",
-                    "v": self._hsem_solcast_pv_forecast_forecast_likelihood,
-                }
-            ],
-            "detailedForecast": [
-                {
-                    "k": "period_start",
-                    "v": self._hsem_solcast_pv_forecast_forecast_likelihood,
-                }
-            ],
-            # EPEX Spot
-            "data": [{"k": "start_time", "v": "price_per_kwh"}],
-        }
-
-        if sensor_id is None:
-            return
-
-        sensor_state = self.hass.states.get(sensor_id)
-
-        if not sensor_state:
-            await async_logger(
-                self, f"Input sensor {sensor_id} was not found for data."
-            )
-            return
-
-        for attr, kv_list in data_sources.items():
-            sensor_data = sensor_state.attributes.get(attr) or []
-
-            # Attribute does not exist in this sensor, skip to next
-            if not sensor_data:
-                continue
-
-            await async_logger(
-                self, f"Updating data for {recommendations_field_to_update}..."
-            )
-
-            for data in sensor_data:
-                # Try each key-value mapping option for this source
-                for kv in kv_list:
-                    # Get the value from the data based on the key mapping
-                    v = data.get(kv["k"])
-
-                    # Skip if no key found for this mapping
-                    if not v:
-                        continue
-
-                    # Parse datetime key
-                    if isinstance(v, datetime):
-                        dt_key = v
-                    else:
-                        dt_key = datetime.fromisoformat(str(v))
-
-                    # Normalize datetime to hour start in the correct timezone
-                    try:
-                        dt_key = dt_key.replace(
-                            minute=0, second=0, microsecond=0
-                        ).astimezone(self._tz)
-                    except Exception:  # noqa: TRY302
-                        continue
-
-                    value = convert_to_float(data.get(kv["v"]))
-
-                    # Skip if no value found for the attribute
-                    if value is None:
-                        continue
-
-                    # Adjust value based on share (e.g., if data is in smaller intervals)
-                    value = value / share
-
-                    for obj in self._hourly_recommendations:
-                        obj_hour = obj.start.replace(
-                            minute=0, second=0, microsecond=0
-                        ).astimezone(self._tz)
-
-                        if obj.start.date() == dt_key.date() and obj_hour == dt_key:
-                            setattr(
-                                obj, recommendations_field_to_update, round(value, 5)
-                            )
-        return
-
-    async def _async_calculate_avg_house_consumption(self) -> bool:
-        """Calculate the weighted hourly data for the sensor using 1/3/7/14-day HouseConsumptionEnergyAverageSensors.
-
-        With spike-aware dynamic reweighting, capping of 1d/3d/7d/14d vs baseline, and reliability-based weight scaling.
-        """
-
-        if self._hsem_house_consumption_energy_weight_1d is None:
-            self._missing_input_entities_list.append(
-                str(self._hsem_house_consumption_energy_weight_1d)
-            )
-            await async_logger(
-                self, "Weight for 1d is None. Skipping this calculation."
-            )
-            return False
-
-        if self._hsem_house_consumption_energy_weight_3d is None:
-            self._missing_input_entities_list.append(
-                str(self._hsem_house_consumption_energy_weight_3d)
-            )
-            await async_logger(
-                self, "Weight for 3d is None. Skipping this calculation."
-            )
-            return False
-
-        if self._hsem_house_consumption_energy_weight_7d is None:
-            self._missing_input_entities_list.append(
-                str(self._hsem_house_consumption_energy_weight_7d)
-            )
-            await async_logger(
-                self, "Weight for 7d is None. Skipping this calculation."
-            )
-            return False
-
-        if self._hsem_house_consumption_energy_weight_14d is None:
-            self._missing_input_entities_list.append(
-                str(self._hsem_house_consumption_energy_weight_14d)
-            )
-            await async_logger(
-                self, "Weight for 14d is None. Skipping this calculation."
-            )
-            return False
-
-        await async_logger(self, "Calculating hourly data for energy averages...")
-
-        for h in range(24):
-            hour_start = h
-            hour_end = (h + 1) % 24
-
-            # Construct unique_ids for the 3d, 7d, and 14d sensors
-            unique_id_1d = get_energy_average_sensor_unique_id(hour_start, hour_end, 1)
-            unique_id_3d = get_energy_average_sensor_unique_id(hour_start, hour_end, 3)
-            unique_id_7d = get_energy_average_sensor_unique_id(hour_start, hour_end, 7)
-            unique_id_14d = get_energy_average_sensor_unique_id(
-                hour_start, hour_end, 14
-            )
-
-            # Resolve entity_ids for 1d, 3d, 7d, and 14d sensors
-            if unique_id_1d not in self._hsem_avg_house_consumption_entity_id_cache:
-                entity_id_1d = await async_resolve_entity_id_from_unique_id(
-                    self, unique_id_1d
-                )
-                if entity_id_1d is not None:
-                    self._hsem_avg_house_consumption_entity_id_cache[unique_id_1d] = (
-                        entity_id_1d
-                    )
-            else:
-                entity_id_1d = self._hsem_avg_house_consumption_entity_id_cache[
-                    unique_id_1d
-                ]
-
-            if unique_id_3d not in self._hsem_avg_house_consumption_entity_id_cache:
-                entity_id_3d = await async_resolve_entity_id_from_unique_id(
-                    self, unique_id_3d
-                )
-                if entity_id_3d is not None:
-                    self._hsem_avg_house_consumption_entity_id_cache[unique_id_3d] = (
-                        entity_id_3d
-                    )
-            else:
-                entity_id_3d = self._hsem_avg_house_consumption_entity_id_cache[
-                    unique_id_3d
-                ]
-
-            if unique_id_7d not in self._hsem_avg_house_consumption_entity_id_cache:
-                entity_id_7d = await async_resolve_entity_id_from_unique_id(
-                    self, unique_id_7d
-                )
-
-                if entity_id_7d is not None:
-                    self._hsem_avg_house_consumption_entity_id_cache[unique_id_7d] = (
-                        entity_id_7d
-                    )
-            else:
-                entity_id_7d = self._hsem_avg_house_consumption_entity_id_cache[
-                    unique_id_7d
-                ]
-
-            if unique_id_14d not in self._hsem_avg_house_consumption_entity_id_cache:
-                entity_id_14d = await async_resolve_entity_id_from_unique_id(
-                    self, unique_id_14d
-                )
-
-                if entity_id_14d is not None:
-                    self._hsem_avg_house_consumption_entity_id_cache[unique_id_14d] = (
-                        entity_id_14d
-                    )
-            else:
-                entity_id_14d = self._hsem_avg_house_consumption_entity_id_cache[
-                    unique_id_14d
-                ]
-
-            if (
-                entity_id_1d is None
-                or entity_id_3d is None
-                or entity_id_7d is None
-                or entity_id_14d is None
-            ):
-                self._missing_input_entities_list.append(str(unique_id_1d))
-                self._missing_input_entities_list.append(str(unique_id_3d))
-                self._missing_input_entities_list.append(str(unique_id_7d))
-                self._missing_input_entities_list.append(str(unique_id_14d))
-                await async_logger(
-                    self,
-                    "One of the required sensors for average house consumptions load is not ready/found. Waiting for next update.",
-                )
-                return False
-
-            # Default values for sensors in case they are missing
-            value_1d = None
-            value_3d = None
-            value_7d = None
-            value_14d = None
-            weighted_value_1d = None
-            weighted_value_3d = None
-            weighted_value_7d = None
-            weighted_value_14d = None
-            avg_house_consumption = 0.0
-
-            # Fetch values for 1d, 3d, 7d, and 14d if available
-            try:
-                if entity_id_1d is not None:
-                    value_1d = convert_to_float(
-                        ha_get_entity_state_and_convert(self, entity_id_1d, "float", 3)
-                    )
-                if entity_id_3d is not None:
-                    value_3d = convert_to_float(
-                        ha_get_entity_state_and_convert(self, entity_id_3d, "float", 3)
-                    )
-
-                if entity_id_7d is not None:
-                    value_7d = convert_to_float(
-                        ha_get_entity_state_and_convert(self, entity_id_7d, "float", 3)
-                    )
-
-                if entity_id_14d is not None:
-                    value_14d = convert_to_float(
-                        ha_get_entity_state_and_convert(self, entity_id_14d, "float", 3)
-                    )
-            except Exception:
-                value_1d = None
-                value_3d = None
-                value_7d = None
-                value_14d = None
-                avg_house_consumption = 0.0
-
-            if (
-                value_1d is None
-                or value_3d is None
-                or value_7d is None
-                or value_14d is None
-            ):
-                self._missing_input_entities_list.append(str(entity_id_1d))
-                self._missing_input_entities_list.append(str(entity_id_3d))
-                self._missing_input_entities_list.append(str(entity_id_7d))
-                self._missing_input_entities_list.append(str(entity_id_14d))
-                await async_logger(
-                    self,
-                    "One of the required sensors for average house consumptions load is not ready/found. Waiting for next update.",
-                )
-                return False
-
-            # Read configured weights (percent)
-            w1 = int(self._hsem_house_consumption_energy_weight_1d)
-            w3 = int(self._hsem_house_consumption_energy_weight_3d)
-            w7 = int(self._hsem_house_consumption_energy_weight_7d)
-            w14 = int(self._hsem_house_consumption_energy_weight_14d)
-            w_total_config = w1 + w3 + w7 + w14
-
-            if w_total_config == 0:
-                await async_logger(self, "All weights sum to 0. Skipping calculation.")
-                continue
-
-            # --- Mild capping between 7d and 14d (fail-safe) ---
-            value_7d_eff = max(
-                CAP7_DOWN * value_14d, min(value_7d, CAP7_UP * value_14d)
-            )
-            value_14d_eff = max(
-                CAP14_DOWN * value_7d_eff, min(value_14d, CAP14_UP * value_7d_eff)
-            )
-
-            # --- Baseline and capping for 1d/3d vs calm baseline ---
-            baseline = (
-                BASELINE_7D_SHARE * value_7d_eff + BASELINE_14D_SHARE * value_14d_eff
-            )
-
-            lower1 = baseline * CHANGE_LIMIT_DOWN_FACTOR
-            upper1 = baseline * CHANGE_LIMIT_UP_FACTOR
-            value_1d_eff = max(lower1, min(value_1d, upper1))
-
-            lower3 = baseline * CHANGE3_LIMIT_DOWN_FACTOR
-            upper3 = baseline * CHANGE3_LIMIT_UP_FACTOR
-            value_3d_eff = max(lower3, min(value_3d, upper3))
-
-            # --- Spike detection severities (0..1) ---
-            ratio1 = (
-                (value_1d / value_7d_eff)
-                if (value_7d_eff and value_7d_eff > 0)
-                else 1.0
-            )
-            if ratio1 <= SPIKE1_RATIO_MIN:
-                sev1 = 0.0
-            elif ratio1 >= SPIKE1_RATIO_MAX:
-                sev1 = 1.0
-            else:
-                sev1 = (ratio1 - SPIKE1_RATIO_MIN) / (
-                    SPIKE1_RATIO_MAX - SPIKE1_RATIO_MIN
-                )
-
-            ratio3 = (
-                (value_3d / value_7d_eff)
-                if (value_7d_eff and value_7d_eff > 0)
-                else 1.0
-            )
-            if ratio3 <= SPIKE3_RATIO_MIN:
-                sev3 = 0.0
-            elif ratio3 >= SPIKE3_RATIO_MAX:
-                sev3 = 1.0
-            else:
-                sev3 = (ratio3 - SPIKE3_RATIO_MIN) / (
-                    SPIKE3_RATIO_MAX - SPIKE3_RATIO_MIN
-                )
-
-            ratio7 = (
-                (value_7d_eff / value_14d_eff)
-                if (value_14d_eff and value_14d_eff > 0)
-                else 1.0
-            )
-            if ratio7 <= SPIKE7_RATIO_MIN:
-                sev7 = 0.0
-            elif ratio7 >= SPIKE7_RATIO_MAX:
-                sev7 = 1.0
-            else:
-                sev7 = (ratio7 - SPIKE7_RATIO_MIN) / (
-                    SPIKE7_RATIO_MAX - SPIKE7_RATIO_MIN
-                )
-
-            ratio14 = (
-                (value_14d_eff / value_7d_eff)
-                if (value_7d_eff and value_7d_eff > 0)
-                else 1.0
-            )
-            if ratio14 <= SPIKE14_RATIO_MIN:
-                sev14 = 0.0
-            elif ratio14 >= SPIKE14_RATIO_MAX:
-                sev14 = 1.0
-            else:
-                sev14 = (ratio14 - SPIKE14_RATIO_MIN) / (
-                    SPIKE14_RATIO_MAX - SPIKE14_RATIO_MIN
-                )
-
-            # --- Dynamic reweighting (all relative to configured weights) ---
-            # 1d → redistribute to 3d/7d/14d
-            freed1 = w1 * (SPIKE1_REDUCE_FRACTION_MAX * sev1)
-            w1_eff = w1 - freed1
-            w3_eff = w3 + freed1 * SPIKE1_REDIST_TO_3D
-            w7_eff = w7 + freed1 * SPIKE1_REDIST_TO_7D
-            w14_eff = w14 + freed1 * SPIKE1_REDIST_TO_14D
-
-            # 3d → redistribute to 7d/14d
-            freed3 = w3_eff * (SPIKE3_REDUCE_FRACTION_MAX * sev3)
-            w3_eff = w3_eff - freed3
-            w7_eff = w7_eff + freed3 * SPIKE3_REDIST_TO_7D
-            w14_eff = w14_eff + freed3 * SPIKE3_REDIST_TO_14D
-
-            # 7d too high vs 14d → redistribute a little to 14d
-            freed7 = w7_eff * (SPIKE7_REDUCE_FRACTION_MAX * sev7)
-            w7_eff = w7_eff - freed7
-            w14_eff = w14_eff + freed7 * SPIKE7_REDIST_TO_14D
-
-            # 14d too high vs 7d → redistribute a little to 7d
-            freed14 = w14_eff * (SPIKE14_REDUCE_FRACTION_MAX * sev14)
-            w14_eff = w14_eff - freed14
-            w7_eff = w7_eff + freed14 * SPIKE14_REDIST_TO_7D
-
-            # --- Reliability-based scaling (down-weight disagreement), then renormalize ---
-            rel1 = 1.0 / (RELIABILITY_EPS + abs(value_1d_eff - value_7d_eff))
-            rel3 = 1.0 / (RELIABILITY_EPS + abs(value_3d_eff - value_7d_eff))
-            rel7 = 1.0 / (RELIABILITY_EPS + abs(value_7d_eff - value_14d_eff))
-            rel14 = 1.0 / (RELIABILITY_EPS + abs(value_14d_eff - value_7d_eff))
-
-            rel1 = 1.0 + (rel1 - 1.0) * RELIABILITY_SCALE_STRENGTH
-            rel3 = 1.0 + (rel3 - 1.0) * RELIABILITY_SCALE_STRENGTH
-            rel7 = 1.0 + (rel7 - 1.0) * RELIABILITY_SCALE_STRENGTH
-            rel14 = 1.0 + (rel14 - 1.0) * RELIABILITY_SCALE_STRENGTH
-
-            w1_eff *= rel1
-            w3_eff *= rel3
-            w7_eff *= rel7
-            w14_eff *= rel14
-
-            w_sum_eff = w1_eff + w3_eff + w7_eff + w14_eff
-            if w_sum_eff > 0:
-                scale_back = w_total_config / w_sum_eff
-                w1_eff *= scale_back
-                w3_eff *= scale_back
-                w7_eff *= scale_back
-                w14_eff *= scale_back
-            else:
-                # nothing to weight with; keep configured weights
-                w1_eff, w3_eff, w7_eff, w14_eff = w1, w3, w7, w14
-
-            # Weighted sum (percent → factor); note capped short windows
-            weighted_value_1d = value_1d_eff * (w1_eff / 100)
-            weighted_value_3d = value_3d_eff * (w3_eff / 100)
-            weighted_value_7d = value_7d_eff * (w7_eff / 100)
-            weighted_value_14d = value_14d_eff * (w14_eff / 100)
-
-            avg_house_consumption = round(
-                (
-                    weighted_value_1d
-                    + weighted_value_3d
-                    + weighted_value_7d
-                    + weighted_value_14d
-                ),
-                3,
-            )
-
-            scale_to_interval = 60 / self._hsem_recommendation_interval_minutes
-
-            for obj in self._hourly_recommendations:
-                # if obj.start.hour == hour_start and obj.end.hour == hour_end:
-                if int(obj.start.hour) == int(hour_start):
-                    obj.avg_house_consumption = round(
-                        avg_house_consumption / scale_to_interval, 3
-                    )
-                    obj.avg_house_consumption_1d = round(
-                        value_1d / scale_to_interval, 3
-                    )
-                    obj.avg_house_consumption_3d = round(
-                        value_3d / scale_to_interval, 3
-                    )
-                    obj.avg_house_consumption_7d = round(
-                        value_7d / scale_to_interval, 3
-                    )
-                    obj.avg_house_consumption_14d = round(
-                        value_14d / scale_to_interval, 3
-                    )
-
-        return True
-
-    async def _async_calculate_batteries_schedules(self, start_time=None) -> None:
-        """Calculate and update the batteries schedules based on the current configuration.
-
-        This method updates each schedule in ``self._batteries_schedules`` with
-        calculated values for ``needed_batteries_capacity``,
-        ``needed_batteries_capacity_cost``, and ``avg_import_price``.
-        It also sets the ``recommendation`` attribute for relevant intervals in
-        ``self._hourly_recommendations``.
-
-        Cross-date-boundary support: a discharge window such as 07:00-09:00 can
-        fall on the *next* calendar day when planning starts late the evening
-        before (e.g. 22:00).  We resolve the window to its next upcoming
-        occurrence via ``next_window_start_dt`` so that those intervals are
-        correctly identified regardless of which calendar date they land on.
-        """
-        now = start_time or datetime.now().astimezone(self._tz)
-
-        for schedule in self._batteries_schedules:
-            if not schedule.enabled:
-                continue
-
-            needed_batteries_capacity = 0.0
-            needed_batteries_capacity_cost = 0.0
-            avg_import_price = 0.0
-            count = 0
-
-            # Resolve the absolute start/end datetimes for this discharge window.
-            # ``next_window_start_dt`` always returns a future moment so the
-            # window date may be today or tomorrow depending on wall-clock time.
-            window_start_abs = next_window_start_dt(now, schedule.start)
-            # The window end is on the same date as the start unless end <= start
-            # (cross-midnight discharge window).
-            if schedule.end > schedule.start:
-                window_end_abs = datetime.combine(
-                    window_start_abs.date(), schedule.end
-                ).replace(tzinfo=now.tzinfo)
-            else:
-                # Cross-midnight: end falls on the following calendar day
-                window_end_abs = datetime.combine(
-                    (window_start_abs + timedelta(days=1)).date(), schedule.end
-                ).replace(tzinfo=now.tzinfo)
-
-            for recommendation in self._hourly_recommendations:
-                rec_start = recommendation.start.astimezone(self._tz)
-                rec_end = recommendation.end.astimezone(self._tz)
-
-                # Skip intervals that lie entirely in the past
-                if rec_end <= now:
-                    continue
-
-                # Include the interval when it falls completely inside the
-                # discharge window [window_start_abs, window_end_abs).
-                if rec_start >= window_start_abs and rec_end <= window_end_abs:
-                    recommendation.recommendation = (
-                        Recommendations.BatteriesDischargeMode.value
-                    )
-
-                    avg_import_price += recommendation.import_price
-                    needed_batteries_capacity += (
-                        recommendation.estimated_net_consumption
-                    )
-                    needed_batteries_capacity_cost += (
-                        recommendation.estimated_net_consumption
-                        * recommendation.import_price
-                    )
-                    count += 1
-
-            schedule.needed_batteries_capacity = round(needed_batteries_capacity, 3)
-            schedule.needed_batteries_capacity_cost = round(
-                needed_batteries_capacity_cost, 3
-            )
-            schedule.avg_import_price = (
-                round(avg_import_price / count, 3) if count > 0 else 0.0
-            )
-
-            await async_logger(
-                self,
-                f"Enabling batteries discharging schedule for {now}. "
-                f"Start: {schedule.start} (resolved: {window_start_abs}), "
-                f"End: {schedule.end} (resolved: {window_end_abs}), "
-                f"Average Import Price: {round(avg_import_price, 2)}, "
-                f"Needed Batteries Capacity: {round(needed_batteries_capacity, 2)} kWh, "
-                f"Needed Batteries Capacity Cost: {round(needed_batteries_capacity_cost, 2)}, ",
-            )
-
-    async def _async_calculate_batteries_schedules_best_charge_time(
-        self, start_time=None
-    ) -> None:
-        """Calculate the best times to charge batteries based on active schedules.
-
-        Identifies the cheapest charging times to meet the combined energy needs of all schedules,
-        while respecting battery capacity and current charge.
-        """
-
-        # now = datetime.now().astimezone(self._tz)
-        now = start_time or datetime.now().astimezone(self._tz)
-
-        await async_logger(
+        # 5. Populate consumption averages
+        if not await async_populate_avg_house_consumption(
             self,
-            f"Calculating best time to charge batteries based on active schedules at {now} ",
-        )
-
-        # if self._hsem_huawei_solar_batteries_state_of_capacity_state == 100:
-        #    await async_logger(
-        #        self,
-        #        "Skipping charge as the batteries are already at 100% capacity. ",
-        #    )
-        #    return
-
-        # Gather all active schedules
-        schedules = []
-
-        # Filter schedules that are still relevant: keep enabled schedules whose
-        # next upcoming start datetime is strictly in the future relative to *now*.
-        #
-        # We use ``next_window_start_dt`` (which always returns a future moment)
-        # instead of a raw wall-clock comparison so that next-day discharge
-        # windows (e.g. a 07:00 window configured while it is currently 22:00)
-        # are correctly included in pre-charge planning:
-        #
-        #  - same-day 07:00 @ 06:00 → next_window_start = today 07:00 > 06:00 ✓
-        #  - next-day  07:00 @ 22:00 → next_window_start = tomorrow 07:00 > 22:00 ✓
-        #  - cross-midnight 23:00 @ 21:00 → next_window_start = today 23:00 > 21:00 ✓
-        #  - cross-midnight 23:00 @ 00:30 → next_window_start = tomorrow 23:00 > 00:30 ✓
-        schedules = [
-            s
-            for s in self._batteries_schedules
-            if s.enabled and next_window_start_dt(now, s.start) > now
-        ]
-        await async_logger(
-            self,
-            f"{len(schedules)} batteries schedules remain after filtering based on the current time and if they are enabled.",
-        )
-
-        if not schedules:
-            return
-
-        # Sort schedules by their next absolute start datetime so that a same-day
-        # 07:00 window is handled before a next-day 07:00 window when both appear
-        # in the list (uncommon but possible when the horizon spans >24 h).
-        schedules.sort(key=lambda s: next_window_start_dt(now, s.start))
-
-        # Calculate the total required charge across all schedules
-        total_required_charge = sum(s.needed_batteries_capacity for s in schedules)
-        # Resolve the first schedule's start to an absolute datetime that may
-        # fall on the next calendar day (cross-date-boundary support).
-        first_schedule_dt = next_window_start_dt(now, schedules[0].start)
-        item = next(
-            (r for r in self._hourly_recommendations if r.start == first_schedule_dt),
-            None,
-        )
-
-        if item is not None:
-            await async_logger(
-                self,
-                f"Total Required kWh To Charge Battery: {round(total_required_charge, 2)} kWh. "
-                f"Expected battery capacity before the scheduled start: {item.estimated_battery_capacity} kWh.",
-            )
-
-            if item.estimated_battery_capacity >= total_required_charge:
-                await async_logger(
-                    self,
-                    "Skipping charge as the batteries already have sufficient capacity before the first schedule starts.",
-                )
-                return
-
-        # Find the best time to charge before the first schedules starts
-        self._batteries_schedules_remaining_capacity_needed = 0.00
-        for schedule in schedules:
-            self._batteries_schedules_remaining_capacity_needed += round(
-                schedule.needed_batteries_capacity, 2
-            )
-            await async_logger(
-                self,
-                f"Finding the best time to charge {round(schedule.needed_batteries_capacity, 2)} before {schedule.start} to cover battery schedule.",
-            )
-
-            await self._async_find_best_time_to_charge_battery_schedule(
-                schedule, start_time
-            )
-
-    async def _async_find_best_time_to_charge_battery_schedule(
-        self, battery_schedule: BatterySchedule, start_time=None
-    ) -> None:
-        """Find best time to charge based on prioritized conditions."""
-        now = start_time or datetime.now().astimezone(self._tz)
-
-        # Calculate max charge per hour with conversion loss
-        conversion_loss_factor = 1 - (
-            convert_to_float(self._hsem_batteries_conversion_loss) / 100
-        )
-        max_charge_per_hour = (
-            convert_to_float(
-                self._hsem_huawei_solar_batteries_maximum_charging_power_state
-            )
-            / 1000
-        ) * conversion_loss_factor
-
-        # Adjust max charge per hour based on recommendation interval
-        max_charge_per_interval = max_charge_per_hour / (
-            60 / self._hsem_recommendation_interval_minutes
-        )
-
-        if max_charge_per_interval <= 0:
-            await async_logger(
-                self, "Invalid maximum charging power. Skipping calculation."
-            )
-            return
-
-        # await async_logger(
-        #    self,
-        #    f"Planning of charging the batteries started. "
-        #    f"Time range: {battery_schedule.start.time()} and {battery_schedule.end.time()}. "
-        #    f"Max batteries capacity: {round(self._hsem_batteries_rated_capacity_max_state / 1000, 2)} kWh. "
-        #    f"Conversion loss: {round(self._hsem_batteries_conversion_loss, 2)}%. "
-        #    f"Max charge per hour: {round(max_charge_per_hour, 2)} kWh. ",
-        # )
-
-        # Only allow recommendations before the charging schedule starts
-        # filtered_hourly_recommendations = [
-        #     rec
-        #     for rec in self._hourly_recommendations
-        #     if rec.start.date() == now.date()
-        #     and rec.end.time() < battery_schedule.start.time()
-        #     and rec.start.time() >= now.time()
-        #     and rec.recommendation is None
-        # ]
-        # Filter recommendation intervals that fall *before* the charge window
-        # starts.  We use absolute timezone-aware datetimes so that cross-midnight
-        # windows (e.g. battery_schedule.start = 23:00, now = 21:00) are handled
-        # correctly:
-        #   - rec.end > now  → interval hasn't fully passed yet
-        #   - interval_ends_before_window_start → interval ends before the
-        #     charge window begins (resolves window start to the correct calendar
-        #     date accounting for midnight crossings)
-        #   - rec.recommendation is None → slot not already assigned
-        filtered_hourly_recommendations = [
-            rec
-            for rec in self._hourly_recommendations
-            if rec.end.astimezone(self._tz) > now
-            and interval_ends_before_window_start(
-                rec.end.astimezone(self._tz), battery_schedule.start, now
-            )
-            and rec.recommendation is None
-        ]
-
-        # Total energy charged
-        charged_energy = 0.0
-
-        # First priority: Negative import prices
-        sorted_filtered = [
-            rec
-            for rec in filtered_hourly_recommendations
-            if rec.recommendation is None and rec.import_price < 0.000
-        ]
-        sorted_filtered.sort(key=lambda x: (x.import_price, x.start))
-
-        for rec in sorted_filtered:
-            if charged_energy >= battery_schedule.needed_batteries_capacity:
-                break
-
-            energy_to_charge = min(
-                max_charge_per_interval,
-                battery_schedule.needed_batteries_capacity - charged_energy,
-            )
-
-            if energy_to_charge > 0:
-                rec.recommendation = Recommendations.BatteriesChargeGrid.value
-                rec.batteries_charged = round(energy_to_charge, 3)
-                charged_energy += energy_to_charge
-
-                await async_logger(
-                    self,
-                    f"Charge interval: {rec.start.date()} {rec.start.time()} - {rec.end.time()}. "
-                    f"Charging from grid due to negative import price. "
-                    f"Import Price: {rec.import_price}"
-                    f"Energy charged: {round(energy_to_charge, 2)} kWh. "
-                    f"Total energy charged: {round(charged_energy, 2)} kWh. ",
-                )
-
-        # Second priority: Solar surplus
-        if charged_energy < battery_schedule.needed_batteries_capacity:
-            await async_logger(
-                self,
-                f"Charged energy after negative price consideration: {round(charged_energy, 2)} kWh. "
-                f"Still need to charge: {round(battery_schedule.needed_batteries_capacity - charged_energy, 2)} kWh. ",
-            )
-
-            sorted_filtered = [
-                rec
-                for rec in filtered_hourly_recommendations
-                if rec.estimated_net_consumption < -0.2
-                and rec.recommendation
-                is None  # TODO: 0.2 -> in config. This is 200w buffer.
-            ]
-            sorted_filtered.sort(key=lambda x: (x.estimated_net_consumption, x.start))
-
-            for rec in sorted_filtered:
-                if charged_energy >= battery_schedule.needed_batteries_capacity:
-                    break
-
-                available_solar = abs(rec.estimated_net_consumption)
-                energy_to_charge = min(
-                    max_charge_per_interval,
-                    battery_schedule.needed_batteries_capacity - charged_energy,
-                    available_solar,
-                )
-
-                if energy_to_charge > 0:
-                    rec.recommendation = Recommendations.BatteriesChargeSolar.value
-                    rec.batteries_charged = round(energy_to_charge, 3)
-                    charged_energy += energy_to_charge
-
-                    await async_logger(
-                        self,
-                        f"Charge interval: {rec.start.date()} {rec.start.time()} - {rec.end.time()}. "
-                        f"Charging from solar. "
-                        f"Energy charged: {round(energy_to_charge, 2)} kWh. "
-                        f"Total energy charged: {round(charged_energy, 2)} kWh. "
-                        f"Available Solar: {round(available_solar, 2)} kWh. "
-                        f"Net Consumption: {round(rec.estimated_net_consumption, 2)} kWh. "
-                        f"Import Price: {rec.import_price}",
-                    )
-
-        # Third priority: Cheapest remaining hours considering partial solar contribution
-        charged_energy_before = charged_energy
-        min_price_check = True
-
-        # Calculate average import price of the schedule
-        # and average import price of the charging intervals
-        if charged_energy < battery_schedule.needed_batteries_capacity:
-            await async_logger(
-                self,
-                f"Charged energy after solar surplus consideration: {round(charged_energy, 2)} kWh. "
-                f"Still need to charge: {round(battery_schedule.needed_batteries_capacity - charged_energy, 2)} kWh. ",
-            )
-
-            sorted_filtered = [
-                rec
-                for rec in filtered_hourly_recommendations
-                if rec.recommendation is None
-            ]
-            sorted_filtered.sort(key=lambda x: (x.import_price, x.start))
-
-            avg_charge_import_price = 0.0
-            avg_charge_import_count = 0
-
-            for rec in sorted_filtered:
-                if charged_energy >= battery_schedule.needed_batteries_capacity:
-                    break
-
-                available_solar = (
-                    abs(rec.estimated_net_consumption)
-                    if rec.estimated_net_consumption < 0
-                    else 0
-                )
-                grid_energy_needed = min(
-                    max_charge_per_interval - available_solar,
-                    battery_schedule.needed_batteries_capacity
-                    - charged_energy
-                    - available_solar,
-                )
-
-                energy_to_charge = available_solar + grid_energy_needed
-
-                if energy_to_charge > 0:
-                    avg_charge_import_count += 1
-                    avg_charge_import_price += rec.import_price
-                    charged_energy += energy_to_charge
-
-                    # await async_logger(
-                    #     self,
-                    #     f"Interval: {rec.start.date()} {rec.start.time()} - {rec.end.time()}. Import Price: {round(rec.import_price, 3)}. Energy Charged: {round(energy_to_charge, 2)} kWh. Total energy charged: {round(charged_energy, 2)} kWh. ",
-                    # )
-
-            avg_charge_import = (
-                avg_charge_import_price / avg_charge_import_count
-                if avg_charge_import_count > 0
-                else avg_charge_import_price
-            )
-            avg_charge_diff = battery_schedule.avg_import_price - avg_charge_import
-
-            if (
-                battery_schedule.min_price_difference_required != 0
-                and avg_charge_diff < battery_schedule.min_price_difference_required
-            ):
-                min_price_check = False
-
-            if avg_charge_import_count > 0:
-                await async_logger(
-                    self,
-                    f"Charging from grid average cost calculation. "
-                    f"Average Charge Import Price: {round(avg_charge_import, 2)}, "
-                    f"Average Usage Price: {round(battery_schedule.avg_import_price, 2)}, "
-                    f"Charge Price Difference: {round(avg_charge_diff, 2)}, "
-                    f"Min Price Difference: {round(battery_schedule.min_price_difference_required, 2)}, ",
-                )
-
-        if min_price_check:
-            await async_logger(
-                self,
-                "Minimum price difference condition met. Proceeding with grid charging.",
-            )
-        else:
-            await async_logger(
-                self,
-                "Minimum price difference condition NOT met. Skipping grid charging.",
-            )
-
-        # Reset charged energy to the value before the avg calculation and actually apply the recommendations
-        charged_energy = charged_energy_before
-
-        if (
-            charged_energy < battery_schedule.needed_batteries_capacity
-            and min_price_check
-        ):
-            sorted_filtered = [
-                rec
-                for rec in filtered_hourly_recommendations
-                if rec.recommendation is None
-            ]
-            sorted_filtered.sort(key=lambda x: (x.import_price, x.start))
-
-            for rec in sorted_filtered:
-                if charged_energy >= battery_schedule.needed_batteries_capacity:
-                    break
-
-                available_solar = (
-                    abs(rec.estimated_net_consumption)
-                    if rec.estimated_net_consumption < 0
-                    else 0
-                )
-                grid_energy_needed = min(
-                    max_charge_per_interval - available_solar,
-                    battery_schedule.needed_batteries_capacity
-                    - charged_energy
-                    - available_solar,
-                )
-
-                energy_to_charge = available_solar + grid_energy_needed
-
-                if energy_to_charge > 0:
-                    rec.recommendation = Recommendations.BatteriesChargeGrid.value
-                    rec.batteries_charged = round(energy_to_charge, 3)
-                    charged_energy += energy_to_charge
-
-                    await async_logger(
-                        self,
-                        f"Charge interval: {rec.start.date()} {rec.start.time()} {rec.end.time()}. "
-                        f"Charging from grid. "
-                        f"Energy charged: {round(energy_to_charge, 2)} kWh. "
-                        f"Total energy charged: {round(charged_energy, 2)} kWh. "
-                        f"Available Solar: {round(available_solar, 2)} kWh. "
-                        f"Net Consumption: {round(rec.estimated_net_consumption, 2)} kWh. "
-                        f"Import Price: {rec.import_price}",
-                    )
-
-        await async_logger(
-            self,
-            f"Planning of charging the batteries completed for schedule "
-            f"({battery_schedule.start} - {battery_schedule.end}, "
-            f"Needed Capacity: {round(battery_schedule.needed_batteries_capacity, 2)} kWh). "
-            f"Total energy charged: {round(charged_energy, 2)} kWh. ",
-        )
-
-    async def _async_calculate_required_battery_for_rest_of_day(self) -> float:
-        """Calculate the total energy needed until excess solar becomes available.
-
-        This function scans forward from the current time through the hourly
-        recommendations (up to 72 hours) to find when excess solar becomes available
-        (negative estimated_net_consumption). It calculates the battery capacity needed
-        only until that point, making it more economically correct and generic.
-
-        The key insight: Battery is only "excess" when we have surplus solar in the
-        forecast. This function finds the first point where excess solar appears and
-        returns only the battery needed to reach that point.
-
-        Returns:
-            float: Required battery capacity in kWh needed until excess solar appears,
-                    or until end of forecast if no excess solar is found.
-        """
-        now = datetime.now().astimezone(self._tz)
-        required_capacity = 0.0
-        excess_solar_found_at = None
-
-        for rec in self._hourly_recommendations:
-            # Only look at future intervals from now onwards
-            if rec.start < now:
-                continue
-
-            # Check if we have excess solar power at this hour
-            if rec.estimated_net_consumption < 0:
-                # Excess solar found! Battery is not needed beyond this point
-                excess_solar_found_at = rec.start
-                await async_logger(
-                    self,
-                    f"Excess solar detected at {rec.start}: "
-                    f"estimated_net_consumption={round(rec.estimated_net_consumption, 2)} kWh. "
-                    f"Battery not needed beyond this point.",
-                )
-                break
-
-            # Only accumulate positive net consumption (deficit hours)
-            if rec.estimated_net_consumption > 0:
-                required_capacity += rec.estimated_net_consumption
-
-        # Add safety buffer (percentage of usable capacity)
-        buffer_kwh = self._hsem_batteries_usable_capacity * (
-            self._hsem_batteries_excess_export_discharge_buffer / 100
-        )
-        required_capacity += buffer_kwh
-
-        await async_logger(
-            self,
-            f"Required battery until excess solar: {round(required_capacity, 2)} kWh "
-            f"(with {self._hsem_batteries_excess_export_discharge_buffer}% buffer). "
-            f"Excess solar found at: {excess_solar_found_at if excess_solar_found_at else 'end of forecast'}. "
-            f"Current capacity: {round(self._hsem_batteries_current_capacity, 2)} kWh.",
-        )
-
-        return required_capacity
-
-    async def _async_apply_excess_battery_export(self) -> None:
-        """Apply force export recommendations for excess battery energy.
-
-        This function identifies when the battery has excess energy beyond what's
-        needed to cover the rest of the day, and marks intervals for forced discharge
-        at high export prices. The logic considers:
-        - Solar vs. grid charged battery (price threshold applies only to grid-charged)
-        - Export price vs. import price difference
-        - Maximum discharge rate capability
-        - Safety buffer to maintain in battery
-        """
-        if not self._hsem_batteries_enable_excess_export:
-            return
-
-        now = datetime.now().astimezone(self._tz)
-        required_battery = (
-            await self._async_calculate_required_battery_for_rest_of_day()
-        )
-        self._current_required_battery = required_battery
-
-        # Check if we have excess battery beyond the required amount
-        excess_battery = self._hsem_batteries_current_capacity - required_battery
-
-        if excess_battery <= 0.0:
-            await async_logger(
-                self,
-                f"No excess battery for export. Current: {round(self._hsem_batteries_current_capacity, 2)} kWh, "
-                f"Required: {round(required_battery, 2)} kWh.",
-            )
-            return
-
-        await async_logger(
-            self,
-            f"Excess battery detected: {round(excess_battery, 2)} kWh available for export. "
-            f"Current: {round(self._hsem_batteries_current_capacity, 2)} kWh, "
-            f"Required: {round(required_battery, 2)} kWh.",
-        )
-
-        # Calculate max discharge per interval
-        conversion_loss_factor = 1 - (
-            convert_to_float(self._hsem_batteries_conversion_loss) / 100
-        )
-        max_discharge_per_hour = (
-            get_max_discharge_power(
-                convert_to_int(self._hsem_batteries_rated_capacity_max_state)
-            )
-            / 1000
-        ) * conversion_loss_factor
-
-        max_discharge_per_interval = max_discharge_per_hour / (
-            60 / self._hsem_recommendation_interval_minutes
-        )
-
-        # Track if battery was charged from solar (any BatteriesChargeSolar recommendations)
-        solar_charged_in_session = False
-        for rec in self._hourly_recommendations:
-            if rec.recommendation == Recommendations.BatteriesChargeSolar.value:
-                solar_charged_in_session = True
-                break
-
-        await async_logger(
-            self,
-            f"Battery charged from solar in this session: {solar_charged_in_session}. "
-            f"Max discharge per interval: {round(max_discharge_per_interval, 2)} kWh.",
-        )
-
-        # Sort recommendations by export price (descending) to prioritize discharge at peak export prices
-        sorted_recommendations = sorted(
             self._hourly_recommendations,
-            key=lambda x: (
-                x.export_price if x.export_price is not None else 0,
-                x.start,
-            ),
-            reverse=True,
-        )
+            cfg,
+            self._avg_house_consumption_entity_id_cache,
+        ):
+            live.missing_entities = True
 
-        discharged = 0.0
+        # Update timer based on missing entities
+        if live.missing_entities:
+            await self._set_update_interval(1)
+        else:
+            await self._set_update_interval()
 
-        for rec in sorted_recommendations:
-            if discharged >= excess_battery:
-                break
+        # 6. Short-circuit when forced or missing
+        if live.missing_entities and live.force_working_mode_state == "auto":
+            self._state = Recommendations.MissingInputEntities.value
+            await async_logger(self, "Missing input entities, skipping calculations.")
 
-            # Skip if recommendation is already set
-            if rec.recommendation is not None:
-                continue
+        elif live.force_working_mode_state != "auto":
+            self._state = str(live.force_working_mode_state)
+            await async_logger(
+                self,
+                f"Force working mode is activated. Setting working mode to {live.force_working_mode_state}",
+            )
 
-            # Only look at future intervals from now onwards
-            if rec.start < now:
-                continue
+        else:
+            # 7. Populate prices and Solcast
+            await async_populate_price_and_solcast(
+                self, self._hourly_recommendations, cfg, self._tz
+            )
 
-            # Check if we should discharge at this interval
-            should_discharge = False
+            # 8. Run the pure-Python planner engine
+            planner_input = self._build_planner_input()
+            planner_output = run_planner(planner_input)
 
-            if solar_charged_in_session:
-                # Solar-charged battery: discharge at all export prices (opportunistic)
-                should_discharge = rec.export_price > 0.0
+            for warning in planner_output.warnings:
+                await async_logger(self, f"[planner] {warning}")
+
+            self._apply_planner_output(planner_output)
+            self._current_required_battery = planner_output.required_capacity_kwh
+
+            # 9. Find the current time-slot recommendation
+            self._hourly_recommendations.sort(key=lambda x: x.start)
+            hourly_rec = next(
+                (
+                    r
+                    for r in self._hourly_recommendations
+                    if r.start.astimezone(self._tz) <= now < r.end.astimezone(self._tz)
+                ),
+                None,
+            )
+
+            # 10. Apply real-time overrides to current slot
+            if hourly_rec is not None:
+                resolve_current_recommendation(
+                    hourly_rec,
+                    live,
+                    self._batteries_schedules_remaining_capacity_needed,
+                )
+
+            await async_logger(self, f"Current hourly recommendation: {hourly_rec}")
+
+            # 11. Apply hardware settings (inverter + batteries)
+            if not cfg.read_only:
+                await async_apply_inverter_power_control(self, cfg, live)
+                if hourly_rec is not None:
+                    await async_apply_battery_settings(
+                        self, cfg, live, hourly_rec, self._current_required_battery
+                    )
+
+            # 12. Store current recommendation
+            if hourly_rec:
+                self._hourly_recommendation = hourly_rec
+                self._state = hourly_rec.recommendation
             else:
-                # Grid-charged battery: only discharge if price difference justifies losses
-                price_difference = (
-                    rec.export_price - rec.import_price
-                    if rec.import_price is not None
-                    else rec.export_price
-                )
-                should_discharge = (
-                    price_difference
-                    >= self._hsem_batteries_excess_export_price_threshold
-                )
-
-            if should_discharge:
-                # Calculate discharge amount for this interval
-                energy_to_discharge = min(
-                    max_discharge_per_interval, excess_battery - discharged
-                )
-
-                if energy_to_discharge > 0:
-                    rec.recommendation = Recommendations.ForceBatteriesDischarge.value
-                    discharged += energy_to_discharge
-
-                    await async_logger(
-                        self,
-                        f"Interval: {rec.start.date()} {rec.start.time()} {rec.end.time()} | "
-                        f"Excess battery export recommended. "
-                        f"Import Price: {rec.import_price} | Export Price: {rec.export_price} | "
-                        f"Energy to discharge: {round(energy_to_discharge, 2)} kWh | "
-                        f"Total discharged: {round(discharged, 2)} kWh.",
-                    )
-
-        await async_logger(
-            self,
-            f"Excess battery export strategy completed. "
-            f"Total excess energy marked for export: {round(discharged, 2)} kWh / {round(excess_battery, 2)} kWh.",
-        )
-
-    async def _async_optimization_strategy(self) -> None:
-        """Calculate the optimization strategy for each hour of the day."""
-
-        now = datetime.now().astimezone(self._tz)
-        current_month = now.month
-
-        await async_logger(
-            self, "Starting optimization strategy for all remaining hours."
-        )
-
-        # Apply excess battery export optimization if enabled
-        await self._async_apply_excess_battery_export()
-
-        for rec in self._hourly_recommendations:
-            if (
-                rec.export_price > rec.import_price
-                # and rec.start.date() == now.date()
-                and rec.recommendation is None
-            ):
-                rec.recommendation = Recommendations.ForceExport.value
-                await async_logger(
-                    self,
-                    f"Interval: {rec.start.date()} {rec.start.time()} {rec.end.time()} | Recommendation set to Force Export (export price > import price).",
-                )
-
-        # Calculate when to charge the battery to the full from solar
-        batteries_needed_charge = (
-            self._hsem_batteries_usable_capacity - self._hsem_batteries_current_capacity
-        )
-
-        if batteries_needed_charge < 0.0:
-            batteries_needed_charge = 0.0
-
-        await async_logger(
-            self,
-            f"Batteries needed charge: {round(batteries_needed_charge, 2)} kWh | Current capacity: {self._hsem_batteries_current_capacity} kWh | Usable capacity: {self._hsem_batteries_usable_capacity} kWh",
-        )
-
-        charged = 0.0
-
-        # Loop through hourly_calculations sorted by export_price to charge batteries from solar while import price is highest
-        self._hourly_recommendations.sort(key=lambda x: x.export_price)
-        for rec in self._hourly_recommendations:
-            if rec.recommendation is not None:
-                await async_logger(
-                    self,
-                    f"Interval: {rec.start.date()} {rec.start.time()} {rec.end.time()} | Recommendation already set to {rec.recommendation}. Skipping.",
-                )
-                continue
-
-            if rec.start.date() != now.date():
-                continue
-
-            if charged >= batteries_needed_charge:
-                break
-
-            # Negative net consumption above 100w means we have solar surplus to charge batteries while covering the house
-            if rec.estimated_net_consumption <= -0.1:
-                charged += (
-                    rec.estimated_net_consumption * -1
-                )  # Convert negative to positive for charging
-                rec.recommendation = Recommendations.BatteriesChargeSolar.value
-                rec.batteries_charged = round(charged, 3)
-                await async_logger(
-                    self,
-                    f"Interval: {rec.start.date()} {rec.start.time()} {rec.end.time()} | Charging from solar surplus. Net Consumption: {rec.estimated_net_consumption} | Import Price: {rec.import_price} | Export Price: {rec.export_price} | Total charged: {round(charged, 3)} kWh.",
-                )
-
-        # So did we charge the battery totally?
-        fully_charged_battery = False
-        if (
-            charged >= batteries_needed_charge
-            or self._hsem_batteries_current_capacity
-            == self._hsem_batteries_usable_capacity
-        ):
-            fully_charged_battery = True
-
-        await async_logger(
-            self,
-            f"Fully charged battery: {fully_charged_battery}, Total charged from PV: {round(charged, 2)} kWh. Usable capacity: {self._hsem_batteries_usable_capacity} kWh.",
-        )
-
-        for rec in self._hourly_recommendations:
-            if rec.recommendation is not None:
-                await async_logger(
-                    self,
-                    f"Interval: {rec.start.date()} {rec.start.time()} {rec.end.time()} | Recommendation already set to {rec.recommendation}. Skipping.",
-                )
-                continue
-
-            # Protection: If we have a future forced export and we are still above required battery,
-            # avoid aggressive discharge (BatteriesDischargeMode) to preserve excess.
-            has_future_forced_export = any(
-                r.recommendation == Recommendations.ForceBatteriesDischarge.value
-                and r.start > rec.start
-                for r in self._hourly_recommendations
-            )
-
-            if (
-                has_future_forced_export
-                and self._hsem_batteries_current_capacity
-                > self._current_required_battery
-            ):
-                rec.recommendation = Recommendations.BatteriesWaitMode.value
-                await async_logger(
-                    self,
-                    f"Interval: {rec.start.date()} {rec.start.time()} {rec.end.time()} | "
-                    f"Preserving excess battery for future forced export. Setting to BatteriesWaitMode.",
-                )
-                continue
-
-            if self._hsem_months_winter and current_month in self._hsem_months_winter:
-                rec.recommendation = Recommendations.BatteriesWaitMode.value
-                await async_logger(
-                    self,
-                    f"Interval: {rec.start.date()} {rec.start.time()} {rec.end.time()} | Winter/Spring: Setting recommendation to BatteriesWaitMode.",
-                )
-
-            if self._hsem_months_summer and current_month in self._hsem_months_summer:
-                if rec.estimated_net_consumption <= 0.1:
-                    rec.recommendation = Recommendations.BatteriesChargeSolar.value
-                    await async_logger(
-                        self,
-                        f"Interval: {rec.start.date()} {rec.start.time()} {rec.end.time()} | Summer: solar estimate: {round(rec.solcast_pv_estimate, 3)} kWh, setting recommendation to BatteriesChargeSolar. | Import Price: {rec.import_price} | Export Price: {rec.export_price} | Net Consumption: {rec.estimated_net_consumption}",
-                    )
-                else:
-                    rec.recommendation = Recommendations.BatteriesDischargeMode.value
-
-                    await async_logger(
-                        self,
-                        f"Interval: {rec.start.date()} {rec.start.time()} {rec.end.time()} | Summer: no solar estimate, setting recommendation to BatteriesDischargeMode. | Import Price: {rec.import_price} | Export Price: {rec.export_price} | Net Consumption: {rec.estimated_net_consumption}",
-                    )
-
-        await async_logger(
-            self, "Completed optimization strategy for all remaining hours."
-        )
-
-    def _update_settings(self) -> None:
-        """Fetch updated settings from config_entry options."""
-        self._read_only = get_config_value(self._config_entry, "hsem_read_only")
-
-        self._hsem_months_winter = get_config_value(
-            self._config_entry, "hsem_months_winter"
-        )
-
-        self._hsem_months_summer = get_config_value(
-            self._config_entry, "hsem_months_summer"
-        )
-
-        self._hsem_recommendation_interval_length = convert_to_int(
-            get_config_value(self._config_entry, "hsem_recommendation_interval_length")
-        )
-
-        self._hsem_recommendation_interval_minutes = convert_to_int(
-            get_config_value(self._config_entry, "hsem_recommendation_interval_minutes")
-        )
-
-        self._hsem_energi_data_service_update_interval = convert_to_int(
-            get_config_value(
-                self._config_entry, "hsem_energi_data_service_update_interval"
-            )
-        )
-
-        if not isinstance(self._hsem_months_winter, list):
-            self._hsem_months_winter = []
-        else:
-            # Convert months to integers
-            self._hsem_months_winter = convert_months_to_int(self._hsem_months_winter)
-
-        if not isinstance(self._hsem_months_summer, list):
-            self._hsem_months_summer = []
-        else:
-            # Convert months to integers
-            self._hsem_months_summer = convert_months_to_int(self._hsem_months_summer)
-
-        self._hsem_extended_attributes = get_config_value(
-            self._config_entry, "hsem_extended_attributes"
-        )
-
-        self._hsem_verbose_logging = get_config_value(
-            self._config_entry, "hsem_verbose_logging"
-        )
-        self._hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou = (
-            get_config_value(
-                self._config_entry,
-                "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou",
-            )
-        )
-        self._update_interval = convert_to_int(
-            get_config_value(self._config_entry, "hsem_update_interval")
-        )
-
-        self._hsem_huawei_solar_device_id_inverter_1 = get_config_value(
-            self._config_entry, "hsem_huawei_solar_device_id_inverter_1"
-        )
-
-        self._hsem_huawei_solar_device_id_inverter_2 = get_config_value(
-            self._config_entry, "hsem_huawei_solar_device_id_inverter_2"
-        )
-        self._hsem_huawei_solar_device_id_batteries = get_config_value(
-            self._config_entry, "hsem_huawei_solar_device_id_batteries"
-        )
-        self._hsem_huawei_solar_batteries_working_mode = get_config_value(
-            self._config_entry, "hsem_huawei_solar_batteries_working_mode"
-        )
-        self._hsem_huawei_solar_batteries_end_of_discharge_soc = get_config_value(
-            self._config_entry,
-            "hsem_huawei_solar_batteries_end_of_discharge_soc",
-        )
-        self._hsem_huawei_solar_batteries_state_of_capacity = get_config_value(
-            self._config_entry,
-            "hsem_huawei_solar_batteries_state_of_capacity",
-        )
-        self._hsem_house_consumption_power = get_config_value(
-            self._config_entry,
-            "hsem_house_consumption_power",
-        )
-        self._hsem_solar_production_power = get_config_value(
-            self._config_entry,
-            "hsem_solar_production_power",
-        )
-
-        self._hsem_solcast_pv_forecast_forecast_today = get_config_value(
-            self._config_entry,
-            "hsem_solcast_pv_forecast_forecast_today",
-        )
-        self._hsem_solcast_pv_forecast_forecast_tomorrow = get_config_value(
-            self._config_entry,
-            "hsem_solcast_pv_forecast_forecast_tomorrow",
-        )
-        self._hsem_energi_data_service_import = get_config_value(
-            self._config_entry,
-            "hsem_energi_data_service_import",
-        )
-        self._hsem_energi_data_service_export = get_config_value(
-            self._config_entry,
-            "hsem_energi_data_service_export",
-        )
-        self._hsem_energi_data_service_export_min_price = convert_to_float(
-            get_config_value(
-                self._config_entry,
-                "hsem_energi_data_service_export_min_price",
-            )
-        )
-        self._hsem_huawei_solar_inverter_active_power_control = get_config_value(
-            self._config_entry,
-            "hsem_huawei_solar_inverter_active_power_control",
-        )
-        self._hsem_house_power_includes_ev_charger_power = convert_to_boolean(
-            get_config_value(
-                self._config_entry,
-                "hsem_house_power_includes_ev_charger_power",
-            )
-        )
-        self._hsem_solcast_pv_forecast_forecast_likelihood = get_config_value(
-            self._config_entry,
-            "hsem_solcast_pv_forecast_forecast_likelihood",
-        )
-
-        # First EV charger related settings
-        self._hsem_ev_charger_force_max_discharge_power = convert_to_boolean(
-            get_config_value(
-                self._config_entry,
-                "hsem_ev_charger_force_max_discharge_power",
-            )
-        )
-
-        self._hsem_ev_charger_max_discharge_power = convert_to_int(
-            get_config_value(
-                self._config_entry,
-                "hsem_ev_charger_max_discharge_power",
-            )
-        )
-
-        self._hsem_ev_charger_status = get_config_value(
-            self._config_entry, "hsem_ev_charger_status"
-        )
-
-        if self._hsem_ev_charger_status == vol.UNDEFINED:
-            self._hsem_ev_charger_status = None
-
-        self._hsem_ev_charger_power = get_config_value(
-            self._config_entry,
-            "hsem_ev_charger_power",
-        )
-
-        if self._hsem_ev_charger_power == vol.UNDEFINED:
-            self._hsem_ev_charger_power = None
-
-        self._hsem_ev_soc = get_config_value(
-            self._config_entry,
-            "hsem_ev_soc",
-        )
-        if self._hsem_ev_soc == vol.UNDEFINED:
-            self._hsem_ev_soc = None
-
-        self._hsem_ev_allow_charge_past_target_soc = convert_to_boolean(
-            get_config_value(
-                self._config_entry,
-                "hsem_ev_allow_charge_past_target_soc",
-            )
-        )
-        self._hsem_ev_soc_target = get_config_value(
-            self._config_entry,
-            "hsem_ev_soc_target",
-        )
-
-        if self._hsem_ev_soc_target == vol.UNDEFINED:
-            self._hsem_ev_soc_target = None
-
-        self._hsem_ev_connected = get_config_value(
-            self._config_entry,
-            "hsem_ev_connected",
-        )
-
-        if self._hsem_ev_connected == vol.UNDEFINED:
-            self._hsem_ev_connected = None
-
-        # Second EV charger related settings
-        self._hsem_ev_second_charger_force_max_discharge_power = convert_to_boolean(
-            get_config_value(
-                self._config_entry,
-                "hsem_ev_second_charger_force_max_discharge_power",
-            )
-        )
-
-        self._hsem_ev_second_charger_max_discharge_power = convert_to_int(
-            get_config_value(
-                self._config_entry,
-                "hsem_ev_second_charger_max_discharge_power",
-            )
-        )
-
-        self._hsem_ev_second_charger_status = get_config_value(
-            self._config_entry, "hsem_ev_second_charger_status"
-        )
-
-        if self._hsem_ev_second_charger_status == vol.UNDEFINED:
-            self._hsem_ev_second_charger_status = None
-
-        self._hsem_ev_second_charger_power = get_config_value(
-            self._config_entry,
-            "hsem_ev_second_charger_power",
-        )
-
-        if self._hsem_ev_second_charger_power == vol.UNDEFINED:
-            self._hsem_ev_second_charger_power = None
-
-        self._hsem_ev_second_soc = get_config_value(
-            self._config_entry,
-            "hsem_ev_second_soc",
-        )
-        if self._hsem_ev_second_soc == vol.UNDEFINED:
-            self._hsem_ev_second_soc = None
-
-        self._hsem_ev_second_allow_charge_past_target_soc = convert_to_boolean(
-            get_config_value(
-                self._config_entry,
-                "hsem_ev_second_allow_charge_past_target_soc",
-            )
-        )
-        self._hsem_ev_second_soc_target = get_config_value(
-            self._config_entry,
-            "hsem_ev_second_soc_target",
-        )
-
-        if self._hsem_ev_second_soc_target == vol.UNDEFINED:
-            self._hsem_ev_second_soc_target = None
-
-        self._hsem_ev_second_connected = get_config_value(
-            self._config_entry,
-            "hsem_ev_second_connected",
-        )
-
-        if self._hsem_ev_second_connected == vol.UNDEFINED:
-            self._hsem_ev_second_connected = None
-
-        self._hsem_batteries_conversion_loss = convert_to_float(
-            get_config_value(
-                self._config_entry,
-                "hsem_batteries_conversion_loss",
-            )
-        )
-
-        self._hsem_huawei_solar_batteries_maximum_charging_power = get_config_value(
-            self._config_entry,
-            "hsem_huawei_solar_batteries_maximum_charging_power",
-        )
-        self._hsem_huawei_solar_batteries_maximum_discharging_power = get_config_value(
-            self._config_entry,
-            "hsem_huawei_solar_batteries_maximum_discharging_power",
-        )
-        self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc = get_config_value(
-            self._config_entry,
-            "hsem_huawei_solar_batteries_grid_charge_cutoff_soc",
-        )
-        self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods = (
-            get_config_value(
-                self._config_entry,
-                "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods",
-            )
-        )
-        self._hsem_house_consumption_energy_weight_1d = convert_to_int(
-            get_config_value(
-                self._config_entry, "hsem_house_consumption_energy_weight_1d"
-            )
-        )
-        self._hsem_house_consumption_energy_weight_3d = convert_to_int(
-            get_config_value(
-                self._config_entry, "hsem_house_consumption_energy_weight_3d"
-            )
-        )
-        self._hsem_house_consumption_energy_weight_7d = convert_to_int(
-            get_config_value(
-                self._config_entry, "hsem_house_consumption_energy_weight_7d"
-            )
-        )
-        self._hsem_house_consumption_energy_weight_14d = convert_to_int(
-            get_config_value(
-                self._config_entry, "hsem_house_consumption_energy_weight_14d"
-            )
-        )
-        self._hsem_batteries_rated_capacity_max = get_config_value(
-            self._config_entry, "hsem_huawei_solar_batteries_rated_capacity"
-        )
-        self._hsem_batteries_enable_batteries_schedule_1 = get_config_value(
-            self._config_entry, "hsem_batteries_enable_batteries_schedule_1"
-        )
-        self._hsem_batteries_enable_batteries_schedule_1_start = get_config_value(
-            self._config_entry, "hsem_batteries_enable_batteries_schedule_1_start"
-        )
-        self._hsem_batteries_enable_batteries_schedule_1_end = get_config_value(
-            self._config_entry, "hsem_batteries_enable_batteries_schedule_1_end"
-        )
-        self._hsem_batteries_enable_batteries_schedule_1_min_price_difference = (
-            get_config_value(
-                self._config_entry,
-                "hsem_batteries_enable_batteries_schedule_1_min_price_difference",
-            )
-        )
-        self._hsem_batteries_enable_batteries_schedule_2 = get_config_value(
-            self._config_entry, "hsem_batteries_enable_batteries_schedule_2"
-        )
-        self._hsem_batteries_enable_batteries_schedule_2_start = get_config_value(
-            self._config_entry, "hsem_batteries_enable_batteries_schedule_2_start"
-        )
-        self._hsem_batteries_enable_batteries_schedule_2_end = get_config_value(
-            self._config_entry, "hsem_batteries_enable_batteries_schedule_2_end"
-        )
-        self._hsem_batteries_enable_batteries_schedule_2_min_price_difference = (
-            get_config_value(
-                self._config_entry,
-                "hsem_batteries_enable_batteries_schedule_2_min_price_difference",
-            )
-        )
-        self._hsem_batteries_enable_batteries_schedule_3 = get_config_value(
-            self._config_entry, "hsem_batteries_enable_batteries_schedule_3"
-        )
-        self._hsem_batteries_enable_batteries_schedule_3_start = get_config_value(
-            self._config_entry, "hsem_batteries_enable_batteries_schedule_3_start"
-        )
-        self._hsem_batteries_enable_batteries_schedule_3_end = get_config_value(
-            self._config_entry, "hsem_batteries_enable_batteries_schedule_3_end"
-        )
-        self._hsem_batteries_enable_batteries_schedule_3_min_price_difference = (
-            get_config_value(
-                self._config_entry,
-                "hsem_batteries_enable_batteries_schedule_3_min_price_difference",
-            )
-        )
-
-        self._hsem_batteries_enable_excess_export = get_config_value(
-            self._config_entry, "hsem_batteries_enable_excess_export"
-        )
-        self._hsem_batteries_excess_export_discharge_buffer = convert_to_float(
-            get_config_value(
-                self._config_entry, "hsem_batteries_excess_export_discharge_buffer"
-            )
-        )
-        self._hsem_batteries_excess_export_price_threshold = convert_to_float(
-            get_config_value(
-                self._config_entry, "hsem_batteries_excess_export_price_threshold"
-            )
-        )
-        self._hsem_batteries_purchase_price = convert_to_float(
-            get_config_value(self._config_entry, "hsem_batteries_purchase_price")
-        )
-        self._hsem_batteries_expected_cycles = convert_to_int(
-            get_config_value(self._config_entry, "hsem_batteries_expected_cycles")
-        )
-
-        if self._hsem_huawei_solar_device_id_inverter_2 is not None:
-            if len(self._hsem_huawei_solar_device_id_inverter_2) == 0:
-                self._hsem_huawei_solar_device_id_inverter_2 = None
-
-    async def _async_fetch_entity_states(self) -> None:
-        # Reset status
-        self._missing_input_entities = False
-        self._missing_input_entities_list = []
-
-        # Resolve force working mode once
-        if self._hsem_force_working_mode is None:
-            self._hsem_force_working_mode = (
-                await async_resolve_entity_id_from_unique_id(
-                    self, "hsem_force_working_mode", "select"
-                )
-            )
-
-        def _read_entity(entity_id, conv_type=None, decimals=3, label=""):
-            """Read entity state safely and track any errors."""
-            if not entity_id:
-                self._missing_input_entities = True
-                self._missing_input_entities_list.append(
-                    f"Missing entity: {label or entity_id}"
-                )
-                return None
-            try:
-                return ha_get_entity_state_and_convert(
-                    self, entity_id, conv_type, decimals
-                )
-            except Exception as e:
-                self._missing_input_entities = True
-                self._missing_input_entities_list.append(
-                    f"Error reading {label or entity_id}: {type(e).__name__}: {e}"
-                )
-                return None
-
-        # Read each entity using the helper
-        self._hsem_force_working_mode_state = _read_entity(
-            self._hsem_force_working_mode, "string", label="hsem_force_working_mode"
-        )
-
-        if self._hsem_force_working_mode_state is None:
-            self._hsem_force_working_mode_state = "auto"
-
-        # First EV
-        if self._hsem_ev_charger_status:
-            self._hsem_ev_charger_status_state = convert_to_boolean(
-                _read_entity(
-                    self._hsem_ev_charger_status,
-                    "boolean",
-                    label="hsem_ev_charger_status",
-                )
-            )
-
-        if self._hsem_ev_charger_power:
-            self._hsem_ev_charger_power_state = convert_to_float(
-                _read_entity(
-                    self._hsem_ev_charger_power, "float", label="hsem_ev_charger_power"
-                )
-            )
-
-        if self._hsem_ev_soc:
-            self._hsem_ev_soc_state = convert_to_float(
-                _read_entity(self._hsem_ev_soc, "float", label="hsem_ev_soc")
-            )
-
-        if self._hsem_ev_soc_target:
-            self._hsem_ev_soc_target_state = convert_to_float(
-                _read_entity(
-                    self._hsem_ev_soc_target, "float", label="hsem_ev_soc_target"
-                )
-            )
-
-        if self._hsem_ev_connected:
-            self._hsem_ev_connected_state = convert_to_boolean(
-                _read_entity(
-                    self._hsem_ev_connected, "boolean", label="hsem_ev_connected"
-                )
-            )
-
-        # Second EV
-        if self._hsem_ev_second_charger_status:
-            self._hsem_ev_second_charger_status_state = convert_to_boolean(
-                _read_entity(
-                    self._hsem_ev_second_charger_status,
-                    "boolean",
-                    label="hsem_ev_second_charger_status",
-                )
-            )
-
-        if self._hsem_ev_second_charger_power:
-            self._hsem_ev_second_charger_power_state = convert_to_float(
-                _read_entity(
-                    self._hsem_ev_second_charger_power,
-                    "float",
-                    label="hsem_ev_second_charger_power",
-                )
-            )
-
-        if self._hsem_ev_second_soc:
-            self._hsem_ev_second_soc_state = convert_to_float(
-                _read_entity(
-                    self._hsem_ev_second_soc, "float", label="hsem_ev_second_soc"
-                )
-            )
-
-        if self._hsem_ev_second_soc_target:
-            self._hsem_ev_second_soc_target_state = convert_to_float(
-                _read_entity(
-                    self._hsem_ev_second_soc_target,
-                    "float",
-                    label="hsem_ev_second_soc_target",
-                )
-            )
-
-        if self._hsem_ev_second_connected:
-            self._hsem_ev_second_connected_state = convert_to_boolean(
-                _read_entity(
-                    self._hsem_ev_second_connected,
-                    "boolean",
-                    label="hsem_ev_second_connected",
-                )
-            )
-
-        self._hsem_house_consumption_power_state = convert_to_float(
-            _read_entity(
-                self._hsem_house_consumption_power,
-                "float",
-                label="hsem_house_consumption_power",
-            )
-        )
-        self._hsem_solar_production_power_state = convert_to_float(
-            _read_entity(
-                self._hsem_solar_production_power,
-                "float",
-                label="hsem_solar_production_power",
-            )
-        )
-        self._hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou_state = (
-            _read_entity(
-                self._hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou,
-                "string",
-                label="excess_pv_energy_use_in_tou",
-            )
-        )
-        self._hsem_huawei_solar_batteries_working_mode_state = _read_entity(
-            self._hsem_huawei_solar_batteries_working_mode,
-            "string",
-            label="batteries_working_mode",
-        )
-        self._hsem_huawei_solar_batteries_state_of_capacity_state = convert_to_float(
-            _read_entity(
-                self._hsem_huawei_solar_batteries_state_of_capacity,
-                "float",
-                label="state_of_capacity",
-            )
-        )
-        self._hsem_huawei_solar_batteries_end_of_discharge_soc_state = convert_to_float(
-            _read_entity(
-                self._hsem_huawei_solar_batteries_end_of_discharge_soc,
-                "float",
-                label="end_of_discharge_soc",
-            )
-        )
-        self._hsem_energi_data_service_import_state = convert_to_float(
-            _read_entity(
-                self._hsem_energi_data_service_import, "float", 3, label="eds_import"
-            )
-        )
-        self._hsem_energi_data_service_export_state = convert_to_float(
-            _read_entity(
-                self._hsem_energi_data_service_export, "float", 3, label="eds_export"
-            )
-        )
-        self._hsem_huawei_solar_inverter_active_power_control_state = _read_entity(
-            self._hsem_huawei_solar_inverter_active_power_control,
-            "string",
-            label="inverter_active_power_control",
-        )
-        self._hsem_huawei_solar_batteries_maximum_charging_power_state = (
-            convert_to_float(
-                _read_entity(
-                    self._hsem_huawei_solar_batteries_maximum_charging_power,
-                    "float",
-                    label="max_charging_power",
-                )
-            )
-        )
-        self._hsem_huawei_solar_batteries_maximum_discharging_power_state = (
-            convert_to_float(
-                _read_entity(
-                    self._hsem_huawei_solar_batteries_maximum_discharging_power,
-                    "float",
-                    label="max_discharging_power",
-                )
-            )
-        )
-        self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc_state = (
-            convert_to_float(
-                _read_entity(
-                    self._hsem_huawei_solar_batteries_grid_charge_cutoff_soc,
-                    "float",
-                    label="grid_charge_cutoff_soc",
-                )
-            )
-        )
-        self._hsem_batteries_rated_capacity_max_state = convert_to_float(
-            _read_entity(
-                self._hsem_batteries_rated_capacity_max,
-                "float",
-                label="batteries_rated_capacity_max",
-            )
-        )
-
-        # Special handling for TOU charging/discharging periods
-        if self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods:
-            try:
-                entity_data = ha_get_entity_state_and_convert(
-                    self,
-                    self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods,
-                    None,
-                )
-
-                # Reset both values first
-                self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_state = None
-                self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_periods = None
-
-                if isinstance(entity_data, State):
-                    self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_state = entity_data.state
-                    self._hsem_huawei_solar_batteries_tou_charging_and_discharging_periods_periods = [
-                        entity_data.attributes[f"Period {i}"]
-                        for i in range(1, 11)
-                        if f"Period {i}" in entity_data.attributes
-                    ]
-                else:
-                    self._missing_input_entities = True
-                    self._missing_input_entities_list.append(
-                        "TOU periods entity is not of type State"
-                    )
-            except Exception as e:
-                self._missing_input_entities = True
-                self._missing_input_entities_list.append(
-                    f"Error reading TOU periods: {type(e).__name__}: {e}"
-                )
-        else:
-            self._missing_input_entities = True
-            self._missing_input_entities_list.append("Missing entity: TOU periods")
-
-        # Register state listeners (unchanged)
-        if (
-            self._hsem_ev_charger_status
-            and self._hsem_ev_charger_status not in self._tracked_entities
-        ):
-            await async_logger(
-                self,
-                f"Starting to track state changes for {self._hsem_ev_charger_status}",
-            )
-            async_track_state_change_event(
-                self.hass, [self._hsem_ev_charger_status], self._async_handle_update
-            )
-            self._tracked_entities.add(self._hsem_ev_charger_status)
-
-        if (
-            self._hsem_ev_connected is not None
-            and self._hsem_ev_connected not in self._tracked_entities
-        ):
-            await async_logger(
-                self,
-                f"Starting to track state changes for {self._hsem_ev_connected}",
-            )
-            async_track_state_change_event(
-                self.hass, [self._hsem_ev_connected], self._async_handle_update
-            )
-            self._tracked_entities.add(self._hsem_ev_connected)
-
-        # Second EV tracking
-        if (
-            self._hsem_ev_second_charger_status
-            and self._hsem_ev_second_charger_status not in self._tracked_entities
-        ):
-            await async_logger(
-                self,
-                f"Starting to track state changes for {self._hsem_ev_second_charger_status}",
-            )
-            async_track_state_change_event(
-                self.hass,
-                [self._hsem_ev_second_charger_status],
-                self._async_handle_update,
-            )
-            self._tracked_entities.add(self._hsem_ev_second_charger_status)
-
-        if (
-            self._hsem_ev_second_connected is not None
-            and self._hsem_ev_second_connected not in self._tracked_entities
-        ):
-            await async_logger(
-                self,
-                f"Starting to track state changes for {self._hsem_ev_second_connected}",
-            )
-            async_track_state_change_event(
-                self.hass, [self._hsem_ev_second_connected], self._async_handle_update
-            )
-            self._tracked_entities.add(self._hsem_ev_second_connected)
-
-        if (
-            self._hsem_force_working_mode
-            and self._hsem_force_working_mode not in self._tracked_entities
-        ):
-            await async_logger(
-                self,
-                f"Starting to track state changes for {self._hsem_force_working_mode}",
-            )
-            async_track_state_change_event(
-                self.hass, [self._hsem_force_working_mode], self._async_handle_update
-            )
-            self._tracked_entities.add(self._hsem_force_working_mode)
-
-    async def _async_calculate_remaining_battery_capacity(self) -> None:
-        # Calculate remaining battery capacity accounting for the discharge reserve (minimum SOC)."""
-        if isinstance(
-            self._hsem_batteries_rated_capacity_max_state, (int, float)
-        ) and isinstance(
-            self._hsem_huawei_solar_batteries_state_of_capacity_state, (int, float)
-        ):
-            # Rated battery capacity in kWh
-            rated_kwh = self._hsem_batteries_rated_capacity_max_state / 1000.0
-
-            # End-of-discharge SOC (%) - the minimum discharge floor (default to 5% if not set)
-            end_of_discharge_soc = (
-                self._hsem_huawei_solar_batteries_end_of_discharge_soc_state
-            )
-
-            if end_of_discharge_soc is None or end_of_discharge_soc <= 0:
-                end_of_discharge_soc = 5.0
-
-            # Energy reserve that must not be discharged (kWh)
-            reserve_kwh = rated_kwh * (end_of_discharge_soc / 100.0)
-
-            # Usable capacity = total capacity minus the reserve
-            usable_kwh = max(rated_kwh - reserve_kwh, 0.0)
-
-            # Current energy based on current SOC (%)
-            current_soc_percent = (
-                self._hsem_huawei_solar_batteries_state_of_capacity_state
-            )
-            current_kwh = (current_soc_percent / 100.0) * rated_kwh
-
-            # Available capacity for discharge = current energy minus the reserve
-            available_discharge_kwh = max(current_kwh - reserve_kwh, 0.0)
-
-            # Store the reserve as min state for transparency in attributes
-            self._hsem_batteries_rated_capacity_min_state = round(reserve_kwh, 3)
-
-            # Set the usable and current capacity (used by the optimizer)
-            self._hsem_batteries_usable_capacity = round(usable_kwh, 2)
-            self._hsem_batteries_current_capacity = round(available_discharge_kwh, 2)
-
-            await async_logger(
-                self,
-                f"Battery capacity calculated: Rated={round(rated_kwh, 2)}kWh, "
-                f"End-of-Discharge SOC={end_of_discharge_soc}%, "
-                f"Reserve={round(reserve_kwh, 2)}kWh, "
-                f"Usable={round(usable_kwh, 2)}kWh, "
-                f"Current SOC={round(current_soc_percent, 1)}%, "
-                f"Current Available={round(available_discharge_kwh, 2)}kWh",
-            )
-
-    async def _async_calculate_net_consumption(self) -> None:
-        # Calculate the net consumption without the EV charger power
-
-        if isinstance(
-            self._hsem_solar_production_power_state, (int, float)
-        ) and isinstance(self._hsem_house_consumption_power_state, (int, float)):
-            # Treat EV charger power state as 0.0 if it's None
-            ev_charger_power_state = (
-                self._hsem_ev_charger_power_state
-                if isinstance(self._hsem_ev_charger_power_state, (int, float))
-                else 0.0
-            )
-
-            # Add second EV charger power if available
-            ev_charger_power_state += (
-                self._hsem_ev_second_charger_power_state
-                if isinstance(self._hsem_ev_second_charger_power_state, (int, float))
-                else 0.0
-            )
-
-            if self._hsem_house_power_includes_ev_charger_power:
-                self._hsem_net_consumption_with_ev = (
-                    self._hsem_house_consumption_power_state
-                    - self._hsem_solar_production_power_state
-                )
-                self._hsem_net_consumption = (
-                    self._hsem_house_consumption_power_state
-                    - self._hsem_solar_production_power_state
-                    - ev_charger_power_state
-                )
-            else:
-                self._hsem_net_consumption_with_ev = (
-                    self._hsem_house_consumption_power_state
-                    - self._hsem_solar_production_power_state
-                    + ev_charger_power_state
-                )
-                self._hsem_net_consumption = (
-                    self._hsem_house_consumption_power_state
-                    - self._hsem_solar_production_power_state
-                )
-
-            self._hsem_net_consumption = round(self._hsem_net_consumption, 3)
-            self._hsem_net_consumption_with_ev = round(
-                self._hsem_net_consumption_with_ev, 3
-            )
-
-            await async_logger(
-                self,
-                f"Net consumption calculated: {self._hsem_net_consumption}, with EVs: {self._hsem_net_consumption_with_ev}, hsem_house_power_includes_ev_charger_power: {self._hsem_house_power_includes_ev_charger_power}, hsem_house_consumption_power_state: {self._hsem_house_consumption_power_state}, hsem_solar_production_power_state: {self._hsem_solar_production_power_state}, ev_charger_power_state: {ev_charger_power_state}",
-            )
-        else:
-            self._hsem_net_consumption = 0.0
-
-    def _parse_inverter_power_control_limit_state(
-        self, power_control_state: float | int | bool | str | None
-    ) -> int | None:
-        """Parse the inverter active power control state into a percentage."""
-        if not isinstance(power_control_state, str):
-            return None
-
-        normalized_state = power_control_state.strip().lower()
-        if normalized_state == "unlimited":
-            return 100
-
-        if "%" in normalized_state:
-            normalized_state = normalized_state.replace("%", "")
-            normalized_state = normalized_state.replace("limited to", "")
-            try:
-                return int(round(float(normalized_state.strip())))
-            except ValueError:
-                return None
-
-        return None
-
-    async def _async_set_inverter_power_control(self) -> None:
-        # Determine the grid export power percentage based on the state
-
-        if not isinstance(self._hsem_energi_data_service_export_state, (int, float)):
-            return
-
-        if not isinstance(
-            self._hsem_energi_data_service_export_min_price, (int, float)
-        ):
-            return
-
-        export_power_percentage = (
-            100
-            if self._hsem_energi_data_service_export_state
-            >= self._hsem_energi_data_service_export_min_price
-            else 0
-        )
-
-        # Export power needs to be limited due to price, but lets check car state
-        if export_power_percentage == 0:
-            # EV is connected, so lets allow surpass charge
-            if self._hsem_ev_connected_state:
-                # EV SoC is less than target soc, allow carge to car
-                if (
-                    isinstance(self._hsem_ev_soc_state, (int, float))
-                    and isinstance(self._hsem_ev_soc_target_state, (int, float))
-                    and self._hsem_ev_soc_state < self._hsem_ev_soc_target_state
-                ):
-                    export_power_percentage = 100
-                # EV is at or above target soc, but we allow charge past target soc
-                elif (
-                    isinstance(self._hsem_ev_soc_state, (int, float))
-                    and isinstance(self._hsem_ev_soc_target_state, (int, float))
-                    and self._hsem_ev_allow_charge_past_target_soc
-                    and self._hsem_ev_soc_state < 100
-                ):
-                    export_power_percentage = 100
-
-            if self._hsem_ev_second_connected_state:
-                # EV SoC is less than target soc, allow carge to car
-                if (
-                    isinstance(self._hsem_ev_second_soc_state, (int, float))
-                    and isinstance(self._hsem_ev_second_soc_target_state, (int, float))
-                    and self._hsem_ev_second_soc_state
-                    < self._hsem_ev_second_soc_target_state
-                ):
-                    export_power_percentage = 100
-                # EV is at or above target soc, but we allow charge past target soc
-                elif (
-                    isinstance(self._hsem_ev_second_soc_state, (int, float))
-                    and isinstance(self._hsem_ev_second_soc_target_state, (int, float))
-                    and self._hsem_ev_second_allow_charge_past_target_soc
-                    and self._hsem_ev_second_soc_state < 100
-                ):
-                    export_power_percentage = 100
-
-        # List of inverters to update
-        inverters = [
-            self._hsem_huawei_solar_device_id_inverter_1,
-            self._hsem_huawei_solar_device_id_inverter_2,
-        ]
-
-        current_export_control_pct = self._parse_inverter_power_control_limit_state(
-            self._hsem_huawei_solar_inverter_active_power_control_state
-        )
-
-        await async_logger(
-            self,
-            f"Determined export power percentage: {export_power_percentage}% based on export price: {self._hsem_energi_data_service_export_state} and min required export price: {self._hsem_energi_data_service_export_min_price}, EV connected: {self._hsem_ev_connected_state}, EV SoC: {self._hsem_ev_soc_state}, EV SoC target: {self._hsem_ev_soc_target_state}, EV allow charge past target soc: {self._hsem_ev_allow_charge_past_target_soc}, EV second connected: {self._hsem_ev_second_connected_state}, EV second SoC: {self._hsem_ev_second_soc_state}, EV second SoC target: {self._hsem_ev_second_soc_target_state}, EV second allow charge past target soc: {self._hsem_ev_second_allow_charge_past_target_soc}",
-        )
-
-        if (
-            current_export_control_pct is not None
-            and current_export_control_pct != export_power_percentage
-        ):
-            for inverter_id in inverters:
-                if inverter_id is not None:
-                    await async_set_grid_export_power_pct(
-                        self, inverter_id, export_power_percentage
-                    )
+                self._state = None
+
+        # Final sort
+        self._hourly_recommendations.sort(key=lambda x: x.start)
+        self._last_updated = now.isoformat()
+        self._available = True
+
+        await async_logger(self, f"------ Completed updating {self._name} state...")
+        self.async_write_ha_state()
+
+    # ------------------------------------------------------------------
+    # Planner bridge helpers (unchanged from prior PR)
+    # ------------------------------------------------------------------
 
     def _build_planner_input(self) -> PlannerInput:
-        """Assemble a :class:`PlannerInput` from the current HA-fetched state.
-
-        This method is called *after* ``_async_fetch_entity_states``,
-        ``_async_setup_batteries_schedules``, ``_async_calculate_avg_house_consumption``,
-        and ``_async_update_hourly_data`` have already populated
-        ``self._hourly_recommendations`` with prices, Solcast estimates, and
-        per-hour consumption averages.  We simply read those values back out
-        into the pure-Python dataclasses so that the engine has no HA imports.
-        """
+        """Assemble a :class:`PlannerInput` from the current HA-fetched state."""
+        cfg = self._cfg
         now = datetime.now().astimezone(self._tz)
 
-        # ---- Per-hour time-series: one entry per clock-hour (0-23) ----
-        # HourlyRecommendation slots may be at sub-hourly resolution; collect
-        # the first slot that starts at each clock-hour.
         seen_hours: set[int] = set()
         consumption_averages: list[HourlyConsumptionAverage] = []
         price_points: list[PricePoint] = []
         solcast_slots: list[SolcastSlot] = []
 
-        # The sensor stores per-slot values (divided by slots-per-hour).
-        # The engine's populate functions accept hourly totals and divide them
-        # back down internally.  So we multiply by slots-per-hour to recover
-        # the hourly totals before passing them in.
-        slots_per_hour = 60.0 / self._hsem_recommendation_interval_minutes
+        slots_per_hour = 60.0 / cfg.recommendation_interval_minutes
+        eds_share = (
+            cfg.energi_data_service_update_interval
+            / cfg.recommendation_interval_minutes
+        )
 
         for rec in self._hourly_recommendations:
             h = rec.start.hour
@@ -3195,7 +464,6 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 continue
             seen_hours.add(h)
 
-            # Consumption: stored as per-slot kWh → recover hourly kWh
             consumption_averages.append(
                 HourlyConsumptionAverage(
                     hour=h,
@@ -3205,13 +473,6 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                     avg_14d=round(rec.avg_house_consumption_14d * slots_per_hour, 3),
                 )
             )
-            # Prices: per-kWh rates — NOT scaled by slot duration.
-            # The sensor stores `eds_price / (eds_interval / slot_minutes)`.
-            # We recover the original EDS price by multiplying by that same ratio.
-            eds_share = (
-                self._hsem_energi_data_service_update_interval
-                / self._hsem_recommendation_interval_minutes
-            )
             price_points.append(
                 PricePoint(
                     hour=h,
@@ -3219,7 +480,6 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                     export_price=round(rec.export_price * eds_share, 5),
                 )
             )
-            # Solcast: stored as per-slot kWh → recover hourly kWh
             solcast_slots.append(
                 SolcastSlot(
                     hour=h,
@@ -3227,7 +487,6 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
                 )
             )
 
-        # ---- Battery schedules ----
         battery_schedules = [
             BatteryScheduleInput(
                 enabled=s.enabled,
@@ -3238,87 +497,52 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             for s in self._batteries_schedules
         ]
 
+        live = self._live
         return PlannerInput(
             now_iso=now.isoformat(),
-            interval_minutes=self._hsem_recommendation_interval_minutes,
-            interval_length_hours=self._hsem_recommendation_interval_length,
-            # battery hardware
-            battery_soc_pct=convert_to_float(
-                self._hsem_huawei_solar_batteries_state_of_capacity_state
-            ),
-            battery_rated_capacity_kwh=convert_to_float(
-                self._hsem_batteries_rated_capacity_max_state
+            interval_minutes=cfg.recommendation_interval_minutes,
+            interval_length_hours=cfg.recommendation_interval_length,
+            battery_soc_pct=convert_to_float(live.huawei_batteries_soc_pct),
+            battery_rated_capacity_kwh=(
+                convert_to_float(live.huawei_batteries_rated_capacity_wh) or 0.0
             )
             / 1000.0,
             battery_end_of_discharge_soc_pct=convert_to_float(
-                self._hsem_huawei_solar_batteries_end_of_discharge_soc_state or 5.0
+                live.huawei_batteries_end_of_discharge_soc_pct or 5.0
             ),
             battery_max_charge_power_w=convert_to_float(
-                self._hsem_huawei_solar_batteries_maximum_charging_power_state
+                live.huawei_batteries_max_charge_power_w
             ),
             battery_max_discharge_power_w=convert_to_float(
-                self._hsem_huawei_solar_batteries_maximum_discharging_power_state
+                live.huawei_batteries_max_discharge_power_w
             )
             or None,
-            battery_conversion_loss_pct=convert_to_float(
-                self._hsem_batteries_conversion_loss
-            ),
-            # battery economics
-            battery_purchase_price=convert_to_float(
-                self._hsem_batteries_purchase_price
-            ),
-            battery_expected_cycles=convert_to_int(
-                self._hsem_batteries_expected_cycles
-            ),
-            # consumption weights
-            weight_1d=convert_to_int(self._hsem_house_consumption_energy_weight_1d),
-            weight_3d=convert_to_int(self._hsem_house_consumption_energy_weight_3d),
-            weight_7d=convert_to_int(self._hsem_house_consumption_energy_weight_7d),
-            weight_14d=convert_to_int(self._hsem_house_consumption_energy_weight_14d),
-            # time-series
+            battery_conversion_loss_pct=convert_to_float(cfg.batteries_conversion_loss),
+            battery_purchase_price=convert_to_float(cfg.batteries_purchase_price),
+            battery_expected_cycles=convert_to_int(cfg.batteries_expected_cycles),
+            weight_1d=convert_to_int(cfg.house_consumption_energy_weight_1d),
+            weight_3d=convert_to_int(cfg.house_consumption_energy_weight_3d),
+            weight_7d=convert_to_int(cfg.house_consumption_energy_weight_7d),
+            weight_14d=convert_to_int(cfg.house_consumption_energy_weight_14d),
             consumption_averages=consumption_averages,
             price_points=price_points,
             solcast_slots=solcast_slots,
-            # schedules
             battery_schedules=battery_schedules,
-            # excess export
-            excess_export_enabled=bool(self._hsem_batteries_enable_excess_export),
+            excess_export_enabled=bool(cfg.batteries_enable_excess_export),
             excess_export_discharge_buffer_pct=convert_to_float(
-                self._hsem_batteries_excess_export_discharge_buffer
+                cfg.batteries_excess_export_discharge_buffer
             ),
             excess_export_price_threshold=convert_to_float(
-                self._hsem_batteries_excess_export_price_threshold
+                cfg.batteries_excess_export_price_threshold
             ),
-            # grid export control
-            export_min_price=convert_to_float(
-                self._hsem_energi_data_service_export_min_price
-            ),
-            # seasonal / mode
-            months_winter=list(self._hsem_months_winter or []),
-            house_power_includes_ev=bool(
-                self._hsem_house_power_includes_ev_charger_power
-            ),
-            is_read_only=bool(self._read_only),
+            export_min_price=convert_to_float(cfg.energi_data_service_export_min_price),
+            months_winter=list(cfg.months_winter or []),
+            house_power_includes_ev=bool(cfg.house_power_includes_ev_charger_power),
+            is_read_only=bool(cfg.read_only),
         )
 
     def _apply_planner_output(self, output) -> None:
-        """Write :class:`PlannerOutput` decisions back into ``self._hourly_recommendations``.
-
-        The engine returns :class:`PlannedSlot` objects whose ``start`` matches
-        the ``start`` of the corresponding :class:`HourlyRecommendation`.  We
-        look up by start datetime and copy:
-
-        - ``recommendation``
-        - ``batteries_charged``
-        - ``estimated_net_consumption``
-        - ``estimated_cost``
-        - ``estimated_battery_capacity``
-        - ``estimated_battery_soc``
-
-        All fields that remain unchanged (prices, pv_estimate, avg_consumption) are
-        left as-is because the engine output values are identical to what HA already
-        wrote in during the I/O phase.
-        """
+        """Write :class:`PlannerOutput` decisions back into ``self._hourly_recommendations``."""
         slot_by_start = {s.start: s for s in output.slots}
 
         for rec in self._hourly_recommendations:
@@ -3332,62 +556,65 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             rec.estimated_battery_capacity = slot.estimated_battery_capacity
             rec.estimated_battery_soc = slot.estimated_battery_soc
 
-        # Keep internal bookkeeping in sync
         self._batteries_schedules_remaining_capacity_needed = sum(
             s.needed_batteries_capacity for s in self._batteries_schedules if s.enabled
         )
 
-    async def _async_setup_batteries_schedules(self) -> None:
-        self._batteries_schedules = []
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
 
-        # Setup schedules
-        schedule = BatterySchedule(
-            enabled=convert_to_boolean(
-                self._hsem_batteries_enable_batteries_schedule_1
-            ),
-            start=convert_to_time(
-                self._hsem_batteries_enable_batteries_schedule_1_start
-            ),
-            end=convert_to_time(self._hsem_batteries_enable_batteries_schedule_1_end),
-            avg_import_price=0.0,
-            needed_batteries_capacity=0.0,
-            needed_batteries_capacity_cost=0.0,
-            min_price_difference_required=convert_to_float(
-                self._hsem_batteries_enable_batteries_schedule_1_min_price_difference
-            ),
-        )
-        self._batteries_schedules.append(schedule)
+    def _generate_recommendation_intervals(
+        self, interval_minutes: int, total_hours: int
+    ) -> list[HourlyRecommendation]:
+        """Generate empty recommendation slots from midnight for ``total_hours`` hours."""
+        now = datetime.now().astimezone(self._tz)
+        start_time = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        steps = int((total_hours * 60) / interval_minutes)
 
-        schedule = BatterySchedule(
-            enabled=convert_to_boolean(
-                self._hsem_batteries_enable_batteries_schedule_2
-            ),
-            start=convert_to_time(
-                self._hsem_batteries_enable_batteries_schedule_2_start
-            ),
-            end=convert_to_time(self._hsem_batteries_enable_batteries_schedule_2_end),
-            avg_import_price=0.0,
-            needed_batteries_capacity=0.0,
-            needed_batteries_capacity_cost=0.0,
-            min_price_difference_required=convert_to_float(
-                self._hsem_batteries_enable_batteries_schedule_2_min_price_difference
-            ),
-        )
-        self._batteries_schedules.append(schedule)
+        intervals = []
+        for i in range(steps):
+            t_start = start_time + timedelta(minutes=i * interval_minutes)
+            t_end = t_start + timedelta(minutes=interval_minutes)
+            intervals.append(
+                HourlyRecommendation(
+                    avg_house_consumption=0.0,
+                    avg_house_consumption_1d=0.0,
+                    avg_house_consumption_3d=0.0,
+                    avg_house_consumption_7d=0.0,
+                    avg_house_consumption_14d=0.0,
+                    batteries_charged=0.0,
+                    end=t_end,
+                    estimated_battery_capacity=0.0,
+                    estimated_battery_soc=0,
+                    estimated_cost=0.0,
+                    estimated_net_consumption=0.0,
+                    export_price=0.0,
+                    import_price=0.0,
+                    recommendation=None,
+                    solcast_pv_estimate=0.0,
+                    start=t_start,
+                )
+            )
+        return intervals
 
-        schedule = BatterySchedule(
-            enabled=convert_to_boolean(
-                self._hsem_batteries_enable_batteries_schedule_3
-            ),
-            start=convert_to_time(
-                self._hsem_batteries_enable_batteries_schedule_3_start
-            ),
-            end=convert_to_time(self._hsem_batteries_enable_batteries_schedule_3_end),
-            avg_import_price=0.0,
-            needed_batteries_capacity=0.0,
-            needed_batteries_capacity_cost=0.0,
-            min_price_difference_required=convert_to_float(
-                self._hsem_batteries_enable_batteries_schedule_3_min_price_difference
-            ),
+    async def _set_update_interval(self, override_interval=None) -> None:
+        """Register or re-register the periodic timer."""
+        cfg = self._cfg
+        interval = timedelta(
+            minutes=override_interval if override_interval else cfg.update_interval
         )
-        self._batteries_schedules.append(schedule)
+        if self._timer_interval != interval:
+            self._timer_interval = interval
+            await self._async_register_timer(interval)
+        self._next_update = (datetime.now().astimezone(self._tz) + interval).isoformat()
+
+    async def _async_register_timer(self, interval: timedelta) -> None:
+        """Cancel any existing timer and register a new periodic one."""
+        if self._timer:
+            self._timer()
+            self._timer = None
+        self._timer = async_track_time_interval(
+            self.hass, self._async_handle_update, interval
+        )
+        await async_logger(self, f"Updating HSEM with interval: {interval}.")

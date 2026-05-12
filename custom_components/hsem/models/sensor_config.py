@@ -1,0 +1,221 @@
+"""Pure-Python dataclass representing the full configuration of HSEMWorkingModeSensor.
+
+This module is the single source of truth for all config-entry values that the
+sensor reads during each update cycle.  It carries **no** Home Assistant imports
+and can therefore be constructed and inspected in plain unit tests without a
+running HA instance.
+
+The :func:`build_sensor_config` factory function (in
+``custom_sensors/state_collector.py``) is responsible for reading a
+``ConfigEntry`` and returning a populated :class:`SensorConfig`.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import time
+
+
+@dataclass
+class EVChargerConfig:
+    """Configuration for a single EV charger."""
+
+    status_entity: str | None = None
+    power_entity: str | None = None
+    soc_entity: str | None = None
+    soc_target_entity: str | None = None
+    connected_entity: str | None = None
+    allow_charge_past_target_soc: bool = False
+    force_max_discharge_power: bool = False
+    max_discharge_power: int = 0
+
+
+@dataclass
+class BatteryScheduleConfig:
+    """Configuration for one charge/discharge battery schedule window."""
+
+    enabled: bool = False
+    start: time | None = None
+    end: time | None = None
+    min_price_difference: float = 0.0
+
+
+@dataclass
+class SensorConfig:
+    """Complete set of configuration values for :class:`HSEMWorkingModeSensor`.
+
+    All fields are plain Python types; no Home Assistant objects are stored here.
+    Fields mirror the config-entry option keys defined in ``const.py`` and
+    populated by ``_update_settings()`` in the sensor.
+
+    Attributes:
+        read_only: When True the sensor skips all hardware writes.
+        verbose_logging: Enable extra debug log output.
+        extended_attributes: Expose extra diagnostic attributes on the entity.
+        update_interval: Polling interval in minutes.
+        recommendation_interval_minutes: Slot width in minutes (15 or 60).
+        recommendation_interval_length: Planning horizon in hours.
+        energi_data_service_update_interval: EDS price update cadence in minutes.
+
+        huawei_solar_device_id_inverter_1: Device ID for inverter 1.
+        huawei_solar_device_id_inverter_2: Device ID for inverter 2 (optional).
+        huawei_solar_device_id_batteries: Device ID for the battery pack.
+        huawei_solar_batteries_working_mode: Entity ID for working mode select.
+        huawei_solar_batteries_end_of_discharge_soc: Entity ID for EoD SoC number.
+        huawei_solar_batteries_state_of_capacity: Entity ID for SoC sensor.
+        huawei_solar_batteries_grid_charge_cutoff_soc: Entity ID for grid charge cutoff.
+        huawei_solar_batteries_maximum_charging_power: Entity ID for max charge power.
+        huawei_solar_batteries_maximum_discharging_power: Entity ID for max discharge power.
+        huawei_solar_batteries_tou_charging_and_discharging_periods: Entity ID for TOU periods.
+        huawei_solar_batteries_excess_pv_energy_use_in_tou: Entity ID for excess PV use select.
+        huawei_solar_inverter_active_power_control: Entity ID for export power control.
+        huawei_solar_batteries_rated_capacity: Entity ID for rated battery capacity sensor.
+
+        house_consumption_power: Entity ID for house power meter.
+        solar_production_power: Entity ID for solar production meter.
+        house_power_includes_ev_charger_power: True if EV draw is already in house meter.
+
+        solcast_pv_forecast_forecast_today: Entity ID for today's Solcast forecast.
+        solcast_pv_forecast_forecast_tomorrow: Entity ID for tomorrow's Solcast forecast.
+        solcast_pv_forecast_forecast_likelihood: Attribute key for Solcast estimate field.
+
+        energi_data_service_import: Entity ID for the import price sensor.
+        energi_data_service_export: Entity ID for the export price sensor.
+        energi_data_service_export_min_price: Minimum export price to allow grid export.
+
+        ev: First EV charger configuration.
+        ev_second_enabled: Whether the second EV charger is active.
+        ev_second: Second EV charger configuration.
+
+        batteries_conversion_loss: Round-trip loss percentage.
+        batteries_purchase_price: Battery pack purchase price for depreciation calc.
+        batteries_expected_cycles: Expected total cycle life of the battery.
+
+        batteries_schedule_1: First discharge-window schedule config.
+        batteries_schedule_2: Second discharge-window schedule config.
+        batteries_schedule_3: Third discharge-window schedule config.
+
+        batteries_enable_excess_export: Enable opportunistic forced-discharge export.
+        batteries_excess_export_discharge_buffer: Safety buffer percentage to keep.
+        batteries_excess_export_price_threshold: Minimum price delta to trigger export.
+
+        months_winter: List of month integers (1-12) treated as winter.
+        months_summer: List of month integers (1-12) treated as summer.
+
+        house_consumption_energy_weight_1d: Weight (%) for 1-day consumption average.
+        house_consumption_energy_weight_3d: Weight (%) for 3-day consumption average.
+        house_consumption_energy_weight_7d: Weight (%) for 7-day consumption average.
+        house_consumption_energy_weight_14d: Weight (%) for 14-day consumption average.
+    """
+
+    # General
+    read_only: bool = False
+    verbose_logging: bool = True
+    extended_attributes: bool = False
+    update_interval: int = 1
+    recommendation_interval_minutes: int = 15
+    recommendation_interval_length: int = 48
+    energi_data_service_update_interval: int = 15
+
+    # Huawei Solar device IDs
+    huawei_solar_device_id_inverter_1: str | None = None
+    huawei_solar_device_id_inverter_2: str | None = None
+    huawei_solar_device_id_batteries: str | None = None
+
+    # Huawei Solar entity IDs
+    huawei_solar_batteries_working_mode: str | None = None
+    huawei_solar_batteries_end_of_discharge_soc: str | None = None
+    huawei_solar_batteries_state_of_capacity: str | None = None
+    huawei_solar_batteries_grid_charge_cutoff_soc: str | None = None
+    huawei_solar_batteries_maximum_charging_power: str | None = None
+    huawei_solar_batteries_maximum_discharging_power: str | None = None
+    huawei_solar_batteries_tou_charging_and_discharging_periods: str | None = None
+    huawei_solar_batteries_excess_pv_energy_use_in_tou: str | None = None
+    huawei_solar_inverter_active_power_control: str | None = None
+    huawei_solar_batteries_rated_capacity: str | None = None
+
+    # Power meters
+    house_consumption_power: str | None = None
+    solar_production_power: str | None = None
+    house_power_includes_ev_charger_power: bool = False
+
+    # Solcast
+    solcast_pv_forecast_forecast_today: str | None = None
+    solcast_pv_forecast_forecast_tomorrow: str | None = None
+    solcast_pv_forecast_forecast_likelihood: str = "pv_estimate"
+
+    # Energi Data Service
+    energi_data_service_import: str | None = None
+    energi_data_service_export: str | None = None
+    energi_data_service_export_min_price: float = 0.0
+
+    # EV chargers
+    ev: EVChargerConfig = field(default_factory=EVChargerConfig)
+    ev_second_enabled: bool = False
+    ev_second: EVChargerConfig = field(default_factory=EVChargerConfig)
+
+    # Battery economics
+    batteries_conversion_loss: float = 0.0
+    batteries_purchase_price: float = 0.0
+    batteries_expected_cycles: int = 6000
+
+    # Battery discharge schedules
+    batteries_schedule_1: BatteryScheduleConfig = field(
+        default_factory=BatteryScheduleConfig
+    )
+    batteries_schedule_2: BatteryScheduleConfig = field(
+        default_factory=BatteryScheduleConfig
+    )
+    batteries_schedule_3: BatteryScheduleConfig = field(
+        default_factory=BatteryScheduleConfig
+    )
+
+    # Excess export
+    batteries_enable_excess_export: bool = False
+    batteries_excess_export_discharge_buffer: float = 10.0
+    batteries_excess_export_price_threshold: float = 0.10
+
+    # Seasonal configuration
+    months_winter: list[int] = field(default_factory=list)
+    months_summer: list[int] = field(default_factory=list)
+
+    # Consumption weights
+    house_consumption_energy_weight_1d: int = 50
+    house_consumption_energy_weight_3d: int = 20
+    house_consumption_energy_weight_7d: int = 15
+    house_consumption_energy_weight_14d: int = 10
+
+    def schedule_configs(self) -> list[BatteryScheduleConfig]:
+        """Return all three schedule configs as a list."""
+        return [
+            self.batteries_schedule_1,
+            self.batteries_schedule_2,
+            self.batteries_schedule_3,
+        ]
+
+    def ev_chargers(self) -> list[tuple[str, EVChargerConfig]]:
+        """Return all configured EV charger configs as (label, config) pairs."""
+        chargers: list[tuple[str, EVChargerConfig]] = [("ev", self.ev)]
+        if self.ev_second_enabled:
+            chargers.append(("ev_second", self.ev_second))
+        return chargers
+
+    def weights_sum(self) -> int:
+        """Return the sum of all four consumption weights."""
+        return (
+            self.house_consumption_energy_weight_1d
+            + self.house_consumption_energy_weight_3d
+            + self.house_consumption_energy_weight_7d
+            + self.house_consumption_energy_weight_14d
+        )
+
+    def __repr__(self) -> str:
+        return (
+            f"SensorConfig(read_only={self.read_only}, "
+            f"interval_minutes={self.recommendation_interval_minutes}, "
+            f"interval_length_hours={self.recommendation_interval_length}, "
+            f"weights=[{self.house_consumption_energy_weight_1d}/"
+            f"{self.house_consumption_energy_weight_3d}/"
+            f"{self.house_consumption_energy_weight_7d}/"
+            f"{self.house_consumption_energy_weight_14d}])"
+        )
