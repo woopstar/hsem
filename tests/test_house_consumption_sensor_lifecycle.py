@@ -1,18 +1,29 @@
-"""Regression tests for house-consumption sensor lifecycle (issue #XXX).
+"""Regression tests for house-consumption sensor lifecycle.
 
-Verifies that:
-1. Derived sensors (integral, utility meter, avg) are NOT removed on HA restart.
-2. Derived sensors are created only when they are missing from the registry.
-3. The power sensor reports ``None`` (unknown) outside its active hour window so
-   the IntegrationSensor pauses accumulation — preventing cross-hour energy
-   contamination.
-4. The power sensor reports a real value inside its active hour window.
-5. The sensor is *available* only inside the active window (state is not None).
-6. Sensor metadata is correct: device_class, state_class, unit_of_measurement.
-7. The utility meter source is an *energy* sensor (the integral), not the power
-   sensor.
-8. HSEMIntegrationSensor uses TOTAL_INCREASING state class.
-9. HSEMAvgSensor carries device_class=ENERGY.
+Key invariants verified here:
+
+1. Derived sensors (integral, utility meter, avg) are always created as fresh
+   entity instances after an HA restart.  The entity registry entry surviving
+   a restart does NOT prevent instance creation — HA needs a live instance to
+   bind to the registry entry and restore state.
+
+2. Within the same HA session, ``_derived_sensors_created`` prevents duplicate
+   entity creation on repeated update cycles.
+
+3. The power sensor state is reset to ``None`` at the start of every update
+   cycle so that a failed sensor fetch inside the active window clears stale
+   power instead of leaving it for the IntegrationSensor to accumulate.
+
+4. Power is only measured inside the active hour window.  Outside the window
+   the state remains ``None`` (integral pauses, utility meter stops).
+
+5. Sensor metadata: device_class, state_class, unit_of_measurement are correct.
+
+6. The utility meter source is the energy (integral) sensor, not the power sensor.
+
+7. Previous state is restored on restart (via RestoreEntity) so HA does not
+   show ``unknown`` immediately.  The sensor is marked unavailable until the
+   first live measurement so the integral does not accumulate the restored value.
 """
 
 from __future__ import annotations
@@ -34,10 +45,10 @@ from custom_components.hsem.custom_sensors.utility_meter_sensor import (
     HSEMUtilityMeterSensor,
 )
 from custom_components.hsem.utils.sensornames import (
-    get_energy_average_sensor_unique_id,
     get_house_consumption_power_sensor_unique_id,
+    get_integral_sensor_entity_id,
     get_integral_sensor_unique_id,
-    get_utility_meter_sensor_unique_id,
+    get_utility_meter_sensor_entity_id,
 )
 
 # ---------------------------------------------------------------------------
@@ -202,11 +213,8 @@ class TestPowerSensorActiveWindow:
                 "custom_components.hsem.custom_sensors.house_consumption_power_sensor.dt_util.now",
                 return_value=fake_now,
             ),
-            patch(
-                "custom_components.hsem.custom_sensors.house_consumption_power_sensor.async_resolve_entity_id_from_unique_id",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
+            patch.object(HSEMIntegrationSensor, "__init__", _fake_integration_init),
+            patch.object(HSEMUtilityMeterSensor, "__init__", _fake_utility_init),
         ):
             await sensor._async_handle_update()
 
@@ -226,11 +234,8 @@ class TestPowerSensorActiveWindow:
                 "custom_components.hsem.custom_sensors.house_consumption_power_sensor.dt_util.now",
                 return_value=fake_now,
             ),
-            patch(
-                "custom_components.hsem.custom_sensors.house_consumption_power_sensor.async_resolve_entity_id_from_unique_id",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
+            patch.object(HSEMIntegrationSensor, "__init__", _fake_integration_init),
+            patch.object(HSEMUtilityMeterSensor, "__init__", _fake_utility_init),
         ):
             await sensor._async_handle_update()
 
@@ -260,11 +265,8 @@ class TestPowerSensorActiveWindow:
                 return_value=fake_now,
             ),
             patch.object(sensor, "_async_fetch_sensor_states", new=fake_fetch),
-            patch(
-                "custom_components.hsem.custom_sensors.house_consumption_power_sensor.async_resolve_entity_id_from_unique_id",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
+            patch.object(HSEMIntegrationSensor, "__init__", _fake_integration_init),
+            patch.object(HSEMUtilityMeterSensor, "__init__", _fake_utility_init),
         ):
             await sensor._async_handle_update()
 
@@ -295,11 +297,8 @@ class TestPowerSensorActiveWindow:
                 return_value=fake_now,
             ),
             patch.object(sensor, "_async_fetch_sensor_states", new=fake_fetch),
-            patch(
-                "custom_components.hsem.custom_sensors.house_consumption_power_sensor.async_resolve_entity_id_from_unique_id",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
+            patch.object(HSEMIntegrationSensor, "__init__", _fake_integration_init),
+            patch.object(HSEMUtilityMeterSensor, "__init__", _fake_utility_init),
         ):
             await sensor._async_handle_update()
 
@@ -327,11 +326,8 @@ class TestPowerSensorActiveWindow:
                 return_value=fake_now_inside,
             ),
             patch.object(sensor, "_async_fetch_sensor_states", new=fake_fetch),
-            patch(
-                "custom_components.hsem.custom_sensors.house_consumption_power_sensor.async_resolve_entity_id_from_unique_id",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
+            patch.object(HSEMIntegrationSensor, "__init__", _fake_integration_init),
+            patch.object(HSEMUtilityMeterSensor, "__init__", _fake_utility_init),
         ):
             await sensor._async_handle_update()
 
@@ -347,59 +343,158 @@ class TestPowerSensorActiveWindow:
                 "custom_components.hsem.custom_sensors.house_consumption_power_sensor.dt_util.now",
                 return_value=fake_now_outside,
             ),
-            patch(
-                "custom_components.hsem.custom_sensors.house_consumption_power_sensor.async_resolve_entity_id_from_unique_id",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
         ):
             await sensor._async_handle_update()
 
         assert sensor._state is None
         assert sensor._available is False
 
+    @pytest.mark.asyncio
+    async def test_fetch_failure_inside_active_window_clears_state(self) -> None:
+        """A failed sensor fetch inside the active window must set state=None.
+
+        This prevents the IntegrationSensor from continuing to accumulate the
+        last valid power reading as if it were still live.
+        """
+        sensor, _ = _make_sensor(hour_start=10)
+        _attach_hass(sensor)
+
+        fake_now = MagicMock()
+        fake_now.hour = 10
+        fake_now.isoformat.return_value = "2026-05-12T10:05:00"
+
+        # First update: successful measurement.
+        async def fake_fetch_ok():
+            sensor._hsem_house_consumption_power_state = 750.0
+            sensor._hsem_ev_charger_power_state = 0.0
+            sensor._missing_input_entities = False
+
+        with (
+            patch(
+                "custom_components.hsem.custom_sensors.house_consumption_power_sensor.dt_util.now",
+                return_value=fake_now,
+            ),
+            patch.object(sensor, "_async_fetch_sensor_states", new=fake_fetch_ok),
+            patch.object(HSEMIntegrationSensor, "__init__", _fake_integration_init),
+            patch.object(HSEMUtilityMeterSensor, "__init__", _fake_utility_init),
+        ):
+            await sensor._async_handle_update()
+
+        assert sensor._state == pytest.approx(750.0)
+
+        # Second update: fetch fails (entity unavailable / network error).
+        async def fake_fetch_fail():
+            sensor._missing_input_entities = True
+            # Stale values remain in the float fields — the guard should ignore them.
+
+        with (
+            patch(
+                "custom_components.hsem.custom_sensors.house_consumption_power_sensor.dt_util.now",
+                return_value=fake_now,
+            ),
+            patch.object(sensor, "_async_fetch_sensor_states", new=fake_fetch_fail),
+        ):
+            await sensor._async_handle_update()
+
+        assert sensor._state is None, (
+            "Failed fetch inside the active window must clear state to None "
+            "so the IntegrationSensor pauses accumulation"
+        )
+        assert sensor._available is False
+
+    @pytest.mark.asyncio
+    async def test_stale_power_not_kept_after_fetch_failure(self) -> None:
+        """State is reset to None at the start of every cycle.
+
+        Even if _async_fetch_sensor_states leaves stale float values in the
+        internal state fields (because it only sets _missing_input_entities=True
+        without zeroing them), the ``not self._missing_input_entities`` guard
+        must prevent those stale values from being committed to _state.
+        """
+        sensor, _ = _make_sensor(hour_start=15)
+        _attach_hass(sensor)
+
+        # Pre-load stale internal values that a real exception would leave behind.
+        sensor._hsem_house_consumption_power_state = 999.9
+        sensor._hsem_ev_charger_power_state = 0.0
+
+        fake_now = MagicMock()
+        fake_now.hour = 15
+        fake_now.isoformat.return_value = "2026-05-12T15:10:00"
+
+        # Fetch sets missing flag but does NOT zero the stale float fields.
+        async def failing_fetch():
+            sensor._missing_input_entities = True
+
+        with (
+            patch(
+                "custom_components.hsem.custom_sensors.house_consumption_power_sensor.dt_util.now",
+                return_value=fake_now,
+            ),
+            patch.object(sensor, "_async_fetch_sensor_states", new=failing_fetch),
+            patch.object(HSEMIntegrationSensor, "__init__", _fake_integration_init),
+            patch.object(HSEMUtilityMeterSensor, "__init__", _fake_utility_init),
+        ):
+            await sensor._async_handle_update()
+
+        assert sensor._state is None, (
+            "Stale internal float values must not be committed to _state when "
+            "_missing_input_entities is True"
+        )
+
 
 # ---------------------------------------------------------------------------
-# 3. Derived sensor lifecycle — no deletion on restart
+# 3. Derived sensor lifecycle
 # ---------------------------------------------------------------------------
+
+
+def _fake_integration_init(
+    self_inner, *args, id, e_id, config_entry=None, **kwargs
+) -> None:
+    """Minimal HSEMIntegrationSensor init that bypasses the real HA bootstrap."""
+    self_inner._attr_unique_id = id
+    self_inner.entity_id = e_id
+
+
+def _fake_utility_init(
+    self_inner,
+    *args,
+    id,
+    e_id,
+    config_entry=None,
+    source_entity=None,
+    parent_meter=None,
+    **kwargs,
+) -> None:
+    """Minimal HSEMUtilityMeterSensor init that bypasses the real HA bootstrap."""
+    self_inner._attr_unique_id = id
+    self_inner.entity_id = e_id
+    self_inner._source_entity = source_entity
 
 
 class TestDerivedSensorLifecycle:
-    """Derived sensors must be created once and NOT deleted on restart."""
+    """Derived sensors are always created as new instances on every HA start.
+
+    The per-runtime ``_derived_sensors_created`` set is the only gate — the
+    entity registry is NOT consulted.  This ensures HA can bind the fresh
+    instance to the existing registry entry and restore sensor state.
+    """
 
     @pytest.mark.asyncio
-    async def test_integral_sensor_created_when_missing(self) -> None:
-        """An integral sensor is added to HA when it is not in the registry.
-
-        We mock ``HSEMIntegrationSensor.__init__`` to avoid bootstrapping a real
-        HA instance (IntegrationSensor.__init__ calls async_entity_id_to_device).
-        """
+    async def test_integral_sensor_created_on_first_boot(self) -> None:
+        """Integral sensor is added the first time _async_handle_update runs."""
         sensor, added = _make_sensor(hour_start=6)
         _attach_hass(sensor)
 
         fake_now = MagicMock()
         fake_now.hour = 6
         fake_now.isoformat.return_value = "2026-05-12T06:00:00"
-
         integral_uid = get_integral_sensor_unique_id(6, 7)
-        power_uid = get_house_consumption_power_sensor_unique_id(6, 7)
-
-        async def mock_resolve(self_inner, uid):
-            if uid == power_uid:
-                return "sensor.hsem_house_consumption_power_06_07"
-            return None
 
         async def fake_fetch():
             sensor._hsem_house_consumption_power_state = 500.0
             sensor._hsem_ev_charger_power_state = 0.0
             sensor._missing_input_entities = False
-
-        def fake_integration_init(
-            self_inner, *args, id, e_id, config_entry=None, **kwargs
-        ):
-            # Minimal init — skip the real HA bootstrap.
-            self_inner._attr_unique_id = id
-            self_inner.entity_id = e_id
 
         with (
             patch(
@@ -407,11 +502,8 @@ class TestDerivedSensorLifecycle:
                 return_value=fake_now,
             ),
             patch.object(sensor, "_async_fetch_sensor_states", new=fake_fetch),
-            patch(
-                "custom_components.hsem.custom_sensors.house_consumption_power_sensor.async_resolve_entity_id_from_unique_id",
-                side_effect=mock_resolve,
-            ),
-            patch.object(HSEMIntegrationSensor, "__init__", fake_integration_init),
+            patch.object(HSEMIntegrationSensor, "__init__", _fake_integration_init),
+            patch.object(HSEMUtilityMeterSensor, "__init__", _fake_utility_init),
         ):
             await sensor._async_handle_update()
 
@@ -420,187 +512,22 @@ class TestDerivedSensorLifecycle:
         assert integral_sensors[0]._attr_unique_id == integral_uid
 
     @pytest.mark.asyncio
-    async def test_integral_sensor_not_recreated_when_already_exists(self) -> None:
-        """When the integral sensor already exists, it must NOT be re-added."""
+    async def test_integral_sensor_created_after_restart_despite_registry_entry(
+        self,
+    ) -> None:
+        """A registry entry for the integral sensor must NOT prevent instance creation.
+
+        This is the key lifecycle fix: after restart ``_derived_sensors_created``
+        is empty (new runtime), so a new entity instance is always created.  HA
+        binds it to the existing registry entry and IntegrationSensor restores.
+        """
         sensor, added = _make_sensor(hour_start=9)
         _attach_hass(sensor)
 
-        fake_now = MagicMock()
-        fake_now.hour = 9
-        fake_now.isoformat.return_value = "2026-05-12T09:00:00"
+        # _derived_sensors_created is empty — simulates fresh HA restart.
+        assert len(sensor._derived_sensors_created) == 0
 
-        power_uid = get_house_consumption_power_sensor_unique_id(9, 10)
         integral_uid = get_integral_sensor_unique_id(9, 10)
-        utility_uid = get_utility_meter_sensor_unique_id(9, 10)
-
-        # Include the four avg sensor UIDs so they also appear as already-existing.
-        avg_uids = {
-            get_energy_average_sensor_unique_id(9, 10, d): d for d in (1, 3, 7, 14)
-        }
-        all_existing = {power_uid, integral_uid, utility_uid} | set(avg_uids)
-
-        async def mock_resolve(self_inner, uid):
-            if uid in all_existing:
-                return f"sensor.existing_{uid}"
-            return None
-
-        async def fake_fetch():
-            sensor._hsem_house_consumption_power_state = 900.0
-            sensor._hsem_ev_charger_power_state = 0.0
-            sensor._missing_input_entities = False
-
-        with (
-            patch(
-                "custom_components.hsem.custom_sensors.house_consumption_power_sensor.dt_util.now",
-                return_value=fake_now,
-            ),
-            patch.object(sensor, "_async_fetch_sensor_states", new=fake_fetch),
-            patch(
-                "custom_components.hsem.custom_sensors.house_consumption_power_sensor.async_resolve_entity_id_from_unique_id",
-                side_effect=mock_resolve,
-            ),
-        ):
-            await sensor._async_handle_update()
-
-        assert len(added) == 0, (
-            "No sensor must be re-added when all derived sensors already exist in the registry"
-        )
-        assert integral_uid in sensor._derived_sensors_created
-
-    @pytest.mark.asyncio
-    async def test_derived_sensors_not_added_twice_within_same_run(self) -> None:
-        """Calling _async_handle_update twice must not add the integral sensor twice."""
-        sensor, added = _make_sensor(hour_start=16)
-        _attach_hass(sensor)
-
-        power_uid = get_house_consumption_power_sensor_unique_id(16, 17)
-        utility_uid = get_utility_meter_sensor_unique_id(16, 17)
-
-        async def mock_resolve(self_inner, uid):
-            # Power and utility meter exist; integral does not on first call.
-            # After first update, integral is in _derived_sensors_created so
-            # async_resolve is never called for it again.
-            if uid == power_uid:
-                return "sensor.hsem_house_consumption_power_16_17"
-            if uid == utility_uid:
-                return "sensor.existing_utility"
-            return None  # integral missing
-
-        fake_now = MagicMock()
-        fake_now.hour = 16
-        fake_now.isoformat.return_value = "2026-05-12T16:05:00"
-
-        async def fake_fetch():
-            sensor._hsem_house_consumption_power_state = 1200.0
-            sensor._hsem_ev_charger_power_state = 0.0
-            sensor._missing_input_entities = False
-
-        def fake_integration_init(
-            self_inner, *args, id, e_id, config_entry=None, **kwargs
-        ):
-            self_inner._attr_unique_id = id
-            self_inner.entity_id = e_id
-
-        with (
-            patch(
-                "custom_components.hsem.custom_sensors.house_consumption_power_sensor.dt_util.now",
-                return_value=fake_now,
-            ),
-            patch.object(sensor, "_async_fetch_sensor_states", new=fake_fetch),
-            patch(
-                "custom_components.hsem.custom_sensors.house_consumption_power_sensor.async_resolve_entity_id_from_unique_id",
-                side_effect=mock_resolve,
-            ),
-            patch.object(HSEMIntegrationSensor, "__init__", fake_integration_init),
-        ):
-            await sensor._async_handle_update()
-            await sensor._async_handle_update()
-
-        integral_sensors = [e for e in added if isinstance(e, HSEMIntegrationSensor)]
-        assert len(integral_sensors) == 1, (
-            "Integral sensor must be added exactly once even after multiple update calls"
-        )
-
-    @pytest.mark.asyncio
-    async def test_utility_meter_source_is_integral_not_power(self) -> None:
-        """The utility meter must track the integral (energy) sensor, not power.
-
-        We mock ``HSEMUtilityMeterSensor.__init__`` to capture the ``source_entity``
-        argument without bootstrapping a real HA instance.
-        """
-        sensor, added = _make_sensor(hour_start=20)
-        _attach_hass(sensor)
-
-        power_uid = get_house_consumption_power_sensor_unique_id(20, 21)
-        integral_uid = get_integral_sensor_unique_id(20, 21)
-        utility_uid = get_utility_meter_sensor_unique_id(20, 21)
-
-        integral_entity_id = "sensor.hsem_house_consumption_energy_integral_20_21"
-
-        async def mock_resolve(self_inner, uid):
-            if uid == power_uid:
-                return "sensor.hsem_house_consumption_power_20_21"
-            if uid == integral_uid:
-                return integral_entity_id
-            if uid == utility_uid:
-                return None  # Not yet created
-            return None
-
-        fake_now = MagicMock()
-        fake_now.hour = 20
-        fake_now.isoformat.return_value = "2026-05-12T20:00:00"
-
-        async def fake_fetch():
-            sensor._hsem_house_consumption_power_state = 300.0
-            sensor._hsem_ev_charger_power_state = 0.0
-            sensor._missing_input_entities = False
-
-        captured_source: list[str] = []
-
-        def fake_utility_init(
-            self_inner, *args, id, e_id, config_entry=None, source_entity=None, **kwargs
-        ):
-            self_inner._attr_unique_id = id
-            self_inner.entity_id = e_id
-            self_inner._source_entity = source_entity
-            captured_source.append(source_entity)
-
-        with (
-            patch(
-                "custom_components.hsem.custom_sensors.house_consumption_power_sensor.dt_util.now",
-                return_value=fake_now,
-            ),
-            patch.object(sensor, "_async_fetch_sensor_states", new=fake_fetch),
-            patch(
-                "custom_components.hsem.custom_sensors.house_consumption_power_sensor.async_resolve_entity_id_from_unique_id",
-                side_effect=mock_resolve,
-            ),
-            patch.object(HSEMUtilityMeterSensor, "__init__", fake_utility_init),
-        ):
-            await sensor._async_handle_update()
-
-        assert len(captured_source) == 1
-        assert captured_source[0] == integral_entity_id, (
-            f"Utility meter source should be the integral sensor "
-            f"({integral_entity_id}), not the power sensor"
-        )
-
-    @pytest.mark.asyncio
-    async def test_utility_meter_not_recreated_on_restart(self) -> None:
-        """After restart the utility meter exists in registry — must NOT be re-added."""
-        sensor, added = _make_sensor(hour_start=0)
-        _attach_hass(sensor)
-
-        integral_uid = get_integral_sensor_unique_id(0, 1)
-        utility_uid = get_utility_meter_sensor_unique_id(0, 1)
-
-        async def mock_resolve(self_inner, uid):
-            # Both already present after restart.
-            if uid == integral_uid:
-                return "sensor.hsem_house_consumption_energy_integral_00_01"
-            if uid == utility_uid:
-                return "sensor.hsem_house_consumption_energy_00_01_utility_meter"
-            return None
 
         fake_now = MagicMock()
         fake_now.hour = 5  # Outside active window — just tests derived sensor path
@@ -611,64 +538,158 @@ class TestDerivedSensorLifecycle:
                 "custom_components.hsem.custom_sensors.house_consumption_power_sensor.dt_util.now",
                 return_value=fake_now,
             ),
-            patch(
-                "custom_components.hsem.custom_sensors.house_consumption_power_sensor.async_resolve_entity_id_from_unique_id",
-                side_effect=mock_resolve,
-            ),
-            patch.object(sensor, "async_write_ha_state", MagicMock()),
+            patch.object(HSEMIntegrationSensor, "__init__", _fake_integration_init),
+            patch.object(HSEMUtilityMeterSensor, "__init__", _fake_utility_init),
         ):
             await sensor._async_handle_update()
 
-        utility_sensors = [e for e in added if isinstance(e, HSEMUtilityMeterSensor)]
-        assert len(utility_sensors) == 0, (
-            "Utility meter must NOT be re-added when it already exists after restart"
+        integral_sensors = [e for e in added if isinstance(e, HSEMIntegrationSensor)]
+        assert len(integral_sensors) == 1, (
+            "Integral sensor instance must be created after restart even when a "
+            "registry entry exists — the registry entry alone does not give HA a "
+            "live entity instance"
         )
-        assert utility_uid in sensor._derived_sensors_created
+        assert integral_uid in sensor._derived_sensors_created
 
     @pytest.mark.asyncio
-    async def test_avg_sensors_not_recreated_on_restart(self) -> None:
-        """After restart all four avg sensors exist — none should be re-added."""
-        sensor, added = _make_sensor(hour_start=12)
+    async def test_all_derived_sensors_created_on_restart(self) -> None:
+        """All 6 derived sensors (1 integral + 1 utility meter + 4 avg) are created
+        on restart, regardless of any registry entries."""
+        sensor, added = _make_sensor(hour_start=3)
         _attach_hass(sensor)
 
-        integral_uid = get_integral_sensor_unique_id(12, 13)
-        utility_uid = get_utility_meter_sensor_unique_id(12, 13)
-        avg_uids = {
-            get_energy_average_sensor_unique_id(12, 13, d): d for d in (1, 3, 7, 14)
-        }
-
-        async def mock_resolve(self_inner, uid):
-            if uid == integral_uid:
-                return "sensor.hsem_integral_12_13"
-            if uid == utility_uid:
-                return "sensor.hsem_utility_12_13"
-            if uid in avg_uids:
-                return f"sensor.hsem_avg_{uid}"
-            return None
-
         fake_now = MagicMock()
-        fake_now.hour = 6  # Outside active window
-        fake_now.isoformat.return_value = "2026-05-12T06:00:00"
+        fake_now.hour = 5
+        fake_now.isoformat.return_value = "2026-05-12T05:00:00"
 
         with (
             patch(
                 "custom_components.hsem.custom_sensors.house_consumption_power_sensor.dt_util.now",
                 return_value=fake_now,
             ),
+            patch.object(HSEMIntegrationSensor, "__init__", _fake_integration_init),
+            patch.object(HSEMUtilityMeterSensor, "__init__", _fake_utility_init),
+        ):
+            await sensor._async_handle_update()
+
+        assert len([e for e in added if isinstance(e, HSEMIntegrationSensor)]) == 1
+        assert len([e for e in added if isinstance(e, HSEMUtilityMeterSensor)]) == 1
+        assert len([e for e in added if isinstance(e, HSEMAvgSensor)]) == 4
+
+    @pytest.mark.asyncio
+    async def test_derived_sensors_not_added_twice_within_same_session(self) -> None:
+        """Within the same HA session, _async_handle_update called twice must
+        not add derived sensors a second time."""
+        sensor, added = _make_sensor(hour_start=16)
+        _attach_hass(sensor)
+
+        fake_now = MagicMock()
+        fake_now.hour = 16
+        fake_now.isoformat.return_value = "2026-05-12T16:05:00"
+
+        async def fake_fetch():
+            sensor._hsem_house_consumption_power_state = 1200.0
+            sensor._hsem_ev_charger_power_state = 0.0
+            sensor._missing_input_entities = False
+
+        with (
             patch(
-                "custom_components.hsem.custom_sensors.house_consumption_power_sensor.async_resolve_entity_id_from_unique_id",
-                side_effect=mock_resolve,
+                "custom_components.hsem.custom_sensors.house_consumption_power_sensor.dt_util.now",
+                return_value=fake_now,
             ),
-            patch.object(sensor, "async_write_ha_state", MagicMock()),
+            patch.object(sensor, "_async_fetch_sensor_states", new=fake_fetch),
+            patch.object(HSEMIntegrationSensor, "__init__", _fake_integration_init),
+            patch.object(HSEMUtilityMeterSensor, "__init__", _fake_utility_init),
+        ):
+            await sensor._async_handle_update()
+            await sensor._async_handle_update()
+
+        # Each type created exactly once.
+        assert len([e for e in added if isinstance(e, HSEMIntegrationSensor)]) == 1, (
+            "Integral sensor must be added exactly once per HA session"
+        )
+        assert len([e for e in added if isinstance(e, HSEMUtilityMeterSensor)]) == 1, (
+            "Utility meter must be added exactly once per HA session"
+        )
+        assert len([e for e in added if isinstance(e, HSEMAvgSensor)]) == 4, (
+            "Average sensors must be added exactly once per HA session"
+        )
+
+    @pytest.mark.asyncio
+    async def test_utility_meter_source_is_integral_not_power(self) -> None:
+        """The utility meter must track the energy (integral) sensor, not the power
+        sensor.  Source entity_id is now derived deterministically."""
+        sensor, added = _make_sensor(hour_start=20)
+        _attach_hass(sensor)
+
+        expected_source = get_integral_sensor_entity_id(20, 21)
+
+        fake_now = MagicMock()
+        fake_now.hour = 5
+        fake_now.isoformat.return_value = "2026-05-12T05:00:00"
+
+        captured_source: list[str] = []
+
+        def capturing_utility_init(
+            self_inner,
+            *args,
+            id,
+            e_id,
+            config_entry=None,
+            source_entity=None,
+            parent_meter=None,
+            **kwargs,
+        ) -> None:
+            self_inner._attr_unique_id = id
+            self_inner.entity_id = e_id
+            self_inner._source_entity = source_entity
+            captured_source.append(source_entity)
+
+        with (
+            patch(
+                "custom_components.hsem.custom_sensors.house_consumption_power_sensor.dt_util.now",
+                return_value=fake_now,
+            ),
+            patch.object(HSEMIntegrationSensor, "__init__", _fake_integration_init),
+            patch.object(HSEMUtilityMeterSensor, "__init__", capturing_utility_init),
+        ):
+            await sensor._async_handle_update()
+
+        assert len(captured_source) == 1
+        assert captured_source[0] == expected_source, (
+            f"Utility meter source should be the integral sensor "
+            f"({expected_source}), not the power sensor"
+        )
+
+    @pytest.mark.asyncio
+    async def test_avg_sensor_tracked_entity_is_utility_meter(self) -> None:
+        """Each avg sensor must track the utility meter, not any other entity."""
+        sensor, added = _make_sensor(hour_start=7)
+        _attach_hass(sensor)
+
+        expected_tracked = get_utility_meter_sensor_entity_id(7, 8)
+
+        fake_now = MagicMock()
+        fake_now.hour = 5
+        fake_now.isoformat.return_value = "2026-05-12T05:00:00"
+
+        with (
+            patch(
+                "custom_components.hsem.custom_sensors.house_consumption_power_sensor.dt_util.now",
+                return_value=fake_now,
+            ),
+            patch.object(HSEMIntegrationSensor, "__init__", _fake_integration_init),
+            patch.object(HSEMUtilityMeterSensor, "__init__", _fake_utility_init),
         ):
             await sensor._async_handle_update()
 
         avg_sensors = [e for e in added if isinstance(e, HSEMAvgSensor)]
-        assert len(avg_sensors) == 0, (
-            "Average sensors must NOT be re-added when they already exist after restart"
-        )
-        for uid in avg_uids:
-            assert uid in sensor._derived_sensors_created
+        assert len(avg_sensors) == 4
+        for avg_s in avg_sensors:
+            assert avg_s._tracked_entity == expected_tracked, (
+                f"Avg sensor {avg_s._attr_unique_id} must track the utility meter "
+                f"({expected_tracked})"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -728,8 +749,8 @@ class TestRestartBehaviour:
     async def test_sensor_unavailable_after_restore_outside_active_window(self) -> None:
         """After restore + first update outside the active window, sensor is unavailable.
 
-        The restored state is cleared to ``None`` by the ``else`` branch in
-        ``_async_handle_update``, preventing the IntegrationSensor from
+        The restored state is cleared to ``None`` by the reset-at-start-of-cycle
+        in ``_async_handle_update``, preventing the IntegrationSensor from
         accumulating it.
         """
         sensor, _ = _make_sensor(hour_start=18)
@@ -753,11 +774,8 @@ class TestRestartBehaviour:
                 "custom_components.hsem.custom_sensors.house_consumption_power_sensor.dt_util.now",
                 return_value=fake_now,
             ),
-            patch(
-                "custom_components.hsem.custom_sensors.house_consumption_power_sensor.async_resolve_entity_id_from_unique_id",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
+            patch.object(HSEMIntegrationSensor, "__init__", _fake_integration_init),
+            patch.object(HSEMUtilityMeterSensor, "__init__", _fake_utility_init),
             patch(
                 "custom_components.hsem.entity.HSEMEntity.async_added_to_hass",
                 new=AsyncMock(),
@@ -831,11 +849,8 @@ class TestRestartBehaviour:
                 "custom_components.hsem.custom_sensors.house_consumption_power_sensor.dt_util.now",
                 return_value=fake_now,
             ),
-            patch(
-                "custom_components.hsem.custom_sensors.house_consumption_power_sensor.async_resolve_entity_id_from_unique_id",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
+            patch.object(HSEMIntegrationSensor, "__init__", _fake_integration_init),
+            patch.object(HSEMUtilityMeterSensor, "__init__", _fake_utility_init),
             patch(
                 "custom_components.hsem.entity.HSEMEntity.async_added_to_hass",
                 new=AsyncMock(),
