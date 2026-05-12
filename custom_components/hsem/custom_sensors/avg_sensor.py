@@ -10,6 +10,7 @@ from homeassistant.helpers.event import (
     async_track_state_change_event,
     async_track_time_interval,
 )
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from custom_components.hsem.entity import HSEMEntity
@@ -171,7 +172,14 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
             utility_meter_value = ha_get_entity_state_and_convert(
                 self, self._tracked_entity, "float"
             )
-        except Exception:
+        except (HomeAssistantError, ValueError, TypeError) as exc:
+            _LOGGER.warning(
+                "Sensor read failed for entity_id=%s (operation=_async_store_utility_meter_value): "
+                "%s: %s",
+                self._tracked_entity,
+                type(exc).__name__,
+                repr(exc),
+            )
             utility_meter_value = None
 
         if self._measurements is None:

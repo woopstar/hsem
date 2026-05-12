@@ -114,7 +114,12 @@ git commit -m "feat(scope): description - Fixes #<ISSUE_NUMBER>"
 git push origin feat/<issue-number>-<description>
 
 # 10. If the PR already exists and you make further commits, update it
-gh pr edit <PR_NUMBER> --title "<type>(scope): updated title" --body "$(cat pr_body.md)"
+#     Write the body to a file first, then pass --body-file (shell-agnostic):
+Set-Content -Path pr_body.md -Value @"
+<markdown body here>
+"@
+gh pr edit <PR_NUMBER> --title "<type>(scope): updated title" --body-file pr_body.md
+Remove-Item pr_body.md
 ```
 
 ### Keeping an Open PR Up to Date
@@ -126,6 +131,9 @@ Whenever you push additional commits to a branch that already has an open PR:
    additional tests, and any newly satisfied acceptance criteria.
 3. Tick off completed items in any checklist inside the PR description.
 4. Never leave the PR description stale after follow-up commits.
+5. **Always write the PR body to a temporary file and use `gh pr edit --body-file`.**
+   Never pass a multiline body inline via `--body "..."` — this corrupts the content
+   in PowerShell (produces `∙` instead of newlines and `\x5c` instead of backticks).
 
 ## Home Assistant Compliance
 

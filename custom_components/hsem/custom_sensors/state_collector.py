@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_track_state_change_event
 
 from custom_components.hsem.custom_sensors.config_reader import (  # noqa: F401
@@ -86,9 +87,17 @@ async def async_collect_live_state(
             return ha_get_entity_state_and_convert(
                 sensor, entity_id, conv_type, decimals
             )
-        except Exception as exc:
+        except (HomeAssistantError, ValueError, TypeError, AttributeError) as exc:
             state.add_missing_entity(
-                f"Error reading {label or entity_id}: {type(exc).__name__}: {exc}"
+                f"Error reading {label or entity_id} (entity_id={entity_id}): "
+                f"{type(exc).__name__}: {exc}"
+            )
+            _LOGGER.warning(
+                "Sensor read failed for entity_id=%s (label=%s): %s: %s",
+                entity_id,
+                label or entity_id,
+                type(exc).__name__,
+                repr(exc),
             )
             return None
 
@@ -294,9 +303,23 @@ async def async_collect_live_state(
                 ]
             else:
                 state.add_missing_entity("TOU periods entity is not of type State")
-        except Exception as exc:
+        except (
+            HomeAssistantError,
+            ValueError,
+            TypeError,
+            AttributeError,
+            KeyError,
+        ) as exc:
             state.add_missing_entity(
-                f"Error reading TOU periods: {type(exc).__name__}: {exc}"
+                f"Error reading TOU periods "
+                f"(entity_id={cfg.huawei_solar_batteries_tou_charging_and_discharging_periods}): "
+                f"{type(exc).__name__}: {exc}"
+            )
+            _LOGGER.warning(
+                "TOU periods read failed (entity_id=%s): %s: %s",
+                cfg.huawei_solar_batteries_tou_charging_and_discharging_periods,
+                type(exc).__name__,
+                repr(exc),
             )
     else:
         state.add_missing_entity("Missing entity: TOU periods")

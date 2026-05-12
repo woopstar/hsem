@@ -28,6 +28,10 @@ When asked to solve a GitHub issue, always follow these steps in order:
 10. **Keep the PR up to date** — after every follow-up commit on a branch that already has an open
     PR, update both the PR title and description to reflect the current state of all changes made.
     Tick off any completed acceptance criteria in the PR checklist.
+    - Use `gh pr edit <PR_NUMBER> --title "..." --body-file <file>` — write the PR body
+      to a temp file first, pass it with `--body-file`, then delete the file.
+    - **Never** pass a multiline body inline via `--body "..."`: PowerShell corrupts the
+      content (newlines become `∙` characters; backticks become `\x5c` escapes).
 
 ## Issue-Solving Rules
 - Always read `AGENTS.md` and `CLAUDE.md` before starting any issue work.
