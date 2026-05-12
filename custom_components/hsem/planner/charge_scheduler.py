@@ -11,6 +11,10 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
+from custom_components.hsem.const import (
+    NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH,
+    SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH,
+)
 from custom_components.hsem.models.planner_inputs import BatteryScheduleInput
 from custom_components.hsem.models.planner_outputs import PlannedSlot
 from custom_components.hsem.utils.misc import (
@@ -110,7 +114,7 @@ def apply_charge_schedules(
     Three-priority ordering (mirrors ``_async_find_best_time_to_charge_battery_schedule``):
 
     1. Negative import price (free/paid-to-charge)
-    2. Solar surplus (``estimated_net_consumption < -0.2``)
+    2. Solar surplus (``estimated_net_consumption < SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH``)
     3. Cheapest remaining grid hours (guarded by min price difference)
 
     Args:
@@ -164,8 +168,12 @@ def apply_charge_schedules(
                 (
                     e
                     for e in eligible
-                    if e.estimated_net_consumption < -0.2 and e.recommendation is None
+                    if e.estimated_net_consumption < SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH
+                    and e.recommendation is None
                 ),
+                # NOTE: SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH is negative, so this
+                # selects slots where net consumption is sufficiently negative
+                # (i.e., there is a meaningful solar surplus to charge from).
                 key=lambda x: (x.estimated_net_consumption, x.start),
             ):
                 if charged >= needed:
@@ -411,8 +419,9 @@ def apply_optimization_strategy(
     ):
         if charged >= batteries_needed_charge:
             break
-        # v5.1.0 threshold: <= 0.1 (charge even near-zero-consumption slots)
-        if rec.estimated_net_consumption <= 0.1:
+        # v5.1.0 threshold: <= NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH
+        # (charge even near-zero-consumption slots)
+        if rec.estimated_net_consumption <= NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH:
             charged += abs(rec.estimated_net_consumption)
             rec.recommendation = Recommendations.BatteriesChargeSolar.value
             rec.batteries_charged = round(charged, 3)
@@ -434,7 +443,7 @@ def apply_optimization_strategy(
         if current_month in months_winter:
             rec.recommendation = Recommendations.BatteriesWaitMode.value
         elif current_month in months_summer:
-            if rec.estimated_net_consumption <= 0.1:
+            if rec.estimated_net_consumption <= NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH:
                 rec.recommendation = Recommendations.BatteriesChargeSolar.value
             else:
                 rec.recommendation = Recommendations.BatteriesDischargeMode.value
