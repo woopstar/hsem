@@ -23,7 +23,7 @@ Functions:
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import voluptuous as vol
@@ -223,7 +223,7 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
         """Handle updates to the source sensor."""
         self._state = None
 
-        now = datetime.now()
+        now = datetime.now(UTC)
 
         # Ensure config flow settings are reloaded if it changed.
         self._update_settings()
