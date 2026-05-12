@@ -45,9 +45,13 @@ def build_sensor_config(config_entry) -> SensorConfig:
     """
     cfg = SensorConfig()
 
-    cfg.read_only = get_config_value(config_entry, "hsem_read_only")
-    cfg.verbose_logging = get_config_value(config_entry, "hsem_verbose_logging")
-    cfg.extended_attributes = get_config_value(config_entry, "hsem_extended_attributes")
+    cfg.read_only = convert_to_boolean(get_config_value(config_entry, "hsem_read_only"))
+    cfg.verbose_logging = convert_to_boolean(
+        get_config_value(config_entry, "hsem_verbose_logging")
+    )
+    cfg.extended_attributes = convert_to_boolean(
+        get_config_value(config_entry, "hsem_extended_attributes")
+    )
     cfg.update_interval = convert_to_int(
         get_config_value(config_entry, "hsem_update_interval")
     )

@@ -1,21 +1,9 @@
-"""Diagnostic sensor that exposes the HSEM system health / degraded-mode state.
+"""Diagnostic sensor that exposes whether HSEM is operating in read-only (dry-run) mode.
 
-The sensor reports one of three states that mirror :class:`DegradedMode`:
-
-``ok``
-    All required input entities are present and readable.  HSEM is operating
-    normally; hardware writes are permitted.
-
-``degraded``
-    One or more *non-critical* entities are unavailable (e.g. electricity
-    price feed).  Read-only planner calculations continue on best-effort
-    values; hardware writes are still allowed because the battery state data
-    is intact.
-
-``error``
-    One or more *critical* entities are missing (battery SoC, max charge /
-    discharge power, rated capacity, or house consumption power).  Hardware
-    writes are **blocked** to prevent acting on incomplete state.
+When ``read_only`` is ``True`` no commands are sent to the inverter or battery
+hardware regardless of the planner recommendation.  This sensor makes that
+state clearly visible on the device page so users can tell at a glance why
+hardware writes are not happening.
 
 The sensor is a *diagnostic* entity (``entity_category = EntityCategory.DIAGNOSTIC``)
 so it appears in the *Diagnostic* section of the device page and is excluded
@@ -23,7 +11,7 @@ from the default Lovelace dashboard.
 
 This sensor subscribes to :class:`~custom_components.hsem.coordinator.HSEMDataUpdateCoordinator`
 and updates automatically after every coordinator cycle without any additional
-polling or push from the working-mode sensor.
+polling.
 """
 
 from __future__ import annotations
@@ -40,33 +28,29 @@ from custom_components.hsem.coordinator import (
     HSEMDataUpdateCoordinator,
 )
 from custom_components.hsem.entity import HSEMEntity
-from custom_components.hsem.utils.degraded_mode import (
-    DegradedMode,
-    hardware_writes_allowed,
-)
 from custom_components.hsem.utils.sensornames import (
-    get_degraded_mode_sensor_entity_id,
-    get_degraded_mode_sensor_name,
-    get_degraded_mode_sensor_unique_id,
+    get_read_only_sensor_entity_id,
+    get_read_only_sensor_name,
+    get_read_only_sensor_unique_id,
 )
 
 
-class HSEMDegradedModeSensor(
+class HSEMReadOnlySensor(
     CoordinatorEntity[HSEMDataUpdateCoordinator],
     SensorEntity,
     HSEMEntity,
     RestoreEntity,
 ):
-    """Diagnostic sensor exposing the current HSEM system-health state.
+    """Diagnostic sensor exposing whether HSEM is in read-only mode.
 
-    The state is one of ``"ok"``, ``"degraded"``, or ``"error"`` — matching
-    the :attr:`DegradedMode.value` strings.
+    State is ``"on"`` when read-only mode is active (no hardware writes),
+    ``"off"`` when HSEM is allowed to write to the inverter / battery.
 
     The sensor subscribes to the shared coordinator and is updated
     automatically after every coordinator cycle.
     """
 
-    _attr_icon = "mdi:shield-check"
+    _attr_icon = "mdi:eye-off-outline"
     _attr_has_entity_name = True
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
@@ -75,7 +59,7 @@ class HSEMDegradedModeSensor(
         config_entry,
         coordinator: HSEMDataUpdateCoordinator,
     ) -> None:
-        """Initialise the sensor with an ``ok`` state.
+        """Initialise the read-only mode sensor.
 
         Args:
             config_entry: The HSEM config entry.
@@ -86,9 +70,9 @@ class HSEMDegradedModeSensor(
 
         self._config_entry = config_entry
 
-        self._attr_unique_id = get_degraded_mode_sensor_unique_id()
-        self.entity_id = get_degraded_mode_sensor_entity_id()
-        self._name = get_degraded_mode_sensor_name()
+        self._attr_unique_id = get_read_only_sensor_unique_id()
+        self.entity_id = get_read_only_sensor_entity_id()
+        self._name = get_read_only_sensor_name()
 
         # Restored state used before the first coordinator cycle completes.
         self._restored_state: str | None = None
@@ -109,12 +93,11 @@ class HSEMDegradedModeSensor(
 
     @property
     def state(self) -> str:
-        """Return the current health state string."""
+        """Return ``'on'`` when read-only mode is active, ``'off'`` otherwise."""
         data: CoordinatorData | None = self.coordinator.data
-        if data is None or data.live is None:
-            # Fall back to restored state while waiting for first cycle.
-            return self._restored_state or DegradedMode.OK.value
-        return data.live.degraded_mode.value
+        if data is None or data.cfg is None:
+            return self._restored_state or "off"
+        return "on" if bool(data.cfg.read_only) else "off"
 
     @property
     def should_poll(self) -> bool:
@@ -132,18 +115,15 @@ class HSEMDegradedModeSensor(
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return diagnostic attributes visible on the entity detail page."""
         data: CoordinatorData | None = self.coordinator.data
-        if data is None or data.live is None:
+        if data is None or data.cfg is None:
             return {
-                "missing_entities": [],
-                "hardware_writes_blocked": False,
-                "read_only_mode": False,
+                "read_only": False,
+                "hardware_writes_active": True,
             }
-        live = data.live
-        cfg = data.cfg
         return {
-            "missing_entities": list(live.missing_entities_list),
-            "hardware_writes_blocked": not hardware_writes_allowed(live.degraded_mode),
-            "read_only_mode": bool(cfg.read_only) if cfg is not None else False,
+            "read_only": bool(data.cfg.read_only),
+            "hardware_writes_active": not bool(data.cfg.read_only),
+            "update_interval_minutes": data.cfg.update_interval,
         }
 
     # ------------------------------------------------------------------
@@ -154,5 +134,5 @@ class HSEMDegradedModeSensor(
         """Restore previous state and register coordinator listener."""
         await super().async_added_to_hass()
         restored = await self.async_get_last_state()
-        if restored is not None and restored.state in {m.value for m in DegradedMode}:
+        if restored is not None and restored.state in {"on", "off"}:
             self._restored_state = restored.state

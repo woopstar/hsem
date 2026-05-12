@@ -48,6 +48,7 @@ from custom_components.hsem.coordinator import (
 from custom_components.hsem.custom_sensors.degraded_mode_sensor import (
     HSEMDegradedModeSensor,
 )
+from custom_components.hsem.custom_sensors.read_only_sensor import HSEMReadOnlySensor
 from custom_components.hsem.custom_sensors.working_mode_sensor import (
     HSEMWorkingModeSensor,
 )
@@ -329,6 +330,104 @@ class TestEntitySetup:
         assert working.unique_id
         assert degraded.unique_id
         assert working.unique_id != degraded.unique_id
+
+    # ------------------------------------------------------------------
+    # HSEMReadOnlySensor
+    # ------------------------------------------------------------------
+
+    def test_read_only_sensor_initial_state_is_off(self) -> None:
+        """ReadOnlySensor must default to 'off' (writes enabled) before first cycle."""
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+
+        sensor = HSEMReadOnlySensor(config_entry, coord)
+
+        assert sensor.state == "off"
+
+    def test_read_only_sensor_should_not_poll(self) -> None:
+        """ReadOnlySensor must not poll independently (coordinator-driven)."""
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+
+        sensor = HSEMReadOnlySensor(config_entry, coord)
+
+        assert sensor.should_poll is False
+
+    def test_read_only_sensor_entity_category_is_diagnostic(self) -> None:
+        """ReadOnlySensor must carry the DIAGNOSTIC entity category."""
+        from homeassistant.const import EntityCategory
+
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+
+        sensor = HSEMReadOnlySensor(config_entry, coord)
+
+        assert sensor._attr_entity_category == EntityCategory.DIAGNOSTIC
+
+    def test_read_only_sensor_unique_id_differs_from_others(self) -> None:
+        """ReadOnlySensor unique_id must be distinct from working-mode and degraded sensors."""
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+
+        read_only = HSEMReadOnlySensor(config_entry, coord)
+        working = HSEMWorkingModeSensor(config_entry, coord)
+        degraded = HSEMDegradedModeSensor(config_entry, coord)
+
+        assert read_only.unique_id
+        assert read_only.unique_id != working.unique_id
+        assert read_only.unique_id != degraded.unique_id
+
+    def test_read_only_sensor_state_on_when_enabled(self) -> None:
+        """ReadOnlySensor must report 'on' when coordinator data has read_only=True."""
+        config_entry = make_fake_config_entry({"hsem_read_only": True})
+        coord = make_bare_coordinator(config_entry=config_entry)
+
+        cfg = SensorConfig()
+        cfg.read_only = True
+        cfg.recommendation_interval_minutes = 60
+        cfg.recommendation_interval_length = 24
+        cfg.update_interval = 5
+
+        coord.data = CoordinatorData(cfg=cfg, live=LiveState(), state=None)
+
+        sensor = HSEMReadOnlySensor(config_entry, coord)
+
+        assert sensor.state == "on"
+
+    def test_read_only_sensor_state_off_when_disabled(self) -> None:
+        """ReadOnlySensor must report 'off' when coordinator data has read_only=False."""
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+
+        cfg = SensorConfig()
+        cfg.read_only = False
+        cfg.recommendation_interval_minutes = 60
+        cfg.recommendation_interval_length = 24
+        cfg.update_interval = 5
+
+        coord.data = CoordinatorData(cfg=cfg, live=LiveState(), state=None)
+
+        sensor = HSEMReadOnlySensor(config_entry, coord)
+
+        assert sensor.state == "off"
+
+    def test_read_only_sensor_extra_attrs_include_update_interval(self) -> None:
+        """ReadOnlySensor extra_state_attributes must expose update_interval_minutes."""
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+
+        cfg = SensorConfig()
+        cfg.read_only = False
+        cfg.update_interval = 7
+
+        coord.data = CoordinatorData(cfg=cfg, live=LiveState(), state=None)
+
+        sensor = HSEMReadOnlySensor(config_entry, coord)
+        attrs = sensor.extra_state_attributes
+
+        assert attrs["update_interval_minutes"] == 7
+        assert attrs["hardware_writes_active"] is True
+        assert attrs["read_only"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -889,6 +988,67 @@ class TestReadOnlyConfigReaderIntegration:
         cfg = build_sensor_config(config_entry)
 
         assert cfg.recommendation_interval_minutes == 15
+
+    def test_read_only_string_true_coerced_to_bool(self) -> None:
+        """build_sensor_config must coerce the string 'True' to bool True."""
+        from custom_components.hsem.custom_sensors.config_reader import (
+            build_sensor_config,
+        )
+
+        # Simulate a config entry that stored read_only as a string (old schema).
+        config_entry = make_fake_config_entry({"hsem_read_only": "True"})
+        cfg = build_sensor_config(config_entry)
+
+        assert cfg.read_only is True
+
+    def test_read_only_string_false_coerced_to_bool(self) -> None:
+        """build_sensor_config must coerce the string 'False' to bool False."""
+        from custom_components.hsem.custom_sensors.config_reader import (
+            build_sensor_config,
+        )
+
+        config_entry = make_fake_config_entry({"hsem_read_only": "False"})
+        cfg = build_sensor_config(config_entry)
+
+        assert cfg.read_only is False
+
+    def test_verbose_logging_boolean_coercion(self) -> None:
+        """build_sensor_config must coerce verbose_logging to bool."""
+        from custom_components.hsem.custom_sensors.config_reader import (
+            build_sensor_config,
+        )
+
+        config_entry = make_fake_config_entry({"hsem_verbose_logging": "True"})
+        cfg = build_sensor_config(config_entry)
+
+        assert cfg.verbose_logging is True
+
+    def test_extended_attributes_boolean_coercion(self) -> None:
+        """build_sensor_config must coerce extended_attributes to bool."""
+        from custom_components.hsem.custom_sensors.config_reader import (
+            build_sensor_config,
+        )
+
+        config_entry = make_fake_config_entry({"hsem_extended_attributes": "True"})
+        cfg = build_sensor_config(config_entry)
+
+        assert cfg.extended_attributes is True
+
+    def test_degraded_mode_sensor_exposes_read_only_attribute(self) -> None:
+        """DegradedModeSensor extra_state_attributes must include read_only_mode."""
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+
+        cfg = SensorConfig()
+        cfg.read_only = True
+        live = LiveState()
+        coord.data = CoordinatorData(cfg=cfg, live=live, state=None)
+
+        sensor = HSEMDegradedModeSensor(config_entry, coord)
+        attrs = sensor.extra_state_attributes
+
+        assert "read_only_mode" in attrs
+        assert attrs["read_only_mode"] is True
 
 
 # ---------------------------------------------------------------------------

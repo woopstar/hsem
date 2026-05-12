@@ -28,7 +28,17 @@ async def get_init_step_schema(config_entry) -> vol.Schema:
             ),
             vol.Required(
                 "hsem_read_only",
-                default=str(get_config_value(config_entry, "hsem_read_only")),
+                default=bool(get_config_value(config_entry, "hsem_read_only")),
+            ): selector({"boolean": {}}),
+            vol.Required(
+                "hsem_verbose_logging",
+                default=bool(get_config_value(config_entry, "hsem_verbose_logging")),
+            ): selector({"boolean": {}}),
+            vol.Required(
+                "hsem_extended_attributes",
+                default=bool(
+                    get_config_value(config_entry, "hsem_extended_attributes")
+                ),
             ): selector({"boolean": {}}),
             vol.Required(
                 "hsem_recommendation_interval_minutes",
@@ -84,6 +94,8 @@ async def validate_init_step_input(user_input) -> dict[str, str]:
     required_fields = [
         "device_name",
         "hsem_read_only",
+        "hsem_verbose_logging",
+        "hsem_extended_attributes",
         "hsem_update_interval",
         "hsem_recommendation_interval_minutes",
         "hsem_recommendation_interval_length",
