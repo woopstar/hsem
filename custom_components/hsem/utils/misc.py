@@ -4,7 +4,11 @@ import hashlib
 import logging
 from datetime import datetime, time, timedelta
 
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import (
+    HomeAssistantError,
+    ServiceNotFound,
+    ServiceValidationError,
+)
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from sqlalchemy import null
@@ -322,10 +326,14 @@ async def async_set_number_value(self, entity_id, value) -> None:
             },
             blocking=True,
         )
-        _LOGGER.debug(f"Set value '{value}' for number entity_id '{entity_id}'")
-    except Exception as err:
+        _LOGGER.debug("Set value '%s' for number entity_id '%s'", value, entity_id)
+    except (ServiceNotFound, ServiceValidationError, HomeAssistantError) as err:
         _LOGGER.error(
-            f"Failed to set value '{value}' for number entity_id '{entity_id}': {err}"
+            "Failed to set value '%s' for number entity_id '%s' (operation=set_value): %s: %s",
+            value,
+            entity_id,
+            type(err).__name__,
+            repr(err),
         )
         raise
 
@@ -351,10 +359,14 @@ async def async_set_select_option(self, entity_id, option) -> None:
             },
             blocking=True,
         )
-        _LOGGER.debug(f"Set option '{option}' for entity_id '{entity_id}'")
-    except Exception as err:
+        _LOGGER.debug("Set option '%s' for entity_id '%s'", option, entity_id)
+    except (ServiceNotFound, ServiceValidationError, HomeAssistantError) as err:
         _LOGGER.error(
-            f"Failed to set option '{option}' for entity_id '{entity_id}': {err}"
+            "Failed to set option '%s' for entity_id '%s' (operation=select_option): %s: %s",
+            option,
+            entity_id,
+            type(err).__name__,
+            repr(err),
         )
         raise
 
@@ -410,7 +422,7 @@ def ha_get_entity_state_and_convert(
         )
         return None
 
-    except Exception as e:
+    except (ValueError, TypeError, AttributeError) as e:
         raise HomeAssistantError(
             f"Error converting state of entity '{entity_id}' to type '{output_type}': {e}"
         )

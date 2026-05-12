@@ -24,7 +24,11 @@ Usage:
 import logging
 
 import voluptuous as vol
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import (
+    HomeAssistantError,
+    ServiceNotFound,
+    ServiceValidationError,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -54,25 +58,33 @@ async def async_set_grid_export_power_pct(self, device_id, power_percentage) -> 
 
         # Log success message
         _LOGGER.debug(
-            f"Updated export power pct to: {power_percentage} for device id: {device_id}"
+            "Updated export power pct to %s for device_id %s",
+            power_percentage,
+            device_id,
         )
 
-    except vol.MultipleInvalid as err:
-        # Handle validation errors (e.g., invalid device_id)
+    except vol.Invalid as err:
+        # Handle validation errors (e.g., invalid device_id or power_percentage)
         _LOGGER.error(
-            f"Invalid input data: {err}. Please check the device ID or power percentage."
+            "Invalid input for set_maximum_feed_grid_power_percent "
+            "(device_id=%s, power_percentage=%s): %s",
+            device_id,
+            power_percentage,
+            err,
         )
-        raise HomeAssistantError(f"Invalid input data: {err}")
+        raise HomeAssistantError(f"Invalid input data: {err}") from err
 
-    except HomeAssistantError as err:
-        # Handle general Home Assistant errors (e.g., service not found)
-        _LOGGER.error(f"Home Assistant error while setting grid export power: {err}")
+    except (ServiceNotFound, ServiceValidationError, HomeAssistantError) as err:
+        # Service missing or HA rejected the call
+        _LOGGER.error(
+            "HA error during set_maximum_feed_grid_power_percent "
+            "(device_id=%s, power_percentage=%s): %s: %s",
+            device_id,
+            power_percentage,
+            type(err).__name__,
+            repr(err),
+        )
         raise
-
-    except Exception as err:
-        # Handle any other unexpected errors
-        _LOGGER.error(f"An unexpected error occurred: {err}")
-        raise HomeAssistantError(f"Unexpected error: {err}")
 
 
 async def async_set_tou_periods(self, batteries_id, tou_modes) -> None:
@@ -100,25 +112,29 @@ async def async_set_tou_periods(self, batteries_id, tou_modes) -> None:
 
         # Log success message
         _LOGGER.debug(
-            f"Set TOU periods for device id: {batteries_id} with tou modes: {tou_modes}"
+            "Set TOU periods for device_id %s with tou_modes %s",
+            batteries_id,
+            tou_modes,
         )
 
-    except vol.MultipleInvalid as err:
-        # Handle validation errors (e.g., invalid batteries_id)
+    except vol.Invalid as err:
+        # Handle validation errors (e.g., invalid batteries_id or TOU modes)
         _LOGGER.error(
-            f"Invalid input data: {err}. Please check the device ID or TOU modes."
+            "Invalid input for set_tou_periods (device_id=%s): %s",
+            batteries_id,
+            err,
         )
-        raise HomeAssistantError(f"Invalid input data: {err}")
+        raise HomeAssistantError(f"Invalid input data: {err}") from err
 
-    except HomeAssistantError as err:
-        # Handle general Home Assistant errors (e.g., service not found)
-        _LOGGER.error(f"Home Assistant error while setting TOU periods: {err}")
+    except (ServiceNotFound, ServiceValidationError, HomeAssistantError) as err:
+        # Service missing or HA rejected the call
+        _LOGGER.error(
+            "HA error during set_tou_periods (device_id=%s): %s: %s",
+            batteries_id,
+            type(err).__name__,
+            repr(err),
+        )
         raise
-
-    except Exception as err:
-        # Handle any other unexpected errors
-        _LOGGER.error(f"An unexpected error occurred: {err}")
-        raise HomeAssistantError(f"Unexpected error: {err}")
 
 
 async def async_set_forcible_discharge(
@@ -161,22 +177,33 @@ async def async_set_forcible_discharge(
 
         # Log success message
         _LOGGER.debug(
-            f"Set forcible discharge for device {device_id} to {target_soc}% SOC at {power}W"
+            "Set forcible discharge for device_id %s to %s%% SOC at %sW",
+            device_id,
+            target_soc,
+            power,
         )
 
-    except vol.MultipleInvalid as err:
-        # Handle validation errors
+    except vol.Invalid as err:
+        # Handle validation errors (e.g., wrong device_id, out-of-range target_soc)
         _LOGGER.error(
-            f"Invalid input data for forcible discharge: {err}. Check device_id, target_soc, or power."
+            "Invalid input for set_forcible_discharge "
+            "(device_id=%s, target_soc=%s, power=%s): %s",
+            device_id,
+            target_soc,
+            power,
+            err,
         )
-        raise HomeAssistantError(f"Invalid input data: {err}")
+        raise HomeAssistantError(f"Invalid input data: {err}") from err
 
-    except HomeAssistantError as err:
-        # Handle general Home Assistant errors
-        _LOGGER.error(f"Home Assistant error while setting forcible discharge: {err}")
+    except (ServiceNotFound, ServiceValidationError, HomeAssistantError) as err:
+        # Service missing or HA rejected the call — propagate so callers can enter safe mode
+        _LOGGER.error(
+            "HA error during set_forcible_discharge "
+            "(device_id=%s, target_soc=%s, power=%s): %s: %s",
+            device_id,
+            target_soc,
+            power,
+            type(err).__name__,
+            repr(err),
+        )
         raise
-
-    except Exception as err:
-        # Handle any other unexpected errors
-        _LOGGER.error(f"An unexpected error occurred during forcible discharge: {err}")
-        raise HomeAssistantError(f"Unexpected error: {err}")

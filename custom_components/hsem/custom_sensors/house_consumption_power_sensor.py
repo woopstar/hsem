@@ -30,6 +30,7 @@ import homeassistant.util.dt as dt_util
 
 import voluptuous as vol
 from homeassistant.components.sensor import SensorEntity
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.components.sensor.const import SensorDeviceClass
 from homeassistant.components.utility_meter.const import (
     DATA_TARIFF_SENSORS,
@@ -322,7 +323,14 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
                 )
                 self._hsem_ev_charger_power_state = convert_to_float(raw_ev)
 
-        except Exception:
+        except (HomeAssistantError, ValueError, TypeError) as exc:
+            _LOGGER.warning(
+                "Sensor read failed for entity_id=%s (operation=_async_fetch_sensor_states): "
+                "%s: %s",
+                self._hsem_house_consumption_power or self._hsem_ev_charger_power,
+                type(exc).__name__,
+                repr(exc),
+            )
             self._missing_input_entities = True
 
     async def _async_add_integral_sensor(self) -> None:

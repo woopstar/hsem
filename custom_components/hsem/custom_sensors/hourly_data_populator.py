@@ -20,6 +20,8 @@ from custom_components.hsem.models.sensor_config import SensorConfig
 # in planner.slot_population so the logic lives in exactly one place.
 from custom_components.hsem.planner.slot_population import weighted_avg_consumption
 from custom_components.hsem.utils.logger import async_logger
+from homeassistant.exceptions import HomeAssistantError
+
 from custom_components.hsem.utils.misc import (
     async_resolve_entity_id_from_unique_id,
     convert_to_float,
@@ -168,7 +170,13 @@ async def async_populate_avg_house_consumption(
             v14 = convert_to_float(
                 ha_get_entity_state_and_convert(sensor, eid_14d, "float", 3)
             )
-        except Exception:
+        except (HomeAssistantError, ValueError, TypeError) as exc:
+            await async_logger(
+                sensor,
+                f"Sensor read failed for hour {h} energy averages "
+                f"(entity_ids={eid_1d},{eid_3d},{eid_7d},{eid_14d}): "
+                f"{type(exc).__name__}: {exc!r}",
+            )
             v1 = v3 = v7 = v14 = None
 
         if None in (v1, v3, v7, v14):
@@ -292,7 +300,8 @@ async def _async_update_hourly_field(
                     dt_key = dt_key.replace(
                         minute=0, second=0, microsecond=0
                     ).astimezone(tz)
-                except Exception:  # noqa: TRY302
+                except (ValueError, OSError):  # noqa: TRY302
+                    # Skip data points with unparseable or non-local timestamps
                     continue
 
                 value = convert_to_float(data.get(kv["v"]))
