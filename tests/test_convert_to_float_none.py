@@ -1,8 +1,8 @@
-"""Tests for the refactored ``convert_to_float`` (issue #269).
+"""Tests for the refactored ``convert_to_float`` and ``convert_to_int`` helpers.
 
 Verifies:
 - ``unknown``, ``unavailable``, empty string, and invalid text return ``None``.
-- Real numeric ``0`` / ``"0"`` returns ``0.0``.
+- Real numeric ``0`` / ``"0"`` returns ``0.0`` / ``0``.
 - Positive and negative numbers round-trip correctly.
 - Whitespace-padded strings are handled.
 - Critical battery sensor unavailability sets ``live.missing_entities = True``
@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import pytest
 
-from custom_components.hsem.utils.misc import convert_to_float
+from custom_components.hsem.utils.misc import convert_to_float, convert_to_int
 
 # ---------------------------------------------------------------------------
 # convert_to_float — return None for invalid / missing values
@@ -261,3 +261,74 @@ class TestEodSocFallback:
         )
 
         assert state.huawei_batteries_end_of_discharge_soc_pct == pytest.approx(20.0)
+
+
+# ---------------------------------------------------------------------------
+# convert_to_int — return None for invalid / missing values (regression #NNN)
+# ---------------------------------------------------------------------------
+
+
+class TestConvertToIntInvalidValues:
+    """Invalid or sentinel inputs must return None, not a silent 0."""
+
+    @pytest.mark.parametrize(
+        "bad_input",
+        [
+            "unknown",
+            "Unknown",
+            "UNKNOWN",
+            "unavailable",
+            "Unavailable",
+            "UNAVAILABLE",
+            "",
+            "   ",
+            "not_a_number",
+            "abc",
+            None,
+        ],
+    )
+    def test_returns_none(self, bad_input) -> None:
+        """Every HA sentinel / non-numeric value must yield None."""
+        assert convert_to_int(bad_input) is None
+
+
+class TestConvertToIntRealZero:
+    """A real zero measurement must NOT be treated as missing."""
+
+    @pytest.mark.parametrize(
+        "zero_input",
+        [
+            0,
+            0.0,
+            "0",
+            "0.0",
+            "  0  ",
+        ],
+    )
+    def test_zero_returns_zero(self, zero_input) -> None:
+        """Real zero is a valid, non-missing value."""
+        result = convert_to_int(zero_input)
+        assert result == 0
+        assert result is not None
+
+
+class TestConvertToIntNumericRoundTrip:
+    """Positive and negative integers should round-trip correctly."""
+
+    @pytest.mark.parametrize(
+        "value, expected",
+        [
+            (42, 42),
+            (-7, -7),
+            ("25", 25),
+            ("  30  ", 30),
+            (6000, 6000),
+            ("6000", 6000),
+            # Float string should truncate to int
+            ("3.9", 3),
+            (3.9, 3),
+        ],
+    )
+    def test_numeric_round_trip(self, value, expected: int) -> None:
+        result = convert_to_int(value)
+        assert result == expected

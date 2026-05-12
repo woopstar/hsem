@@ -359,6 +359,9 @@ def apply_excess_export(
         warnings.append(
             f"ForceBatteriesDischarge at {s.start.isoformat()}: export={s.export_price}"
         )
+        # Subtract net consumption directly.  Positive values (house load >  solar)
+        # reduce the available excess; negative values (solar surplus) increase it,
+        # correctly reflecting that a surplus slot frees up battery export headroom.
         excess -= s.estimated_net_consumption
 
 

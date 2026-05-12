@@ -11,15 +11,12 @@ from homeassistant.exceptions import (
 )
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
-from sqlalchemy import null
 
 from custom_components.hsem.const import DEFAULT_CONFIG_VALUES, DOMAIN
 
 # Re-export async_logger from its dedicated module so that existing callers
 # importing it from utils.misc continue to work without changes.
-from custom_components.hsem.utils.logger import (
-    HSEM_LOGGER,  # noqa: F401
-    )
+from custom_components.hsem.utils.logger import HSEM_LOGGER  # noqa: F401
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -50,7 +47,7 @@ def get_config_value(config_entry, key) -> str | None:
         key, config_entry.data.get(key, DEFAULT_CONFIG_VALUES[key])
     )
 
-    if data is null or data is None:
+    if data is None:
         return DEFAULT_CONFIG_VALUES[key]
 
     return data
@@ -169,16 +166,33 @@ def convert_to_float(state) -> float | None:
         return None
 
 
-def convert_to_int(state) -> int:
-    """Resolve the input sensor state and cast it to a float."""
+def convert_to_int(state) -> int | None:
+    """Cast *state* to an integer, distinguishing real zero from invalid input.
 
+    Returns:
+        ``int`` when *state* is a valid numeric value (including ``0``).
+        ``None`` when *state* is ``None``, a HA sentinel (``"unknown"``,
+        ``"unavailable"``), an empty string, or any non-numeric text.
+        This mirrors the behaviour of ``convert_to_float`` and ensures that
+        defective config values or missing sensor readings are visible to the
+        caller rather than silently replaced with ``0``.
+    """
     if state is None:
-        return 0
+        return None
+
+    if isinstance(state, str):
+        stripped = state.strip().lower()
+        if stripped in ("unknown", "unavailable", ""):
+            return None
+        try:
+            return int(float(stripped))
+        except (ValueError, TypeError):
+            return None
 
     try:
         return int(state)
-    except ValueError:
-        return 0
+    except (ValueError, TypeError):
+        return None
 
 
 def convert_months_to_int(months: list) -> list[int]:

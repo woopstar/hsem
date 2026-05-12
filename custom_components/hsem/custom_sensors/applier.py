@@ -12,6 +12,8 @@ action plan.
 
 from __future__ import annotations
 
+import re
+
 from custom_components.hsem.const import (
     DEFAULT_HSEM_BATTERIES_WAIT_MODE,
     DEFAULT_HSEM_EV_CHARGER_TOU_MODES,
@@ -287,12 +289,29 @@ def _parse_power_control_pct(state: str | None) -> int | None:
     if not isinstance(state, str):
         return None
     normalized = state.strip().lower()
-    if normalized == "unlimited":
+    # Accept any locale-independent representation of "unlimited" / no cap.
+    if normalized in (
+        "unlimited",
+        "ikke begrænset",
+        "onbeperkt",
+        "unbegrenzt",
+        "illimitato",
+        "sin límite",
+        "không giới hạn",
+    ):
         return 100
+    # Extract numeric percentage regardless of surrounding translated text.
+    # Strategy: strip everything that is not a digit, dot, or minus sign,
+    # then parse the remaining number.  This handles patterns like:
+    #   "Limited to 80%"  →  80
+    #   "Begrenzt auf 80 %"  →  80
+    #   "Beperkt tot 80%"  →  80
     if "%" in normalized:
-        normalized = normalized.replace("%", "").replace("limited to", "")
-        try:
-            return int(round(float(normalized.strip())))
-        except ValueError:
-            return None
+        # Extract the numeric value regardless of surrounding translated text
+        match = re.search(r"(-?\d+(?:\.\d+)?)", normalized)
+        if match:
+            try:
+                return int(round(float(match.group(1))))
+            except (ValueError, TypeError):
+                pass
     return None
