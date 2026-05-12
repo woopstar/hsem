@@ -4,24 +4,31 @@ This document defines code quality standards tailored for agentic coding and AI-
 
 ## Overview
 
-HSEM uses **ruff** as the single source of truth for code quality. All formatting, linting, and style decisions are automated and enforced through ruff. This ensures:
+HSEM uses a unified lint pipeline — **isort + black + ruff** — as the single source of truth for
+code quality. All three tools are invoked via a single command: `tox -e lint`. This ensures:
 
-- **Consistency**: All code follows identical formatting rules
+- **Consistency**: All code follows identical formatting rules across all tools
 - **Determinism**: Code quality is reproducible and predictable
 - **Reduced Review Friction**: Automated checks catch issues before review
-- **Agentic Reliability**: AI agents can reliably produce code that passes checks
+- **Agentic Reliability**: AI agents can reliably produce code that passes all checks
+- **Single entry point**: One command (`tox -e lint`) covers import sorting, formatting, and linting
 
 ## Core Quality Principles
 
-### 1. **Ruff is Non-Negotiable**
+### 1. **`tox -e lint` is Non-Negotiable**
 
-Before every commit:
+Before every commit, run the single unified lint command:
 ```bash
-ruff format .        # Format all code
-ruff check . --fix   # Auto-fix linting issues
+tox -e lint
 ```
 
-These must pass without warnings or errors.
+This runs in order:
+1. `isort` — sorts and groups imports consistently
+2. `black` — formats code to 88-char line length
+3. `ruff format` — applies ruff’s formatter (consistent with black)
+4. `ruff check` — lints for bugs, style issues, and code quality
+
+All four steps must pass without errors.
 
 ### 2. **Type Hints Required**
 
@@ -75,6 +82,10 @@ Always use modern Python syntax:
 | `if x is not None` | `if x` (with type guard) | Cleaner, less boilerplate |
 | `.format()` | f-strings | Better performance and readability |
 | `os.path.join()` | `pathlib.Path()` | Object-oriented, chainable |
+
+> **Note on Python version**: `pyproject.toml` sets `target-version = "py312"` for ruff/mypy to
+> ensure compatibility with Home Assistant’s supported Python version. The runtime itself uses
+> Python 3.13 (see `.python-version`).
 
 ### 5. **No Technical Debt**
 
@@ -156,22 +167,19 @@ for sensor in sensors:
 Before every commit, run:
 
 ```bash
-# 1. Format code
-ruff format .
+# 1. Format and lint (single command — isort + black + ruff format + ruff check)
+tox -e lint
 
-# 2. Lint and auto-fix issues
-ruff check . --fix
-
-# 3. Type checking
+# 2. Type checking
 mypy custom_components tests
 
-# 4. Run all tests
+# 3. Run all tests
 pytest tests/ -v
 
-# 5. Verify no unintended changes
+# 4. Verify no unintended changes
 git status
 
-# 6. Check coverage doesn't decrease
+# 5. Check coverage doesn’t decrease
 pytest tests/ --cov=custom_components.hsem --cov-report=term-missing
 ```
 
@@ -181,31 +189,47 @@ If any step fails, fix the issues before committing.
 
 The following checks run on every PR:
 
-| Check | Tool | Purpose |
-|-------|------|---------|
-| Formatting | `ruff format --check` | Ensures consistent code style |
-| Linting | `ruff check` | Catches bugs, style issues, complexity |
-| Type Checking | `mypy` | Catches type errors and unsafe code |
-| Tests | `pytest` | Verifies functionality |
-| Coverage | `coverage` | Ensures new code is tested |
+| Check | Tool | Command | Purpose |
+|-------|------|---------|--------|
+| Import sorting | `isort` | `tox -e lint` | Consistent import order |
+| Formatting | `black` | `tox -e lint` | Consistent code style (88-char lines) |
+| Ruff format | `ruff format` | `tox -e lint` | Ruff-native formatting pass |
+| Linting | `ruff check` | `tox -e lint` | Bugs, style issues, complexity |
+| Type Checking | `mypy` | `tox -e typing` | Type errors and unsafe code |
+| Tests | `pytest` | `pytest tests/` | Verifies functionality |
+| Coverage | `coverage` | `pytest --cov` | Ensures new code is tested |
 
 **All checks must pass before merge.**
 
 ## Python Version
 
-- **Target**: Python 3.13
-- Check `.python-version` for the required version
+- **Runtime**: Python 3.13 — check `.python-version` for the exact patch version
+- **Lint / type-check target**: Python 3.12 — set via `target-version = "py312"` in `pyproject.toml`
+  to maintain compatibility with Home Assistant’s supported Python range
 - Use `pyenv` or `asdf` to manage multiple Python versions locally
 
-## Ruff Configuration
+## Lint Pipeline Configuration
 
-The project's ruff configuration (in `pyproject.toml`) enforces:
+All tool configuration lives in `pyproject.toml` and `tox.ini`.
 
-- **Line Length**: 100 characters
-- **Complexity**: Favor small, focused functions
-- **Imports**: Sorted using isort rules
-- **Comprehensions**: Prefer built-in methods over explicit loops
-- **Upgrades**: Use latest Python 3.13+ features
+### Tool settings
+
+| Tool | Line length | Style |
+|------|-------------|-------|
+| `isort` | 88 chars | `--multi-line 3 --trailing-comma` (compatible with black) |
+| `black` | 88 chars | `--target-version py312` |
+| `ruff format` | 88 chars | Consistent with black |
+| `ruff check` | 88 chars | See `[tool.ruff.lint]` in `pyproject.toml` |
+
+### Ruff rules enabled
+
+- `E` / `W` — pycodestyle errors and warnings
+- `F` — pyflakes (unused imports, undefined names)
+- `I` — isort-compatible import sorting
+- `C` — flake8-comprehensions
+- `B` — flake8-bugbear
+- `UP` — pyupgrade (modern Python syntax)
+- `PIE` — flake8-pie
 
 See `pyproject.toml` for the full ruff configuration.
 
@@ -269,12 +293,13 @@ def process(items: list[int]) -> dict[str, int]:
 
 When working with this codebase, ensure:
 
-1. **Always run the pre-commit checklist** before creating a commit
-2. **Never submit a PR** that hasn't passed ruff format and check
+1. **Always run `tox -e lint`** before creating a commit (single command: isort + black + ruff format + ruff check)
+2. **Never submit a PR** that hasn’t passed `tox -e lint` cleanly
 3. **Ask for clarification** if code quality requirements conflict with implementation needs
 4. **Reference issues** for any technical decisions or trade-offs
 5. **Write tests alongside features** — testing is not optional
 6. **Document non-obvious patterns** in comments and docstrings
+7. **Check `CODE_QUALITY_STANDARDS.md`** as the authoritative reference — it is linked from `AGENTS.md`, `CLAUDE.md`, and `.github/copilot-instructions.md`
 
 ## Continuous Improvement
 

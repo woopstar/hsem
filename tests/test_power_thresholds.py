@@ -12,7 +12,7 @@ All tests are pure-Python — no Home Assistant runtime is required.
 
 from __future__ import annotations
 
-from datetime import datetime, time, UTC
+from datetime import UTC, datetime, time
 
 import pytest
 
@@ -27,12 +27,12 @@ from custom_components.hsem.models.planner_inputs import (
     PricePoint,
     SolcastSlot,
 )
+from custom_components.hsem.models.planner_outputs import PlannedSlot
 from custom_components.hsem.planner import run_planner
 from custom_components.hsem.planner.charge_scheduler import (
     apply_charge_schedules,
     apply_optimization_strategy,
 )
-from custom_components.hsem.models.planner_outputs import PlannedSlot
 from custom_components.hsem.utils.recommendations import Recommendations
 
 # ---------------------------------------------------------------------------
@@ -115,9 +115,9 @@ def _make_minimal_input(
         excess_export_enabled=False,
         excess_export_discharge_buffer_pct=10.0,
         excess_export_price_threshold=0.10,
-        months_winter=months_winter
-        if months_winter is not None
-        else [1, 2, 3, 4, 10, 11, 12],
+        months_winter=(
+            months_winter if months_winter is not None else [1, 2, 3, 4, 10, 11, 12]
+        ),
         house_power_includes_ev=False,
         is_read_only=True,
     )

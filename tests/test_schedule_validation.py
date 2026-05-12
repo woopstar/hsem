@@ -21,7 +21,6 @@ from custom_components.hsem.flows.batteries_schedule_3 import (
     validate_batteries_schedule_3_input,
 )
 
-
 # ---------------------------------------------------------------------------
 # Default constant tests
 # ---------------------------------------------------------------------------

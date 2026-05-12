@@ -36,10 +36,7 @@ from custom_components.hsem.flows.init import (
     get_init_step_schema,
     validate_init_step_input,
 )
-from custom_components.hsem.flows.months import (
-    get_months_schema,
-    validate_months_input,
-)
+from custom_components.hsem.flows.months import get_months_schema, validate_months_input
 from custom_components.hsem.flows.power import (
     get_power_step_schema,
     validate_power_step_input,

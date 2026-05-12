@@ -14,8 +14,7 @@ Acceptance criteria from issue #267:
   battery-schedule capacity planning.
 """
 
-from datetime import datetime, time, timedelta, UTC
-
+from datetime import UTC, datetime, time, timedelta
 
 from custom_components.hsem.utils.misc import (
     interval_ends_before_window_start,

@@ -311,9 +311,9 @@ def make_summer_day_input(
         excess_export_discharge_buffer_pct=10.0,
         excess_export_price_threshold=0.10,
         # seasonal
-        months_winter=months_winter
-        if months_winter is not None
-        else [1, 2, 3, 4, 10, 11, 12],
+        months_winter=(
+            months_winter if months_winter is not None else [1, 2, 3, 4, 10, 11, 12]
+        ),
         house_power_includes_ev=True,
         is_read_only=True,
     )
@@ -380,9 +380,9 @@ def make_winter_day_input(
         excess_export_discharge_buffer_pct=10.0,
         excess_export_price_threshold=0.10,
         # seasonal
-        months_winter=months_winter
-        if months_winter is not None
-        else [1, 2, 3, 4, 10, 11, 12],
+        months_winter=(
+            months_winter if months_winter is not None else [1, 2, 3, 4, 10, 11, 12]
+        ),
         house_power_includes_ev=True,
         is_read_only=True,
     )

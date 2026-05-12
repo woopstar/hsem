@@ -16,7 +16,7 @@ When asked to solve a GitHub issue, always follow these steps in order:
 4. **Implement the smallest safe fix** — No unrelated changes, no broad refactors.
 5. **Add or update regression tests** — Cover the bug or new behavior.
 6. **Run the relevant tests** — `pytest tests/` or the targeted test file.
-7. **Run lint/type checks** — `ruff check . --fix` then `ruff format .`
+7. **Run lint/type checks** — `tox -e lint` (runs isort, black, ruff format, and ruff check)
 8. **Report a summary** including:
    - Issue title
    - Branch name
@@ -66,11 +66,12 @@ When asked to solve a GitHub issue, always follow these steps in order:
 - All code MUST use safe and secure coding practices.
 - All code MUST be fully optimized for performance and maintainability.
 - Avoid clear passwords, hardcoded secrets, and common security gaps.
-- Follow PEP 8 and the project's style guide.
+- Follow PEP 8 and the project's style guide. See `CODE_QUALITY_STANDARDS.md` for full standards.
 - Write type hints for all function parameters and return types.
 - Include docstrings for all public modules, classes, functions, and methods.
 - **Never use `==` or `!=` to compare floating-point values.** In production code use an epsilon
   guard (`abs(x) > 1e-9` instead of `x != 0`). In tests always use `pytest.approx()`.
+- Run `tox -e lint` before every commit (isort + black + ruff format + ruff check in one command).
 
 ## Write Modular Code
 - Break code into modules and components for easy reuse.

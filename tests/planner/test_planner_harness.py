@@ -17,13 +17,10 @@ from datetime import time
 
 import pytest
 
-from custom_components.hsem.models.planner_inputs import (
-    BatteryScheduleInput,
-)
+from custom_components.hsem.models.planner_inputs import BatteryScheduleInput
 from custom_components.hsem.models.planner_outputs import PlannerOutput
 from custom_components.hsem.planner import run_planner
 from custom_components.hsem.utils.recommendations import Recommendations
-
 from tests.planner.fixtures import (
     make_flat_price_input,
     make_negative_price_input,

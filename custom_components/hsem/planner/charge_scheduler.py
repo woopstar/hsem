@@ -23,7 +23,6 @@ from custom_components.hsem.utils.misc import (
 )
 from custom_components.hsem.utils.recommendations import Recommendations
 
-
 # ---------------------------------------------------------------------------
 # Discharge schedule detection
 # ---------------------------------------------------------------------------

@@ -10,7 +10,7 @@ permissions: read-all
 
 jobs:
   lint:
-    name: Lint with Ruff
+    name: Lint with isort, black, and ruff
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -31,13 +31,11 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install ruff
+          pip install tox
+          pip install -r requirements_lint.txt
 
-      - name: Check formatting with Ruff
-        run: ruff format --check .
-
-      - name: Lint with Ruff
-        run: ruff check .
+      - name: Format and lint with tox
+        run: tox -e lint
 
   type-check:
     name: Type check with mypy

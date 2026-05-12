@@ -15,6 +15,7 @@ Covers:
 
 from __future__ import annotations
 
+from datetime import UTC
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -31,8 +32,6 @@ from custom_components.hsem.utils.misc import (
     async_set_select_option,
     ha_get_entity_state_and_convert,
 )
-from datetime import UTC
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -126,11 +125,11 @@ class TestStateCollectorReadMissingOnError:
     @pytest.mark.asyncio
     async def test_entity_not_found_marks_missing(self):
         """When an entity is missing, _read() records it in live.missing_entities."""
-        from custom_components.hsem.custom_sensors.state_collector import (
-            async_collect_live_state,
-        )
         from custom_components.hsem.custom_sensors.config_reader import (
             build_sensor_config,
+        )
+        from custom_components.hsem.custom_sensors.state_collector import (
+            async_collect_live_state,
         )
         from tests.sensors.test_state_collector import _make_config_entry
 
@@ -166,11 +165,11 @@ class TestStateCollectorReadMissingOnError:
     @pytest.mark.asyncio
     async def test_homeassistant_error_on_read_marks_missing(self):
         """A HomeAssistantError from ha_get_entity_state_and_convert marks missing."""
-        from custom_components.hsem.custom_sensors.state_collector import (
-            async_collect_live_state,
-        )
         from custom_components.hsem.custom_sensors.config_reader import (
             build_sensor_config,
+        )
+        from custom_components.hsem.custom_sensors.state_collector import (
+            async_collect_live_state,
         )
         from tests.sensors.test_state_collector import _make_config_entry
 
@@ -651,8 +650,9 @@ class TestAvgSensorReadFailure:
     @pytest.mark.asyncio
     async def test_successful_read_stores_measurement(self):
         """A successful read must store a rounded measurement keyed by today."""
-        from custom_components.hsem.custom_sensors.avg_sensor import HSEMAvgSensor
         from datetime import datetime
+
+        from custom_components.hsem.custom_sensors.avg_sensor import HSEMAvgSensor
 
         sensor = MagicMock(spec=HSEMAvgSensor)
         sensor.hass = MagicMock()
