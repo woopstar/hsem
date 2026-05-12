@@ -34,26 +34,31 @@ _LOGGER = logging.getLogger(__name__)
 
 
 async def async_set_grid_export_power_pct(self, device_id, power_percentage) -> None:
-    """Set the maximum grid export power percentage and handle errors."""
+    """Set the maximum grid export power percentage and handle errors.
 
-    # Check if the service exists
+    Raises:
+        ServiceNotFound: When the huawei_solar service is not registered in HA.
+        HomeAssistantError: On any other HA-level write failure.
+    """
+
+    # Raise explicitly so callers (write-and-verify) can record the failure.
     if not self.hass.services.has_service(
         "huawei_solar", "set_maximum_feed_grid_power_percent"
     ):
-        _LOGGER.error(
-            "Service huawei_solar.set_maximum_feed_grid_power_percent not found"
-        )
+        raise ServiceNotFound("huawei_solar", "set_maximum_feed_grid_power_percent")
 
     try:
-        # Send the service call to set the maximum grid export power percentage
+        # Send the service call to set the maximum grid export power percentage.
+        # blocking=True propagates service exceptions back to the caller so that
+        # write-and-verify can record the failure and retry.
         await self.hass.services.async_call(
-            "huawei_solar",  # Integration providing the service
-            "set_maximum_feed_grid_power_percent",  # The action to set grid export power
+            "huawei_solar",
+            "set_maximum_feed_grid_power_percent",
             {
-                "device_id": device_id,  # Device ID of the inverter
-                "power_percentage": power_percentage,  # The power percentage to set
+                "device_id": device_id,
+                "power_percentage": power_percentage,
             },
-            blocking=False,  # Non-blocking call to avoid performance issues
+            blocking=True,
         )
 
         # Log success message
@@ -85,26 +90,32 @@ async def async_set_grid_export_power_pct(self, device_id, power_percentage) -> 
 
 
 async def async_set_tou_periods(self, batteries_id, tou_modes) -> None:
-    """Set the TOU modes for the specified batteries."""
+    """Set the TOU modes for the specified batteries.
+
+    Raises:
+        ServiceNotFound: When the huawei_solar service is not registered in HA.
+        HomeAssistantError: On any other HA-level write failure.
+    """
 
     # Convert the list of TOU modes into the required format
     periods = "\n".join(tou_modes)  # Join TOU modes with newline
 
-    # Check if the service exists
+    # Raise explicitly so callers (write-and-verify) can record the failure.
     if not self.hass.services.has_service("huawei_solar", "set_tou_periods"):
-        _LOGGER.error("Service huawei_solar.set_tou_periods not found")
-        return  # Exit early if service is not found
+        raise ServiceNotFound("huawei_solar", "set_tou_periods")
 
     try:
-        # Send the service call to set the TOU periods
+        # Send the service call to set the TOU periods.
+        # blocking=True propagates service exceptions back to the caller so that
+        # write-and-verify can record the failure and retry.
         await self.hass.services.async_call(
             "huawei_solar",
             "set_tou_periods",
             {
-                "device_id": batteries_id,  # Device ID of the inverter
-                "periods": periods,  # TOU modes formatted as a string
+                "device_id": batteries_id,
+                "periods": periods,
             },
-            blocking=False,  # Non-blocking call to avoid performance issues
+            blocking=True,
         )
 
         # Log success message
@@ -151,22 +162,23 @@ async def async_set_forcible_discharge(
     if not isinstance(power, int) or power < 0:
         raise ValueError(f"power must be a non-negative integer, got {power}")
 
-    # Check if the service exists
+    # Raise explicitly so callers (write-and-verify) can record the failure.
     if not self.hass.services.has_service("huawei_solar", "set_forcible_discharge"):
-        _LOGGER.error("Service huawei_solar.set_forcible_discharge not found")
-        return
+        raise ServiceNotFound("huawei_solar", "set_forcible_discharge")
 
     try:
-        # Send the service call to set forcible discharge
+        # Send the service call to set forcible discharge.
+        # blocking=True propagates service exceptions back to the caller so that
+        # write-and-verify can record the failure and retry.
         await self.hass.services.async_call(
             "huawei_solar",
             "set_forcible_discharge",
             {
-                "device_id": device_id,  # Device ID of the battery
-                "target_soc": target_soc,  # Target SOC in percentage (0-100)
-                "power": power,  # Maximum discharge power in watts
+                "device_id": device_id,
+                "target_soc": target_soc,
+                "power": power,
             },
-            blocking=False,  # Non-blocking call to avoid performance issues
+            blocking=True,
         )
 
         # Log success message

@@ -46,7 +46,7 @@ async def async_collect_live_state(
     cfg: SensorConfig,
     force_working_mode_cache: str | None,
     tracked_entities: set[str],
-) -> tuple[LiveState, str | None]:
+) -> tuple[LiveState, str | None, list]:
     """Read all HA entity states and return a populated :class:`LiveState`.
 
     This is the **only** function in the module that touches ``sensor.hass``.
@@ -62,9 +62,10 @@ async def async_collect_live_state(
             state-change tracking.  Updated in-place when new entities are added.
 
     Returns:
-        A ``(LiveState, updated_force_working_mode_entity_id)`` tuple.  The second
-        element is the (possibly newly resolved) force working mode entity_id so
-        the caller can persist it between cycles.
+        A ``(LiveState, updated_force_working_mode_entity_id, new_unsub_callbacks)``
+        tuple.  The third element is a list of new unsubscribe callables for
+        listeners registered during this call; the caller is responsible for
+        storing and eventually cancelling them.
     """
     state = LiveState()
 
@@ -332,9 +333,9 @@ async def async_collect_live_state(
     _compute_net_consumption(state, cfg)
 
     # --- Register state-change listeners for reactive entities ---
-    await _register_listeners(sensor, cfg, state, tracked_entities)
+    new_unsubs = await _register_listeners(sensor, cfg, state, tracked_entities)
 
-    return state, fwm_entity
+    return state, fwm_entity, new_unsubs
 
 
 # ---------------------------------------------------------------------------
@@ -394,11 +395,16 @@ async def _register_listeners(
     cfg: SensorConfig,
     state: LiveState,
     tracked_entities: set[str],
-) -> None:
+) -> list:
     """Register ``async_track_state_change_event`` for reactive entities.
 
     Only entities that have not been tracked before are registered (idempotent).
+
+    Returns:
+        List of new unsubscribe callables for all listeners registered during
+        this call.  The caller should store these and cancel them on teardown.
     """
+    new_unsubs: list = []
     candidates = [
         cfg.ev.status_entity,
         cfg.ev.connected_entity,
@@ -413,7 +419,10 @@ async def _register_listeners(
                 sensor,
                 f"Starting to track state changes for {entity_id}",
             )
-            async_track_state_change_event(
+            unsub = async_track_state_change_event(
                 sensor.hass, [entity_id], sensor._async_handle_update
             )
+            new_unsubs.append(unsub)
             tracked_entities.add(entity_id)
+
+    return new_unsubs

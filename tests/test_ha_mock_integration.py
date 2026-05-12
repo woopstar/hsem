@@ -203,6 +203,7 @@ def make_bare_coordinator(
     coord._update_lock = asyncio.Lock()
     coord._interval_timer_unsub = None
     coord._hourly_timer_unsub = None
+    coord._listener_unsubs = []
     coord._timer_interval = None
     coord._next_update = None
     coord.data = None

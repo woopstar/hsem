@@ -54,6 +54,8 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
         self._name = name
         self._measurements = None
         self._tracked_entities = set()
+        # Unsubscribe callbacks registered by async_track_* helpers.
+        self._unsub_callbacks: list = []
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -124,9 +126,11 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
 
             self._last_updated = old_state.attributes.get("last_updated", None)
 
-        # Register new timer
-        async_track_time_interval(
-            self.hass, self._async_handle_update, timedelta(minutes=5)
+        # Register new timer — store unsub so it is cancelled on removal.
+        self._unsub_callbacks.append(
+            async_track_time_interval(
+                self.hass, self._async_handle_update, timedelta(minutes=5)
+            )
         )
 
         # Initial update
@@ -134,14 +138,22 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
 
         await super().async_added_to_hass()
 
+    async def async_will_remove_from_hass(self) -> None:
+        """Cancel all tracked listeners when the entity is removed."""
+        for unsub in self._unsub_callbacks:
+            unsub()
+        self._unsub_callbacks.clear()
+        await super().async_will_remove_from_hass()
+
     async def _async_track_entities(self) -> None:
         if self._tracked_entity:
             if self._tracked_entity not in self._tracked_entities:
-                async_track_state_change_event(
+                unsub = async_track_state_change_event(
                     self.hass,
                     [self._tracked_entity],
                     self._async_handle_update,
                 )
+                self._unsub_callbacks.append(unsub)
                 self._tracked_entities.add(self._tracked_entity)
 
     async def _async_handle_update(self, event=None) -> None:

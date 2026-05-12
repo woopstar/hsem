@@ -429,9 +429,14 @@ def apply_optimization_strategy(
         # v5.1.0 threshold: <= NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH
         # (charge even near-zero-consumption slots)
         if rec.estimated_net_consumption <= NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH:
-            charged += abs(rec.estimated_net_consumption)
+            # Per-slot energy: how much this individual slot contributes, capped at
+            # what is still needed.  Store the per-slot value so that summing across
+            # slots in engine.py / total_charged_energy_kwh() is not double-counted.
+            slot_solar = abs(rec.estimated_net_consumption)
+            slot_energy = min(slot_solar, batteries_needed_charge - charged)
+            charged += slot_energy
             rec.recommendation = Recommendations.BatteriesChargeSolar.value
-            rec.batteries_charged = round(charged, 3)
+            rec.batteries_charged = round(slot_energy, 3)
 
     # Seasonal fill for remaining unassigned slots
     for rec in slots:
