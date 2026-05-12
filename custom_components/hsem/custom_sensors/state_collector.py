@@ -183,13 +183,19 @@ async def async_collect_live_state(
         "string",
         label="batteries_working_mode",
     )
-    state.huawei_batteries_soc_pct = convert_to_float(
+    soc_pct = convert_to_float(
         _read(
             cfg.huawei_solar_batteries_state_of_capacity,
             "float",
             label="state_of_capacity",
         )
     )
+    if soc_pct is None:
+        state.add_missing_entity(
+            "Critical: battery SoC returned None (unavailable/invalid)"
+        )
+    state.huawei_batteries_soc_pct = soc_pct
+
     eod_soc = convert_to_float(
         _read(
             cfg.huawei_solar_batteries_end_of_discharge_soc,
@@ -197,7 +203,11 @@ async def async_collect_live_state(
             label="end_of_discharge_soc",
         )
     )
-    state.huawei_batteries_end_of_discharge_soc_pct = eod_soc if eod_soc else 5.0
+    # End-of-discharge SoC is non-critical — fall back to safe default of 5 %
+    state.huawei_batteries_end_of_discharge_soc_pct = (
+        eod_soc if eod_soc is not None else 5.0
+    )
+
     state.huawei_batteries_grid_charge_cutoff_soc_pct = convert_to_float(
         _read(
             cfg.huawei_solar_batteries_grid_charge_cutoff_soc,
@@ -205,27 +215,45 @@ async def async_collect_live_state(
             label="grid_charge_cutoff_soc",
         )
     )
-    state.huawei_batteries_max_charge_power_w = convert_to_float(
+
+    max_charge_w = convert_to_float(
         _read(
             cfg.huawei_solar_batteries_maximum_charging_power,
             "float",
             label="max_charging_power",
         )
     )
-    state.huawei_batteries_max_discharge_power_w = convert_to_float(
+    if max_charge_w is None:
+        state.add_missing_entity(
+            "Critical: battery max charge power returned None (unavailable/invalid)"
+        )
+    state.huawei_batteries_max_charge_power_w = max_charge_w
+
+    max_discharge_w = convert_to_float(
         _read(
             cfg.huawei_solar_batteries_maximum_discharging_power,
             "float",
             label="max_discharging_power",
         )
     )
-    state.huawei_batteries_rated_capacity_wh = convert_to_float(
+    if max_discharge_w is None:
+        state.add_missing_entity(
+            "Critical: battery max discharge power returned None (unavailable/invalid)"
+        )
+    state.huawei_batteries_max_discharge_power_w = max_discharge_w
+
+    rated_capacity_wh = convert_to_float(
         _read(
             cfg.huawei_solar_batteries_rated_capacity,
             "float",
             label="batteries_rated_capacity_max",
         )
     )
+    if rated_capacity_wh is None:
+        state.add_missing_entity(
+            "Critical: battery rated capacity returned None (unavailable/invalid)"
+        )
+    state.huawei_batteries_rated_capacity_wh = rated_capacity_wh
     state.huawei_inverter_active_power_control = _read(
         cfg.huawei_solar_inverter_active_power_control,
         "string",
