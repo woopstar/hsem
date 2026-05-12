@@ -65,24 +65,21 @@ async def async_set_grid_export_power_pct(self, device_id, power_percentage) -> 
 
     except vol.Invalid as err:
         # Handle validation errors (e.g., invalid device_id or power_percentage)
-        _LOGGER.error(
+        _LOGGER.exception(
             "Invalid input for set_maximum_feed_grid_power_percent "
-            "(device_id=%s, power_percentage=%s): %s",
+            "(device_id=%s, power_percentage=%s)",
             device_id,
             power_percentage,
-            err,
         )
         raise HomeAssistantError(f"Invalid input data: {err}") from err
 
-    except (ServiceNotFound, ServiceValidationError, HomeAssistantError) as err:
+    except (ServiceNotFound, ServiceValidationError, HomeAssistantError):
         # Service missing or HA rejected the call
-        _LOGGER.error(
+        _LOGGER.exception(
             "HA error during set_maximum_feed_grid_power_percent "
-            "(device_id=%s, power_percentage=%s): %s: %s",
+            "(device_id=%s, power_percentage=%s)",
             device_id,
             power_percentage,
-            type(err).__name__,
-            repr(err),
         )
         raise
 
@@ -119,20 +116,17 @@ async def async_set_tou_periods(self, batteries_id, tou_modes) -> None:
 
     except vol.Invalid as err:
         # Handle validation errors (e.g., invalid batteries_id or TOU modes)
-        _LOGGER.error(
-            "Invalid input for set_tou_periods (device_id=%s): %s",
+        _LOGGER.exception(
+            "Invalid input for set_tou_periods (device_id=%s)",
             batteries_id,
-            err,
         )
         raise HomeAssistantError(f"Invalid input data: {err}") from err
 
-    except (ServiceNotFound, ServiceValidationError, HomeAssistantError) as err:
+    except (ServiceNotFound, ServiceValidationError, HomeAssistantError):
         # Service missing or HA rejected the call
-        _LOGGER.error(
-            "HA error during set_tou_periods (device_id=%s): %s: %s",
+        _LOGGER.exception(
+            "HA error during set_tou_periods (device_id=%s)",
             batteries_id,
-            type(err).__name__,
-            repr(err),
         )
         raise
 
@@ -185,25 +179,22 @@ async def async_set_forcible_discharge(
 
     except vol.Invalid as err:
         # Handle validation errors (e.g., wrong device_id, out-of-range target_soc)
-        _LOGGER.error(
+        _LOGGER.exception(
             "Invalid input for set_forcible_discharge "
-            "(device_id=%s, target_soc=%s, power=%s): %s",
+            "(device_id=%s, target_soc=%s, power=%s)",
             device_id,
             target_soc,
             power,
-            err,
         )
         raise HomeAssistantError(f"Invalid input data: {err}") from err
 
-    except (ServiceNotFound, ServiceValidationError, HomeAssistantError) as err:
+    except (ServiceNotFound, ServiceValidationError, HomeAssistantError):
         # Service missing or HA rejected the call — propagate so callers can enter safe mode
-        _LOGGER.error(
+        _LOGGER.exception(
             "HA error during set_forcible_discharge "
-            "(device_id=%s, target_soc=%s, power=%s): %s: %s",
+            "(device_id=%s, target_soc=%s, power=%s)",
             device_id,
             target_soc,
             power,
-            type(err).__name__,
-            repr(err),
         )
         raise

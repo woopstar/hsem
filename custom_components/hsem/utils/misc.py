@@ -327,13 +327,11 @@ async def async_set_number_value(self, entity_id, value) -> None:
             blocking=True,
         )
         _LOGGER.debug("Set value '%s' for number entity_id '%s'", value, entity_id)
-    except (ServiceNotFound, ServiceValidationError, HomeAssistantError) as err:
-        _LOGGER.error(
-            "Failed to set value '%s' for number entity_id '%s' (operation=set_value): %s: %s",
+    except (ServiceNotFound, ServiceValidationError, HomeAssistantError):
+        _LOGGER.exception(
+            "Failed to set value '%s' for number entity_id '%s' (operation=set_value)",
             value,
             entity_id,
-            type(err).__name__,
-            repr(err),
         )
         raise
 
@@ -360,13 +358,11 @@ async def async_set_select_option(self, entity_id, option) -> None:
             blocking=True,
         )
         _LOGGER.debug("Set option '%s' for entity_id '%s'", option, entity_id)
-    except (ServiceNotFound, ServiceValidationError, HomeAssistantError) as err:
-        _LOGGER.error(
-            "Failed to set option '%s' for entity_id '%s' (operation=select_option): %s: %s",
+    except (ServiceNotFound, ServiceValidationError, HomeAssistantError):
+        _LOGGER.exception(
+            "Failed to set option '%s' for entity_id '%s' (operation=select_option)",
             option,
             entity_id,
-            type(err).__name__,
-            repr(err),
         )
         raise
 
