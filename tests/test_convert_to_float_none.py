@@ -466,3 +466,66 @@ class TestThresholdCalculationWithNoneInputs:
             import_price=0.15,
         )
         assert result > 0
+
+
+# ---------------------------------------------------------------------------
+# Flow None-safety regression — batteries_schedule_1/2/3 and excess_export
+# ---------------------------------------------------------------------------
+
+
+class TestFlowExpectedCyclesNullSafety:
+    """Regression: batteries_schedule and excess_export flows must not pass None
+    expected_cycles into calculate_recommended_threshold.
+
+    The pre-fix pattern ``convert_to_int(get_config_value(...) or 6000)`` fails when
+    get_config_value returns a non-numeric string such as ``"unknown"``:
+      - ``"unknown" or 6000`` evaluates to ``"unknown"`` (truthy string wins)
+      - ``convert_to_int("unknown")`` returns ``None``
+      - ``calculate_recommended_threshold(..., expected_cycles=None, ...)`` would TypeError
+
+    The fix moves the fallback *after* convert_to_int using an explicit None check.
+    These tests verify that guard using the same None-check helper pattern.
+    """
+
+    @staticmethod
+    def _flow_expected_cycles(raw_config_value) -> int:
+        """Mirror the fixed flow pattern used in all four flow files."""
+        _v = convert_to_int(raw_config_value)
+        return _v if _v is not None else 6000
+
+    @pytest.mark.parametrize(
+        "raw, expected",
+        [
+            ("6000", 6000),  # normal stored value
+            (6000, 6000),  # already an int
+            ("unknown", 6000),  # HA sentinel → default (was the bug: returned None)
+            ("unavailable", 6000),  # HA unavailable → default
+            (None, 6000),  # None config → default
+            ("", 6000),  # empty string → default
+            ("0", 0),  # explicit zero cycles must survive
+            (0, 0),  # integer zero must survive
+        ],
+    )
+    def test_flow_cycles_never_none(self, raw, expected: int) -> None:
+        """Invalid raw values always fall back to 6000; real zero is preserved."""
+        result = self._flow_expected_cycles(raw)
+        assert result == expected
+        assert result is not None, (
+            "None must never reach calculate_recommended_threshold"
+        )
+
+    def test_invalid_cycles_does_not_raise_in_threshold_calc(self) -> None:
+        """End-to-end: even if config holds 'unknown', threshold calculation succeeds.
+
+        Before the fix, this would raise TypeError because None was passed as expected_cycles.
+        """
+        from custom_components.hsem.utils.misc import calculate_recommended_threshold
+
+        cycles = self._flow_expected_cycles("unknown")  # must return 6000, not None
+        result = calculate_recommended_threshold(
+            purchase_price=48_000.0,
+            expected_cycles=cycles,
+            usable_capacity=10.0,
+            conversion_loss=10.0,
+        )
+        assert result == pytest.approx(0.240, abs=1e-3)

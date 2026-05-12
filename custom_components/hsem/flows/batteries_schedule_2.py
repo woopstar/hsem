@@ -18,9 +18,10 @@ async def get_batteries_schedule_2_step_schema(config_entry) -> vol.Schema:
     purchase_price = convert_to_float(
         get_config_value(config_entry, "hsem_batteries_purchase_price") or 0.0
     )
-    expected_cycles = convert_to_int(
-        get_config_value(config_entry, "hsem_batteries_expected_cycles") or 6000
+    _cycles_2 = convert_to_int(
+        get_config_value(config_entry, "hsem_batteries_expected_cycles")
     )
+    expected_cycles = _cycles_2 if _cycles_2 is not None else 6000
     usable_capacity = 10.0  # Default assumption for calculation
     conversion_loss = convert_to_float(
         get_config_value(config_entry, "hsem_batteries_conversion_loss") or 10.0
