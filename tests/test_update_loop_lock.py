@@ -59,26 +59,24 @@ class TestUpdateLoopLock:
     """Verify the asyncio.Lock guard on the update handler."""
 
     @pytest.mark.asyncio
-    async def test_lock_exists_on_sensor(self) -> None:
-        """HSEMWorkingModeSensor.__init__ creates an asyncio.Lock.
+    async def test_lock_exists_on_coordinator(self) -> None:
+        """HSEMDataUpdateCoordinator.__init__ creates an asyncio.Lock.
 
-        We inspect the source of ``__init__`` rather than constructing a real
-        sensor instance, because instantiation requires a complete HA runtime
-        (config entry, voluptuous selectors, etc.).  The stub sensor
-        (``_StubSensor``) already exercises the identical locking logic end-to-
-        end, so the only thing we need to confirm here is that the production
-        class actually initialises the lock attribute.
+        The update lock was moved from HSEMWorkingModeSensor to the coordinator
+        as part of the DataUpdateCoordinator refactor (issue #283).  The
+        coordinator now owns the single update pipeline, so the concurrent-update
+        guard lives there.  The stub sensor (_StubSensor) exercises identical
+        locking logic end-to-end; this test confirms the production class also
+        initialises the lock attribute.
         """
         import inspect
 
-        from custom_components.hsem.custom_sensors.working_mode_sensor import (
-            HSEMWorkingModeSensor,
-        )
+        from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
 
-        source = inspect.getsource(HSEMWorkingModeSensor.__init__)
+        source = inspect.getsource(HSEMDataUpdateCoordinator.__init__)
 
         assert "_update_lock = asyncio.Lock()" in source, (
-            "HSEMWorkingModeSensor.__init__ must create self._update_lock = asyncio.Lock()"
+            "HSEMDataUpdateCoordinator.__init__ must create self._update_lock = asyncio.Lock()"
         )
 
     @pytest.mark.asyncio

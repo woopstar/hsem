@@ -561,17 +561,20 @@ class TestP006ConcurrentUpdates:
         await sensor._async_handle_update()
         assert sensor.cycle_runs == 2
 
-    def test_production_sensor_has_update_lock(self) -> None:
-        """The real HSEMWorkingModeSensor.__init__ must create ``_update_lock``."""
+    def test_production_coordinator_has_update_lock(self) -> None:
+        """The HSEMDataUpdateCoordinator.__init__ must create ``_update_lock``.
+
+        The lock was moved from HSEMWorkingModeSensor to the coordinator as part
+        of the DataUpdateCoordinator refactor (issue #283).  The coordinator now
+        owns the single update pipeline, so the concurrent-update guard lives there.
+        """
         import inspect
 
-        from custom_components.hsem.custom_sensors.working_mode_sensor import (
-            HSEMWorkingModeSensor,
-        )
+        from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
 
-        source = inspect.getsource(HSEMWorkingModeSensor.__init__)
+        source = inspect.getsource(HSEMDataUpdateCoordinator.__init__)
         assert "_update_lock = asyncio.Lock()" in source, (
-            "HSEMWorkingModeSensor.__init__ must contain self._update_lock = asyncio.Lock()"
+            "HSEMDataUpdateCoordinator.__init__ must contain self._update_lock = asyncio.Lock()"
         )
 
 
