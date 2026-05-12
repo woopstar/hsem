@@ -5,7 +5,12 @@ from custom_components.hsem.entity import HSEMEntity
 
 
 class HSEMIntegrationSensor(IntegrationSensor, HSEMEntity):
-    """Custom Integration Sensor with device_info."""
+    """Custom Integration Sensor (power → energy) with HSEM device_info.
+
+    Uses ``state_class=TOTAL_INCREASING`` so that Home Assistant's energy
+    dashboard and long-term statistics correctly treat it as a monotonically
+    increasing energy accumulator that resets periodically.
+    """
 
     _attr_icon = "mdi:chart-histogram"
 
@@ -16,11 +21,13 @@ class HSEMIntegrationSensor(IntegrationSensor, HSEMEntity):
         self.entity_id = e_id
 
     @property
-    def state_class(self) -> str:
-        return SensorStateClass.TOTAL
+    def state_class(self) -> SensorStateClass:
+        """Return TOTAL_INCREASING so the energy dashboard integrates correctly."""
+        return SensorStateClass.TOTAL_INCREASING
 
     @property
-    def device_class(self) -> str:
+    def device_class(self) -> SensorDeviceClass:
+        """Return ENERGY device class."""
         return SensorDeviceClass.ENERGY
 
     @property
