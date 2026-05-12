@@ -88,7 +88,7 @@ def _avg_price_in_window(
 ) -> float:
     """Return the average import price for slots inside a discharge window."""
     prices = [
-        s.import_price
+        s.price.import_price
         for s in slots
         if s.start.astimezone(now.tzinfo) >= window_start
         and s.end.astimezone(now.tzinfo) <= window_end
@@ -150,8 +150,8 @@ def apply_charge_schedules(
 
         # Priority 1: negative import price
         for s in sorted(
-            (e for e in eligible if e.import_price < 0.0),
-            key=lambda x: (x.import_price, x.start),
+            (e for e in eligible if e.price.import_price < 0.0),
+            key=lambda x: (x.price.import_price, x.start),
         ):
             if charged >= needed:
                 break
@@ -216,7 +216,7 @@ def _apply_grid_charge(
     """
     grid_candidates = sorted(
         (e for e in eligible if e.recommendation is None),
-        key=lambda x: (x.import_price, x.start),
+        key=lambda x: (x.price.import_price, x.start),
     )
 
     # First pass: estimate average charge price
@@ -236,7 +236,7 @@ def _apply_grid_charge(
         energy = available_solar + grid_needed
         if energy > 0:
             tentative_count += 1
-            tentative_price_sum += s.import_price
+            tentative_price_sum += s.price.import_price
             tentative_charged += energy
 
     avg_charge_price = (
@@ -349,11 +349,14 @@ def apply_excess_export(
             and s.recommendation is None
             and (
                 battery_is_solar_charged
-                or (s.export_price - s.import_price >= export_price_threshold)
+                or (
+                    s.price.export_price - s.price.import_price
+                    >= export_price_threshold
+                )
             )
-            and s.export_price > 0
+            and s.price.export_price > 0
         ),
-        key=lambda x: x.export_price,
+        key=lambda x: x.price.export_price,
         reverse=True,
     )
 
@@ -362,7 +365,7 @@ def apply_excess_export(
             break
         s.recommendation = Recommendations.ForceBatteriesDischarge.value
         warnings.append(
-            f"ForceBatteriesDischarge at {s.start.isoformat()}: export={s.export_price}"
+            f"ForceBatteriesDischarge at {s.start.isoformat()}: export={s.price.export_price}"
         )
         # Only positive net consumption (house load > solar) draws from the battery
         # discharge budget.  Solar-surplus slots (net < 0) contribute 0 drain because
@@ -408,7 +411,10 @@ def apply_optimization_strategy(
 
     # ForceExport when export > import
     for rec in slots:
-        if rec.export_price > rec.import_price and rec.recommendation is None:
+        if (
+            rec.price.export_price > rec.price.import_price
+            and rec.recommendation is None
+        ):
             rec.recommendation = Recommendations.ForceExport.value
 
     # Solar charging until battery full
@@ -422,7 +428,7 @@ def apply_optimization_strategy(
             if s.recommendation is None
             and s.start.astimezone(now.tzinfo).date() == now.date()
         ),
-        key=lambda x: x.export_price,
+        key=lambda x: x.price.export_price,
     ):
         if charged >= batteries_needed_charge:
             break

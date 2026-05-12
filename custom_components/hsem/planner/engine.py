@@ -279,7 +279,7 @@ def _derive_windows(
         if not group:
             return
         total_e = round(sum(s.batteries_charged for s in group), 3)
-        prices = [s.import_price for s in group]
+        prices = [s.price.import_price for s in group]
         avg_p = round(sum(prices) / len(prices), 4)
         charge_windows.append(
             ChargeWindow(
@@ -294,7 +294,7 @@ def _derive_windows(
     def _flush_discharge(group: list[PlannedSlot]) -> None:
         if not group:
             return
-        prices = [s.import_price for s in group]
+        prices = [s.price.import_price for s in group]
         avg_p = round(sum(prices) / len(prices), 4)
         discharge_windows.append(
             DischargeWindow(

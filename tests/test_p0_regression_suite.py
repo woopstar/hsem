@@ -730,14 +730,14 @@ class TestP008MagicThresholds:
         from custom_components.hsem.planner.charge_scheduler import (
             apply_optimization_strategy,
         )
+        from custom_components.hsem.utils.prices import SlotPrice
         from custom_components.hsem.utils.recommendations import Recommendations
 
         now = datetime(2024, 6, 15, 12, 0, tzinfo=UTC)  # noon in June → summer
         slot = PlannedSlot(
             start=datetime(2024, 6, 15, 12, 0, tzinfo=UTC),
             end=datetime(2024, 6, 15, 13, 0, tzinfo=UTC),
-            import_price=0.20,
-            export_price=0.05,
+            price=SlotPrice(import_price=0.20, export_price=0.05),
             estimated_net_consumption=NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH,
             recommendation=None,
         )

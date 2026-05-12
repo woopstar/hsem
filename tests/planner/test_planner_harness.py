@@ -182,8 +182,12 @@ class TestSlotValues:
         for slot in result.slots:
             h = slot.start.hour
             if h in price_by_hour:
-                assert abs(slot.import_price - price_by_hour[h].import_price) < 1e-9
-                assert abs(slot.export_price - price_by_hour[h].export_price) < 1e-9
+                assert (
+                    abs(slot.price.import_price - price_by_hour[h].import_price) < 1e-9
+                )
+                assert (
+                    abs(slot.price.export_price - price_by_hour[h].export_price) < 1e-9
+                )
 
 
 # ===========================================================================
@@ -332,7 +336,7 @@ class TestChargeScheduling:
         neg_price_charge_slots = [
             s
             for s in result.slots
-            if s.import_price < 0
+            if s.price.import_price < 0
             and s.recommendation == Recommendations.BatteriesChargeGrid.value
         ]
         assert neg_price_charge_slots, (
@@ -438,7 +442,7 @@ class TestFixtureCompleteness:
     def test_flat_fixture_all_slots_same_price(self):
         inp = make_flat_price_input(import_price=0.25, export_price=0.10)
         result = run_planner(inp)
-        import_prices = [s.import_price for s in result.slots]
+        import_prices = [s.price.import_price for s in result.slots]
         assert all(abs(p - 0.25) < 1e-9 for p in import_prices), (
             "Not all slots have the expected flat import price"
         )

@@ -22,6 +22,7 @@ from datetime import UTC, datetime, timedelta
 
 from custom_components.hsem.models.planner_outputs import PlannedSlot
 from custom_components.hsem.planner.charge_scheduler import apply_excess_export
+from custom_components.hsem.utils.prices import SlotPrice
 from custom_components.hsem.utils.recommendations import Recommendations
 
 # ---------------------------------------------------------------------------
@@ -42,8 +43,7 @@ def _make_slot(
     return PlannedSlot(
         start=start,
         end=start + timedelta(hours=1),
-        import_price=import_price,
-        export_price=export_price,
+        price=SlotPrice(import_price=import_price, export_price=export_price),
         solcast_pv_estimate=0.0,
         avg_house_consumption=0.5,
         estimated_net_consumption=estimated_net_consumption,

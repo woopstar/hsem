@@ -688,10 +688,10 @@ class TestIntegrationWithPopulatePrices:
         populate_prices(planned_slots, price_points, tsi=tsi)
 
         for i, (sp, ps) in enumerate(zip(expanded, planned_slots)):
-            assert sp.import_price == pytest.approx(ps.import_price), (
+            assert sp.import_price == pytest.approx(ps.price.import_price), (
                 f"slot {i} import mismatch"
             )
-            assert sp.export_price == pytest.approx(ps.export_price), (
+            assert sp.export_price == pytest.approx(ps.price.export_price), (
                 f"slot {i} export mismatch"
             )
 
@@ -729,6 +729,6 @@ class TestIntegrationWithPopulatePrices:
         populate_prices(planned_slots, price_points, tsi=tsi)
 
         for ps in planned_slots:
-            assert ps.export_price == pytest.approx(-0.05), (
-                f"negative export price was lost: {ps.export_price}"
+            assert ps.price.export_price == pytest.approx(-0.05), (
+                f"negative export price was lost: {ps.price.export_price}"
             )

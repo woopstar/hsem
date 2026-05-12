@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
+from custom_components.hsem.utils.prices import SlotPrice
+
 if TYPE_CHECKING:
     from custom_components.hsem.models.time_series import TimeSeriesIndex
 
@@ -24,15 +26,19 @@ class PlannedSlot:
     :class:`~custom_components.hsem.models.hourly_recommendation.HourlyRecommendation`
     that can be constructed and inspected without Home Assistant.
 
+    Electricity prices are stored as a
+    :class:`~custom_components.hsem.utils.prices.SlotPrice` named-tuple on
+    :attr:`price`.  Access individual prices via ``slot.price.import_price``
+    and ``slot.price.export_price``.
+
     Attributes:
         start:
             Timezone-aware start of the slot.
         end:
             Timezone-aware end of the slot.
-        import_price:
-            Electricity import price in local currency/kWh.
-        export_price:
-            Electricity export price in local currency/kWh.
+        price:
+            Import and export prices for this slot as a :class:`SlotPrice`.
+            Both values are in local currency/kWh and may be negative.
         solcast_pv_estimate:
             Forecast PV production in kWh for this slot.
         avg_house_consumption:
@@ -67,8 +73,7 @@ class PlannedSlot:
 
     start: datetime
     end: datetime
-    import_price: float = 0.0
-    export_price: float = 0.0
+    price: SlotPrice = field(default_factory=lambda: SlotPrice(0.0, 0.0))
     solcast_pv_estimate: float = 0.0
     avg_house_consumption: float = 0.0
     avg_house_consumption_1d: float = 0.0

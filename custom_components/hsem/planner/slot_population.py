@@ -54,6 +54,7 @@ from custom_components.hsem.models.planner_inputs import (
 )
 from custom_components.hsem.models.planner_outputs import PlannedSlot
 from custom_components.hsem.models.time_series import TimeSeriesIndex
+from custom_components.hsem.utils.prices import SlotPrice
 from custom_components.hsem.utils.recommendations import Recommendations
 
 # ---------------------------------------------------------------------------
@@ -133,16 +134,21 @@ def populate_prices(
         exp_prices = {pp.hour: pp.export_price for pp in price_points}
         aligned_imp, aligned_exp = tsi.align_hourly_prices(imp_prices, exp_prices)
         for slot, imp, exp in zip(slots, aligned_imp, aligned_exp):
-            slot.import_price = 0.0 if math.isnan(imp) else imp
-            slot.export_price = 0.0 if math.isnan(exp) else exp
+            # Missing hours (NaN sentinel) fall back to 0.0 — preserve
+            # backward-compatible behaviour for downstream consumers.
+            slot.price = SlotPrice(
+                import_price=0.0 if math.isnan(imp) else imp,
+                export_price=0.0 if math.isnan(exp) else exp,
+            )
         return
 
     price_by_hour = index_by_hour(price_points)
     for slot in slots:
         pt = price_by_hour.get(slot.start.hour)
         if pt is not None:
-            slot.import_price = pt.import_price
-            slot.export_price = pt.export_price
+            slot.price = SlotPrice(
+                import_price=pt.import_price, export_price=pt.export_price
+            )
 
 
 def populate_solcast(
@@ -275,9 +281,9 @@ def populate_estimated_cost(slots: list[PlannedSlot]) -> None:
     for slot in slots:
         net = slot.estimated_net_consumption
         if net >= 0:
-            slot.estimated_cost = round(net * slot.import_price, 4)
+            slot.estimated_cost = round(net * slot.price.import_price, 4)
         else:
-            slot.estimated_cost = round(net * slot.export_price, 4)
+            slot.estimated_cost = round(net * slot.price.export_price, 4)
 
 
 def mark_time_passed(slots: list[PlannedSlot], now: datetime) -> None:
