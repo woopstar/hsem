@@ -10,6 +10,7 @@ from homeassistant.core import HomeAssistant
 from packaging.version import InvalidVersion, Version
 
 from custom_components.hsem.const import DOMAIN, MIN_HUAWEI_SOLAR_VERSION
+from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -95,10 +96,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not await check_huawei_solar_version(hass):
         return False
 
-    hass.data[DOMAIN][entry.entry_id] = {}
+    # Create the shared DataUpdateCoordinator and run the first update cycle.
+    coordinator = HSEMDataUpdateCoordinator(hass, entry)
+    hass.data[DOMAIN][entry.entry_id] = {"coordinator": coordinator}
+    await coordinator.async_setup()
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    # Add update listner for options
+    # Add update listener for options
     entry.async_on_unload(entry.add_update_listener(async_update_options))
 
     _LOGGER.info("HSEM integration successfully set up.")
@@ -108,6 +113,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     _LOGGER.info(f"Unloading HSEM integration for {entry.entry_id}")
+
+    # Tear down the coordinator's timers before unloading platforms.
+    domain_data = hass.data.get(DOMAIN, {}).get(entry.entry_id, {})
+    coordinator: HSEMDataUpdateCoordinator | None = domain_data.get("coordinator")
+    if coordinator is not None:
+        await coordinator.async_teardown()
 
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
@@ -125,6 +136,13 @@ async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
     if not isinstance(domain_data, dict):
         return
 
+    # Notify the coordinator so it re-reads config and re-runs the pipeline.
+    coordinator: HSEMDataUpdateCoordinator | None = domain_data.get("coordinator")
+    if coordinator is not None:
+        await coordinator.async_options_updated()
+        return
+
+    # Fallback: notify any legacy objects that expose async_options_updated.
     for obj in domain_data.values():
         method = getattr(obj, "async_options_updated", None)
         if not callable(method):

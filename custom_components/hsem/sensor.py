@@ -3,6 +3,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from custom_components.hsem.const import DOMAIN
+from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
 from custom_components.hsem.custom_sensors.degraded_mode_sensor import (
     HSEMDegradedModeSensor,
 )
@@ -21,23 +22,20 @@ async def async_setup_entry(
 ) -> None:
     """Set up HSEM sensors from a config entry."""
 
-    # Initialize domain data if not already present
-    if DOMAIN not in hass.data:
-        hass.data[DOMAIN] = {}
+    # Retrieve the coordinator created in async_setup_entry (__init__.py).
+    coordinator: HSEMDataUpdateCoordinator = hass.data[DOMAIN][config_entry.entry_id][
+        "coordinator"
+    ]
 
-    if config_entry.entry_id not in hass.data[DOMAIN]:
-        hass.data[DOMAIN][config_entry.entry_id] = {}
+    # Degraded-mode diagnostic sensor — subscribes to coordinator updates.
+    degraded_mode_sensor = HSEMDegradedModeSensor(config_entry, coordinator)
 
-    # Setup degraded-mode diagnostic sensor
-    degraded_mode_sensor = HSEMDegradedModeSensor(config_entry)
-
-    # Setup working mode sensor — pass the degraded-mode sensor so it can
-    # push updates to it at the end of each cycle.
-    working_mode_sensor = HSEMWorkingModeSensor(config_entry, degraded_mode_sensor)
+    # Working-mode sensor — subscribes to coordinator updates and owns hardware writes.
+    working_mode_sensor = HSEMWorkingModeSensor(config_entry, coordinator)
 
     async_add_entities([degraded_mode_sensor, working_mode_sensor])
 
-    # Add power, energy and energy average sensors
+    # Add power, energy and energy average sensors (these remain self-polling).
     power_sensors = []
     for hour in range(24):
         hour_start = hour
