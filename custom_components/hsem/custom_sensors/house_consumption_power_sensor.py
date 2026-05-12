@@ -29,7 +29,7 @@ from typing import Any
 import homeassistant.util.dt as dt_util
 import voluptuous as vol
 from homeassistant.components.sensor import SensorEntity
-from homeassistant.components.sensor.const import SensorDeviceClass
+from homeassistant.components.sensor.const import SensorDeviceClass, SensorStateClass
 from homeassistant.components.utility_meter.const import (
     DATA_TARIFF_SENSORS,
     DATA_UTILITY,
@@ -48,7 +48,6 @@ from custom_components.hsem.custom_sensors.utility_meter_sensor import (
 )
 from custom_components.hsem.entity import HSEMEntity
 from custom_components.hsem.utils.misc import (
-    async_remove_entity_from_ha,
     async_resolve_entity_id_from_unique_id,
     convert_to_float,
     get_config_value,
@@ -77,6 +76,9 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
 
     _attr_icon = "mdi:flash"
     _attr_has_entity_name = True
+    _attr_device_class = SensorDeviceClass.POWER
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfPower.WATT
 
     # List all attributes to exclude from recording, except state and last_updated
     _unrecorded_attributes = frozenset(
@@ -115,7 +117,8 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
         self._state_previous = None
         self._config_entry = config_entry
         self._last_updated = None
-        self._has_been_removed = []
+        # Track which derived sensors have already been created to avoid duplicate adds.
+        self._derived_sensors_created: set[str] = set()
         self._tracked_entities = set()
         self._async_add_entities = async_add_entities
         self._name = get_house_consumption_power_sensor_name(
@@ -126,14 +129,6 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
     @property
     def name(self) -> str:
         return self._name
-
-    @property
-    def unit_of_measurement(self) -> str:
-        return UnitOfPower.WATT
-
-    @property
-    def device_class(self) -> str:
-        return SensorDeviceClass.POWER
 
     @property
     def unique_id(self) -> str | None:
@@ -189,20 +184,24 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
         await self._async_handle_update(None)
 
     async def async_added_to_hass(self) -> None:
-        # Get the last state of the sensor
+        """Handle when sensor is added to Home Assistant.
 
+        We restore ``last_updated`` from the previous run for informational
+        purposes, but do NOT restore the power reading itself.  The state is
+        intentionally left as ``None`` here and will be set (or remain ``None``)
+        by the first ``_async_handle_update`` call depending on whether the
+        current hour matches this sensor's active window.  This prevents a
+        stale power value from being fed into the IntegrationSensor after a
+        restart when the active window has already passed.
+        """
         old_state = await self.async_get_last_state()
         if old_state is not None:
-            restored = convert_to_float(old_state.state)
-            self._state = round(restored, 2) if restored is not None else 0.0
             self._last_updated = old_state.attributes.get("last_updated", None)
-        else:
-            self._state = 0.0
 
-        # Initial update
+        # Initial update — sets self._state to a real value or None based on
+        # whether the current hour is inside this sensor's active window.
         await self._async_handle_update(None)
 
-        """Handle when sensor is added to Home Assistant."""
         await super().async_added_to_hass()
 
     def _update_settings(self) -> None:
@@ -223,9 +222,15 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
         )
 
     async def _async_handle_update(self, event=None) -> None:
-        """Handle updates to the source sensor."""
-        self._state = None
+        """Handle updates to the source sensor.
 
+        Power is only measured inside the active hour window
+        (``now.hour == self._hour_start``).  Outside that window the state is
+        ``None``, which HA exposes as ``unknown``.  This causes the downstream
+        ``IntegrationSensor`` to pause accumulation and the ``UtilityMeterSensor``
+        to stop counting — preventing cross-hour contamination of the energy
+        reading for this slot.
+        """
         now = dt_util.now()
 
         # Ensure config flow settings are reloaded if it changed.
@@ -234,9 +239,8 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
         # Track state changes for the source sensors. Also if they change.
         await self._async_track_entities()
 
-        # Calculate the state of the sensor based on the current hour and if ev charger power should be included
         if now.hour == self._hour_start:
-            # Fetch the current state of the source sensors
+            # Active window: measure the current power.
             await self._async_fetch_sensor_states()
 
             if isinstance(
@@ -254,23 +258,21 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
                     self._state = round(
                         float(self._hsem_house_consumption_power_state), 2
                     )
+        else:
+            # Outside the active window: reset to None so the integral sensor
+            # does not keep accumulating stale power for this hour slot.
+            self._state = None
 
-        # Add energy sensor to convert power to energy
+        # Ensure derived sensors exist — create them only once; skip if already present.
         await self._async_add_integral_sensor()
-
-        # Add utility meter sensor to reset consumed energy every day
         await self._async_add_utility_meter_sensor()
-
-        # Add avg energy sensors for 1,3,7,14 days based on the utility meter sensor
         await self._async_add_energy_average_sensors(1)
         await self._async_add_energy_average_sensors(3)
         await self._async_add_energy_average_sensors(7)
         await self._async_add_energy_average_sensors(14)
 
-        if self._state is None:
-            self._available = False
-        else:
-            self._available = True
+        # Available only inside the active hour window (when state is non-None).
+        self._available = self._state is not None
 
         if self._state_previous is None or self._state_previous != self._state:
             self._last_updated = now.isoformat()
@@ -333,47 +335,49 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
             self._missing_input_entities = True
 
     async def _async_add_integral_sensor(self) -> None:
-        """Add an integral sensor dynamically to convert power to energy."""
+        """Add an integral sensor dynamically to convert power to energy.
 
-        # Create the name and unique id for the integral sensor
-        integral_sensor_name = get_integral_sensor_name(
+        Skips creation when the entity already exists in the registry so that
+        an HA restart does not destroy the historical energy data accumulated
+        by the IntegrationSensor.
+        """
+        integral_sensor_unique_id = get_integral_sensor_unique_id(
             self._hour_start, self._hour_end
         )
-        integral_sensor_unique_id = get_integral_sensor_unique_id(
+
+        # Short-circuit: already created in this run or already in the registry.
+        if integral_sensor_unique_id in self._derived_sensors_created:
+            return
+
+        integral_sensor_exists = await async_resolve_entity_id_from_unique_id(
+            self, integral_sensor_unique_id
+        )
+        if integral_sensor_exists:
+            # Entity survived the restart — no need to recreate it.
+            self._derived_sensors_created.add(integral_sensor_unique_id)
+            return
+
+        # Resolve the source power sensor entity before creating the integral sensor.
+        power_sensor_unique_id = get_house_consumption_power_sensor_unique_id(
+            self._hour_start, self._hour_end
+        )
+        source_entity = await async_resolve_entity_id_from_unique_id(
+            self, power_sensor_unique_id
+        )
+        if not source_entity:
+            return
+
+        integral_sensor_name = get_integral_sensor_name(
             self._hour_start, self._hour_end
         )
         integral_sensor_entity_id = get_integral_sensor_entity_id(
             self._hour_start, self._hour_end
         )
-        power_sensor_unique_id = get_house_consumption_power_sensor_unique_id(
-            self._hour_start, self._hour_end
-        )
-
-        # Resolve the source power sensor entity
-        source_entity = await async_resolve_entity_id_from_unique_id(
-            self, power_sensor_unique_id
-        )
-
-        if not source_entity:
-            return
-
-        # Check if the integral sensor already exists
-        integral_sensor_exists = await async_resolve_entity_id_from_unique_id(
-            self, integral_sensor_unique_id
-        )
-
-        if integral_sensor_exists:
-            if integral_sensor_unique_id not in self._has_been_removed:
-                if await async_remove_entity_from_ha(self, integral_sensor_unique_id):
-                    self._has_been_removed.append(integral_sensor_unique_id)
-                    _LOGGER.debug(f"Successfully removed '{integral_sensor_name}'.")
-            return
 
         _LOGGER.debug(
-            f"Adding integral sensor {integral_sensor_name} for {source_entity}"
+            "Adding integral sensor %s for %s", integral_sensor_name, source_entity
         )
 
-        # Create the integral sensor using the left Reimann method
         integral_sensor = HSEMIntegrationSensor(
             integration_method="left",
             name=integral_sensor_name,
@@ -389,61 +393,60 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
             config_entry=self._config_entry,
         )
 
-        # Add the integral sensor to Home Assistant
         self._async_add_entities([integral_sensor])
+        self._derived_sensors_created.add(integral_sensor_unique_id)
 
     async def _async_add_utility_meter_sensor(self) -> None:
-        """Add a utility meter sensor dynamically."""
+        """Add a utility meter sensor dynamically.
 
-        # Create the name and unique id for the avg sensor
-        utility_meter_name = get_utility_meter_sensor_name(
-            self._hour_start, self._hour_end
-        )
+        Skips creation when the entity already exists in the registry so that
+        the accumulated daily totals are preserved across HA restarts.  The
+        utility meter must track the *energy* integral sensor (kWh), not the
+        raw power sensor (W).
+        """
         utility_meter_unique_id = get_utility_meter_sensor_unique_id(
             self._hour_start, self._hour_end
         )
-        utility_meter_entity_id = get_utility_meter_sensor_entity_id(
-            self._hour_start, self._hour_end
+
+        # Short-circuit: already created in this run or already in the registry.
+        if utility_meter_unique_id in self._derived_sensors_created:
+            return
+
+        utility_meter_exists = await async_resolve_entity_id_from_unique_id(
+            self, utility_meter_unique_id
         )
+        if utility_meter_exists:
+            self._derived_sensors_created.add(utility_meter_unique_id)
+            return
+
+        # The utility meter must track the *energy* integral sensor, not the raw
+        # power sensor.  Resolve the integral sensor entity first.
         integral_sensor_unique_id = get_integral_sensor_unique_id(
             self._hour_start, self._hour_end
         )
-
-        # Resolve the source entity (sensor) that the utility meter should track
         source_entity = await async_resolve_entity_id_from_unique_id(
             self, integral_sensor_unique_id
         )
-
         if not source_entity:
             return
 
         # Ensure DATA_UTILITY structure exists in hass.data
         if DATA_UTILITY not in self.hass.data:
             self.hass.data[DATA_UTILITY] = {}
-
-        # Ensure the entry_id exists in DATA_UTILITY
         if source_entity not in self.hass.data[DATA_UTILITY]:
             self.hass.data[DATA_UTILITY][source_entity] = {DATA_TARIFF_SENSORS: []}
 
-        # Check if the utility meter already exists
-        utility_meter_exists = await async_resolve_entity_id_from_unique_id(
-            self, utility_meter_unique_id
+        utility_meter_name = get_utility_meter_sensor_name(
+            self._hour_start, self._hour_end
         )
-
-        if utility_meter_exists:
-            if utility_meter_unique_id not in self._has_been_removed:
-                if await async_remove_entity_from_ha(self, utility_meter_unique_id):
-                    _LOGGER.debug(
-                        f"Successfully removed '{utility_meter_name}' before re-adding."
-                    )
-                    self._has_been_removed.append(utility_meter_unique_id)
-            return
+        utility_meter_entity_id = get_utility_meter_sensor_entity_id(
+            self._hour_start, self._hour_end
+        )
 
         _LOGGER.debug(
-            f"Adding utility meter sensor {utility_meter_name} for {source_entity}"
+            "Adding utility meter sensor %s for %s", utility_meter_name, source_entity
         )
 
-        # Create the utility meter sensor with the given cycle and source
         utility_meter_sensor = HSEMUtilityMeterSensor(
             cron_pattern=None,
             delta_values=False,
@@ -466,25 +469,35 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
 
         utility_meter_sensor.entity_id = utility_meter_entity_id
 
-        # Add the utility meter to Home Assistant
         self._async_add_entities([utility_meter_sensor])
+        self._derived_sensors_created.add(utility_meter_unique_id)
 
-        # Append the newly created sensor to DATA_TARIFF_SENSORS
+        # Register with the HA utility-meter book-keeping so the daily-reset
+        # event reaches this sensor.
         self.hass.data[DATA_UTILITY][source_entity][DATA_TARIFF_SENSORS].append(
             utility_meter_sensor
         )
 
-    async def _async_add_energy_average_sensors(self, avg) -> None:
-        """Add a template sensor for the energy average over a given number of days."""
-        avg_energy_sensor_name = get_energy_average_sensor_name(
-            self._hour_start, self._hour_end, avg
-        )
+    async def _async_add_energy_average_sensors(self, avg: int) -> None:
+        """Add a template sensor for the energy average over a given number of days.
+
+        Skips creation when the entity already exists in the registry so that
+        the rolling daily measurements are preserved across HA restarts.
+        """
         avg_energy_sensor_unique_id = get_energy_average_sensor_unique_id(
             self._hour_start, self._hour_end, avg
         )
-        avg_energy_sensor_entity_id = get_energy_average_sensor_entity_id(
-            self._hour_start, self._hour_end, avg
+
+        # Short-circuit: already created in this run or already in the registry.
+        if avg_energy_sensor_unique_id in self._derived_sensors_created:
+            return
+
+        avg_energy_sensor_exists = await async_resolve_entity_id_from_unique_id(
+            self, avg_energy_sensor_unique_id
         )
+        if avg_energy_sensor_exists:
+            self._derived_sensors_created.add(avg_energy_sensor_unique_id)
+            return
 
         utility_meter_unique_id = get_utility_meter_sensor_unique_id(
             self._hour_start, self._hour_end
@@ -492,25 +505,17 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
         utility_meter_entity_id = await async_resolve_entity_id_from_unique_id(
             self, utility_meter_unique_id
         )
-
         if not utility_meter_entity_id:
             return
 
-        # Check if the avg sensor already exists
-        avg_energy_sensor_exists = await async_resolve_entity_id_from_unique_id(
-            self, avg_energy_sensor_unique_id
+        avg_energy_sensor_name = get_energy_average_sensor_name(
+            self._hour_start, self._hour_end, avg
+        )
+        avg_energy_sensor_entity_id = get_energy_average_sensor_entity_id(
+            self._hour_start, self._hour_end, avg
         )
 
-        if avg_energy_sensor_exists:
-            if avg_energy_sensor_unique_id not in self._has_been_removed:
-                if await async_remove_entity_from_ha(self, avg_energy_sensor_unique_id):
-                    _LOGGER.debug(
-                        f"Successfully removed '{avg_energy_sensor_name}' before re-adding."
-                    )
-                    self._has_been_removed.append(avg_energy_sensor_unique_id)
-            return
-
-        _LOGGER.debug(f"Creating new average energy sensor '{avg_energy_sensor_name}'")
+        _LOGGER.debug("Creating new average energy sensor '%s'", avg_energy_sensor_name)
 
         avg_sensor = HSEMAvgSensor(
             config_entry=self._config_entry,
@@ -524,3 +529,4 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
         )
 
         self._async_add_entities([avg_sensor])
+        self._derived_sensors_created.add(avg_energy_sensor_unique_id)

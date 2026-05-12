@@ -4,7 +4,7 @@ from typing import Any
 
 import homeassistant.util.dt as dt_util
 from homeassistant.components.sensor import SensorEntity
-from homeassistant.components.sensor.const import SensorStateClass
+from homeassistant.components.sensor.const import SensorDeviceClass, SensorStateClass
 from homeassistant.const import UnitOfEnergy
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import (
@@ -20,7 +20,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
-    """A template sensor for Home Assistant."""
+    """Rolling N-day average of a utility-meter energy reading (kWh)."""
 
     _attr_icon = "mdi:calculator"
     _attr_has_entity_name = True
@@ -77,8 +77,12 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
         return UnitOfEnergy.KILO_WATT_HOUR
 
     @property
-    def state_class(self) -> str:
+    def state_class(self) -> SensorStateClass:
         return SensorStateClass.MEASUREMENT
+
+    @property
+    def device_class(self) -> SensorDeviceClass:
+        return SensorDeviceClass.ENERGY
 
     @property
     def unique_id(self) -> str | None:
