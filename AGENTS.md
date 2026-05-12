@@ -197,8 +197,11 @@ PR after every meaningful commit:
 - **Description** — reflect every change made since the PR was opened: new files, updated logic,
   additional tests, and any acceptance criteria that were added or completed.
 - **Checklist** — tick off acceptance criteria that are now satisfied.
-- Use the GitHub API or CLI (`gh pr edit`) to apply updates; do NOT leave the PR description
-  stale after follow-up commits.
+- Use `gh pr edit --body-file <file>` to apply updates — write the PR body to a
+  temporary file first and pass the path via `--body-file`. **Never** use `--body "..."`
+  with an inline multiline string: this corrupts content in PowerShell (newlines become
+  `∙` and backticks become `\x5c`). Delete the temp file after the command succeeds.
+- Do NOT leave the PR description stale after follow-up commits.
 
 Before merging any PR, the agent MUST ensure:
 

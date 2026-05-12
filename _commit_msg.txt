@@ -1,0 +1,20 @@
+docs(agents): mandate --body-file for gh pr edit; fix ServiceNotFound test logger patch
+
+Two issues fixed:
+
+1. PR update instructions used inline multiline --body in PowerShell,
+   which corrupts newlines to middot characters and backticks to \x5c.
+   Fixed in all three instruction files:
+   - .github/copilot-instructions.md
+   - AGENTS.md
+   - CLAUDE.md
+   All now mandate: write body to a temp file, run
+   gh pr edit --body-file <file>, then delete the file.
+
+2. Five tests in test_exception_handling.py failed when the full suite ran
+   with coverage because _LOGGER.exception() called ServiceNotFound.__str__()
+   which invokes async_get_hass() outside the HA event loop. Each affected
+   test now patches _LOGGER in the production module to suppress HA
+   translation during log formatting.
+
+375 tests pass. ruff clean.

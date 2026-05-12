@@ -222,7 +222,12 @@ class TestAsyncSetNumberValueFailures:
             side_effect=ServiceNotFound("number", "set_value")
         )
 
-        with pytest.raises(ServiceNotFound):
+        # Patch the logger to prevent ServiceNotFound.__str__ from calling
+        # async_get_hass() outside the HA event loop during log formatting.
+        with (
+            patch("custom_components.hsem.utils.misc._LOGGER"),
+            pytest.raises(ServiceNotFound),
+        ):
             await async_set_number_value(sensor, "number.charge_power", 3000)
 
     @pytest.mark.asyncio
@@ -278,7 +283,10 @@ class TestAsyncSetSelectOptionFailures:
             side_effect=ServiceNotFound("select", "select_option")
         )
 
-        with pytest.raises(ServiceNotFound):
+        with (
+            patch("custom_components.hsem.utils.misc._LOGGER"),
+            pytest.raises(ServiceNotFound),
+        ):
             await async_set_select_option(sensor, "select.working_mode", "TimeOfUse")
 
     @pytest.mark.asyncio
@@ -328,7 +336,10 @@ class TestAsyncSetGridExportPowerPctFailures:
         )
         sensor = _make_inverter_sensor(hass)
 
-        with pytest.raises(ServiceNotFound):
+        with (
+            patch("custom_components.hsem.utils.huawei._LOGGER"),
+            pytest.raises(ServiceNotFound),
+        ):
             await async_set_grid_export_power_pct(sensor, "device_abc", 80)
 
     @pytest.mark.asyncio
@@ -384,7 +395,10 @@ class TestAsyncSetTouPeriodsFailures:
         )
         sensor = _make_inverter_sensor(hass)
 
-        with pytest.raises(ServiceNotFound):
+        with (
+            patch("custom_components.hsem.utils.huawei._LOGGER"),
+            pytest.raises(ServiceNotFound),
+        ):
             await async_set_tou_periods(sensor, "bat_device_1", ["00:00-06:00/100/1/0"])
 
     @pytest.mark.asyncio
@@ -437,7 +451,10 @@ class TestAsyncSetForcibleDischargeFailures:
         )
         sensor = _make_inverter_sensor(hass)
 
-        with pytest.raises(ServiceNotFound):
+        with (
+            patch("custom_components.hsem.utils.huawei._LOGGER"),
+            pytest.raises(ServiceNotFound),
+        ):
             await async_set_forcible_discharge(sensor, "bat_device_3", 20, 2500)
 
     @pytest.mark.asyncio
