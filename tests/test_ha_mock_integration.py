@@ -45,12 +45,21 @@ from custom_components.hsem.coordinator import (
     CoordinatorData,
     HSEMDataUpdateCoordinator,
 )
+from custom_components.hsem.custom_sensors.battery_soc_sensor import (
+    HSEMBatterySoCSensor,
+)
 from custom_components.hsem.custom_sensors.degraded_mode_sensor import (
     HSEMDegradedModeSensor,
+)
+from custom_components.hsem.custom_sensors.ev_charging_sensor import (
+    HSEMEVChargingSensor,
 )
 from custom_components.hsem.custom_sensors.force_mode_sensor import HSEMForceModeSensor
 from custom_components.hsem.custom_sensors.hardware_writes_sensor import (
     HSEMHardwareWritesSensor,
+)
+from custom_components.hsem.custom_sensors.last_updated_sensor import (
+    HSEMLastUpdatedSensor,
 )
 from custom_components.hsem.custom_sensors.missing_entities_sensor import (
     HSEMMissingEntitiesSensor,
@@ -62,6 +71,12 @@ from custom_components.hsem.custom_sensors.next_update_sensor import (
     HSEMNextUpdateSensor,
 )
 from custom_components.hsem.custom_sensors.read_only_sensor import HSEMReadOnlySensor
+from custom_components.hsem.custom_sensors.recommendation_interval_sensor import (
+    HSEMRecommendationIntervalSensor,
+)
+from custom_components.hsem.custom_sensors.update_interval_sensor import (
+    HSEMUpdateIntervalSensor,
+)
 from custom_components.hsem.custom_sensors.working_mode_sensor import (
     HSEMWorkingModeSensor,
 )
@@ -1333,6 +1348,307 @@ class TestAdditionalDiagnosticSensors:
         coord = make_bare_coordinator(config_entry=config_entry)
         s = HSEMForceModeSensor(config_entry, coord)
         assert s.state == "auto"
+
+
+# ---------------------------------------------------------------------------
+# TestRemainingDiagnosticSensors — #2, #4, #8, #11, #12
+# ---------------------------------------------------------------------------
+
+
+class TestRemainingDiagnosticSensors:
+    """Tests for HSEMUpdateIntervalSensor, HSEMLastUpdatedSensor,
+    HSEMBatterySoCSensor, HSEMRecommendationIntervalSensor, HSEMEVChargingSensor."""
+
+    def _make_cfg(
+        self,
+        *,
+        update_interval: int = 5,
+        recommendation_interval_minutes: int = 15,
+        recommendation_interval_length: int = 48,
+        ev_second_enabled: bool = False,
+    ) -> SensorConfig:
+        cfg = SensorConfig()
+        cfg.update_interval = update_interval
+        cfg.recommendation_interval_minutes = recommendation_interval_minutes
+        cfg.recommendation_interval_length = recommendation_interval_length
+        cfg.ev_second_enabled = ev_second_enabled
+        return cfg
+
+    def _make_live(
+        self,
+        *,
+        soc_pct: float | None = 75.0,
+        ev_charging: bool = False,
+        ev_second_charging: bool = False,
+    ) -> LiveState:
+        from custom_components.hsem.models.live_state import EVLiveState
+
+        live = LiveState()
+        live.huawei_batteries_soc_pct = soc_pct
+        live.battery_current_capacity_kwh = 6.0
+        live.battery_usable_capacity_kwh = 9.0
+        live.huawei_batteries_rated_capacity_wh = 10000.0
+        live.huawei_batteries_end_of_discharge_soc_pct = 10.0
+        live.ev = EVLiveState(
+            is_charging=ev_charging,
+            power_w=7400.0 if ev_charging else 0.0,
+            soc_pct=55.0,
+        )
+        live.ev_second = EVLiveState(
+            is_charging=ev_second_charging, power_w=0.0, soc_pct=None
+        )
+        return live
+
+    def _make_data(
+        self, cfg: SensorConfig | None = None, live: LiveState | None = None
+    ) -> CoordinatorData:
+        return CoordinatorData(
+            cfg=cfg or self._make_cfg(),
+            live=live or self._make_live(),
+            state="batteries_wait_mode",
+            last_updated="2026-05-12T11:55:00+02:00",
+            next_update="2026-05-12T12:00:00+02:00",
+        )
+
+    # ------------------------------------------------------------------
+    # HSEMUpdateIntervalSensor (#2)
+    # ------------------------------------------------------------------
+
+    def test_update_interval_sensor_is_diagnostic(self) -> None:
+        from homeassistant.const import EntityCategory
+
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        s = HSEMUpdateIntervalSensor(config_entry, coord)
+        assert s._attr_entity_category == EntityCategory.DIAGNOSTIC
+
+    def test_update_interval_native_value(self) -> None:
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        coord.data = self._make_data(cfg=self._make_cfg(update_interval=15))
+        s = HSEMUpdateIntervalSensor(config_entry, coord)
+        assert s.native_value == 15
+
+    def test_update_interval_unit_is_minutes(self) -> None:
+        from homeassistant.const import UnitOfTime
+
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        s = HSEMUpdateIntervalSensor(config_entry, coord)
+        assert s._attr_native_unit_of_measurement == UnitOfTime.MINUTES
+
+    def test_update_interval_attrs_include_recommendation_settings(self) -> None:
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        coord.data = self._make_data(
+            cfg=self._make_cfg(
+                recommendation_interval_minutes=60, recommendation_interval_length=24
+            )
+        )
+        s = HSEMUpdateIntervalSensor(config_entry, coord)
+        attrs = s.extra_state_attributes
+        assert attrs["recommendation_interval_minutes"] == 60
+        assert attrs["recommendation_interval_length_hours"] == 24
+
+    def test_update_interval_none_before_first_cycle(self) -> None:
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        s = HSEMUpdateIntervalSensor(config_entry, coord)
+        assert s.native_value is None
+
+    # ------------------------------------------------------------------
+    # HSEMLastUpdatedSensor (#4)
+    # ------------------------------------------------------------------
+
+    def test_last_updated_sensor_is_diagnostic(self) -> None:
+        from homeassistant.const import EntityCategory
+
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        s = HSEMLastUpdatedSensor(config_entry, coord)
+        assert s._attr_entity_category == EntityCategory.DIAGNOSTIC
+
+    def test_last_updated_state_is_timestamp(self) -> None:
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        coord.data = self._make_data()
+        s = HSEMLastUpdatedSensor(config_entry, coord)
+        assert s.state == "2026-05-12T11:55:00+02:00"
+
+    def test_last_updated_none_before_first_cycle(self) -> None:
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        s = HSEMLastUpdatedSensor(config_entry, coord)
+        assert s.state is None
+
+    def test_last_updated_attrs_include_next_update(self) -> None:
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        coord.data = self._make_data()
+        s = HSEMLastUpdatedSensor(config_entry, coord)
+        assert s.extra_state_attributes["next_update"] == "2026-05-12T12:00:00+02:00"
+
+    # ------------------------------------------------------------------
+    # HSEMBatterySoCSensor (#8)
+    # ------------------------------------------------------------------
+
+    def test_battery_soc_sensor_is_diagnostic(self) -> None:
+        from homeassistant.const import EntityCategory
+
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        s = HSEMBatterySoCSensor(config_entry, coord)
+        assert s._attr_entity_category == EntityCategory.DIAGNOSTIC
+
+    def test_battery_soc_native_value(self) -> None:
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        coord.data = self._make_data(live=self._make_live(soc_pct=83.5))
+        s = HSEMBatterySoCSensor(config_entry, coord)
+        assert s.native_value == pytest.approx(83.5)
+
+    def test_battery_soc_unit_is_percent(self) -> None:
+        from homeassistant.const import PERCENTAGE
+
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        s = HSEMBatterySoCSensor(config_entry, coord)
+        assert s._attr_native_unit_of_measurement == PERCENTAGE
+
+    def test_battery_soc_none_when_unavailable(self) -> None:
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        coord.data = self._make_data(live=self._make_live(soc_pct=None))
+        s = HSEMBatterySoCSensor(config_entry, coord)
+        assert s.native_value is None
+
+    def test_battery_soc_attrs_include_capacity(self) -> None:
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        coord.data = self._make_data()
+        s = HSEMBatterySoCSensor(config_entry, coord)
+        attrs = s.extra_state_attributes
+        assert "battery_current_capacity_kwh" in attrs
+        assert "battery_usable_capacity_kwh" in attrs
+        assert "battery_rated_capacity_wh" in attrs
+        assert "end_of_discharge_soc_pct" in attrs
+
+    # ------------------------------------------------------------------
+    # HSEMRecommendationIntervalSensor (#11)
+    # ------------------------------------------------------------------
+
+    def test_recommendation_interval_sensor_is_diagnostic(self) -> None:
+        from homeassistant.const import EntityCategory
+
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        s = HSEMRecommendationIntervalSensor(config_entry, coord)
+        assert s._attr_entity_category == EntityCategory.DIAGNOSTIC
+
+    def test_recommendation_interval_native_value(self) -> None:
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        coord.data = self._make_data(
+            cfg=self._make_cfg(recommendation_interval_minutes=60)
+        )
+        s = HSEMRecommendationIntervalSensor(config_entry, coord)
+        assert s.native_value == 60
+
+    def test_recommendation_interval_unit_is_minutes(self) -> None:
+        from homeassistant.const import UnitOfTime
+
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        s = HSEMRecommendationIntervalSensor(config_entry, coord)
+        assert s._attr_native_unit_of_measurement == UnitOfTime.MINUTES
+
+    def test_recommendation_interval_attrs_total_slots(self) -> None:
+        """48h / 15min = 192 slots."""
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        coord.data = self._make_data(
+            cfg=self._make_cfg(
+                recommendation_interval_minutes=15, recommendation_interval_length=48
+            )
+        )
+        s = HSEMRecommendationIntervalSensor(config_entry, coord)
+        attrs = s.extra_state_attributes
+        assert attrs["total_planning_slots"] == 192
+        assert attrs["recommendation_interval_length_hours"] == 48
+
+    # ------------------------------------------------------------------
+    # HSEMEVChargingSensor (#12)
+    # ------------------------------------------------------------------
+
+    def test_ev_charging_sensor_is_diagnostic(self) -> None:
+        from homeassistant.const import EntityCategory
+
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        s = HSEMEVChargingSensor(config_entry, coord)
+        assert s._attr_entity_category == EntityCategory.DIAGNOSTIC
+
+    def test_ev_charging_off_when_not_charging(self) -> None:
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        coord.data = self._make_data(live=self._make_live(ev_charging=False))
+        s = HSEMEVChargingSensor(config_entry, coord)
+        assert s.state == "off"
+
+    def test_ev_charging_on_when_primary_is_charging(self) -> None:
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        coord.data = self._make_data(live=self._make_live(ev_charging=True))
+        s = HSEMEVChargingSensor(config_entry, coord)
+        assert s.state == "on"
+
+    def test_ev_charging_on_when_secondary_is_charging(self) -> None:
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        coord.data = self._make_data(
+            live=self._make_live(ev_charging=False, ev_second_charging=True)
+        )
+        s = HSEMEVChargingSensor(config_entry, coord)
+        assert s.state == "on"
+
+    def test_ev_charging_default_off_before_first_cycle(self) -> None:
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        s = HSEMEVChargingSensor(config_entry, coord)
+        assert s.state == "off"
+
+    def test_ev_charging_attrs_include_individual_states(self) -> None:
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        coord.data = self._make_data(live=self._make_live(ev_charging=True))
+        s = HSEMEVChargingSensor(config_entry, coord)
+        attrs = s.extra_state_attributes
+        assert attrs["ev_charging"] is True
+        assert "ev_power_w" in attrs
+        assert "ev_soc_pct" in attrs
+        assert "ev_second_enabled" in attrs
+        assert "ev_second_charging" in attrs
+
+    def test_all_12_diagnostic_sensors_have_distinct_unique_ids(self) -> None:
+        """All 12 coordinator-driven diagnostic sensors must have distinct unique IDs."""
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        sensors = [
+            HSEMDegradedModeSensor(config_entry, coord),
+            HSEMReadOnlySensor(config_entry, coord),
+            HSEMNextUpdateSensor(config_entry, coord),
+            HSEMLastUpdatedSensor(config_entry, coord),
+            HSEMUpdateIntervalSensor(config_entry, coord),
+            HSEMRecommendationIntervalSensor(config_entry, coord),
+            HSEMMissingEntitiesSensor(config_entry, coord),
+            HSEMHardwareWritesSensor(config_entry, coord),
+            HSEMNetConsumptionSensor(config_entry, coord),
+            HSEMBatterySoCSensor(config_entry, coord),
+            HSEMForceModeSensor(config_entry, coord),
+            HSEMEVChargingSensor(config_entry, coord),
+        ]
+        uids = [s.unique_id for s in sensors]
+        assert len(uids) == len(set(uids)), f"Duplicate unique_ids: {uids}"
 
 
 # ---------------------------------------------------------------------------

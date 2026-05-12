@@ -368,3 +368,83 @@ def get_force_mode_sensor_unique_id() -> str:
 def get_force_mode_sensor_entity_id() -> str:
     """Return the entity_id for the force-working-mode sensor."""
     return sensor.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_force_mode_sensor"))
+
+
+# Update Interval Sensor
+def get_update_interval_sensor_name() -> str:
+    """Return the display name for the update-interval diagnostic sensor."""
+    return "Update Interval"
+
+
+def get_update_interval_sensor_unique_id() -> str:
+    """Return a unique ID for the update-interval sensor."""
+    return f"{DOMAIN}_update_interval_sensor"
+
+
+def get_update_interval_sensor_entity_id() -> str:
+    """Return the entity_id for the update-interval sensor."""
+    return sensor.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_update_interval_sensor"))
+
+
+# Last Updated Sensor
+def get_last_updated_sensor_name() -> str:
+    """Return the display name for the last-updated diagnostic sensor."""
+    return "Last Updated"
+
+
+def get_last_updated_sensor_unique_id() -> str:
+    """Return a unique ID for the last-updated sensor."""
+    return f"{DOMAIN}_last_updated_sensor"
+
+
+def get_last_updated_sensor_entity_id() -> str:
+    """Return the entity_id for the last-updated sensor."""
+    return sensor.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_last_updated_sensor"))
+
+
+# Battery SoC Sensor
+def get_battery_soc_sensor_name() -> str:
+    """Return the display name for the battery-SoC diagnostic sensor."""
+    return "Battery State of Charge"
+
+
+def get_battery_soc_sensor_unique_id() -> str:
+    """Return a unique ID for the battery-SoC sensor."""
+    return f"{DOMAIN}_battery_soc_sensor"
+
+
+def get_battery_soc_sensor_entity_id() -> str:
+    """Return the entity_id for the battery-SoC sensor."""
+    return sensor.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_battery_soc_sensor"))
+
+
+# Recommendation Interval Sensor
+def get_recommendation_interval_sensor_name() -> str:
+    """Return the display name for the recommendation-interval diagnostic sensor."""
+    return "Recommendation Interval"
+
+
+def get_recommendation_interval_sensor_unique_id() -> str:
+    """Return a unique ID for the recommendation-interval sensor."""
+    return f"{DOMAIN}_recommendation_interval_sensor"
+
+
+def get_recommendation_interval_sensor_entity_id() -> str:
+    """Return the entity_id for the recommendation-interval sensor."""
+    return sensor.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_recommendation_interval_sensor"))
+
+
+# EV Charging Active Sensor
+def get_ev_charging_sensor_name() -> str:
+    """Return the display name for the EV-charging-active diagnostic sensor."""
+    return "EV Charging Active"
+
+
+def get_ev_charging_sensor_unique_id() -> str:
+    """Return a unique ID for the EV-charging sensor."""
+    return f"{DOMAIN}_ev_charging_sensor"
+
+
+def get_ev_charging_sensor_entity_id() -> str:
+    """Return the entity_id for the EV-charging sensor."""
+    return sensor.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_ev_charging_sensor"))
