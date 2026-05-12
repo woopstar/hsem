@@ -25,6 +25,9 @@ When asked to solve a GitHub issue, always follow these steps in order:
    - Tests added or updated
    - Test and lint results
 9. **Create a pull request** linked to the issue using `Fixes #<ISSUE_NUMBER>` in the description.
+10. **Keep the PR up to date** — after every follow-up commit on a branch that already has an open
+    PR, update both the PR title and description to reflect the current state of all changes made.
+    Tick off any completed acceptance criteria in the PR checklist.
 
 ## Issue-Solving Rules
 - Always read `AGENTS.md` and `CLAUDE.md` before starting any issue work.

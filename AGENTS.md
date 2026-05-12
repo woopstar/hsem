@@ -186,6 +186,18 @@ Each PR should include:
 
 The agent must NOT merge a PR without explicit user permission.
 
+### Keeping an Open PR Up to Date
+
+If a PR already exists for the current branch and work continues on it, the agent MUST update the
+PR after every meaningful commit:
+
+- **Title** — keep it accurate to the current scope using Conventional Commits format.
+- **Description** — reflect every change made since the PR was opened: new files, updated logic,
+  additional tests, and any acceptance criteria that were added or completed.
+- **Checklist** — tick off acceptance criteria that are now satisfied.
+- Use the GitHub API or CLI (`gh pr edit`) to apply updates; do NOT leave the PR description
+  stale after follow-up commits.
+
 Before merging any PR, the agent MUST ensure:
 
 - All required CI/status checks are green/passing (including ruff format check)
