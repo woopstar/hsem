@@ -288,3 +288,83 @@ def get_read_only_sensor_entity_id() -> str:
 
     """
     return sensor.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_read_only_sensor"))
+
+
+# Next Update Sensor
+def get_next_update_sensor_name() -> str:
+    """Return the display name for the next-update diagnostic sensor."""
+    return "Next Update"
+
+
+def get_next_update_sensor_unique_id() -> str:
+    """Return a unique ID for the next-update sensor."""
+    return f"{DOMAIN}_next_update_sensor"
+
+
+def get_next_update_sensor_entity_id() -> str:
+    """Return the entity_id for the next-update sensor."""
+    return sensor.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_next_update_sensor"))
+
+
+# Missing Entities Sensor
+def get_missing_entities_sensor_name() -> str:
+    """Return the display name for the missing-entities count diagnostic sensor."""
+    return "Missing Input Entities"
+
+
+def get_missing_entities_sensor_unique_id() -> str:
+    """Return a unique ID for the missing-entities sensor."""
+    return f"{DOMAIN}_missing_entities_sensor"
+
+
+def get_missing_entities_sensor_entity_id() -> str:
+    """Return the entity_id for the missing-entities sensor."""
+    return sensor.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_missing_entities_sensor"))
+
+
+# Hardware Writes Blocked Sensor
+def get_hardware_writes_sensor_name() -> str:
+    """Return the display name for the hardware-writes-blocked diagnostic sensor."""
+    return "Hardware Writes"
+
+
+def get_hardware_writes_sensor_unique_id() -> str:
+    """Return a unique ID for the hardware-writes-blocked sensor."""
+    return f"{DOMAIN}_hardware_writes_sensor"
+
+
+def get_hardware_writes_sensor_entity_id() -> str:
+    """Return the entity_id for the hardware-writes-blocked sensor."""
+    return sensor.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_hardware_writes_sensor"))
+
+
+# Net Consumption Sensor
+def get_net_consumption_sensor_name() -> str:
+    """Return the display name for the net-consumption diagnostic sensor."""
+    return "Net Consumption"
+
+
+def get_net_consumption_sensor_unique_id() -> str:
+    """Return a unique ID for the net-consumption sensor."""
+    return f"{DOMAIN}_net_consumption_sensor"
+
+
+def get_net_consumption_sensor_entity_id() -> str:
+    """Return the entity_id for the net-consumption sensor."""
+    return sensor.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_net_consumption_sensor"))
+
+
+# Force Working Mode Sensor
+def get_force_mode_sensor_name() -> str:
+    """Return the display name for the force-working-mode diagnostic sensor."""
+    return "Force Working Mode"
+
+
+def get_force_mode_sensor_unique_id() -> str:
+    """Return a unique ID for the force-working-mode sensor."""
+    return f"{DOMAIN}_force_mode_sensor"
+
+
+def get_force_mode_sensor_entity_id() -> str:
+    """Return the entity_id for the force-working-mode sensor."""
+    return sensor.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_force_mode_sensor"))
