@@ -156,9 +156,10 @@ class TestStateCollectorReadMissingOnError:
                 "custom_components.hsem.custom_sensors.state_collector"
                 "._register_listeners",
                 new_callable=AsyncMock,
+                return_value=[],
             ),
         ):
-            live, _ = await async_collect_live_state(sensor, cfg, None, set())
+            live, _, _unsubs = await async_collect_live_state(sensor, cfg, None, set())
 
         assert live.missing_entities is True
 
@@ -196,9 +197,10 @@ class TestStateCollectorReadMissingOnError:
                 "custom_components.hsem.custom_sensors.state_collector"
                 "._register_listeners",
                 new_callable=AsyncMock,
+                return_value=[],
             ),
         ):
-            live, _ = await async_collect_live_state(sensor, cfg, None, set())
+            live, _, _unsubs = await async_collect_live_state(sensor, cfg, None, set())
 
         # Critical battery sensors are unavailable → missing_entities
         assert live.missing_entities is True
@@ -417,7 +419,13 @@ class TestAsyncSetTouPeriodsFailures:
 
     @pytest.mark.asyncio
     async def test_service_missing_exits_early(self):
-        """When the service does not exist, the function returns without calling it."""
+        """When the service does not exist, ServiceNotFound is raised immediately.
+
+        Previously the function logged an error and returned silently, which
+        caused write-and-verify to report success even though the write was never
+        performed.  The corrected behaviour raises ServiceNotFound so the caller
+        can record the failure.
+        """
         from custom_components.hsem.utils.huawei import async_set_tou_periods
 
         hass = MagicMock()
@@ -425,8 +433,8 @@ class TestAsyncSetTouPeriodsFailures:
         hass.services.async_call = AsyncMock()
         sensor = _make_inverter_sensor(hass)
 
-        # Should NOT raise — early return path
-        await async_set_tou_periods(sensor, "bat_device_2", ["00:00-06:00/100/1/0"])
+        with pytest.raises(ServiceNotFound):
+            await async_set_tou_periods(sensor, "bat_device_2", ["00:00-06:00/100/1/0"])
         hass.services.async_call.assert_not_called()
 
 
@@ -501,7 +509,13 @@ class TestAsyncSetForcibleDischargeFailures:
 
     @pytest.mark.asyncio
     async def test_service_missing_exits_early(self):
-        """When the service does not exist, the function returns without calling it."""
+        """When the service does not exist, ServiceNotFound is raised immediately.
+
+        Previously the function logged an error and returned silently, which
+        caused write-and-verify to report success even though the write was never
+        performed.  The corrected behaviour raises ServiceNotFound so the caller
+        can record the failure.
+        """
         from custom_components.hsem.utils.huawei import async_set_forcible_discharge
 
         hass = MagicMock()
@@ -509,7 +523,8 @@ class TestAsyncSetForcibleDischargeFailures:
         hass.services.async_call = AsyncMock()
         sensor = _make_inverter_sensor(hass)
 
-        await async_set_forcible_discharge(sensor, "bat_device_4", 20, 1000)
+        with pytest.raises(ServiceNotFound):
+            await async_set_forcible_discharge(sensor, "bat_device_4", 20, 1000)
         hass.services.async_call.assert_not_called()
 
 

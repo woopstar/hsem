@@ -119,6 +119,8 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
         # Track which derived sensors have already been created to avoid duplicate adds.
         self._derived_sensors_created: set[str] = set()
         self._tracked_entities = set()
+        # Unsubscribe callbacks registered by async_track_* helpers.
+        self._unsub_callbacks: list = []
         self._async_add_entities = async_add_entities
         self._name = get_house_consumption_power_sensor_name(
             self._hour_start, self._hour_end
@@ -215,6 +217,13 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
 
         await super().async_added_to_hass()
 
+    async def async_will_remove_from_hass(self) -> None:
+        """Cancel all tracked listeners when the entity is removed."""
+        for unsub in self._unsub_callbacks:
+            unsub()
+        self._unsub_callbacks.clear()
+        await super().async_will_remove_from_hass()
+
     def _update_settings(self) -> None:
         """Fetch updated settings from config_entry options."""
         self._hsem_house_consumption_power = get_config_value(
@@ -308,11 +317,12 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
                 _LOGGER.debug(
                     f"Starting to track state changes for {self._hsem_house_consumption_power}"
                 )
-                async_track_state_change_event(
+                unsub = async_track_state_change_event(
                     self.hass,
                     [self._hsem_house_consumption_power],
                     self._async_handle_update,
                 )
+                self._unsub_callbacks.append(unsub)
                 self._tracked_entities.add(self._hsem_house_consumption_power)
 
         if self._hsem_ev_charger_power:
@@ -320,9 +330,10 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
                 _LOGGER.debug(
                     f"Starting to track state changes for {self._hsem_ev_charger_power}"
                 )
-                async_track_state_change_event(
+                unsub = async_track_state_change_event(
                     self.hass, [self._hsem_ev_charger_power], self._async_handle_update
                 )
+                self._unsub_callbacks.append(unsub)
                 self._tracked_entities.add(self._hsem_ev_charger_power)
 
     async def _async_fetch_sensor_states(self) -> None:

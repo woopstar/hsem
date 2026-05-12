@@ -176,6 +176,9 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         # Entity resolution cache (persisted across cycles).
         self._force_working_mode_entity: str | None = None
         self._tracked_entities: set[str] = set()
+        # Unsubscribe callbacks for state-change listeners registered via
+        # state_collector._register_listeners.  Cancelled during async_teardown.
+        self._listener_unsubs: list = []
         self._avg_house_consumption_entity_id_cache: dict[str, str] = {}
 
     # ------------------------------------------------------------------
@@ -201,7 +204,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         )
 
     async def async_teardown(self) -> None:
-        """Cancel all registered timers.
+        """Cancel all registered timers and state-change listeners.
 
         Called from :func:`~custom_components.hsem.__init__.async_unload_entry`.
         """
@@ -211,6 +214,9 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         if self._interval_timer_unsub is not None:
             self._interval_timer_unsub()
             self._interval_timer_unsub = None
+        for unsub in self._listener_unsubs:
+            unsub()
+        self._listener_unsubs.clear()
 
     async def async_options_updated(self) -> None:
         """Re-run the pipeline when the user saves new options."""
@@ -252,12 +258,14 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             (
                 self._live,
                 self._force_working_mode_entity,
+                new_unsubs,
             ) = await async_collect_live_state(
                 self,
                 cfg,
                 self._force_working_mode_entity,
                 self._tracked_entities,
             )
+            self._listener_unsubs.extend(new_unsubs)
             live = self._live
 
             # 3. Reset and generate recommendation time-slots.
