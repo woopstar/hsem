@@ -345,7 +345,19 @@ class HSEMWorkingModeSensor(
         # Gate hardware writes on read_only and degraded mode.
         writes_safe = hardware_writes_allowed(live.degraded_mode)
         combined_summary = CycleApplySummary()
-        if not cfg.read_only and writes_safe:
+        if cfg.read_only:
+            await async_logger(
+                self,
+                "Hardware writes SKIPPED — read_only=True",
+                "warning",
+            )
+        elif not writes_safe:
+            await async_logger(
+                self,
+                f"Hardware writes BLOCKED — degraded mode: {live.degraded_mode.value}. Missing: {live.missing_entities_list}",
+                "warning",
+            )
+        else:
             inv_summary = await async_apply_inverter_power_control(self, cfg, live)
             combined_summary.results.extend(inv_summary.results)
 
@@ -362,12 +374,6 @@ class HSEMWorkingModeSensor(
                     data.current_required_battery,
                 )
                 combined_summary.results.extend(bat_summary.results)
-        elif not cfg.read_only and not writes_safe:
-            await async_logger(
-                self,
-                f"Hardware writes BLOCKED — degraded mode: {live.degraded_mode.value}. Missing: {live.missing_entities_list}",
-                "warning",
-            )
 
         # Persist the apply summary onto the coordinator data so the status
         # sensor and extra_state_attributes can surface it to HA.
