@@ -10,7 +10,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from custom_components.hsem.models.time_series import TimeSeriesIndex
 
 
 @dataclass
@@ -155,6 +158,11 @@ class PlannerOutput:
             during planning.  An empty list means all inputs were present.
         warnings:
             Human-readable warning strings emitted during planning.
+        time_series_index:
+            The shared :class:`~custom_components.hsem.models.time_series.TimeSeriesIndex`
+            used during this planning run.  All slot boundaries, price, PV,
+            load, import/export and SoC series are aligned to this axis.
+            ``None`` when the planner was invoked without a valid horizon.
         extra:
             Arbitrary key-value pairs for debug / introspection purposes.
     """
@@ -167,6 +175,7 @@ class PlannerOutput:
     required_capacity_kwh: float = 0.0
     missing_inputs: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    time_series_index: TimeSeriesIndex | None = field(default=None, repr=False)
     extra: dict[str, Any] = field(default_factory=dict)
 
     # ------------------------------------------------------------------

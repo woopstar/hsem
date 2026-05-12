@@ -43,6 +43,7 @@ from custom_components.hsem.planner.charge_scheduler import (
 )
 from custom_components.hsem.planner.slot_population import (
     build_slots,
+    build_time_series_index,
     mark_time_passed,
     populate_battery_capacity,
     populate_consumption,
@@ -121,7 +122,10 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
             "Results may not be meaningful."
         )
 
-    # Generate slots
+    # Build shared time-series index — single source of truth for all slot boundaries
+    tsi = build_time_series_index(inp, now)
+
+    # Generate slots (boundaries come from TSI for DST-safe consistency)
     slots = build_slots(inp, now)
     if not slots:
         warnings.append(
@@ -129,9 +133,9 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         )
         return PlannerOutput(missing_inputs=missing_inputs, warnings=warnings)
 
-    # Populate time-series
-    populate_prices(slots, inp.price_points)
-    populate_solcast(slots, inp.solcast_slots, inp.interval_minutes)
+    # Populate time-series — all series aligned to the shared TSI axis
+    populate_prices(slots, inp.price_points, tsi)
+    populate_solcast(slots, inp.solcast_slots, inp.interval_minutes, tsi)
     populate_consumption(
         slots,
         inp.consumption_averages,
@@ -140,7 +144,12 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         inp.weight_7d,
         inp.weight_14d,
         inp.interval_minutes,
+        tsi,
     )
+
+    # Surface any hours where input data was absent
+    for hour in sorted(tsi.missing_hours()):
+        missing_inputs.append(f"hour_{hour:02d}")
     populate_net_consumption(slots)
     populate_estimated_cost(slots)
 
@@ -228,6 +237,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         required_capacity_kwh=required_capacity,
         missing_inputs=missing_inputs,
         warnings=warnings,
+        time_series_index=tsi,
     )
 
 

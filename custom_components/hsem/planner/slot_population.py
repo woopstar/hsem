@@ -9,7 +9,8 @@ passed in.  No Home Assistant imports.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+import math
+from datetime import datetime
 from typing import Any
 
 from custom_components.hsem.const import (
@@ -52,6 +53,7 @@ from custom_components.hsem.models.planner_inputs import (
     SolcastSlot,
 )
 from custom_components.hsem.models.planner_outputs import PlannedSlot
+from custom_components.hsem.models.time_series import TimeSeriesIndex
 from custom_components.hsem.utils.recommendations import Recommendations
 
 # ---------------------------------------------------------------------------
@@ -59,11 +61,32 @@ from custom_components.hsem.utils.recommendations import Recommendations
 # ---------------------------------------------------------------------------
 
 
+def build_time_series_index(inp: PlannerInput, now: datetime) -> TimeSeriesIndex:
+    """Build the shared :class:`TimeSeriesIndex` for a planning run.
+
+    The index is the single source of truth for slot boundaries.  All
+    populate functions should derive their slot positions from the index
+    rather than computing ``start.hour`` independently.
+
+    Args:
+        inp: Planner input containing interval and horizon settings.
+        now: Timezone-aware current datetime.
+
+    Returns:
+        A fully constructed :class:`TimeSeriesIndex`.
+    """
+    return TimeSeriesIndex.from_now(
+        now,
+        interval_minutes=inp.interval_minutes,
+        horizon_hours=inp.interval_length_hours,
+    )
+
+
 def build_slots(inp: PlannerInput, now: datetime) -> list[PlannedSlot]:
     """Generate a chronologically ordered list of empty :class:`PlannedSlot` objects.
 
-    Slots start at midnight of *now*'s local calendar day and cover
-    ``interval_length_hours`` hours at ``interval_minutes`` resolution.
+    Slot boundaries are derived from a :class:`TimeSeriesIndex` so that
+    every slot is DST-safe and consistent with the shared time axis.
 
     Args:
         inp: Planner input containing interval settings.
@@ -72,16 +95,8 @@ def build_slots(inp: PlannerInput, now: datetime) -> list[PlannedSlot]:
     Returns:
         List of empty :class:`PlannedSlot` objects.
     """
-    midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    steps = int((inp.interval_length_hours * 60) / inp.interval_minutes)
-
-    return [
-        PlannedSlot(
-            start=midnight + timedelta(minutes=i * inp.interval_minutes),
-            end=midnight + timedelta(minutes=(i + 1) * inp.interval_minutes),
-        )
-        for i in range(steps)
-    ]
+    tsi = build_time_series_index(inp, now)
+    return [PlannedSlot(start=meta.start, end=meta.end) for meta in tsi]
 
 
 def index_by_hour(items: list, hour_attr: str = "hour") -> dict[int, Any]:
@@ -94,15 +109,34 @@ def index_by_hour(items: list, hour_attr: str = "hour") -> dict[int, Any]:
 # ---------------------------------------------------------------------------
 
 
-def populate_prices(slots: list[PlannedSlot], price_points: list[PricePoint]) -> None:
+def populate_prices(
+    slots: list[PlannedSlot],
+    price_points: list[PricePoint],
+    tsi: TimeSeriesIndex | None = None,
+) -> None:
     """Write import/export prices into each slot from ``price_points``.
 
-    Price lookup is by the slot's ``start.hour``. Missing hours default to 0.
+    When a :class:`TimeSeriesIndex` is provided the prices are aligned via
+    the shared slot index so that all series use the same time axis.  Missing
+    hours (``NaN`` sentinel) default to 0 to preserve backward-compatible
+    behaviour.
 
     Args:
         slots: Mutable list of planned slots to update.
         price_points: Per-hour price data.
+        tsi: Optional shared time-series index.  When supplied, alignment is
+            delegated to :meth:`TimeSeriesIndex.align_hourly_prices` so that
+            missing slots are tracked centrally.
     """
+    if tsi is not None:
+        imp_prices = {pp.hour: pp.import_price for pp in price_points}
+        exp_prices = {pp.hour: pp.export_price for pp in price_points}
+        aligned_imp, aligned_exp = tsi.align_hourly_prices(imp_prices, exp_prices)
+        for slot, imp, exp in zip(slots, aligned_imp, aligned_exp):
+            slot.import_price = 0.0 if math.isnan(imp) else imp
+            slot.export_price = 0.0 if math.isnan(exp) else exp
+        return
+
     price_by_hour = index_by_hour(price_points)
     for slot in slots:
         pt = price_by_hour.get(slot.start.hour)
@@ -115,17 +149,29 @@ def populate_solcast(
     slots: list[PlannedSlot],
     solcast_slots: list[SolcastSlot],
     interval_minutes: int,
+    tsi: TimeSeriesIndex | None = None,
 ) -> None:
     """Write PV estimates into each slot, scaled to the slot duration.
 
     Solcast data is provided per *hour*; if the slot duration is shorter
     (e.g. 15 min) the estimate is divided proportionally.
 
+    When a :class:`TimeSeriesIndex` is provided the PV series is aligned via
+    the shared slot index and missing slots are tracked centrally.
+
     Args:
         slots: Mutable list of planned slots to update.
         solcast_slots: Per-hour Solcast PV estimate data.
         interval_minutes: Slot width in minutes.
+        tsi: Optional shared time-series index.
     """
+    if tsi is not None:
+        pv_by_hour = {sc.hour: sc.pv_estimate for sc in solcast_slots}
+        aligned = tsi.align_hourly_pv(pv_by_hour)
+        for slot, val in zip(slots, aligned):
+            slot.solcast_pv_estimate = 0.0 if math.isnan(val) else round(val, 3)
+        return
+
     solcast_by_hour = index_by_hour(solcast_slots)
     scale = 60.0 / interval_minutes  # e.g. 4 for 15-min slots
 
@@ -142,15 +188,52 @@ def populate_consumption(
     w7: int,
     w14: int,
     interval_minutes: int,
+    tsi: TimeSeriesIndex | None = None,
 ) -> None:
     """Compute and write spike-aware weighted consumption into each slot.
+
+    When a :class:`TimeSeriesIndex` is provided each sub-series (1d, 3d, 7d,
+    14d) is individually aligned via the shared slot axis so that missing
+    hours are tracked centrally rather than silently defaulted to zero.
 
     Args:
         slots: Mutable list of planned slots to update.
         averages: Per-hour historical consumption averages.
         w1..w14: Configured integer weights (percent).
         interval_minutes: Slot width in minutes.
+        tsi: Optional shared time-series index.
     """
+    if tsi is not None:
+        avg_1d = {ca.hour: ca.avg_1d for ca in averages}
+        avg_3d = {ca.hour: ca.avg_3d for ca in averages}
+        avg_7d = {ca.hour: ca.avg_7d for ca in averages}
+        avg_14d = {ca.hour: ca.avg_14d for ca in averages}
+        aligned_1d = tsi.align_hourly_load(avg_1d)
+        aligned_3d = tsi.align_hourly_load(avg_3d)
+        aligned_7d = tsi.align_hourly_load(avg_7d)
+        aligned_14d = tsi.align_hourly_load(avg_14d)
+        for i, (slot, v1, v3, v7, v14) in enumerate(
+            zip(slots, aligned_1d, aligned_3d, aligned_7d, aligned_14d)
+        ):
+            if any(math.isnan(v) for v in (v1, v3, v7, v14)):
+                continue  # missing data — leave defaults
+            # Reverse the slot_fraction scaling: TSI already applied it;
+            # weighted_avg_consumption expects hourly values, so undo scaling.
+            sf = tsi.slots[i].slot_fraction
+            if abs(sf) < 1e-9:
+                continue
+            h1 = v1 / sf
+            h3 = v3 / sf
+            h7 = v7 / sf
+            h14 = v14 / sf
+            hourly_avg = weighted_avg_consumption(h1, h3, h7, h14, w1, w3, w7, w14)
+            slot.avg_house_consumption = round(hourly_avg * sf, 3)
+            slot.avg_house_consumption_1d = round(v1, 3)
+            slot.avg_house_consumption_3d = round(v3, 3)
+            slot.avg_house_consumption_7d = round(v7, 3)
+            slot.avg_house_consumption_14d = round(v14, 3)
+        return
+
     avg_by_hour = index_by_hour(averages)
     scale = 60.0 / interval_minutes
 
