@@ -226,3 +226,34 @@ def get_working_mode_sensor_entity_id() -> str:
 
     """
     return sensor.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_workingmode_sensor"))
+
+
+# Degraded Mode Sensor
+def get_degraded_mode_sensor_name() -> str:
+    """Return the display name for the degraded-mode diagnostic sensor.
+
+    Returns:
+        str: Display name.
+
+    """
+    return "System Health"
+
+
+def get_degraded_mode_sensor_unique_id() -> str:
+    """Return a unique ID for the degraded-mode sensor.
+
+    Returns:
+        str: Unique ID.
+
+    """
+    return f"{DOMAIN}_degraded_mode_sensor"
+
+
+def get_degraded_mode_sensor_entity_id() -> str:
+    """Return the entity_id for the degraded-mode sensor.
+
+    Returns:
+        str: Entity ID.
+
+    """
+    return sensor.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_degraded_mode_sensor"))
