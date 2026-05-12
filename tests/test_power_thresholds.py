@@ -33,6 +33,7 @@ from custom_components.hsem.planner.charge_scheduler import (
     apply_charge_schedules,
     apply_optimization_strategy,
 )
+from custom_components.hsem.utils.prices import SlotPrice
 from custom_components.hsem.utils.recommendations import Recommendations
 
 # ---------------------------------------------------------------------------
@@ -58,8 +59,7 @@ def _slot(
     return PlannedSlot(
         start=start,
         end=end,
-        import_price=import_price,
-        export_price=export_price,
+        price=SlotPrice(import_price=import_price, export_price=export_price),
         estimated_net_consumption=net_consumption,
         recommendation=recommendation,
     )
