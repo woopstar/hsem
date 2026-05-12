@@ -494,12 +494,35 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             or None,
             battery_conversion_loss_pct=convert_to_float(cfg.batteries_conversion_loss),
             battery_purchase_price=convert_to_float(cfg.batteries_purchase_price),
-            battery_expected_cycles=convert_to_int(cfg.batteries_expected_cycles)
-            or 6000,
-            weight_1d=convert_to_int(cfg.house_consumption_energy_weight_1d) or 25,
-            weight_3d=convert_to_int(cfg.house_consumption_energy_weight_3d) or 30,
-            weight_7d=convert_to_int(cfg.house_consumption_energy_weight_7d) or 30,
-            weight_14d=convert_to_int(cfg.house_consumption_energy_weight_14d) or 15,
+            battery_expected_cycles=(
+                v
+                if (v := convert_to_int(cfg.batteries_expected_cycles)) is not None
+                else 6000
+            ),
+            weight_1d=(
+                v
+                if (v := convert_to_int(cfg.house_consumption_energy_weight_1d))
+                is not None
+                else 25
+            ),
+            weight_3d=(
+                v
+                if (v := convert_to_int(cfg.house_consumption_energy_weight_3d))
+                is not None
+                else 30
+            ),
+            weight_7d=(
+                v
+                if (v := convert_to_int(cfg.house_consumption_energy_weight_7d))
+                is not None
+                else 30
+            ),
+            weight_14d=(
+                v
+                if (v := convert_to_int(cfg.house_consumption_energy_weight_14d))
+                is not None
+                else 15
+            ),
             consumption_averages=consumption_averages,
             price_points=price_points,
             solcast_slots=solcast_slots,

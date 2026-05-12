@@ -141,8 +141,9 @@ async def async_apply_battery_settings(
     tou_modes = None
     working_mode = None
 
+    _rated_capacity = convert_to_int(live.huawei_batteries_rated_capacity_wh)
     max_discharge_power = get_max_discharge_power(
-        convert_to_int(live.huawei_batteries_rated_capacity_wh)
+        _rated_capacity if _rated_capacity is not None else 0
     )
 
     # Set maximum discharging power unless EV is charging

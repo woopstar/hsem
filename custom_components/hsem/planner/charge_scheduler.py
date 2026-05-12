@@ -328,8 +328,13 @@ def apply_excess_export(
             grid-charged batteries.
         warnings: Mutable list to append diagnostic messages to.
     """
-    excess = current_capacity - required_capacity
-    if excess <= 0:
+    # battery_discharge_budget_kwh is the kWh the battery can export beyond what is
+    # already needed to cover future house load.  Solar surplus in a slot does NOT
+    # add to this budget: solar is a separate energy flow and is already accounted for
+    # in estimated_net_consumption.  Only positive net consumption (house load > solar)
+    # draws down the battery, so we drain the budget by max(net, 0) per slot.
+    battery_discharge_budget_kwh = current_capacity - required_capacity
+    if battery_discharge_budget_kwh <= 0:
         return
 
     battery_is_solar_charged = any(
@@ -353,16 +358,16 @@ def apply_excess_export(
     )
 
     for s in candidates:
-        if excess <= 0:
+        if battery_discharge_budget_kwh <= 0:
             break
         s.recommendation = Recommendations.ForceBatteriesDischarge.value
         warnings.append(
             f"ForceBatteriesDischarge at {s.start.isoformat()}: export={s.export_price}"
         )
-        # Subtract net consumption directly.  Positive values (house load >  solar)
-        # reduce the available excess; negative values (solar surplus) increase it,
-        # correctly reflecting that a surplus slot frees up battery export headroom.
-        excess -= s.estimated_net_consumption
+        # Only positive net consumption (house load > solar) draws from the battery
+        # discharge budget.  Solar-surplus slots (net < 0) contribute 0 drain because
+        # the surplus is handled by solar, not by the battery.
+        battery_discharge_budget_kwh -= max(s.estimated_net_consumption, 0.0)
 
 
 # ---------------------------------------------------------------------------

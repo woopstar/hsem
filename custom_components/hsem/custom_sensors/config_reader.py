@@ -52,17 +52,27 @@ def build_sensor_config(config_entry) -> SensorConfig:
     cfg.extended_attributes = convert_to_boolean(
         get_config_value(config_entry, "hsem_extended_attributes")
     )
-    cfg.update_interval = convert_to_int(
+    _update_interval = convert_to_int(
         get_config_value(config_entry, "hsem_update_interval")
     )
-    cfg.recommendation_interval_minutes = convert_to_int(
+    cfg.update_interval = _update_interval if _update_interval is not None else 5
+    _rec_interval_min = convert_to_int(
         get_config_value(config_entry, "hsem_recommendation_interval_minutes")
     )
-    cfg.recommendation_interval_length = convert_to_int(
+    cfg.recommendation_interval_minutes = (
+        _rec_interval_min if _rec_interval_min is not None else 15
+    )
+    _rec_interval_len = convert_to_int(
         get_config_value(config_entry, "hsem_recommendation_interval_length")
     )
-    cfg.energi_data_service_update_interval = convert_to_int(
+    cfg.recommendation_interval_length = (
+        _rec_interval_len if _rec_interval_len is not None else 48
+    )
+    _eds_update_interval = convert_to_int(
         get_config_value(config_entry, "hsem_energi_data_service_update_interval")
+    )
+    cfg.energi_data_service_update_interval = (
+        _eds_update_interval if _eds_update_interval is not None else 15
     )
 
     # Seasonal months
@@ -179,9 +189,10 @@ def build_sensor_config(config_entry) -> SensorConfig:
     ev.force_max_discharge_power = convert_to_boolean(
         get_config_value(config_entry, "hsem_ev_charger_force_max_discharge_power")
     )
-    ev.max_discharge_power = convert_to_int(
+    _ev_max_discharge = convert_to_int(
         get_config_value(config_entry, "hsem_ev_charger_max_discharge_power")
     )
+    ev.max_discharge_power = _ev_max_discharge if _ev_max_discharge is not None else 0
     cfg.ev = ev
 
     # Second EV charger
@@ -209,8 +220,11 @@ def build_sensor_config(config_entry) -> SensorConfig:
             config_entry, "hsem_ev_second_charger_force_max_discharge_power"
         )
     )
-    ev2.max_discharge_power = convert_to_int(
+    _ev2_max_discharge = convert_to_int(
         get_config_value(config_entry, "hsem_ev_second_charger_max_discharge_power")
+    )
+    ev2.max_discharge_power = (
+        _ev2_max_discharge if _ev2_max_discharge is not None else 0
     )
     cfg.ev_second = ev2
 
@@ -221,8 +235,11 @@ def build_sensor_config(config_entry) -> SensorConfig:
     cfg.batteries_purchase_price = convert_to_float(
         get_config_value(config_entry, "hsem_batteries_purchase_price")
     )
-    cfg.batteries_expected_cycles = convert_to_int(
+    _expected_cycles = convert_to_int(
         get_config_value(config_entry, "hsem_batteries_expected_cycles")
+    )
+    cfg.batteries_expected_cycles = (
+        _expected_cycles if _expected_cycles is not None else 6000
     )
 
     # Battery schedules
@@ -302,18 +319,22 @@ def build_sensor_config(config_entry) -> SensorConfig:
     )
 
     # Consumption weights
-    cfg.house_consumption_energy_weight_1d = convert_to_int(
+    _w1d = convert_to_int(
         get_config_value(config_entry, "hsem_house_consumption_energy_weight_1d")
     )
-    cfg.house_consumption_energy_weight_3d = convert_to_int(
+    cfg.house_consumption_energy_weight_1d = _w1d if _w1d is not None else 25
+    _w3d = convert_to_int(
         get_config_value(config_entry, "hsem_house_consumption_energy_weight_3d")
     )
-    cfg.house_consumption_energy_weight_7d = convert_to_int(
+    cfg.house_consumption_energy_weight_3d = _w3d if _w3d is not None else 30
+    _w7d = convert_to_int(
         get_config_value(config_entry, "hsem_house_consumption_energy_weight_7d")
     )
-    cfg.house_consumption_energy_weight_14d = convert_to_int(
+    cfg.house_consumption_energy_weight_7d = _w7d if _w7d is not None else 30
+    _w14d = convert_to_int(
         get_config_value(config_entry, "hsem_house_consumption_energy_weight_14d")
     )
+    cfg.house_consumption_energy_weight_14d = _w14d if _w14d is not None else 15
 
     return cfg
 
