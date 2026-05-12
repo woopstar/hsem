@@ -349,9 +349,8 @@ class HSEMWorkingModeSensor(
         elif not cfg.read_only and not writes_safe:
             await async_logger(
                 self,
-                "Hardware writes BLOCKED — degraded mode: %s. Missing: %s",
-                live.degraded_mode.value,
-                live.missing_entities_list,
+                f"Hardware writes BLOCKED — degraded mode: {live.degraded_mode.value}. Missing: {live.missing_entities_list}",
+                "warning",
             )
 
     # ------------------------------------------------------------------
