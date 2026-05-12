@@ -162,7 +162,7 @@ class TestBuildSensorConfig:
             )
         )
         assert cfg.batteries_schedule_1.enabled is True
-        assert cfg.batteries_schedule_1.min_price_difference == 0.05
+        assert cfg.batteries_schedule_1.min_price_difference == pytest.approx(0.05)
 
     def test_months_winter_list_converted(self):
         # convert_months_to_int accepts numeric strings like '1', '2'
@@ -179,8 +179,8 @@ class TestBuildSensorConfig:
             )
         )
         assert cfg.batteries_enable_excess_export is True
-        assert cfg.batteries_excess_export_discharge_buffer == 15.0
-        assert cfg.batteries_excess_export_price_threshold == 0.20
+        assert cfg.batteries_excess_export_discharge_buffer == pytest.approx(15.0)
+        assert cfg.batteries_excess_export_price_threshold == pytest.approx(0.20)
 
 
 # ---------------------------------------------------------------------------
@@ -217,21 +217,21 @@ class TestComputeBatteryCapacities:
         live = self._make_live(rated_wh=10_000, soc_pct=3.0, eod_pct=5.0)
         _compute_battery_capacities(live)
         # current available = max(3% - 5%, 0) = 0
-        assert live.battery_current_capacity_kwh == 0.0
+        assert live.battery_current_capacity_kwh == pytest.approx(0.0)
 
     def test_missing_soc_no_update(self):
         live = LiveState()
         live.huawei_batteries_rated_capacity_wh = 10_000
         live.huawei_batteries_soc_pct = None
         _compute_battery_capacities(live)
-        assert live.battery_usable_capacity_kwh == 0.0
+        assert live.battery_usable_capacity_kwh == pytest.approx(0.0)
 
     def test_missing_rated_no_update(self):
         live = LiveState()
         live.huawei_batteries_rated_capacity_wh = None
         live.huawei_batteries_soc_pct = 80.0
         _compute_battery_capacities(live)
-        assert live.battery_usable_capacity_kwh == 0.0
+        assert live.battery_usable_capacity_kwh == pytest.approx(0.0)
 
 
 # ---------------------------------------------------------------------------
@@ -293,7 +293,7 @@ class TestComputeNetConsumption:
         live.house_consumption_power_w = None
         live.solar_production_power_w = 500.0
         _compute_net_consumption(live, self._cfg())
-        assert live.net_consumption_w == 0.0
+        assert live.net_consumption_w == pytest.approx(0.0)
 
 
 # ---------------------------------------------------------------------------
@@ -322,4 +322,4 @@ class TestBuildBatterySchedules:
     def test_initial_avg_import_price_zero(self):
         cfg = build_sensor_config(_make_config_entry())
         for s in build_battery_schedules(cfg):
-            assert s.avg_import_price == 0.0
+            assert s.avg_import_price == pytest.approx(0.0)

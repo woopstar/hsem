@@ -28,7 +28,7 @@ class TestComputeWeightedAverage:
 
     def test_all_zero_values_returns_zero(self):
         result = _compute_weighted_average(0.0, 0.0, 0.0, 0.0, 50, 20, 15, 10)
-        assert result == 0.0
+        assert result == pytest.approx(0.0)
 
     def test_spike_in_1d_reduces_its_contribution(self):
         """A large spike in 1d should be damped towards the 7d/14d baseline."""
@@ -56,7 +56,7 @@ class TestComputeWeightedAverage:
         """w_total == 0 should not raise — returns 0."""
         # This branch is guarded by the caller but we test robustness
         result = _compute_weighted_average(1.0, 1.0, 1.0, 1.0, 0, 0, 0, 0)
-        assert result == 0.0
+        assert result == pytest.approx(0.0)
 
     def test_negative_values_handled(self):
         """Should not raise even with negative consumption values (edge case)."""

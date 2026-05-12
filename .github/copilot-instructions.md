@@ -65,6 +65,8 @@ When asked to solve a GitHub issue, always follow these steps in order:
 - Follow PEP 8 and the project's style guide.
 - Write type hints for all function parameters and return types.
 - Include docstrings for all public modules, classes, functions, and methods.
+- **Never use `==` or `!=` to compare floating-point values.** In production code use an epsilon
+  guard (`abs(x) > 1e-9` instead of `x != 0`). In tests always use `pytest.approx()`.
 
 ## Write Modular Code
 - Break code into modules and components for easy reuse.

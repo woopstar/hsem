@@ -67,7 +67,7 @@ class TestConvertToFloatRealZero:
     def test_zero_returns_zero(self, zero_input) -> None:
         """Real zero is a valid, non-missing measurement."""
         result = convert_to_float(zero_input)
-        assert result == 0.0
+        assert result == pytest.approx(0.0)
         assert result is not None
 
 
@@ -121,7 +121,8 @@ class TestCriticalSensorNoneSetsMissingFlag:
     def test_unavailable_soc_is_none_not_zero(self) -> None:
         state = self._make_live_with_none_soc()
         assert state.huawei_batteries_soc_pct is None
-        assert state.huawei_batteries_soc_pct != 0.0
+        # Value must be None — not zero and not a number at all
+        assert state.huawei_batteries_soc_pct is None
 
     def test_missing_entity_label_recorded(self) -> None:
         state = self._make_live_with_none_soc()

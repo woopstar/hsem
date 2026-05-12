@@ -46,7 +46,9 @@ class TestExcessExportDefaults:
 
     def test_purchase_price_default(self):
         """Battery purchase price must default to 0.0 (not configured yet)."""
-        assert DEFAULT_CONFIG_VALUES["hsem_batteries_purchase_price"] == 0.0
+        assert DEFAULT_CONFIG_VALUES["hsem_batteries_purchase_price"] == pytest.approx(
+            0.0
+        )
 
     def test_expected_cycles_default(self):
         """Expected battery cycles must default to 6000."""
@@ -69,7 +71,7 @@ class TestCalculateRecommendedThreshold:
             usable_capacity=10.0,
             conversion_loss=10.0,
         )
-        assert result == 0.0
+        assert result == pytest.approx(0.0)
 
     def test_returns_zero_for_zero_cycles(self):
         """Division by zero is guarded: zero cycles returns 0.0."""
@@ -79,7 +81,7 @@ class TestCalculateRecommendedThreshold:
             usable_capacity=10.0,
             conversion_loss=10.0,
         )
-        assert result == 0.0
+        assert result == pytest.approx(0.0)
 
     def test_returns_zero_for_zero_capacity(self):
         """Division by zero is guarded: zero usable capacity returns 0.0."""
@@ -89,7 +91,7 @@ class TestCalculateRecommendedThreshold:
             usable_capacity=0.0,
             conversion_loss=10.0,
         )
-        assert result == 0.0
+        assert result == pytest.approx(0.0)
 
     def test_depreciation_only_no_import_price(self):
         """With import_price=0 only depreciation component is returned.
@@ -158,7 +160,7 @@ class TestCalculateRecommendedThreshold:
             usable_capacity=10.0,
             conversion_loss=10.0,
         )
-        assert result == 0.0
+        assert result == pytest.approx(0.0)
 
 
 # ---------------------------------------------------------------------------
