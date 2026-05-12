@@ -8,6 +8,25 @@ This is the **only** module in the sensor pipeline that is allowed to call
 ``async_set_*`` hardware functions.  All decision logic lives in the planner
 engine or the recommendation resolver; this module only executes the resulting
 action plan.
+
+Write-and-verify
+----------------
+Every hardware write is wrapped with :func:`~utils.inverter_verify.async_write_and_verify`:
+
+1. Write the desired value via a Huawei Solar service call.
+2. Wait :data:`~utils.inverter_verify.DEFAULT_SETTLE_SECONDS` for the inverter
+   to persist the new value.
+3. Read the entity state back from HA.
+4. Accept if the read-back value matches within
+   :data:`~utils.inverter_verify.DEFAULT_NUMERIC_TOLERANCE`.
+5. Retry up to :data:`~utils.inverter_verify.DEFAULT_MAX_RETRIES` times on
+   mismatch or transient read/write error.
+6. After all retries, mark the result ``FAILED`` and **block further writes for
+   this cycle** (the caller gates subsequent writes on the summary status).
+
+Each top-level apply function returns a :class:`~utils.inverter_verify.CycleApplySummary`
+that the :class:`~custom_sensors.applier_status_sensor.HSEMApplierStatusSensor` surfaces
+to Home Assistant.
 """
 
 from __future__ import annotations
@@ -27,6 +46,12 @@ from custom_components.hsem.utils.huawei import (
     async_set_grid_export_power_pct,
     async_set_tou_periods,
 )
+from custom_components.hsem.utils.inverter_verify import (
+    ApplyResult,
+    ApplyStatus,
+    CycleApplySummary,
+    async_write_and_verify,
+)
 from custom_components.hsem.utils.logger import async_logger
 from custom_components.hsem.utils.misc import (
     async_set_number_value,
@@ -43,7 +68,7 @@ async def async_apply_inverter_power_control(
     sensor,
     cfg: SensorConfig,
     live: LiveState,
-) -> None:
+) -> CycleApplySummary:
     """Set the grid-export power percentage on all inverters.
 
     Decides whether to allow full export (100%) or block export (0%) based on
@@ -51,18 +76,29 @@ async def async_apply_inverter_power_control(
     state.  Only issues a hardware write when the value differs from the current
     inverter state.
 
+    Each write is wrapped with :func:`~utils.inverter_verify.async_write_and_verify`
+    so that the inverter is polled after the write and the result is verified
+    within tolerance.  If any write fails all retries, further writes within this
+    cycle are blocked and the failure is recorded in the returned summary.
+
     Args:
         sensor: ``HSEMWorkingModeSensor`` instance for HA access and logging.
         cfg: Current sensor configuration.
         live: Live state snapshot (prices, EV states, inverter control state).
+
+    Returns:
+        :class:`CycleApplySummary` with one :class:`ApplyResult` per inverter
+        write attempted.
     """
+    summary = CycleApplySummary()
+
     export_price = live.energi_data_service_export_price
     min_price = cfg.energi_data_service_export_min_price
 
     if not isinstance(export_price, (int, float)):
-        return
+        return summary
     if not isinstance(min_price, (int, float)):
-        return
+        return summary
 
     export_pct = 100 if export_price >= min_price else 0
 
@@ -113,8 +149,35 @@ async def async_apply_inverter_power_control(
             cfg.huawei_solar_device_id_inverter_1,
             cfg.huawei_solar_device_id_inverter_2,
         ]:
-            if inv_id is not None:
-                await async_set_grid_export_power_pct(sensor, inv_id, export_pct)
+            if inv_id is None:
+                continue
+
+            inv_entity = cfg.huawei_solar_inverter_active_power_control
+
+            result = await async_write_and_verify(
+                entity_id=inv_entity or f"inverter:{inv_id}",
+                desired=export_pct,
+                writer=lambda _id=inv_id, _pct=export_pct: (
+                    async_set_grid_export_power_pct(sensor, _id, _pct)
+                ),
+                reader=lambda: _parse_power_control_pct(
+                    sensor.hass.states.get(inv_entity).state
+                    if inv_entity and sensor.hass.states.get(inv_entity) is not None
+                    else None
+                ),
+            )
+            summary.results.append(result)
+
+            if result.status == ApplyStatus.FAILED:
+                await async_logger(
+                    sensor,
+                    f"Export power % write FAILED for inverter {inv_id} after all retries. "
+                    f"Blocking further writes this cycle.",
+                    "error",
+                )
+                return summary
+
+    return summary
 
 
 async def async_apply_battery_settings(
@@ -123,12 +186,17 @@ async def async_apply_battery_settings(
     live: LiveState,
     rec: HourlyRecommendation,
     current_required_battery_kwh: float,
-) -> None:
+) -> CycleApplySummary:
     """Apply the working mode, TOU periods, and discharge power to the battery pack.
 
     Translates the ``rec.recommendation`` string into the correct Huawei Solar
     API calls.  Only issues writes when the hardware state actually needs to
     change (idempotent guard on each write).
+
+    Each write is wrapped with :func:`~utils.inverter_verify.async_write_and_verify`
+    so that the value is polled back from HA after the write and verified within
+    tolerance.  If a write fails all retries it is recorded in the returned
+    summary and further writes are blocked for this cycle.
 
     Args:
         sensor: ``HSEMWorkingModeSensor`` instance for HA access and logging.
@@ -137,7 +205,12 @@ async def async_apply_battery_settings(
         rec: The current-interval recommendation.
         current_required_battery_kwh: Remaining energy required until end of day
             (used when computing forcible-discharge target SoC).
+
+    Returns:
+        :class:`CycleApplySummary` with one :class:`ApplyResult` per write
+        attempted.
     """
+    summary = CycleApplySummary()
     tou_modes = None
     working_mode = None
 
@@ -149,11 +222,24 @@ async def async_apply_battery_settings(
     # Set maximum discharging power unless EV is charging
     if not live.ev.is_charging and not live.ev_second.is_charging:
         if live.huawei_batteries_max_discharge_power_w != max_discharge_power:
-            await async_set_number_value(
-                sensor,
-                cfg.huawei_solar_batteries_maximum_discharging_power,
-                max_discharge_power,
+            discharge_entity = cfg.huawei_solar_batteries_maximum_discharging_power
+            result = await async_write_and_verify(
+                entity_id=discharge_entity or "batteries_maximum_discharging_power",
+                desired=max_discharge_power,
+                writer=lambda: async_set_number_value(
+                    sensor, discharge_entity, max_discharge_power
+                ),
+                reader=lambda: _read_number_state(sensor, discharge_entity),
             )
+            summary.results.append(result)
+            if result.status == ApplyStatus.FAILED:
+                await async_logger(
+                    sensor,
+                    f"Max discharge power write FAILED for {discharge_entity}. "
+                    "Blocking further battery writes this cycle.",
+                    "error",
+                )
+                return summary
 
     recommendation = rec.recommendation
 
@@ -182,10 +268,12 @@ async def async_apply_battery_settings(
             working_mode = WorkingModes.MaximizeSelfConsumption.value
 
         case Recommendations.ForceBatteriesDischarge.value:
-            await _async_apply_forcible_discharge(
+            forcible_result = await _async_apply_forcible_discharge(
                 sensor, cfg, live, current_required_battery_kwh, max_discharge_power
             )
-            return
+            if forcible_result is not None:
+                summary.results.append(forcible_result)
+            return summary
 
         case Recommendations.BatteriesWaitMode.value:
             tou_modes = DEFAULT_HSEM_BATTERIES_WAIT_MODE
@@ -203,11 +291,22 @@ async def async_apply_battery_settings(
             live.ev_second.max_discharge_power_w,
         )
         if live.huawei_batteries_max_discharge_power_w != ev_max:
-            await async_set_number_value(
-                sensor,
-                cfg.huawei_solar_batteries_maximum_discharging_power,
-                ev_max,
+            discharge_entity = cfg.huawei_solar_batteries_maximum_discharging_power
+            ev_result = await async_write_and_verify(
+                entity_id=discharge_entity or "batteries_maximum_discharging_power",
+                desired=ev_max,
+                writer=lambda: async_set_number_value(sensor, discharge_entity, ev_max),
+                reader=lambda: _read_number_state(sensor, discharge_entity),
             )
+            summary.results.append(ev_result)
+            if ev_result.status == ApplyStatus.FAILED:
+                await async_logger(
+                    sensor,
+                    f"EV V2H discharge power write FAILED for {discharge_entity}. "
+                    "Blocking further battery writes this cycle.",
+                    "error",
+                )
+                return summary
 
     # Excess PV use in TOU
     desired_excess = (
@@ -217,28 +316,80 @@ async def async_apply_battery_settings(
         else "charge"
     )
     if live.huawei_batteries_excess_pv_use_in_tou != desired_excess:
-        await async_set_select_option(
-            sensor,
-            cfg.huawei_solar_batteries_excess_pv_energy_use_in_tou,
-            desired_excess,
+        excess_entity = cfg.huawei_solar_batteries_excess_pv_energy_use_in_tou
+        excess_result = await async_write_and_verify(
+            entity_id=excess_entity or "batteries_excess_pv_energy_use_in_tou",
+            desired=desired_excess,
+            writer=lambda: async_set_select_option(
+                sensor, excess_entity, desired_excess
+            ),
+            reader=lambda: _read_select_state(sensor, excess_entity),
         )
+        summary.results.append(excess_result)
+        if excess_result.status == ApplyStatus.FAILED:
+            await async_logger(
+                sensor,
+                f"Excess PV use write FAILED for {excess_entity}. "
+                "Blocking further battery writes this cycle.",
+                "error",
+            )
+            return summary
 
-    # TOU periods
+    # TOU periods — no read-back verification (TOU period state is complex JSON;
+    # hash comparison is sufficient; single attempt only).
     if working_mode == WorkingModes.TimeOfUse.value and tou_modes:
         if generate_hash(str(tou_modes)) != generate_hash(
             str(live.tou_periods.periods)
         ):
-            await async_set_tou_periods(
-                sensor, cfg.huawei_solar_device_id_batteries, tou_modes
+            tou_entity = cfg.huawei_solar_batteries_tou_charging_and_discharging_periods
+            result = await async_write_and_verify(
+                entity_id=tou_entity or "batteries_tou_periods",
+                desired=generate_hash(str(tou_modes)),
+                writer=lambda: async_set_tou_periods(
+                    sensor, cfg.huawei_solar_device_id_batteries, tou_modes
+                ),
+                reader=lambda: generate_hash(
+                    str(
+                        sensor.hass.states.get(tou_entity).state
+                        if tou_entity and sensor.hass.states.get(tou_entity) is not None
+                        else ""
+                    )
+                ),
+                # TOU periods may take longer to propagate; skip equality check
+                # since we always write when the hash differs.
+                skip_if_equal=False,
+                max_retries=2,
             )
+            summary.results.append(result)
+            if result.status == ApplyStatus.FAILED:
+                await async_logger(
+                    sensor,
+                    f"TOU period write FAILED for device {cfg.huawei_solar_device_id_batteries}. "
+                    "Blocking further battery writes this cycle.",
+                    "error",
+                )
+                return summary
 
     # Working mode
     if working_mode and live.huawei_batteries_working_mode != working_mode:
-        await async_set_select_option(
-            sensor,
-            cfg.huawei_solar_batteries_working_mode,
-            working_mode,
+        mode_entity = cfg.huawei_solar_batteries_working_mode
+        mode_result = await async_write_and_verify(
+            entity_id=mode_entity or "batteries_working_mode",
+            desired=working_mode,
+            writer=lambda: async_set_select_option(sensor, mode_entity, working_mode),
+            reader=lambda: _read_select_state(sensor, mode_entity),
         )
+        summary.results.append(mode_result)
+        if mode_result.status == ApplyStatus.FAILED:
+            await async_logger(
+                sensor,
+                f"Working mode write FAILED for {mode_entity}. "
+                "Blocking further battery writes this cycle.",
+                "error",
+            )
+            return summary
+
+    return summary
 
 
 # ---------------------------------------------------------------------------
@@ -252,29 +403,93 @@ async def _async_apply_forcible_discharge(
     live: LiveState,
     current_required_kwh: float,
     max_discharge_power: int,
-) -> None:
-    """Issue a forcible-discharge command to the battery pack."""
+) -> ApplyResult | None:
+    """Issue a forcible-discharge command to the battery pack and verify acceptance.
+
+    Returns:
+        :class:`ApplyResult` with the outcome, or ``None`` if the preconditions
+        were not met and no write was attempted.
+    """
     if (
         live.battery_usable_capacity_kwh <= 0
         or current_required_kwh < 0
         or not cfg.huawei_solar_device_id_batteries
     ):
-        return
+        return None
 
     target_soc = int((current_required_kwh / live.battery_usable_capacity_kwh) * 100)
     target_soc = max(10, min(100, target_soc))  # clamp 10–100
 
-    await async_set_forcible_discharge(
-        sensor,
-        cfg.huawei_solar_device_id_batteries,
-        target_soc,
-        max_discharge_power,
+    bat_soc_entity = cfg.huawei_solar_batteries_state_of_capacity
+    device_id = cfg.huawei_solar_device_id_batteries
+
+    result = await async_write_and_verify(
+        entity_id=bat_soc_entity or f"battery:{device_id}",
+        desired=target_soc,
+        writer=lambda: async_set_forcible_discharge(
+            sensor,
+            device_id,
+            target_soc,
+            max_discharge_power,
+        ),
+        reader=lambda: _read_number_state(sensor, bat_soc_entity),
+        # Forcible-discharge target SoC may differ from current SoC even after
+        # a successful write (the battery is actively discharging), so use a
+        # wider tolerance and only 1 retry — the main guard is the write success.
+        tolerance=5.0,
+        max_retries=1,
     )
+
     await async_logger(
         sensor,
         f"Excess battery export: Set forcible discharge to {target_soc}% SOC "
-        f"at {max_discharge_power}W power.",
+        f"at {max_discharge_power}W power. Verify result: {result.status.value}",
     )
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Read-back helpers (pure — no side effects)
+# ---------------------------------------------------------------------------
+
+
+def _read_number_state(sensor, entity_id: str | None) -> float | None:
+    """Read a number entity state from HA and return it as float, or None.
+
+    Args:
+        sensor: HSEM sensor instance with a ``hass`` attribute.
+        entity_id: HA entity ID to read.
+
+    Returns:
+        Current numeric state, or ``None`` when the entity is unavailable.
+    """
+    if not entity_id:
+        return None
+    state = sensor.hass.states.get(entity_id)
+    if state is None or state.state in ("unknown", "unavailable", None):
+        return None
+    try:
+        return float(state.state)
+    except (ValueError, TypeError):
+        return None
+
+
+def _read_select_state(sensor, entity_id: str | None) -> str | None:
+    """Read a select entity state from HA and return it as a string, or None.
+
+    Args:
+        sensor: HSEM sensor instance with a ``hass`` attribute.
+        entity_id: HA entity ID to read.
+
+    Returns:
+        Current option string, or ``None`` when unavailable.
+    """
+    if not entity_id:
+        return None
+    state = sensor.hass.states.get(entity_id)
+    if state is None or state.state in ("unknown", "unavailable", None):
+        return None
+    return str(state.state)
 
 
 def _parse_power_control_pct(state: str | None) -> int | None:

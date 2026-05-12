@@ -34,6 +34,7 @@ from custom_components.hsem.custom_sensors.recommendation_resolver import (
 )
 from custom_components.hsem.entity import HSEMEntity
 from custom_components.hsem.utils.degraded_mode import hardware_writes_allowed
+from custom_components.hsem.utils.inverter_verify import ApplyStatus, CycleApplySummary
 from custom_components.hsem.utils.logger import async_logger
 from custom_components.hsem.utils.misc import calculate_recommended_threshold
 from custom_components.hsem.utils.sensornames import (
@@ -257,10 +258,17 @@ class HSEMWorkingModeSensor(
             "batteries_excess_export_price_threshold": cfg.batteries_excess_export_price_threshold,
         }
 
+        apply_summary = data.apply_summary
         status = {
             "status": "read_only" if cfg.read_only else "ok",
             "degraded_mode": live.degraded_mode.value,
             "hardware_writes_blocked": not hardware_writes_allowed(live.degraded_mode),
+            "apply_status": (
+                apply_summary.overall_status.value if apply_summary else None
+            ),
+            "apply_failed_entities": (
+                apply_summary.failed_entities if apply_summary else []
+            ),
         }
 
         return {
@@ -336,22 +344,34 @@ class HSEMWorkingModeSensor(
 
         # Gate hardware writes on read_only and degraded mode.
         writes_safe = hardware_writes_allowed(live.degraded_mode)
+        combined_summary = CycleApplySummary()
         if not cfg.read_only and writes_safe:
-            await async_apply_inverter_power_control(self, cfg, live)
-            if hourly_rec is not None:
-                await async_apply_battery_settings(
+            inv_summary = await async_apply_inverter_power_control(self, cfg, live)
+            combined_summary.results.extend(inv_summary.results)
+
+            # Block battery writes if the inverter write already failed.
+            if (
+                inv_summary.overall_status != ApplyStatus.FAILED
+                and hourly_rec is not None
+            ):
+                bat_summary = await async_apply_battery_settings(
                     self,
                     cfg,
                     live,
                     hourly_rec,
                     data.current_required_battery,
                 )
+                combined_summary.results.extend(bat_summary.results)
         elif not cfg.read_only and not writes_safe:
             await async_logger(
                 self,
                 f"Hardware writes BLOCKED — degraded mode: {live.degraded_mode.value}. Missing: {live.missing_entities_list}",
                 "warning",
             )
+
+        # Persist the apply summary onto the coordinator data so the status
+        # sensor and extra_state_attributes can surface it to HA.
+        data.apply_summary = combined_summary
 
     # ------------------------------------------------------------------
     # Legacy compatibility

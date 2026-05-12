@@ -448,3 +448,19 @@ def get_ev_charging_sensor_unique_id() -> str:
 def get_ev_charging_sensor_entity_id() -> str:
     """Return the entity_id for the EV-charging sensor."""
     return sensor.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_ev_charging_sensor"))
+
+
+# Applier Status Sensor
+def get_applier_status_sensor_name() -> str:
+    """Return the display name for the applier-status diagnostic sensor."""
+    return "Inverter Apply Status"
+
+
+def get_applier_status_sensor_unique_id() -> str:
+    """Return a unique ID for the applier-status sensor."""
+    return f"{DOMAIN}_applier_status_sensor"
+
+
+def get_applier_status_sensor_entity_id() -> str:
+    """Return the entity_id for the applier-status sensor."""
+    return sensor.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_applier_status_sensor"))
