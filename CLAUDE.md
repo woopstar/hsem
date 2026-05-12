@@ -71,6 +71,19 @@ When implementing a utility or helper function:
 - Don't create private versions (`_function_name`) in multiple modules thinking they're isolated
 - Private functions should still be centralized if used in 2+ places
 
+## Floating-Point Comparisons
+
+**Never use `==` or `!=` to compare floating-point values.**
+
+- In production code: use an epsilon guard instead of exact equality.
+  - `abs(x) > 1e-9` instead of `x != 0`
+  - `abs(a - b) < 1e-9` instead of `a == b`
+- In tests: always use `pytest.approx()` for any assertion involving `float`.
+  - `assert result == pytest.approx(0.0)` ✅
+  - `assert result == 0.0` ❌
+- Integer-valued comparisons (`== 0` on a sum of `int` weights) are fine; only float literals
+  and float-typed variables are subject to this rule.
+
 ## Development Workflow
 
 ```bash

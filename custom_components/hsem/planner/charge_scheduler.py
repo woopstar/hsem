@@ -246,7 +246,7 @@ def _apply_grid_charge(
     price_diff = avg_discharge_price - avg_charge_price
     min_diff = sched.min_price_difference
 
-    if min_diff != 0 and price_diff < min_diff:
+    if abs(min_diff) > 1e-9 and price_diff < min_diff:
         return  # Price difference does not justify charging
 
     # Second pass: actually assign recommendations

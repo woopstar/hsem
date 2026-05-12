@@ -132,16 +132,39 @@ def interval_ends_before_window_start(
     return interval_end <= next_window_start_dt(now, window_start)
 
 
-def convert_to_float(state) -> float:
-    """Resolve the input sensor state and cast it to a float."""
+def convert_to_float(state) -> float | None:
+    """Resolve the input sensor state and cast it to a float.
 
+    Returns ``None`` for values that cannot be meaningfully interpreted as a
+    number: ``None``, the HA sentinel strings ``"unknown"`` / ``"unavailable"``,
+    empty strings, and anything that raises a conversion error.  A real numeric
+    ``0`` (or ``"0"``) is preserved as ``0.0``.
+
+    This distinction lets callers differentiate between *missing data* and
+    *real zero consumption*, which is critical for safe hardware decisions.
+
+    Args:
+        state: Raw sensor state value (string, int, float, or None).
+
+    Returns:
+        Parsed float value, or ``None`` when the state is absent or invalid.
+    """
     if state is None:
-        return 0.0
+        return None
+
+    if isinstance(state, str):
+        stripped = state.strip()
+        if stripped == "" or stripped.lower() in ("unknown", "unavailable"):
+            return None
+        try:
+            return float(stripped)
+        except (ValueError, TypeError):
+            return None
 
     try:
         return float(state)
-    except ValueError:
-        return 0.0
+    except (ValueError, TypeError):
+        return None
 
 
 def convert_to_int(state) -> int:
@@ -357,9 +380,16 @@ def ha_get_entity_state_and_convert(
             return state
 
         if output_type.lower() == "float":
-            if state.state == "unknown":
-                raise EntityNotFoundError(f"Entity '{entity_id}' state unknown.")
-            return round(convert_to_float(state.state), float_precision)
+            if state.state in ("unknown", "unavailable"):
+                raise EntityNotFoundError(
+                    f"Entity '{entity_id}' state is '{state.state}'."
+                )
+            value = convert_to_float(state.state)
+            if value is None:
+                raise EntityNotFoundError(
+                    f"Entity '{entity_id}' state '{state.state}' cannot be converted to float."
+                )
+            return round(value, float_precision)
 
         if output_type.lower() == "int":
             if state.state == "unknown":

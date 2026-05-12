@@ -193,10 +193,11 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
 
         old_state = await self.async_get_last_state()
         if old_state is not None:
-            self._state = round(convert_to_float(old_state.state), 2)
+            restored = convert_to_float(old_state.state)
+            self._state = round(restored, 2) if restored is not None else 0.0
             self._last_updated = old_state.attributes.get("last_updated", None)
         else:
-            self._state = 0.00
+            self._state = 0.0
 
         # Initial update
         await self._async_handle_update(None)
@@ -309,19 +310,17 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
 
         try:
             if self._hsem_house_consumption_power:
-                self._hsem_house_consumption_power_state = convert_to_float(
-                    ha_get_entity_state_and_convert(
-                        self, self._hsem_house_consumption_power, "float"
-                    )
+                raw = ha_get_entity_state_and_convert(
+                    self, self._hsem_house_consumption_power, "float"
                 )
+                self._hsem_house_consumption_power_state = convert_to_float(raw)
 
             # Update the state of the sensor for EV charger power
             if self._hsem_ev_charger_power:
-                self._hsem_ev_charger_power_state = convert_to_float(
-                    ha_get_entity_state_and_convert(
-                        self, self._hsem_ev_charger_power, "float"
-                    )
+                raw_ev = ha_get_entity_state_and_convert(
+                    self, self._hsem_ev_charger_power, "float"
                 )
+                self._hsem_ev_charger_power_state = convert_to_float(raw_ev)
 
         except Exception:
             self._missing_input_entities = True

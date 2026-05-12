@@ -44,7 +44,8 @@ def resolve_current_recommendation(
         return
 
     # 1. Negative import price → force export
-    if convert_to_float(live.energi_data_service_import_price) < 0:
+    import_price = convert_to_float(live.energi_data_service_import_price)
+    if import_price is not None and import_price < 0:
         rec.recommendation = Recommendations.ForceExport.value
         return
 

@@ -88,6 +88,8 @@ If credentials, API keys, or tokens are required:
 - Avoid introducing new dependencies unless justified and discussed with the user.
 - Apply Python style rules as defined in the project configuration.
 - Run formatting and linting tools locally before committing.
+- **Never use `==` or `!=` to compare floating-point values.** In production code use an epsilon
+  guard (e.g. `abs(x) > 1e-9` instead of `x != 0`). In tests always use `pytest.approx()`.
 
 ### Utility Function Centralization (No Duplication Rule)
 
