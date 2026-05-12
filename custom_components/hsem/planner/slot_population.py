@@ -350,23 +350,29 @@ def usable_capacity(
     rated_kwh: float,
     soc_pct: float,
     end_of_discharge_soc_pct: float,
+    max_soc_pct: float = 100.0,
 ) -> tuple[float, float]:
     """Return ``(usable_kwh, current_kwh)`` given rated capacity and SoC limits.
 
-    ``usable_kwh`` is the energy available above the end-of-discharge reserve.
-    ``current_kwh`` is the energy currently stored above the discharge floor.
+    ``usable_kwh`` is the energy available in the range
+    ``[end_of_discharge_soc, max_soc]``.
+    ``current_kwh`` is the energy currently stored above the discharge floor,
+    clamped to ``usable_kwh``.
 
     Args:
         rated_kwh: Nameplate capacity in kWh.
         soc_pct: Current state of charge as a percentage (0-100).
         end_of_discharge_soc_pct: Minimum allowed SoC as a percentage (0-100).
+        max_soc_pct: Maximum allowed SoC as a percentage (0-100).  Defaults to
+            100 % (no restriction beyond nameplate capacity).
 
     Returns:
         ``(usable_kwh, current_kwh)`` tuple, both non-negative.
     """
-    usable = rated_kwh * (1 - end_of_discharge_soc_pct / 100)
+    effective_max_soc = min(max(max_soc_pct, end_of_discharge_soc_pct), 100.0)
+    usable = rated_kwh * (effective_max_soc - end_of_discharge_soc_pct) / 100
     current = rated_kwh * (soc_pct / 100) - rated_kwh * end_of_discharge_soc_pct / 100
-    return max(usable, 0.0), max(current, 0.0)
+    return max(usable, 0.0), min(max(current, 0.0), max(usable, 0.0))
 
 
 # ---------------------------------------------------------------------------
