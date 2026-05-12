@@ -13,9 +13,11 @@ The heavy lifting is fully delegated to the pipeline modules:
 - :mod:`recommendation_resolver` — real-time override of current-slot decision
 """
 
+from __future__ import annotations
+
 import asyncio
 from datetime import timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import homeassistant.util.dt as dt_util
 from homeassistant.components.sensor import SensorEntity
@@ -24,6 +26,11 @@ from homeassistant.helpers.event import (
     async_track_time_change,
     async_track_time_interval,
 )
+
+if TYPE_CHECKING:
+    from custom_components.hsem.custom_sensors.degraded_mode_sensor import (
+        HSEMDegradedModeSensor,
+    )
 
 from custom_components.hsem.custom_sensors.applier import (
     async_apply_battery_settings,
@@ -51,6 +58,7 @@ from custom_components.hsem.models.planner_inputs import (
     SolcastSlot,
 )
 from custom_components.hsem.planner import run_planner
+from custom_components.hsem.utils.degraded_mode import hardware_writes_allowed
 from custom_components.hsem.utils.logger import async_logger
 from custom_components.hsem.utils.misc import (
     calculate_recommended_threshold,
@@ -81,10 +89,15 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
     _attr_has_entity_name = True
     _unrecorded_attributes = frozenset({MATCH_ALL})
 
-    def __init__(self, config_entry) -> None:
+    def __init__(
+        self,
+        config_entry,
+        degraded_mode_sensor: HSEMDegradedModeSensor | None = None,
+    ) -> None:
         super().__init__(config_entry)
 
         self._config_entry = config_entry
+        self._degraded_mode_sensor = degraded_mode_sensor
         self._state = None
         self._available = False
 
@@ -274,7 +287,11 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             "batteries_excess_export_price_threshold": cfg.batteries_excess_export_price_threshold,
         }
 
-        status = {"status": "read_only" if cfg.read_only else "ok"}
+        status = {
+            "status": "read_only" if cfg.read_only else "ok",
+            "degraded_mode": live.degraded_mode.value,
+            "hardware_writes_blocked": not hardware_writes_allowed(live.degraded_mode),
+        }
 
         return {
             key: value
@@ -414,12 +431,21 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
             await async_logger(self, f"Current hourly recommendation: {hourly_rec}")
 
             # 11. Apply hardware settings (inverter + batteries)
-            if not cfg.read_only:
+            # Block writes when critical data is missing (Error degraded mode).
+            writes_safe = hardware_writes_allowed(live.degraded_mode)
+            if not cfg.read_only and writes_safe:
                 await async_apply_inverter_power_control(self, cfg, live)
                 if hourly_rec is not None:
                     await async_apply_battery_settings(
                         self, cfg, live, hourly_rec, self._current_required_battery
                     )
+            elif not cfg.read_only and not writes_safe:
+                await async_logger(
+                    self,
+                    "Hardware writes BLOCKED — degraded mode: %s. Missing: %s",
+                    live.degraded_mode.value,
+                    live.missing_entities_list,
+                )
 
             # 12. Store current recommendation
             if hourly_rec:
@@ -432,6 +458,10 @@ class HSEMWorkingModeSensor(SensorEntity, HSEMEntity):
         self._hourly_recommendations.sort(key=lambda x: x.start)
         self._last_updated = now.isoformat()
         self._available = True
+
+        # Push current health state to the degraded-mode diagnostic sensor.
+        if self._degraded_mode_sensor is not None:
+            await self._degraded_mode_sensor.async_update_from_live(self._live)
 
         await async_logger(self, f"------ Completed updating {self._name} state...")
         self.async_write_ha_state()

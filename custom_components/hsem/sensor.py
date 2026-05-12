@@ -3,6 +3,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from custom_components.hsem.const import DOMAIN
+from custom_components.hsem.custom_sensors.degraded_mode_sensor import (
+    HSEMDegradedModeSensor,
+)
 from custom_components.hsem.custom_sensors.house_consumption_power_sensor import (
     HSEMHouseConsumptionPowerSensor,
 )
@@ -25,14 +28,14 @@ async def async_setup_entry(
     if config_entry.entry_id not in hass.data[DOMAIN]:
         hass.data[DOMAIN][config_entry.entry_id] = {}
 
-    # Setup working mode sensor
-    working_mode_sensor = HSEMWorkingModeSensor(config_entry)
+    # Setup degraded-mode diagnostic sensor
+    degraded_mode_sensor = HSEMDegradedModeSensor(config_entry)
 
-    # hass.data[DOMAIN][config_entry.entry_id][
-    #    "working_mode_sensor"
-    # ] = working_mode_sensor
+    # Setup working mode sensor — pass the degraded-mode sensor so it can
+    # push updates to it at the end of each cycle.
+    working_mode_sensor = HSEMWorkingModeSensor(config_entry, degraded_mode_sensor)
 
-    async_add_entities([working_mode_sensor])
+    async_add_entities([degraded_mode_sensor, working_mode_sensor])
 
     # Add power, energy and energy average sensors
     power_sensors = []

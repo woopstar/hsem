@@ -13,6 +13,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from custom_components.hsem.utils.degraded_mode import (
+    DegradedMode,
+    classify_degraded_mode,
+)
+
 
 @dataclass
 class EVLiveState:
@@ -99,6 +104,10 @@ class LiveState:
     missing_entities: bool = False
     missing_entities_list: list[str] = field(default_factory=list)
 
+    # Degraded-mode health state — computed lazily via the property below.
+    # Stored as a plain field so it can be overridden in unit tests.
+    _degraded_mode: DegradedMode | None = field(default=None, repr=False)
+
     # Force working mode
     force_working_mode: str | None = None
     force_working_mode_state: str = "auto"
@@ -146,7 +155,27 @@ class LiveState:
         """Return True if at least one EV charger reports an active session."""
         return self.ev.is_charging or self.ev_second.is_charging
 
+    @property
+    def degraded_mode(self) -> DegradedMode:
+        """Return the current health-state classification.
+
+        The result is computed from ``missing_entities`` and
+        ``missing_entities_list`` on first access and cached until
+        :meth:`add_missing_entity` is called again (which invalidates the
+        cache so the next read re-classifies).
+        """
+        if self._degraded_mode is None:
+            self._degraded_mode = classify_degraded_mode(
+                self.missing_entities, self.missing_entities_list
+            )
+        return self._degraded_mode
+
     def add_missing_entity(self, label: str) -> None:
-        """Mark an entity as missing and record its label."""
+        """Mark an entity as missing and record its label.
+
+        Invalidates the cached :attr:`degraded_mode` so the next access
+        re-classifies with the updated entity list.
+        """
         self.missing_entities = True
         self.missing_entities_list.append(label)
+        self._degraded_mode = None  # invalidate cached classification
