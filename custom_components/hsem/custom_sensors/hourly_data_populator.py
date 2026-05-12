@@ -44,7 +44,7 @@ async def async_populate_price_and_solcast(
         sensor: The ``HSEMWorkingModeSensor`` instance for HA access and logging.
         recommendations: Mutable list of recommendation slots to update.
         cfg: Current sensor configuration.
-        tz: Timezone (``ZoneInfo`` instance) for datetime normalization.
+        tz: Timezone (``tzinfo`` instance) for datetime normalization.
     """
     eds_share = (
         cfg.energi_data_service_update_interval / cfg.recommendation_interval_minutes
@@ -241,7 +241,7 @@ async def _async_update_hourly_field(
         field_name: Attribute name on :class:`HourlyRecommendation` to set.
         share: Divisor applied to each raw value (accounts for sub-hourly slots).
         solcast_likelihood_key: Attribute key for Solcast PV estimate field.
-        tz: Local timezone for datetime normalization.
+        tz: Local timezone (``tzinfo`` instance) for datetime normalization.
     """
     if sensor_id is None:
         return

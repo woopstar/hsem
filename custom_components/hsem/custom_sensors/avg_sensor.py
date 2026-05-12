@@ -2,6 +2,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any
 
+import homeassistant.util.dt as dt_util
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.components.sensor.const import SensorStateClass
 from homeassistant.const import UnitOfEnergy
@@ -142,7 +143,7 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
         """Handle updates to the source sensor."""
         self._state = 0.00
 
-        now = datetime.now()
+        now = dt_util.now()
 
         # Track state changes for the source sensors. Also if they change.
         await self._async_track_entities()
@@ -163,7 +164,7 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
 
     async def _async_store_utility_meter_value(self) -> None:
         """Store the utility meter's value for the current day after the hour is over."""
-        now = datetime.now()
+        now = dt_util.now()
         current_date = now.date()
 
         try:

@@ -99,7 +99,20 @@ git commit -m "feat(scope): description - Fixes #<ISSUE_NUMBER>"
 
 # 9. Push and create PR (do not merge)
 git push origin feat/<issue-number>-<description>
+
+# 10. If the PR already exists and you make further commits, update it
+gh pr edit <PR_NUMBER> --title "<type>(scope): updated title" --body "$(cat pr_body.md)"
 ```
+
+### Keeping an Open PR Up to Date
+
+Whenever you push additional commits to a branch that already has an open PR:
+
+1. **Update the PR title** if the scope or description has changed.
+2. **Update the PR body** to reflect all changes made so far — new files, behaviour changes,
+   additional tests, and any newly satisfied acceptance criteria.
+3. Tick off completed items in any checklist inside the PR description.
+4. Never leave the PR description stale after follow-up commits.
 
 ## Home Assistant Compliance
 
