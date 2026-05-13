@@ -325,6 +325,12 @@ class PlannerOutput:
     #: Full cost breakdown for the selected plan, computed by the cost function.
     #: ``None`` when the planner produced no slots (e.g. missing inputs).
     plan_cost: PlanCostBreakdown | None = field(default=None, repr=False)
+    #: All candidate plans that were evaluated during this planning run, in the
+    #: order they were generated.  The first entry (name ``"baseline"``) always
+    #: represents the current HSEM scheduling output.  Each candidate carries
+    #: ``is_valid`` and ``rejection_reason`` set by the selector.
+    #: Empty when the planner produced no slots (missing inputs).
+    candidates: list[Any] = field(default_factory=list, repr=False)
 
     # ------------------------------------------------------------------
     # Convenience helpers used by tests

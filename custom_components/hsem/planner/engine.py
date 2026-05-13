@@ -36,6 +36,8 @@ from custom_components.hsem.models.planner_outputs import (
     PlannerOutput,
     RejectedPlan,
 )
+from custom_components.hsem.planner.candidate_generator import generate_candidates
+from custom_components.hsem.planner.candidate_selector import select_best_candidate
 from custom_components.hsem.planner.charge_scheduler import (
     apply_charge_schedules,
     apply_discharge_schedules,
@@ -57,7 +59,6 @@ from custom_components.hsem.planner.slot_population import (
     populate_solcast,
     usable_capacity,
 )
-from custom_components.hsem.planner.soc_simulation import simulate_soc
 from custom_components.hsem.utils.misc import calculate_recommended_threshold
 from custom_components.hsem.utils.recommendations import Recommendations
 
@@ -260,17 +261,57 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         export_min_price=inp.export_min_price,
     )
 
-    # Full SoC simulation (second pass — after charges assigned, with power limits)
-    simulate_soc(
+    # --- Candidate plan generation and selection -------------------------
+    # Generate multiple independent strategies from the fully-scheduled
+    # baseline slots (pre-SoC-simulation).  The selector runs simulate_soc
+    # on each candidate and returns the lowest-cost valid plan.
+    cost_weights = CostWeights(
+        min_soc_pct=inp.battery_end_of_discharge_soc_pct,
+        max_soc_pct=inp.battery_max_soc_pct,
+        battery_purchase_price=inp.battery_purchase_price,
+        battery_rated_capacity_kwh=inp.battery_rated_capacity_kwh,
+        battery_expected_cycles=inp.battery_expected_cycles,
+        conversion_loss_pct=inp.battery_conversion_loss_pct,
+    )
+    slot_duration_hours = inp.interval_minutes / 60.0
+
+    candidates = generate_candidates(
+        slots,
+        inp,
+        now,
+        max_charge_per_slot,
+    )
+    winner, candidate_rejected = select_best_candidate(
+        candidates,
+        now=now,
+        current_kwh=current_kwh,
+        usable_kwh=usable_kwh,
+        max_soc_capacity_kwh=max_soc_capacity_kwh,
+        max_charge_per_slot=max_charge_per_slot,
+        max_discharge_per_slot=max_discharge_per_slot,
+        rated_kwh=inp.battery_rated_capacity_kwh,
+        end_of_discharge_soc_pct=inp.battery_end_of_discharge_soc_pct,
+        cost_weights=cost_weights,
+        slot_duration_hours=slot_duration_hours,
+    )
+    # Use the winning candidate's slots as the final plan
+    slots = winner.slots
+
+    # Fill any remaining None recommendations on the winner's slots.
+    # apply_optimization_strategy only modifies slots where recommendation is
+    # None, so it will not disturb the intentional charge/discharge assignments
+    # made by the winning strategy.  This guarantees that every slot has a
+    # valid recommendation (BatteriesWaitMode, BatteriesChargeSolar, etc.)
+    # regardless of which candidate was selected.
+    apply_optimization_strategy(
         slots,
         now,
         current_kwh,
         usable_kwh,
-        max_soc_capacity_kwh,
-        max_charge_per_slot,
-        max_discharge_per_slot,
-        rated_kwh=inp.battery_rated_capacity_kwh,
-        end_of_discharge_soc_pct=inp.battery_end_of_discharge_soc_pct,
+        required_capacity,
+        inp.months_winter,
+        warnings=[],  # suppress duplicate warnings from this fill-only pass
+        export_min_price=inp.export_min_price,
     )
 
     # Current recommendation
@@ -290,20 +331,19 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     # Build human-readable plan explanation
     explanation = _build_explanation(inp, slots, battery_soc_at_end, now)
 
-    # Score the selected plan with the full cost function
-    slot_duration_hours = inp.interval_minutes / 60.0
+    # Score the selected (winning) plan with the full cost function.
+    # Re-use cost_weights built during candidate selection above.
     plan_cost = score_plan(
         slots,
-        CostWeights(
-            min_soc_pct=inp.battery_end_of_discharge_soc_pct,
-            max_soc_pct=inp.battery_max_soc_pct,
-            battery_purchase_price=inp.battery_purchase_price,
-            battery_rated_capacity_kwh=inp.battery_rated_capacity_kwh,
-            battery_expected_cycles=inp.battery_expected_cycles,
-            conversion_loss_pct=inp.battery_conversion_loss_pct,
-        ),
+        cost_weights,
         slot_duration_hours=slot_duration_hours,
     )
+
+    # Merge candidate-rejected alternatives into the explanation's rejected list
+    # (the explanation already contains schedule-based rejected alternatives built
+    # by _build_explanation; we append the candidate-selection rejections after).
+    for rp in candidate_rejected:
+        explanation.rejected_plans.append(rp)
 
     return PlannerOutput(
         slots=slots,
@@ -317,6 +357,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         time_series_index=tsi,
         explanation=explanation,
         plan_cost=plan_cost,
+        candidates=candidates,
     )
 
 

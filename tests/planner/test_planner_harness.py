@@ -297,22 +297,38 @@ class TestChargeScheduling:
         assert result.total_charged_energy_kwh() > 0
 
     def test_charge_slots_precede_schedule_discharge_window(self):
-        """Charge slots must start before the *schedule* discharge windows (07-09, 17-21).
+        """In the baseline candidate, charge slots start before the discharge windows.
+
+        Candidate selection may choose a cheaper plan (e.g. solar-only) when
+        battery depreciation makes pre-charging unprofitable.  We therefore
+        verify the scheduling constraint on the *baseline* candidate, which
+        always reflects the current HSEM charge-before-discharge behaviour.
 
         Note: the summer optimization strategy may also assign BatteriesDischargeMode
         to overnight hours with net consumption > 0.1 kWh (no solar, no schedule).
         We therefore compare charge slots only against *schedule-window* discharge
         slots rather than all discharge slots.
         """
+        from custom_components.hsem.planner.candidate_generator import (
+            CANDIDATE_BASELINE,
+        )
+
         inp = make_summer_day_input(battery_soc_pct=0.0)
         result = run_planner(inp)
+
+        # Locate the baseline candidate
+        baseline = next(
+            (c for c in result.candidates if c.name == CANDIDATE_BASELINE), None
+        )
+        assert baseline is not None, "Baseline candidate must always be present"
+
         charge_starts = [
-            s.start for s in result.slots if s.recommendation in _CHARGE_VALUES
+            s.start for s in baseline.slots if s.recommendation in _CHARGE_VALUES
         ]
         # Only compare against the defined schedule windows
         schedule_discharge_starts = [
             s.start
-            for s in result.slots
+            for s in baseline.slots
             if s.recommendation in _DISCHARGE_VALUES
             and (7 <= s.start.hour < 9 or 17 <= s.start.hour < 21)
         ]
