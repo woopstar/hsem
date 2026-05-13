@@ -257,6 +257,7 @@ class HSEMWorkingModeSensor(
             "batteries_enable_excess_export": cfg.batteries_enable_excess_export,
             "batteries_excess_export_discharge_buffer": cfg.batteries_excess_export_discharge_buffer,
             "batteries_excess_export_price_threshold": cfg.batteries_excess_export_price_threshold,
+            "plan_explanation": data.plan_explanation.as_dict(),
         }
 
         apply_summary = data.apply_summary

@@ -61,6 +61,7 @@ from custom_components.hsem.models.planner_inputs import (
     PricePoint,
     SolcastSlot,
 )
+from custom_components.hsem.models.planner_outputs import PlanExplanation
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.planner import run_planner
 from custom_components.hsem.utils.inverter_verify import CycleApplySummary
@@ -112,6 +113,8 @@ class CoordinatorData:
     #: Aggregated write-and-verify results from the most recent hardware apply cycle.
     #: ``None`` before the first hardware-write cycle completes.
     apply_summary: CycleApplySummary | None = None
+    #: Human-readable explanation of why the selected plan was chosen.
+    plan_explanation: PlanExplanation = field(default_factory=PlanExplanation)
 
 
 # ---------------------------------------------------------------------------
@@ -180,6 +183,8 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         # state_collector._register_listeners.  Cancelled during async_teardown.
         self._listener_unsubs: list = []
         self._avg_house_consumption_entity_id_cache: dict[str, str] = {}
+        # Most recent plan explanation produced by the planner engine.
+        self._plan_explanation: PlanExplanation = PlanExplanation()
 
     # ------------------------------------------------------------------
     # HA lifecycle
@@ -363,6 +368,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             state=state,
             last_updated=last_updated,
             next_update=self._next_update,
+            plan_explanation=self._plan_explanation,
         )
 
         # Notify all subscriber entities atomically.
@@ -582,6 +588,8 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         self._batteries_schedules_remaining_capacity_needed = sum(
             s.needed_batteries_capacity for s in self._batteries_schedules if s.enabled
         )
+        # Preserve the plan explanation for the next CoordinatorData snapshot.
+        self._plan_explanation = output.explanation
 
     # ------------------------------------------------------------------
     # Internal helpers

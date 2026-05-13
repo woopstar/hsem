@@ -17,6 +17,122 @@ from custom_components.hsem.utils.prices import SlotPrice
 if TYPE_CHECKING:
     from custom_components.hsem.models.time_series import TimeSeriesIndex
 
+# ---------------------------------------------------------------------------
+# Plan explanation dataclasses
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class RejectedPlan:
+    """A plan alternative that was considered but not selected.
+
+    Attributes:
+        name:
+            Short identifier for this alternative strategy
+            (e.g. ``"charge_only_grid"``, ``"discharge_only"``).
+        reason:
+            Human-readable explanation of why this plan was rejected.
+        estimated_cost:
+            Estimated total grid cost (local currency) under this plan.
+            Positive = net import cost; negative = net export revenue.
+    """
+
+    name: str
+    reason: str
+    estimated_cost: float = 0.0
+
+
+@dataclass
+class PlanExplanation:
+    """Human-readable explanation of the plan selected by the HSEM planner.
+
+    Attached to :class:`PlannerOutput` after each planning run.  Suitable for
+    surfacing as a Home Assistant sensor attribute so users can understand *why*
+    a particular strategy was chosen and what alternatives were rejected.
+
+    Attributes:
+        selected_strategy:
+            Short identifier for the active strategy
+            (e.g. ``"charge_grid_discharge_peak"``).
+        summary:
+            One-sentence human-readable summary of the selected plan.
+        score:
+            Numeric score for the selected plan.  Higher is better.
+            Currently defined as the negated estimated total cost so that
+            cheaper plans score higher; the scale is local currency/kWh.
+        estimated_total_cost:
+            Estimated net grid cost for the planning horizon (local currency).
+            Positive = net import cost; negative = net export revenue.
+        price_spread:
+            Difference between the maximum and minimum import price in the
+            planning horizon (local currency/kWh).  A larger spread indicates
+            more arbitrage potential.
+        peak_import_price:
+            Maximum import price seen across all future slots.
+        off_peak_import_price:
+            Minimum import price seen across all future slots.
+        forecast_pv_kwh:
+            Total PV production forecast for the planning horizon (kWh).
+        forecast_net_consumption_kwh:
+            Total estimated net consumption (load minus PV) for the planning
+            horizon (kWh).  Negative means net solar surplus.
+        battery_soc_pct:
+            Battery state-of-charge at the start of the planning run (%).
+        battery_soc_at_end_pct:
+            Estimated battery state-of-charge at the end of the planning
+            horizon (%).
+        constraints:
+            List of active constraints or flags that influenced the decision
+            (e.g. ``"winter_month"``, ``"no_price_spread"``,
+            ``"excess_export_enabled"``).
+        rejected_plans:
+            Alternative plans that were evaluated and rejected, each with a
+            name, reason, and estimated cost.
+    """
+
+    selected_strategy: str = "unknown"
+    summary: str = ""
+    score: float = 0.0
+    estimated_total_cost: float = 0.0
+    price_spread: float = 0.0
+    peak_import_price: float = 0.0
+    off_peak_import_price: float = 0.0
+    forecast_pv_kwh: float = 0.0
+    forecast_net_consumption_kwh: float = 0.0
+    battery_soc_pct: float = 0.0
+    battery_soc_at_end_pct: float = 0.0
+    constraints: list[str] = field(default_factory=list)
+    rejected_plans: list[RejectedPlan] = field(default_factory=list)
+
+    def as_dict(self) -> dict[str, Any]:
+        """Serialise the explanation to a plain dict for HA attributes.
+
+        Returns:
+            A JSON-safe dictionary representation of the explanation.
+        """
+        return {
+            "selected_strategy": self.selected_strategy,
+            "summary": self.summary,
+            "score": round(self.score, 4),
+            "estimated_total_cost": round(self.estimated_total_cost, 4),
+            "price_spread": round(self.price_spread, 4),
+            "peak_import_price": round(self.peak_import_price, 4),
+            "off_peak_import_price": round(self.off_peak_import_price, 4),
+            "forecast_pv_kwh": round(self.forecast_pv_kwh, 3),
+            "forecast_net_consumption_kwh": round(self.forecast_net_consumption_kwh, 3),
+            "battery_soc_pct": round(self.battery_soc_pct, 1),
+            "battery_soc_at_end_pct": round(self.battery_soc_at_end_pct, 1),
+            "constraints": list(self.constraints),
+            "rejected_plans": [
+                {
+                    "name": rp.name,
+                    "reason": rp.reason,
+                    "estimated_cost": round(rp.estimated_cost, 4),
+                }
+                for rp in self.rejected_plans
+            ],
+        }
+
 
 @dataclass
 class PlannedSlot:
@@ -184,6 +300,10 @@ class PlannerOutput:
             ``None`` when the planner was invoked without a valid horizon.
         extra:
             Arbitrary key-value pairs for debug / introspection purposes.
+        explanation:
+            Human-readable explanation of why the selected plan was chosen,
+            including rejected alternatives, price spread, forecast summary,
+            SoC status, and active constraints.
     """
 
     slots: list[PlannedSlot] = field(default_factory=list)
@@ -196,6 +316,9 @@ class PlannerOutput:
     warnings: list[str] = field(default_factory=list)
     time_series_index: TimeSeriesIndex | None = field(default=None, repr=False)
     extra: dict[str, Any] = field(default_factory=dict)
+    #: Human-readable explanation of why the selected plan was chosen and what
+    #: alternatives were considered.  Populated by the planner engine.
+    explanation: PlanExplanation = field(default_factory=PlanExplanation)
 
     # ------------------------------------------------------------------
     # Convenience helpers used by tests

@@ -31,8 +31,10 @@ from custom_components.hsem.models.planner_inputs import PlannerInput
 from custom_components.hsem.models.planner_outputs import (
     ChargeWindow,
     DischargeWindow,
+    PlanExplanation,
     PlannedSlot,
     PlannerOutput,
+    RejectedPlan,
 )
 from custom_components.hsem.planner.charge_scheduler import (
     apply_charge_schedules,
@@ -254,6 +256,9 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     # Derive contiguous charge/discharge windows
     charge_windows, discharge_windows = _derive_windows(slots)
 
+    # Build human-readable plan explanation
+    explanation = _build_explanation(inp, slots, battery_soc_at_end, now)
+
     return PlannerOutput(
         slots=slots,
         charge_windows=charge_windows,
@@ -264,6 +269,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         missing_inputs=missing_inputs,
         warnings=warnings,
         time_series_index=tsi,
+        explanation=explanation,
     )
 
 
@@ -360,3 +366,201 @@ def _derive_windows(
         _flush_discharge(current_discharge_group)
 
     return charge_windows, discharge_windows
+
+
+def _build_explanation(
+    inp: PlannerInput,
+    slots: list[PlannedSlot],
+    battery_soc_at_end: float,
+    now: datetime,
+) -> PlanExplanation:
+    """Build a human-readable explanation of the chosen plan.
+
+    Derives key metrics from the finalised slot list, identifies which strategy
+    was selected, lists active constraints, and constructs rejected-plan entries
+    describing what alternatives would have looked like.
+
+    Args:
+        inp: The planner inputs used in this run.
+        slots: The fully-populated slot list after all scheduling passes.
+        battery_soc_at_end: Estimated battery SoC (%) at the end of horizon.
+        now: Timezone-aware current datetime.
+
+    Returns:
+        A populated :class:`PlanExplanation` instance.
+    """
+    future_slots = [s for s in slots if s.end.astimezone(now.tzinfo) > now]
+
+    # --- Price metrics ---------------------------------------------------
+    import_prices = [s.price.import_price for s in future_slots]
+    export_prices = [s.price.export_price for s in future_slots]
+    peak_import = max(import_prices) if import_prices else 0.0
+    off_peak_import = min(import_prices) if import_prices else 0.0
+    price_spread = round(peak_import - off_peak_import, 4)
+
+    # --- Forecast metrics ------------------------------------------------
+    forecast_pv = round(sum(s.solcast_pv_estimate for s in future_slots), 3)
+    forecast_net = round(sum(s.estimated_net_consumption for s in future_slots), 3)
+
+    # --- Cost of the selected plan ---------------------------------------
+    selected_cost = round(sum(s.estimated_cost for s in future_slots), 4)
+
+    # --- Strategy detection ----------------------------------------------
+    has_grid_charge = any(
+        s.recommendation == Recommendations.BatteriesChargeGrid.value
+        for s in future_slots
+    )
+    has_solar_charge = any(
+        s.recommendation == Recommendations.BatteriesChargeSolar.value
+        for s in future_slots
+    )
+    has_discharge = any(
+        s.recommendation
+        in {
+            Recommendations.BatteriesDischargeMode.value,
+            Recommendations.ForceBatteriesDischarge.value,
+        }
+        for s in future_slots
+    )
+    has_force_export = any(
+        s.recommendation == Recommendations.ForceBatteriesDischarge.value
+        for s in future_slots
+    )
+    has_force_mode = any(
+        s.recommendation == Recommendations.ForceExport.value for s in future_slots
+    )
+
+    current_month = now.month
+    is_winter = current_month in inp.months_winter
+
+    if has_grid_charge and has_discharge:
+        selected_strategy = "charge_grid_discharge_peak"
+        summary = (
+            f"Battery will be charged from the grid during cheap hours "
+            f"(min {off_peak_import:.3f}) and discharged during peak hours "
+            f"(max {peak_import:.3f})."
+        )
+    elif has_solar_charge and has_discharge:
+        selected_strategy = "charge_solar_discharge_peak"
+        summary = (
+            f"Battery will be charged from solar surplus "
+            f"({forecast_pv:.1f} kWh forecast) and discharged during "
+            f"peak hours (max {peak_import:.3f})."
+        )
+    elif has_force_export:
+        selected_strategy = "force_export"
+        summary = (
+            f"Surplus battery capacity will be exported to the grid at "
+            f"high export prices (max {max(export_prices):.3f})."
+        )
+    elif has_force_mode:
+        selected_strategy = "force_export_pv"
+        summary = "Export price exceeds import price; PV surplus exported."
+    elif has_discharge and not has_grid_charge and not has_solar_charge:
+        selected_strategy = "discharge_only"
+        summary = (
+            f"Battery will be discharged during scheduled windows; "
+            f"no cheap charging slots available (spread {price_spread:.3f})."
+        )
+    elif is_winter:
+        selected_strategy = "winter_wait"
+        summary = (
+            f"Winter month ({current_month}): battery is held in reserve; "
+            f"no arbitrage or solar charging warranted."
+        )
+    else:
+        selected_strategy = "solar_charge_only"
+        summary = (
+            f"Summer month ({current_month}): charging from solar surplus only "
+            f"({forecast_pv:.1f} kWh forecast)."
+        )
+
+    # --- Active constraints ----------------------------------------------
+    constraints: list[str] = []
+    if is_winter:
+        constraints.append("winter_month")
+    else:
+        constraints.append("summer_month")
+    if abs(price_spread) < 1e-9:
+        constraints.append("no_price_spread")
+    if inp.excess_export_enabled:
+        constraints.append("excess_export_enabled")
+    if inp.battery_rated_capacity_kwh <= 0:
+        constraints.append("battery_disabled")
+    if inp.battery_soc_pct >= inp.battery_max_soc_pct:
+        constraints.append("battery_full")
+    if inp.battery_soc_pct <= inp.battery_end_of_discharge_soc_pct:
+        constraints.append("battery_empty")
+
+    # --- Rejected plans -------------------------------------------------
+    rejected: list[RejectedPlan] = []
+
+    # Alternative: do-nothing (battery idle for the whole horizon)
+    do_nothing_cost = round(
+        sum(s.estimated_net_consumption * s.price.import_price for s in future_slots),
+        4,
+    )
+    if selected_strategy != "discharge_only":
+        rejected.append(
+            RejectedPlan(
+                name="do_nothing",
+                reason=(
+                    "Battery held idle; estimated grid cost "
+                    f"{do_nothing_cost:.4f} vs selected {selected_cost:.4f}."
+                ),
+                estimated_cost=do_nothing_cost,
+            )
+        )
+
+    # Alternative: charge-only (no discharge), relevant when discharge was chosen
+    if has_discharge and not has_grid_charge:
+        rejected.append(
+            RejectedPlan(
+                name="charge_only_solar",
+                reason=(
+                    "Charging from solar without discharging would leave "
+                    f"{forecast_pv:.1f} kWh of PV unused during peak demand."
+                ),
+                estimated_cost=do_nothing_cost,
+            )
+        )
+
+    # Alternative: grid charge skipped when price spread too small
+    if not has_grid_charge and price_spread > 0:
+        min_diff_values = [
+            s.min_price_difference
+            for s in inp.battery_schedules
+            if s.enabled and abs(s.min_price_difference) > 1e-9
+        ]
+        min_diff = min(min_diff_values) if min_diff_values else 0.0
+        if price_spread < min_diff:
+            rejected.append(
+                RejectedPlan(
+                    name="grid_charge_rejected_spread",
+                    reason=(
+                        f"Price spread {price_spread:.4f} is below the minimum "
+                        f"required difference {min_diff:.4f}; grid charging "
+                        "not profitable."
+                    ),
+                    estimated_cost=do_nothing_cost,
+                )
+            )
+
+    # Score: negate the estimated cost so cheaper = higher score
+    score = round(-selected_cost, 4)
+
+    return PlanExplanation(
+        selected_strategy=selected_strategy,
+        summary=summary,
+        score=score,
+        estimated_total_cost=selected_cost,
+        price_spread=price_spread,
+        peak_import_price=round(peak_import, 4),
+        off_peak_import_price=round(off_peak_import, 4),
+        forecast_pv_kwh=forecast_pv,
+        forecast_net_consumption_kwh=forecast_net,
+        battery_soc_pct=round(inp.battery_soc_pct, 1),
+        battery_soc_at_end_pct=round(battery_soc_at_end, 1),
+        constraints=constraints,
+        rejected_plans=rejected,
+    )
