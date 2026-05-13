@@ -279,7 +279,9 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._user_input.update(user_input)
                 return await self.async_step_batteries_schedule_2()
 
-        data_schema = await get_batteries_schedule_1_step_schema(None)
+        data_schema = await get_batteries_schedule_1_step_schema(
+            None, hass=self.hass, user_input=self._user_input
+        )
 
         return self.async_show_form(
             step_id="batteries_schedule_1",
@@ -297,7 +299,9 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._user_input.update(user_input)
                 return await self.async_step_batteries_schedule_3()
 
-        data_schema = await get_batteries_schedule_2_step_schema(None)
+        data_schema = await get_batteries_schedule_2_step_schema(
+            None, hass=self.hass, user_input=self._user_input
+        )
 
         return self.async_show_form(
             step_id="batteries_schedule_2",
@@ -315,7 +319,9 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._user_input.update(user_input)
                 return await self.async_step_batteries_excess_export()
 
-        data_schema = await get_batteries_schedule_3_step_schema(None)
+        data_schema = await get_batteries_schedule_3_step_schema(
+            None, hass=self.hass, user_input=self._user_input
+        )
 
         return self.async_show_form(
             step_id="batteries_schedule_3",
@@ -338,7 +344,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 )
 
         data_schema = await get_batteries_excess_export_step_schema(
-            None, self._user_input
+            None, self._user_input, hass=self.hass
         )
 
         return self.async_show_form(
