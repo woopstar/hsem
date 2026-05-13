@@ -44,6 +44,7 @@ from custom_components.hsem.planner.charge_scheduler import (
     apply_optimization_strategy,
     calculate_required_battery_until_solar,
 )
+from custom_components.hsem.planner.cost_function import CostWeights, score_plan
 from custom_components.hsem.planner.slot_population import (
     build_slots,
     build_time_series_index,
@@ -282,6 +283,21 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     # Build human-readable plan explanation
     explanation = _build_explanation(inp, slots, battery_soc_at_end, now)
 
+    # Score the selected plan with the full cost function
+    slot_duration_hours = inp.interval_minutes / 60.0
+    plan_cost = score_plan(
+        slots,
+        CostWeights(
+            min_soc_pct=inp.battery_end_of_discharge_soc_pct,
+            max_soc_pct=inp.battery_max_soc_pct,
+            battery_purchase_price=inp.battery_purchase_price,
+            battery_rated_capacity_kwh=inp.battery_rated_capacity_kwh,
+            battery_expected_cycles=inp.battery_expected_cycles,
+            conversion_loss_pct=inp.battery_conversion_loss_pct,
+        ),
+        slot_duration_hours=slot_duration_hours,
+    )
+
     return PlannerOutput(
         slots=slots,
         charge_windows=charge_windows,
@@ -293,6 +309,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         warnings=warnings,
         time_series_index=tsi,
         explanation=explanation,
+        plan_cost=plan_cost,
     )
 
 

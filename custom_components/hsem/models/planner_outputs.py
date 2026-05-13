@@ -16,6 +16,7 @@ from custom_components.hsem.utils.prices import SlotPrice
 
 if TYPE_CHECKING:
     from custom_components.hsem.models.time_series import TimeSeriesIndex
+    from custom_components.hsem.planner.cost_function import PlanCostBreakdown
 
 # ---------------------------------------------------------------------------
 # Plan explanation dataclasses
@@ -321,6 +322,9 @@ class PlannerOutput:
     #: Human-readable explanation of why the selected plan was chosen and what
     #: alternatives were considered.  Populated by the planner engine.
     explanation: PlanExplanation = field(default_factory=PlanExplanation)
+    #: Full cost breakdown for the selected plan, computed by the cost function.
+    #: ``None`` when the planner produced no slots (e.g. missing inputs).
+    plan_cost: PlanCostBreakdown | None = field(default=None, repr=False)
 
     # ------------------------------------------------------------------
     # Convenience helpers used by tests
