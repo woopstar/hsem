@@ -22,7 +22,11 @@ async def get_batteries_schedule_3_step_schema(config_entry) -> vol.Schema:
         get_config_value(config_entry, "hsem_batteries_expected_cycles")
     )
     expected_cycles = _cycles_3 if _cycles_3 is not None else 6000
-    usable_capacity = 10.0  # Default assumption for calculation
+    # Rated capacity is a live HA sensor entity and cannot be read during
+    # config-flow schema construction.  Use 10 kWh as a representative default
+    # for the depreciation-threshold *preview only*.  The actual calculation in
+    # the planner uses the live sensor value.
+    usable_capacity = 10.0
     conversion_loss = convert_to_float(
         get_config_value(config_entry, "hsem_batteries_conversion_loss") or 10.0
     )

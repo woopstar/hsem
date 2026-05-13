@@ -38,8 +38,10 @@ async def get_batteries_excess_export_step_schema(
         or (user_input.get("hsem_batteries_conversion_loss") if user_input else None)
         or 10.0
     )
-    # Usable capacity is typically a sensor value not available during config setup.
-    # Using a reasonable default; actual value will be used in working_mode_sensor.
+    # Rated capacity is a live HA sensor entity and cannot be read during
+    # config-flow schema construction.  Use 10 kWh as a representative default
+    # for the depreciation-threshold *preview only*.  The actual calculation in
+    # the planner uses the live sensor value.
     usable_capacity = 10.0
 
     recommended = calculate_recommended_threshold(
