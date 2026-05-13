@@ -41,7 +41,9 @@ When asked to solve a GitHub issue, always follow these steps in order:
   `options` `huawei_solar` steps) → `models/sensor_config.py` →
   `custom_sensors/config_reader.py` → `custom_sensors/state_collector.py` →
   `models/live_state.py` → `coordinator.py`
-- See `AGENTS.md` → **Huawei Solar Sensor Usage Rule** for the canonical entity table.
+- **Always check `docs/huawei_entities.md` first** for the verified list of available HA entities
+  before searching the upstream `wlcrs/huawei_solar` repo or guessing an entity ID.
+- See `AGENTS.md` → **Huawei Solar Sensor Usage Rule** for the full wiring protocol.
 
 ## Issue-Solving Rules
 - Always read `AGENTS.md` and `CLAUDE.md` before starting any issue work.
