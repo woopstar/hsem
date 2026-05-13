@@ -65,6 +65,8 @@ The agent MUST:
    the full stack in this order:
    - `const.py` — add a default entity-id string under `DEFAULT_CONFIG_VALUES`
    - `flows/huawei_solar.py` — add to the schema and validation
+   - `translations/en.json` — add `data` label and `data_description` for the new field in
+     **both** `config.step.huawei_solar` and `options.step.huawei_solar`
    - `models/sensor_config.py` — add the `str | None` field
    - `custom_sensors/config_reader.py` — read from config entry
    - `custom_sensors/state_collector.py` — read the HA entity state
