@@ -17,10 +17,7 @@ from custom_components.hsem.const import (
 )
 from custom_components.hsem.models.planner_inputs import BatteryScheduleInput
 from custom_components.hsem.models.planner_outputs import PlannedSlot
-from custom_components.hsem.utils.misc import (
-    interval_ends_before_window_start,
-    next_window_start_dt,
-)
+from custom_components.hsem.utils.misc import next_window_start_dt
 from custom_components.hsem.utils.recommendations import Recommendations
 
 # ---------------------------------------------------------------------------
@@ -48,35 +45,78 @@ def apply_discharge_schedules(
         if not sched.enabled:
             continue
 
+        # Determine the last slot end in the planning horizon so we know how
+        # many days to cover.  We apply the discharge window once per calendar
+        # day that falls within [now, horizon_end].
+        future_slots = [s for s in slots if s.end.astimezone(now.tzinfo) > now]
+        if not future_slots:
+            continue
+        horizon_end = future_slots[-1].end.astimezone(now.tzinfo)
+
+        # Collect all occurrences of this schedule window within the horizon.
+        # Start from the first upcoming occurrence and advance one day at a time.
+        # Each occurrence is stored so apply_charge_schedules can schedule
+        # pre-charge independently per window occurrence.
         window_start_abs = next_window_start_dt(now, sched.start)
-        if sched.end > sched.start:
-            window_end_abs = datetime.combine(
-                window_start_abs.date(), sched.end
-            ).replace(tzinfo=now.tzinfo)
-        else:
-            # Cross-midnight discharge window
-            window_end_abs = datetime.combine(
-                (window_start_abs + timedelta(days=1)).date(), sched.end
-            ).replace(tzinfo=now.tzinfo)
+        occurrences: list[tuple[datetime, datetime, float, float]] = []
+        sched_total_net = 0.0
 
-        for slot in slots:
-            slot_start = slot.start.astimezone(now.tzinfo)
-            slot_end = slot.end.astimezone(now.tzinfo)
-            if slot_end <= now:
-                continue
-            if slot_start >= window_start_abs and slot_end <= window_end_abs:
-                slot.recommendation = Recommendations.BatteriesDischargeMode.value
+        while window_start_abs < horizon_end:
+            if sched.end > sched.start:
+                window_end_abs = datetime.combine(
+                    window_start_abs.date(), sched.end
+                ).replace(tzinfo=now.tzinfo)
+            else:
+                # Cross-midnight discharge window
+                window_end_abs = datetime.combine(
+                    (window_start_abs + timedelta(days=1)).date(), sched.end
+                ).replace(tzinfo=now.tzinfo)
 
-        total_net = sum(
-            s.estimated_net_consumption
-            for s in slots
-            if s.recommendation == Recommendations.BatteriesDischargeMode.value
-            and s.start.astimezone(now.tzinfo) >= window_start_abs
-            and s.end.astimezone(now.tzinfo) <= window_end_abs
-        )
-        sched._needed_capacity = max(total_net, 0.0)  # type: ignore[attr-defined]
-        sched._avg_import_price = _avg_price_in_window(  # type: ignore[attr-defined]
-            slots, window_start_abs, window_end_abs, now
+            for slot in slots:
+                slot_start = slot.start.astimezone(now.tzinfo)
+                slot_end = slot.end.astimezone(now.tzinfo)
+                if slot_end <= now:
+                    continue
+                if slot_start >= window_start_abs and slot_end <= window_end_abs:
+                    slot.recommendation = Recommendations.BatteriesDischargeMode.value
+
+            # Capture per-occurrence capacity and avg price
+            occ_net = 0.0
+            occ_prices: list[float] = []
+            for s in slots:
+                s_start = s.start.astimezone(now.tzinfo)
+                s_end = s.end.astimezone(now.tzinfo)
+                if (
+                    s.recommendation == Recommendations.BatteriesDischargeMode.value
+                    and s_start >= window_start_abs
+                    and s_end <= window_end_abs
+                ):
+                    occ_net += s.estimated_net_consumption
+                    occ_prices.append(s.price.import_price)
+
+            occ_needed = max(occ_net, 0.0)
+            occ_avg_price = (
+                round(sum(occ_prices) / len(occ_prices), 3) if occ_prices else 0.0
+            )
+            # Store: (window_start, window_end, needed_kwh, avg_discharge_price)
+            occurrences.append(
+                (window_start_abs, window_end_abs, occ_needed, occ_avg_price)
+            )
+            sched_total_net += occ_net
+
+            # Advance to the same window start on the following calendar day
+            window_start_abs += timedelta(days=1)
+
+        # _occurrences: per-day data consumed by apply_charge_schedules
+        sched._occurrences = occurrences  # type: ignore[attr-defined]
+        # _needed_capacity: aggregate across all occurrences (used by coordinator)
+        sched._needed_capacity = max(sched_total_net, 0.0)  # type: ignore[attr-defined]
+        # _avg_import_price: average across all occurrences
+        all_occ_prices = [avg for _, _, _, avg in occurrences if avg > 0]
+        sched._avg_import_price = (  # type: ignore[attr-defined]
+            round(sum(all_occ_prices) / len(all_occ_prices), 3)
+            if all_occ_prices
+            else 0.0
         )
 
 
@@ -130,70 +170,96 @@ def apply_charge_schedules(
         if not sched.enabled:
             continue
 
-        needed: float = getattr(sched, "_needed_capacity", 0.0)
-        avg_discharge_price: float = getattr(sched, "_avg_import_price", 0.0)
+        # Iterate each occurrence of the discharge window independently.
+        # Each occurrence needs its own pre-charge budget so day-2 discharge
+        # windows get their own cheap-hours charge allocation.
+        occurrences: list[tuple[datetime, datetime, float, float]] = getattr(
+            sched, "_occurrences", []
+        )
+        if not occurrences:
+            # Fallback for callers that didn't go through apply_discharge_schedules
+            needed_fb: float = getattr(sched, "_needed_capacity", 0.0)
+            avg_price_fb: float = getattr(sched, "_avg_import_price", 0.0)
+            if needed_fb > 0:
+                occurrences = [
+                    (
+                        next_window_start_dt(now, sched.start),
+                        next_window_start_dt(now, sched.start),
+                        needed_fb,
+                        avg_price_fb,
+                    )
+                ]
 
-        if needed <= 0:
-            continue
+        for (
+            window_start_abs,
+            _window_end_abs,
+            needed,
+            avg_discharge_price,
+        ) in occurrences:
+            if needed <= 0:
+                continue
 
-        eligible = [
-            s
-            for s in slots
-            if s.end.astimezone(now.tzinfo) > now
-            and interval_ends_before_window_start(
-                s.end.astimezone(now.tzinfo), sched.start, now
-            )
-            and s.recommendation is None
-        ]
+            # Eligible charge slots: future, unassigned, and ending before
+            # this specific occurrence's window start.
+            eligible = [
+                s
+                for s in slots
+                if s.end.astimezone(now.tzinfo) > now
+                and s.end.astimezone(now.tzinfo) <= window_start_abs
+                and s.recommendation is None
+            ]
 
-        charged = 0.0
+            charged = 0.0
 
-        # Priority 1: negative import price
-        for s in sorted(
-            (e for e in eligible if e.price.import_price < 0.0),
-            key=lambda x: (x.price.import_price, x.start),
-        ):
-            if charged >= needed:
-                break
-            energy = min(max_charge_per_interval, needed - charged)
-            if energy > 0:
-                s.recommendation = Recommendations.BatteriesChargeGrid.value
-                s.batteries_charged = round(energy, 3)
-                charged += energy
-
-        # Priority 2: solar surplus
-        if charged < needed:
+            # Priority 1: negative import price
             for s in sorted(
-                (
-                    e
-                    for e in eligible
-                    if e.estimated_net_consumption < SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH
-                    and e.recommendation is None
-                ),
-                # NOTE: SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH is negative, so this
-                # selects slots where net consumption is sufficiently negative
-                # (i.e., there is a meaningful solar surplus to charge from).
-                key=lambda x: (x.estimated_net_consumption, x.start),
+                (e for e in eligible if e.price.import_price < 0.0),
+                key=lambda x: (x.price.import_price, x.start),
             ):
                 if charged >= needed:
                     break
-                available_solar = abs(s.estimated_net_consumption)
-                energy = min(max_charge_per_interval, needed - charged, available_solar)
+                energy = min(max_charge_per_interval, needed - charged)
                 if energy > 0:
-                    s.recommendation = Recommendations.BatteriesChargeSolar.value
+                    s.recommendation = Recommendations.BatteriesChargeGrid.value
                     s.batteries_charged = round(energy, 3)
                     charged += energy
 
-        # Priority 3: cheapest grid hours (min price difference guard)
-        if charged < needed:
-            _apply_grid_charge(
-                eligible,
-                sched,
-                needed,
-                charged,
-                max_charge_per_interval,
-                avg_discharge_price,
-            )
+            # Priority 2: solar surplus
+            if charged < needed:
+                for s in sorted(
+                    (
+                        e
+                        for e in eligible
+                        if e.estimated_net_consumption
+                        < SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH
+                        and e.recommendation is None
+                    ),
+                    # NOTE: SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH is negative, so this
+                    # selects slots where net consumption is sufficiently negative
+                    # (i.e., there is a meaningful solar surplus to charge from).
+                    key=lambda x: (x.estimated_net_consumption, x.start),
+                ):
+                    if charged >= needed:
+                        break
+                    available_solar = abs(s.estimated_net_consumption)
+                    energy = min(
+                        max_charge_per_interval, needed - charged, available_solar
+                    )
+                    if energy > 0:
+                        s.recommendation = Recommendations.BatteriesChargeSolar.value
+                        s.batteries_charged = round(energy, 3)
+                        charged += energy
+
+            # Priority 3: cheapest grid hours (min price difference guard)
+            if charged < needed:
+                _apply_grid_charge(
+                    eligible,
+                    sched,
+                    needed,
+                    charged,
+                    max_charge_per_interval,
+                    avg_discharge_price,
+                )
 
 
 def _apply_grid_charge(
@@ -417,7 +483,9 @@ def apply_optimization_strategy(
         ):
             rec.recommendation = Recommendations.ForceExport.value
 
-    # Solar charging until battery full
+    # Solar charging until battery full — across the full planning horizon
+    # (not limited to today; a 48-hour window should charge from solar on
+    # both day 1 and day 2).
     batteries_needed_charge = max(usable_capacity - current_capacity, 0.0)
     charged = 0.0
 
@@ -425,8 +493,7 @@ def apply_optimization_strategy(
         (
             s
             for s in slots
-            if s.recommendation is None
-            and s.start.astimezone(now.tzinfo).date() == now.date()
+            if s.recommendation is None and s.start.astimezone(now.tzinfo) >= now
         ),
         key=lambda x: x.price.export_price,
     ):
