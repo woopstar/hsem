@@ -15,6 +15,7 @@ coordinator.  This entity only reacts to coordinator pushes.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from homeassistant.components.sensor import SensorEntity
@@ -87,6 +88,11 @@ class HSEMWorkingModeSensor(
         self._attr_unique_id = get_working_mode_sensor_unique_id()
         self.entity_id = get_working_mode_sensor_entity_id()
         self._name = get_working_mode_sensor_name()
+
+        # Tracks the latest background update task so it can be cancelled on
+        # unload.  Only the most-recent task is retained; prior tasks will
+        # have already completed or been replaced.
+        self._update_task: asyncio.Task | None = None
 
     # ------------------------------------------------------------------
     # HA entity properties
@@ -289,14 +295,39 @@ class HSEMWorkingModeSensor(
         if self.coordinator.data is not None:
             await self._async_apply_hardware_writes(self.coordinator.data)
 
+    async def async_will_remove_from_hass(self) -> None:
+        """Cancel any pending background update task before unloading.
+
+        This prevents a stale task from issuing inverter/battery writes after
+        the config entry has been unloaded.
+        """
+        self._cancel_update_task()
+        await super().async_will_remove_from_hass()
+
+    def _cancel_update_task(self) -> None:
+        """Cancel ``_update_task`` if it exists and has not yet completed.
+
+        Cancellation is silent — ``asyncio.CancelledError`` propagates only
+        inside the task itself, which guards the hardware-write path, so no
+        inverter command can be issued after this point.
+        """
+        if self._update_task is not None and not self._update_task.done():
+            self._update_task.cancel()
+
     # ------------------------------------------------------------------
     # Coordinator callback
     # ------------------------------------------------------------------
 
     def _handle_coordinator_update(self) -> None:
-        """Receive a coordinator push and schedule hardware writes + state flush."""
-        # Schedule the async work; _handle_coordinator_update is synchronous.
-        self.hass.async_create_task(
+        """Receive a coordinator push and schedule hardware writes + state flush.
+
+        Cancels any still-pending previous task before creating the new one so
+        that only one update is in-flight at a time.  The task reference is
+        stored on ``_update_task`` so it can be cancelled on unload.
+        """
+        # Cancel any still-running task from the previous coordinator cycle.
+        self._cancel_update_task()
+        self._update_task = self.hass.async_create_task(
             self._async_on_coordinator_update(),
             name="hsem_working_mode_update",
         )
@@ -305,13 +336,20 @@ class HSEMWorkingModeSensor(
         """Apply hardware writes then write state to HA.
 
         This method runs asynchronously after every coordinator refresh.
+        A ``CancelledError`` is re-raised immediately so that asyncio can
+        clean up the task correctly; no hardware write can occur after
+        cancellation.
         """
-        data = self.coordinator.data
-        if data is None:
-            return
+        try:
+            data = self.coordinator.data
+            if data is None:
+                return
 
-        await self._async_apply_hardware_writes(data)
-        self.async_write_ha_state()
+            await self._async_apply_hardware_writes(data)
+            self.async_write_ha_state()
+        except asyncio.CancelledError:
+            # Task was cancelled (entity unloaded) — propagate cleanly.
+            raise
 
     async def _async_apply_hardware_writes(self, data: CoordinatorData) -> None:
         """Perform inverter and battery hardware writes for the current slot.
