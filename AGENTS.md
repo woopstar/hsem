@@ -97,6 +97,38 @@ The agent MUST:
 an entity ID. If a new entity is confirmed to exist in HA, add it to `docs/huawei_entities.md`
 as part of the same PR that wires it into HSEM.
 
+## Planner Specification (Mandatory Reference)
+
+The canonical definition of how the HSEM planner must behave is in
+**`docs/hsem-planner-spec.md`**.
+
+The agent MUST:
+
+1. **Read `docs/hsem-planner-spec.md` before touching any planner code** — engine, cost function,
+   SoC simulation, candidate generation, slot population, or safety gates.
+2. **Verify that every planner change is consistent with the spec** — energy balance per slot,
+   SoC bounds, cost function formula, terminal-SoC accounting, candidate invariants, and safety
+   gate behaviour must all match the spec exactly.
+3. **Update `docs/hsem-planner-spec.md`** whenever a change intentionally alters planner
+   semantics (goals, formulas, invariants, or safety gates).  The spec and the implementation
+   must never be allowed to diverge silently.
+4. **Add or update tests** that cover the invariants listed under *Invariants for tests* in the
+   spec for every planner change.
+5. **Include the spec check in the Definition of Done** — a planner change is not complete until
+   both the spec and the tests are updated and passing.
+
+Key invariants to verify for every planner PR (from the spec):
+
+- Energy balance holds for every slot.
+- SoC never leaves configured bounds.
+- Forced discharge/export changes SoC and cost/revenue.
+- Grid charge prices actual grid import (not stored energy).
+- `winner.cost == final_output.cost` — no post-selection mutation.
+- `winner.slots == final_output.slots`.
+- Terminal SoC affects cost; emptying the battery is not free.
+- No-action baseline includes normal PV/battery self-consumption.
+- Read-only / degraded / dry-run gates block hardware writes.
+
 ## HSEM Development Rules
 
 Solar energy systems must be treated as external hardware interfaces.

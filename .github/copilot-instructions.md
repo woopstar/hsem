@@ -33,6 +33,17 @@ When asked to solve a GitHub issue, always follow these steps in order:
     - **Never** pass a multiline body inline via `--body "..."`: PowerShell corrupts the
       content (newlines become `∙` characters; backticks become `\x5c` escapes).
 
+## Planner Specification Rule (Mandatory)
+- **Always read `docs/hsem-planner-spec.md` before touching any planner code** — engine, cost
+  function, SoC simulation, candidate generation, slot population, or safety gates.
+- **Every planner change must satisfy all spec invariants**: energy balance per slot, SoC bounds,
+  cost identity (`winner.cost == final_output.cost`), terminal-SoC accounting, and safety gates.
+- **Update `docs/hsem-planner-spec.md`** when a change intentionally alters planner semantics.
+  Spec and implementation must never diverge silently.
+- **Add or update tests** covering the affected invariants for every planner change.
+- A planner PR is not done until: spec is consistent, invariant tests pass, and lint is clean.
+- See `AGENTS.md` → **Planner Specification** for the full compliance checklist.
+
 ## Huawei Solar Sensor Rule (Mandatory)
 - **Always use entities exposed by `wlcrs/huawei_solar`** for every inverter/battery value.
 - Never hard-code numeric battery constants — always source from the live HA entity.
