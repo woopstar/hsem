@@ -30,17 +30,17 @@ class TestExcessExportDefaults:
     def test_discharge_buffer_is_numeric(self):
         """Discharge buffer default must be a non-False integer (10 %)."""
         value = DEFAULT_CONFIG_VALUES["hsem_batteries_excess_export_discharge_buffer"]
-        assert isinstance(value, (int, float)), (
-            "Default discharge buffer must be numeric, not a boolean False."
-        )
+        assert isinstance(
+            value, (int, float)
+        ), "Default discharge buffer must be numeric, not a boolean False."
         assert value == 10
 
     def test_price_threshold_is_numeric(self):
         """Price threshold default must be a non-False float (0.10 EUR/kWh)."""
         value = DEFAULT_CONFIG_VALUES["hsem_batteries_excess_export_price_threshold"]
-        assert isinstance(value, (int, float)), (
-            "Default price threshold must be numeric, not a boolean False."
-        )
+        assert isinstance(
+            value, (int, float)
+        ), "Default price threshold must be numeric, not a boolean False."
         assert value == pytest.approx(0.10)
 
     def test_purchase_price_default(self):

@@ -90,9 +90,9 @@ class TestP001MonthMatching:
         from custom_components.hsem.utils.misc import convert_months_to_int
 
         result = convert_months_to_int(["10", "11", "12"])
-        assert 1 not in result, (
-            "January (1) must not be present after converting ['10','11','12']"
-        )
+        assert (
+            1 not in result
+        ), "January (1) must not be present after converting ['10','11','12']"
 
     def test_january_only_matches_january(self) -> None:
         """Converting ['1'] must yield exactly [1]."""
@@ -101,9 +101,9 @@ class TestP001MonthMatching:
         result = convert_months_to_int(["1"])
         assert result == [1]
         for ghost in (10, 11, 12):
-            assert ghost not in result, (
-                f"Month {ghost} must not appear after converting ['1']"
-            )
+            assert (
+                ghost not in result
+            ), f"Month {ghost} must not appear after converting ['1']"
 
     def test_all_winter_months_correct(self) -> None:
         """Standard winter set [1,2,3,4,10,11,12] must survive round-trip."""
@@ -233,9 +233,9 @@ class TestP003NextDayCharging:
         now = _dt(22, 0)
         result = next_window_start_dt(now, time(7, 0))
         expected = _dt(7, 0, day_offset=1)
-        assert result == expected, (
-            f"At 22:00, 07:00 window should be tomorrow — got {result}"
-        )
+        assert (
+            result == expected
+        ), f"At 22:00, 07:00 window should be tomorrow — got {result}"
 
     def test_result_is_always_strictly_after_now(self) -> None:
         """``next_window_start_dt`` must never return a past datetime."""
@@ -255,9 +255,9 @@ class TestP003NextDayCharging:
 
         now = _dt(6, 0)
         result = next_window_start_dt(now, time(7, 0))
-        assert result == _dt(7, 0), (
-            "At 06:00, the 07:00 window has not yet passed — should be today"
-        )
+        assert result == _dt(
+            7, 0
+        ), "At 06:00, the 07:00 window has not yet passed — should be today"
 
     def test_cheap_night_slot_flagged_before_next_day_discharge_window(self) -> None:
         """A 02:00-03:00 charge slot tonight is before the 07:00 window tomorrow.
@@ -271,9 +271,7 @@ class TestP003NextDayCharging:
         charge_slot_end = _dt(3, 0, day_offset=1)  # 03:00 next day
         assert (
             interval_ends_before_window_start(charge_slot_end, time(7, 0), now) is True
-        ), (
-            "02:00-03:00 charge slot must be flagged as 'before' the 07:00 discharge window"
-        )
+        ), "02:00-03:00 charge slot must be flagged as 'before' the 07:00 discharge window"
 
     def test_slot_after_discharge_window_excluded(self) -> None:
         """A slot ending at 08:00 is NOT before the 07:00 window."""
@@ -317,9 +315,9 @@ class TestP004Schedule3Default:
         start = DEFAULT_CONFIG_VALUES[
             "hsem_batteries_enable_batteries_schedule_3_start"
         ]
-        assert start != "00:00:00", (
-            "schedule_3 default start '00:00:00' + end '00:00:00' is ambiguous"
-        )
+        assert (
+            start != "00:00:00"
+        ), "schedule_3 default start '00:00:00' + end '00:00:00' is ambiguous"
 
     def test_schedule_3_default_end_is_not_midnight(self) -> None:
         """Default end must not be '00:00:00'."""
@@ -363,9 +361,9 @@ class TestP004Schedule3Default:
             "hsem_batteries_enable_batteries_schedule_3_min_price_difference": 0.0,
         }
         errors = await validate_batteries_schedule_3_input(user_input)
-        assert "base" in errors, (
-            "00:00→00:00 with enabled=True must produce a validation error"
-        )
+        assert (
+            "base" in errors
+        ), "00:00→00:00 with enabled=True must produce a validation error"
 
     @pytest.mark.asyncio
     async def test_disabled_schedule_3_accepts_any_times(self) -> None:
@@ -527,9 +525,9 @@ class TestP006ConcurrentUpdates:
             sensor._async_handle_update(),
             sensor._async_handle_update(),
         )
-        assert sensor.cycle_runs == 1, (
-            f"Cycle ran {sensor.cycle_runs} times — expected exactly 1"
-        )
+        assert (
+            sensor.cycle_runs == 1
+        ), f"Cycle ran {sensor.cycle_runs} times — expected exactly 1"
         assert sensor.skipped == 1, f"Expected 1 skipped call, got {sensor.skipped}"
 
     @pytest.mark.asyncio
@@ -549,9 +547,9 @@ class TestP006ConcurrentUpdates:
             sensor._async_handle_update(),
             sensor._async_handle_update(),
         )
-        assert len(writes) == 1, (
-            f"Inverter write happened {len(writes)} times; expected exactly 1"
-        )
+        assert (
+            len(writes) == 1
+        ), f"Inverter write happened {len(writes)} times; expected exactly 1"
 
     @pytest.mark.asyncio
     async def test_sequential_updates_both_execute(self) -> None:
@@ -573,9 +571,9 @@ class TestP006ConcurrentUpdates:
         from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
 
         source = inspect.getsource(HSEMDataUpdateCoordinator.__init__)
-        assert "_update_lock = asyncio.Lock()" in source, (
-            "HSEMDataUpdateCoordinator.__init__ must contain self._update_lock = asyncio.Lock()"
-        )
+        assert (
+            "_update_lock = asyncio.Lock()" in source
+        ), "HSEMDataUpdateCoordinator.__init__ must contain self._update_lock = asyncio.Lock()"
 
 
 # ===========================================================================
@@ -712,12 +710,12 @@ class TestP008MagicThresholds:
                 for alias in node.names:
                     imported_names.add(alias.asname or alias.name)
 
-        assert "SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH" in imported_names, (
-            "charge_scheduler.py must import SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH"
-        )
-        assert "NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH" in imported_names, (
-            "charge_scheduler.py must import NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH"
-        )
+        assert (
+            "SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH" in imported_names
+        ), "charge_scheduler.py must import SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH"
+        assert (
+            "NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH" in imported_names
+        ), "charge_scheduler.py must import NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH"
 
     def test_near_zero_threshold_used_in_optimization_strategy(self) -> None:
         """A slot at exactly NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH gets BatteriesChargeSolar
@@ -750,9 +748,9 @@ class TestP008MagicThresholds:
             months_winter=[1, 2, 3, 4, 10, 11, 12],
             warnings=[],
         )
-        assert slot.recommendation == Recommendations.BatteriesChargeSolar.value, (
-            "A slot at the near-zero boundary must be classified as BatteriesChargeSolar"
-        )
+        assert (
+            slot.recommendation == Recommendations.BatteriesChargeSolar.value
+        ), "A slot at the near-zero boundary must be classified as BatteriesChargeSolar"
 
 
 # ===========================================================================

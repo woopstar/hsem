@@ -238,9 +238,9 @@ class TestSimulateSocUnit:
         simulate_soc(slots, t0, 2.0, 9.0, 9.0, 5.0, None)
 
         for slot in slots:
-            assert slot.estimated_battery_capacity >= 0.0, (
-                f"Battery went negative at {slot.start}"
-            )
+            assert (
+                slot.estimated_battery_capacity >= 0.0
+            ), f"Battery went negative at {slot.start}"
             assert slot.estimated_battery_soc >= 0.0
 
     def test_battery_never_exceeds_usable(self):
@@ -263,9 +263,9 @@ class TestSimulateSocUnit:
         simulate_soc(slots, t0, 4.0, usable_kwh, usable_kwh, 5.0, None)
 
         for slot in slots:
-            assert slot.estimated_battery_capacity <= usable_kwh + 1e-6, (
-                f"Battery exceeded max at {slot.start}: {slot.estimated_battery_capacity}"
-            )
+            assert (
+                slot.estimated_battery_capacity <= usable_kwh + 1e-6
+            ), f"Battery exceeded max at {slot.start}: {slot.estimated_battery_capacity}"
             assert slot.estimated_battery_soc <= 100.0 + 1e-6
 
     def test_charge_power_limit_clamped(self):
@@ -375,17 +375,17 @@ class TestSoCBoundsIntegration:
         """SoC must never go below 0 on a summer day."""
         result = run_planner(make_summer_day_input())
         for slot in result.slots:
-            assert slot.estimated_battery_soc >= 0.0, (
-                f"SoC below zero at {slot.start}: {slot.estimated_battery_soc}"
-            )
+            assert (
+                slot.estimated_battery_soc >= 0.0
+            ), f"SoC below zero at {slot.start}: {slot.estimated_battery_soc}"
 
     def test_soc_never_above_100_summer(self):
         """SoC must never exceed 100 % on a summer day."""
         result = run_planner(make_summer_day_input())
         for slot in result.slots:
-            assert slot.estimated_battery_soc <= 100.0 + 1e-6, (
-                f"SoC above 100 at {slot.start}: {slot.estimated_battery_soc}"
-            )
+            assert (
+                slot.estimated_battery_soc <= 100.0 + 1e-6
+            ), f"SoC above 100 at {slot.start}: {slot.estimated_battery_soc}"
 
     def test_soc_never_below_zero_winter(self):
         """SoC must never go below 0 on a winter day."""
@@ -511,9 +511,9 @@ class TestPowerLimits:
         result = run_planner(inp)
         # max_charge_per_slot = 1 kW * 1h * 1.0 (no loss) = 1.0 kWh
         for slot in result.slots:
-            assert slot.batteries_charged <= 1.0 + 1e-6, (
-                f"Charge exceeded limit at {slot.start}: {slot.batteries_charged}"
-            )
+            assert (
+                slot.batteries_charged <= 1.0 + 1e-6
+            ), f"Charge exceeded limit at {slot.start}: {slot.batteries_charged}"
 
     def test_discharge_power_limit_respected_in_full_run(self):
         """batteries_discharged per slot must not exceed max_discharge_per_slot."""
@@ -525,9 +525,9 @@ class TestPowerLimits:
         )
         result = run_planner(inp)
         for slot in result.slots:
-            assert slot.batteries_discharged <= 1.0 + 1e-6, (
-                f"Discharge exceeded limit at {slot.start}: {slot.batteries_discharged}"
-            )
+            assert (
+                slot.batteries_discharged <= 1.0 + 1e-6
+            ), f"Discharge exceeded limit at {slot.start}: {slot.batteries_discharged}"
 
     def test_no_discharge_limit_allows_high_discharge(self):
         """When battery_max_discharge_power_w is None, discharge is only limited
@@ -547,9 +547,9 @@ class TestPowerLimits:
             for s in result.slots
             if s.recommendation != Recommendations.TimePassed.value
         ]
-        assert any(d > 1.0 for d in future_discharges), (
-            "Expected at least one slot to discharge > 1 kWh when no limit is set"
-        )
+        assert any(
+            d > 1.0 for d in future_discharges
+        ), "Expected at least one slot to discharge > 1 kWh when no limit is set"
 
 
 class TestEnergyFlowAccounting:
@@ -559,17 +559,17 @@ class TestEnergyFlowAccounting:
         """Grid imports must be non-negative in all slots."""
         result = run_planner(make_summer_day_input())
         for slot in result.slots:
-            assert slot.grid_import_kwh >= 0.0, (
-                f"Negative import at {slot.start}: {slot.grid_import_kwh}"
-            )
+            assert (
+                slot.grid_import_kwh >= 0.0
+            ), f"Negative import at {slot.start}: {slot.grid_import_kwh}"
 
     def test_export_non_negative(self):
         """Grid exports must be non-negative in all slots."""
         result = run_planner(make_summer_day_input())
         for slot in result.slots:
-            assert slot.grid_export_kwh >= 0.0, (
-                f"Negative export at {slot.start}: {slot.grid_export_kwh}"
-            )
+            assert (
+                slot.grid_export_kwh >= 0.0
+            ), f"Negative export at {slot.start}: {slot.grid_export_kwh}"
 
     def test_no_simultaneous_import_and_export(self):
         """A slot must not have both positive import and positive export."""
@@ -596,9 +596,9 @@ class TestEnergyFlowAccounting:
             and s.grid_import_kwh == pytest.approx(0.0, abs=1e-3)
         ]
         # With full battery and high PV, there should be some export slots
-        assert any(s.grid_export_kwh > 0.0 for s in future_slots), (
-            "Expected exported energy with full battery and PV surplus"
-        )
+        assert any(
+            s.grid_export_kwh > 0.0 for s in future_slots
+        ), "Expected exported energy with full battery and PV surplus"
 
     def test_no_export_when_battery_empty_and_no_pv(self):
         """With empty battery and no PV, there should be no export."""
@@ -611,9 +611,9 @@ class TestEnergyFlowAccounting:
         result = run_planner(inp)
         for slot in result.slots:
             if slot.recommendation != Recommendations.TimePassed.value:
-                assert slot.grid_export_kwh == pytest.approx(0.0), (
-                    f"Unexpected export at {slot.start}: {slot.grid_export_kwh}"
-                )
+                assert slot.grid_export_kwh == pytest.approx(
+                    0.0
+                ), f"Unexpected export at {slot.start}: {slot.grid_export_kwh}"
 
 
 class TestMaxSoCPct:

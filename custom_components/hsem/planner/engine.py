@@ -331,13 +331,23 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     # Build human-readable plan explanation
     explanation = _build_explanation(inp, slots, battery_soc_at_end, now)
 
-    # Score the selected (winning) plan with the full cost function.
-    # Re-use cost_weights built during candidate selection above.
-    plan_cost = score_plan(
-        slots,
-        cost_weights,
-        slot_duration_hours=slot_duration_hours,
-    )
+    # Use the winning candidate's cost as the authoritative plan_cost.
+    # The spec invariant requires: output.plan_cost == selected_candidate.cost.
+    # The candidate selector already ran score_plan on the winner's slots and
+    # stored the result in winner._cost.  Re-scoring here (after the fill pass)
+    # would use the fill-modified slots and produce a different value, violating
+    # the invariant.  We therefore prefer the pre-stored cost when available and
+    # only fall back to a fresh score when the selector did not run (edge cases
+    # such as zero-slot outputs or the degenerate single-candidate path).
+    winner_cost = getattr(winner, "_cost", None)
+    if winner_cost is not None:
+        plan_cost = winner_cost
+    else:
+        plan_cost = score_plan(
+            slots,
+            cost_weights,
+            slot_duration_hours=slot_duration_hours,
+        )
 
     # Merge candidate-rejected alternatives into the explanation's rejected list
     # (the explanation already contains schedule-based rejected alternatives built
