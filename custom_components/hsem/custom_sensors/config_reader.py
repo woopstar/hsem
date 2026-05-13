@@ -112,6 +112,9 @@ def build_sensor_config(config_entry) -> SensorConfig:
     cfg.huawei_solar_batteries_state_of_capacity = get_config_value(
         config_entry, "hsem_huawei_solar_batteries_state_of_capacity"
     )
+    cfg.huawei_solar_batteries_charging_cutoff_capacity = get_config_value(
+        config_entry, "hsem_huawei_solar_batteries_charging_cutoff_capacity"
+    )
     cfg.huawei_solar_batteries_grid_charge_cutoff_soc = get_config_value(
         config_entry, "hsem_huawei_solar_batteries_grid_charge_cutoff_soc"
     )

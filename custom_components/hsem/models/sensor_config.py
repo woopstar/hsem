@@ -63,7 +63,8 @@ class SensorConfig:
         huawei_solar_batteries_working_mode: Entity ID for working mode select.
         huawei_solar_batteries_end_of_discharge_soc: Entity ID for EoD SoC number.
         huawei_solar_batteries_state_of_capacity: Entity ID for SoC sensor.
-        huawei_solar_batteries_grid_charge_cutoff_soc: Entity ID for grid charge cutoff.
+        huawei_solar_batteries_charging_cutoff_capacity: Entity ID for charging cutoff SoC (max SoC).
+        huawei_solar_batteries_grid_charge_cutoff_soc: Entity ID for grid charge cutoff SoC.
         huawei_solar_batteries_maximum_charging_power: Entity ID for max charge power.
         huawei_solar_batteries_maximum_discharging_power: Entity ID for max discharge power.
         huawei_solar_batteries_tou_charging_and_discharging_periods: Entity ID for TOU periods.
@@ -126,6 +127,7 @@ class SensorConfig:
     huawei_solar_batteries_working_mode: str | None = None
     huawei_solar_batteries_end_of_discharge_soc: str | None = None
     huawei_solar_batteries_state_of_capacity: str | None = None
+    huawei_solar_batteries_charging_cutoff_capacity: str | None = None
     huawei_solar_batteries_grid_charge_cutoff_soc: str | None = None
     huawei_solar_batteries_maximum_charging_power: str | None = None
     huawei_solar_batteries_maximum_discharging_power: str | None = None

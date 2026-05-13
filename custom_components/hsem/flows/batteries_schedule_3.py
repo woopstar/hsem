@@ -3,6 +3,9 @@ from datetime import datetime
 import voluptuous as vol
 from homeassistant.helpers.selector import selector
 
+from custom_components.hsem.flows.batteries_schedule_1 import (
+    _resolve_usable_capacity_kwh,
+)
 from custom_components.hsem.utils.misc import (
     calculate_recommended_threshold,
     convert_to_float,
@@ -11,7 +14,9 @@ from custom_components.hsem.utils.misc import (
 )
 
 
-async def get_batteries_schedule_3_step_schema(config_entry) -> vol.Schema:
+async def get_batteries_schedule_3_step_schema(
+    config_entry, hass=None, user_input: dict | None = None
+) -> vol.Schema:
     """Return the data schema for the 'batteries_schedule' step."""
 
     # Calculate recommended threshold as default if not already set
@@ -22,7 +27,7 @@ async def get_batteries_schedule_3_step_schema(config_entry) -> vol.Schema:
         get_config_value(config_entry, "hsem_batteries_expected_cycles")
     )
     expected_cycles = _cycles_3 if _cycles_3 is not None else 6000
-    usable_capacity = 10.0  # Default assumption for calculation
+    usable_capacity = _resolve_usable_capacity_kwh(hass, config_entry, user_input)
     conversion_loss = convert_to_float(
         get_config_value(config_entry, "hsem_batteries_conversion_loss") or 10.0
     )

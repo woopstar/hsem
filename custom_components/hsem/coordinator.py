@@ -497,6 +497,10 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             battery_end_of_discharge_soc_pct=convert_to_float(
                 live.huawei_batteries_end_of_discharge_soc_pct or 5.0
             ),
+            battery_max_soc_pct=convert_to_float(
+                live.huawei_batteries_charging_cutoff_capacity_pct
+            )
+            or 100.0,
             battery_max_charge_power_w=convert_to_float(
                 live.huawei_batteries_max_charge_power_w
             ),
@@ -567,10 +571,13 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 continue
             rec.recommendation = slot.recommendation
             rec.batteries_charged = slot.batteries_charged
+            rec.batteries_discharged = slot.batteries_discharged
             rec.estimated_net_consumption = slot.estimated_net_consumption
             rec.estimated_cost = slot.estimated_cost
             rec.estimated_battery_capacity = slot.estimated_battery_capacity
             rec.estimated_battery_soc = slot.estimated_battery_soc
+            rec.grid_import_kwh = slot.grid_import_kwh
+            rec.grid_export_kwh = slot.grid_export_kwh
 
         self._batteries_schedules_remaining_capacity_needed = sum(
             s.needed_batteries_capacity for s in self._batteries_schedules if s.enabled
@@ -609,12 +616,15 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                     avg_house_consumption_7d=0.0,
                     avg_house_consumption_14d=0.0,
                     batteries_charged=0.0,
+                    batteries_discharged=0.0,
                     end=t_end,
                     estimated_battery_capacity=0.0,
                     estimated_battery_soc=0,
                     estimated_cost=0.0,
                     estimated_net_consumption=0.0,
                     export_price=0.0,
+                    grid_export_kwh=0.0,
+                    grid_import_kwh=0.0,
                     import_price=0.0,
                     recommendation=None,
                     solcast_pv_estimate=0.0,

@@ -235,6 +235,7 @@ class HSEMWorkingModeSensor(
             "house_power_includes_ev_charger_power": cfg.house_power_includes_ev_charger_power,
             "batteries_schedules_remaining_capacity_needed": data.batteries_schedules_remaining_capacity_needed,
             "batteries_schedules": data.batteries_schedules,
+            "huawei_solar_batteries_charging_cutoff_capacity_state": live.huawei_batteries_charging_cutoff_capacity_pct,
             "huawei_solar_batteries_grid_charge_cutoff_soc_state": live.huawei_batteries_grid_charge_cutoff_soc_pct,
             "huawei_solar_batteries_maximum_charging_power_state": live.huawei_batteries_max_charge_power_w,
             "huawei_solar_batteries_maximum_discharging_power_state": live.huawei_batteries_max_discharge_power_w,

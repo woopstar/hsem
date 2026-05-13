@@ -3,6 +3,9 @@
 import voluptuous as vol
 from homeassistant.helpers.selector import selector
 
+from custom_components.hsem.flows.batteries_schedule_1 import (
+    _resolve_usable_capacity_kwh,
+)
 from custom_components.hsem.utils.misc import (
     calculate_recommended_threshold,
     convert_to_float,
@@ -12,13 +15,15 @@ from custom_components.hsem.utils.misc import (
 
 
 async def get_batteries_excess_export_step_schema(
-    config_entry, user_input: dict | None = None
+    config_entry, user_input: dict | None = None, hass=None
 ) -> vol.Schema:
     """Return the data schema for the 'batteries_excess_export' step.
 
     Args:
         config_entry: Existing config entry (used during options flow editing).
         user_input: Accumulated user input dict from previous config flow steps.
+        hass: Optional Home Assistant instance used to resolve the live rated
+            capacity state for a more accurate depreciation threshold preview.
     """
 
     # Calculate recommended threshold as default if not already set.
@@ -38,9 +43,9 @@ async def get_batteries_excess_export_step_schema(
         or (user_input.get("hsem_batteries_conversion_loss") if user_input else None)
         or 10.0
     )
-    # Usable capacity is typically a sensor value not available during config setup.
-    # Using a reasonable default; actual value will be used in working_mode_sensor.
-    usable_capacity = 10.0
+    # Resolve rated capacity from the live HA entity when possible (Wh → kWh).
+    # Falls back to 10.0 kWh for the UI preview when the entity is unavailable.
+    usable_capacity = _resolve_usable_capacity_kwh(hass, config_entry, user_input)
 
     recommended = calculate_recommended_threshold(
         purchase_price, expected_cycles, usable_capacity, conversion_loss

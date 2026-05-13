@@ -33,6 +33,16 @@ When asked to solve a GitHub issue, always follow these steps in order:
     - **Never** pass a multiline body inline via `--body "..."`: PowerShell corrupts the
       content (newlines become `∙` characters; backticks become `\x5c` escapes).
 
+## Huawei Solar Sensor Rule (Mandatory)
+- **Always use entities exposed by `wlcrs/huawei_solar`** for every inverter/battery value.
+- Never hard-code numeric battery constants — always source from the live HA entity.
+- If a value is needed but not yet wired into HSEM, add it through the full stack:
+  `const.py` → `flows/huawei_solar.py` → **`translations/en.json`** (both `config` and
+  `options` `huawei_solar` steps) → `models/sensor_config.py` →
+  `custom_sensors/config_reader.py` → `custom_sensors/state_collector.py` →
+  `models/live_state.py` → `coordinator.py`
+- See `AGENTS.md` → **Huawei Solar Sensor Usage Rule** for the canonical entity table.
+
 ## Issue-Solving Rules
 - Always read `AGENTS.md` and `CLAUDE.md` before starting any issue work.
 - Solve **one issue only** per branch and PR.

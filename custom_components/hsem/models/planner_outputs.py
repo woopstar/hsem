@@ -64,7 +64,18 @@ class PlannedSlot:
             of the slot.
         batteries_charged:
             Energy scheduled to be charged into the battery during this slot
-            (kWh, ≥ 0).
+            (kWh, ≥ 0).  This is the energy *stored* after conversion losses
+            are applied.
+        batteries_discharged:
+            Energy discharged from the battery during this slot (kWh, ≥ 0).
+            Populated by the SoC simulation and clamped to the discharge
+            power limit and available capacity.
+        grid_import_kwh:
+            Energy imported from the grid during this slot (kWh, ≥ 0).
+            Equals load minus any battery discharge and PV that cover demand.
+        grid_export_kwh:
+            Energy exported to the grid during this slot (kWh, ≥ 0).
+            Equals surplus PV and battery discharge beyond local load.
         recommendation:
             The ``Recommendations`` enum value chosen for this slot
             (stored as its string value so the output stays framework-free)
@@ -85,6 +96,9 @@ class PlannedSlot:
     estimated_battery_soc: float = 0.0
     estimated_battery_capacity: float = 0.0
     batteries_charged: float = 0.0
+    batteries_discharged: float = 0.0
+    grid_import_kwh: float = 0.0
+    grid_export_kwh: float = 0.0
     recommendation: str | None = None
 
 

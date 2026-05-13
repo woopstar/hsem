@@ -11,7 +11,42 @@ from custom_components.hsem.utils.misc import (
 )
 
 
-async def get_batteries_schedule_1_step_schema(config_entry) -> vol.Schema:
+def _resolve_usable_capacity_kwh(
+    hass,
+    config_entry,
+    user_input: dict | None = None,
+) -> float:
+    """Return the usable battery capacity in kWh for threshold preview calculations.
+
+    Resolves the live HA state of ``hsem_huawei_solar_batteries_rated_capacity``
+    (stored in Wh) and converts it to kWh.  Falls back to 10.0 kWh when the
+    entity is unavailable or the state cannot be parsed.
+
+    Priority for the entity-id string:
+    1. ``config_entry`` (options flow / existing config)
+    2. ``user_input`` (config flow — data from previous steps)
+    3. Built-in fallback: 10.0 kWh
+    """
+    rated_capacity_entity = get_config_value(
+        config_entry, "hsem_huawei_solar_batteries_rated_capacity"
+    ) or (
+        user_input.get("hsem_huawei_solar_batteries_rated_capacity")
+        if user_input
+        else None
+    )
+    if hass and rated_capacity_entity:
+        state = hass.states.get(rated_capacity_entity)
+        if state is not None:
+            rated_wh = convert_to_float(state.state)
+            if rated_wh and rated_wh > 0:
+                return rated_wh / 1000.0
+    # Fall back to a representative default for the UI preview.
+    return 10.0
+
+
+async def get_batteries_schedule_1_step_schema(
+    config_entry, hass=None, user_input: dict | None = None
+) -> vol.Schema:
     """Return the data schema for the 'batteries_schedule' step."""
 
     # Calculate recommended threshold as default if not already set
@@ -22,7 +57,7 @@ async def get_batteries_schedule_1_step_schema(config_entry) -> vol.Schema:
         get_config_value(config_entry, "hsem_batteries_expected_cycles")
     )
     expected_cycles = _cycles_1 if _cycles_1 is not None else 6000
-    usable_capacity = 10.0  # Default assumption for calculation
+    usable_capacity = _resolve_usable_capacity_kwh(hass, config_entry, user_input)
     conversion_loss = convert_to_float(
         get_config_value(config_entry, "hsem_batteries_conversion_loss") or 10.0
     )

@@ -53,6 +53,7 @@ from custom_components.hsem.planner.slot_population import (
     populate_solcast,
     usable_capacity,
 )
+from custom_components.hsem.planner.soc_simulation import simulate_soc
 from custom_components.hsem.utils.misc import calculate_recommended_threshold
 from custom_components.hsem.utils.recommendations import Recommendations
 
@@ -105,6 +106,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         inp.battery_rated_capacity_kwh,
         inp.battery_soc_pct,
         inp.battery_end_of_discharge_soc_pct,
+        inp.battery_max_soc_pct,
     )
 
     if inp.battery_rated_capacity_kwh <= 0:
@@ -181,7 +183,21 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
 
     apply_charge_schedules(slots, inp.battery_schedules, now, max_charge_per_interval)
 
-    # Battery capacity forward simulation (first pass)
+    # Derive per-slot power limits
+    max_charge_per_slot = (
+        inp.battery_max_charge_power_w
+        / 1000
+        * (1 - inp.battery_conversion_loss_pct / 100)
+    ) / (60 / inp.interval_minutes)
+    max_discharge_per_slot: float | None = None
+    if inp.battery_max_discharge_power_w is not None:
+        max_discharge_per_slot = (inp.battery_max_discharge_power_w / 1000) / (
+            60 / inp.interval_minutes
+        )
+    # Absolute ceiling from max_soc_pct expressed in usable kWh
+    max_soc_capacity_kwh = usable_kwh  # usable_kwh already respects max_soc_pct
+
+    # Battery SoC forward simulation (first pass — used for required-capacity calc)
     populate_battery_capacity(slots, now, current_kwh, usable_kwh)
 
     # Required capacity until solar surplus
@@ -211,8 +227,18 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         warnings,
     )
 
-    # Battery capacity forward simulation (second pass — after charges assigned)
-    populate_battery_capacity(slots, now, current_kwh, usable_kwh)
+    # Full SoC simulation (second pass — after charges assigned, with power limits)
+    simulate_soc(
+        slots,
+        now,
+        current_kwh,
+        usable_kwh,
+        max_soc_capacity_kwh,
+        max_charge_per_slot,
+        max_discharge_per_slot,
+        rated_kwh=inp.battery_rated_capacity_kwh,
+        end_of_discharge_soc_pct=inp.battery_end_of_discharge_soc_pct,
+    )
 
     # Current recommendation
     current_recommendation: str | None = None

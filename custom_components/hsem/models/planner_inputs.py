@@ -88,6 +88,9 @@ class PlannerInput:
             Nameplate capacity of the battery pack in kWh.
         battery_end_of_discharge_soc_pct:
             Minimum allowed SoC during discharge (0-100).
+        battery_max_soc_pct:
+            Maximum allowed SoC during charging (0-100).  Defaults to 100 %
+            (no upper restriction beyond nameplate capacity).
         battery_max_charge_power_w:
             Maximum charging power in Watts.
         battery_max_discharge_power_w:
@@ -148,6 +151,7 @@ class PlannerInput:
     battery_soc_pct: float = 50.0
     battery_rated_capacity_kwh: float = 10.0
     battery_end_of_discharge_soc_pct: float = 10.0
+    battery_max_soc_pct: float = 100.0
     battery_max_charge_power_w: float = 5000.0
     battery_max_discharge_power_w: float | None = None
     battery_conversion_loss_pct: float = 10.0
