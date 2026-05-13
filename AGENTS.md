@@ -55,9 +55,11 @@ The agent must use the exact versions defined in the project configuration files
 
 The agent MUST:
 
-1. **Before using any battery/inverter value**, check whether `wlcrs/huawei_solar` already exposes
-   a matching entity.  The canonical source is `number.py`, `sensor.py`, and `select.py` in that
-   repository.
+1. **Before using any battery/inverter value**, check `docs/huawei_entities.md` in this
+   repository first — it is the canonical, verified list of every entity exposed by the
+   `wlcrs/huawei_solar` integration on this installation.  Only fall back to searching
+   `number.py`, `sensor.py`, and `select.py` in that repository when you need a register name
+   or an entity that is not yet listed in `docs/huawei_entities.md`.
 2. **If the entity already exists in HSEM** (in `flows/huawei_solar.py`, `sensor_config.py`,
    `config_reader.py`, `state_collector.py`, and `live_state.py`): re-use it — never hard-code
    the value.
@@ -77,18 +79,23 @@ The agent MUST:
 
 **Key entity mappings** (register name → HA entity id pattern):
 
-| Register | Entity | Meaning |
+| Register / source | Entity | Meaning |
 |---|---|---|
-| `STORAGE_CHARGING_CUTOFF_CAPACITY` | `number.batteries_charging_cutoff_capacity` | Max SoC during charging (90-100 %) |
+| `STORAGE_CHARGING_CUTOFF_CAPACITY` | `number.batteries_end_of_charge_soc` | Max SoC during charging (90-100 %) |
 | `STORAGE_GRID_CHARGE_CUTOFF_STATE_OF_CHARGE` | `number.batteries_grid_charge_cutoff_soc` | Max SoC when charging **from grid** |
 | `STORAGE_DISCHARGING_CUTOFF_CAPACITY` | `number.batteries_end_of_discharge_soc` | Min SoC floor |
 | `STORAGE_MAXIMUM_CHARGING_POWER` | `number.batteries_maximum_charging_power` | Max charge power (W) |
 | `STORAGE_MAXIMUM_DISCHARGING_POWER` | `number.batteries_maximum_discharging_power` | Max discharge power (W) |
 | `STORAGE_STATE_OF_CAPACITY` | `sensor.batteries_state_of_capacity` | Current SoC (%) |
 | `STORAGE_RATED_CAPACITY` | `sensor.batteries_rated_capacity` | Nameplate capacity (Wh) |
+| `STORAGE_WORKING_MODE_SETTINGS` | `select.batteries_working_mode` | Working mode select |
+| `STORAGE_EXCESS_PV_ENERGY_USE_IN_TOU` | `select.batteries_excess_pv_energy_use_in_tou` | Excess PV use mode in TOU |
+| `STORAGE_HUAWEI_LUNA2000_TOU_…_PERIODS` | `sensor.batteries_tou_charging_and_discharging_periods` | TOU period schedule |
+| `HuaweiSolarActivePowerControlModeEntity` | `sensor.inverter_active_power_control` | Active power / export control mode |
 
-If you are unsure which entity to use, search `wlcrs/huawei_solar` `number.py` and `sensor.py`
-for the register name before implementing.
+**Always check `docs/huawei_entities.md` first** before searching the upstream repo or guessing
+an entity ID. If a new entity is confirmed to exist in HA, add it to `docs/huawei_entities.md`
+as part of the same PR that wires it into HSEM.
 
 ## HSEM Development Rules
 
