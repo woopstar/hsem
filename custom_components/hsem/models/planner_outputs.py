@@ -57,9 +57,11 @@ class PlanExplanation:
         summary:
             One-sentence human-readable summary of the selected plan.
         score:
-            Numeric score for the selected plan.  Higher is better.
-            Currently defined as the negated estimated total cost so that
-            cheaper plans score higher; the scale is local currency/kWh.
+            Estimated savings of the selected plan versus doing nothing
+            (battery fully idle).  Positive means the plan saves money
+            over the horizon; negative means pre-charging overhead exceeds
+            the expected discharge savings within this window.  Units are
+            local currency.
         estimated_total_cost:
             Estimated net grid cost for the planning horizon (local currency).
             Positive = net import cost; negative = net export revenue.

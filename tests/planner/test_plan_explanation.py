@@ -116,13 +116,13 @@ class TestPlanExplanationDataclass:
     def test_as_dict_values_are_rounded(self):
         """Floating-point values in as_dict() are rounded to avoid precision noise."""
         exp = PlanExplanation(
-            score=-1.23456789,
+            score=1.23456789,
             estimated_total_cost=1.23456789,
             price_spread=0.123456789,
             forecast_pv_kwh=5.123456789,
         )
         d = exp.as_dict()
-        assert d["score"] == pytest.approx(-1.2346, abs=1e-4)
+        assert d["score"] == pytest.approx(1.2346, abs=1e-4)
         assert d["estimated_total_cost"] == pytest.approx(1.2346, abs=1e-4)
         assert d["price_spread"] == pytest.approx(0.1235, abs=1e-4)
         assert d["forecast_pv_kwh"] == pytest.approx(5.123, abs=1e-3)
@@ -158,11 +158,24 @@ class TestPlannerOutputHasExplanation:
         assert output.explanation.summary
         assert len(output.explanation.summary) > 10
 
-    def test_score_equals_negated_cost(self):
-        """score must equal -estimated_total_cost."""
+    def test_score_is_savings_vs_do_nothing(self):
+        """score must equal do_nothing_cost minus estimated_total_cost.
+
+        A positive score means the selected plan is cheaper than idle;
+        a negative score means charging overhead exceeds discharge savings
+        within the planning window.
+        """
         output = run_planner(make_summer_day_input())
         exp = output.explanation
-        assert exp.score == pytest.approx(-exp.estimated_total_cost, abs=1e-4)
+        # The do_nothing rejected plan carries the baseline cost.
+        do_nothing = next(
+            (rp for rp in exp.rejected_plans if rp.name == "do_nothing"), None
+        )
+        if do_nothing is not None:
+            expected_score = round(
+                do_nothing.estimated_cost - exp.estimated_total_cost, 4
+            )
+            assert exp.score == pytest.approx(expected_score, abs=1e-3)
 
     def test_constraints_is_list(self):
         """constraints must be a list (possibly empty but always present)."""

@@ -405,6 +405,16 @@ def _build_explanation(
     # --- Cost of the selected plan ---------------------------------------
     selected_cost = round(sum(s.estimated_cost for s in future_slots), 4)
 
+    # --- Do-nothing baseline cost (battery fully idle, pay import for all load) ---
+    # Computed here so strategy detection can use it in summaries.
+    do_nothing_cost = round(
+        sum(
+            max(s.estimated_net_consumption, 0.0) * s.price.import_price
+            for s in future_slots
+        ),
+        4,
+    )
+
     # --- Strategy detection ----------------------------------------------
     has_grid_charge = any(
         s.recommendation == Recommendations.BatteriesChargeGrid.value
@@ -491,23 +501,43 @@ def _build_explanation(
         constraints.append("battery_full")
     if inp.battery_soc_pct <= inp.battery_end_of_discharge_soc_pct:
         constraints.append("battery_empty")
+    if battery_soc_at_end <= inp.battery_end_of_discharge_soc_pct:
+        constraints.append("battery_low_at_end")
 
     # --- Rejected plans -------------------------------------------------
     rejected: list[RejectedPlan] = []
 
-    # Alternative: do-nothing (battery idle for the whole horizon)
-    do_nothing_cost = round(
-        sum(s.estimated_net_consumption * s.price.import_price for s in future_slots),
-        4,
-    )
+    # The "savings" the selected plan achieves vs doing nothing.
+    # Positive = selected plan is cheaper (saves money vs idle battery).
+    # Negative = selected plan costs more (e.g. pre-charging costs exceed discharge savings).
+    savings = round(do_nothing_cost - selected_cost, 4)
+
+    # Alternative: do-nothing (battery fully idle for the whole horizon).
+    # Always include this as a rejected alternative so the user can see
+    # the baseline comparison even when the savings are marginal or negative.
     if selected_strategy != "discharge_only":
+        if savings > 1e-4:
+            do_nothing_reason = (
+                f"Battery idle would cost {do_nothing_cost:.4f}; "
+                f"selected plan saves {savings:.4f} over the horizon."
+            )
+        elif savings < -1e-4:
+            do_nothing_reason = (
+                f"Battery idle would cost {do_nothing_cost:.4f}. "
+                f"Selected plan costs {abs(savings):.4f} more due to "
+                "charging overhead; discharge savings expected to materialise "
+                "within the current scheduling window."
+            )
+        else:
+            do_nothing_reason = (
+                f"Battery idle cost ({do_nothing_cost:.4f}) and selected plan "
+                f"cost ({selected_cost:.4f}) are approximately equal; "
+                "strategy chosen for schedule adherence."
+            )
         rejected.append(
             RejectedPlan(
                 name="do_nothing",
-                reason=(
-                    "Battery held idle; estimated grid cost "
-                    f"{do_nothing_cost:.4f} vs selected {selected_cost:.4f}."
-                ),
+                reason=do_nothing_reason,
                 estimated_cost=do_nothing_cost,
             )
         )
@@ -546,8 +576,10 @@ def _build_explanation(
                 )
             )
 
-    # Score: negate the estimated cost so cheaper = higher score
-    score = round(-selected_cost, 4)
+    # Score: estimated savings vs doing nothing.
+    # Positive = the plan saves money compared to leaving the battery idle.
+    # Negative = the plan costs more than idle (pre-charge overhead dominates).
+    score = savings
 
     return PlanExplanation(
         selected_strategy=selected_strategy,
