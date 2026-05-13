@@ -403,8 +403,29 @@ def apply_excess_export(
     if battery_discharge_budget_kwh <= 0:
         return
 
-    battery_is_solar_charged = any(
-        s.recommendation == Recommendations.BatteriesChargeSolar.value for s in slots
+    # D16 fix: track actual solar vs grid fractions rather than a coarse flag.
+    # We compute the total kWh scheduled to be charged from solar vs from the
+    # grid within this planning run.  The solar fraction determines how much of
+    # the battery is considered "free" (solar-charged) vs paid-for (grid-charged).
+    # When the solar fraction exceeds 50 % of total planned charging we treat
+    # the battery as predominantly solar-charged and bypass the price threshold;
+    # otherwise the full price-difference guard applies.
+    solar_charged_kwh = sum(
+        s.batteries_charged
+        for s in slots
+        if s.recommendation == Recommendations.BatteriesChargeSolar.value
+    )
+    grid_charged_kwh = sum(
+        s.batteries_charged
+        for s in slots
+        if s.recommendation == Recommendations.BatteriesChargeGrid.value
+    )
+    total_planned_charge_kwh = solar_charged_kwh + grid_charged_kwh
+    # battery_is_solar_charged is True only when solar charging is the
+    # dominant (> 50 %) planned source, or when no grid charging is planned.
+    battery_is_solar_charged = (
+        total_planned_charge_kwh < 1e-9
+        or solar_charged_kwh / total_planned_charge_kwh > 0.5
     )
 
     candidates = sorted(
@@ -440,6 +461,93 @@ def apply_excess_export(
 
 
 # ---------------------------------------------------------------------------
+# Opportunistic grid charging (A2/H28/H29)
+# ---------------------------------------------------------------------------
+
+
+def apply_opportunistic_charge(
+    slots: list[PlannedSlot],
+    now: datetime,
+    current_capacity: float,
+    usable_capacity: float,
+    max_charge_per_interval: float,
+    depreciation_threshold: float,
+) -> None:
+    """Charge the battery opportunistically when import prices are very low.
+
+    This is a *schedule-independent* charge pass: it runs even when no
+    discharge window is configured.  It covers two cases:
+
+    1. **Negative import price** — the grid pays the consumer.  Every
+       negative-price future slot is eligible regardless of the battery level.
+    2. **Below-depreciation import price** — import is so cheap that
+       charging is economically sound even without an upcoming scheduled
+       discharge (the depreciation threshold is used as the ceiling).
+
+    Slots already assigned (by schedule pre-charge or prior passes) are
+    skipped.  Energy is limited to what the battery can still absorb.
+
+    Args:
+        slots: Mutable list of planned slots (modified in-place).
+        now: Timezone-aware current datetime.
+        current_capacity: Current available battery energy in kWh.
+        usable_capacity: Maximum usable battery energy in kWh.
+        max_charge_per_interval: Maximum energy chargeable per slot (kWh).
+        depreciation_threshold: Price ceiling below which grid charging is
+            considered economically justified (local currency / kWh).
+            Typically the depreciation + conversion-loss threshold from
+            :func:`~custom_components.hsem.utils.misc.calculate_recommended_threshold`.
+    """
+    if max_charge_per_interval <= 0:
+        return
+
+    remaining_capacity = max(usable_capacity - current_capacity, 0.0)
+    if remaining_capacity <= 0:
+        return
+
+    charged = 0.0
+
+    # Priority 1: negative import price — charge as much as possible
+    for s in sorted(
+        (
+            slot
+            for slot in slots
+            if slot.end.astimezone(now.tzinfo) > now
+            and slot.recommendation is None
+            and slot.price.import_price < 0
+        ),
+        key=lambda x: (x.price.import_price, x.start),
+    ):
+        if charged >= remaining_capacity:
+            break
+        energy = min(max_charge_per_interval, remaining_capacity - charged)
+        if energy > 0:
+            s.recommendation = Recommendations.BatteriesChargeGrid.value
+            s.batteries_charged = round(energy, 3)
+            charged += energy
+
+    # Priority 2: below-depreciation price (only if threshold is meaningful)
+    if abs(depreciation_threshold) > 1e-9:
+        for s in sorted(
+            (
+                slot
+                for slot in slots
+                if slot.end.astimezone(now.tzinfo) > now
+                and slot.recommendation is None
+                and 0 <= slot.price.import_price < depreciation_threshold
+            ),
+            key=lambda x: (x.price.import_price, x.start),
+        ):
+            if charged >= remaining_capacity:
+                break
+            energy = min(max_charge_per_interval, remaining_capacity - charged)
+            if energy > 0:
+                s.recommendation = Recommendations.BatteriesChargeGrid.value
+                s.batteries_charged = round(energy, 3)
+                charged += energy
+
+
+# ---------------------------------------------------------------------------
 # Seasonal optimization
 # ---------------------------------------------------------------------------
 
@@ -452,12 +560,14 @@ def apply_optimization_strategy(
     required_capacity: float,
     months_winter: list[int],
     warnings: list[str],
+    export_min_price: float = 0.0,
 ) -> None:
     """Apply seasonal optimization logic to remaining unassigned slots.
 
     Decision priority per unassigned slot:
 
-    1. Export price > import price → ``ForceExport``
+    1. Export price > import price **and** export price ≥ ``export_min_price``
+       → ``ForceExport``
     2. Solar surplus → ``BatteriesChargeSolar`` (until battery full)
     3. Future forced export pending and battery above required → ``BatteriesWaitMode``
     4. Winter month → ``BatteriesWaitMode``
@@ -471,14 +581,19 @@ def apply_optimization_strategy(
         required_capacity: Energy required until next solar surplus (kWh).
         months_winter: List of month integers (1-12) treated as winter.
         warnings: Mutable list for diagnostic messages (currently unused here).
+        export_min_price: Minimum export price required to trigger
+            ``ForceExport``.  Slots where export price is below this
+            threshold are not marked for export even if export > import.
+            Defaults to ``0.0`` (any positive export price qualifies).
     """
     current_month = now.month
     months_summer = [m for m in range(1, 13) if m not in months_winter]
 
-    # ForceExport when export > import
+    # ForceExport when export > import AND export >= export_min_price (A3 fix)
     for rec in slots:
         if (
             rec.price.export_price > rec.price.import_price
+            and rec.price.export_price >= export_min_price
             and rec.recommendation is None
         ):
             rec.recommendation = Recommendations.ForceExport.value

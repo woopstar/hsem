@@ -345,11 +345,16 @@ async def async_apply_battery_settings(
                 )
                 return summary
 
-    # Excess PV use in TOU
+    # Excess PV use in TOU — fed_to_grid for wait/fully-fed modes, charge otherwise.
+    # ForceExport maps to WorkingModes.FullyFedToGrid at the hardware level so we
+    # check both BatteriesWaitMode and ForceExport recommendations here.
     desired_excess = (
         "fed_to_grid"
         if recommendation
-        in (Recommendations.BatteriesWaitMode.value, WorkingModes.FullyFedToGrid.value)
+        in (
+            Recommendations.BatteriesWaitMode.value,
+            Recommendations.ForceExport.value,
+        )
         else "charge"
     )
     if live.huawei_batteries_excess_pv_use_in_tou != desired_excess:
