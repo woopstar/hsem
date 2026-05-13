@@ -82,6 +82,7 @@ class LiveState:
         huawei_batteries_working_mode: Working mode string (e.g. ``"TimeOfUse"``).
         huawei_batteries_soc_pct: Battery state-of-charge in percent.
         huawei_batteries_end_of_discharge_soc_pct: Configured minimum SoC.
+        huawei_batteries_charging_cutoff_capacity_pct: Max SoC during charging (general cutoff).
         huawei_batteries_grid_charge_cutoff_soc_pct: Grid charge cutoff SoC.
         huawei_batteries_max_charge_power_w: Maximum charging power in Watts.
         huawei_batteries_max_discharge_power_w: Maximum discharging power in Watts.
@@ -126,6 +127,7 @@ class LiveState:
     huawei_batteries_working_mode: str | None = None
     huawei_batteries_soc_pct: float | None = None
     huawei_batteries_end_of_discharge_soc_pct: float = 5.0
+    huawei_batteries_charging_cutoff_capacity_pct: float | None = None
     huawei_batteries_grid_charge_cutoff_soc_pct: float | None = None
     huawei_batteries_max_charge_power_w: float | None = None
     huawei_batteries_max_discharge_power_w: float | None = None

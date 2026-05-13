@@ -48,6 +48,46 @@ The agent must use the exact versions defined in the project configuration files
 - Runtime: Python 3.13 (required - see `.python-version`)
 - Follow versions specified in `requirements.txt` and/or `setup.py`
 
+## Huawei Solar Sensor Usage Rule (Mandatory)
+
+**Every hardware value consumed or written by HSEM MUST use the entity exposed by the
+[`wlcrs/huawei_solar`](https://github.com/wlcrs/huawei_solar) Home Assistant integration.**
+
+The agent MUST:
+
+1. **Before using any battery/inverter value**, check whether `wlcrs/huawei_solar` already exposes
+   a matching entity.  The canonical source is `number.py`, `sensor.py`, and `select.py` in that
+   repository.
+2. **If the entity already exists in HSEM** (in `flows/huawei_solar.py`, `sensor_config.py`,
+   `config_reader.py`, `state_collector.py`, and `live_state.py`): re-use it — never hard-code
+   the value.
+3. **If the entity exists in `wlcrs/huawei_solar` but is NOT yet wired into HSEM**: add it through
+   the full stack in this order:
+   - `const.py` — add a default entity-id string under `DEFAULT_CONFIG_VALUES`
+   - `flows/huawei_solar.py` — add to the schema and validation
+   - `models/sensor_config.py` — add the `str | None` field
+   - `custom_sensors/config_reader.py` — read from config entry
+   - `custom_sensors/state_collector.py` — read the HA entity state
+   - `models/live_state.py` — add the field to `LiveState`
+   - `coordinator.py` — pass to `PlannerInput` (if planner-relevant)
+4. **Never use a fixed numeric constant** for a value that the inverter reports (e.g. max SoC,
+   charge cutoff, rated capacity).  Always source it from the live entity.
+
+**Key entity mappings** (register name → HA entity id pattern):
+
+| Register | Entity | Meaning |
+|---|---|---|
+| `STORAGE_CHARGING_CUTOFF_CAPACITY` | `number.batteries_charging_cutoff_capacity` | Max SoC during charging (90-100 %) |
+| `STORAGE_GRID_CHARGE_CUTOFF_STATE_OF_CHARGE` | `number.batteries_grid_charge_cutoff_soc` | Max SoC when charging **from grid** |
+| `STORAGE_DISCHARGING_CUTOFF_CAPACITY` | `number.batteries_end_of_discharge_soc` | Min SoC floor |
+| `STORAGE_MAXIMUM_CHARGING_POWER` | `number.batteries_maximum_charging_power` | Max charge power (W) |
+| `STORAGE_MAXIMUM_DISCHARGING_POWER` | `number.batteries_maximum_discharging_power` | Max discharge power (W) |
+| `STORAGE_STATE_OF_CAPACITY` | `sensor.batteries_state_of_capacity` | Current SoC (%) |
+| `STORAGE_RATED_CAPACITY` | `sensor.batteries_rated_capacity` | Nameplate capacity (Wh) |
+
+If you are unsure which entity to use, search `wlcrs/huawei_solar` `number.py` and `sensor.py`
+for the register name before implementing.
+
 ## HSEM Development Rules
 
 Solar energy systems must be treated as external hardware interfaces.

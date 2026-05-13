@@ -218,6 +218,14 @@ async def async_collect_live_state(
         eod_soc if eod_soc is not None else 5.0
     )
 
+    state.huawei_batteries_charging_cutoff_capacity_pct = convert_to_float(
+        _read(
+            cfg.huawei_solar_batteries_charging_cutoff_capacity,
+            "float",
+            label="charging_cutoff_capacity",
+        )
+    )
+
     state.huawei_batteries_grid_charge_cutoff_soc_pct = convert_to_float(
         _read(
             cfg.huawei_solar_batteries_grid_charge_cutoff_soc,

@@ -68,6 +68,13 @@ async def get_huawei_solar_step_schema(config_entry) -> vol.Schema:
                 ),
             ): selector({"entity": {"domain": "number"}}),
             vol.Required(
+                "hsem_huawei_solar_batteries_charging_cutoff_capacity",
+                default=get_config_value(
+                    config_entry,
+                    "hsem_huawei_solar_batteries_charging_cutoff_capacity",
+                ),
+            ): selector({"entity": {"domain": "number"}}),
+            vol.Required(
                 "hsem_huawei_solar_batteries_end_of_discharge_soc",
                 default=get_config_value(
                     config_entry, "hsem_huawei_solar_batteries_end_of_discharge_soc"
@@ -154,6 +161,7 @@ async def validate_huawei_solar_input(hass, user_input) -> dict[str, str]:
         "hsem_huawei_solar_batteries_maximum_charging_power",
         "hsem_huawei_solar_batteries_maximum_discharging_power",
         "hsem_huawei_solar_batteries_grid_charge_cutoff_soc",
+        "hsem_huawei_solar_batteries_charging_cutoff_capacity",
         "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods",
         "hsem_huawei_solar_batteries_rated_capacity",
         "hsem_batteries_purchase_price",
@@ -176,6 +184,7 @@ async def validate_huawei_solar_input(hass, user_input) -> dict[str, str]:
             "hsem_huawei_solar_batteries_maximum_charging_power",
             "hsem_huawei_solar_batteries_maximum_discharging_power",
             "hsem_huawei_solar_batteries_grid_charge_cutoff_soc",
+            "hsem_huawei_solar_batteries_charging_cutoff_capacity",
             "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods",
             "hsem_huawei_solar_batteries_rated_capacity",
             "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou",
