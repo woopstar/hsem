@@ -450,6 +450,22 @@ def get_ev_charging_sensor_entity_id() -> str:
     return sensor.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_ev_charging_sensor"))
 
 
+# Plan Explanation Sensor
+def get_plan_explanation_sensor_name() -> str:
+    """Return the display name for the plan-explanation diagnostic sensor."""
+    return "Plan Strategy"
+
+
+def get_plan_explanation_sensor_unique_id() -> str:
+    """Return a unique ID for the plan-explanation sensor."""
+    return f"{DOMAIN}_plan_explanation_sensor"
+
+
+def get_plan_explanation_sensor_entity_id() -> str:
+    """Return the entity_id for the plan-explanation sensor."""
+    return sensor.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_plan_explanation_sensor"))
+
+
 # Applier Status Sensor
 def get_applier_status_sensor_name() -> str:
     """Return the display name for the applier-status diagnostic sensor."""

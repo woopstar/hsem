@@ -221,6 +221,10 @@ def make_bare_coordinator(
     coord._current_required_battery = 0.0
     coord._live = None
 
+    from custom_components.hsem.models.planner_outputs import PlanExplanation
+
+    coord._plan_explanation = PlanExplanation()
+
     from custom_components.hsem.custom_sensors.config_reader import build_sensor_config
 
     coord._cfg = build_sensor_config(config_entry)

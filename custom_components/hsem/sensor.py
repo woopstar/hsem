@@ -35,6 +35,9 @@ from custom_components.hsem.custom_sensors.net_consumption_sensor import (
 from custom_components.hsem.custom_sensors.next_update_sensor import (
     HSEMNextUpdateSensor,
 )
+from custom_components.hsem.custom_sensors.plan_explanation_sensor import (
+    HSEMPlanExplanationSensor,
+)
 from custom_components.hsem.custom_sensors.read_only_sensor import HSEMReadOnlySensor
 from custom_components.hsem.custom_sensors.recommendation_interval_sensor import (
     HSEMRecommendationIntervalSensor,
@@ -81,6 +84,9 @@ async def async_setup_entry(
     # Applier-status sensor — exposes write-and-verify results per cycle.
     applier_status_sensor = HSEMApplierStatusSensor(config_entry, coordinator)
 
+    # Plan-explanation sensor — exposes the active planner strategy and score.
+    plan_explanation_sensor = HSEMPlanExplanationSensor(config_entry, coordinator)
+
     async_add_entities(
         [
             degraded_mode_sensor,
@@ -96,6 +102,7 @@ async def async_setup_entry(
             force_mode_sensor,
             ev_charging_sensor,
             applier_status_sensor,
+            plan_explanation_sensor,
             working_mode_sensor,
         ]
     )

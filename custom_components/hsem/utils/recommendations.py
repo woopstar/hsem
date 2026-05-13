@@ -18,5 +18,4 @@ class Recommendations(Enum):
     EVSmartCharging = "ev_smart_charging"
     ForceBatteriesDischarge = "force_batteries_discharge"
     ForceExport = "force_export"
-    FullyFedToGrid = "fully_fed_to_grid"
     MissingInputEntities = "missing_input_entities"
