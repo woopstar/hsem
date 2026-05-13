@@ -85,6 +85,35 @@ When implementing a utility or helper function:
 - Integer-valued comparisons (`== 0` on a sum of `int` weights) are fine; only float literals
   and float-typed variables are subject to this rule.
 
+## Planner Specification Compliance (Mandatory)
+
+**Before touching any planner code**, read `docs/hsem-planner-spec.md` — it is the single source
+of truth for planner semantics.
+
+Rules:
+
+1. **Read the spec first** — applies to engine, cost function, SoC simulation, candidate
+   generation, slot population, and safety gates.
+2. **Verify consistency** — every change must satisfy the invariants listed under
+   *Invariants for tests* in the spec (energy balance, SoC bounds, cost identity,
+   terminal-SoC accounting, safety gate behaviour).
+3. **Update the spec** when a change intentionally alters planner semantics. Spec and
+   implementation must never diverge silently.
+4. **Add or update tests** covering the affected invariants for every planner change.
+5. **Definition of Done** for planner work: spec updated (if needed) + invariant tests passing.
+
+Quick checklist before opening a planner PR:
+
+- [ ] `docs/hsem-planner-spec.md` read and understood
+- [ ] Energy balance holds for every slot
+- [ ] SoC stays within configured bounds
+- [ ] `winner.cost == final_output.cost` (no post-selection mutation)
+- [ ] Terminal SoC affects cost (emptying the battery is not free)
+- [ ] No-action baseline includes normal PV/battery self-consumption
+- [ ] Read-only / degraded / dry-run gates block hardware writes
+- [ ] Spec updated if semantics changed
+- [ ] Tests added or updated
+
 ## Development Workflow
 
 ```bash
