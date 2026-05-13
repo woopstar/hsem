@@ -147,6 +147,7 @@ def apply_charge_schedules(
     battery_schedules: list[BatteryScheduleInput],
     now: datetime,
     max_charge_per_interval: float,
+    cycle_cost_per_kwh: float = 0.0,
 ) -> None:
     """Assign charge recommendations to slots before each discharge window.
 
@@ -154,7 +155,7 @@ def apply_charge_schedules(
 
     1. Negative import price (free/paid-to-charge)
     2. Solar surplus (``estimated_net_consumption < SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH``)
-    3. Cheapest remaining grid hours (guarded by min price difference)
+    3. Cheapest remaining grid hours (guarded by min price difference + cycle cost)
 
     Args:
         slots: Mutable list of planned slots.
@@ -162,6 +163,11 @@ def apply_charge_schedules(
             and ``_avg_import_price`` set by :func:`apply_discharge_schedules`).
         now: Timezone-aware current datetime.
         max_charge_per_interval: Maximum energy (kWh) chargeable per slot.
+        cycle_cost_per_kwh: Additional per-kWh cycle wear cost added to the
+            price-difference guard.  When > 0 the planner only charges from
+            the grid when ``discharge_price - charge_price ≥
+            min_price_difference + cycle_cost_per_kwh``.  Defaults to 0.0
+            (no extra guard beyond the schedule's min_price_difference).
     """
     if max_charge_per_interval <= 0:
         return
@@ -250,7 +256,7 @@ def apply_charge_schedules(
                         s.batteries_charged = round(energy, 3)
                         charged += energy
 
-            # Priority 3: cheapest grid hours (min price difference guard)
+            # Priority 3: cheapest grid hours (min price difference + cycle cost guard)
             if charged < needed:
                 _apply_grid_charge(
                     eligible,
@@ -259,6 +265,7 @@ def apply_charge_schedules(
                     charged,
                     max_charge_per_interval,
                     avg_discharge_price,
+                    cycle_cost_per_kwh=cycle_cost_per_kwh,
                 )
 
 
@@ -269,8 +276,17 @@ def _apply_grid_charge(
     charged_so_far: float,
     max_charge_per_interval: float,
     avg_discharge_price: float,
+    cycle_cost_per_kwh: float = 0.0,
 ) -> None:
-    """Apply cheapest-grid-hour charging with min-price-difference guard.
+    """Apply cheapest-grid-hour charging with min-price-difference + cycle-cost guard.
+
+    The combined profitability condition is:
+
+        avg_discharge_price − avg_charge_price ≥ min_price_difference + cycle_cost_per_kwh
+
+    Both ``min_price_difference`` (from the battery schedule) and
+    ``cycle_cost_per_kwh`` (from the planner input) must be covered by the
+    price spread before grid charging is approved.
 
     Args:
         eligible: Pre-filtered candidate slots.
@@ -279,6 +295,8 @@ def _apply_grid_charge(
         charged_so_far: Energy already charged by higher-priority sources.
         max_charge_per_interval: Maximum energy per slot in kWh.
         avg_discharge_price: Average import price during the discharge window.
+        cycle_cost_per_kwh: Per-kWh battery wear cost added to the guard.
+            Defaults to 0.0 (backwards compatible).
     """
     grid_candidates = sorted(
         (e for e in eligible if e.recommendation is None),
@@ -309,10 +327,12 @@ def _apply_grid_charge(
         tentative_price_sum / tentative_count if tentative_count > 0 else 0.0
     )
     price_diff = avg_discharge_price - avg_charge_price
-    min_diff = sched.min_price_difference
+    # Combined threshold: user-configured schedule minimum + per-kWh wear cost.
+    # Both must be covered by the price spread for grid charging to be profitable.
+    min_diff = sched.min_price_difference + cycle_cost_per_kwh
 
     if abs(min_diff) > 1e-9 and price_diff < min_diff:
-        return  # Price difference does not justify charging
+        return  # Price spread does not cover loss + cycle wear cost
 
     # Second pass: actually assign recommendations
     charged = charged_so_far
@@ -472,6 +492,7 @@ def apply_opportunistic_charge(
     usable_capacity: float,
     max_charge_per_interval: float,
     depreciation_threshold: float,
+    cycle_cost_per_kwh: float = 0.0,
 ) -> None:
     """Charge the battery opportunistically when import prices are very low.
 
@@ -480,9 +501,12 @@ def apply_opportunistic_charge(
 
     1. **Negative import price** — the grid pays the consumer.  Every
        negative-price future slot is eligible regardless of the battery level.
-    2. **Below-depreciation import price** — import is so cheap that
-       charging is economically sound even without an upcoming scheduled
-       discharge (the depreciation threshold is used as the ceiling).
+    2. **Below-(depreciation − cycle cost) import price** — import is cheap
+       enough that charging is economically sound.  The effective ceiling is
+       ``max(depreciation_threshold − cycle_cost_per_kwh, 0)`` so that battery
+       wear *reduces* the eligible price window — the planner only charges
+       opportunistically when the price is low enough to cover both
+       depreciation and cycle wear.
 
     Slots already assigned (by schedule pre-charge or prior passes) are
     skipped.  Energy is limited to what the battery can still absorb.
@@ -497,6 +521,10 @@ def apply_opportunistic_charge(
             considered economically justified (local currency / kWh).
             Typically the depreciation + conversion-loss threshold from
             :func:`~custom_components.hsem.utils.misc.calculate_recommended_threshold`.
+        cycle_cost_per_kwh: Additional per-kWh wear cost *subtracted* from the
+            depreciation threshold.  Only slots with import price below
+            ``max(depreciation_threshold - cycle_cost_per_kwh, 0)`` are eligible.
+            Defaults to 0.0 (backwards compatible).
     """
     if max_charge_per_interval <= 0:
         return
@@ -526,15 +554,20 @@ def apply_opportunistic_charge(
             s.batteries_charged = round(energy, 3)
             charged += energy
 
-    # Priority 2: below-depreciation price (only if threshold is meaningful)
-    if abs(depreciation_threshold) > 1e-9:
+    # Priority 2: below-(depreciation − cycle cost) price
+    # Cycle wear cost is subtracted from the depreciation threshold to make
+    # the planner more conservative: the effective ceiling is reduced so that
+    # only prices that are cheap enough to justify *both* the depreciation and
+    # the wear cost qualify for opportunistic charging.
+    effective_threshold = max(depreciation_threshold - cycle_cost_per_kwh, 0.0)
+    if abs(effective_threshold) > 1e-9:
         for s in sorted(
             (
                 slot
                 for slot in slots
                 if slot.end.astimezone(now.tzinfo) > now
                 and slot.recommendation is None
-                and 0 <= slot.price.import_price < depreciation_threshold
+                and 0 <= slot.price.import_price < effective_threshold
             ),
             key=lambda x: (x.price.import_price, x.start),
         ):

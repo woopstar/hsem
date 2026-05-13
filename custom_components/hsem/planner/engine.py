@@ -194,11 +194,17 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     ) * conversion_loss_factor
     max_charge_per_interval = max_charge_per_hour / (60 / inp.interval_minutes)
 
-    apply_charge_schedules(slots, inp.battery_schedules, now, max_charge_per_interval)
+    apply_charge_schedules(
+        slots,
+        inp.battery_schedules,
+        now,
+        max_charge_per_interval,
+        cycle_cost_per_kwh=inp.battery_cycle_cost_per_kwh,
+    )
 
     # Opportunistic grid charge (A2/H28/H29): charge from grid when prices
-    # are negative or below the depreciation threshold, independent of any
-    # configured discharge schedule.
+    # are negative or below the depreciation + cycle cost threshold,
+    # independent of any configured discharge schedule.
     apply_opportunistic_charge(
         slots,
         now,
@@ -206,6 +212,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         usable_kwh,
         max_charge_per_interval,
         recommended_threshold,
+        cycle_cost_per_kwh=inp.battery_cycle_cost_per_kwh,
     )
 
     # Derive per-slot power limits

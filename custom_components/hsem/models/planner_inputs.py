@@ -159,6 +159,11 @@ class PlannerInput:
     # --- battery economics ---
     battery_purchase_price: float = 0.0
     battery_expected_cycles: int = 6000
+    #: Additional per-kWh cost of one charge/discharge cycle (wear / tear).
+    #: Added to the min-price-difference guard so the planner only charges
+    #: from the grid when the price spread covers loss **and** wear.
+    #: 0.0 means no extra guard beyond the depreciation threshold.
+    battery_cycle_cost_per_kwh: float = 0.0
 
     # --- consumption weights (must sum to 100) ---
     weight_1d: int = 25
@@ -185,7 +190,9 @@ class PlannerInput:
     # --- seasonal / mode config ---
     months_winter: list[int] = field(default_factory=lambda: [1, 2, 3, 4, 10, 11, 12])
     house_power_includes_ev: bool = True
-    is_read_only: bool = False  # False = hardware writes enabled; set True only in dry-run/test scenarios
+    is_read_only: bool = (
+        False  # False = hardware writes enabled; set True only in dry-run/test scenarios
+    )
 
     # --- optional extra context that tests may inspect ---
     extra: dict[str, Any] = field(default_factory=dict)
