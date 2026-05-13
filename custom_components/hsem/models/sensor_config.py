@@ -91,6 +91,8 @@ class SensorConfig:
         batteries_conversion_loss: Round-trip loss percentage.
         batteries_purchase_price: Battery pack purchase price for depreciation calc.
         batteries_expected_cycles: Expected total cycle life of the battery.
+        batteries_cycle_cost: User-configured extra per-kWh cycle cost (EUR/kWh).
+            Added to the auto-derived depreciation threshold.  0.0 = disabled.
 
         batteries_schedule_1: First discharge-window schedule config.
         batteries_schedule_2: Second discharge-window schedule config.
@@ -160,6 +162,10 @@ class SensorConfig:
     batteries_conversion_loss: float = 0.0
     batteries_purchase_price: float = 0.0
     batteries_expected_cycles: int = 6000
+    #: User-configured per-kWh cycle cost. When > 0 it is added directly to
+    #: the min-price-difference guard so cycling only happens when the price
+    #: spread covers both losses AND wear.  0.0 means no extra guard.
+    batteries_cycle_cost: float = 0.0
 
     # Battery discharge schedules
     batteries_schedule_1: BatteryScheduleConfig = field(

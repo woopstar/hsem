@@ -244,6 +244,10 @@ def build_sensor_config(config_entry) -> SensorConfig:
     cfg.batteries_expected_cycles = (
         _expected_cycles if _expected_cycles is not None else 6000
     )
+    cfg.batteries_cycle_cost = (
+        convert_to_float(get_config_value(config_entry, "hsem_batteries_cycle_cost"))
+        or 0.0
+    )
 
     # Battery schedules
     cfg.batteries_schedule_1 = BatteryScheduleConfig(
