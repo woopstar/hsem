@@ -380,6 +380,10 @@ class HSEMWorkingModeSensor(
                 live,
                 data.batteries_schedules_remaining_capacity_needed,
             )
+            # Sync data.state so the sensor's state property reflects the
+            # resolved recommendation (e.g. ev_smart_charging) rather than
+            # the raw planner output (e.g. batteries_charge_solar).
+            data.state = hourly_rec.recommendation
             await async_logger(self, f"Current hourly recommendation: {hourly_rec}")
 
         # Gate hardware writes on read_only and degraded mode.
