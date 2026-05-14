@@ -487,14 +487,22 @@ class TestApplyEvPlannedLoad:
     def _make_plan(
         self, slots_kw: list[float], starts: list[datetime]
     ) -> EVChargingPlan:
-        """Build a minimal EVChargingPlan with one slot per start."""
+        """Build a minimal EVChargingPlan with one slot per start.
+
+        Each slot is treated as 100 %-efficient so AC load == delivered.
+        """
         from custom_components.hsem.planner.ev_planner import EVChargingSlot
 
         plan = EVChargingPlan()
         plan.state = "charging"
         for _i, (start, kw) in enumerate(zip(starts, slots_kw)):
             end = start + timedelta(hours=1)
-            ev_slot = EVChargingSlot(start=start, end=end, estimated_charged_kwh=kw)
+            ev_slot = EVChargingSlot(
+                start=start,
+                end=end,
+                estimated_charged_kwh=kw,
+                ac_load_kwh=kw,
+            )
             plan.charging_slots.append(ev_slot)
             plan.planned_load_by_slot[start.isoformat()] = kw
         return plan
@@ -992,3 +1000,432 @@ class TestEvSolarSurplusRegression:
             assert ev_slot.import_needed_kwh == pytest.approx(
                 ev_slot.estimated_charged_kwh, abs=0.01
             )
+
+
+# ---------------------------------------------------------------------------
+# TestMultiEvSolarAllocation
+# Two EVs sharing a single mutable solar-surplus budget per slot.
+# ---------------------------------------------------------------------------
+
+
+class TestMultiEvSolarAllocation:
+    """Sequential allocation of solar surplus across two EVs."""
+
+    def test_two_evs_share_limited_solar_surplus(self):
+        """Primary EV takes solar first; secondary gets only what's left.
+
+        Hand calculation
+        ----------------
+        Single 1-hour slot at 10:00 with:
+          slot solar surplus      = 4.0 kWh (AC, shared budget)
+          primary EV needs        = 3.0 kWh delivered, 100 % efficiency
+          secondary EV needs      = 3.0 kWh delivered, 100 % efficiency
+          charger power (both)    = 11 kW (max 11 kWh per slot)
+          import price            = 0.20 EUR/kWh
+
+        Primary plan (runs first):
+          delivered = min(11.0, 3.0) = 3.0 kWh
+          ac_load   = 3.0 / 1.0      = 3.0 kWh
+          solar     = min(3.0, 4.0)  = 3.0 kWh
+          import    = 0.0 kWh
+          cost      = 0.0 EUR
+          remaining slot surplus    = 4.0 − 3.0 = 1.0 kWh
+
+        Secondary plan (runs second, sees decremented surplus):
+          delivered = 3.0 kWh
+          ac_load   = 3.0 kWh
+          solar     = min(3.0, 1.0)  = 1.0 kWh
+          import    = 3.0 − 1.0      = 2.0 kWh
+          cost      = 2.0 × 0.20     = 0.40 EUR
+
+        Combined planner load injected into slot:
+          ev_planned_load_kwh = 3.0 + 3.0 = 6.0 kWh (AC domain)
+        """
+        now = _dt(9)  # 09:00, slot 10 is in future
+        deadline = now + timedelta(hours=4)
+
+        # Build a single-slot input where only hour 10 has surplus
+        starts = [_dt(h) for h in range(24)]
+        ends = [_dt(h) + timedelta(hours=1) for h in range(24)]
+        surplus = [0.0] * 24
+        surplus[10] = 4.0
+        prices = [0.20] * 24
+
+        primary_inp = EVPlannerInput(
+            enabled=True,
+            ev_connected=True,
+            smart_charging_enabled=True,
+            current_soc_pct=70.0,
+            target_soc_pct=73.0,  # 3 kWh / 100 kWh
+            battery_capacity_kwh=100.0,
+            charger_power_kw=11.0,
+            charger_efficiency_pct=100.0,
+            deadline=deadline,
+            now=now,
+        )
+        secondary_inp = EVPlannerInput(
+            enabled=True,
+            ev_connected=True,
+            smart_charging_enabled=True,
+            current_soc_pct=70.0,
+            target_soc_pct=73.0,  # 3 kWh / 100 kWh
+            battery_capacity_kwh=100.0,
+            charger_power_kw=11.0,
+            charger_efficiency_pct=100.0,
+            deadline=deadline,
+            now=now,
+        )
+
+        primary_plan = build_ev_charging_plan(
+            primary_inp, starts, ends, surplus, prices
+        )
+        # Capture surplus state between the two EV plans.
+        surplus_after_primary = list(surplus)
+        secondary_plan = build_ev_charging_plan(
+            secondary_inp, starts, ends, surplus, prices
+        )
+
+        # Primary should see the full 4.0 kWh surplus and consume 3.0 of it.
+        primary_slot_10 = next(
+            (s for s in primary_plan.charging_slots if s.start.hour == 10), None
+        )
+        assert primary_slot_10 is not None
+        assert primary_slot_10.estimated_charged_kwh == pytest.approx(3.0, abs=0.01)
+        assert primary_slot_10.ac_load_kwh == pytest.approx(3.0, abs=0.01)
+        assert primary_slot_10.solar_surplus_kwh == pytest.approx(3.0, abs=0.01)
+        assert primary_slot_10.import_needed_kwh == pytest.approx(0.0, abs=1e-9)
+        assert primary_slot_10.estimated_cost == pytest.approx(0.0, abs=1e-9)
+
+        # Surplus list at the point secondary started: 1.0 kWh remaining.
+        assert surplus_after_primary[10] == pytest.approx(1.0, abs=1e-9)
+
+        # Secondary should see 1.0 kWh remaining, consume 1.0 from solar, 2.0 grid.
+        secondary_slot_10 = next(
+            (s for s in secondary_plan.charging_slots if s.start.hour == 10), None
+        )
+        assert secondary_slot_10 is not None
+        assert secondary_slot_10.estimated_charged_kwh == pytest.approx(3.0, abs=0.01)
+        assert secondary_slot_10.ac_load_kwh == pytest.approx(3.0, abs=0.01)
+        assert secondary_slot_10.solar_surplus_kwh == pytest.approx(1.0, abs=0.01)
+        assert secondary_slot_10.import_needed_kwh == pytest.approx(2.0, abs=0.01)
+        assert secondary_slot_10.estimated_cost == pytest.approx(0.40, abs=1e-4)
+
+        # Surplus should now be drained for slot 10.
+        assert surplus[10] == pytest.approx(0.0, abs=1e-9)
+
+        # Combined AC load injected into the planner equals 6.0 kWh.
+        combined = primary_plan.planned_load_by_slot.get(
+            starts[10].isoformat(), 0.0
+        ) + secondary_plan.planned_load_by_slot.get(starts[10].isoformat(), 0.0)
+        assert combined == pytest.approx(6.0, abs=0.01)
+
+    def test_combined_solar_sum_bounded_by_original_surplus(self):
+        """Sum of two EVs' solar_surplus_kwh never exceeds the original budget.
+
+        With 2.0 kWh of slot surplus in the only solar slot and both EVs
+        wanting 2.0 kWh each (1 slot only available):
+          primary takes 2.0 solar
+          secondary sees 0.0 solar remaining → must use a grid slot
+          combined solar consumed by both = 2.0 (equal to original budget).
+        """
+        now = _dt(9)
+        deadline = now + timedelta(hours=4)
+        starts = [_dt(h) for h in range(24)]
+        ends = [_dt(h) + timedelta(hours=1) for h in range(24)]
+        surplus = [0.0] * 24
+        surplus[10] = 2.0
+        original_surplus = surplus[10]
+        prices = [0.10] * 24
+
+        inp_kwargs = dict(
+            enabled=True,
+            ev_connected=True,
+            smart_charging_enabled=True,
+            current_soc_pct=70.0,
+            target_soc_pct=72.0,  # 2 kWh / 100 kWh
+            battery_capacity_kwh=100.0,
+            charger_power_kw=11.0,
+            charger_efficiency_pct=100.0,
+            deadline=deadline,
+            now=now,
+        )
+
+        primary = build_ev_charging_plan(
+            EVPlannerInput(**inp_kwargs), starts, ends, surplus, prices
+        )
+        secondary = build_ev_charging_plan(
+            EVPlannerInput(**inp_kwargs), starts, ends, surplus, prices
+        )
+
+        # Sum each plan's solar_surplus across all slots — this is the
+        # actual solar consumed by each EV in this pass.
+        primary_solar = sum(s.solar_surplus_kwh for s in primary.charging_slots)
+        secondary_solar = sum(s.solar_surplus_kwh for s in secondary.charging_slots)
+
+        # Primary took all 2.0 kWh; secondary saw none.
+        assert primary_solar == pytest.approx(2.0, abs=0.01)
+        assert secondary_solar == pytest.approx(0.0, abs=1e-9)
+
+        # Bounded invariant: combined consumption <= original surplus.
+        combined_solar = primary_solar + secondary_solar
+        assert combined_solar <= original_surplus + 1e-6
+        assert combined_solar == pytest.approx(original_surplus, abs=0.01)
+
+    def test_engine_two_evs_share_solar_in_same_slot(self):
+        """End-to-end engine run: two enabled EVs share the same solar slot.
+
+        Hand calculation
+        ----------------
+        Single solar slot at hour 10:
+          house load  = 1.0 kWh, PV = 5.0 kWh → base surplus = 4.0 kWh.
+          Primary EV needs 3.0 kWh delivered (efficiency 100 %) → AC 3.0.
+          Secondary EV needs 3.0 kWh delivered (efficiency 100 %) → AC 3.0.
+
+        Sequential allocation:
+          Primary: solar 3.0, grid 0.0.
+          Secondary: solar 1.0, grid 2.0.
+          Combined ev_planned_load_kwh = 6.0 kWh injected into slot 10.
+
+        Effective net at hour 10:
+          1.0 (house) + 6.0 (combined EV) − 5.0 (PV) = 2.0 kWh (positive import).
+        """
+        now_iso = "2024-06-15T09:00:00+00:00"
+        from datetime import datetime as _dt2
+
+        now = _dt2.fromisoformat(now_iso)
+        deadline = now + timedelta(hours=6)
+
+        prices = [
+            PricePoint(hour=h, import_price=0.20, export_price=0.05) for h in range(24)
+        ]
+        pv = [SolcastSlot(hour=h, pv_estimate=0.0) for h in range(24)]
+        pv[10] = SolcastSlot(hour=10, pv_estimate=5.0)
+        averages = [
+            HourlyConsumptionAverage(
+                hour=h, avg_1d=1.0, avg_3d=1.0, avg_7d=1.0, avg_14d=1.0
+            )
+            for h in range(24)
+        ]
+
+        inp = PlannerInput(
+            now_iso=now_iso,
+            interval_minutes=60,
+            interval_length_hours=24,
+            battery_soc_pct=50.0,
+            battery_rated_capacity_kwh=10.0,
+            battery_end_of_discharge_soc_pct=10.0,
+            battery_max_soc_pct=90.0,
+            battery_max_charge_power_w=5000.0,
+            battery_max_discharge_power_w=5000.0,
+            battery_charge_efficiency_pct=95.0,
+            battery_conversion_loss_pct=5.0,
+            battery_discharge_efficiency_pct=95.0,
+            weight_1d=25,
+            weight_3d=30,
+            weight_7d=30,
+            weight_14d=15,
+            consumption_averages=averages,
+            price_points=prices,
+            solcast_slots=pv,
+            # Primary EV
+            ev_planned_load_enabled=True,
+            ev_planned_load_connected=True,
+            ev_planned_load_smart_charging_enabled=True,
+            ev_planned_load_current_soc_pct=70.0,
+            ev_planned_load_target_soc_pct=73.0,
+            ev_planned_load_battery_capacity_kwh=100.0,
+            ev_planned_load_charger_power_kw=11.0,
+            ev_planned_load_charger_efficiency_pct=100.0,
+            ev_planned_load_deadline=deadline,
+            ev_planned_load_base_load_includes_ev=False,
+            # Secondary EV (identical requirement)
+            ev_second_planned_load_enabled=True,
+            ev_second_planned_load_connected=True,
+            ev_second_planned_load_smart_charging_enabled=True,
+            ev_second_planned_load_current_soc_pct=70.0,
+            ev_second_planned_load_target_soc_pct=73.0,
+            ev_second_planned_load_battery_capacity_kwh=100.0,
+            ev_second_planned_load_charger_power_kw=11.0,
+            ev_second_planned_load_charger_efficiency_pct=100.0,
+            ev_second_planned_load_deadline=deadline,
+            ev_second_planned_load_base_load_includes_ev=False,
+        )
+        out = run_planner(inp)
+
+        assert out.ev_charging_plan is not None
+        assert out.ev_second_charging_plan is not None
+
+        prim_slot = next(
+            (s for s in out.ev_charging_plan.charging_slots if s.start.hour == 10),
+            None,
+        )
+        sec_slot = next(
+            (
+                s
+                for s in out.ev_second_charging_plan.charging_slots
+                if s.start.hour == 10
+            ),
+            None,
+        )
+        assert prim_slot is not None
+        assert sec_slot is not None
+        # Primary claimed 3.0 kWh of the 4.0 kWh surplus.
+        assert prim_slot.solar_surplus_kwh == pytest.approx(3.0, abs=0.01)
+        assert prim_slot.import_needed_kwh == pytest.approx(0.0, abs=0.01)
+        # Secondary saw only the leftover 1.0 kWh of surplus.
+        assert sec_slot.solar_surplus_kwh == pytest.approx(1.0, abs=0.01)
+        assert sec_slot.import_needed_kwh == pytest.approx(2.0, abs=0.01)
+        # Sum of solar consumed must not exceed pre-injection surplus (4.0 kWh).
+        assert (prim_slot.solar_surplus_kwh + sec_slot.solar_surplus_kwh) == (
+            pytest.approx(4.0, abs=0.01)
+        )
+
+        # Planner slot 10 should carry the combined AC load (6.0 kWh).
+        planner_slot_10 = next((s for s in out.slots if s.start.hour == 10), None)
+        assert planner_slot_10 is not None
+        assert planner_slot_10.ev_planned_load_kwh == pytest.approx(6.0, abs=0.01)
+        # Effective net: 1.0 (house) + 6.0 (EVs) − 5.0 (PV) = 2.0
+        assert planner_slot_10.estimated_net_consumption == pytest.approx(2.0, abs=0.01)
+
+
+# ---------------------------------------------------------------------------
+# TestChargerEfficiencyAcLoad
+# Charger efficiency lives in the AC-load domain, not the delivered-energy
+# domain.  Delivered energy still counts toward the SoC target unchanged.
+# ---------------------------------------------------------------------------
+
+
+class TestChargerEfficiencyAcLoad:
+    """Charger efficiency raises AC load and grid import without inflating
+    delivered energy toward the SoC target."""
+
+    def test_charger_efficiency_80pct_increases_ac_load(self):
+        """80 % efficient charger draws 5.0 kWh AC to deliver 4.0 kWh to battery.
+
+        Hand calculation
+        ----------------
+        Single 1-hour slot, charger 5 kW @ 80 %, EV needs 4.0 kWh:
+          max delivered per slot = 5 kW × 1 h × 0.80 = 4.0 kWh
+          delivered              = min(4.0, 4.0) = 4.0 kWh
+          ac_load                = 4.0 / 0.80     = 5.0 kWh
+          solar surplus in slot  = 0.0
+          import_needed          = 5.0 − 0.0      = 5.0 kWh
+          cost                   = 5.0 × 0.20     = 1.0 EUR
+        Injected planner load (AC) = 5.0 kWh.
+        """
+        now = _dt(9)
+        deadline = now + timedelta(hours=2)
+        starts = [_dt(h) for h in range(24)]
+        ends = [_dt(h) + timedelta(hours=1) for h in range(24)]
+        surplus = [0.0] * 24
+        prices = [0.20] * 24
+
+        inp = EVPlannerInput(
+            enabled=True,
+            ev_connected=True,
+            smart_charging_enabled=True,
+            current_soc_pct=60.0,
+            target_soc_pct=64.0,  # 4 kWh / 100 kWh
+            battery_capacity_kwh=100.0,
+            charger_power_kw=5.0,
+            charger_efficiency_pct=80.0,
+            deadline=deadline,
+            now=now,
+        )
+        plan = build_ev_charging_plan(inp, starts, ends, surplus, prices)
+
+        assert len(plan.charging_slots) == 1
+        slot = plan.charging_slots[0]
+        assert slot.estimated_charged_kwh == pytest.approx(4.0, abs=0.01)
+        assert slot.ac_load_kwh == pytest.approx(5.0, abs=0.01)
+        assert slot.solar_surplus_kwh == pytest.approx(0.0, abs=1e-9)
+        assert slot.import_needed_kwh == pytest.approx(5.0, abs=0.01)
+        assert slot.estimated_cost == pytest.approx(1.0, abs=1e-4)
+        # Planner-injection value is the AC load, not delivered.
+        assert plan.planned_load_by_slot[slot.start.isoformat()] == pytest.approx(
+            5.0, abs=0.01
+        )
+        # AC = solar + import invariant.
+        assert (slot.solar_surplus_kwh + slot.import_needed_kwh) == pytest.approx(
+            slot.ac_load_kwh, abs=1e-6
+        )
+
+    def test_charger_efficiency_100pct_preserves_default_behavior(self):
+        """At 100 % efficiency, ac_load_kwh == estimated_charged_kwh (no regression).
+
+        Hand calculation
+        ----------------
+        Same setup but 100 % efficient: delivered == ac_load == 4.0 kWh.
+        Injected planner load equals delivered.  Locks in legacy behaviour.
+        """
+        now = _dt(9)
+        deadline = now + timedelta(hours=2)
+        starts = [_dt(h) for h in range(24)]
+        ends = [_dt(h) + timedelta(hours=1) for h in range(24)]
+        surplus = [0.0] * 24
+        prices = [0.20] * 24
+
+        inp = EVPlannerInput(
+            enabled=True,
+            ev_connected=True,
+            smart_charging_enabled=True,
+            current_soc_pct=60.0,
+            target_soc_pct=64.0,
+            battery_capacity_kwh=100.0,
+            charger_power_kw=5.0,
+            charger_efficiency_pct=100.0,
+            deadline=deadline,
+            now=now,
+        )
+        plan = build_ev_charging_plan(inp, starts, ends, surplus, prices)
+
+        assert len(plan.charging_slots) == 1
+        slot = plan.charging_slots[0]
+        assert slot.estimated_charged_kwh == pytest.approx(4.0, abs=0.01)
+        # The defining 100 %-efficiency invariant.
+        assert slot.ac_load_kwh == pytest.approx(slot.estimated_charged_kwh, abs=1e-9)
+        assert slot.import_needed_kwh == pytest.approx(4.0, abs=0.01)
+        assert plan.planned_load_by_slot[slot.start.isoformat()] == pytest.approx(
+            slot.estimated_charged_kwh, abs=1e-9
+        )
+
+    def test_charger_efficiency_partial_solar_with_loss(self):
+        """Efficiency < 100 % with partial solar: AC load is solar + grid in AC domain.
+
+        Hand calculation
+        ----------------
+        Slot has 3.0 kWh solar surplus (AC).  Charger 5 kW @ 80 %, EV needs
+        4.0 kWh delivered:
+          delivered     = 4.0 kWh
+          ac_load       = 4.0 / 0.80 = 5.0 kWh
+          solar_used    = min(5.0, 3.0) = 3.0 kWh
+          import_needed = 5.0 − 3.0    = 2.0 kWh
+        SoC target still receives 4.0 kWh.
+        """
+        now = _dt(9)
+        deadline = now + timedelta(hours=2)
+        starts = [_dt(h) for h in range(24)]
+        ends = [_dt(h) + timedelta(hours=1) for h in range(24)]
+        surplus = [0.0] * 24
+        surplus[9] = 3.0
+        prices = [0.20] * 24
+
+        inp = EVPlannerInput(
+            enabled=True,
+            ev_connected=True,
+            smart_charging_enabled=True,
+            current_soc_pct=60.0,
+            target_soc_pct=64.0,
+            battery_capacity_kwh=100.0,
+            charger_power_kw=5.0,
+            charger_efficiency_pct=80.0,
+            deadline=deadline,
+            now=now,
+        )
+        plan = build_ev_charging_plan(inp, starts, ends, surplus, prices)
+        assert len(plan.charging_slots) >= 1
+        slot = plan.charging_slots[0]
+        assert slot.estimated_charged_kwh == pytest.approx(4.0, abs=0.01)
+        assert slot.ac_load_kwh == pytest.approx(5.0, abs=0.01)
+        assert slot.solar_surplus_kwh == pytest.approx(3.0, abs=0.01)
+        assert slot.import_needed_kwh == pytest.approx(2.0, abs=0.01)

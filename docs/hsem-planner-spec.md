@@ -54,6 +54,30 @@ Positive `net_load_kwh` means the house needs energy.
 
 Negative `net_load_kwh` means there is PV surplus.
 
+When EV planned load integration is enabled, the planner injects an
+AC-domain `ev_planned_load_kwh` value into every slot **before** net
+consumption is calculated, and the effective net load becomes:
+
+```text
+effective_net_load_kwh = base_house_load_kwh + ev_planned_load_kwh - pv_kwh
+```
+
+Where:
+
+- `base_house_load_kwh` is the historical house consumption average for
+  the slot (or the user-provided baseline).  If
+  `base_load_includes_ev` is `True`, this baseline already covers EV
+  charging and `ev_planned_load_kwh` is **not** added again — it is
+  forced to zero to avoid double-counting.
+- `ev_planned_load_kwh` is the *AC-side* load drawn by every enabled
+  EV plan in this slot (see "EV planned load and charger efficiency"
+  below).
+- `pv_kwh` is the slot's PV estimate (`solcast_pv_estimate`).
+
+All downstream calculations — solar surplus, battery charge/discharge
+recommendations, candidate plans, cost function — operate on this
+post-injection `effective_net_load_kwh`.
+
 Battery and grid flows must satisfy:
 
 ```text
@@ -138,6 +162,75 @@ Example (90 % / 90 %): yield = 0.81, loss = 19 %.
   `1 − charge_eff × discharge_eff` when explicit efficiencies are set.
 - When both efficiencies are 100 %, the legacy `conversion_loss_pct` field drives
   the `conversion_loss_cost` term (backwards compatibility).
+
+## EV planned load and charger efficiency
+
+HSEM optionally plans charging for up to two electric vehicles before the
+home-battery planner runs.  The EV plan is built from raw inputs only
+(no dependency on battery decisions) and injects an AC-domain load into
+each slot's `ev_planned_load_kwh` field.
+
+### Two energy quantities per EV charging slot
+
+Each `EVChargingSlot` tracks two distinct energy values:
+
+| Field | Domain | Meaning |
+|---|---|---|
+| `estimated_charged_kwh` | EV battery (DC) | Energy delivered to the EV battery, counts toward the SoC target. |
+| `ac_load_kwh` | AC (PV/grid) | Load drawn by the charger from PV or grid. |
+
+The two are related by the charger efficiency:
+
+```text
+ac_load_kwh = estimated_charged_kwh / (charger_efficiency_pct / 100)
+```
+
+At `charger_efficiency_pct == 100`, `ac_load_kwh == estimated_charged_kwh`
+and behaviour is identical to the legacy single-value model.
+
+`solar_surplus_kwh`, `import_needed_kwh`, and `estimated_cost` on
+`EVChargingSlot` are all reported in the **AC domain** — they describe
+real-world PV consumption, grid import, and money spent.  The planner's
+injected `ev_planned_load_kwh` and the EV sensor's `current_slot_planned_load_kwh`
+also live in the AC domain.
+
+### Multi-EV solar allocation
+
+When both a primary and a secondary EV are enabled, their plans are
+built **sequentially** (primary first, then secondary) and share a
+single mutable solar-surplus budget per slot:
+
+1. The engine computes
+   `slot_solar_surplus[i] = max(pv_estimate[i] − avg_house_consumption[i], 0)`
+   for every slot.
+2. `build_ev_charging_plan` runs for the primary EV.  For every slot it
+   selects, it consumes `min(ac_load, slot_solar_surplus[i])` and
+   decrements `slot_solar_surplus[i]` in place by that amount.
+3. `build_ev_charging_plan` then runs for the secondary EV using the
+   same (now-decremented) list.
+
+This guarantees that two EVs cannot both report the same kWh of solar
+surplus, and that each EV's `solar_surplus_kwh` /
+`import_needed_kwh` / `estimated_cost` reflect what that EV actually
+consumes.  Combined `ev_planned_load_kwh` injected into planner slots
+remains correct (sum of AC loads).
+
+### Invariants for tests
+
+- At `charger_efficiency_pct == 100`, `ac_load_kwh == estimated_charged_kwh`
+  for every EV charging slot.
+- At `charger_efficiency_pct < 100`,
+  `ac_load_kwh == estimated_charged_kwh / (charger_efficiency_pct / 100)`
+  and `import_needed_kwh + solar_surplus_kwh == ac_load_kwh`.
+- The injected `slot.ev_planned_load_kwh` equals the sum of `ac_load_kwh`
+  across all enabled EV plans for that slot.
+- Two EVs sharing a single solar slot must not both claim the same
+  surplus: the sum of their `solar_surplus_kwh` values for the slot is
+  bounded above by the original pre-injection solar surplus.
+- When `base_load_includes_ev` is `True`, `slot.ev_planned_load_kwh`
+  remains zero regardless of the computed EV plan.
+- Effective net load identity holds for every slot:
+  `effective_net_load_kwh == base_house_load_kwh + ev_planned_load_kwh − pv_kwh`.
 
 ## SoC simulation
 

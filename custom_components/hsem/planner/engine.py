@@ -289,25 +289,29 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
             )
 
     # -----------------------------------------------------------------------
-    # EV planned load injection (issue #396)
+    # EV planned load injection (issue #396, multi-EV follow-ups)
     # -----------------------------------------------------------------------
-    # Build EV charging plans for the primary and secondary EV independently,
-    # then sum their per-slot loads into slot.ev_planned_load_kwh BEFORE net
+    # Build EV charging plans for the primary and secondary EV in a
+    # deterministic order (primary first, then secondary), then sum their
+    # per-slot AC loads into slot.ev_planned_load_kwh BEFORE net
     # consumption is calculated.  This ensures:
     #   - Solar surplus is computed after EV demand is subtracted.
     #   - Battery solar-charge recommendations don't claim solar consumed by EVs.
     #   - No circular dependency: EV plans are built from raw inputs only.
     #
-    # Each EV is planned independently using the same pre-injection solar
-    # surplus estimate.  This is an intentional one-pass design; in practice
-    # the error is small because both EVs share the same solar forecast.
+    # Multi-EV solar allocation is *sequential*: the same mutable
+    # ``slot_solar_surplus`` list is threaded through both EV plans, and
+    # ``build_ev_charging_plan`` decrements each slot's entry by the amount
+    # of surplus it consumes.  This prevents both EVs from claiming the
+    # same solar kWh.
     ev_charging_plan: EVChargingPlan | None = None
     ev_second_charging_plan: EVChargingPlan | None = None
 
     # Accumulate combined EV planned load per slot (sum of both EVs).
     combined_ev_load = [0.0] * len(slots)
 
-    # Compute solar surplus ONCE before any EV injection (both EVs share it).
+    # Compute solar surplus ONCE before any EV injection (shared, mutable
+    # AC-domain budget).
     # IMPORTANT: estimated_net_consumption is still 0.0 here (populate_net_consumption
     # hasn't run yet), so surplus must be derived from the raw base fields:
     #   surplus = max(pv_estimate - avg_house_consumption, 0.0)

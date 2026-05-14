@@ -33,12 +33,27 @@ from typing import Any
 class EVChargingSlot:
     """Per-slot EV charging plan entry.
 
+    Two distinct energy quantities are tracked for each slot:
+
+    - ``estimated_charged_kwh`` — energy *delivered* to the EV battery, the
+      value that counts toward the SoC target.
+    - ``ac_load_kwh`` — AC-side load drawn from PV or the grid, equal to
+      ``estimated_charged_kwh / (charger_efficiency_pct / 100)``.  This is
+      the value that enters the planner's energy balance and is used to
+      derive ``solar_surplus_kwh`` and ``import_needed_kwh``.
+
+    When ``charger_efficiency_pct == 100`` the two values are equal and
+    behaviour matches the legacy single-value model.
+
     Attributes:
         start: Timezone-aware start of the slot.
         end: Timezone-aware end of the slot.
-        estimated_charged_kwh: EV energy expected to charge in this slot.
-        solar_surplus_kwh: Solar surplus available after base house load.
-        import_needed_kwh: Grid import required for EV charging in this slot.
+        estimated_charged_kwh: EV energy delivered toward the SoC target.
+        ac_load_kwh: AC-side load drawn by the charger this slot.
+        solar_surplus_kwh: Solar surplus consumed by this EV in this slot
+            (AC domain, never exceeds the remaining shared surplus).
+        import_needed_kwh: Grid import required for EV charging in this slot
+            (AC domain).
         import_price: Import price for this slot (currency/kWh).
         estimated_cost: Estimated grid cost for EV charging this slot.
     """
@@ -46,6 +61,7 @@ class EVChargingSlot:
     start: datetime
     end: datetime
     estimated_charged_kwh: float = 0.0
+    ac_load_kwh: float = 0.0
     solar_surplus_kwh: float = 0.0
     import_needed_kwh: float = 0.0
     import_price: float = 0.0
@@ -57,6 +73,7 @@ class EVChargingSlot:
             "start": self.start.isoformat(),
             "end": self.end.isoformat(),
             "estimated_charged_kwh": round(self.estimated_charged_kwh, 3),
+            "ac_load_kwh": round(self.ac_load_kwh, 3),
             "solar_surplus_kwh": round(self.solar_surplus_kwh, 3),
             "import_needed_kwh": round(self.import_needed_kwh, 3),
             "import_price": round(self.import_price, 4),
@@ -222,16 +239,34 @@ def build_ev_charging_plan(
     The current slot is scaled by its remaining duration, not the full
     slot width, to avoid over-counting energy in the partially elapsed slot.
 
+    Multi-EV solar allocation:
+        ``slot_solar_surplus_kwh`` is treated as a shared, mutable budget.
+        Whenever this EV consumes solar surplus in a slot, the matching
+        entry is decremented in place so that a later EV (planned in the
+        same pass) sees only what is left.  Callers wanting an
+        independent allocation must pass a copy of the surplus list.
+
+    Charger efficiency domain:
+        ``estimated_charged_kwh`` is the energy delivered to the EV
+        battery (counts toward the SoC target).  ``ac_load_kwh`` is the
+        AC-side load drawn from PV or the grid and equals
+        ``estimated_charged_kwh / (charger_efficiency_pct / 100)``.
+        ``solar_surplus_kwh`` and ``import_needed_kwh`` are reported in
+        the AC domain so the planner's energy balance and grid-import
+        accounting stay consistent.
+
     Args:
         inp: EV planner inputs.
         slots_start: List of slot start datetimes (same length as other lists).
         slots_end: List of slot end datetimes.
         slot_solar_surplus_kwh: Solar surplus available per slot (kWh, ≥ 0).
+            Mutated in place: surplus claimed by this EV is subtracted so
+            subsequent EVs share the remaining budget.
         slot_import_price: Import electricity price per slot.
 
     Returns:
         An :class:`EVChargingPlan` with state, charging slots, and a
-        ``planned_load_by_slot`` mapping.
+        ``planned_load_by_slot`` mapping (AC-domain load per slot).
     """
     plan = EVChargingPlan(
         ev_connected=inp.ev_connected,
@@ -307,6 +342,9 @@ def build_ev_charging_plan(
     remaining_energy = energy_needed
     selected: list[EVChargingSlot] = []
 
+    # Charger efficiency factor; clamp to >=1% so we never divide by zero.
+    eff_fraction = max(inp.charger_efficiency_pct, 1.0) / 100.0
+
     for i in ordered:
         if remaining_energy < 1e-9:
             break
@@ -331,37 +369,44 @@ def build_ev_charging_plan(
         max_charge = max_charge_energy_for_slot(
             avail_min, inp.charger_power_kw, inp.charger_efficiency_pct
         )
-        allocated = min(max_charge, remaining_energy)
-        if allocated < 1e-9:
+        delivered = min(max_charge, remaining_energy)
+        if delivered < 1e-9:
             continue
 
-        surplus = slot_solar_surplus_kwh[i]
-        solar_used = min(allocated, surplus)
-        import_needed = max(allocated - solar_used, 0.0)
+        # AC-side load drawn from PV/grid for this delivered energy.
+        ac_load = delivered / eff_fraction
+
+        # Solar surplus is a shared, AC-domain budget across EVs in this pass.
+        surplus = max(slot_solar_surplus_kwh[i], 0.0)
+        solar_used = min(ac_load, surplus)
+        import_needed = max(ac_load - solar_used, 0.0)
+        # Decrement the shared surplus so the next EV sees what is left.
+        slot_solar_surplus_kwh[i] = max(surplus - solar_used, 0.0)
+
         cost = import_needed * slot_import_price[i]
 
         ev_slot = EVChargingSlot(
             start=s_start,
             end=s_end,
-            estimated_charged_kwh=round(allocated, 3),
+            estimated_charged_kwh=round(delivered, 3),
+            ac_load_kwh=round(ac_load, 3),
             solar_surplus_kwh=round(solar_used, 3),
             import_needed_kwh=round(import_needed, 3),
             import_price=slot_import_price[i],
             estimated_cost=round(cost, 4),
         )
         selected.append(ev_slot)
-        remaining_energy -= allocated
+        remaining_energy -= delivered
 
     # Build output
     plan.charging_slots = selected
-    plan.planned_load_by_slot = {
-        s.start.isoformat(): s.estimated_charged_kwh for s in selected
-    }
+    # AC-domain load is what the planner injects into slot.ev_planned_load_kwh.
+    plan.planned_load_by_slot = {s.start.isoformat(): s.ac_load_kwh for s in selected}
 
-    # Identify current slot load
+    # Identify current slot load (AC-domain, matches planner injection)
     for s in selected:
         if s.start <= now_tz < s.end:
-            plan.current_slot_planned_load_kwh = s.estimated_charged_kwh
+            plan.current_slot_planned_load_kwh = s.ac_load_kwh
             break
 
     if selected:
@@ -397,5 +442,8 @@ def apply_ev_planned_load_to_slots(
         key = ev_slot.start.isoformat()
         for i, s in enumerate(slot_starts):
             if s.isoformat() == key:
-                slot_ev_planned_load_kwh[i] = ev_slot.estimated_charged_kwh
+                # Inject AC-domain load: this is what the house actually draws
+                # from PV/grid for this EV charging.  At 100 % efficiency this
+                # equals estimated_charged_kwh; below 100 % it is larger.
+                slot_ev_planned_load_kwh[i] = ev_slot.ac_load_kwh
                 break
