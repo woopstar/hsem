@@ -59,6 +59,7 @@ from custom_components.hsem.planner.slot_population import (
     populate_solcast,
     usable_capacity,
 )
+from custom_components.hsem.planner.soc_simulation import simulate_soc
 from custom_components.hsem.utils.misc import calculate_recommended_threshold
 from custom_components.hsem.utils.recommendations import Recommendations
 
@@ -303,6 +304,15 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     # made by the winning strategy.  This guarantees that every slot has a
     # valid recommendation (BatteriesWaitMode, BatteriesChargeSolar, etc.)
     # regardless of which candidate was selected.
+    #
+    # Important: the fill pass may set batteries_charged on newly-assigned
+    # BatteriesChargeSolar slots.  Those changes are not reflected in the
+    # SoC fields that were written by the candidate's simulate_soc call.
+    # We therefore re-run simulate_soc on the final slots so that
+    # grid_import_kwh, grid_export_kwh, batteries_discharged, and
+    # estimated_battery_soc are all consistent with the final recommendations.
+    # Then we re-run score_plan to satisfy the spec invariant:
+    #   output.plan_cost == score_plan(output.slots)
     apply_optimization_strategy(
         slots,
         now,
@@ -312,6 +322,20 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         inp.months_winter,
         warnings=[],  # suppress duplicate warnings from this fill-only pass
         export_min_price=inp.export_min_price,
+    )
+
+    # Re-run SoC simulation on the final (fill-completed) slots so that all
+    # energy-flow fields are consistent with the final recommendations.
+    simulate_soc(
+        slots,
+        now,
+        current_kwh,
+        usable_kwh,
+        max_soc_capacity_kwh,
+        max_charge_per_slot,
+        max_discharge_per_slot,
+        rated_kwh=inp.battery_rated_capacity_kwh,
+        end_of_discharge_soc_pct=inp.battery_end_of_discharge_soc_pct,
     )
 
     # Current recommendation
@@ -331,23 +355,15 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     # Build human-readable plan explanation
     explanation = _build_explanation(inp, slots, battery_soc_at_end, now)
 
-    # Use the winning candidate's cost as the authoritative plan_cost.
-    # The spec invariant requires: output.plan_cost == selected_candidate.cost.
-    # The candidate selector already ran score_plan on the winner's slots and
-    # stored the result in winner._cost.  Re-scoring here (after the fill pass)
-    # would use the fill-modified slots and produce a different value, violating
-    # the invariant.  We therefore prefer the pre-stored cost when available and
-    # only fall back to a fresh score when the selector did not run (edge cases
-    # such as zero-slot outputs or the degenerate single-candidate path).
-    winner_cost = getattr(winner, "_cost", None)
-    if winner_cost is not None:
-        plan_cost = winner_cost
-    else:
-        plan_cost = score_plan(
-            slots,
-            cost_weights,
-            slot_duration_hours=slot_duration_hours,
-        )
+    # Score the final (fill-completed, re-simulated) slots.
+    # The spec invariant requires: output.plan_cost == score_plan(output.slots).
+    # Because we re-ran simulate_soc above, the slot fields are now fully
+    # consistent with the final recommendations and this score is authoritative.
+    plan_cost = score_plan(
+        slots,
+        cost_weights,
+        slot_duration_hours=slot_duration_hours,
+    )
 
     # Merge candidate-rejected alternatives into the explanation's rejected list
     # (the explanation already contains schedule-based rejected alternatives built
