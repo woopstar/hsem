@@ -16,6 +16,12 @@ from custom_components.hsem.custom_sensors.degraded_mode_sensor import (
 from custom_components.hsem.custom_sensors.ev_charging_sensor import (
     HSEMEVChargingSensor,
 )
+from custom_components.hsem.custom_sensors.ev_optimal_charging_plan_sensor import (
+    HSEMEVOptimalChargingPlanSensor,
+)
+from custom_components.hsem.custom_sensors.ev_second_optimal_charging_plan_sensor import (
+    HSEMEVSecondOptimalChargingPlanSensor,
+)
 from custom_components.hsem.custom_sensors.force_mode_sensor import HSEMForceModeSensor
 from custom_components.hsem.custom_sensors.hardware_writes_sensor import (
     HSEMHardwareWritesSensor,
@@ -77,6 +83,12 @@ async def async_setup_entry(
     battery_soc_sensor = HSEMBatterySoCSensor(config_entry, coordinator)
     force_mode_sensor = HSEMForceModeSensor(config_entry, coordinator)
     ev_charging_sensor = HSEMEVChargingSensor(config_entry, coordinator)
+    ev_optimal_charging_plan_sensor = HSEMEVOptimalChargingPlanSensor(
+        config_entry, coordinator
+    )
+    ev_second_optimal_charging_plan_sensor = HSEMEVSecondOptimalChargingPlanSensor(
+        config_entry, coordinator
+    )
 
     # Working-mode sensor — subscribes to coordinator updates and owns hardware writes.
     working_mode_sensor = HSEMWorkingModeSensor(config_entry, coordinator)
@@ -101,6 +113,8 @@ async def async_setup_entry(
             battery_soc_sensor,
             force_mode_sensor,
             ev_charging_sensor,
+            ev_optimal_charging_plan_sensor,
+            ev_second_optimal_charging_plan_sensor,
             applier_status_sensor,
             plan_explanation_sensor,
             working_mode_sensor,

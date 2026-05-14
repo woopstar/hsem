@@ -64,6 +64,7 @@ from custom_components.hsem.models.planner_inputs import (
 from custom_components.hsem.models.planner_outputs import DataQuality, PlanExplanation
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.planner import run_planner
+from custom_components.hsem.planner.ev_planner import EVChargingPlan
 from custom_components.hsem.utils.inverter_verify import CycleApplySummary
 from custom_components.hsem.utils.logger import async_logger
 from custom_components.hsem.utils.misc import convert_to_float, convert_to_int
@@ -117,6 +118,10 @@ class CoordinatorData:
     plan_explanation: PlanExplanation = field(default_factory=PlanExplanation)
     #: Structured data-quality report for price and PV inputs.
     data_quality: DataQuality = field(default_factory=DataQuality)
+    #: EV optimal charging plan for the primary EV (None when disabled).
+    ev_charging_plan: EVChargingPlan | None = None
+    #: EV optimal charging plan for the second EV (None when disabled).
+    ev_second_charging_plan: EVChargingPlan | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -189,6 +194,9 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         self._plan_explanation: PlanExplanation = PlanExplanation()
         # Most recent data quality report produced by the planner engine.
         self._data_quality: DataQuality = DataQuality()
+        # Most recent EV charging plans from the planner engine.
+        self._ev_charging_plan: EVChargingPlan | None = None
+        self._ev_second_charging_plan: EVChargingPlan | None = None
         # Most recent planner input/output retained for diagnostics dumps.
         self._last_planner_input: PlannerInput | None = None
         self._last_planner_output = None
@@ -342,6 +350,8 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 self._apply_planner_output(planner_output)
                 self._current_required_battery = planner_output.required_capacity_kwh
                 self._data_quality = planner_output.data_quality
+                self._ev_charging_plan = planner_output.ev_charging_plan
+                self._ev_second_charging_plan = planner_output.ev_second_charging_plan
 
                 # 9. Find the current time-slot recommendation.
                 self._hourly_recommendations.sort(key=lambda x: x.start)
@@ -381,6 +391,8 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             next_update=self._next_update,
             plan_explanation=self._plan_explanation,
             data_quality=self._data_quality,
+            ev_charging_plan=self._ev_charging_plan,
+            ev_second_charging_plan=self._ev_second_charging_plan,
         )
 
         # Notify all subscriber entities atomically.
@@ -609,6 +621,68 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             months_winter=list(cfg.months_winter or []),
             house_power_includes_ev=bool(cfg.house_power_includes_ev_charger_power),
             is_read_only=bool(cfg.read_only),
+            # EV planned load
+            ev_planned_load_enabled=bool(cfg.ev_planned_load_enabled),
+            ev_planned_load_connected=bool(live.ev_planned_load_connected),
+            ev_planned_load_smart_charging_enabled=bool(
+                live.ev_planned_load_smart_charging_enabled
+            ),
+            ev_planned_load_current_soc_pct=convert_to_float(
+                live.ev_planned_load_current_soc_pct
+            )
+            or 0.0,
+            ev_planned_load_target_soc_pct=convert_to_float(
+                live.ev_planned_load_target_soc_pct
+            )
+            or cfg.ev_planned_load_target_soc_fixed,
+            ev_planned_load_battery_capacity_kwh=convert_to_float(
+                cfg.ev_planned_load_battery_capacity_kwh
+            )
+            or 0.0,
+            ev_planned_load_charger_power_kw=convert_to_float(
+                cfg.ev_planned_load_charger_power_kw
+            )
+            or 0.0,
+            ev_planned_load_charger_efficiency_pct=convert_to_float(
+                cfg.ev_planned_load_charger_efficiency_pct
+            )
+            or 100.0,
+            ev_planned_load_deadline=live.ev_planned_load_deadline,
+            ev_planned_load_base_load_includes_ev=bool(
+                cfg.ev_planned_load_base_load_includes_ev
+            ),
+            # Second EV planned load
+            ev_second_planned_load_enabled=bool(cfg.ev_second_planned_load_enabled),
+            ev_second_planned_load_connected=bool(
+                live.ev_second_planned_load_connected
+            ),
+            ev_second_planned_load_smart_charging_enabled=bool(
+                live.ev_second_planned_load_smart_charging_enabled
+            ),
+            ev_second_planned_load_current_soc_pct=convert_to_float(
+                live.ev_second_planned_load_current_soc_pct
+            )
+            or 0.0,
+            ev_second_planned_load_target_soc_pct=convert_to_float(
+                live.ev_second_planned_load_target_soc_pct
+            )
+            or cfg.ev_second_planned_load_target_soc_fixed,
+            ev_second_planned_load_battery_capacity_kwh=convert_to_float(
+                cfg.ev_second_planned_load_battery_capacity_kwh
+            )
+            or 0.0,
+            ev_second_planned_load_charger_power_kw=convert_to_float(
+                cfg.ev_second_planned_load_charger_power_kw
+            )
+            or 0.0,
+            ev_second_planned_load_charger_efficiency_pct=convert_to_float(
+                cfg.ev_second_planned_load_charger_efficiency_pct
+            )
+            or 100.0,
+            ev_second_planned_load_deadline=live.ev_second_planned_load_deadline,
+            ev_second_planned_load_base_load_includes_ev=bool(
+                cfg.ev_second_planned_load_base_load_includes_ev
+            ),
         )
 
     def _apply_planner_output(self, output) -> None:

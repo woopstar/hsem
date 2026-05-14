@@ -48,6 +48,12 @@ from custom_components.hsem.planner.charge_scheduler import (
     calculate_required_battery_until_solar,
 )
 from custom_components.hsem.planner.cost_function import CostWeights, score_plan
+from custom_components.hsem.planner.ev_planner import (
+    EVChargingPlan,
+    EVPlannerInput,
+    apply_ev_planned_load_to_slots,
+    build_ev_charging_plan,
+)
 from custom_components.hsem.planner.slot_population import (
     build_slots,
     build_time_series_index,
@@ -282,6 +288,120 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
                 f"to PV estimates — day+1 at 90 %, day+2+ at 80 %."
             )
 
+    # -----------------------------------------------------------------------
+    # EV planned load injection (issue #396)
+    # -----------------------------------------------------------------------
+    # Build EV charging plans for the primary and secondary EV independently,
+    # then sum their per-slot loads into slot.ev_planned_load_kwh BEFORE net
+    # consumption is calculated.  This ensures:
+    #   - Solar surplus is computed after EV demand is subtracted.
+    #   - Battery solar-charge recommendations don't claim solar consumed by EVs.
+    #   - No circular dependency: EV plans are built from raw inputs only.
+    #
+    # Each EV is planned independently using the same pre-injection solar
+    # surplus estimate.  This is an intentional one-pass design; in practice
+    # the error is small because both EVs share the same solar forecast.
+    ev_charging_plan: EVChargingPlan | None = None
+    ev_second_charging_plan: EVChargingPlan | None = None
+
+    # Accumulate combined EV planned load per slot (sum of both EVs).
+    combined_ev_load = [0.0] * len(slots)
+
+    # Compute solar surplus ONCE before any EV injection (both EVs share it).
+    slot_solar_surplus = [max(-s.estimated_net_consumption, 0.0) for s in slots]
+    _slot_starts = [s.start for s in slots]
+    _slot_ends = [s.end for s in slots]
+    _slot_prices = [s.price.import_price for s in slots]
+
+    def _build_and_inject(
+        enabled: bool,
+        connected: bool,
+        smart: bool,
+        soc: float,
+        target: float,
+        cap_kwh: float,
+        pwr_kw: float,
+        eff: float,
+        deadline,
+        base_includes: bool,
+        label: str,
+    ) -> EVChargingPlan | None:
+        """Build an EV plan and accumulate its loads into ``combined_ev_load``."""
+        if not enabled:
+            return None
+        ev_inp = EVPlannerInput(
+            enabled=enabled,
+            ev_connected=connected,
+            smart_charging_enabled=smart,
+            current_soc_pct=soc,
+            target_soc_pct=target,
+            battery_capacity_kwh=cap_kwh,
+            charger_power_kw=pwr_kw,
+            charger_efficiency_pct=eff,
+            deadline=deadline,
+            base_load_includes_ev=base_includes,
+            now=now,
+        )
+        plan = build_ev_charging_plan(
+            ev_inp,
+            slots_start=_slot_starts,
+            slots_end=_slot_ends,
+            slot_solar_surplus_kwh=slot_solar_surplus,
+            slot_import_price=_slot_prices,
+        )
+        ev_load_by_idx = [0.0] * len(slots)
+        apply_ev_planned_load_to_slots(
+            slot_starts=_slot_starts,
+            slot_ev_planned_load_kwh=ev_load_by_idx,
+            ev_plan=plan,
+            base_load_includes_ev=base_includes,
+        )
+        for i in range(len(slots)):
+            combined_ev_load[i] += ev_load_by_idx[i]
+
+        if plan.state not in (
+            "not_connected",
+            "smart_charging_disabled",
+            "fully_charged",
+        ):
+            warnings.append(
+                f"EV planned load ({label}): state={plan.state}, "
+                f"total_kwh_needed={plan.total_kwh_needed:.2f}, "
+                f"charging_slots={len(plan.charging_slots)}."
+            )
+        return plan
+
+    ev_charging_plan = _build_and_inject(
+        enabled=inp.ev_planned_load_enabled,
+        connected=inp.ev_planned_load_connected,
+        smart=inp.ev_planned_load_smart_charging_enabled,
+        soc=inp.ev_planned_load_current_soc_pct,
+        target=inp.ev_planned_load_target_soc_pct,
+        cap_kwh=inp.ev_planned_load_battery_capacity_kwh,
+        pwr_kw=inp.ev_planned_load_charger_power_kw,
+        eff=inp.ev_planned_load_charger_efficiency_pct,
+        deadline=inp.ev_planned_load_deadline,
+        base_includes=inp.ev_planned_load_base_load_includes_ev,
+        label="primary",
+    )
+    ev_second_charging_plan = _build_and_inject(
+        enabled=inp.ev_second_planned_load_enabled,
+        connected=inp.ev_second_planned_load_connected,
+        smart=inp.ev_second_planned_load_smart_charging_enabled,
+        soc=inp.ev_second_planned_load_current_soc_pct,
+        target=inp.ev_second_planned_load_target_soc_pct,
+        cap_kwh=inp.ev_second_planned_load_battery_capacity_kwh,
+        pwr_kw=inp.ev_second_planned_load_charger_power_kw,
+        eff=inp.ev_second_planned_load_charger_efficiency_pct,
+        deadline=inp.ev_second_planned_load_deadline,
+        base_includes=inp.ev_second_planned_load_base_load_includes_ev,
+        label="second",
+    )
+
+    # Write combined EV loads into slot fields.
+    for i, slot in enumerate(slots):
+        slot.ev_planned_load_kwh = combined_ev_load[i]
+
     populate_net_consumption(slots)
     populate_estimated_cost(slots)
 
@@ -515,6 +635,8 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         explanation=explanation,
         plan_cost=plan_cost,
         candidates=candidates,
+        ev_charging_plan=ev_charging_plan,
+        ev_second_charging_plan=ev_second_charging_plan,
     )
 
 

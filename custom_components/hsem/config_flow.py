@@ -25,9 +25,17 @@ from custom_components.hsem.flows.energidataservice import (
     validate_energidataservice_input,
 )
 from custom_components.hsem.flows.ev import get_ev_step_schema, validate_ev_step_input
+from custom_components.hsem.flows.ev_planned_load import (
+    get_ev_planned_load_step_schema,
+    validate_ev_planned_load_input,
+)
 from custom_components.hsem.flows.ev_second import (
     get_ev_second_step_schema,
     validate_ev_second_step_input,
+)
+from custom_components.hsem.flows.ev_second_planned_load import (
+    get_ev_second_planned_load_step_schema,
+    validate_ev_second_planned_load_input,
 )
 from custom_components.hsem.flows.huawei_solar import (
     get_huawei_solar_step_schema,
@@ -339,11 +347,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors = await validate_batteries_excess_export_input(user_input)
             if not errors:
                 self._user_input.update(user_input)
-
-                return self.async_create_entry(
-                    title=self._user_input.get("device_name", NAME),
-                    data=self._user_input,
-                )
+                return await self.async_step_ev_planned_load()
 
         data_schema = await get_batteries_excess_export_step_schema(
             None, self._user_input, hass=self.hass
@@ -351,6 +355,50 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="batteries_excess_export",
+            data_schema=data_schema,
+            errors=errors,
+            last_step=False,
+        )
+
+    async def async_step_ev_planned_load(self, user_input=None):
+        errors = {}
+
+        if user_input is not None:
+            errors = await validate_ev_planned_load_input(self.hass, user_input)
+            if not errors:
+                self._user_input.update(user_input)
+                if bool(self._user_input.get("hsem_ev_second_enabled")):
+                    return await self.async_step_ev_second_planned_load()
+                return self.async_create_entry(
+                    title=self._user_input.get("device_name", NAME),
+                    data=self._user_input,
+                )
+
+        data_schema = await get_ev_planned_load_step_schema(None)
+
+        return self.async_show_form(
+            step_id="ev_planned_load",
+            data_schema=data_schema,
+            errors=errors,
+            last_step=not bool(self._user_input.get("hsem_ev_second_enabled")),
+        )
+
+    async def async_step_ev_second_planned_load(self, user_input=None):
+        errors = {}
+
+        if user_input is not None:
+            errors = await validate_ev_second_planned_load_input(self.hass, user_input)
+            if not errors:
+                self._user_input.update(user_input)
+                return self.async_create_entry(
+                    title=self._user_input.get("device_name", NAME),
+                    data=self._user_input,
+                )
+
+        data_schema = await get_ev_second_planned_load_step_schema(None)
+
+        return self.async_show_form(
+            step_id="ev_second_planned_load",
             data_schema=data_schema,
             errors=errors,
             last_step=True,

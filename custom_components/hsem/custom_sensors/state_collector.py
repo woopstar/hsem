@@ -341,6 +341,14 @@ async def async_collect_live_state(
     # --- Net consumption ---
     _compute_net_consumption(state, cfg)
 
+    # --- EV planned load live state — primary EV ---
+    if cfg.ev_planned_load_enabled:
+        _read_ev_planned_load_state(sensor, state, cfg, _read, is_second=False)
+
+    # --- EV planned load live state — second EV ---
+    if cfg.ev_second_planned_load_enabled:
+        _read_ev_planned_load_state(sensor, state, cfg, _read, is_second=True)
+
     # --- Register state-change listeners for reactive entities ---
     new_unsubs = await _register_listeners(sensor, cfg, state, tracked_entities)
 
@@ -402,6 +410,122 @@ def _compute_net_consumption(state: LiveState, cfg: SensorConfig) -> None:
     else:
         state.net_consumption_with_ev_w = round(house_w - solar_w + ev_w, 3)
         state.net_consumption_w = round(house_w - solar_w, 3)
+
+
+def _read_ev_planned_load_state(
+    sensor, state: LiveState, cfg, _read, is_second: bool
+) -> None:
+    """Read EV planned load live state into ``state`` for primary or second EV.
+
+    Args:
+        sensor: Working-mode sensor instance (provides ``hass``).
+        state: :class:`LiveState` to update in place.
+        cfg: Current sensor configuration.
+        _read: Closure from ``async_collect_live_state`` for reading HA entities.
+        is_second: When ``True``, read second-EV fields; otherwise read primary fields.
+    """
+    p = "ev_second_planned_load" if is_second else "ev_planned_load"
+
+    connected_sensor = getattr(cfg, f"{p}_connected_sensor", None)
+    soc_sensor = getattr(cfg, f"{p}_soc_sensor", None)
+    target_soc_entity = getattr(cfg, f"{p}_target_soc_entity", None)
+    target_soc_fixed = getattr(cfg, f"{p}_target_soc_fixed", 80.0)
+    smart_entity = getattr(cfg, f"{p}_smart_charging_entity", None)
+    deadline_entity = getattr(cfg, f"{p}_deadline_entity", None)
+    deadline_fixed = getattr(cfg, f"{p}_deadline_fixed", "07:00")
+
+    if connected_sensor:
+        setattr(
+            state,
+            f"{p}_connected",
+            bool(
+                convert_to_boolean(
+                    _read(connected_sensor, "boolean", label=f"{p}_connected")
+                )
+            ),
+        )
+
+    if soc_sensor:
+        _soc = convert_to_float(_read(soc_sensor, "float", label=f"{p}_soc"))
+        setattr(state, f"{p}_current_soc_pct", _soc if _soc is not None else 0.0)
+
+    if target_soc_entity:
+        _tsoc = convert_to_float(
+            _read(target_soc_entity, "float", label=f"{p}_target_soc")
+        )
+        setattr(
+            state,
+            f"{p}_target_soc_pct",
+            _tsoc if _tsoc is not None else target_soc_fixed,
+        )
+    else:
+        setattr(state, f"{p}_target_soc_pct", target_soc_fixed)
+
+    if smart_entity:
+        _sc = convert_to_boolean(
+            _read(smart_entity, "boolean", label=f"{p}_smart_charging")
+        )
+        setattr(
+            state, f"{p}_smart_charging_enabled", bool(_sc) if _sc is not None else True
+        )
+
+    setattr(
+        state,
+        f"{p}_deadline",
+        _resolve_ev_deadline_from_params(sensor, deadline_entity, deadline_fixed),
+    )
+
+
+def _resolve_ev_deadline_from_params(sensor, deadline_entity, deadline_fixed):
+    """Resolve EV charging deadline from entity or fixed config string.
+
+    Args:
+        sensor: Working-mode sensor instance (provides ``hass``).
+        deadline_entity: Optional HA entity whose state is a time string.
+        deadline_fixed: Fallback HH:MM string from config.
+
+    Returns:
+        A timezone-aware ``datetime`` for the deadline, or ``None``.
+    """
+    import re
+    from datetime import datetime as _dt
+    from datetime import time as _time
+    from datetime import timedelta
+
+    import homeassistant.util.dt as dt_util
+
+    time_str: str | None = None
+
+    if deadline_entity:
+        try:
+            raw = ha_get_entity_state_and_convert(sensor, deadline_entity, None)
+            from homeassistant.core import State as _State  # noqa: PLC0415
+
+            if isinstance(raw, _State):
+                time_str = raw.state
+            elif isinstance(raw, str):
+                time_str = raw
+        except Exception:
+            pass
+
+    if not time_str:
+        time_str = deadline_fixed or "07:00"
+
+    m = re.match(r"^(\d{1,2}):(\d{2})(?::\d{2})?$", (time_str or "").strip())
+    if not m:
+        return None
+
+    hour, minute = int(m.group(1)), int(m.group(2))
+    tz = dt_util.now().tzinfo
+    now_local = dt_util.now().astimezone(tz)
+    today = now_local.date()
+    deadline_naive = _dt.combine(today, _time(hour, minute))
+    deadline = deadline_naive.replace(tzinfo=tz)
+
+    if deadline <= now_local:
+        deadline = deadline + timedelta(days=1)
+
+    return deadline
 
 
 async def _register_listeners(

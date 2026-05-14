@@ -191,6 +191,35 @@ class SensorConfig:
     batteries_excess_export_discharge_buffer: float = 10.0
     batteries_excess_export_price_threshold: float = 0.10
 
+    # EV planned load integration — primary EV (optional, disabled by default)
+    ev_planned_load_enabled: bool = False
+    ev_planned_load_connected_sensor: str | None = None
+    ev_planned_load_soc_sensor: str | None = None
+    ev_planned_load_target_soc_entity: str | None = None
+    ev_planned_load_target_soc_fixed: float = 80.0
+    ev_planned_load_deadline_entity: str | None = None
+    ev_planned_load_deadline_fixed: str = "07:00"
+    ev_planned_load_smart_charging_entity: str | None = None
+    ev_planned_load_battery_capacity_kwh: float = 0.0
+    ev_planned_load_charger_power_kw: float = 0.0
+    ev_planned_load_charger_efficiency_pct: float = 100.0
+    ev_planned_load_base_load_includes_ev: bool = False
+    ev_planned_load_actual_power_sensor: str | None = None
+    # EV planned load integration — second EV (optional, disabled by default)
+    ev_second_planned_load_enabled: bool = False
+    ev_second_planned_load_connected_sensor: str | None = None
+    ev_second_planned_load_soc_sensor: str | None = None
+    ev_second_planned_load_target_soc_entity: str | None = None
+    ev_second_planned_load_target_soc_fixed: float = 80.0
+    ev_second_planned_load_deadline_entity: str | None = None
+    ev_second_planned_load_deadline_fixed: str = "07:00"
+    ev_second_planned_load_smart_charging_entity: str | None = None
+    ev_second_planned_load_battery_capacity_kwh: float = 0.0
+    ev_second_planned_load_charger_power_kw: float = 0.0
+    ev_second_planned_load_charger_efficiency_pct: float = 100.0
+    ev_second_planned_load_base_load_includes_ev: bool = False
+    ev_second_planned_load_actual_power_sensor: str | None = None
+
     # Seasonal configuration
     months_winter: list[int] = field(default_factory=list)
     months_summer: list[int] = field(default_factory=list)

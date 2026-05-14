@@ -261,14 +261,27 @@ def populate_consumption(
 
 
 def populate_net_consumption(slots: list[PlannedSlot]) -> None:
-    """Compute ``estimated_net_consumption = avg_consumption - pv_estimate``.
+    """Compute effective net consumption per slot.
+
+    Formula::
+
+        effective_net_load_kwh
+            = avg_house_consumption + ev_planned_load_kwh - solcast_pv_estimate
+
+    The ``ev_planned_load_kwh`` field is already populated when EV planned
+    load integration is active (and ``base_load_includes_ev`` is False).
+    When EV integration is disabled ``ev_planned_load_kwh`` defaults to 0.0
+    so the formula degrades to the original ``avg_consumption - pv_estimate``.
 
     Args:
         slots: Mutable list of planned slots to update.
     """
     for slot in slots:
         slot.estimated_net_consumption = round(
-            slot.avg_house_consumption - slot.solcast_pv_estimate, 3
+            slot.avg_house_consumption
+            + slot.ev_planned_load_kwh
+            - slot.solcast_pv_estimate,
+            3,
         )
 
 

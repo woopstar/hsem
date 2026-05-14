@@ -40,6 +40,74 @@
         "description": "Configure excess battery export settings to automatically sell excess energy to the grid when economically beneficial.",
         "title": "Excess Battery Export"
       },
+      "ev_planned_load": {
+        "data": {
+          "hsem_ev_planned_load_enabled": "Enable EV Planned Load Integration",
+          "hsem_ev_planned_load_connected_sensor": "EV Connected Binary Sensor",
+          "hsem_ev_planned_load_soc_sensor": "EV Battery SoC Sensor",
+          "hsem_ev_planned_load_target_soc_entity": "EV Target SoC Entity (optional)",
+          "hsem_ev_planned_load_target_soc_fixed": "EV Target SoC (fixed fallback)",
+          "hsem_ev_planned_load_deadline_entity": "EV Charge Deadline Entity (optional)",
+          "hsem_ev_planned_load_deadline_fixed": "EV Charge Deadline (fixed HH:MM fallback)",
+          "hsem_ev_planned_load_smart_charging_entity": "EV Smart Charging Enabled Entity (optional)",
+          "hsem_ev_planned_load_battery_capacity_kwh": "EV Battery Capacity (kWh)",
+          "hsem_ev_planned_load_charger_power_kw": "EV Charger Power (kW)",
+          "hsem_ev_planned_load_charger_efficiency": "EV Charger Efficiency",
+          "hsem_ev_planned_load_base_load_includes_ev": "Base House Load Already Includes EV",
+          "hsem_ev_planned_load_actual_power_sensor": "EV Actual Charging Power Sensor (optional)"
+        },
+        "data_description": {
+          "hsem_ev_planned_load_enabled": "Enable or disable planned EV charging load integration.",
+          "hsem_ev_planned_load_connected_sensor": "Binary sensor that reports whether the EV is plugged in.",
+          "hsem_ev_planned_load_soc_sensor": "Sensor reporting the current EV battery state of charge.",
+          "hsem_ev_planned_load_target_soc_entity": "Optional entity for the EV target SoC. Overrides fixed target when set.",
+          "hsem_ev_planned_load_target_soc_fixed": "Fixed EV target SoC used when no entity is configured. Default: 80.",
+          "hsem_ev_planned_load_deadline_entity": "Optional entity whose state is a time string (HH:MM) for the EV charge deadline.",
+          "hsem_ev_planned_load_deadline_fixed": "Fixed charge deadline (HH:MM) used when no entity is configured. Default: 07:00.",
+          "hsem_ev_planned_load_smart_charging_entity": "Optional boolean entity that enables or disables smart EV charging.",
+          "hsem_ev_planned_load_battery_capacity_kwh": "Nameplate battery capacity of the EV in kWh.",
+          "hsem_ev_planned_load_charger_power_kw": "AC output power of the EV charger in kW.",
+          "hsem_ev_planned_load_charger_efficiency": "Charger efficiency as a percentage (1-100). Default: 100.",
+          "hsem_ev_planned_load_base_load_includes_ev": "Enable when the house consumption sensor already includes EV load. Prevents double-counting.",
+          "hsem_ev_planned_load_actual_power_sensor": "Optional sensor measuring actual EV charging power for diagnostics."
+        },
+        "description": "Configure optional planned EV charging load integration. When enabled, HSEM accounts for upcoming EV charging demand per planner slot.",
+        "title": "EV Planned Load Integration"
+      },
+      "ev_second_planned_load": {
+        "data": {
+          "hsem_ev_second_planned_load_enabled": "Enable EV 2 Planned Load Integration",
+          "hsem_ev_second_planned_load_connected_sensor": "EV 2 Connected Binary Sensor",
+          "hsem_ev_second_planned_load_soc_sensor": "EV 2 Battery SoC Sensor",
+          "hsem_ev_second_planned_load_target_soc_entity": "EV 2 Target SoC Entity (optional)",
+          "hsem_ev_second_planned_load_target_soc_fixed": "EV 2 Target SoC (fixed fallback)",
+          "hsem_ev_second_planned_load_deadline_entity": "EV 2 Charge Deadline Entity (optional)",
+          "hsem_ev_second_planned_load_deadline_fixed": "EV 2 Charge Deadline (fixed HH:MM fallback)",
+          "hsem_ev_second_planned_load_smart_charging_entity": "EV 2 Smart Charging Enabled Entity (optional)",
+          "hsem_ev_second_planned_load_battery_capacity_kwh": "EV 2 Battery Capacity (kWh)",
+          "hsem_ev_second_planned_load_charger_power_kw": "EV 2 Charger Power (kW)",
+          "hsem_ev_second_planned_load_charger_efficiency": "EV 2 Charger Efficiency",
+          "hsem_ev_second_planned_load_base_load_includes_ev": "Base House Load Already Includes EV 2",
+          "hsem_ev_second_planned_load_actual_power_sensor": "EV 2 Actual Charging Power Sensor (optional)"
+        },
+        "data_description": {
+          "hsem_ev_second_planned_load_enabled": "Enable or disable planned charging load integration for the second EV.",
+          "hsem_ev_second_planned_load_connected_sensor": "Binary sensor that reports whether the second EV is plugged in.",
+          "hsem_ev_second_planned_load_soc_sensor": "Sensor reporting the current second EV battery state of charge.",
+          "hsem_ev_second_planned_load_target_soc_entity": "Optional entity for the second EV target SoC. Overrides fixed target when set.",
+          "hsem_ev_second_planned_load_target_soc_fixed": "Fixed second EV target SoC used when no entity is configured. Default: 80.",
+          "hsem_ev_second_planned_load_deadline_entity": "Optional entity whose state is a time string (HH:MM) for the second EV charge deadline.",
+          "hsem_ev_second_planned_load_deadline_fixed": "Fixed charge deadline (HH:MM) for the second EV. Default: 07:00.",
+          "hsem_ev_second_planned_load_smart_charging_entity": "Optional boolean entity that enables or disables smart charging for the second EV.",
+          "hsem_ev_second_planned_load_battery_capacity_kwh": "Nameplate battery capacity of the second EV in kWh.",
+          "hsem_ev_second_planned_load_charger_power_kw": "AC output power of the second EV charger in kW.",
+          "hsem_ev_second_planned_load_charger_efficiency": "Second EV charger efficiency as a percentage (1-100). Default: 100.",
+          "hsem_ev_second_planned_load_base_load_includes_ev": "Enable when the house consumption sensor already includes second EV load. Prevents double-counting.",
+          "hsem_ev_second_planned_load_actual_power_sensor": "Optional sensor measuring actual second EV charging power for diagnostics."
+        },
+        "description": "Configure optional planned charging load integration for the second EV. Only shown when a second EV charger is enabled.",
+        "title": "EV 2 Planned Load Integration"
+      },
       "batteries_schedule_1": {
         "data": {
           "hsem_batteries_enable_batteries_schedule_1": "Enable Battery Schedule 1",
@@ -326,6 +394,74 @@
         },
         "description": "Configure excess battery export settings to automatically sell excess energy to the grid when economically beneficial.",
         "title": "Excess Battery Export"
+      },
+      "ev_planned_load": {
+        "data": {
+          "hsem_ev_planned_load_enabled": "Enable EV Planned Load Integration",
+          "hsem_ev_planned_load_connected_sensor": "EV Connected Binary Sensor",
+          "hsem_ev_planned_load_soc_sensor": "EV Battery SoC Sensor",
+          "hsem_ev_planned_load_target_soc_entity": "EV Target SoC Entity (optional)",
+          "hsem_ev_planned_load_target_soc_fixed": "EV Target SoC (fixed fallback)",
+          "hsem_ev_planned_load_deadline_entity": "EV Charge Deadline Entity (optional)",
+          "hsem_ev_planned_load_deadline_fixed": "EV Charge Deadline (fixed HH:MM fallback)",
+          "hsem_ev_planned_load_smart_charging_entity": "EV Smart Charging Enabled Entity (optional)",
+          "hsem_ev_planned_load_battery_capacity_kwh": "EV Battery Capacity (kWh)",
+          "hsem_ev_planned_load_charger_power_kw": "EV Charger Power (kW)",
+          "hsem_ev_planned_load_charger_efficiency": "EV Charger Efficiency",
+          "hsem_ev_planned_load_base_load_includes_ev": "Base House Load Already Includes EV",
+          "hsem_ev_planned_load_actual_power_sensor": "EV Actual Charging Power Sensor (optional)"
+        },
+        "data_description": {
+          "hsem_ev_planned_load_enabled": "Enable or disable planned EV charging load integration.",
+          "hsem_ev_planned_load_connected_sensor": "Binary sensor that reports whether the EV is plugged in.",
+          "hsem_ev_planned_load_soc_sensor": "Sensor reporting the current EV battery state of charge.",
+          "hsem_ev_planned_load_target_soc_entity": "Optional entity for the EV target SoC. Overrides fixed target when set.",
+          "hsem_ev_planned_load_target_soc_fixed": "Fixed EV target SoC used when no entity is configured. Default: 80.",
+          "hsem_ev_planned_load_deadline_entity": "Optional entity whose state is a time string (HH:MM) for the EV charge deadline.",
+          "hsem_ev_planned_load_deadline_fixed": "Fixed charge deadline (HH:MM) used when no entity is configured. Default: 07:00.",
+          "hsem_ev_planned_load_smart_charging_entity": "Optional boolean entity that enables or disables smart EV charging.",
+          "hsem_ev_planned_load_battery_capacity_kwh": "Nameplate battery capacity of the EV in kWh.",
+          "hsem_ev_planned_load_charger_power_kw": "AC output power of the EV charger in kW.",
+          "hsem_ev_planned_load_charger_efficiency": "Charger efficiency as a percentage (1-100). Default: 100.",
+          "hsem_ev_planned_load_base_load_includes_ev": "Enable when the house consumption sensor already includes EV load. Prevents double-counting.",
+          "hsem_ev_planned_load_actual_power_sensor": "Optional sensor measuring actual EV charging power for diagnostics."
+        },
+        "description": "Configure optional planned EV charging load integration. When enabled, HSEM accounts for upcoming EV charging demand per planner slot.",
+        "title": "EV Planned Load Integration"
+      },
+      "ev_second_planned_load": {
+        "data": {
+          "hsem_ev_second_planned_load_enabled": "Enable EV 2 Planned Load Integration",
+          "hsem_ev_second_planned_load_connected_sensor": "EV 2 Connected Binary Sensor",
+          "hsem_ev_second_planned_load_soc_sensor": "EV 2 Battery SoC Sensor",
+          "hsem_ev_second_planned_load_target_soc_entity": "EV 2 Target SoC Entity (optional)",
+          "hsem_ev_second_planned_load_target_soc_fixed": "EV 2 Target SoC (fixed fallback)",
+          "hsem_ev_second_planned_load_deadline_entity": "EV 2 Charge Deadline Entity (optional)",
+          "hsem_ev_second_planned_load_deadline_fixed": "EV 2 Charge Deadline (fixed HH:MM fallback)",
+          "hsem_ev_second_planned_load_smart_charging_entity": "EV 2 Smart Charging Enabled Entity (optional)",
+          "hsem_ev_second_planned_load_battery_capacity_kwh": "EV 2 Battery Capacity (kWh)",
+          "hsem_ev_second_planned_load_charger_power_kw": "EV 2 Charger Power (kW)",
+          "hsem_ev_second_planned_load_charger_efficiency": "EV 2 Charger Efficiency",
+          "hsem_ev_second_planned_load_base_load_includes_ev": "Base House Load Already Includes EV 2",
+          "hsem_ev_second_planned_load_actual_power_sensor": "EV 2 Actual Charging Power Sensor (optional)"
+        },
+        "data_description": {
+          "hsem_ev_second_planned_load_enabled": "Enable or disable planned charging load integration for the second EV.",
+          "hsem_ev_second_planned_load_connected_sensor": "Binary sensor that reports whether the second EV is plugged in.",
+          "hsem_ev_second_planned_load_soc_sensor": "Sensor reporting the current second EV battery state of charge.",
+          "hsem_ev_second_planned_load_target_soc_entity": "Optional entity for the second EV target SoC. Overrides fixed target when set.",
+          "hsem_ev_second_planned_load_target_soc_fixed": "Fixed second EV target SoC used when no entity is configured. Default: 80.",
+          "hsem_ev_second_planned_load_deadline_entity": "Optional entity whose state is a time string (HH:MM) for the second EV charge deadline.",
+          "hsem_ev_second_planned_load_deadline_fixed": "Fixed charge deadline (HH:MM) for the second EV. Default: 07:00.",
+          "hsem_ev_second_planned_load_smart_charging_entity": "Optional boolean entity that enables or disables smart charging for the second EV.",
+          "hsem_ev_second_planned_load_battery_capacity_kwh": "Nameplate battery capacity of the second EV in kWh.",
+          "hsem_ev_second_planned_load_charger_power_kw": "AC output power of the second EV charger in kW.",
+          "hsem_ev_second_planned_load_charger_efficiency": "Second EV charger efficiency as a percentage (1-100). Default: 100.",
+          "hsem_ev_second_planned_load_base_load_includes_ev": "Enable when the house consumption sensor already includes second EV load. Prevents double-counting.",
+          "hsem_ev_second_planned_load_actual_power_sensor": "Optional sensor measuring actual second EV charging power for diagnostics."
+        },
+        "description": "Configure optional planned charging load integration for the second EV. Only shown when a second EV charger is enabled.",
+        "title": "EV 2 Planned Load Integration"
       },
       "batteries_schedule_1": {
         "data": {
