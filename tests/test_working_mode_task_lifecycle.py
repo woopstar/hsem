@@ -229,9 +229,9 @@ class TestNoWriteAfterUnload:
         # Give the event loop a chance to run cancelled callbacks.
         await asyncio.sleep(0)
 
-        assert (
-            not write_called
-        ), "Hardware write was called after entity unload — stale task not cancelled."
+        assert not write_called, (
+            "Hardware write was called after entity unload — stale task not cancelled."
+        )
 
     @pytest.mark.asyncio
     async def test_cancelled_error_propagates_out_of_update_coro(self) -> None:

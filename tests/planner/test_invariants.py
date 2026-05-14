@@ -325,9 +325,9 @@ class TestEnergyBalance:
                 + slot.batteries_discharged
                 + slot.solcast_pv_estimate
             )
-            assert (
-                total_supply >= slot.avg_house_consumption - 1e-6
-            ), f"Energy balance violated at {slot.start.isoformat()}"
+            assert total_supply >= slot.avg_house_consumption - 1e-6, (
+                f"Energy balance violated at {slot.start.isoformat()}"
+            )
 
     def test_grid_not_imported_when_pv_covers_load(self):
         """When PV > load and battery is full, grid import must be 0.
@@ -373,9 +373,9 @@ class TestEnergyBalance:
             and s.solcast_pv_estimate > 0
         ]
         # At least some slots should have export
-        assert any(
-            s.grid_export_kwh > 0 for s in slots_with_pv
-        ), "Expected grid export when PV > load and battery is full"
+        assert any(s.grid_export_kwh > 0 for s in slots_with_pv), (
+            "Expected grid export when PV > load and battery is full"
+        )
 
 
 # ===========================================================================
@@ -509,12 +509,12 @@ class TestForceExport:
             soc_high_penalty_weight=0.0,
         )
         bd = score_plan([slot], weights)
-        assert bd.export_revenue == pytest.approx(
-            0.20, abs=1e-6
-        ), "Export revenue must equal 2.0 kWh × 0.10 = 0.20"
-        assert (
-            bd.total < 0.0
-        ), "Plan with export revenue should have negative total cost"
+        assert bd.export_revenue == pytest.approx(0.20, abs=1e-6), (
+            "Export revenue must equal 2.0 kWh × 0.10 = 0.20"
+        )
+        assert bd.total < 0.0, (
+            "Plan with export revenue should have negative total cost"
+        )
 
     def test_force_export_reduces_battery_soc(self):
         """Force-export (battery discharge to grid) must reduce SoC proportionally.
@@ -669,9 +669,9 @@ class TestGridChargeAccounting:
         weights = CostWeights(cycle_cost_per_kwh=0.0, conversion_loss_pct=0.0)
         bd = score_plan([slot], weights)
         # import_cost is based on grid_import_kwh, not batteries_charged
-        assert bd.import_cost == pytest.approx(
-            0.10, abs=1e-6
-        ), "Import cost must use grid_import_kwh (1.0 kWh × 0.10)"
+        assert bd.import_cost == pytest.approx(0.10, abs=1e-6), (
+            "Import cost must use grid_import_kwh (1.0 kWh × 0.10)"
+        )
 
 
 # ===========================================================================
@@ -785,9 +785,9 @@ class TestWinnerSlotsIdentity:
         assert total_duration == pytest.approx(24.0, abs=1e-6)
 
         for a, b in zip(result.slots, result.slots[1:]):
-            assert (
-                a.end == b.start
-            ), f"Slot gap between {a.end.isoformat()} and {b.start.isoformat()}"
+            assert a.end == b.start, (
+                f"Slot gap between {a.end.isoformat()} and {b.start.isoformat()}"
+            )
 
     def test_output_slot_recommendations_all_set(self):
         """Every output slot must have a non-None recommendation.
@@ -797,9 +797,9 @@ class TestWinnerSlotsIdentity:
         """
         result = run_planner(make_summer_day_input())
         for slot in result.slots:
-            assert (
-                slot.recommendation is not None
-            ), f"Output slot at {slot.start.isoformat()} has None recommendation"
+            assert slot.recommendation is not None, (
+                f"Output slot at {slot.start.isoformat()} has None recommendation"
+            )
 
 
 # ===========================================================================
@@ -1041,9 +1041,9 @@ class TestTerminalSoC:
         # Plan A has no SoC penalty; plan B is penalised
         assert bd_a.soc_penalty == pytest.approx(0.0, abs=1e-6)
         assert bd_b.soc_penalty > 0.0, "Empty battery must incur SoC penalty"
-        assert (
-            bd_a.total < bd_b.total
-        ), "Plan preserving battery must cost less than plan emptying it"
+        assert bd_a.total < bd_b.total, (
+            "Plan preserving battery must cost less than plan emptying it"
+        )
 
     def test_emptying_battery_is_not_free(self):
         """Discharging the battery to zero must increase the plan's total cost.
@@ -1087,13 +1087,13 @@ class TestTerminalSoC:
         # Note: slot_a.estimated_battery_soc=0 triggers the SoC floor check
         # in score_plan (0 < min_soc=10). We assert the relationship, not exact value.
         # Plan B discharges AND has SoC=5 (below floor), so its total must be higher.
-        assert (
-            bd_b.total > bd_a.total
-        ), "Depleted battery plan must cost more than import plan"
+        assert bd_b.total > bd_a.total, (
+            "Depleted battery plan must cost more than import plan"
+        )
         # Cycle cost contributes to plan B beyond plan A
-        assert (
-            bd_b.cycle_cost > bd_a.cycle_cost
-        ), "Plan with discharge must have higher cycle cost than import-only plan"
+        assert bd_b.cycle_cost > bd_a.cycle_cost, (
+            "Plan with discharge must have higher cycle cost than import-only plan"
+        )
 
 
 # ===========================================================================
@@ -1228,9 +1228,9 @@ class TestPartialSlot:
             if s.recommendation != Recommendations.TimePassed.value
         )
         # Remaining duration = 0.5 h → max consumption = 0.5 kWh
-        assert (
-            first_future_slot.avg_house_consumption <= 0.5 + 1e-6
-        ), "Partial slot must use remaining duration, not full duration"
+        assert first_future_slot.avg_house_consumption <= 0.5 + 1e-6, (
+            "Partial slot must use remaining duration, not full duration"
+        )
 
 
 # ===========================================================================
@@ -1356,9 +1356,9 @@ class TestSeasonalDeterminism:
             for s in result.slots
             if s.recommendation == Recommendations.BatteriesDischargeMode.value
         ]
-        assert (
-            not discharge_slots
-        ), "January (winter) with no schedules must not produce BatteriesDischargeMode"
+        assert not discharge_slots, (
+            "January (winter) with no schedules must not produce BatteriesDischargeMode"
+        )
 
     def test_june_gives_summer_mode(self):
         """June (summer month) with high PV must produce BatteriesChargeSolar slots."""
@@ -1576,9 +1576,9 @@ class TestFusionSolarVerification:
         """Planner output must include a write-verification flag for Fusion Solar."""
         result = run_planner(make_summer_day_input())
         # Expect a field like result.fusion_solar_write_verified or similar
-        assert hasattr(
-            result, "fusion_solar_write_verified"
-        ), "PlannerOutput must expose a Fusion Solar write-verification flag"
+        assert hasattr(result, "fusion_solar_write_verified"), (
+            "PlannerOutput must expose a Fusion Solar write-verification flag"
+        )
 
 
 # ===========================================================================
@@ -1610,9 +1610,9 @@ class TestWarmupMode:
         result = run_planner(inp)
         # Warm-up mode should be signalled in warnings or a dedicated field
         warmup_signalled = any("warm" in w.lower() for w in result.warnings)
-        assert (
-            warmup_signalled
-        ), "All-zero consumption history must trigger a warm-up mode warning"
+        assert warmup_signalled, (
+            "All-zero consumption history must trigger a warm-up mode warning"
+        )
 
 
 # ===========================================================================
@@ -1634,9 +1634,9 @@ class TestRequiredReserve:
         result = run_planner(make_summer_day_input(battery_soc_pct=0.0))
         # With discharge schedules active and empty battery there is reserve needed
         # (the planner tries to charge before peak)
-        assert (
-            result.required_capacity_kwh >= 0.0
-        ), "required_capacity_kwh must be non-negative"
+        assert result.required_capacity_kwh >= 0.0, (
+            "required_capacity_kwh must be non-negative"
+        )
 
     def test_winner_soc_never_below_min_configured_floor(self):
         """The winning plan's SoC must never go below the configured floor.
