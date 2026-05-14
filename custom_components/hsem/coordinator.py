@@ -708,6 +708,12 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             rec.estimated_battery_soc = slot.estimated_battery_soc
             rec.grid_import_kwh = slot.grid_import_kwh
             rec.grid_export_kwh = slot.grid_export_kwh
+            # Copy the planner's PV estimate so that solcast_pv_estimate,
+            # estimated_net_consumption, and ev_planned_load_kwh are all
+            # internally consistent in the final HourlyRecommendation output.
+            # The planner may have applied confidence decay or other transforms
+            # that differ from the raw value stored by the data populator.
+            rec.solcast_pv_estimate = slot.solcast_pv_estimate
 
         self._batteries_schedules_remaining_capacity_needed = sum(
             s.needed_batteries_capacity for s in self._batteries_schedules if s.enabled
