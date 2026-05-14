@@ -1,9 +1,8 @@
 import logging
-from typing import Any
 
 import homeassistant.helpers.device_registry as dr
 import homeassistant.helpers.entity_registry as er
-from homeassistant.helpers.entity import Entity
+from homeassistant.helpers.entity import DeviceInfo, Entity
 
 from custom_components.hsem.const import DOMAIN, NAME
 
@@ -11,25 +10,29 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class HSEMEntity(Entity):
-    """HSEMEntity is a base class for HSEM (Device) entities that extends RestoreEntity."""
+    """Base class for all HSEM entities.
+
+    Provides shared device information and entity registry attachment logic
+    used by select, switch, and time platform entities.
+    """
 
     _attr_icon = "mdi:flash"
     _attr_has_entity_name = True
 
     def __init__(self, config_entry) -> None:
-        """Initialize the HSEM"""
+        """Initialize the HSEM entity."""
         super().__init__()
         self._config = config_entry
 
     @property
-    def device_info(self) -> dict[str, Any]:
-        """Return the device information"""
-        return {
-            "identifiers": {(DOMAIN, self._config.entry_id)},
-            "name": NAME,
-            "manufacturer": DOMAIN.upper(),
-            "model": "Custom Integration",
-        }
+    def device_info(self) -> DeviceInfo:
+        """Return the device information."""
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._config.entry_id)},
+            name=NAME,
+            manufacturer=DOMAIN.upper(),
+            model="Custom Integration",
+        )
 
     async def async_will_remove_from_hass(self) -> None:
         """Entity being removed from hass."""

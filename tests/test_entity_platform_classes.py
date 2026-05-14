@@ -24,7 +24,10 @@ from homeassistant.helpers.entity import ToggleEntity
 
 from custom_components.hsem.custom_selectors.entity import HSEMWorkingModeSelector
 from custom_components.hsem.custom_switches.entity import HSEMSwitch
-from custom_components.hsem.custom_times.entity import HSEMTimeEntity
+from custom_components.hsem.custom_times.entity import (
+    HSEMTimeEntity,
+    HSEMTimeEntityDescription,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -100,14 +103,13 @@ class TestHSEMTimeEntityConstruction:
     ) -> HSEMTimeEntity:
         hass = _mock_hass()
         config_entry = _mock_config_entry()
-        return HSEMTimeEntity(
-            hass,
-            config_entry,
-            key,
-            "Batteries Discharge Schedule 1 Start",
-            "Start time for schedule 1.",
-            default,
+        description = HSEMTimeEntityDescription(
+            key=key,
+            name="Batteries Discharge Schedule 1 Start",
+            description="Start time for schedule 1.",
+            default_value=default,
         )
+        return HSEMTimeEntity(hass, config_entry, description)
 
     def test_native_value_is_time_object(self) -> None:
         """native_value must be a datetime.time after construction."""
@@ -184,14 +186,13 @@ class TestHSEMTimeEntitySetValue:
     def _make_entity(self) -> HSEMTimeEntity:
         hass = _mock_hass()
         config_entry = _mock_config_entry()
-        return HSEMTimeEntity(
-            hass,
-            config_entry,
-            "hsem_batteries_enable_batteries_schedule_1_start",
-            "Batteries Discharge Schedule 1 Start",
-            "Start time for schedule 1.",
-            "07:00:00",
+        description = HSEMTimeEntityDescription(
+            key="hsem_batteries_enable_batteries_schedule_1_start",
+            name="Batteries Discharge Schedule 1 Start",
+            description="Start time for schedule 1.",
+            default_value="07:00:00",
         )
+        return HSEMTimeEntity(hass, config_entry, description)
 
     @pytest.mark.asyncio
     async def test_set_value_updates_native_value(self) -> None:

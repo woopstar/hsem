@@ -1,10 +1,10 @@
-"""Selector entity for forcing a working mode in the HSEM integration.
+"""Select platform for the HSEM integration.
 
-This module defines a selector entity that allows users to choose a working mode,
-including an "Auto" option as default. The available working modes are imported
-from utils/recommendations.py.
+Exposes a ``SelectEntity`` that lets users force a specific working mode or
+leave the planner in ``"auto"`` mode.
 """
 
+from homeassistant.components.select import SelectEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -12,8 +12,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from custom_components.hsem.custom_selectors.entity import HSEMWorkingModeSelector
 from custom_components.hsem.utils.recommendations import Recommendations
 
-# Only include the specified recommendations
-RECOMMENDATION_OPTIONS = [
+# Selectable working modes exposed to the user.
+_RECOMMENDATION_OPTIONS = [
     Recommendations.BatteriesChargeGrid.value,
     Recommendations.BatteriesChargeSolar.value,
     Recommendations.BatteriesDischargeMode.value,
@@ -23,15 +23,21 @@ RECOMMENDATION_OPTIONS = [
     Recommendations.ForceExport.value,
 ]
 
-SELECTORS = {
-    "hsem_force_working_mode": {
-        "unique_id": "hsem_force_working_mode",
-        "name": "Force Working Mode",
-        "description": "Force a specific working mode for the integration.",
-        "options": ["auto"] + RECOMMENDATION_OPTIONS,
-        "default": "auto",
-    },
-}
+# Default selection value.
+_DEFAULT_OPTION = "auto"
+
+# Entity descriptions for each select entity in this platform.
+# Using SelectEntityDescription keeps the definition declarative and makes it
+# trivial to add more selectors in the future without duplicating constructor
+# arguments.
+SELECTOR_DESCRIPTIONS: tuple[SelectEntityDescription, ...] = (
+    SelectEntityDescription(
+        key="hsem_force_working_mode",
+        name="Force Working Mode",
+        icon="mdi:chart-timeline-variant",
+        options=[_DEFAULT_OPTION] + _RECOMMENDATION_OPTIONS,
+    ),
+)
 
 
 async def async_setup_entry(
@@ -39,18 +45,15 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up HSEM selectors from a config entry."""
+    """Set up HSEM select entities from a config entry."""
     async_add_entities(
         [
             HSEMWorkingModeSelector(
                 hass,
                 config_entry,
-                selector_data["unique_id"],
-                selector_data["name"],
-                selector_data["description"],
-                selector_data["options"],
-                selector_data["default"],
+                description,
+                _DEFAULT_OPTION,
             )
-            for key, selector_data in SELECTORS.items()
+            for description in SELECTOR_DESCRIPTIONS
         ]
     )
