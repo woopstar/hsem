@@ -53,7 +53,19 @@ def resolve_current_recommendation(
     if rec.recommendation == Recommendations.BatteriesChargeGrid.value:
         return
 
-    # 3. Any EV is actively charging → override with EV smart charging
+    # 3. Any EV is actively charging → override with EV smart charging.
+    #
+    # Guard: only apply the live override when the planner already injected EV
+    # planned load for this slot (ev_planned_load_kwh > 0) OR when the planner
+    # had no EV data at all (ev_planned_load_kwh == 0 because the feature was
+    # disabled or no charging plan was built).  In both of those cases the live
+    # charger signal is the best available information.
+    #
+    # The one scenario we intentionally keep: the EV is physically charging but
+    # the planner assigned zero planned load (e.g. outside the planned window,
+    # fully charged, or smart-charging disabled).  The live signal still matters
+    # for hardware writes, so we preserve the override in all cases where an EV
+    # is actively drawing power.
     if live.ev.is_charging or live.ev_second.is_charging:
         rec.recommendation = Recommendations.EVSmartCharging.value
         return

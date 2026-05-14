@@ -1750,3 +1750,496 @@ def _patch_all_ha_helpers():
                 p.__exit__(None, None, None)
 
     return _ctx()
+
+
+# ---------------------------------------------------------------------------
+# TestApplyPlannerOutputEvLoad — _apply_planner_output propagates ev_planned_load_kwh
+# ---------------------------------------------------------------------------
+
+
+class TestApplyPlannerOutputEvLoad:
+    """Verify that ``_apply_planner_output`` correctly propagates
+    ``ev_planned_load_kwh`` and all other planner fields into the coordinator's
+    ``_hourly_recommendations`` list.
+
+    Tests cover:
+    - Normal same-tzinfo matching
+    - Mixed ZoneInfo vs fixed-offset timezone matching (UTC normalisation)
+    - Microsecond-carrying rec.start vs zero-microsecond slot.start
+    - 15-minute interval slots
+    - Warning emission when a slot cannot be matched
+    - All energy fields are copied, not just ev_planned_load_kwh
+    - Non-EV hours stay zero
+    """
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _make_coord_with_recs(self, interval_minutes: int = 60, total_hours: int = 24):
+        """Return a bare coordinator whose _hourly_recommendations are pre-generated."""
+        coord = make_bare_coordinator()
+        coord._batteries_schedules = []
+        coord._hourly_recommendations = coord._generate_recommendation_intervals(
+            interval_minutes, total_hours
+        )
+        return coord
+
+    def _make_output_from_recs(self, recs, ev_load_by_hour: dict[int, float]):
+        """Build a PlannerOutput whose slot starts exactly match *recs*."""
+        from custom_components.hsem.models.planner_outputs import (
+            PlannedSlot,
+            PlannerOutput,
+        )
+        from custom_components.hsem.utils.prices import SlotPrice
+
+        slots = []
+        for rec in recs:
+            ev = ev_load_by_hour.get(rec.start.hour, 0.0)
+            slots.append(
+                PlannedSlot(
+                    start=rec.start,
+                    end=rec.end,
+                    price=SlotPrice(import_price=0.20, export_price=0.05),
+                    avg_house_consumption=1.0,
+                    solcast_pv_estimate=0.5,
+                    ev_planned_load_kwh=ev,
+                    estimated_net_consumption=round(1.0 + ev - 0.5, 3),
+                    recommendation="batteries_wait_mode",
+                    batteries_charged=0.0,
+                    batteries_discharged=0.2,
+                    estimated_battery_soc=55.0,
+                    estimated_battery_capacity=4.5,
+                    estimated_cost=0.08,
+                    grid_import_kwh=0.1,
+                    grid_export_kwh=0.0,
+                )
+            )
+        return PlannerOutput(slots=slots)
+
+    # ------------------------------------------------------------------
+    # Core field-copy tests
+    # ------------------------------------------------------------------
+
+    def test_ev_load_copied_to_all_matching_hours(self):
+        """ev_planned_load_kwh must be written to every rec whose hour matches."""
+        coord = self._make_coord_with_recs()
+        ev_hours = {14: 3.7, 15: 3.7, 16: 2.1}
+        output = self._make_output_from_recs(coord._hourly_recommendations, ev_hours)
+
+        coord._apply_planner_output(output)
+
+        for rec in coord._hourly_recommendations:
+            expected = ev_hours.get(rec.start.hour, 0.0)
+            assert abs(rec.ev_planned_load_kwh - expected) < 1e-9, (
+                f"Hour {rec.start.hour}: expected ev_load={expected}, "
+                f"got {rec.ev_planned_load_kwh}"
+            )
+
+    def test_zero_ev_hours_stay_zero_after_apply(self):
+        """Rec slots whose hour has no EV load must remain at ev_planned_load_kwh=0."""
+        coord = self._make_coord_with_recs()
+        output = self._make_output_from_recs(coord._hourly_recommendations, {14: 3.7})
+
+        coord._apply_planner_output(output)
+
+        for rec in coord._hourly_recommendations:
+            if rec.start.hour != 14:
+                assert abs(rec.ev_planned_load_kwh) < 1e-9, (
+                    f"Hour {rec.start.hour} should be 0 but got {rec.ev_planned_load_kwh}"
+                )
+
+    def test_all_energy_fields_are_copied(self):
+        """Every field written by _apply_planner_output must reach the rec object."""
+        coord = self._make_coord_with_recs()
+        output = self._make_output_from_recs(coord._hourly_recommendations, {10: 2.5})
+
+        coord._apply_planner_output(output)
+
+        rec_10 = next(r for r in coord._hourly_recommendations if r.start.hour == 10)
+        assert rec_10.recommendation == "batteries_wait_mode"
+        assert abs(rec_10.ev_planned_load_kwh - 2.5) < 1e-9
+        assert abs(rec_10.estimated_net_consumption - round(1.0 + 2.5 - 0.5, 3)) < 1e-6
+        assert abs(rec_10.solcast_pv_estimate - 0.5) < 1e-9
+        assert abs(rec_10.batteries_discharged - 0.2) < 1e-9
+        assert abs(rec_10.estimated_battery_soc - 55.0) < 1e-9
+        assert abs(rec_10.estimated_battery_capacity - 4.5) < 1e-9
+        assert abs(rec_10.estimated_cost - 0.08) < 1e-9
+        assert abs(rec_10.grid_import_kwh - 0.1) < 1e-9
+        assert abs(rec_10.grid_export_kwh - 0.0) < 1e-9
+
+    def test_all_24_recs_matched_with_utc_normalisation(self):
+        """After UTC-normalisation all 24 hourly recs must match planner slots."""
+        coord = self._make_coord_with_recs()
+        output = self._make_output_from_recs(coord._hourly_recommendations, {12: 1.5})
+
+        # Verify via _utc_key
+        utc_key = coord._utc_key
+        slot_by_utc = {utc_key(s.start): s for s in output.slots}
+        matched = sum(
+            1
+            for rec in coord._hourly_recommendations
+            if slot_by_utc.get(utc_key(rec.start)) is not None
+        )
+        assert matched == 24, f"Only {matched}/24 recs matched after UTC normalisation"
+
+    # ------------------------------------------------------------------
+    # Timezone-equivalence: rec uses ZoneInfo, slot uses fixed offset
+    # ------------------------------------------------------------------
+
+    def test_zoneinfo_rec_matches_fixed_offset_slot(self):
+        """Slots with ZoneInfo tzinfo and equivalent fixed-offset instants must match.
+
+        Simulates the real production case where _generate_recommendation_intervals
+        creates recs with ZoneInfo('Europe/Copenhagen') while the planner builds
+        slots from datetime.fromisoformat(now_iso) which carries a fixed +02:00 offset.
+        """
+        from datetime import datetime, timedelta, timezone
+        from zoneinfo import ZoneInfo
+
+        from custom_components.hsem.models.hourly_recommendation import (
+            HourlyRecommendation,
+        )
+        from custom_components.hsem.models.planner_outputs import (
+            PlannedSlot,
+            PlannerOutput,
+        )
+        from custom_components.hsem.utils.prices import SlotPrice
+
+        tz_zone = ZoneInfo("Europe/Copenhagen")
+        tz_fixed = timezone(timedelta(hours=2))  # +02:00, same offset in summer
+
+        midnight_zone = datetime(2024, 6, 15, 0, 0, 0, tzinfo=tz_zone)
+        midnight_fixed = datetime(2024, 6, 15, 0, 0, 0, tzinfo=tz_fixed)
+
+        # Build recs with ZoneInfo
+        recs = []
+        for h in range(24):
+            t_start = midnight_zone + timedelta(hours=h)
+            t_end = t_start + timedelta(hours=1)
+            recs.append(
+                HourlyRecommendation(
+                    start=t_start,
+                    end=t_end,
+                    avg_house_consumption=0.0,
+                    avg_house_consumption_1d=0.0,
+                    avg_house_consumption_3d=0.0,
+                    avg_house_consumption_7d=0.0,
+                    avg_house_consumption_14d=0.0,
+                    batteries_charged=0.0,
+                    batteries_discharged=0.0,
+                    estimated_battery_capacity=0.0,
+                    estimated_battery_soc=0,
+                    estimated_cost=0.0,
+                    estimated_net_consumption=0.0,
+                    ev_planned_load_kwh=0.0,
+                    export_price=0.0,
+                    grid_export_kwh=0.0,
+                    grid_import_kwh=0.0,
+                    import_price=0.0,
+                    recommendation=None,
+                    solcast_pv_estimate=0.0,
+                )
+            )
+
+        # Build slots with fixed-offset — same instants, different tzinfo type
+        slots = []
+        for h in range(24):
+            t_start = midnight_fixed + timedelta(hours=h)
+            t_end = t_start + timedelta(hours=1)
+            ev = 3.5 if h == 15 else 0.0
+            slots.append(
+                PlannedSlot(
+                    start=t_start,
+                    end=t_end,
+                    price=SlotPrice(import_price=0.20, export_price=0.05),
+                    ev_planned_load_kwh=ev,
+                    estimated_net_consumption=round(1.0 + ev - 0.5, 3),
+                    recommendation=(
+                        "ev_smart_charging" if ev > 0 else "batteries_wait_mode"
+                    ),
+                )
+            )
+
+        coord = make_bare_coordinator()
+        coord._batteries_schedules = []
+        coord._hourly_recommendations = recs
+
+        coord._apply_planner_output(PlannerOutput(slots=slots))
+
+        rec_15 = next(r for r in recs if r.start.hour == 15)
+        assert abs(rec_15.ev_planned_load_kwh - 3.5) < 1e-9, (
+            f"ZoneInfo/fixed-offset mismatch: ev_planned_load_kwh={rec_15.ev_planned_load_kwh}, "
+            f"rec.start tzinfo={type(rec_15.start.tzinfo).__name__}, "
+            f"slot.start tzinfo={type(slots[15].start.tzinfo).__name__}"
+        )
+
+    def test_microsecond_in_rec_start_still_matches(self):
+        """rec.start with non-zero microseconds must still match the planner slot.
+
+        dt_util.now() can return datetimes with microseconds; the planner
+        builds slot starts via timedelta arithmetic from midnight (always zero
+        microseconds).  _utc_key strips microseconds on both sides so the match
+        succeeds regardless.
+        """
+        from datetime import UTC, datetime, timedelta
+
+        from custom_components.hsem.models.hourly_recommendation import (
+            HourlyRecommendation,
+        )
+        from custom_components.hsem.models.planner_outputs import (
+            PlannedSlot,
+            PlannerOutput,
+        )
+        from custom_components.hsem.utils.prices import SlotPrice
+
+        midnight = datetime(2024, 6, 15, 0, 0, 0, tzinfo=UTC)
+
+        # Rec starts carry microseconds (simulating dt_util.now() sub-second jitter)
+        recs = []
+        for h in range(24):
+            t_start = midnight + timedelta(hours=h, microseconds=123456)
+            t_end = t_start + timedelta(hours=1)
+            recs.append(
+                HourlyRecommendation(
+                    start=t_start,
+                    end=t_end,
+                    avg_house_consumption=0.0,
+                    avg_house_consumption_1d=0.0,
+                    avg_house_consumption_3d=0.0,
+                    avg_house_consumption_7d=0.0,
+                    avg_house_consumption_14d=0.0,
+                    batteries_charged=0.0,
+                    batteries_discharged=0.0,
+                    estimated_battery_capacity=0.0,
+                    estimated_battery_soc=0,
+                    estimated_cost=0.0,
+                    estimated_net_consumption=0.0,
+                    ev_planned_load_kwh=0.0,
+                    export_price=0.0,
+                    grid_export_kwh=0.0,
+                    grid_import_kwh=0.0,
+                    import_price=0.0,
+                    recommendation=None,
+                    solcast_pv_estimate=0.0,
+                )
+            )
+
+        # Planner slots have zero microseconds
+        slots = []
+        for h in range(24):
+            t_start = midnight + timedelta(hours=h)  # microsecond=0
+            t_end = t_start + timedelta(hours=1)
+            ev = 2.2 if h == 8 else 0.0
+            slots.append(
+                PlannedSlot(
+                    start=t_start,
+                    end=t_end,
+                    price=SlotPrice(import_price=0.20, export_price=0.05),
+                    ev_planned_load_kwh=ev,
+                    estimated_net_consumption=round(1.0 + ev - 0.5, 3),
+                    recommendation="batteries_wait_mode",
+                )
+            )
+
+        coord = make_bare_coordinator()
+        coord._batteries_schedules = []
+        coord._hourly_recommendations = recs
+
+        coord._apply_planner_output(PlannerOutput(slots=slots))
+
+        rec_8 = next(r for r in recs if r.start.hour == 8)
+        assert abs(rec_8.ev_planned_load_kwh - 2.2) < 1e-9, (
+            f"Microsecond mismatch not healed: ev_planned_load_kwh={rec_8.ev_planned_load_kwh}, "
+            f"rec.start.microsecond={rec_8.start.microsecond}"
+        )
+
+    # ------------------------------------------------------------------
+    # Warning on unmatched slots
+    # ------------------------------------------------------------------
+
+    def test_warning_emitted_for_unmatched_rec_slot(self, caplog):
+        """A WARNING must be logged when a rec cannot be matched to any planner slot."""
+        import logging
+        from datetime import UTC, datetime, timedelta
+
+        from custom_components.hsem.models.hourly_recommendation import (
+            HourlyRecommendation,
+        )
+        from custom_components.hsem.models.planner_outputs import (
+            PlannedSlot,
+            PlannerOutput,
+        )
+        from custom_components.hsem.utils.prices import SlotPrice
+
+        midnight = datetime(2024, 6, 15, 0, 0, 0, tzinfo=UTC)
+
+        # One rec that has NO matching planner slot
+        orphan_rec = HourlyRecommendation(
+            start=midnight + timedelta(hours=22),
+            end=midnight + timedelta(hours=23),
+            avg_house_consumption=0.0,
+            avg_house_consumption_1d=0.0,
+            avg_house_consumption_3d=0.0,
+            avg_house_consumption_7d=0.0,
+            avg_house_consumption_14d=0.0,
+            batteries_charged=0.0,
+            batteries_discharged=0.0,
+            estimated_battery_capacity=0.0,
+            estimated_battery_soc=0,
+            estimated_cost=0.0,
+            estimated_net_consumption=0.0,
+            ev_planned_load_kwh=0.0,
+            export_price=0.0,
+            grid_export_kwh=0.0,
+            grid_import_kwh=0.0,
+            import_price=0.0,
+            recommendation=None,
+            solcast_pv_estimate=0.0,
+        )
+
+        # Planner only covers hours 0-21 (22 is missing)
+        slots = [
+            PlannedSlot(
+                start=midnight + timedelta(hours=h),
+                end=midnight + timedelta(hours=h + 1),
+                price=SlotPrice(import_price=0.20, export_price=0.05),
+            )
+            for h in range(22)
+        ]
+
+        coord = make_bare_coordinator()
+        coord._batteries_schedules = []
+        coord._hourly_recommendations = [orphan_rec]
+
+        with caplog.at_level(
+            logging.WARNING, logger="custom_components.hsem.coordinator"
+        ):
+            coord._apply_planner_output(PlannerOutput(slots=slots))
+
+        assert any(
+            "unmatched" in record.message.lower()
+            or "no matching" in record.message.lower()
+            for record in caplog.records
+        ), (
+            "Expected a WARNING about unmatched slots but found none. "
+            f"Logged messages: {[r.message for r in caplog.records]}"
+        )
+
+    def test_unmatched_rec_fields_stay_at_default(self):
+        """An unmatched rec must not have its fields mutated — they stay at 0.0."""
+        from datetime import UTC, datetime, timedelta
+
+        from custom_components.hsem.models.hourly_recommendation import (
+            HourlyRecommendation,
+        )
+        from custom_components.hsem.models.planner_outputs import (
+            PlannedSlot,
+            PlannerOutput,
+        )
+        from custom_components.hsem.utils.prices import SlotPrice
+
+        midnight = datetime(2024, 6, 15, 0, 0, 0, tzinfo=UTC)
+
+        orphan = HourlyRecommendation(
+            start=midnight + timedelta(hours=23),
+            end=midnight + timedelta(hours=24),
+            avg_house_consumption=0.0,
+            avg_house_consumption_1d=0.0,
+            avg_house_consumption_3d=0.0,
+            avg_house_consumption_7d=0.0,
+            avg_house_consumption_14d=0.0,
+            batteries_charged=0.0,
+            batteries_discharged=0.0,
+            estimated_battery_capacity=0.0,
+            estimated_battery_soc=0,
+            estimated_cost=0.0,
+            estimated_net_consumption=0.0,
+            ev_planned_load_kwh=0.0,
+            export_price=0.0,
+            grid_export_kwh=0.0,
+            grid_import_kwh=0.0,
+            import_price=0.0,
+            recommendation=None,
+            solcast_pv_estimate=0.0,
+        )
+
+        # Planner has no slot at hour 23
+        slots = [
+            PlannedSlot(
+                start=midnight + timedelta(hours=h),
+                end=midnight + timedelta(hours=h + 1),
+                price=SlotPrice(import_price=0.20, export_price=0.05),
+                ev_planned_load_kwh=9.9,
+                recommendation="batteries_charge_grid",
+            )
+            for h in range(23)
+        ]
+
+        coord = make_bare_coordinator()
+        coord._batteries_schedules = []
+        coord._hourly_recommendations = [orphan]
+
+        coord._apply_planner_output(PlannerOutput(slots=slots))
+
+        assert orphan.ev_planned_load_kwh == 0.0
+        assert orphan.recommendation is None
+
+    # ------------------------------------------------------------------
+    # 15-minute intervals
+    # ------------------------------------------------------------------
+
+    def test_ev_load_survives_15min_interval(self):
+        """With 15-minute slots, ev_planned_load_kwh must be copied to all 4 sub-slots."""
+        coord = self._make_coord_with_recs(interval_minutes=15, total_hours=24)
+        output = self._make_output_from_recs(coord._hourly_recommendations, {14: 1.85})
+
+        coord._apply_planner_output(output)
+
+        hour14_recs = [r for r in coord._hourly_recommendations if r.start.hour == 14]
+        assert len(hour14_recs) == 4, (
+            f"Expected 4 × 15-min slots, got {len(hour14_recs)}"
+        )
+        for rec in hour14_recs:
+            assert abs(rec.ev_planned_load_kwh - 1.85) < 1e-9, (
+                f"15-min slot {rec.start}: expected 1.85, got {rec.ev_planned_load_kwh}"
+            )
+
+    def test_non_ev_hours_zero_at_15min_interval(self):
+        """15-minute slots outside the EV hour must remain at 0."""
+        coord = self._make_coord_with_recs(interval_minutes=15, total_hours=24)
+        output = self._make_output_from_recs(coord._hourly_recommendations, {14: 1.85})
+
+        coord._apply_planner_output(output)
+
+        non_ev_recs = [r for r in coord._hourly_recommendations if r.start.hour != 14]
+        for rec in non_ev_recs:
+            assert abs(rec.ev_planned_load_kwh) < 1e-9
+
+    # ------------------------------------------------------------------
+    # utc_key helper
+    # ------------------------------------------------------------------
+
+    def test_utc_key_strips_microseconds(self):
+        """_utc_key must produce identical keys for datetimes differing only in microseconds."""
+        from datetime import UTC, datetime
+
+        t1 = datetime(2024, 6, 15, 14, 0, 0, microsecond=0, tzinfo=UTC)
+        t2 = datetime(2024, 6, 15, 14, 0, 0, microsecond=999999, tzinfo=UTC)
+
+        coord = make_bare_coordinator()
+        assert coord._utc_key(t1) == coord._utc_key(t2)
+
+    def test_utc_key_normalises_across_timezone_types(self):
+        """_utc_key must return equal keys for ZoneInfo and fixed-offset at the same instant."""
+        from datetime import datetime, timedelta, timezone
+        from zoneinfo import ZoneInfo
+
+        tz_zone = ZoneInfo("Europe/Copenhagen")
+        tz_fixed = timezone(timedelta(hours=2))
+
+        t_zone = datetime(2024, 6, 15, 14, 0, 0, tzinfo=tz_zone)
+        t_fixed = datetime(2024, 6, 15, 14, 0, 0, tzinfo=tz_fixed)
+
+        coord = make_bare_coordinator()
+        assert coord._utc_key(t_zone) == coord._utc_key(t_fixed)
