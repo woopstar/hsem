@@ -1689,3 +1689,206 @@ class TestRequiredReserve:
                     f"SoC {slot.estimated_battery_soc:.2f}% dropped below "
                     f"configured floor 10%"
                 )
+
+
+# ---------------------------------------------------------------------------
+# TestEvPlannedLoadPipelineIntegrity
+#
+# Invariant: ev_planned_load_kwh must flow through the complete pipeline so
+# that the final output.slots (used by _apply_planner_output to populate
+# HourlyRecommendation) carry the correct non-zero values.
+#
+# Required invariants:
+#   1. output.slots[i].ev_planned_load_kwh > 0  for every EV-charging slot
+#   2. estimated_net_consumption == avg_house_consumption
+#                                  + ev_planned_load_kwh
+#                                  - solcast_pv_estimate   (per slot)
+#   3. Slots labelled ev_smart_charging must have ev_planned_load_kwh > 0
+# ---------------------------------------------------------------------------
+
+
+class TestEvPlannedLoadPipelineIntegrity:
+    """ev_planned_load_kwh must be non-zero in output.slots for EV charging slots.
+
+    This is the regression test for the bug where ev_planned_load_kwh was
+    injected correctly inside the engine but lost before the final output.slots
+    were consumed by _apply_planner_output → HourlyRecommendation.
+    """
+
+    def _make_ev_input(
+        self,
+        *,
+        now_iso: str = "2024-06-15T08:00:00+02:00",
+        interval_minutes: int = 15,
+        interval_length_hours: int = 48,
+        ev_current_soc: float = 63.0,
+        ev_target_soc: float = 80.0,
+        ev_capacity_kwh: float = 86.0,
+        charger_kw: float = 11.0,
+        charger_eff: float = 100.0,
+        pv_hour11: float = 2.0,
+        pv_hour12: float = 3.0,
+        deadline_offset_hours: float = 28.0,
+    ) -> PlannerInput:
+        """Build a 48h / 15-min input with EV planned load active."""
+        from datetime import datetime as _dt
+
+        now = _dt.fromisoformat(now_iso)
+        deadline = now + timedelta(hours=deadline_offset_hours)
+
+        prices = [
+            PricePoint(hour=h, import_price=0.5, export_price=0.2) for h in range(24)
+        ]
+        pv = [SolcastSlot(hour=h, pv_estimate=0.0) for h in range(24)]
+        pv[11] = SolcastSlot(hour=11, pv_estimate=pv_hour11)
+        pv[12] = SolcastSlot(hour=12, pv_estimate=pv_hour12)
+        avgs = [
+            HourlyConsumptionAverage(
+                hour=h, avg_1d=0.7, avg_3d=0.7, avg_7d=0.7, avg_14d=0.7
+            )
+            for h in range(24)
+        ]
+        return PlannerInput(
+            now_iso=now_iso,
+            interval_minutes=interval_minutes,
+            interval_length_hours=interval_length_hours,
+            battery_soc_pct=5.0,
+            battery_rated_capacity_kwh=14.0,
+            battery_end_of_discharge_soc_pct=5.0,
+            battery_max_soc_pct=90.0,
+            battery_max_charge_power_w=5000.0,
+            battery_conversion_loss_pct=5.0,
+            weight_1d=25,
+            weight_3d=30,
+            weight_7d=30,
+            weight_14d=15,
+            consumption_averages=avgs,
+            price_points=prices,
+            solcast_slots=pv,
+            ev_planned_load_enabled=True,
+            ev_planned_load_connected=True,
+            ev_planned_load_smart_charging_enabled=True,
+            ev_planned_load_current_soc_pct=ev_current_soc,
+            ev_planned_load_target_soc_pct=ev_target_soc,
+            ev_planned_load_battery_capacity_kwh=ev_capacity_kwh,
+            ev_planned_load_charger_power_kw=charger_kw,
+            ev_planned_load_charger_efficiency_pct=charger_eff,
+            ev_planned_load_deadline=deadline,
+            ev_planned_load_base_load_includes_ev=False,
+        )
+
+    def test_ev_planned_load_kwh_nonzero_in_output_slots(self):
+        """output.slots must carry ev_planned_load_kwh > 0 for EV-charged slots.
+
+        This is the primary regression test for the pipeline integrity bug:
+        ev_planned_load_kwh must survive injection → candidate copy →
+        winner selection → final simulate_soc → output.slots.
+
+        The output.slots are what _apply_planner_output reads to populate
+        HourlyRecommendation.  If ev_planned_load_kwh is 0 here, it will
+        be 0 in the HA sensor attributes.
+        """
+        inp = self._make_ev_input()
+        out = run_planner(inp)
+
+        assert out.ev_charging_plan is not None, "EV plan must be built"
+        assert out.ev_charging_plan.charging_slots, "EV plan must have charging slots"
+
+        # Every EV charging slot must appear in output.slots with ev_planned_load_kwh > 0
+        for ev_slot in out.ev_charging_plan.charging_slots:
+            matching = next(
+                (
+                    s
+                    for s in out.slots
+                    if s.start.isoformat() == ev_slot.start.isoformat()
+                ),
+                None,
+            )
+            assert matching is not None, (
+                f"EV charging slot {ev_slot.start.isoformat()} not found in output.slots"
+            )
+            assert matching.ev_planned_load_kwh > 1e-9, (
+                f"output.slots slot {ev_slot.start.isoformat()} has ev_planned_load_kwh=0; "
+                f"EV ac_load={ev_slot.ac_load_kwh:.3f} was not carried through to output."
+            )
+
+    def test_estimated_net_consumption_invariant_with_ev(self):
+        """estimated_net_consumption must equal house + ev_ac - pv for every slot.
+
+        This proves that ev_planned_load_kwh was already present when
+        populate_net_consumption ran, not added as a label afterwards.
+        """
+        inp = self._make_ev_input()
+        out = run_planner(inp)
+
+        for s in out.slots:
+            if s.recommendation == "time_passed":
+                continue
+            expected = round(
+                s.avg_house_consumption + s.ev_planned_load_kwh - s.solcast_pv_estimate,
+                3,
+            )
+            assert s.estimated_net_consumption == pytest.approx(expected, abs=1e-6), (
+                f"Slot {s.start.isoformat()}: "
+                f"net={s.estimated_net_consumption:.4f} but "
+                f"house({s.avg_house_consumption:.4f}) + ev({s.ev_planned_load_kwh:.4f}) "
+                f"- pv({s.solcast_pv_estimate:.4f}) = {expected:.4f}"
+            )
+
+    def test_ev_smart_charging_slots_have_nonzero_ev_load(self):
+        """Every ev_smart_charging slot in output.slots must have ev_planned_load_kwh > 0.
+
+        If a slot is labelled ev_smart_charging but has ev_planned_load_kwh=0,
+        the label was applied without the underlying energy math being set —
+        which breaks the energy balance and cost calculations.
+        """
+        inp = self._make_ev_input()
+        out = run_planner(inp)
+
+        for s in out.slots:
+            if s.recommendation == "ev_smart_charging":
+                assert s.ev_planned_load_kwh > 1e-9, (
+                    f"Slot {s.start.isoformat()} labelled ev_smart_charging but "
+                    f"ev_planned_load_kwh={s.ev_planned_load_kwh:.6f}; "
+                    "EV load not present in energy math."
+                )
+
+    def test_ev_planned_load_kwh_propagates_to_soc_simulation(self):
+        """EV load must affect grid_import_kwh in the final output.slots.
+
+        For a slot with ev_planned_load_kwh > 0 and no PV / battery discharge,
+        grid_import_kwh must include the EV AC draw on top of house load.
+        This proves ev_planned_load_kwh reached the SoC simulation.
+
+        Hand calculation (simplified, no battery):
+          slot load = avg_house_consumption + ev_planned_load_kwh
+          grid_import ≈ slot load - battery_discharge (≈ house + ev - pv)
+        """
+        inp = self._make_ev_input()
+        out = run_planner(inp)
+
+        ev_slots_in_output = [
+            s
+            for s in out.slots
+            if s.ev_planned_load_kwh > 1e-9 and s.recommendation != "time_passed"
+        ]
+        assert ev_slots_in_output, "Must have at least one non-past EV slot"
+
+        for s in ev_slots_in_output:
+            total_supply = s.batteries_discharged + s.grid_import_kwh
+            total_demand = (
+                s.avg_house_consumption
+                + s.ev_planned_load_kwh
+                + s.batteries_charged
+                - s.solcast_pv_estimate
+            )
+            # Clamped: supply can't be negative; small floating-point tolerance
+            assert total_supply == pytest.approx(max(total_demand, 0.0), abs=0.1), (
+                f"Slot {s.start.isoformat()}: "
+                f"supply (batt_disch={s.batteries_discharged:.3f} + "
+                f"grid={s.grid_import_kwh:.3f}) = {total_supply:.3f} "
+                f"should ≈ demand {max(total_demand, 0.0):.3f} "
+                f"(house={s.avg_house_consumption:.3f} + ev={s.ev_planned_load_kwh:.3f} "
+                f"+ chg={s.batteries_charged:.3f} - pv={s.solcast_pv_estimate:.3f}); "
+                "EV load not in SoC simulation."
+            )
