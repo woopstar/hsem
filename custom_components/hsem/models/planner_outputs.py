@@ -19,6 +19,79 @@ if TYPE_CHECKING:
     from custom_components.hsem.planner.cost_function import PlanCostBreakdown
 
 # ---------------------------------------------------------------------------
+# Data quality diagnostics
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class DataQuality:
+    """Structured diagnostics about the completeness of planning inputs.
+
+    Populated by :func:`~custom_components.hsem.planner.engine.run_planner`
+    after aligning price and PV series.  All ``missing_*`` fields list
+    wall-clock hours (0-23) for which data was absent.
+
+    Attributes:
+        tomorrow_price_missing_hours:
+            Hours in tomorrow's slot grid that had no price data.
+            Empty list means tomorrow price data is complete (or the
+            planning horizon does not reach tomorrow).
+        tomorrow_pv_missing_hours:
+            Hours in tomorrow's slot grid that had no PV forecast data.
+            Empty list means tomorrow PV data is complete (or the
+            planning horizon does not reach tomorrow).
+        today_price_missing_hours:
+            Hours in today's slot grid that had no price data.
+        today_pv_missing_hours:
+            Hours in today's slot grid that had no PV forecast data.
+        horizon_has_tomorrow:
+            ``True`` when the planning horizon extends into tomorrow
+            (``interval_length_hours`` > 24 or effectively spans midnight).
+    """
+
+    tomorrow_price_missing_hours: list[int] = field(default_factory=list)
+    tomorrow_pv_missing_hours: list[int] = field(default_factory=list)
+    today_price_missing_hours: list[int] = field(default_factory=list)
+    today_pv_missing_hours: list[int] = field(default_factory=list)
+    horizon_has_tomorrow: bool = False
+
+    @property
+    def is_complete(self) -> bool:
+        """Return ``True`` when no missing data was detected."""
+        return not (
+            self.tomorrow_price_missing_hours
+            or self.tomorrow_pv_missing_hours
+            or self.today_price_missing_hours
+            or self.today_pv_missing_hours
+        )
+
+    @property
+    def tomorrow_price_complete(self) -> bool:
+        """Return ``True`` when tomorrow price data is complete or not required."""
+        return not self.tomorrow_price_missing_hours
+
+    @property
+    def tomorrow_pv_complete(self) -> bool:
+        """Return ``True`` when tomorrow PV data is complete or not required."""
+        return not self.tomorrow_pv_missing_hours
+
+    def as_dict(self) -> dict[str, Any]:
+        """Serialise the quality report to a plain dict for HA attributes.
+
+        Returns:
+            A JSON-safe dictionary representation of the data quality report.
+        """
+        return {
+            "is_complete": self.is_complete,
+            "horizon_has_tomorrow": self.horizon_has_tomorrow,
+            "tomorrow_price_missing_hours": sorted(self.tomorrow_price_missing_hours),
+            "tomorrow_pv_missing_hours": sorted(self.tomorrow_pv_missing_hours),
+            "today_price_missing_hours": sorted(self.today_price_missing_hours),
+            "today_pv_missing_hours": sorted(self.today_pv_missing_hours),
+        }
+
+
+# ---------------------------------------------------------------------------
 # Plan explanation dataclasses
 # ---------------------------------------------------------------------------
 
@@ -301,6 +374,11 @@ class PlannerOutput:
             used during this planning run.  All slot boundaries, price, PV,
             load, import/export and SoC series are aligned to this axis.
             ``None`` when the planner was invoked without a valid horizon.
+        data_quality:
+            Structured diagnostics about the completeness of price and PV
+            inputs for today and tomorrow.  Exposes which hours are missing
+            so dashboards and logs can display the gap explicitly rather
+            than silently treating missing slots as zero.
         extra:
             Arbitrary key-value pairs for debug / introspection purposes.
         explanation:
@@ -318,6 +396,8 @@ class PlannerOutput:
     missing_inputs: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     time_series_index: TimeSeriesIndex | None = field(default=None, repr=False)
+    #: Structured data-quality report for price and PV inputs.
+    data_quality: DataQuality = field(default_factory=DataQuality)
     extra: dict[str, Any] = field(default_factory=dict)
     #: Human-readable explanation of why the selected plan was chosen and what
     #: alternatives were considered.  Populated by the planner engine.

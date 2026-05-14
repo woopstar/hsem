@@ -141,11 +141,23 @@ class TimeSeriesIndex:
             Set of :class:`SlotKey` values for which at least one series
             alignment call found no source data.  Populated lazily as
             ``align_*`` methods are called.
+        missing_price_slots:
+            Subset of :attr:`missing_slots` populated only by
+            :meth:`align_hourly_prices`.  Enables callers to distinguish
+            missing price data from missing PV data.
+        missing_pv_slots:
+            Subset of :attr:`missing_slots` populated only by
+            :meth:`align_hourly_pv`.  Enables callers to distinguish missing
+            PV data from missing price data.
     """
 
     slots: list[SlotMeta] = field(default_factory=list)
     interval_minutes: int = DEFAULT_SLOT_MINUTES
     missing_slots: set[SlotKey] = field(default_factory=set)
+    #: Keys for which price alignment found no source data.
+    missing_price_slots: set[SlotKey] = field(default_factory=set)
+    #: Keys for which PV alignment found no source data.
+    missing_pv_slots: set[SlotKey] = field(default_factory=set)
 
     # ------------------------------------------------------------------
     # Construction
@@ -256,12 +268,14 @@ class TimeSeriesIndex:
 
             if imp is None:
                 self.missing_slots.add(meta.key)
+                self.missing_price_slots.add(meta.key)
                 aligned_import.append(MISSING_SENTINEL)
             else:
                 aligned_import.append(imp)
 
             if exp is None:
                 self.missing_slots.add(meta.key)
+                self.missing_price_slots.add(meta.key)
                 aligned_export.append(MISSING_SENTINEL)
             else:
                 aligned_export.append(exp)
@@ -292,6 +306,7 @@ class TimeSeriesIndex:
             hourly_kwh = pv_by_hour.get(meta.hour)
             if hourly_kwh is None:
                 self.missing_slots.add(meta.key)
+                self.missing_pv_slots.add(meta.key)
                 aligned.append(MISSING_SENTINEL)
             else:
                 aligned.append(round(hourly_kwh * meta.slot_fraction, 6))
@@ -431,6 +446,46 @@ class TimeSeriesIndex:
         """Return the wall-clock hours (0-23) that have at least one missing slot."""
         key_to_hour: dict[SlotKey, int] = {m.key: m.hour for m in self.slots}
         return {key_to_hour[key] for key in self.missing_slots if key in key_to_hour}
+
+    def missing_tomorrow_price_hours(self) -> set[int]:
+        """Return wall-clock hours (0-23) in ``day_offset=1`` that lack price data.
+
+        Returns an empty set when the planning horizon does not include tomorrow
+        (i.e. ``horizon_hours`` ≤ 24) or when all tomorrow price hours are present.
+
+        Returns:
+            Set of integer hours (0-23) from tomorrow that have no price data.
+        """
+        key_to_hour: dict[SlotKey, int] = {m.key: m.hour for m in self.slots}
+        return {
+            key_to_hour[key]
+            for key in self.missing_price_slots
+            if key in key_to_hour and key.day_offset == 1
+        }
+
+    def missing_tomorrow_pv_hours(self) -> set[int]:
+        """Return wall-clock hours (0-23) in ``day_offset=1`` that lack PV data.
+
+        Returns an empty set when the planning horizon does not include tomorrow
+        (i.e. ``horizon_hours`` ≤ 24) or when all tomorrow PV hours are present.
+
+        Returns:
+            Set of integer hours (0-23) from tomorrow that have no PV forecast data.
+        """
+        key_to_hour: dict[SlotKey, int] = {m.key: m.hour for m in self.slots}
+        return {
+            key_to_hour[key]
+            for key in self.missing_pv_slots
+            if key in key_to_hour and key.day_offset == 1
+        }
+
+    def has_tomorrow_slots(self) -> bool:
+        """Return ``True`` when the planning horizon includes tomorrow (day_offset=1).
+
+        Returns:
+            ``True`` if at least one slot has ``day_offset == 1``.
+        """
+        return any(m.key.day_offset == 1 for m in self.slots)
 
     # ------------------------------------------------------------------
     # Dunder helpers

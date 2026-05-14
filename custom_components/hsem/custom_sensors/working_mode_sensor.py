@@ -276,6 +276,7 @@ class HSEMWorkingModeSensor(
             "apply_failed_entities": (
                 apply_summary.failed_entities if apply_summary else []
             ),
+            "data_quality": data.data_quality.as_dict(),
         }
 
         return {
