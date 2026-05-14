@@ -292,15 +292,16 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     # EV planned load injection (issue #396)
     # -----------------------------------------------------------------------
     # Build EV charging plans for the primary and secondary EV independently,
-    # then sum their per-slot loads into slot.ev_planned_load_kwh BEFORE net
-    # consumption is calculated.  This ensures:
+    # then sum their per-slot AC loads into slot.ev_planned_load_kwh BEFORE
+    # net consumption is calculated.  This ensures:
     #   - Solar surplus is computed after EV demand is subtracted.
     #   - Battery solar-charge recommendations don't claim solar consumed by EVs.
     #   - No circular dependency: EV plans are built from raw inputs only.
     #
-    # Each EV is planned independently using the same pre-injection solar
-    # surplus estimate.  This is an intentional one-pass design; in practice
-    # the error is small because both EVs share the same solar forecast.
+    # Multi-EV solar surplus is allocated sequentially with the primary EV
+    # first: each plan decrements the shared remaining-surplus list so the
+    # second EV sees only what the primary did not consume.  This prevents
+    # two EVs from each reporting the same full solar surplus.
     ev_charging_plan: EVChargingPlan | None = None
     ev_second_charging_plan: EVChargingPlan | None = None
 
@@ -354,6 +355,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
             slots_end=_slot_ends,
             slot_solar_surplus_kwh=slot_solar_surplus,
             slot_import_price=_slot_prices,
+            decrement_surplus=True,
         )
         ev_load_by_idx = [0.0] * len(slots)
         apply_ev_planned_load_to_slots(

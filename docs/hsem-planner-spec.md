@@ -44,15 +44,78 @@ energy_kwh = power_kw * duration_hours
 
 ## Energy balance per slot
 
-For every slot:
+For every slot the planner tracks **base** house load and an optional
+**EV planned AC load** independently, then combines them into a single
+*effective* net load:
+
+```text
+ev_planned_load_kwh    = sum of per-EV AC-side load for this slot
+effective_net_load_kwh = base_house_load_kwh + ev_planned_load_kwh - pv_kwh
+```
+
+For backwards compatibility the legacy short form
 
 ```text
 net_load_kwh = house_load_kwh - pv_kwh
 ```
 
-Positive `net_load_kwh` means the house needs energy.
+still applies when no EV is configured (`ev_planned_load_kwh == 0`).
 
-Negative `net_load_kwh` means there is PV surplus.
+Positive `effective_net_load_kwh` means the house needs energy.
+
+Negative `effective_net_load_kwh` means there is PV surplus that the home
+battery may charge from or the inverter may export.
+
+### EV planned load
+
+Every configured EV produces an independent plan whose per-slot AC load
+is summed into `ev_planned_load_kwh` **before** net load is computed.
+This guarantees that:
+
+- Solar surplus available to the home battery already accounts for EV
+  consumption — no double-counting.
+- Battery solar-charge recommendations never claim solar already
+  consumed by EVs.
+- The EV plan is built from raw inputs only (no circular dependency on
+  the home-battery plan).
+
+### Multi-EV solar surplus allocation
+
+When more than one EV is enabled, solar surplus is allocated to EV plans
+**sequentially and deterministically**, in the order *primary EV first*,
+then *secondary EV*.  Each EV plan decrements the shared remaining
+surplus per slot; subsequent EVs see only what was not consumed.
+
+Two EVs MUST NOT each report the full slot surplus.  The invariant is:
+
+```text
+for each slot:
+    sum of ev_solar_surplus_kwh across all EVs ≤ slot_base_surplus_kwh
+```
+
+where `slot_base_surplus_kwh = max(pv_kwh - base_house_load_kwh, 0)`.
+
+### Charger efficiency domain
+
+EV charger efficiency separates two distinct energy domains:
+
+| Field | Domain | Meaning |
+|---|---|---|
+| `estimated_charged_kwh` | Battery-side (DC) | Energy stored in the EV battery. Counts toward SoC target. |
+| `ac_load_kwh` | House/grid-side (AC) | Energy drawn from PV/grid to deliver the stored energy. |
+
+Relationship:
+
+```text
+ac_load_kwh = estimated_charged_kwh / (charger_efficiency_pct / 100)
+```
+
+Only `ac_load_kwh` is injected into the home-battery planner; only it
+participates in PV-allocation and `import_needed_kwh`.  The delivered
+(stored) energy alone is compared against the EV SoC target.
+
+When `charger_efficiency_pct == 100`, `ac_load_kwh == estimated_charged_kwh`
+and the legacy behaviour is preserved.
 
 Battery and grid flows must satisfy:
 
@@ -386,6 +449,17 @@ Add tests for these invariants:
 - Current partial slot uses remaining duration only.
 - Missing price/PV data does not become real zero silently.
 - Read-only/degraded/dry-run gates block writes.
+- `effective_net_load_kwh == base_house_load_kwh + ev_planned_load_kwh - pv_kwh`
+  for every slot.
+- Multi-EV solar surplus: per-EV `solar_surplus_kwh` values for a given
+  slot sum to at most the slot's base solar surplus
+  (`max(pv_kwh - base_house_load_kwh, 0)`).
+- Charger efficiency: when `charger_efficiency_pct < 100`, the EV slot's
+  `ac_load_kwh` strictly exceeds its `estimated_charged_kwh`, the planner's
+  `ev_planned_load_kwh` equals the AC value, and `estimated_charged_kwh`
+  still satisfies the SoC target.
+- Charger efficiency at 100 % preserves the legacy behaviour:
+  `ac_load_kwh == estimated_charged_kwh`.
 
 ## Multi-day planning horizon
 
