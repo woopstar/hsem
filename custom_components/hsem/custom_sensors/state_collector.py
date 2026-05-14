@@ -444,6 +444,10 @@ def _read_ev_planned_load_state(
                 )
             ),
         )
+    else:
+        # No connected sensor configured — assume EV is always connected so
+        # the planner can still schedule charging based on SoC and deadline.
+        setattr(state, f"{p}_connected", True)
 
     if soc_sensor:
         _soc = convert_to_float(_read(soc_sensor, "float", label=f"{p}_soc"))

@@ -142,30 +142,12 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._user_input["hsem_months_winter"] = winter_months
                 self._user_input["hsem_months_summer"] = summer_months
 
-                return await self.async_step_power()
+                return await self.async_step_solcast()
 
         data_schema = await get_months_schema(None)
 
         return self.async_show_form(
             step_id="months",
-            data_schema=data_schema,
-            errors=errors,
-            last_step=False,
-        )
-
-    async def async_step_power(self, user_input=None):
-        errors = {}
-
-        if user_input is not None:
-            errors = await validate_power_step_input(self.hass, user_input)
-            if not errors:
-                self._user_input.update(user_input)
-                return await self.async_step_solcast()
-
-        data_schema = await get_power_step_schema(None)
-
-        return self.async_show_form(
-            step_id="power",
             data_schema=data_schema,
             errors=errors,
             last_step=False,
@@ -178,71 +160,12 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors = await validate_solcast_step_input(self.hass, user_input)
             if not errors:
                 self._user_input.update(user_input)
-                return await self.async_step_ev()
+                return await self.async_step_huawei_solar()
 
-        # Define the form schema for energy data services step
         data_schema = await get_solcast_step_schema(None)
 
         return self.async_show_form(
             step_id="solcast",
-            data_schema=data_schema,
-            errors=errors,
-            last_step=False,
-        )
-
-    async def async_step_ev(self, user_input=None):
-        errors = {}
-
-        if user_input is not None:
-            errors = await validate_ev_step_input(self.hass, user_input)
-            if not errors:
-                self._user_input.update(user_input)
-
-                if bool(self._user_input.get("hsem_ev_second_enabled")):
-                    return await self.async_step_ev_second()
-
-                return await self.async_step_weighted_values()
-
-        data_schema = await get_ev_step_schema(None)
-
-        return self.async_show_form(
-            step_id="ev",
-            data_schema=data_schema,
-            errors=errors,
-            last_step=False,
-        )
-
-    async def async_step_ev_second(self, user_input=None):
-        errors = {}
-
-        if user_input is not None:
-            errors = await validate_ev_second_step_input(self.hass, user_input)
-            if not errors:
-                self._user_input.update(user_input)
-                return await self.async_step_weighted_values()
-
-        data_schema = await get_ev_second_step_schema(None)
-
-        return self.async_show_form(
-            step_id="ev_second",
-            data_schema=data_schema,
-            errors=errors,
-            last_step=False,
-        )
-
-    async def async_step_weighted_values(self, user_input=None):
-        errors = {}
-
-        if user_input is not None:
-            errors = await validate_weighted_values_input(user_input)
-            if not errors:
-                self._user_input.update(user_input)
-                return await self.async_step_huawei_solar()
-
-        data_schema = await get_weighted_values_step_schema(None)
-
-        return self.async_show_form(
-            step_id="weighted_values",
             data_schema=data_schema,
             errors=errors,
             last_step=False,
@@ -269,12 +192,108 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "hsem_ev_charger_power", None
                 )
 
-                return await self.async_step_batteries_schedule_1()
+                return await self.async_step_power()
 
         data_schema = await get_huawei_solar_step_schema(None)
 
         return self.async_show_form(
             step_id="huawei_solar",
+            data_schema=data_schema,
+            errors=errors,
+            last_step=False,
+        )
+
+    async def async_step_power(self, user_input=None):
+        errors = {}
+
+        if user_input is not None:
+            errors = await validate_power_step_input(self.hass, user_input)
+            if not errors:
+                self._user_input.update(user_input)
+                return await self.async_step_ev()
+
+        data_schema = await get_power_step_schema(None)
+
+        return self.async_show_form(
+            step_id="power",
+            data_schema=data_schema,
+            errors=errors,
+            last_step=False,
+        )
+
+    async def async_step_ev(self, user_input=None):
+        errors = {}
+
+        if user_input is not None:
+            errors = await validate_ev_step_input(self.hass, user_input)
+            if not errors:
+                self._user_input.update(user_input)
+
+                if bool(self._user_input.get("hsem_ev_second_enabled")):
+                    return await self.async_step_ev_second()
+
+                return await self.async_step_ev_planned_load()
+
+        data_schema = await get_ev_step_schema(None)
+
+        return self.async_show_form(
+            step_id="ev",
+            data_schema=data_schema,
+            errors=errors,
+            last_step=False,
+        )
+
+    async def async_step_ev_second(self, user_input=None):
+        errors = {}
+
+        if user_input is not None:
+            errors = await validate_ev_second_step_input(self.hass, user_input)
+            if not errors:
+                self._user_input.update(user_input)
+                return await self.async_step_ev_planned_load()
+
+        data_schema = await get_ev_second_step_schema(None)
+
+        return self.async_show_form(
+            step_id="ev_second",
+            data_schema=data_schema,
+            errors=errors,
+            last_step=False,
+        )
+
+    async def async_step_ev_planned_load(self, user_input=None):
+        errors = {}
+
+        if user_input is not None:
+            errors = await validate_ev_planned_load_input(self.hass, user_input)
+            if not errors:
+                self._user_input.update(user_input)
+                if bool(self._user_input.get("hsem_ev_second_enabled")):
+                    return await self.async_step_ev_second_planned_load()
+                return await self.async_step_batteries_schedule_1()
+
+        data_schema = await get_ev_planned_load_step_schema(None)
+
+        return self.async_show_form(
+            step_id="ev_planned_load",
+            data_schema=data_schema,
+            errors=errors,
+            last_step=False,
+        )
+
+    async def async_step_ev_second_planned_load(self, user_input=None):
+        errors = {}
+
+        if user_input is not None:
+            errors = await validate_ev_second_planned_load_input(self.hass, user_input)
+            if not errors:
+                self._user_input.update(user_input)
+                return await self.async_step_batteries_schedule_1()
+
+        data_schema = await get_ev_second_planned_load_step_schema(None)
+
+        return self.async_show_form(
+            step_id="ev_second_planned_load",
             data_schema=data_schema,
             errors=errors,
             last_step=False,
@@ -347,7 +366,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors = await validate_batteries_excess_export_input(user_input)
             if not errors:
                 self._user_input.update(user_input)
-                return await self.async_step_ev_planned_load()
+                return await self.async_step_weighted_values()
 
         data_schema = await get_batteries_excess_export_step_schema(
             None, self._user_input, hass=self.hass
@@ -360,34 +379,11 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             last_step=False,
         )
 
-    async def async_step_ev_planned_load(self, user_input=None):
+    async def async_step_weighted_values(self, user_input=None):
         errors = {}
 
         if user_input is not None:
-            errors = await validate_ev_planned_load_input(self.hass, user_input)
-            if not errors:
-                self._user_input.update(user_input)
-                if bool(self._user_input.get("hsem_ev_second_enabled")):
-                    return await self.async_step_ev_second_planned_load()
-                return self.async_create_entry(
-                    title=self._user_input.get("device_name", NAME),
-                    data=self._user_input,
-                )
-
-        data_schema = await get_ev_planned_load_step_schema(None)
-
-        return self.async_show_form(
-            step_id="ev_planned_load",
-            data_schema=data_schema,
-            errors=errors,
-            last_step=not bool(self._user_input.get("hsem_ev_second_enabled")),
-        )
-
-    async def async_step_ev_second_planned_load(self, user_input=None):
-        errors = {}
-
-        if user_input is not None:
-            errors = await validate_ev_second_planned_load_input(self.hass, user_input)
+            errors = await validate_weighted_values_input(user_input)
             if not errors:
                 self._user_input.update(user_input)
                 return self.async_create_entry(
@@ -395,10 +391,10 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     data=self._user_input,
                 )
 
-        data_schema = await get_ev_second_planned_load_step_schema(None)
+        data_schema = await get_weighted_values_step_schema(None)
 
         return self.async_show_form(
-            step_id="ev_second_planned_load",
+            step_id="weighted_values",
             data_schema=data_schema,
             errors=errors,
             last_step=True,
