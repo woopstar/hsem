@@ -614,17 +614,14 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     #   ev_smart_charging         ← applied when ev_planned_load_kwh > 0
     #   batteries_charge_solar    — overridden by EV label
     #   batteries_wait_mode       — overridden by EV label
-    _EV_LABEL_OVERRIDEABLE = frozenset(
-        {
-            Recommendations.BatteriesChargeSolar.value,
-            Recommendations.BatteriesWaitMode.value,
-        }
-    )
     # Recommendations that take absolute priority and must never be overridden
     # by the EV label (discharge, forced export, grid charge, past).
     # batteries_discharge_mode and force_batteries_discharge are intentional
     # schedule-driven actions; labelling them ev_smart_charging would hide
     # that a discharge is in progress.
+    # Any recommendation NOT in this set (i.e. batteries_charge_solar,
+    # batteries_wait_mode, None, and ev_smart_charging itself) will be
+    # replaced by ev_smart_charging when the slot carries EV planned load.
     _EV_LABEL_KEEP = frozenset(
         {
             Recommendations.BatteriesChargeGrid.value,

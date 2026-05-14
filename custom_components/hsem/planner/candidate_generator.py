@@ -189,15 +189,33 @@ def generate_candidates(
 
 
 def _copy_slots(slots: list[PlannedSlot]) -> list[PlannedSlot]:
-    """Return a deep copy of *slots* so strategies are fully independent."""
+    """Return an independent copy of *slots* for candidate isolation.
+
+    Uses a shallow copy of each :class:`PlannedSlot` dataclass.  This is
+    safe because every field on ``PlannedSlot`` is either an immutable scalar
+    (``float``, ``str | None``) or an immutable named-tuple
+    (:class:`~custom_components.hsem.utils.prices.SlotPrice`, ``datetime``).
+    There are intentionally **no mutable container fields** (lists, dicts)
+    on ``PlannedSlot`` — if any are added in the future this function must be
+    updated to use ``copy.deepcopy`` instead.
+
+    Each returned slot is an independent object: mutating ``recommendation``,
+    ``batteries_charged``, ``ev_planned_load_kwh``, or any other scalar field
+    on a copy does **not** affect the original or any other copy.
+    """
     return [copy.copy(s) for s in slots]
 
 
 def _clear_all_charge_discharge(slots: list[PlannedSlot]) -> None:
     """Reset every charge and discharge recommendation to ``None``.
 
-    Energy fields are also zeroed so the SoC simulation starts from a clean
-    slate for the no-action candidate.
+    ``batteries_charged`` is also zeroed on cleared slots so the SoC
+    simulation starts from a clean slate for the no-action candidate.
+
+    ``ev_planned_load_kwh`` is intentionally **not** touched: it represents
+    real AC-side demand for EV charging that exists regardless of what the
+    battery does.  The no-action candidate still carries EV load in its net
+    consumption; only battery scheduling is removed.
     """
     for slot in slots:
         if slot.recommendation in _CHARGE_RECS | _DISCHARGE_RECS:
