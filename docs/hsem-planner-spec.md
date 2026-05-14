@@ -188,6 +188,76 @@ terminal_soc_delta_kwh = baseline_terminal_soc_kwh - candidate_terminal_soc_kwh
 terminal_soc_penalty = terminal_soc_delta_kwh * replacement_energy_price
 ```
 
+## Price interval semantics
+
+### Background
+
+HSEM supports two price-data granularities depending on the configured EDS
+(Energi Data Service) integration:
+
+| `energi_data_service_update_interval` | Meaning |
+|---|---|
+| 15 | EDS publishes one price record every 15 minutes |
+| 60 | EDS publishes one price record per hour |
+
+The planning slot width is controlled separately by
+`recommendation_interval_minutes` (also 15 or 60).
+
+Electricity prices are **rates** (currency per kWh), not energy quantities.
+Every slot inside the same EDS update interval shares the same price; the
+price is **never summed or averaged** across slots.
+
+### The eds_share conversion factor
+
+When EDS and slot widths differ (most common case: EDS 60 min, slots 15 min),
+a conversion factor is needed so internal per-slot storage and the planner
+engine both see correct values:
+
+```text
+eds_share = energi_data_service_update_interval / recommendation_interval_minutes
+```
+
+Common configurations:
+
+| EDS interval | Slot width | eds_share | Effect |
+|---|---|---|---|
+| 60 min | 15 min | 4.0 | price÷4 stored; planner gets price×4 back |
+| 15 min | 15 min | 1.0 | no scaling — price stored and used unchanged |
+| 60 min | 60 min | 1.0 | no scaling — price stored and used unchanged |
+
+### How the scaling pipeline works
+
+1. **Population** (`hourly_data_populator._async_update_hourly_field`):
+   Each raw EDS value is divided by `eds_share` before writing to the
+   per-slot `HourlyRecommendation` object.
+   This gives each slot its proportional share of the price-rate value so
+   slot boundaries align correctly.
+
+2. **Planner input** (`coordinator._build_planner_input`):
+   When assembling `PricePoint` objects for the planner engine, each stored
+   per-slot price is multiplied by `eds_share` to recover the original
+   hourly-equivalent rate.
+   The planner's cost function always works with full currency/kWh rates, not
+   fractions.
+
+The divide and multiply are exact inverses — they cancel perfectly and the
+planner always receives the original price rate regardless of configuration.
+
+### What this is NOT
+
+- `eds_share` is **not** a VAT multiplier.
+- `eds_share` is **not** a currency conversion.
+- `eds_share` is **not** an energy-splitting factor (prices are rates, not energy).
+
+### Invariants for tests
+
+- A 60-min EDS price of `P` must reach the planner as `P` (not `P/4` or `P*4`).
+- A 15-min EDS price of `P` must reach the planner as `P`.
+- Intermediate per-slot stored values must equal `P / eds_share`.
+- Changing `energi_data_service_update_interval` from 60 to 15 with the same
+  price input must not change the price seen by the planner engine.
+- Negative prices must survive the full pipeline unchanged.
+
 ## Candidate plans
 
 Every candidate plan must be fully simulated and scored.

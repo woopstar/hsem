@@ -48,9 +48,36 @@ async def async_populate_price_and_solcast(
         cfg: Current sensor configuration.
         tz: Timezone (``tzinfo`` instance) for datetime normalization.
     """
+    # ---------------------------------------------------------------------------
+    # Price interval semantics
+    # ---------------------------------------------------------------------------
+    # EDS prices are a *rate* (currency/kWh), not an energy quantity, so they
+    # must NOT be summed across slots.  However, the EDS sensor publishes one
+    # value per update interval (either 15 min or 60 min) while HSEM may plan
+    # at a finer resolution (e.g. 15-min slots inside a 60-min EDS interval).
+    #
+    # `eds_share` converts between the two resolutions:
+    #
+    #   eds_share = energi_data_service_update_interval / recommendation_interval_minutes
+    #
+    # In `_async_update_hourly_field` (below) each raw EDS value is divided by
+    # `eds_share` before writing to the per-slot recommendation object.  This
+    # stores the price *scaled to one recommendation slot's share* of the EDS
+    # update interval.
+    #
+    # The inverse multiply (`rec.import_price * eds_share`) is applied later in
+    # `coordinator._build_planner_input` to recover the original price rate
+    # before passing it to the planner engine.
+    #
+    # Common configurations and their eds_share values:
+    #   EDS 60 min  / slots 15 min  →  eds_share = 4.0
+    #   EDS 15 min  / slots 15 min  →  eds_share = 1.0  (no scaling)
+    #   EDS 60 min  / slots 60 min  →  eds_share = 1.0  (no scaling)
     eds_share = (
         cfg.energi_data_service_update_interval / cfg.recommendation_interval_minutes
     )
+    # Solcast forecasts are always given as hourly totals (Wh/h), so the share
+    # factor is always relative to 60 minutes regardless of EDS configuration.
     solcast_share = 60.0 / cfg.recommendation_interval_minutes
 
     # Import price
@@ -308,6 +335,21 @@ async def _async_update_hourly_field(
                 if value is None:
                     continue
 
+                # Scale raw value down to one recommendation-slot's share of the
+                # source update interval.
+                #
+                # For EDS prices:   share = eds_share (EDS interval / slot interval)
+                #   EDS 60 min / slot 15 min → share=4 → store price/4 per slot
+                #   EDS 15 min / slot 15 min → share=1 → store price unchanged
+                #
+                # For Solcast PV:   share = solcast_share (60 / slot interval)
+                #   60-min hourly forecast / slot 15 min → share=4 → store Wh/4 per slot
+                #   60-min hourly forecast / slot 60 min → share=1 → store Wh unchanged
+                #
+                # The coordinator's `_build_planner_input` applies the inverse multiply
+                # (×eds_share) before handing prices/PV to the planner engine, so the
+                # divide here and the multiply there cancel exactly and the planner always
+                # receives the original hourly-equivalent rate or energy quantity.
                 value = value / share
 
                 for obj in recommendations:
