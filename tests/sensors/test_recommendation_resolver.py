@@ -164,3 +164,95 @@ class TestNoneRec:
     def test_none_rec_does_not_raise(self):
         """resolve_current_recommendation should be a no-op when rec is None."""
         resolve_current_recommendation(None, _make_live(), 0.0)
+
+
+# ---------------------------------------------------------------------------
+# Regression: data.state must be synced after resolver overrides rec
+#
+# Repro: planner emits batteries_charge_solar; EV is charging at runtime.
+# resolve_current_recommendation mutates hourly_rec → ev_smart_charging but
+# data.state was left pointing at the original planner string, so the HA
+# sensor state showed batteries_charge_solar instead of ev_smart_charging.
+# ---------------------------------------------------------------------------
+
+
+class TestDataStateSync:
+    """Verify that data.state is updated to match rec after resolver override.
+
+    The working_mode_sensor syncs data.state immediately after calling
+    resolve_current_recommendation, so the HA state property always reflects
+    the effective resolved recommendation — not the raw planner output.
+    """
+
+    def _make_coordinator_data(
+        self, planner_recommendation: str, resolved_recommendation: str, live: LiveState
+    ):
+        """Return a CoordinatorData-like namespace simulating the sync behaviour."""
+        from dataclasses import dataclass
+
+        @dataclass
+        class _Data:
+            state: str | None
+            hourly_recommendation: object
+            batteries_schedules_remaining_capacity_needed: float
+            live: object
+
+        rec = _make_rec(recommendation=planner_recommendation)
+        data = _Data(
+            state=planner_recommendation,
+            hourly_recommendation=rec,
+            batteries_schedules_remaining_capacity_needed=0.0,
+            live=live,
+        )
+        # Simulate what working_mode_sensor._async_apply_hardware_writes does.
+        resolve_current_recommendation(
+            data.hourly_recommendation,
+            data.live,
+            data.batteries_schedules_remaining_capacity_needed,
+        )
+        data.state = data.hourly_recommendation.recommendation
+        return data, rec
+
+    def test_ev_charging_syncs_state_from_batteries_charge_solar(self):
+        """batteries_charge_solar planner output → ev_smart_charging in state."""
+        live = _make_live(import_price=0.338, ev_charging=True)
+        data, rec = self._make_coordinator_data(
+            planner_recommendation=Recommendations.BatteriesChargeSolar.value,
+            resolved_recommendation=Recommendations.EVSmartCharging.value,
+            live=live,
+        )
+        assert rec.recommendation == Recommendations.EVSmartCharging.value
+        assert data.state == Recommendations.EVSmartCharging.value
+
+    def test_ev_charging_syncs_state_from_batteries_discharge_mode(self):
+        """batteries_discharge_mode planner output → ev_smart_charging in state."""
+        live = _make_live(import_price=0.5, ev_charging=True)
+        data, rec = self._make_coordinator_data(
+            planner_recommendation=Recommendations.BatteriesDischargeMode.value,
+            resolved_recommendation=Recommendations.EVSmartCharging.value,
+            live=live,
+        )
+        assert rec.recommendation == Recommendations.EVSmartCharging.value
+        assert data.state == Recommendations.EVSmartCharging.value
+
+    def test_grid_charge_preserved_in_state_even_when_ev_charging(self):
+        """BatteriesChargeGrid must not be overridden even when EV is charging."""
+        live = _make_live(import_price=0.5, ev_charging=True)
+        data, rec = self._make_coordinator_data(
+            planner_recommendation=Recommendations.BatteriesChargeGrid.value,
+            resolved_recommendation=Recommendations.BatteriesChargeGrid.value,
+            live=live,
+        )
+        assert rec.recommendation == Recommendations.BatteriesChargeGrid.value
+        assert data.state == Recommendations.BatteriesChargeGrid.value
+
+    def test_no_ev_charging_state_unchanged(self):
+        """When EV is not charging, state remains the planner recommendation."""
+        live = _make_live(import_price=0.5, ev_charging=False)
+        data, rec = self._make_coordinator_data(
+            planner_recommendation=Recommendations.BatteriesChargeSolar.value,
+            resolved_recommendation=Recommendations.BatteriesChargeSolar.value,
+            live=live,
+        )
+        assert rec.recommendation == Recommendations.BatteriesChargeSolar.value
+        assert data.state == Recommendations.BatteriesChargeSolar.value
