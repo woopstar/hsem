@@ -161,15 +161,22 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         missing_inputs.append(f"hour_{hour:02d}")
 
     # -----------------------------------------------------------------------
-    # Explicit tomorrow data-quality diagnostics (issue #370)
+    # Explicit future-day data-quality diagnostics (issue #370 + #324)
     # -----------------------------------------------------------------------
-    # Detect missing tomorrow price and PV data separately so dashboards and
+    # Detect missing future price and PV data separately so dashboards and
     # degraded-mode classification can distinguish them from general missing
     # hours.  We must NOT silently treat missing future data as real zero —
     # instead we surface the gap explicitly.
+    #
+    # For multi-day horizons (48 h or 72 h) we also check day+2 (day_offset=2)
+    # and emit appropriate warnings.  Longer forecast data is inherently less
+    # reliable, so confidence decay is applied to day-2+ PV estimates below.
     horizon_has_tomorrow = tsi.has_tomorrow_slots()
-    tomorrow_price_missing = sorted(tsi.missing_tomorrow_price_hours())
-    tomorrow_pv_missing = sorted(tsi.missing_tomorrow_pv_hours())
+    horizon_days = tsi.horizon_days
+    tomorrow_price_missing = sorted(tsi.missing_future_day_price_hours(1))
+    tomorrow_pv_missing = sorted(tsi.missing_future_day_pv_hours(1))
+    day2_price_missing = sorted(tsi.missing_future_day_price_hours(2))
+    day2_pv_missing = sorted(tsi.missing_future_day_pv_hours(2))
 
     # Collect today's missing price/PV hours for complete diagnostics
     key_to_hour: dict = {m.key: m.hour for m in tsi.slots}
@@ -191,9 +198,12 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     data_quality = DataQuality(
         tomorrow_price_missing_hours=tomorrow_price_missing,
         tomorrow_pv_missing_hours=tomorrow_pv_missing,
+        day2_price_missing_hours=day2_price_missing,
+        day2_pv_missing_hours=day2_pv_missing,
         today_price_missing_hours=today_price_missing,
         today_pv_missing_hours=today_pv_missing,
         horizon_has_tomorrow=horizon_has_tomorrow,
+        horizon_days=horizon_days,
     )
 
     # Surface tomorrow-specific missing data as explicit missing_inputs entries.
@@ -217,6 +227,60 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
             f"{hours_str}. Affected slots assume zero PV production — "
             "plan may over-charge from grid."
         )
+
+    # Surface day+2 missing data (72-hour horizon) in the same non-critical style.
+    if day2_price_missing:
+        hours_str = ",".join(f"{h:02d}" for h in day2_price_missing)
+        missing_inputs.append(f"day2_price_missing_hours:{hours_str}")
+        warnings.append(
+            f"Day+2 price data missing for {len(day2_price_missing)} hour(s): "
+            f"{hours_str}. Affected slots use 0.0 as fallback."
+        )
+
+    if day2_pv_missing:
+        hours_str = ",".join(f"{h:02d}" for h in day2_pv_missing)
+        missing_inputs.append(f"day2_pv_missing_hours:{hours_str}")
+        warnings.append(
+            f"Day+2 PV forecast missing for {len(day2_pv_missing)} hour(s): "
+            f"{hours_str}. Affected slots assume zero PV production."
+        )
+
+    # -----------------------------------------------------------------------
+    # Confidence decay for multi-day horizons (issue #324)
+    # -----------------------------------------------------------------------
+    # Price and PV forecasts for day+1 and beyond are inherently less reliable
+    # than today's data.  To avoid the planner over-committing to uncertain
+    # future plans we apply a per-day confidence decay factor to PV estimates:
+    #
+    #   day 0 (today):         factor = 1.00  (no decay — current forecast)
+    #   day 1 (tomorrow):      factor = 0.90  (10 % conservative discount)
+    #   day 2 (day after):     factor = 0.80  (20 % conservative discount)
+    #
+    # Only PV is discounted — electricity prices are used as-is because they
+    # are either known (spot market) or zero-fallback (missing).  Discounting
+    # prices would distort the cost function in unpredictable ways.
+    #
+    # The decay is applied AFTER missing-data diagnostics so that the
+    # DataQuality report reflects the *original* data gaps, not the decayed
+    # values.
+    _DECAY_BY_DAY: dict[int, float] = {0: 1.00, 1: 0.90, 2: 0.80}
+    if horizon_days > 1:
+        for slot in slots:
+            # Identify the slot's day_offset via the TSI so we use the same
+            # authoritative slot boundaries rather than ad-hoc date arithmetic.
+            slot_idx = tsi.slot_index_for(slot.start)
+            if slot_idx is None:
+                continue
+            day_offset = tsi.slots[slot_idx].key.day_offset
+            if day_offset == 0:
+                continue  # today — no decay
+            decay = _DECAY_BY_DAY.get(day_offset, 0.80)
+            slot.solcast_pv_estimate = round(slot.solcast_pv_estimate * decay, 3)
+        if horizon_days >= 2:
+            warnings.append(
+                f"Multi-day horizon ({horizon_days} day(s)): confidence decay applied "
+                f"to PV estimates — day+1 at 90 %, day+2+ at 80 %."
+            )
 
     populate_net_consumption(slots)
     populate_estimated_cost(slots)

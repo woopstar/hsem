@@ -456,12 +456,7 @@ class TimeSeriesIndex:
         Returns:
             Set of integer hours (0-23) from tomorrow that have no price data.
         """
-        key_to_hour: dict[SlotKey, int] = {m.key: m.hour for m in self.slots}
-        return {
-            key_to_hour[key]
-            for key in self.missing_price_slots
-            if key in key_to_hour and key.day_offset == 1
-        }
+        return self.missing_future_day_price_hours(1)
 
     def missing_tomorrow_pv_hours(self) -> set[int]:
         """Return wall-clock hours (0-23) in ``day_offset=1`` that lack PV data.
@@ -472,11 +467,50 @@ class TimeSeriesIndex:
         Returns:
             Set of integer hours (0-23) from tomorrow that have no PV forecast data.
         """
+        return self.missing_future_day_pv_hours(1)
+
+    def missing_future_day_price_hours(self, day_offset: int) -> set[int]:
+        """Return wall-clock hours (0-23) for *day_offset* that lack price data.
+
+        Generalised version of :meth:`missing_tomorrow_price_hours` that works for
+        any day in the planning horizon (e.g. day 1 = tomorrow, day 2 = day after
+        tomorrow, etc.).
+
+        Args:
+            day_offset:
+                0-based offset from today (0 = today, 1 = tomorrow, 2 = day+2, …).
+
+        Returns:
+            Set of integer hours (0-23) for the requested day that have no price data.
+            Empty when the horizon does not include that day, or when data is complete.
+        """
+        key_to_hour: dict[SlotKey, int] = {m.key: m.hour for m in self.slots}
+        return {
+            key_to_hour[key]
+            for key in self.missing_price_slots
+            if key in key_to_hour and key.day_offset == day_offset
+        }
+
+    def missing_future_day_pv_hours(self, day_offset: int) -> set[int]:
+        """Return wall-clock hours (0-23) for *day_offset* that lack PV data.
+
+        Generalised version of :meth:`missing_tomorrow_pv_hours` that works for
+        any day in the planning horizon (e.g. day 1 = tomorrow, day 2 = day after
+        tomorrow, etc.).
+
+        Args:
+            day_offset:
+                0-based offset from today (0 = today, 1 = tomorrow, 2 = day+2, …).
+
+        Returns:
+            Set of integer hours (0-23) for the requested day that have no PV data.
+            Empty when the horizon does not include that day, or when data is complete.
+        """
         key_to_hour: dict[SlotKey, int] = {m.key: m.hour for m in self.slots}
         return {
             key_to_hour[key]
             for key in self.missing_pv_slots
-            if key in key_to_hour and key.day_offset == 1
+            if key in key_to_hour and key.day_offset == day_offset
         }
 
     def has_tomorrow_slots(self) -> bool:
@@ -485,7 +519,31 @@ class TimeSeriesIndex:
         Returns:
             ``True`` if at least one slot has ``day_offset == 1``.
         """
-        return any(m.key.day_offset == 1 for m in self.slots)
+        return self.has_day_slots(1)
+
+    def has_day_slots(self, day_offset: int) -> bool:
+        """Return ``True`` when the planning horizon includes *day_offset*.
+
+        Args:
+            day_offset:
+                0-based day offset (0 = today, 1 = tomorrow, 2 = day+2, …).
+
+        Returns:
+            ``True`` if at least one slot has the given ``day_offset``.
+        """
+        return any(m.key.day_offset == day_offset for m in self.slots)
+
+    @property
+    def horizon_days(self) -> int:
+        """Return the number of distinct calendar days covered by this index.
+
+        A 24-hour index anchored at midnight returns 1; a 48-hour index
+        returns 2; a 72-hour index returns 3.
+
+        Returns:
+            Integer count of unique ``day_offset`` values in the slot list.
+        """
+        return len({m.key.day_offset for m in self.slots})
 
     # ------------------------------------------------------------------
     # Dunder helpers
