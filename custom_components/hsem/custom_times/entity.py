@@ -1,7 +1,16 @@
-from datetime import time
+"""Time entity for the HSEM integration.
+
+Defines :class:`HSEMTimeEntityDescription` and :class:`HSEMTimeEntity`.
+
+:class:`HSEMTimeEntity` is a standard :class:`TimeEntity` that persists its
+value to the config entry options so it survives HA restarts.
+"""
+
+from dataclasses import dataclass
+from datetime import datetime, time
 from typing import Any
 
-from homeassistant.components.time import TimeEntity
+from homeassistant.components.time import TimeEntity, TimeEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
@@ -9,24 +18,39 @@ from custom_components.hsem.const import DOMAIN
 from custom_components.hsem.entity import HSEMEntity
 
 
-class HSEMTimeEntity(TimeEntity, HSEMEntity):
-    """Custom time entity for HSEM.
+@dataclass(frozen=True)
+class HSEMTimeEntityDescription(TimeEntityDescription):
+    """Extended entity description that adds a human-readable description field.
 
-    Inherits from :class:`homeassistant.components.time.TimeEntity` so that
-    Home Assistant treats this as a proper ``time`` platform entity and not a
-    toggle/switch.
+    Attributes
+    ----------
+    description:
+        Short human-readable description of the time entity's purpose, exposed
+        as an entity attribute for dashboard display.
+    default_value:
+        Initial time value as an ``"HH:MM:SS"`` string.
+    """
+
+    description: str = ""
+    default_value: str = "00:00:00"
+
+
+class HSEMTimeEntity(TimeEntity, HSEMEntity):
+    """Time entity for an HSEM schedule slot (start or end time).
+
+    Inherits from :class:`TimeEntity` so Home Assistant's platform dispatcher
+    routes it correctly to the ``time`` domain.
     """
 
     _attr_icon = "mdi:clock"
+    _attr_has_entity_name = True
+    entity_description: HSEMTimeEntityDescription
 
     def __init__(
         self,
         hass: HomeAssistant,
         config_entry: ConfigEntry,
-        key: str,
-        name: str,
-        description: str,
-        default_value: str,
+        description: HSEMTimeEntityDescription,
     ) -> None:
         """Initialize the time entity.
 
@@ -36,23 +60,22 @@ class HSEMTimeEntity(TimeEntity, HSEMEntity):
             The Home Assistant instance.
         config_entry:
             The config entry this entity belongs to.
-        key:
-            The config-entry option key used to persist the value.
-        name:
-            Human-readable entity name.
         description:
-            Short description exposed as an entity attribute.
-        default_value:
-            Initial time value as an ISO-8601 string (``"HH:MM:SS"``).
+            Entity description carrying ``key``, ``name``, ``description``,
+            and ``default_value``.
         """
         super().__init__(config_entry)
 
         self.hass = hass
         self._config_entry = config_entry
-        self._key = key
-        self._attr_name = name
-        self._description = description
-        self._attr_native_value: time | None = self._parse_time(default_value)
+        self.entity_description = description
+        self._attr_name = description.name
+        # Preserve the existing unique_id format so existing entity registry
+        # entries are not invalidated: "hsem_<key>_time".
+        self._attr_unique_id = f"{DOMAIN}_{description.key}_time"
+        self._attr_native_value: time | None = self._parse_time(
+            description.default_value
+        )
 
     # ------------------------------------------------------------------
     # Helpers
@@ -76,8 +99,6 @@ class HSEMTimeEntity(TimeEntity, HSEMEntity):
             return None
         for fmt in ("%H:%M:%S", "%H:%M"):
             try:
-                from datetime import datetime
-
                 return datetime.strptime(value, fmt).time()
             except ValueError:
                 continue
@@ -88,14 +109,9 @@ class HSEMTimeEntity(TimeEntity, HSEMEntity):
     # ------------------------------------------------------------------
 
     @property
-    def unique_id(self) -> str | None:
-        """Return a unique ID for the time entity."""
-        return f"{DOMAIN}_{self._key}_time"
-
-    @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional state attributes."""
-        return {"description": self._description}
+        return {"description": self.entity_description.description}
 
     # ------------------------------------------------------------------
     # TimeEntity interface
@@ -113,21 +129,24 @@ class HSEMTimeEntity(TimeEntity, HSEMEntity):
             The new time selected by the user.
         """
         self._attr_native_value = value
-        await self._update_config_entry()
+        await self._persist_value()
         self.async_write_ha_state()
 
     # ------------------------------------------------------------------
     # Config-entry persistence
     # ------------------------------------------------------------------
 
-    async def _update_config_entry(self) -> None:
+    async def _persist_value(self) -> None:
         """Persist the current native value to the config entry options."""
         str_value = (
             self._attr_native_value.strftime("%H:%M:%S")
             if self._attr_native_value is not None
             else ""
         )
-        updated_options = {**self._config_entry.options, self._key: str_value}
+        updated_options = {
+            **self._config_entry.options,
+            self.entity_description.key: str_value,
+        }
         self.hass.config_entries.async_update_entry(
             self._config_entry, options=updated_options
         )
