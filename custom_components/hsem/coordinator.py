@@ -61,7 +61,7 @@ from custom_components.hsem.models.planner_inputs import (
     PricePoint,
     SolcastSlot,
 )
-from custom_components.hsem.models.planner_outputs import PlanExplanation
+from custom_components.hsem.models.planner_outputs import DataQuality, PlanExplanation
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.planner import run_planner
 from custom_components.hsem.utils.inverter_verify import CycleApplySummary
@@ -115,6 +115,8 @@ class CoordinatorData:
     apply_summary: CycleApplySummary | None = None
     #: Human-readable explanation of why the selected plan was chosen.
     plan_explanation: PlanExplanation = field(default_factory=PlanExplanation)
+    #: Structured data-quality report for price and PV inputs.
+    data_quality: DataQuality = field(default_factory=DataQuality)
 
 
 # ---------------------------------------------------------------------------
@@ -185,6 +187,8 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         self._avg_house_consumption_entity_id_cache: dict[str, str] = {}
         # Most recent plan explanation produced by the planner engine.
         self._plan_explanation: PlanExplanation = PlanExplanation()
+        # Most recent data quality report produced by the planner engine.
+        self._data_quality: DataQuality = DataQuality()
 
     # ------------------------------------------------------------------
     # HA lifecycle
@@ -331,6 +335,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
 
                 self._apply_planner_output(planner_output)
                 self._current_required_battery = planner_output.required_capacity_kwh
+                self._data_quality = planner_output.data_quality
 
                 # 9. Find the current time-slot recommendation.
                 self._hourly_recommendations.sort(key=lambda x: x.start)
@@ -369,6 +374,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             last_updated=last_updated,
             next_update=self._next_update,
             plan_explanation=self._plan_explanation,
+            data_quality=self._data_quality,
         )
 
         # Notify all subscriber entities atomically.
@@ -590,8 +596,9 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         self._batteries_schedules_remaining_capacity_needed = sum(
             s.needed_batteries_capacity for s in self._batteries_schedules if s.enabled
         )
-        # Preserve the plan explanation for the next CoordinatorData snapshot.
+        # Preserve the plan explanation and data quality for the next CoordinatorData snapshot.
         self._plan_explanation = output.explanation
+        self._data_quality = output.data_quality
 
     # ------------------------------------------------------------------
     # Internal helpers

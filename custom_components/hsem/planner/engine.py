@@ -30,6 +30,7 @@ from datetime import datetime
 from custom_components.hsem.models.planner_inputs import PlannerInput
 from custom_components.hsem.models.planner_outputs import (
     ChargeWindow,
+    DataQuality,
     DischargeWindow,
     PlanExplanation,
     PlannedSlot,
@@ -155,9 +156,68 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         tsi,
     )
 
-    # Surface any hours where input data was absent
+    # Surface any hours where input data was absent (generic — all series)
     for hour in sorted(tsi.missing_hours()):
         missing_inputs.append(f"hour_{hour:02d}")
+
+    # -----------------------------------------------------------------------
+    # Explicit tomorrow data-quality diagnostics (issue #370)
+    # -----------------------------------------------------------------------
+    # Detect missing tomorrow price and PV data separately so dashboards and
+    # degraded-mode classification can distinguish them from general missing
+    # hours.  We must NOT silently treat missing future data as real zero —
+    # instead we surface the gap explicitly.
+    horizon_has_tomorrow = tsi.has_tomorrow_slots()
+    tomorrow_price_missing = sorted(tsi.missing_tomorrow_price_hours())
+    tomorrow_pv_missing = sorted(tsi.missing_tomorrow_pv_hours())
+
+    # Collect today's missing price/PV hours for complete diagnostics
+    key_to_hour: dict = {m.key: m.hour for m in tsi.slots}
+    today_price_missing = sorted(
+        {
+            key_to_hour[key]
+            for key in tsi.missing_price_slots
+            if key in key_to_hour and key.day_offset == 0
+        }
+    )
+    today_pv_missing = sorted(
+        {
+            key_to_hour[key]
+            for key in tsi.missing_pv_slots
+            if key in key_to_hour and key.day_offset == 0
+        }
+    )
+
+    data_quality = DataQuality(
+        tomorrow_price_missing_hours=tomorrow_price_missing,
+        tomorrow_pv_missing_hours=tomorrow_pv_missing,
+        today_price_missing_hours=today_price_missing,
+        today_pv_missing_hours=today_pv_missing,
+        horizon_has_tomorrow=horizon_has_tomorrow,
+    )
+
+    # Surface tomorrow-specific missing data as explicit missing_inputs entries.
+    # These labels are non-critical (do not match battery/house-load keywords)
+    # so they trigger DegradedMode.Degraded — hardware writes are still allowed
+    # but the plan is based on incomplete future data.
+    if tomorrow_price_missing:
+        hours_str = ",".join(f"{h:02d}" for h in tomorrow_price_missing)
+        missing_inputs.append(f"tomorrow_price_missing_hours:{hours_str}")
+        warnings.append(
+            f"Tomorrow price data missing for {len(tomorrow_price_missing)} hour(s): "
+            f"{hours_str}. Affected slots use 0.0 (import/export) as fallback — "
+            "plan may not be optimal."
+        )
+
+    if tomorrow_pv_missing:
+        hours_str = ",".join(f"{h:02d}" for h in tomorrow_pv_missing)
+        missing_inputs.append(f"tomorrow_pv_missing_hours:{hours_str}")
+        warnings.append(
+            f"Tomorrow PV forecast missing for {len(tomorrow_pv_missing)} hour(s): "
+            f"{hours_str}. Affected slots assume zero PV production — "
+            "plan may over-charge from grid."
+        )
+
     populate_net_consumption(slots)
     populate_estimated_cost(slots)
 
@@ -381,6 +441,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         missing_inputs=missing_inputs,
         warnings=warnings,
         time_series_index=tsi,
+        data_quality=data_quality,
         explanation=explanation,
         plan_cost=plan_cost,
         candidates=candidates,
