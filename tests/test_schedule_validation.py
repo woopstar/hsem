@@ -250,7 +250,7 @@ class TestInvalidTimeFormat:
 
     @pytest.mark.asyncio
     async def test_schedule_1_invalid_time_format(self):
-        """Bad time format produces 'invalid_time_format' error."""
+        """Bad time format produces 'invalid_time_format' error on the start field."""
         user_input = {
             "hsem_batteries_enable_batteries_schedule_1": True,
             "hsem_batteries_enable_batteries_schedule_1_start": "not-a-time",
@@ -258,11 +258,15 @@ class TestInvalidTimeFormat:
             "hsem_batteries_enable_batteries_schedule_1_min_price_difference": 0.0,
         }
         errors = await validate_batteries_schedule_1_input(user_input)
-        assert errors.get("base") == "invalid_time_format"
+        # Centralized validator reports the error on the specific field, not on 'base'.
+        assert (
+            errors.get("hsem_batteries_enable_batteries_schedule_1_start")
+            == "invalid_time_format"
+        )
 
     @pytest.mark.asyncio
     async def test_schedule_3_invalid_time_format(self):
-        """Bad time format in schedule_3 produces 'invalid_time_format' error."""
+        """Bad time format in schedule_3 produces 'invalid_time_format' error on start field."""
         user_input = {
             "hsem_batteries_enable_batteries_schedule_3": True,
             "hsem_batteries_enable_batteries_schedule_3_start": "25:00:00",
@@ -270,4 +274,8 @@ class TestInvalidTimeFormat:
             "hsem_batteries_enable_batteries_schedule_3_min_price_difference": 0.0,
         }
         errors = await validate_batteries_schedule_3_input(user_input)
-        assert errors.get("base") == "invalid_time_format"
+        # Centralized validator reports the error on the specific field, not on 'base'.
+        assert (
+            errors.get("hsem_batteries_enable_batteries_schedule_3_start")
+            == "invalid_time_format"
+        )

@@ -1,7 +1,11 @@
 import voluptuous as vol
 from homeassistant.helpers.selector import selector
 
-from custom_components.hsem.utils.misc import async_entity_exists, get_config_value
+from custom_components.hsem.utils.config_validator import (
+    async_validate_entity_ids,
+    merge_errors,
+)
+from custom_components.hsem.utils.misc import get_config_value
 
 
 async def get_ev_step_schema(config_entry) -> vol.Schema:
@@ -107,34 +111,27 @@ async def get_ev_step_schema(config_entry) -> vol.Schema:
 
 
 async def validate_ev_step_input(hass, user_input) -> dict[str, str]:
-    """Validate user input for the 'misc' step."""
-    errors = {}
-
-    required_fields = [
-        "hsem_house_power_includes_ev_charger_power",
-        "hsem_ev_charger_max_discharge_power",
-        "hsem_ev_charger_force_max_discharge_power",
-        "hsem_ev_allow_charge_past_target_soc",
-    ]
-
-    for field in required_fields:
-        if field not in user_input:
-            errors[field] = "required"
-
-    optional_entity_fields = [
-        "hsem_ev_charger_status",
-        "hsem_ev_charger_power",
-        "hsem_ev_soc",
-        "hsem_ev_soc_target",
-        "hsem_ev_connected",
-    ]
-
-    for field in optional_entity_fields:
-        if field in user_input:
-            entity_id = user_input.get(field)
-            if entity_id:
-                # Tjek om entiteten eksisterer
-                if not await async_entity_exists(hass, entity_id):
-                    errors[field] = "entity_not_found"
-
-    return errors
+    """Validate user input for the 'ev' step."""
+    required_errors: dict[str, str] = {
+        f: "required"
+        for f in (
+            "hsem_house_power_includes_ev_charger_power",
+            "hsem_ev_charger_max_discharge_power",
+            "hsem_ev_charger_force_max_discharge_power",
+            "hsem_ev_allow_charge_past_target_soc",
+        )
+        if f not in user_input
+    }
+    entity_errors = await async_validate_entity_ids(
+        hass,
+        user_input,
+        required_fields=[],
+        optional_fields=[
+            "hsem_ev_charger_status",
+            "hsem_ev_charger_power",
+            "hsem_ev_soc",
+            "hsem_ev_soc_target",
+            "hsem_ev_connected",
+        ],
+    )
+    return merge_errors(required_errors, entity_errors)

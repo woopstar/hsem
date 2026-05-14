@@ -1,7 +1,12 @@
 import voluptuous as vol
 from homeassistant.helpers.selector import selector
 
-from custom_components.hsem.utils.misc import async_entity_exists, get_config_value
+from custom_components.hsem.utils.config_validator import (
+    async_validate_entity_ids,
+    merge_errors,
+    validate_price,
+)
+from custom_components.hsem.utils.misc import get_config_value
 
 
 async def get_energidataservice_step_schema(config_entry) -> vol.Schema:
@@ -59,28 +64,27 @@ async def get_energidataservice_step_schema(config_entry) -> vol.Schema:
 
 
 async def validate_energidataservice_input(hass, user_input) -> dict[str, str]:
-    errors = {}
-
-    required_fields = [
+    """Validate user input for the 'energidataservice' step."""
+    entity_errors = await async_validate_entity_ids(
+        hass,
+        user_input,
+        required_fields=[
+            "hsem_energi_data_service_import",
+            "hsem_energi_data_service_export",
+        ],
+    )
+    price_errors = validate_price(
+        user_input,
+        "hsem_energi_data_service_export_min_price",
+        min_price=-2.0,
+        max_price=2.0,
+        allow_negative=True,
+    )
+    required_errors: dict[str, str] = {}
+    for field in (
         "hsem_energi_data_service_export_min_price",
         "hsem_energi_data_service_update_interval",
-    ]
-
-    for field in required_fields:
+    ):
         if field not in user_input:
-            errors[field] = "required"
-
-    optional_entity_fields = [
-        "hsem_energi_data_service_import",
-        "hsem_energi_data_service_export",
-    ]
-
-    for field in optional_entity_fields:
-        if field not in user_input:
-            errors[field] = "required"
-        else:
-            entity_id = user_input[field]
-            if not await async_entity_exists(hass, entity_id):
-                errors[field] = "entity_not_found"
-
-    return errors
+            required_errors[field] = "required"
+    return merge_errors(entity_errors, price_errors, required_errors)
