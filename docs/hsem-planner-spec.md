@@ -336,6 +336,86 @@ Add tests for these invariants:
 - Missing price/PV data does not become real zero silently.
 - Read-only/degraded/dry-run gates block writes.
 
+## Multi-day planning horizon
+
+The planner supports configurable planning horizons: 24, 48, and 72 hours.
+
+The horizon is controlled by `interval_length_hours` in `PlannerInput` (and
+`recommendation_interval_length` in `SensorConfig`).  All three values are
+accepted without special-casing in the engine.
+
+### Slot count
+
+```text
+total_slots = (interval_length_hours * 60) // interval_minutes
+```
+
+| Horizon | 15-min slots | 60-min slots |
+|---|---|---|
+| 24 h | 96 | 24 |
+| 48 h | 192 | 48 |
+| 72 h | 288 | 72 |
+
+### Confidence decay for future days
+
+Price and PV forecast accuracy degrades for days further in the future.
+To avoid over-committing to uncertain future plans, the planner applies a
+**confidence decay factor** to PV estimates (not prices) for slots on
+day+1 and beyond:
+
+| Day offset | Decay factor | Meaning |
+|---|---|---|
+| 0 (today) | 1.00 | No decay — current-day forecast |
+| 1 (tomorrow) | 0.90 | 10 % conservative discount |
+| 2 (day after) | 0.80 | 20 % conservative discount |
+
+Only PV estimates are discounted.  Electricity prices are used as-is because:
+- Spot-market prices are typically known for day+1 by mid-day.
+- Discounting known prices would distort the cost function.
+
+Decay is applied **after** missing-data diagnostics, so `DataQuality` always
+reflects original data gaps, not decayed values.
+
+### Missing future data handling
+
+For every day in the horizon the engine detects and surfaces missing price
+and PV data explicitly.  Day-labelled `missing_inputs` entries are emitted
+with the format:
+
+```text
+tomorrow_price_missing_hours:HH,HH,...
+tomorrow_pv_missing_hours:HH,HH,...
+day2_price_missing_hours:HH,HH,...
+day2_pv_missing_hours:HH,HH,...
+```
+
+These labels are **non-critical** — they do not match battery or house-load
+keywords — so they trigger `DegradedMode.Degraded` (hardware writes allowed)
+rather than `Error` (writes blocked).
+
+Missing slots default to `0.0` in the planner.  The planner **must never**
+silently treat absent data as real zero without surfacing a diagnostic.
+
+### DataQuality fields for multi-day horizons
+
+`DataQuality.horizon_days` reflects the number of calendar days covered.
+`DataQuality.day2_price_missing_hours` and `DataQuality.day2_pv_missing_hours`
+carry the day+2 gap lists for 72-hour horizon runs.
+
+### Invariants for multi-day horizon tests
+
+- A 24-hour horizon produces exactly `(24 * 60) // interval_minutes` slots.
+- A 48-hour horizon produces exactly `(48 * 60) // interval_minutes` slots.
+- A 72-hour horizon produces exactly `(72 * 60) // interval_minutes` slots.
+- All slots have a non-``None`` recommendation regardless of horizon.
+- Day+1 PV estimates are ≤ day+0 estimates for the same hour when both have
+  the same raw input (confidence decay applied).
+- Day+2 PV estimates are ≤ day+1 estimates for the same raw input.
+- `DataQuality.horizon_days` equals 1 / 2 / 3 for 24 h / 48 h / 72 h.
+- Missing day+2 price data surfaces in `day2_price_missing_hours`.
+- Missing day+2 PV data surfaces in `day2_pv_missing_hours`.
+- `DataQuality.is_complete` is ``False`` when any future-day data is missing.
+
 ## Documentation expectations
 
 Every planner change should update:
