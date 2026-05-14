@@ -34,6 +34,7 @@ import copy
 from dataclasses import dataclass
 from datetime import datetime
 
+from custom_components.hsem.datetime_utils import as_tz
 from custom_components.hsem.models.planner_inputs import PlannerInput
 from custom_components.hsem.models.planner_outputs import PlannedSlot
 from custom_components.hsem.utils.recommendations import Recommendations
@@ -272,7 +273,7 @@ def _apply_aggressive_strategy(
         now: Timezone-aware current datetime used to filter past slots.
         max_charge_per_slot: Maximum energy storable per slot (kWh).
     """
-    future = [s for s in slots if s.end.astimezone(now.tzinfo) > now]
+    future = [s for s in slots if as_tz(s.end, now.tzinfo) > now]
 
     # Determine the earliest future discharge slot start so that aggressive
     # charging does not bleed into or past discharge windows.

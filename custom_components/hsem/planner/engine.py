@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from custom_components.hsem.datetime_utils import as_tz
 from custom_components.hsem.models.planner_inputs import PlannerInput
 from custom_components.hsem.models.planner_outputs import (
     ChargeWindow,
@@ -642,12 +643,12 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     # Current recommendation
     current_recommendation: str | None = None
     for slot in slots:
-        if slot.start.astimezone(now.tzinfo) <= now < slot.end.astimezone(now.tzinfo):
+        if as_tz(slot.start, now.tzinfo) <= now < as_tz(slot.end, now.tzinfo):
             current_recommendation = slot.recommendation
             break
 
     # Final SoC
-    future_slots = [s for s in slots if s.end.astimezone(now.tzinfo) > now]
+    future_slots = [s for s in slots if as_tz(s.end, now.tzinfo) > now]
     battery_soc_at_end = future_slots[-1].estimated_battery_soc if future_slots else 0.0
 
     # Derive contiguous charge/discharge windows
@@ -807,7 +808,7 @@ def _build_explanation(
     Returns:
         A populated :class:`PlanExplanation` instance.
     """
-    future_slots = [s for s in slots if s.end.astimezone(now.tzinfo) > now]
+    future_slots = [s for s in slots if as_tz(s.end, now.tzinfo) > now]
 
     # --- Price metrics ---------------------------------------------------
     import_prices = [s.price.import_price for s in future_slots]

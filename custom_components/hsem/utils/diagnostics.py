@@ -39,6 +39,8 @@ from dataclasses import asdict
 from datetime import datetime, time
 from typing import Any
 
+import homeassistant.util.dt as dt_util
+
 from custom_components.hsem.models.planner_inputs import (
     BatteryScheduleInput,
     HourlyConsumptionAverage,
@@ -425,7 +427,7 @@ def build_diagnostics_dump(
 
     return {
         "hsem_version": integration_version or "unknown",
-        "dump_timestamp": datetime.now().astimezone().isoformat(),
+        "dump_timestamp": dt_util.now().isoformat(),
         "planner_input": input_dict,
         "planner_output": _planner_output_summary(planner_output),
         "apply_result": _apply_summary_to_dict(apply_summary),

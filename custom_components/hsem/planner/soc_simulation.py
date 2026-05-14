@@ -31,6 +31,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from custom_components.hsem.datetime_utils import as_tz
 from custom_components.hsem.models.planner_outputs import PlannedSlot
 
 
@@ -112,8 +113,8 @@ def simulate_soc(
     cap = current_kwh  # working state — kWh above discharge floor
 
     for slot in slots:
-        slot_start = slot.start.astimezone(now.tzinfo)
-        slot_end = slot.end.astimezone(now.tzinfo)
+        slot_start = as_tz(slot.start, now.tzinfo)
+        slot_end = as_tz(slot.end, now.tzinfo)
 
         # Past slots: zero out SoC fields and move on.
         if slot_end <= now:

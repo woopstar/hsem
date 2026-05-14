@@ -496,8 +496,6 @@ def _resolve_ev_deadline_from_params(sensor, deadline_entity, deadline_fixed):
     from datetime import time as _time
     from datetime import timedelta
 
-    import homeassistant.util.dt as dt_util
-
     time_str: str | None = None
 
     if deadline_entity:
@@ -520,11 +518,12 @@ def _resolve_ev_deadline_from_params(sensor, deadline_entity, deadline_fixed):
         return None
 
     hour, minute = int(m.group(1)), int(m.group(2))
-    tz = dt_util.now().tzinfo
-    now_local = dt_util.now().astimezone(tz)
+    from custom_components.hsem.datetime_utils import now as hsem_now
+
+    now_local = hsem_now()
     today = now_local.date()
     deadline_naive = _dt.combine(today, _time(hour, minute))
-    deadline = deadline_naive.replace(tzinfo=tz)
+    deadline = deadline_naive.replace(tzinfo=now_local.tzinfo)
 
     if deadline <= now_local:
         deadline = deadline + timedelta(days=1)

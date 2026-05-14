@@ -34,7 +34,6 @@ import logging
 from dataclasses import dataclass, field
 from datetime import timedelta
 
-import homeassistant.util.dt as dt_util
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import (
@@ -52,6 +51,9 @@ from custom_components.hsem.custom_sensors.state_collector import (
     build_battery_schedules,
     build_sensor_config,
 )
+from custom_components.hsem.datetime_utils import as_tz
+from custom_components.hsem.datetime_utils import now as hsem_now
+from custom_components.hsem.datetime_utils import utc_now_iso
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.planner_inputs import (
@@ -267,7 +269,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             UpdateFailed: When an unrecoverable error occurs during the pipeline.
         """
         await async_logger(self, "------ HSEM Coordinator: starting update cycle...")
-        now = dt_util.now()
+        now = hsem_now()
 
         try:
             # 1. Reload config from the config entry.
@@ -371,12 +373,11 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
 
                 # 9. Find the current time-slot recommendation.
                 self._hourly_recommendations.sort(key=lambda x: x.start)
-                tz = now.tzinfo
                 hourly_rec = next(
                     (
                         r
                         for r in self._hourly_recommendations
-                        if r.start.astimezone(tz) <= now < r.end.astimezone(tz)
+                        if as_tz(r.start, now.tzinfo) <= now < as_tz(r.end, now.tzinfo)
                     ),
                     None,
                 )
@@ -390,7 +391,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
 
         # Final sort and timestamp.
         self._hourly_recommendations.sort(key=lambda x: x.start)
-        last_updated = now.isoformat()
+        last_updated = utc_now_iso()
 
         data = CoordinatorData(
             cfg=self._cfg,
@@ -449,7 +450,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         if self._timer_interval != interval:
             self._timer_interval = interval
             await self._register_interval_timer(interval)
-        self._next_update = (dt_util.now() + interval).isoformat()
+        self._next_update = (hsem_now() + interval).isoformat()
 
     async def _register_interval_timer(self, interval: timedelta) -> None:
         """Cancel any existing interval timer and register a fresh one.
@@ -479,7 +480,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         """
         cfg = self._cfg
         live = self._live
-        now = dt_util.now()
+        now = hsem_now()
 
         seen_hours: set[int] = set()
         consumption_averages: list[HourlyConsumptionAverage] = []
@@ -709,10 +710,11 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         ``tzinfo`` objects (e.g. ``ZoneInfo('Europe/Copenhagen')`` vs a fixed
         ``+02:00`` offset) hash and compare as equal in Python.  However,
         sub-second fields can differ when the recommendation slot was created
-        from ``dt_util.now()`` (which may carry microseconds) while the planner
-        slot was built from ``timedelta`` arithmetic anchored at midnight
-        (microseconds always zero).  Stripping microseconds on both sides
-        guarantees a deterministic match regardless of when each was created.
+        from ``hsem_now()`` (which already strips microseconds) while the
+        planner slot was built from ``timedelta`` arithmetic anchored at
+        midnight (microseconds always zero).  Stripping microseconds on both
+        sides guarantees a deterministic match regardless of when each was
+        created.
 
         Args:
             dt: A timezone-aware :class:`datetime.datetime`.
@@ -730,10 +732,9 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
 
         The lookup normalises both sides to UTC with ``microsecond=0`` so that
         slots remain matched even when the recommendation list was created from
-        ``dt_util.now()`` (which may carry a non-zero microsecond component)
-        while the planner slots were built from timedelta arithmetic (always
-        zero microseconds).  Any recommendation slot that cannot be matched
-        emits a warning so the mismatch is visible in logs.
+        ``hsem_now()`` while the planner slots were built from timedelta
+        arithmetic (always zero microseconds).  Any recommendation slot that
+        cannot be matched emits a warning so the mismatch is visible in logs.
 
         Args:
             output: The :class:`~planner.engine.PlannerOutput` returned by the
@@ -798,7 +799,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             A list of :class:`HourlyRecommendation` objects with all numeric
             fields initialised to ``0.0``.
         """
-        now = dt_util.now()
+        now = hsem_now()
         start_time = now.replace(hour=0, minute=0, second=0, microsecond=0)
         steps = int((total_hours * 60) / interval_minutes)
 
