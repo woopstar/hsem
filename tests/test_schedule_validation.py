@@ -59,9 +59,9 @@ class TestSchedule3DefaultValues:
             "hsem_batteries_enable_batteries_schedule_3_start"
         ]
         end = DEFAULT_CONFIG_VALUES["hsem_batteries_enable_batteries_schedule_3_end"]
-        assert start != end, (
-            "Default schedule_3 has a zero-length window (start == end)."
-        )
+        assert (
+            start != end
+        ), "Default schedule_3 has a zero-length window (start == end)."
 
     def test_schedule_1_and_2_enabled_by_default(self):
         """Schedules 1 and 2 should remain enabled in their defaults."""

@@ -614,6 +614,6 @@ class TestPlannerOutputCandidates:
             if len(c.slots) == len(output.slots)
             and all(a is b for a, b in zip(c.slots, output.slots))
         ]
-        assert len(winner_candidates) == 1, (
-            "Exactly one candidate should share its slots list with output.slots"
-        )
+        assert (
+            len(winner_candidates) == 1
+        ), "Exactly one candidate should share its slots list with output.slots"
