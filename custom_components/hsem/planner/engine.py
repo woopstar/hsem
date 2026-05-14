@@ -308,7 +308,13 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     combined_ev_load = [0.0] * len(slots)
 
     # Compute solar surplus ONCE before any EV injection (both EVs share it).
-    slot_solar_surplus = [max(-s.estimated_net_consumption, 0.0) for s in slots]
+    # IMPORTANT: estimated_net_consumption is still 0.0 here (populate_net_consumption
+    # hasn't run yet), so surplus must be derived from the raw base fields:
+    #   surplus = max(pv_estimate - avg_house_consumption, 0.0)
+    # This matches what populate_net_consumption will later compute as the base net load.
+    slot_solar_surplus = [
+        max(s.solcast_pv_estimate - s.avg_house_consumption, 0.0) for s in slots
+    ]
     _slot_starts = [s.start for s in slots]
     _slot_ends = [s.end for s in slots]
     _slot_prices = [s.price.import_price for s in slots]

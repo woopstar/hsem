@@ -773,3 +773,222 @@ class TestPlannerEngineEVIntegration:
         out = run_planner(inp)
         assert out.ev_charging_plan is not None
         assert out.ev_charging_plan.state in {"unavailable", "fully_charged"}
+
+
+# ---------------------------------------------------------------------------
+# TestEvSolarSurplusRegression
+# Regression for bug: slot_solar_surplus was computed from estimated_net_consumption
+# which is 0.0 before populate_net_consumption runs, so EV never received solar slots.
+# Fix: compute surplus from raw base fields (pv_estimate - avg_house_consumption).
+# ---------------------------------------------------------------------------
+
+
+class TestEvSolarSurplusRegression:
+    """Regression tests for EV solar surplus computation bug.
+
+    Before the fix, ``slot_solar_surplus`` was derived from
+    ``s.estimated_net_consumption`` which is still ``0.0`` at the point the
+    EV planner runs (``populate_net_consumption`` had not been called yet).
+    The EV therefore never saw any solar surplus and always treated every slot
+    as a grid-import slot.
+
+    After the fix, surplus is computed directly from base fields:
+        surplus = max(pv_estimate - avg_house_consumption, 0.0)
+    """
+
+    def test_ev_receives_solar_slot_exact_hand_calculation(self):
+        """EV is allocated to the solar-surplus slot; effective net = 0.0 kWh.
+
+        Hand calculation
+        ----------------
+        Setup (one solar slot: hour 10):
+          house load       = 1.0 kWh/h
+          PV estimate      = 3.5 kWh/h
+          base net         = 1.0 − 3.5 = −2.5 kWh  (surplus)
+          EV energy needed = 2.5 kWh  (25%→27.5% of 100 kWh battery)
+          charger power    = 11 kW  →  max per slot = 11 kWh
+
+        Expected EV allocation at hour 10:
+          solar_surplus = max(3.5 − 1.0, 0) = 2.5 kWh
+          ev_load       = min(11.0, 2.5)     = 2.5 kWh  (exactly covers energy needed)
+          solar_used    = min(2.5, 2.5)       = 2.5 kWh
+          import_needed = 0.0 kWh
+
+        Effective net at hour 10 after injection:
+          effective_net = avg_house(1.0) + ev_load(2.5) − pv(3.5) = 0.0 kWh
+
+        Invariant: no battery solar-charge recommended (effective net ≥ 0,
+        so no solar surplus remains for the battery).
+        """
+        # Build a 24-hour, 1-hour-slot input where only hour 10 has solar surplus.
+        now_iso = "2024-06-15T06:00:00+00:00"
+        from datetime import datetime as _dt2
+
+        now = _dt2.fromisoformat(now_iso)
+        deadline = now + timedelta(hours=8)  # deadline at 14:00
+
+        prices = [
+            PricePoint(hour=h, import_price=0.10, export_price=0.05) for h in range(24)
+        ]
+        # Only hour 10 has PV surplus
+        pv = [SolcastSlot(hour=h, pv_estimate=0.0) for h in range(24)]
+        pv[10] = SolcastSlot(hour=10, pv_estimate=3.5)
+
+        averages = [
+            HourlyConsumptionAverage(
+                hour=h, avg_1d=1.0, avg_3d=1.0, avg_7d=1.0, avg_14d=1.0
+            )
+            for h in range(24)
+        ]
+
+        # EV needs exactly 2.5 kWh: 25%→27.5% of 100 kWh = 2.5 kWh
+        inp = PlannerInput(
+            now_iso=now_iso,
+            interval_minutes=60,
+            interval_length_hours=24,
+            battery_soc_pct=50.0,
+            battery_rated_capacity_kwh=10.0,
+            battery_end_of_discharge_soc_pct=10.0,
+            battery_max_soc_pct=90.0,
+            battery_max_charge_power_w=5000.0,
+            battery_max_discharge_power_w=5000.0,
+            battery_charge_efficiency_pct=95.0,
+            battery_conversion_loss_pct=5.0,
+            battery_discharge_efficiency_pct=95.0,
+            weight_1d=25,
+            weight_3d=30,
+            weight_7d=30,
+            weight_14d=15,
+            consumption_averages=averages,
+            price_points=prices,
+            solcast_slots=pv,
+            ev_planned_load_enabled=True,
+            ev_planned_load_connected=True,
+            ev_planned_load_smart_charging_enabled=True,
+            ev_planned_load_current_soc_pct=25.0,
+            ev_planned_load_target_soc_pct=27.5,  # exactly 2.5 kWh needed
+            ev_planned_load_battery_capacity_kwh=100.0,
+            ev_planned_load_charger_power_kw=11.0,
+            ev_planned_load_charger_efficiency_pct=100.0,
+            ev_planned_load_deadline=deadline,
+            ev_planned_load_base_load_includes_ev=False,
+        )
+        out = run_planner(inp)
+
+        # --- Assert EV plan selected the solar slot ---
+        assert out.ev_charging_plan is not None
+        plan = out.ev_charging_plan
+        assert len(plan.charging_slots) >= 1, (
+            "EV should have at least one charging slot"
+        )
+        solar_ev_slots = [s for s in plan.charging_slots if s.start.hour == 10]
+        assert solar_ev_slots, (
+            "EV should be scheduled in the solar-surplus slot (hour 10)"
+        )
+
+        # The slot at hour 10 should use the full 2.5 kWh from solar
+        slot_10 = solar_ev_slots[0]
+        assert slot_10.solar_surplus_kwh == pytest.approx(2.5, abs=0.01), (
+            f"EV solar_surplus_kwh should be 2.5, got {slot_10.solar_surplus_kwh}. "
+            "If 0.0, the solar surplus computation bug is still present."
+        )
+        assert slot_10.import_needed_kwh == pytest.approx(0.0, abs=0.01), (
+            f"EV import_needed_kwh should be 0.0 (covered by solar), got {slot_10.import_needed_kwh}"
+        )
+
+        # --- Assert effective net load at hour 10 ---
+        planner_slot_10 = next((s for s in out.slots if s.start.hour == 10), None)
+        assert planner_slot_10 is not None
+        assert planner_slot_10.ev_planned_load_kwh == pytest.approx(2.5, abs=0.01), (
+            f"Planner slot 10 ev_planned_load_kwh should be 2.5, got {planner_slot_10.ev_planned_load_kwh}"
+        )
+        # effective_net = house(1.0) + ev(2.5) - pv(3.5) = 0.0
+        assert planner_slot_10.estimated_net_consumption == pytest.approx(
+            0.0, abs=0.01
+        ), (
+            f"effective_net at hour 10 should be 0.0, got {planner_slot_10.estimated_net_consumption}"
+        )
+
+        # --- Assert battery does NOT charge energy from consumed surplus ---
+        # The recommendation label may still be 'batteries_charge_solar' because
+        # estimated_net_consumption = 0.0 falls within the NEAR_ZERO threshold.
+        # The energy-correctness invariant is: batteries_charged must be 0.0
+        # (the charge scheduler derives slot_solar = abs(0.0) = 0.0, so no
+        # energy flows into the battery even if the label says charge_solar).
+        assert planner_slot_10.batteries_charged == pytest.approx(0.0, abs=0.01), (
+            "Battery should NOT charge energy at hour 10: "
+            "all solar surplus is consumed by EV. "
+            f"batteries_charged={planner_slot_10.batteries_charged}, "
+            f"ev_load={planner_slot_10.ev_planned_load_kwh}, "
+            f"net={planner_slot_10.estimated_net_consumption}"
+        )
+
+    def test_ev_solar_surplus_zero_when_no_pv(self):
+        """When PV = 0, no solar surplus reaches EV — all charging uses grid import.
+
+        Hand calculation:
+          house load = 1.0 kWh/h, PV = 0.0 kWh/h
+          surplus = max(0.0 − 1.0, 0) = 0.0
+          EV charged from grid entirely.
+        """
+        now_iso = "2024-06-15T06:00:00+00:00"
+        from datetime import datetime as _dt2
+
+        now = _dt2.fromisoformat(now_iso)
+        deadline = now + timedelta(hours=6)
+
+        prices = [
+            PricePoint(hour=h, import_price=0.10, export_price=0.05) for h in range(24)
+        ]
+        pv = [SolcastSlot(hour=h, pv_estimate=0.0) for h in range(24)]  # no PV
+        averages = [
+            HourlyConsumptionAverage(
+                hour=h, avg_1d=1.0, avg_3d=1.0, avg_7d=1.0, avg_14d=1.0
+            )
+            for h in range(24)
+        ]
+
+        inp = PlannerInput(
+            now_iso=now_iso,
+            interval_minutes=60,
+            interval_length_hours=24,
+            battery_soc_pct=50.0,
+            battery_rated_capacity_kwh=10.0,
+            battery_end_of_discharge_soc_pct=10.0,
+            battery_max_soc_pct=90.0,
+            battery_max_charge_power_w=5000.0,
+            battery_max_discharge_power_w=5000.0,
+            battery_charge_efficiency_pct=95.0,
+            battery_conversion_loss_pct=5.0,
+            battery_discharge_efficiency_pct=95.0,
+            weight_1d=25,
+            weight_3d=30,
+            weight_7d=30,
+            weight_14d=15,
+            consumption_averages=averages,
+            price_points=prices,
+            solcast_slots=pv,
+            ev_planned_load_enabled=True,
+            ev_planned_load_connected=True,
+            ev_planned_load_smart_charging_enabled=True,
+            ev_planned_load_current_soc_pct=70.0,
+            ev_planned_load_target_soc_pct=80.0,  # 10 kWh needed
+            ev_planned_load_battery_capacity_kwh=100.0,
+            ev_planned_load_charger_power_kw=11.0,
+            ev_planned_load_charger_efficiency_pct=100.0,
+            ev_planned_load_deadline=deadline,
+            ev_planned_load_base_load_includes_ev=False,
+        )
+        out = run_planner(inp)
+
+        assert out.ev_charging_plan is not None
+        # All EV charging slots should show zero solar surplus (no PV)
+        for ev_slot in out.ev_charging_plan.charging_slots:
+            assert ev_slot.solar_surplus_kwh == pytest.approx(0.0, abs=1e-9), (
+                f"Hour {ev_slot.start.hour}: expected 0.0 solar surplus (no PV), "
+                f"got {ev_slot.solar_surplus_kwh}"
+            )
+            # All energy comes from grid
+            assert ev_slot.import_needed_kwh == pytest.approx(
+                ev_slot.estimated_charged_kwh, abs=0.01
+            )
