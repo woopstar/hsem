@@ -1,7 +1,5 @@
 """This module defines the configuration flow for the HSEM integration in Home Assistant."""
 
-import uuid
-
 from homeassistant import config_entries
 from homeassistant.core import callback
 
@@ -65,14 +63,12 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_user(self, user_input=None):
         errors = {}
 
-        # Abort if a config entry with the same unique ID already exists
+        # Set a stable, deterministic unique id so that the guard below
+        # can detect a second config flow immediately — before the user
+        # fills in any form fields.  Using the integration domain as the
+        # unique id enforces the "only one entry" constraint.
+        await self.async_set_unique_id(DOMAIN)
         self._abort_if_unique_id_configured()
-
-        # Check if there's already an entry for this domain
-        existing_entries = self.hass.config_entries.async_entries(DOMAIN)
-        if existing_entries:
-            errors["base"] = "only_one_entry_allowed"
-            return self.async_show_form(step_id="user", errors=errors)
 
         # If user_input is not None, the user has submitted the form
         if user_input is not None:
@@ -255,9 +251,6 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._user_input["hsem_ev_charger_power"] = self._user_input.get(
                     "hsem_ev_charger_power", None
                 )
-
-                # Set unique ID for this config flow based on DOMAIN
-                await self.async_set_unique_id(str(uuid.uuid4()))
 
                 return await self.async_step_batteries_schedule_1()
 
