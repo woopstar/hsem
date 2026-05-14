@@ -366,6 +366,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         for i in range(len(slots)):
             combined_ev_load[i] += ev_load_by_idx[i]
 
+        injected_kwh = sum(ev_load_by_idx)
         if plan.state not in (
             "not_connected",
             "smart_charging_disabled",
@@ -374,7 +375,9 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
             warnings.append(
                 f"EV planned load ({label}): state={plan.state}, "
                 f"total_kwh_needed={plan.total_kwh_needed:.2f}, "
-                f"charging_slots={len(plan.charging_slots)}."
+                f"charging_slots={len(plan.charging_slots)}, "
+                f"injected_kwh={injected_kwh:.3f}, "
+                f"base_load_includes_ev={base_includes}."
             )
         return plan
 

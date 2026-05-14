@@ -118,6 +118,7 @@ class EVChargingPlan:
 
     state: str = "unavailable"
     ev_connected: bool = False
+    base_load_includes_ev: bool = False
     current_soc_pct: float = 0.0
     target_soc_pct: float = 80.0
     battery_capacity_kwh: float = 0.0
@@ -137,6 +138,7 @@ class EVChargingPlan:
             "current_soc": round(self.current_soc_pct, 1),
             "target_soc": round(self.target_soc_pct, 1),
             "ev_connected": self.ev_connected,
+            "base_load_includes_ev": self.base_load_includes_ev,
             "total_kwh_needed": round(self.total_kwh_needed, 3),
             "deadline": self.deadline.isoformat() if self.deadline else None,
             "charging_slots": [s.as_dict() for s in self.charging_slots],
@@ -235,6 +237,7 @@ def build_ev_charging_plan(
     """
     plan = EVChargingPlan(
         ev_connected=inp.ev_connected,
+        base_load_includes_ev=inp.base_load_includes_ev,
         current_soc_pct=inp.current_soc_pct,
         target_soc_pct=inp.target_soc_pct,
         battery_capacity_kwh=inp.battery_capacity_kwh,
