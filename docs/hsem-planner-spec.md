@@ -81,12 +81,63 @@ battery_charge_stored_kwh
 + grid_import_for_battery_kwh * charge_efficiency
 ```
 
+Grid import for charging:
+
+```text
+grid_import_for_battery_kwh = battery_charge_stored_kwh / charge_efficiency
+```
+
 Battery discharge must satisfy:
 
 ```text
 usable_battery_discharge_kwh
 = battery_energy_removed_kwh * discharge_efficiency
 ```
+
+Battery energy to remove in order to deliver a target house load:
+
+```text
+battery_energy_removed_kwh = house_load_kwh / discharge_efficiency
+```
+
+## Battery efficiency
+
+HSEM tracks charge-side and discharge-side efficiency independently.
+
+### Parameters
+
+| Parameter | Field | Default | Description |
+|---|---|---|---|
+| Charge efficiency | `battery_charge_efficiency_pct` | 95 % | Fraction of input energy stored. |
+| Discharge efficiency | `battery_discharge_efficiency_pct` | 95 % | Fraction of stored energy delivered to house. |
+
+### Semantics
+
+```text
+battery_stored = grid_or_pv_input × (charge_efficiency_pct / 100)
+house_delivered = battery_removed × (discharge_efficiency_pct / 100)
+grid_import_for_battery = battery_stored / (charge_efficiency_pct / 100)
+battery_to_remove = house_load / (discharge_efficiency_pct / 100)
+```
+
+Round-trip yield:
+
+```text
+roundtrip_yield = (charge_efficiency_pct / 100) × (discharge_efficiency_pct / 100)
+roundtrip_loss  = 1 − roundtrip_yield
+```
+
+Example (90 % / 90 %): yield = 0.81, loss = 19 %.
+
+### Invariants for tests
+
+- Charging 10 kWh at 90 % efficiency must draw 10 / 0.9 ≈ 11.11 kWh from the grid.
+- Charging 10 kWh at 100 % efficiency must draw exactly 10 kWh from the grid.
+- Discharging 10 kWh battery energy at 90 % efficiency must deliver 9 kWh to the house.
+- The round-trip cost term (`conversion_loss_cost`) must use
+  `1 − charge_eff × discharge_eff` when explicit efficiencies are set.
+- When both efficiencies are 100 %, the legacy `conversion_loss_pct` field drives
+  the `conversion_loss_cost` term (backwards compatibility).
 
 ## SoC simulation
 

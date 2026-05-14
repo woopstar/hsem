@@ -98,9 +98,23 @@ class CostWeights:
         battery_expected_cycles:
             Expected total lifetime charge/discharge cycles.  Used only when
             ``cycle_cost_per_kwh`` is ``None``.
+        charge_efficiency_pct:
+            Charge-side efficiency as a percentage (0-100).  Energy stored in
+            the battery equals input energy × (charge_efficiency_pct / 100).
+            Used in the grid-import cost term: grid import for charging equals
+            ``batteries_charged / (charge_efficiency_pct / 100)``.
+            Defaults to 100 % (no charge-side loss) so existing callers are
+            unaffected unless they explicitly pass this value.
         conversion_loss_pct:
-            Round-trip conversion loss as a percentage (0-100).  Used to
-            compute the energy lost per charge/discharge cycle.
+            Round-trip conversion loss as a percentage (0-100).  Legacy term
+            used to compute the ``conversion_loss_cost`` penalty.  When
+            ``charge_efficiency_pct`` and ``discharge_efficiency_pct`` are set,
+            the roundtrip loss implied by those values supersedes this field for
+            the ``conversion_loss_cost`` calculation.
+        discharge_efficiency_pct:
+            Discharge-side efficiency as a percentage (0-100).  Energy delivered
+            to the house equals battery energy removed × (discharge_efficiency_pct / 100).
+            Defaults to 100 % (no discharge-side loss) for backward compatibility.
     """
 
     # SoC guard penalties
@@ -122,7 +136,11 @@ class CostWeights:
     battery_rated_capacity_kwh: float = 10.0
     battery_expected_cycles: int = 6000
 
-    # Conversion loss
+    # Separate charge / discharge efficiencies
+    charge_efficiency_pct: float = 100.0
+    discharge_efficiency_pct: float = 100.0
+
+    # Conversion loss (legacy round-trip term)
     conversion_loss_pct: float = 10.0
 
 
@@ -306,7 +324,22 @@ def score_plan(
     )
 
     cycle_cost_kwh = _resolve_cycle_cost(weights)
-    loss_fraction = weights.conversion_loss_pct / 100.0
+
+    # Resolve the effective roundtrip loss fraction.
+    # When separate charge/discharge efficiencies are provided (both non-default),
+    # we compute the roundtrip loss from them:
+    #   roundtrip_loss = 1 - (charge_eff × discharge_eff)
+    # Otherwise fall back to the legacy conversion_loss_pct field.
+    charge_eff = max(min(weights.charge_efficiency_pct, 100.0), 1.0) / 100.0
+    discharge_eff = max(min(weights.discharge_efficiency_pct, 100.0), 1.0) / 100.0
+    if (
+        weights.charge_efficiency_pct < 100.0 - 1e-9
+        or weights.discharge_efficiency_pct < 100.0 - 1e-9
+    ):
+        # At least one efficiency is below 100 % — use the product-based roundtrip loss.
+        loss_fraction = 1.0 - charge_eff * discharge_eff
+    else:
+        loss_fraction = weights.conversion_loss_pct / 100.0
 
     import_cost = 0.0
     export_revenue = 0.0
@@ -326,7 +359,9 @@ def score_plan(
         if math.isnan(exp_price):
             exp_price = 0.0
 
-        # 1. Import cost
+        # 1. Import cost — grid_import_kwh already reflects the extra grid draw
+        #    needed to store energy through the charge efficiency (i.e. the
+        #    simulation writes grid_import_kwh = charge_stored / charge_eff).
         if slot.grid_import_kwh > 1e-9:
             import_cost += slot.grid_import_kwh * imp_price
 
@@ -334,8 +369,9 @@ def score_plan(
         if slot.grid_export_kwh > 1e-9:
             export_revenue += slot.grid_export_kwh * exp_price
 
-        # 3. Conversion loss cost — energy burned during round-trip, priced at
-        #    mid-market (average of import and export) as a neutral proxy.
+        # 3. Conversion loss cost — opportunity cost of energy burned in the
+        #    round-trip (charge loss + discharge loss), priced at mid-market
+        #    (average of import and export) as a neutral proxy.
         cycled_kwh = slot.batteries_charged + slot.batteries_discharged
         if cycled_kwh > 1e-9 and loss_fraction > 1e-9:
             lost_kwh = cycled_kwh * loss_fraction

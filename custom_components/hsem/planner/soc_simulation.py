@@ -9,6 +9,9 @@ This module implements a forward-pass SoC simulator that:
 - Clamps discharge energy to the available capacity above min SoC and to
   the per-slot discharge power limit (when set).
 - Tracks per-slot PV, load, charge, discharge, grid import and export.
+- Applies separate charge and discharge efficiency so that:
+    battery_stored = input_energy × charge_efficiency
+    house_delivered = battery_removed × discharge_efficiency
 
 Design principles
 -----------------
@@ -16,10 +19,12 @@ Design principles
 - Mutates the ``PlannedSlot`` list in place (same pattern as other
   ``populate_*`` helpers in :mod:`slot_population`).
 - ``batteries_charged`` on each slot is the *pre-simulation* scheduled
-  charge energy (set by :func:`~charge_scheduler.apply_charge_schedules`).
+  charge energy expressed as energy *entering the battery* (post charge-loss).
   The simulation may reduce it if the battery would exceed ``max_soc``.
-- ``batteries_discharged``, ``grid_import_kwh``, and ``grid_export_kwh``
-  are written by this function.
+- ``batteries_discharged`` is the energy *removed from the battery* (pre
+  discharge-loss).  The house actually receives
+  ``batteries_discharged × discharge_efficiency``.
+- ``grid_import_kwh`` and ``grid_export_kwh`` are written by this function.
 """
 
 from __future__ import annotations
@@ -39,6 +44,8 @@ def simulate_soc(
     max_discharge_per_slot: float | None,
     rated_kwh: float = 0.0,
     end_of_discharge_soc_pct: float = 0.0,
+    charge_efficiency_pct: float = 100.0,
+    discharge_efficiency_pct: float = 100.0,
 ) -> None:
     """Forward-simulate battery SoC through all planning slots.
 
@@ -50,11 +57,25 @@ def simulate_soc(
       to the *rated* capacity.  When ``rated_kwh`` is not provided the value
       falls back to the relative usable-range percentage.
     - ``batteries_charged`` — may be *reduced* from its pre-set value if the
-      battery would exceed ``max_capacity_kwh``.
-    - ``batteries_discharged`` — energy drawn from the battery, clamped to
-      the discharge power limit and available capacity.
+      battery would exceed ``max_capacity_kwh``.  Represents energy *entering
+      the battery* (post charge-side loss).
+    - ``batteries_discharged`` — energy *removed from the battery* (pre
+      discharge-side loss), clamped to the discharge power limit and available
+      capacity.  The house actually receives
+      ``batteries_discharged × (discharge_efficiency_pct / 100)``.
     - ``grid_import_kwh`` — energy imported from the grid this slot.
     - ``grid_export_kwh`` — energy exported to the grid this slot.
+
+    Efficiency model
+    ----------------
+    - **Charge side**: ``charge_efficiency_pct`` (0-100) determines how much
+      of the commanded input energy is actually stored.  The battery SoC
+      increases by ``charge_commanded × (charge_efficiency_pct / 100)``.  Grid
+      import for charging is ``charge_stored / (charge_efficiency_pct / 100)``.
+    - **Discharge side**: ``discharge_efficiency_pct`` (0-100) determines how
+      much of the removed battery energy reaches the house.  The battery SoC
+      decreases by the full ``batteries_discharged`` value; the house receives
+      ``batteries_discharged × (discharge_efficiency_pct / 100)``.
 
     The simulation is DST-safe: all ``slot.start`` / ``slot.end`` are
     normalised to ``now.tzinfo`` before comparison.
@@ -69,7 +90,7 @@ def simulate_soc(
         max_capacity_kwh: Absolute ceiling imposed by ``battery_max_soc_pct``
             expressed in usable kWh.  Must be ≤ ``usable_kwh``.
         max_charge_per_slot: Maximum energy (kWh) that can be *stored* per slot
-            after conversion losses.
+            (battery-side, already accounts for charge-side loss in the caller).
         max_discharge_per_slot: Maximum energy (kWh) that can be *drawn* from
             the battery per slot.  ``None`` means unlimited (inverter default).
         rated_kwh: Nameplate capacity in kWh.  When > 0 the SoC percentage is
@@ -78,7 +99,16 @@ def simulate_soc(
         end_of_discharge_soc_pct: End-of-discharge floor as a percentage.
             Used together with ``rated_kwh`` to convert kWh-above-floor to
             absolute SoC.
+        charge_efficiency_pct: Charge-side efficiency as a percentage (0-100).
+            Energy stored = charge_commanded × (charge_efficiency_pct / 100).
+            Defaults to 100 % (no charge-side loss) for backward compatibility.
+        discharge_efficiency_pct: Discharge-side efficiency as a percentage
+            (0-100).  Energy to house = battery_removed × (discharge_efficiency_pct / 100).
+            Defaults to 100 % (no discharge-side loss) for backward compatibility.
     """
+    # Clamp efficiencies to a valid range to avoid division by zero or nonsense.
+    charge_eff = max(min(charge_efficiency_pct, 100.0), 1.0) / 100.0
+    discharge_eff = max(min(discharge_efficiency_pct, 100.0), 1.0) / 100.0
     cap = current_kwh  # working state — kWh above discharge floor
 
     for slot in slots:
@@ -119,34 +149,78 @@ def simulate_soc(
             # anything the battery cannot supply is imported from the grid.
             # Scheduled charge (from grid or pre-planned solar) is in addition
             # to the discharge.
-            max_discharge = cap  # can't discharge beyond available capacity
+            #
+            # Discharge efficiency: to deliver `net_demand` kWh to the house
+            # the battery must release `net_demand / discharge_eff` kWh.
+            # We cap to available capacity and per-slot limit then compute
+            # what the house actually receives from that draw.
+            max_discharge_cap = cap  # can't discharge beyond available capacity
             if max_discharge_per_slot is not None:
-                max_discharge = min(max_discharge, max_discharge_per_slot)
-            discharge = min(net_demand, max_discharge)
+                max_discharge_cap = min(max_discharge_cap, max_discharge_per_slot)
+            # Battery energy to remove: enough to cover demand via discharge_eff
+            discharge_needed = net_demand / discharge_eff
+            discharge = min(discharge_needed, max_discharge_cap)
             discharge = max(discharge, 0.0)
-            grid_import = max(net_demand - discharge + scheduled_charge, 0.0)
+            # Energy actually delivered to the house from battery (post loss)
+            house_from_battery = discharge * discharge_eff
+            # Remaining demand covered by grid import; plus grid energy needed
+            # to store the pre-scheduled charge (grid pays charge_input energy,
+            # but battery only stores charge_stored kWh due to charge_eff).
+            grid_import = max(
+                net_demand - house_from_battery + scheduled_charge / charge_eff, 0.0
+            )
             grid_export = 0.0
         else:
-            # PV surplus beyond house load.
-            # The pre-scheduled charge is already accounted for in batteries_charged.
-            # Any additional PV surplus that cannot be stored is exported.
+            # PV surplus (or balanced: net_demand == 0) beyond house load.
+            # The pre-scheduled charge (batteries_charged) is expressed as battery-side
+            # stored kWh.  It can be sourced from PV or from the grid.
+            # We attribute as much of the scheduled charge as possible to PV surplus;
+            # any remainder must be imported from the grid.
             discharge = 0.0
-            pv_surplus = abs(net_demand)  # kWh of PV beyond house load
+            pv_surplus = abs(net_demand)  # kWh of PV beyond house load (≥ 0)
+
+            # How much PV input is needed to store scheduled_charge in the battery?
+            scheduled_charge_pv_input = scheduled_charge / charge_eff
+            # How much of that PV input is available?
+            pv_for_scheduled = min(scheduled_charge_pv_input, pv_surplus)
+            # Battery-side energy sourced from PV for the scheduled charge:
+            pv_battery_charge = pv_for_scheduled * charge_eff
+            # Any shortfall in the scheduled charge must come from the grid:
+            grid_charge_battery = scheduled_charge - pv_battery_charge  # battery-side
+            grid_charge_input = (
+                grid_charge_battery / charge_eff if grid_charge_battery > 1e-9 else 0.0
+            )
+
+            # Remaining PV surplus after serving the scheduled charge:
+            pv_remaining = max(pv_surplus - pv_for_scheduled, 0.0)
+
             # Additional PV that can still be absorbed by the battery
             # (beyond what the scheduler already planned):
             remaining_headroom = max(headroom - scheduled_charge, 0.0)
             remaining_power = max(max_charge_per_slot - scheduled_charge, 0.0)
-            additional_pv_charge = min(pv_surplus, remaining_headroom, remaining_power)
+            max_additional_pv_input = min(
+                pv_remaining,
+                remaining_headroom / charge_eff,
+                remaining_power / charge_eff,
+            )
+            max_additional_pv_input = max(max_additional_pv_input, 0.0)
+            additional_pv_charge = max_additional_pv_input * charge_eff
             additional_pv_charge = max(additional_pv_charge, 0.0)
-            # Total energy entering the battery this slot:
+
+            # Total battery-side energy stored this slot:
             total_charge = scheduled_charge + additional_pv_charge
-            grid_import = 0.0
-            grid_export = max(pv_surplus - additional_pv_charge, 0.0)
+
+            # Grid import: only the grid-sourced portion of the scheduled charge
+            grid_import = grid_charge_input
+            # PV exported = remaining PV not absorbed by battery
+            grid_export = max(pv_remaining - max_additional_pv_input, 0.0)
+
             # Override scheduled_charge for state update (include PV capture).
             # batteries_charged keeps the originally-scheduled value (no change).
             scheduled_charge = total_charge
 
         # --- Update battery state ---
+        # The battery stores/releases actual kWh (post charge-eff, pre discharge-eff).
         cap = cap + scheduled_charge - discharge
         # Enforce hard bounds (floating-point safety).
         cap = min(max(cap, 0.0), usable_kwh)

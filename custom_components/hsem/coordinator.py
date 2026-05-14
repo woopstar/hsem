@@ -547,7 +547,15 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 live.huawei_batteries_max_discharge_power_w
             )
             or None,
+            battery_charge_efficiency_pct=convert_to_float(
+                cfg.batteries_charge_efficiency
+            )
+            or 95.0,
             battery_conversion_loss_pct=convert_to_float(cfg.batteries_conversion_loss),
+            battery_discharge_efficiency_pct=convert_to_float(
+                cfg.batteries_discharge_efficiency
+            )
+            or 95.0,
             battery_purchase_price=convert_to_float(cfg.batteries_purchase_price),
             battery_expected_cycles=(
                 v

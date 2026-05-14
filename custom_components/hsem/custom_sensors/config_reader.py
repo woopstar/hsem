@@ -232,8 +232,20 @@ def build_sensor_config(config_entry) -> SensorConfig:
     cfg.ev_second = ev2
 
     # Battery economics
+    cfg.batteries_charge_efficiency = (
+        convert_to_float(
+            get_config_value(config_entry, "hsem_batteries_charge_efficiency")
+        )
+        or 95.0
+    )
     cfg.batteries_conversion_loss = convert_to_float(
         get_config_value(config_entry, "hsem_batteries_conversion_loss")
+    )
+    cfg.batteries_discharge_efficiency = (
+        convert_to_float(
+            get_config_value(config_entry, "hsem_batteries_discharge_efficiency")
+        )
+        or 95.0
     )
     cfg.batteries_purchase_price = convert_to_float(
         get_config_value(config_entry, "hsem_batteries_purchase_price")
