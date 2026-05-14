@@ -1562,3 +1562,852 @@ class TestEvAcLoadAndSoCPath:
                 f"Slot {s.start.hour}: total demand {total_demand:.2f} should exceed "
                 "house-only load of 0.5 kWh; ev_planned_load_kwh not applied to SoC simulation"
             )
+
+
+# ---------------------------------------------------------------------------
+# TestEvLoadSemantics (issue #404)
+# Tests for clear EV load semantics:
+#   - ev_planned_load_kwh      = extra load added to net consumption
+#   - ev_accounted_load_kwh    = load already in house consumption
+#   - ev_total_planned_load_kwh = sum of both (always shows full EV intent)
+#   - Multi-EV accumulation must be additive (no overwrite)
+# ---------------------------------------------------------------------------
+
+
+class TestEvLoadSemantics:
+    """Verify three-field EV load semantics introduced in issue #404.
+
+    Test coverage:
+      1. apply_ev_planned_load_to_slots is additive (not overwrite-style).
+      2. Two EVs same slot, base_load_includes_ev=False → load summed.
+      3. Two EVs same slot, base_load_includes_ev=True → accounted, not injected.
+      4. Only second EV has load → plan still works, primary not required.
+      5. Second EV zero load does not clear primary EV load.
+      6. Net consumption does not double-count EV when base load includes EV.
+      7. Net consumption includes EV when base load excludes EV.
+      8. Final recommendation exposes ev_total_planned_load_kwh > 0 even when
+         ev_planned_load_kwh == 0 (base_load_includes_ev=True).
+      9. EVSmartCharging label applied when ev_total > 0, even when
+         ev_planned_load_kwh == 0 (base_load_includes_ev=True).
+    """
+
+    # ------------------------------------------------------------------
+    # Helper factories
+    # ------------------------------------------------------------------
+
+    def _ev_plan_with_single_slot(
+        self, hour: int, ac_load_kwh: float
+    ) -> EVChargingPlan:
+        """Build a minimal EVChargingPlan with one slot at the given hour."""
+        from custom_components.hsem.planner.ev_planner import EVChargingSlot
+
+        plan = EVChargingPlan()
+        plan.state = "waiting"
+        start = datetime(2024, 6, 15, hour, 0, 0, tzinfo=UTC)
+        end = start + timedelta(hours=1)
+        ev_slot = EVChargingSlot(
+            start=start,
+            end=end,
+            estimated_charged_kwh=ac_load_kwh,
+            ac_load_kwh=ac_load_kwh,
+        )
+        plan.charging_slots.append(ev_slot)
+        plan.planned_load_by_slot[start.isoformat()] = ac_load_kwh
+        return plan
+
+    def _slot_starts(self, n: int = 24) -> list[datetime]:
+        return [datetime(2024, 6, 15, h, 0, 0, tzinfo=UTC) for h in range(n)]
+
+    # ------------------------------------------------------------------
+    # Test 1: apply_ev_planned_load_to_slots is additive
+    # ------------------------------------------------------------------
+
+    def test_apply_ev_planned_load_is_additive(self):
+        """When a slot already has load, new EV load is ADDED, not overwritten.
+
+        Given:
+          slot[8] already has 3.0 kWh
+          EV plan assigns 4.0 kWh to slot[8]
+
+        Expected:
+          slot[8] = 3.0 + 4.0 = 7.0 kWh
+        """
+        starts = self._slot_starts()
+        result = [0.0] * 24
+        result[8] = 3.0  # pre-existing load
+
+        plan = self._ev_plan_with_single_slot(hour=8, ac_load_kwh=4.0)
+        apply_ev_planned_load_to_slots(
+            starts, result, plan, base_load_includes_ev=False
+        )
+        assert result[8] == pytest.approx(7.0), (
+            f"Expected additive result 7.0, got {result[8]}"
+        )
+
+    # ------------------------------------------------------------------
+    # Test 2: Two EVs, same slot, base_load_includes_ev=False
+    # ------------------------------------------------------------------
+
+    def test_two_evs_same_slot_base_excludes_ev(self):
+        """Primary (3.0 kWh) + secondary (4.0 kWh) in same slot, base excludes EV.
+
+        Expected:
+          ev_planned_load_kwh      = 7.0  (injected into net consumption)
+          ev_accounted_load_kwh    = 0.0  (nothing pre-included)
+          ev_total_planned_load_kwh = 7.0
+        """
+        avg_house_consumption = 1.0
+        solcast_pv_estimate = 2.0
+        now_iso = "2024-06-15T06:00:00+00:00"
+        from datetime import datetime as _dt2
+
+        now = _dt2.fromisoformat(now_iso)
+        deadline = now + timedelta(hours=6)
+
+        prices = [
+            PricePoint(hour=h, import_price=0.20, export_price=0.05) for h in range(24)
+        ]
+        pv = [SolcastSlot(hour=h, pv_estimate=0.0) for h in range(24)]
+        pv[9] = SolcastSlot(hour=9, pv_estimate=solcast_pv_estimate)
+        avgs = [
+            HourlyConsumptionAverage(
+                hour=h,
+                avg_1d=avg_house_consumption,
+                avg_3d=avg_house_consumption,
+                avg_7d=avg_house_consumption,
+                avg_14d=avg_house_consumption,
+            )
+            for h in range(24)
+        ]
+
+        # Primary EV: needs 3.0 kWh (3 → 6 % of 100 kWh, charger=11kW)
+        # Second EV: needs 4.0 kWh (4 → 8 % of 100 kWh, charger=11kW)
+        # Both have deadline past slot 8, so they both schedule at slot 8 (cheapest/first)
+        inp = PlannerInput(
+            now_iso=now_iso,
+            interval_minutes=60,
+            interval_length_hours=24,
+            battery_soc_pct=50.0,
+            battery_rated_capacity_kwh=10.0,
+            battery_end_of_discharge_soc_pct=10.0,
+            battery_max_soc_pct=90.0,
+            battery_max_charge_power_w=5000.0,
+            battery_max_discharge_power_w=5000.0,
+            battery_charge_efficiency_pct=100.0,
+            battery_conversion_loss_pct=0.0,
+            battery_discharge_efficiency_pct=100.0,
+            weight_1d=25,
+            weight_3d=30,
+            weight_7d=30,
+            weight_14d=15,
+            consumption_averages=avgs,
+            price_points=prices,
+            solcast_slots=pv,
+            # Primary EV
+            ev_planned_load_enabled=True,
+            ev_planned_load_connected=True,
+            ev_planned_load_smart_charging_enabled=True,
+            ev_planned_load_current_soc_pct=0.0,
+            ev_planned_load_target_soc_pct=3.0,  # 3 kWh needed
+            ev_planned_load_battery_capacity_kwh=100.0,
+            ev_planned_load_charger_power_kw=11.0,
+            ev_planned_load_charger_efficiency_pct=100.0,
+            ev_planned_load_deadline=deadline,
+            ev_planned_load_base_load_includes_ev=False,
+            # Second EV
+            ev_second_planned_load_enabled=True,
+            ev_second_planned_load_connected=True,
+            ev_second_planned_load_smart_charging_enabled=True,
+            ev_second_planned_load_current_soc_pct=0.0,
+            ev_second_planned_load_target_soc_pct=4.0,  # 4 kWh needed
+            ev_second_planned_load_battery_capacity_kwh=100.0,
+            ev_second_planned_load_charger_power_kw=11.0,
+            ev_second_planned_load_charger_efficiency_pct=100.0,
+            ev_second_planned_load_deadline=deadline,
+            ev_second_planned_load_base_load_includes_ev=False,
+        )
+        out = run_planner(inp)
+
+        # Both EVs together need 7.0 kWh total
+        total_ev_injected = sum(s.ev_planned_load_kwh for s in out.slots)
+        total_ev_accounted = sum(s.ev_accounted_load_kwh for s in out.slots)
+        total_ev_total = sum(s.ev_total_planned_load_kwh for s in out.slots)
+
+        assert total_ev_injected == pytest.approx(7.0, abs=0.1), (
+            f"Total ev_planned_load_kwh should be 7.0 (3+4), got {total_ev_injected:.3f}"
+        )
+        assert total_ev_accounted == pytest.approx(0.0, abs=1e-9), (
+            f"ev_accounted_load_kwh should be 0 (base excludes EV), got {total_ev_accounted:.3f}"
+        )
+        assert total_ev_total == pytest.approx(7.0, abs=0.1), (
+            f"ev_total_planned_load_kwh should be 7.0, got {total_ev_total:.3f}"
+        )
+
+    # ------------------------------------------------------------------
+    # Test 3: Two EVs, same slot, base_load_includes_ev=True
+    # ------------------------------------------------------------------
+
+    def test_two_evs_same_slot_base_includes_ev(self):
+        """Primary (3 kWh) + secondary (4 kWh) in same slot, base includes EV.
+
+        Expected:
+          ev_planned_load_kwh       = 0.0  (not injected — already in base load)
+          ev_accounted_load_kwh     = 7.0  (pre-included in house consumption)
+          ev_total_planned_load_kwh = 7.0
+          estimated_net_consumption = avg_house - pv  (no extra EV added)
+        """
+        avg_house = 2.0
+        pv_kwh = 0.5
+        now_iso = "2024-06-15T06:00:00+00:00"
+        from datetime import datetime as _dt2
+
+        now = _dt2.fromisoformat(now_iso)
+        deadline = now + timedelta(hours=6)
+
+        prices = [
+            PricePoint(hour=h, import_price=0.20, export_price=0.05) for h in range(24)
+        ]
+        pv = [SolcastSlot(hour=h, pv_estimate=pv_kwh) for h in range(24)]
+        avgs = [
+            HourlyConsumptionAverage(
+                hour=h,
+                avg_1d=avg_house,
+                avg_3d=avg_house,
+                avg_7d=avg_house,
+                avg_14d=avg_house,
+            )
+            for h in range(24)
+        ]
+
+        inp = PlannerInput(
+            now_iso=now_iso,
+            interval_minutes=60,
+            interval_length_hours=24,
+            battery_soc_pct=50.0,
+            battery_rated_capacity_kwh=10.0,
+            battery_end_of_discharge_soc_pct=10.0,
+            battery_max_soc_pct=90.0,
+            battery_max_charge_power_w=5000.0,
+            battery_max_discharge_power_w=5000.0,
+            battery_charge_efficiency_pct=100.0,
+            battery_conversion_loss_pct=0.0,
+            battery_discharge_efficiency_pct=100.0,
+            weight_1d=25,
+            weight_3d=30,
+            weight_7d=30,
+            weight_14d=15,
+            consumption_averages=avgs,
+            price_points=prices,
+            solcast_slots=pv,
+            # Primary EV — base load includes EV
+            ev_planned_load_enabled=True,
+            ev_planned_load_connected=True,
+            ev_planned_load_smart_charging_enabled=True,
+            ev_planned_load_current_soc_pct=0.0,
+            ev_planned_load_target_soc_pct=3.0,
+            ev_planned_load_battery_capacity_kwh=100.0,
+            ev_planned_load_charger_power_kw=11.0,
+            ev_planned_load_charger_efficiency_pct=100.0,
+            ev_planned_load_deadline=deadline,
+            ev_planned_load_base_load_includes_ev=True,
+            # Second EV — base load includes EV
+            ev_second_planned_load_enabled=True,
+            ev_second_planned_load_connected=True,
+            ev_second_planned_load_smart_charging_enabled=True,
+            ev_second_planned_load_current_soc_pct=0.0,
+            ev_second_planned_load_target_soc_pct=4.0,
+            ev_second_planned_load_battery_capacity_kwh=100.0,
+            ev_second_planned_load_charger_power_kw=11.0,
+            ev_second_planned_load_charger_efficiency_pct=100.0,
+            ev_second_planned_load_deadline=deadline,
+            ev_second_planned_load_base_load_includes_ev=True,
+        )
+        out = run_planner(inp)
+
+        # ev_planned_load_kwh must be 0 — no extra injection
+        for s in out.slots:
+            assert s.ev_planned_load_kwh == pytest.approx(0.0), (
+                f"Slot {s.start.hour}: ev_planned_load_kwh should be 0 "
+                f"(base includes EV), got {s.ev_planned_load_kwh}"
+            )
+
+        total_ev_accounted = sum(s.ev_accounted_load_kwh for s in out.slots)
+        total_ev_total = sum(s.ev_total_planned_load_kwh for s in out.slots)
+
+        assert total_ev_accounted == pytest.approx(7.0, abs=0.1), (
+            f"ev_accounted_load_kwh total should be 7.0, got {total_ev_accounted:.3f}"
+        )
+        assert total_ev_total == pytest.approx(7.0, abs=0.1), (
+            f"ev_total_planned_load_kwh total should be 7.0, got {total_ev_total:.3f}"
+        )
+
+        # net consumption must NOT include EV load (no double-count)
+        for s in out.slots:
+            expected_net = round(
+                s.avg_house_consumption + s.ev_planned_load_kwh - s.solcast_pv_estimate,
+                3,
+            )
+            assert s.estimated_net_consumption == pytest.approx(
+                expected_net, abs=1e-6
+            ), (
+                f"Slot {s.start.hour}: net consumption should be house - pv "
+                f"(ev not injected), got {s.estimated_net_consumption}"
+            )
+
+    # ------------------------------------------------------------------
+    # Test 4: Only second EV has load — primary EV not required
+    # ------------------------------------------------------------------
+
+    def test_only_second_ev_has_load(self):
+        """Second EV with 4.0 kWh; primary EV fully charged.
+
+        Primary EV must not be required for EV planning to work.
+        ev_total_planned_load_kwh must reflect only the second EV load.
+        """
+        now_iso = "2024-06-15T06:00:00+00:00"
+        from datetime import datetime as _dt2
+
+        now = _dt2.fromisoformat(now_iso)
+        deadline = now + timedelta(hours=6)
+
+        prices = [
+            PricePoint(hour=h, import_price=0.20, export_price=0.05) for h in range(24)
+        ]
+        pv = [SolcastSlot(hour=h, pv_estimate=0.0) for h in range(24)]
+        avgs = [
+            HourlyConsumptionAverage(
+                hour=h, avg_1d=1.0, avg_3d=1.0, avg_7d=1.0, avg_14d=1.0
+            )
+            for h in range(24)
+        ]
+
+        inp = PlannerInput(
+            now_iso=now_iso,
+            interval_minutes=60,
+            interval_length_hours=24,
+            battery_soc_pct=50.0,
+            battery_rated_capacity_kwh=10.0,
+            battery_end_of_discharge_soc_pct=10.0,
+            battery_max_soc_pct=90.0,
+            battery_max_charge_power_w=5000.0,
+            battery_max_discharge_power_w=5000.0,
+            battery_charge_efficiency_pct=100.0,
+            battery_conversion_loss_pct=0.0,
+            battery_discharge_efficiency_pct=100.0,
+            weight_1d=25,
+            weight_3d=30,
+            weight_7d=30,
+            weight_14d=15,
+            consumption_averages=avgs,
+            price_points=prices,
+            solcast_slots=pv,
+            # Primary EV: fully charged — should contribute nothing
+            ev_planned_load_enabled=True,
+            ev_planned_load_connected=True,
+            ev_planned_load_smart_charging_enabled=True,
+            ev_planned_load_current_soc_pct=80.0,
+            ev_planned_load_target_soc_pct=80.0,  # 0 kWh needed → fully_charged
+            ev_planned_load_battery_capacity_kwh=100.0,
+            ev_planned_load_charger_power_kw=11.0,
+            ev_planned_load_charger_efficiency_pct=100.0,
+            ev_planned_load_deadline=deadline,
+            ev_planned_load_base_load_includes_ev=False,
+            # Second EV: needs 4.0 kWh
+            ev_second_planned_load_enabled=True,
+            ev_second_planned_load_connected=True,
+            ev_second_planned_load_smart_charging_enabled=True,
+            ev_second_planned_load_current_soc_pct=0.0,
+            ev_second_planned_load_target_soc_pct=4.0,
+            ev_second_planned_load_battery_capacity_kwh=100.0,
+            ev_second_planned_load_charger_power_kw=11.0,
+            ev_second_planned_load_charger_efficiency_pct=100.0,
+            ev_second_planned_load_deadline=deadline,
+            ev_second_planned_load_base_load_includes_ev=False,
+        )
+        out = run_planner(inp)
+
+        total_ev_total = sum(s.ev_total_planned_load_kwh for s in out.slots)
+        assert total_ev_total == pytest.approx(4.0, abs=0.1), (
+            f"ev_total_planned_load_kwh should be 4.0 (second EV only), "
+            f"got {total_ev_total:.3f}"
+        )
+        # Primary EV plan should be fully_charged
+        assert out.ev_charging_plan is not None
+        assert out.ev_charging_plan.state == "fully_charged"
+
+    # ------------------------------------------------------------------
+    # Test 5: Second EV zero load does not clear primary EV load
+    # ------------------------------------------------------------------
+
+    def test_second_ev_zero_load_does_not_clear_primary(self):
+        """When second EV needs 0 kWh, primary EV load must not be cleared.
+
+        Given:
+          primary_ev_ac_load = 3.0 kWh
+          second_ev needs 0 kWh (fully charged → no slots)
+
+        Expected:
+          ev_total_planned_load_kwh = 3.0 (primary unchanged)
+        """
+        now_iso = "2024-06-15T06:00:00+00:00"
+        from datetime import datetime as _dt2
+
+        now = _dt2.fromisoformat(now_iso)
+        deadline = now + timedelta(hours=6)
+
+        prices = [
+            PricePoint(hour=h, import_price=0.20, export_price=0.05) for h in range(24)
+        ]
+        pv = [SolcastSlot(hour=h, pv_estimate=0.0) for h in range(24)]
+        avgs = [
+            HourlyConsumptionAverage(
+                hour=h, avg_1d=1.0, avg_3d=1.0, avg_7d=1.0, avg_14d=1.0
+            )
+            for h in range(24)
+        ]
+
+        inp = PlannerInput(
+            now_iso=now_iso,
+            interval_minutes=60,
+            interval_length_hours=24,
+            battery_soc_pct=50.0,
+            battery_rated_capacity_kwh=10.0,
+            battery_end_of_discharge_soc_pct=10.0,
+            battery_max_soc_pct=90.0,
+            battery_max_charge_power_w=5000.0,
+            battery_max_discharge_power_w=5000.0,
+            battery_charge_efficiency_pct=100.0,
+            battery_conversion_loss_pct=0.0,
+            battery_discharge_efficiency_pct=100.0,
+            weight_1d=25,
+            weight_3d=30,
+            weight_7d=30,
+            weight_14d=15,
+            consumption_averages=avgs,
+            price_points=prices,
+            solcast_slots=pv,
+            # Primary EV: needs 3 kWh
+            ev_planned_load_enabled=True,
+            ev_planned_load_connected=True,
+            ev_planned_load_smart_charging_enabled=True,
+            ev_planned_load_current_soc_pct=0.0,
+            ev_planned_load_target_soc_pct=3.0,
+            ev_planned_load_battery_capacity_kwh=100.0,
+            ev_planned_load_charger_power_kw=11.0,
+            ev_planned_load_charger_efficiency_pct=100.0,
+            ev_planned_load_deadline=deadline,
+            ev_planned_load_base_load_includes_ev=False,
+            # Second EV: fully charged, needs 0 kWh
+            ev_second_planned_load_enabled=True,
+            ev_second_planned_load_connected=True,
+            ev_second_planned_load_smart_charging_enabled=True,
+            ev_second_planned_load_current_soc_pct=80.0,
+            ev_second_planned_load_target_soc_pct=80.0,  # 0 kWh needed
+            ev_second_planned_load_battery_capacity_kwh=100.0,
+            ev_second_planned_load_charger_power_kw=11.0,
+            ev_second_planned_load_charger_efficiency_pct=100.0,
+            ev_second_planned_load_deadline=deadline,
+            ev_second_planned_load_base_load_includes_ev=False,
+        )
+        out = run_planner(inp)
+
+        total_ev_total = sum(s.ev_total_planned_load_kwh for s in out.slots)
+        assert total_ev_total == pytest.approx(3.0, abs=0.1), (
+            f"ev_total_planned_load_kwh should be 3.0 (primary only, second is zero), "
+            f"got {total_ev_total:.3f}"
+        )
+
+    # ------------------------------------------------------------------
+    # Test 6: Net consumption does not double-count EV when base includes EV
+    # ------------------------------------------------------------------
+
+    def test_no_double_count_when_base_includes_ev(self):
+        """When base_load_includes_ev=True, EV is NOT added to net consumption.
+
+        Given:
+          avg_house_consumption = 5.0 kWh/h  (includes EV load)
+          solcast_pv_estimate   = 2.0 kWh/h
+          ev_total              = 4.0 kWh     (planned but already in base)
+
+        Expected:
+          estimated_net_consumption = 5.0 - 2.0 = 3.0 kWh
+          (not 5.0 + 4.0 - 2.0 = 7.0 kWh which would double-count the EV)
+        """
+        avg_house = 5.0
+        pv_kwh = 2.0
+        now_iso = "2024-06-15T06:00:00+00:00"
+        from datetime import datetime as _dt2
+
+        now = _dt2.fromisoformat(now_iso)
+        deadline = now + timedelta(hours=6)
+
+        prices = [
+            PricePoint(hour=h, import_price=0.20, export_price=0.05) for h in range(24)
+        ]
+        pv = [SolcastSlot(hour=h, pv_estimate=pv_kwh) for h in range(24)]
+        avgs = [
+            HourlyConsumptionAverage(
+                hour=h,
+                avg_1d=avg_house,
+                avg_3d=avg_house,
+                avg_7d=avg_house,
+                avg_14d=avg_house,
+            )
+            for h in range(24)
+        ]
+
+        inp = PlannerInput(
+            now_iso=now_iso,
+            interval_minutes=60,
+            interval_length_hours=24,
+            battery_soc_pct=50.0,
+            battery_rated_capacity_kwh=10.0,
+            battery_end_of_discharge_soc_pct=10.0,
+            battery_max_soc_pct=90.0,
+            battery_max_charge_power_w=5000.0,
+            battery_max_discharge_power_w=5000.0,
+            battery_charge_efficiency_pct=100.0,
+            battery_conversion_loss_pct=0.0,
+            battery_discharge_efficiency_pct=100.0,
+            weight_1d=25,
+            weight_3d=30,
+            weight_7d=30,
+            weight_14d=15,
+            consumption_averages=avgs,
+            price_points=prices,
+            solcast_slots=pv,
+            ev_planned_load_enabled=True,
+            ev_planned_load_connected=True,
+            ev_planned_load_smart_charging_enabled=True,
+            ev_planned_load_current_soc_pct=0.0,
+            ev_planned_load_target_soc_pct=4.0,  # 4 kWh planned but included in base
+            ev_planned_load_battery_capacity_kwh=100.0,
+            ev_planned_load_charger_power_kw=11.0,
+            ev_planned_load_charger_efficiency_pct=100.0,
+            ev_planned_load_deadline=deadline,
+            ev_planned_load_base_load_includes_ev=True,
+        )
+        out = run_planner(inp)
+
+        # Every slot: net = house - pv (EV not injected)
+        for s in out.slots:
+            expected_net = round(s.avg_house_consumption - s.solcast_pv_estimate, 3)
+            assert s.estimated_net_consumption == pytest.approx(
+                expected_net, abs=1e-6
+            ), (
+                f"Slot {s.start.hour}: expected net {expected_net:.3f} "
+                f"(avg_house={s.avg_house_consumption:.1f}, pv={s.solcast_pv_estimate:.1f}), "
+                f"got {s.estimated_net_consumption:.3f} — EV may be double-counted"
+            )
+            # ev_planned_load_kwh must be 0 (not injected)
+            assert s.ev_planned_load_kwh == pytest.approx(0.0), (
+                f"Slot {s.start.hour}: ev_planned_load_kwh should be 0 "
+                f"(base includes EV), got {s.ev_planned_load_kwh}"
+            )
+
+    # ------------------------------------------------------------------
+    # Test 7: Net consumption INCLUDES EV when base excludes EV
+    # ------------------------------------------------------------------
+
+    def test_net_consumption_includes_ev_when_base_excludes_ev(self):
+        """When base_load_includes_ev=False, EV IS added to net consumption.
+
+        Given:
+          avg_house_consumption = 5.0 kWh/h
+          solcast_pv_estimate   = 2.0 kWh/h
+          ev_total              = 4.0 kWh (planned, not in base load)
+
+        Expected for slot with EV load:
+          estimated_net_consumption = 5.0 + 4.0 - 2.0 = 7.0 kWh
+        """
+        avg_house = 5.0
+        pv_kwh = 2.0
+        now_iso = "2024-06-15T06:00:00+00:00"
+        from datetime import datetime as _dt2
+
+        now = _dt2.fromisoformat(now_iso)
+        deadline = now + timedelta(hours=6)
+
+        prices = [
+            PricePoint(hour=h, import_price=0.20, export_price=0.05) for h in range(24)
+        ]
+        pv = [SolcastSlot(hour=h, pv_estimate=pv_kwh) for h in range(24)]
+        avgs = [
+            HourlyConsumptionAverage(
+                hour=h,
+                avg_1d=avg_house,
+                avg_3d=avg_house,
+                avg_7d=avg_house,
+                avg_14d=avg_house,
+            )
+            for h in range(24)
+        ]
+
+        inp = PlannerInput(
+            now_iso=now_iso,
+            interval_minutes=60,
+            interval_length_hours=24,
+            battery_soc_pct=50.0,
+            battery_rated_capacity_kwh=10.0,
+            battery_end_of_discharge_soc_pct=10.0,
+            battery_max_soc_pct=90.0,
+            battery_max_charge_power_w=5000.0,
+            battery_max_discharge_power_w=5000.0,
+            battery_charge_efficiency_pct=100.0,
+            battery_conversion_loss_pct=0.0,
+            battery_discharge_efficiency_pct=100.0,
+            weight_1d=25,
+            weight_3d=30,
+            weight_7d=30,
+            weight_14d=15,
+            consumption_averages=avgs,
+            price_points=prices,
+            solcast_slots=pv,
+            ev_planned_load_enabled=True,
+            ev_planned_load_connected=True,
+            ev_planned_load_smart_charging_enabled=True,
+            ev_planned_load_current_soc_pct=0.0,
+            ev_planned_load_target_soc_pct=4.0,  # 4 kWh NOT in base load
+            ev_planned_load_battery_capacity_kwh=100.0,
+            ev_planned_load_charger_power_kw=11.0,
+            ev_planned_load_charger_efficiency_pct=100.0,
+            ev_planned_load_deadline=deadline,
+            ev_planned_load_base_load_includes_ev=False,
+        )
+        out = run_planner(inp)
+
+        ev_slots = [s for s in out.slots if abs(s.ev_planned_load_kwh) > 1e-9]
+        assert ev_slots, "Expected at least one slot with EV planned load"
+
+        for s in ev_slots:
+            # net = house + ev_load - pv = 5.0 + ev_load - 2.0
+            expected_net = round(
+                s.avg_house_consumption + s.ev_planned_load_kwh - s.solcast_pv_estimate,
+                3,
+            )
+            assert s.estimated_net_consumption == pytest.approx(
+                expected_net, abs=1e-6
+            ), (
+                f"Slot {s.start.hour}: net should include EV load; "
+                f"expected {expected_net:.3f}, got {s.estimated_net_consumption:.3f}"
+            )
+
+    # ------------------------------------------------------------------
+    # Test 8: Recommendation exposes ev_total even when ev_planned == 0
+    # ------------------------------------------------------------------
+
+    def test_ev_total_nonzero_when_base_includes_ev(self):
+        """With base_load_includes_ev=True, ev_total_planned_load_kwh > 0
+        even though ev_planned_load_kwh == 0.
+
+        This is the key regression test: ev_planned_load_kwh = 0 must NOT be
+        misread as "no EV charging planned".  ev_total_planned_load_kwh > 0
+        exposes the real EV intent.
+        """
+        now_iso = "2024-06-15T06:00:00+00:00"
+        from datetime import datetime as _dt2
+
+        now = _dt2.fromisoformat(now_iso)
+        deadline = now + timedelta(hours=6)
+
+        prices = [
+            PricePoint(hour=h, import_price=0.20, export_price=0.05) for h in range(24)
+        ]
+        pv = [SolcastSlot(hour=h, pv_estimate=0.0) for h in range(24)]
+        avgs = [
+            HourlyConsumptionAverage(
+                hour=h, avg_1d=2.0, avg_3d=2.0, avg_7d=2.0, avg_14d=2.0
+            )
+            for h in range(24)
+        ]
+
+        inp = PlannerInput(
+            now_iso=now_iso,
+            interval_minutes=60,
+            interval_length_hours=24,
+            battery_soc_pct=50.0,
+            battery_rated_capacity_kwh=10.0,
+            battery_end_of_discharge_soc_pct=10.0,
+            battery_max_soc_pct=90.0,
+            battery_max_charge_power_w=5000.0,
+            battery_max_discharge_power_w=5000.0,
+            battery_charge_efficiency_pct=100.0,
+            battery_conversion_loss_pct=0.0,
+            battery_discharge_efficiency_pct=100.0,
+            weight_1d=25,
+            weight_3d=30,
+            weight_7d=30,
+            weight_14d=15,
+            consumption_averages=avgs,
+            price_points=prices,
+            solcast_slots=pv,
+            ev_planned_load_enabled=True,
+            ev_planned_load_connected=True,
+            ev_planned_load_smart_charging_enabled=True,
+            ev_planned_load_current_soc_pct=0.0,
+            ev_planned_load_target_soc_pct=5.0,  # 5 kWh already in base load
+            ev_planned_load_battery_capacity_kwh=100.0,
+            ev_planned_load_charger_power_kw=11.0,
+            ev_planned_load_charger_efficiency_pct=100.0,
+            ev_planned_load_deadline=deadline,
+            ev_planned_load_base_load_includes_ev=True,  # already included
+        )
+        out = run_planner(inp)
+
+        # ev_planned_load_kwh must be 0 everywhere
+        for s in out.slots:
+            assert s.ev_planned_load_kwh == pytest.approx(0.0), (
+                f"Slot {s.start.hour}: ev_planned_load_kwh should be 0 "
+                f"(base includes EV), got {s.ev_planned_load_kwh}"
+            )
+
+        # ev_total_planned_load_kwh must be > 0 on charging slots
+        total_ev_total = sum(s.ev_total_planned_load_kwh for s in out.slots)
+        assert total_ev_total == pytest.approx(5.0, abs=0.1), (
+            f"ev_total_planned_load_kwh total should be ~5.0, got {total_ev_total:.3f}. "
+            "This is the key regression test: EV charging IS planned but appears as 0 "
+            "in ev_planned_load_kwh because base load includes EV."
+        )
+
+        # ev_accounted_load_kwh = ev_total (all accounted, none injected)
+        total_ev_accounted = sum(s.ev_accounted_load_kwh for s in out.slots)
+        assert total_ev_accounted == pytest.approx(5.0, abs=0.1), (
+            f"ev_accounted_load_kwh total should be ~5.0, got {total_ev_accounted:.3f}"
+        )
+
+    # ------------------------------------------------------------------
+    # Test 9: EVSmartCharging label applied even when ev_planned == 0
+    # ------------------------------------------------------------------
+
+    def test_ev_smart_charging_label_when_base_includes_ev(self):
+        """EVSmartCharging recommendation applied when ev_total > 0,
+        even when ev_planned_load_kwh == 0 (base_load_includes_ev=True).
+
+        Before the fix, slots would show batteries_wait_mode or
+        batteries_charge_solar even during scheduled EV charging because
+        the engine checked ev_planned_load_kwh (which is 0) instead of
+        ev_total_planned_load_kwh.
+        """
+        now_iso = "2024-06-15T06:00:00+00:00"
+        from datetime import datetime as _dt2
+
+        now = _dt2.fromisoformat(now_iso)
+        deadline = now + timedelta(hours=6)
+
+        prices = [
+            PricePoint(hour=h, import_price=0.20, export_price=0.05) for h in range(24)
+        ]
+        pv = [SolcastSlot(hour=h, pv_estimate=0.0) for h in range(24)]
+        avgs = [
+            HourlyConsumptionAverage(
+                hour=h, avg_1d=2.0, avg_3d=2.0, avg_7d=2.0, avg_14d=2.0
+            )
+            for h in range(24)
+        ]
+
+        inp = PlannerInput(
+            now_iso=now_iso,
+            interval_minutes=60,
+            interval_length_hours=24,
+            battery_soc_pct=50.0,
+            battery_rated_capacity_kwh=10.0,
+            battery_end_of_discharge_soc_pct=10.0,
+            battery_max_soc_pct=90.0,
+            battery_max_charge_power_w=5000.0,
+            battery_max_discharge_power_w=5000.0,
+            battery_charge_efficiency_pct=100.0,
+            battery_conversion_loss_pct=0.0,
+            battery_discharge_efficiency_pct=100.0,
+            weight_1d=25,
+            weight_3d=30,
+            weight_7d=30,
+            weight_14d=15,
+            consumption_averages=avgs,
+            price_points=prices,
+            solcast_slots=pv,
+            ev_planned_load_enabled=True,
+            ev_planned_load_connected=True,
+            ev_planned_load_smart_charging_enabled=True,
+            ev_planned_load_current_soc_pct=0.0,
+            ev_planned_load_target_soc_pct=5.0,
+            ev_planned_load_battery_capacity_kwh=100.0,
+            ev_planned_load_charger_power_kw=11.0,
+            ev_planned_load_charger_efficiency_pct=100.0,
+            ev_planned_load_deadline=deadline,
+            ev_planned_load_base_load_includes_ev=True,
+        )
+        out = run_planner(inp)
+
+        # There should be at least one slot with ev_total > 0 labelled ev_smart_charging
+        ev_total_slots = [s for s in out.slots if s.ev_total_planned_load_kwh > 1e-9]
+        assert ev_total_slots, "Expected slots with ev_total_planned_load_kwh > 0"
+
+        _KEEP_LABELS = frozenset(
+            {
+                "batteries_charge_grid",
+                "batteries_discharge_mode",
+                "force_batteries_discharge",
+                "force_export",
+                "time_passed",
+                "missing_input_entities",
+            }
+        )
+        for s in ev_total_slots:
+            if s.recommendation in _KEEP_LABELS:
+                continue  # higher-priority label correctly kept
+            assert s.recommendation == "ev_smart_charging", (
+                f"Slot {s.start.hour}: ev_total={s.ev_total_planned_load_kwh:.3f} "
+                f"but recommendation='{s.recommendation}' instead of 'ev_smart_charging'. "
+                "The engine must use ev_total_planned_load_kwh for the label decision "
+                "when base_load_includes_ev=True."
+            )
+
+    # ------------------------------------------------------------------
+    # Test 10: ev_total_planned_load_kwh invariant
+    # ------------------------------------------------------------------
+
+    def test_ev_total_equals_planned_plus_accounted(self):
+        """ev_total_planned_load_kwh == ev_planned_load_kwh + ev_accounted_load_kwh.
+
+        This invariant must hold for every slot regardless of base_load_includes_ev.
+        """
+        # Run with base_load_includes_ev=False
+        inp_excl = _make_planner_input(
+            now_iso="2024-06-15T06:00:00+00:00",
+            current_soc=50.0,
+            target_soc=80.0,
+            capacity_kwh=77.0,
+            charger_kw=11.0,
+            base_includes_ev=False,
+        )
+        out_excl = run_planner(inp_excl)
+
+        for s in out_excl.slots:
+            assert s.ev_total_planned_load_kwh == pytest.approx(
+                s.ev_planned_load_kwh + s.ev_accounted_load_kwh, abs=1e-9
+            ), (
+                f"Slot {s.start.hour}: ev_total ({s.ev_total_planned_load_kwh:.4f}) "
+                f"!= ev_planned ({s.ev_planned_load_kwh:.4f}) "
+                f"+ ev_accounted ({s.ev_accounted_load_kwh:.4f})"
+            )
+
+        # Run with base_load_includes_ev=True
+        inp_incl = _make_planner_input(
+            now_iso="2024-06-15T06:00:00+00:00",
+            current_soc=50.0,
+            target_soc=80.0,
+            capacity_kwh=77.0,
+            charger_kw=11.0,
+            base_includes_ev=True,
+        )
+        out_incl = run_planner(inp_incl)
+
+        for s in out_incl.slots:
+            assert s.ev_total_planned_load_kwh == pytest.approx(
+                s.ev_planned_load_kwh + s.ev_accounted_load_kwh, abs=1e-9
+            ), (
+                f"Slot {s.start.hour} (base_includes): ev_total "
+                f"({s.ev_total_planned_load_kwh:.4f}) "
+                f"!= ev_planned ({s.ev_planned_load_kwh:.4f}) "
+                f"+ ev_accounted ({s.ev_accounted_load_kwh:.4f})"
+            )

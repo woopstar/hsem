@@ -291,10 +291,33 @@ class PlannedSlot:
             (stored as its string value so the output stays framework-free)
             or ``None`` if no decision has been made.
         ev_planned_load_kwh:
-            Planned EV charging energy for this slot (kWh, ≥ 0).  Zero when
-            EV planned load integration is disabled or the EV is not
-            scheduled to charge in this slot.  Added to net consumption
-            **before** solar surplus is calculated.
+            Extra EV AC load that must be added to base house consumption for
+            planner math.  Zero when ``base_load_includes_ev`` is True (EV
+            load is already captured in ``avg_house_consumption``) or when no
+            EV is scheduled to charge in this slot.  Used in the net
+            consumption formula::
+
+                estimated_net_consumption
+                    = avg_house_consumption + ev_planned_load_kwh
+                      - solcast_pv_estimate
+
+        ev_accounted_load_kwh:
+            EV AC load that is planned for the slot but is **already
+            accounted for** by the house consumption sensor.  Non-zero only
+            when ``base_load_includes_ev`` is True.  Must **not** be added
+            again to ``estimated_net_consumption``.
+
+        ev_total_planned_load_kwh:
+            Total EV AC load planned for this slot, regardless of whether it
+            is injected or already accounted for::
+
+                ev_total_planned_load_kwh
+                    = ev_planned_load_kwh + ev_accounted_load_kwh
+
+            Use this field for diagnostics, UI display, and the
+            ``EVSmartCharging`` recommendation label decision (use
+            ``ev_total_planned_load_kwh > 0`` instead of
+            ``ev_planned_load_kwh > 0`` to detect *any* planned EV charging).
     """
 
     start: datetime
@@ -307,6 +330,8 @@ class PlannedSlot:
     avg_house_consumption_7d: float = 0.0
     avg_house_consumption_14d: float = 0.0
     ev_planned_load_kwh: float = 0.0
+    ev_accounted_load_kwh: float = 0.0
+    ev_total_planned_load_kwh: float = 0.0
     estimated_net_consumption: float = 0.0
     estimated_cost: float = 0.0
     estimated_battery_soc: float = 0.0

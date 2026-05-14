@@ -419,14 +419,22 @@ def apply_ev_planned_load_to_slots(
     ev_plan: EVChargingPlan,
     base_load_includes_ev: bool,
 ) -> None:
-    """Inject EV planned load into the per-slot EV load list (in-place).
+    """Accumulate EV planned AC load into the per-slot totals (in-place, additive).
 
-    When ``base_load_includes_ev`` is True the function is a no-op because
-    the EV load is already counted in the house consumption baseline.
+    This function is **always additive** — it never overwrites existing values.
+    Call it once per EV plan; primary and secondary EV loads will be summed
+    across calls because each call adds to (not replaces) the existing values.
+
+    When ``base_load_includes_ev`` is True the function is a no-op: the EV
+    load is already counted in the house consumption baseline and must not be
+    injected a second time into net consumption.  The caller is responsible
+    for tracking the accounted load separately via the raw EV plan totals.
 
     Args:
         slot_starts: Slot start datetimes aligned with the planner slot list.
-        slot_ev_planned_load_kwh: Mutable list to update (same length as slot_starts).
+        slot_ev_planned_load_kwh: Mutable list to accumulate into (same
+            length as slot_starts).  Existing values are preserved and the
+            new EV load is *added* to them.
         ev_plan: Computed EV charging plan.
         base_load_includes_ev: If True, skip injection to avoid double-counting.
     """
@@ -436,8 +444,10 @@ def apply_ev_planned_load_to_slots(
         key = ev_slot.start.isoformat()
         for i, s in enumerate(slot_starts):
             if s.isoformat() == key:
-                # Inject AC-side load (grid/PV draw), not battery-side delivered
-                # energy.  With charger_efficiency < 100 %, the AC load is larger
-                # than the kWh arriving in the EV battery.
-                slot_ev_planned_load_kwh[i] = ev_slot.ac_load_kwh
+                # Accumulate AC-side load (grid/PV draw), not battery-side
+                # delivered energy.  With charger_efficiency < 100 %, the AC
+                # load is larger than the kWh arriving in the EV battery.
+                # The += operator ensures multiple EVs sharing the same slot
+                # are summed rather than one overwriting the other.
+                slot_ev_planned_load_kwh[i] += ev_slot.ac_load_kwh
                 break

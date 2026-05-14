@@ -24,9 +24,17 @@ class HourlyRecommendation:
         avg_house_consumption_14d: 14-day window contribution (kWh).
         solcast_pv_estimate: Forecast PV production (kWh).
         estimated_net_consumption: avg_consumption + ev_planned_load_kwh - pv_estimate (kWh).
-        ev_planned_load_kwh: Planned EV charging load for this slot (kWh, ≥ 0).
-            Combined load from primary and second EV. Zero when EV planned load
-            integration is disabled or the EV is not scheduled to charge.
+        ev_planned_load_kwh: Extra EV AC load added to net consumption (kWh, ≥ 0).
+            Combined injected load from primary and second EV.  Zero when EV
+            planned load integration is disabled, the EV is not scheduled to
+            charge, or ``base_load_includes_ev=True`` (EV already in base load).
+        ev_accounted_load_kwh: EV AC load already included in the house
+            consumption sensor (kWh, ≥ 0).  Non-zero only when
+            ``base_load_includes_ev=True``.  Not added to net consumption.
+        ev_total_planned_load_kwh: Total EV AC load planned for this slot
+            (kWh, ≥ 0).  Equals ``ev_planned_load_kwh + ev_accounted_load_kwh``.
+            Use this for diagnostics and UI — it is non-zero whenever EV
+            charging is planned regardless of the ``base_load_includes_ev`` flag.
         estimated_cost: Estimated grid cost for the slot (local currency).
         batteries_charged: Energy scheduled to be charged into battery (kWh).
         batteries_discharged: Energy drawn from battery by the SoC simulation (kWh).
@@ -60,3 +68,5 @@ class HourlyRecommendation:
     solcast_pv_estimate: float
     start: datetime
     ev_planned_load_kwh: float = 0.0
+    ev_accounted_load_kwh: float = 0.0
+    ev_total_planned_load_kwh: float = 0.0

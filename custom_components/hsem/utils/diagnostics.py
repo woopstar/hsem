@@ -273,6 +273,13 @@ def _slot_to_dict(slot: Any) -> dict[str, Any]:
         "grid_import_kwh": round(slot.grid_import_kwh, 3),
         "grid_export_kwh": round(slot.grid_export_kwh, 3),
         "recommendation": slot.recommendation,
+        # EV load semantics (issue #404):
+        #   ev_planned_load_kwh     — extra load injected into net consumption
+        #   ev_accounted_load_kwh   — load already in house consumption sensor
+        #   ev_total_planned_load_kwh — total EV load regardless of base_load_includes_ev
+        "ev_planned_load_kwh": round(slot.ev_planned_load_kwh, 3),
+        "ev_accounted_load_kwh": round(slot.ev_accounted_load_kwh, 3),
+        "ev_total_planned_load_kwh": round(slot.ev_total_planned_load_kwh, 3),
     }
 
 

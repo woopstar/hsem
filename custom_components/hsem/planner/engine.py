@@ -291,23 +291,43 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
             )
 
     # -----------------------------------------------------------------------
-    # EV planned load injection (issue #396)
+    # EV planned load injection (issues #396, #404)
     # -----------------------------------------------------------------------
     # Build EV charging plans for the primary and secondary EV independently,
-    # then sum their per-slot loads into slot.ev_planned_load_kwh BEFORE net
-    # consumption is calculated.  This ensures:
+    # then split their per-slot loads into three semantic fields on each slot:
+    #
+    #   ev_planned_load_kwh      — extra EV AC load added to net consumption
+    #                              (only when base_load_includes_ev=False)
+    #   ev_accounted_load_kwh    — EV AC load already in house consumption
+    #                              (only when base_load_includes_ev=True)
+    #   ev_total_planned_load_kwh — sum of both; always reflects total EV demand
+    #
+    # The split is performed AFTER aggregating raw totals across both EVs so
+    # that one EV can never overwrite the other's load.
+    #
+    # Design:
+    #   1. Collect raw per-slot AC totals unconditionally for each EV.
+    #   2. Collect injected (extra) per-slot AC totals only when
+    #      base_load_includes_ev=False (via apply_ev_planned_load_to_slots).
+    #   3. Write all three fields on the slot once both EVs are aggregated.
+    #
+    # This ensures:
     #   - Solar surplus is computed after EV demand is subtracted.
     #   - Battery solar-charge recommendations don't claim solar consumed by EVs.
     #   - No circular dependency: EV plans are built from raw inputs only.
-    #
-    # Each EV is planned independently using the same pre-injection solar
-    # surplus estimate.  This is an intentional one-pass design; in practice
-    # the error is small because both EVs share the same solar forecast.
+    #   - No double-counting when base_load_includes_ev=True.
+    #   - Diagnostics always show total planned EV load regardless of the
+    #     base_load_includes_ev flag.
     ev_charging_plan: EVChargingPlan | None = None
     ev_second_charging_plan: EVChargingPlan | None = None
 
-    # Accumulate combined EV planned load per slot (sum of both EVs).
-    combined_ev_load = [0.0] * len(slots)
+    # combined_ev_raw_load — sum of ALL EV AC loads per slot, regardless of
+    # base_load_includes_ev.  Used to compute ev_total_planned_load_kwh and
+    # ev_accounted_load_kwh.
+    combined_ev_raw_load = [0.0] * len(slots)
+    # combined_ev_injected_load — sum of EV AC loads that must be ADDED to
+    # net consumption (base_load_includes_ev=False only).
+    combined_ev_injected_load = [0.0] * len(slots)
 
     # Compute solar surplus ONCE before any EV injection (both EVs share it).
     # IMPORTANT: estimated_net_consumption is still 0.0 here (populate_net_consumption
@@ -334,7 +354,13 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         base_includes: bool,
         label: str,
     ) -> EVChargingPlan | None:
-        """Build an EV plan and accumulate its loads into ``combined_ev_load``."""
+        """Build an EV plan and accumulate its loads.
+
+        Accumulates into two separate slot arrays:
+        - ``combined_ev_raw_load``: total AC load for ALL EVs (always).
+        - ``combined_ev_injected_load``: extra load for net consumption math
+          (only when ``base_includes=False``).
+        """
         if not enabled:
             return None
         ev_inp = EVPlannerInput(
@@ -357,17 +383,34 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
             slot_solar_surplus_kwh=slot_solar_surplus,
             slot_import_price=_slot_prices,
         )
-        ev_load_by_idx = [0.0] * len(slots)
+
+        # Accumulate raw (unconditional) totals — always additive.
+        # base_load_includes_ev=False passed here so apply never skips.
+        raw_load_by_idx = [0.0] * len(slots)
         apply_ev_planned_load_to_slots(
             slot_starts=_slot_starts,
-            slot_ev_planned_load_kwh=ev_load_by_idx,
+            slot_ev_planned_load_kwh=raw_load_by_idx,
             ev_plan=plan,
-            base_load_includes_ev=base_includes,
+            base_load_includes_ev=False,  # always accumulate raw totals
         )
         for i in range(len(slots)):
-            combined_ev_load[i] += ev_load_by_idx[i]
+            combined_ev_raw_load[i] += raw_load_by_idx[i]
 
-        injected_kwh = sum(ev_load_by_idx)
+        # Accumulate injected (net consumption) totals — skipped when base load
+        # already includes EV to avoid double-counting.
+        injected_by_idx = [0.0] * len(slots)
+        apply_ev_planned_load_to_slots(
+            slot_starts=_slot_starts,
+            slot_ev_planned_load_kwh=injected_by_idx,
+            ev_plan=plan,
+            base_load_includes_ev=base_includes,  # respects the flag
+        )
+        for i in range(len(slots)):
+            combined_ev_injected_load[i] += injected_by_idx[i]
+
+        ev_extra_kwh = sum(injected_by_idx)
+        ev_accounted_kwh = sum(raw_load_by_idx) - ev_extra_kwh
+        ev_total_kwh = sum(raw_load_by_idx)
         if plan.state not in (
             "not_connected",
             "smart_charging_disabled",
@@ -377,7 +420,9 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
                 f"EV planned load ({label}): state={plan.state}, "
                 f"total_kwh_needed={plan.total_kwh_needed:.2f}, "
                 f"charging_slots={len(plan.charging_slots)}, "
-                f"injected_kwh={injected_kwh:.3f}, "
+                f"ev_extra_load_kwh={ev_extra_kwh:.3f}, "
+                f"ev_accounted_load_kwh={ev_accounted_kwh:.3f}, "
+                f"ev_total_planned_load_kwh={ev_total_kwh:.3f}, "
                 f"base_load_includes_ev={base_includes}."
             )
         return plan
@@ -409,9 +454,21 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         label="second",
     )
 
-    # Write combined EV loads into slot fields.
+    # Write all three EV load fields into each slot.
+    #
+    # Semantics (per-slot):
+    #   ev_planned_load_kwh      — extra load added to net consumption
+    #   ev_accounted_load_kwh    — load already in avg_house_consumption
+    #   ev_total_planned_load_kwh — raw total (injected + accounted)
+    #
+    # populate_net_consumption uses ev_planned_load_kwh (the injected portion).
+    # Diagnostics and UI use ev_total_planned_load_kwh to detect any EV plan.
     for i, slot in enumerate(slots):
-        slot.ev_planned_load_kwh = combined_ev_load[i]
+        slot.ev_planned_load_kwh = combined_ev_injected_load[i]
+        slot.ev_accounted_load_kwh = round(
+            combined_ev_raw_load[i] - combined_ev_injected_load[i], 3
+        )
+        slot.ev_total_planned_load_kwh = round(combined_ev_raw_load[i], 3)
 
     populate_net_consumption(slots)
     populate_estimated_cost(slots)
@@ -634,8 +691,11 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         }
     )
     for slot in slots:
+        # Use ev_total_planned_load_kwh so that EVSmartCharging is applied even
+        # when base_load_includes_ev=True (where ev_planned_load_kwh stays 0
+        # but EV charging is still planned and must be visible in the UI).
         if (
-            abs(slot.ev_planned_load_kwh) > 1e-9
+            abs(slot.ev_total_planned_load_kwh) > 1e-9
             and slot.recommendation not in _EV_LABEL_KEEP
         ):
             slot.recommendation = Recommendations.EVSmartCharging.value

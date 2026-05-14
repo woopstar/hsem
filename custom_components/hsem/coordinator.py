@@ -349,22 +349,6 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 for warning in planner_output.warnings:
                     await async_logger(self, f"[planner] {warning}")
 
-                # Log EV planned load diagnostics so operators can debug zero-EV-load issues.
-                if planner_input.ev_planned_load_enabled:
-                    ev_plan = planner_output.ev_charging_plan
-                    ev_state = ev_plan.state if ev_plan else "no_plan"
-                    ev_total = sum(s.ev_planned_load_kwh for s in planner_output.slots)
-                    await async_logger(
-                        self,
-                        f"[planner] EV planned load: state={ev_state}, "
-                        f"total_ev_kwh={ev_total:.3f}, "
-                        f"connected={planner_input.ev_planned_load_connected}, "
-                        f"soc={planner_input.ev_planned_load_current_soc_pct}%, "
-                        f"target={planner_input.ev_planned_load_target_soc_pct}%, "
-                        f"capacity_kwh={planner_input.ev_planned_load_battery_capacity_kwh}, "
-                        f"charger_kw={planner_input.ev_planned_load_charger_power_kw}",
-                    )
-
                 self._apply_planner_output(planner_output)
                 self._current_required_battery = planner_output.required_capacity_kwh
                 self._data_quality = planner_output.data_quality
@@ -753,6 +737,8 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             rec.batteries_discharged = slot.batteries_discharged
             rec.estimated_net_consumption = slot.estimated_net_consumption
             rec.ev_planned_load_kwh = slot.ev_planned_load_kwh
+            rec.ev_accounted_load_kwh = slot.ev_accounted_load_kwh
+            rec.ev_total_planned_load_kwh = slot.ev_total_planned_load_kwh
             rec.estimated_cost = slot.estimated_cost
             rec.estimated_battery_capacity = slot.estimated_battery_capacity
             rec.estimated_battery_soc = slot.estimated_battery_soc
@@ -769,7 +755,8 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             _LOGGER.warning(
                 "[HSEM] _apply_planner_output: %d recommendation slot(s) had no "
                 "matching planner output slot — planner fields (ev_planned_load_kwh, "
-                "recommendation, …) will remain at default 0.0 for these slots. "
+                "ev_accounted_load_kwh, ev_total_planned_load_kwh, recommendation, …) "
+                "will remain at default 0.0 for these slots. "
                 "First unmatched rec.start: %s",
                 len(unmatched),
                 unmatched[0],
