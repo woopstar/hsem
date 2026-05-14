@@ -75,6 +75,7 @@ _CHARGE_RECOMMENDATIONS = frozenset(
     {
         Recommendations.BatteriesChargeGrid.value,
         Recommendations.BatteriesChargeSolar.value,
+        Recommendations.EVSmartCharging.value,
     }
 )
 _DISCHARGE_RECOMMENDATIONS = frozenset(
@@ -593,6 +594,50 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         charge_efficiency_pct=inp.battery_charge_efficiency_pct,
         discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
     )
+
+    # -----------------------------------------------------------------------
+    # EV smart-charging recommendation labelling
+    # -----------------------------------------------------------------------
+    # Slots with EV planned load should be marked EVSmartCharging so that
+    # dashboards and the working-mode sensor reflect that the slot is
+    # primarily serving EV demand.
+    #
+    # Priority order (highest wins):
+    #   batteries_charge_grid     — keep (grid charge overrides EV label)
+    #   force_batteries_discharge — keep (forced export overrides EV label)
+    #   force_export              — keep
+    #   batteries_discharge_mode  — keep (scheduled discharge overrides EV label)
+    #   time_passed               — keep
+    #   ev_smart_charging         ← applied when ev_planned_load_kwh > 0
+    #   batteries_charge_solar    — overridden by EV label
+    #   batteries_wait_mode       — overridden by EV label
+    _EV_LABEL_OVERRIDEABLE = frozenset(
+        {
+            Recommendations.BatteriesChargeSolar.value,
+            Recommendations.BatteriesWaitMode.value,
+        }
+    )
+    # Recommendations that take absolute priority and must never be overridden
+    # by the EV label (discharge, forced export, grid charge, past).
+    # batteries_discharge_mode and force_batteries_discharge are intentional
+    # schedule-driven actions; labelling them ev_smart_charging would hide
+    # that a discharge is in progress.
+    _EV_LABEL_KEEP = frozenset(
+        {
+            Recommendations.BatteriesChargeGrid.value,
+            Recommendations.BatteriesDischargeMode.value,
+            Recommendations.ForceBatteriesDischarge.value,
+            Recommendations.ForceExport.value,
+            Recommendations.TimePassed.value,
+            Recommendations.MissingInputEntities.value,
+        }
+    )
+    for slot in slots:
+        if (
+            abs(slot.ev_planned_load_kwh) > 1e-9
+            and slot.recommendation not in _EV_LABEL_KEEP
+        ):
+            slot.recommendation = Recommendations.EVSmartCharging.value
 
     # Current recommendation
     current_recommendation: str | None = None

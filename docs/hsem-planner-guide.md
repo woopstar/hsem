@@ -14,18 +14,20 @@ common scenarios a real installation will encounter.
 1. [Overview](#overview)
 2. [Planning inputs](#planning-inputs)
 3. [Planning outputs](#planning-outputs)
-4. [Cost function](#cost-function)
-5. [Candidate generation and selection](#candidate-generation-and-selection)
-6. [Safety modes](#safety-modes)
-7. [Data quality diagnostics](#data-quality-diagnostics)
-8. [Scenario examples](#scenario-examples)
+4. [EV planned load integration](#ev-planned-load-integration)
+5. [Cost function](#cost-function)
+6. [Candidate generation and selection](#candidate-generation-and-selection)
+7. [Safety modes](#safety-modes)
+8. [Data quality diagnostics](#data-quality-diagnostics)
+9. [Scenario examples](#scenario-examples)
    - [Winter day — cold, low PV, peak-hour pricing](#scenario-1-winter-day)
    - [Summer day — high PV surplus](#scenario-2-summer-day-high-pv)
    - [Cheap night price — grid charge opportunity](#scenario-3-cheap-night-price)
    - [High PV day — excess export opportunity](#scenario-4-high-pv-day-excess-export)
    - [Flat price day — no arbitrage value](#scenario-5-flat-price-day)
-9. [Reading the plan explanation](#reading-the-plan-explanation)
-10. [Known limitations](#known-limitations)
+   - [EV charging — solar-first smart plan](#scenario-6-ev-charging--solar-first-smart-plan)
+10. [Reading the plan explanation](#reading-the-plan-explanation)
+11. [Known limitations](#known-limitations)
 
 ---
 
@@ -192,6 +194,41 @@ The pre-charge window ends at `schedule.start` and is sized to fill the battery 
 | `months_winter` | `[1,2,3,4,10,11,12]` | Months classified as winter |
 | `house_power_includes_ev` | `True` | Whether the house consumption sensor already includes EV charger power |
 
+### EV planned load — primary EV
+
+All fields are prefixed `ev_planned_load_`.
+
+| Field | Default | Description |
+|---|---|---|
+| `ev_planned_load_enabled` | `False` | Enable EV planned load integration for the primary EV |
+| `ev_planned_load_connected` | `False` | Whether a vehicle is currently plugged in |
+| `ev_planned_load_smart_charging_enabled` | `True` | Whether smart EV charging scheduling is permitted |
+| `ev_planned_load_current_soc_pct` | `0.0` | Current EV battery SoC (%) |
+| `ev_planned_load_target_soc_pct` | `80.0` | Target SoC the EV must reach by the deadline (%) |
+| `ev_planned_load_battery_capacity_kwh` | `0.0` | EV battery nameplate capacity (kWh) |
+| `ev_planned_load_charger_power_kw` | `0.0` | Charger AC output power (kW) |
+| `ev_planned_load_charger_efficiency_pct` | `100.0` | Charger efficiency (%) — energy delivered to EV / AC draw |
+| `ev_planned_load_deadline` | `None` | Timezone-aware datetime by which charging must be complete |
+| `ev_planned_load_base_load_includes_ev` | `False` | Set `True` when the house consumption sensor already includes EV power (prevents double-counting) |
+
+### EV planned load — second EV
+
+All fields are prefixed `ev_second_planned_load_`. The schema is identical to the
+primary EV fields above:
+
+| Field | Default | Description |
+|---|---|---|
+| `ev_second_planned_load_enabled` | `False` | Enable EV planned load integration for the second EV |
+| `ev_second_planned_load_connected` | `False` | Whether a second vehicle is currently plugged in |
+| `ev_second_planned_load_smart_charging_enabled` | `True` | Smart charging permission |
+| `ev_second_planned_load_current_soc_pct` | `0.0` | Current second EV battery SoC (%) |
+| `ev_second_planned_load_target_soc_pct` | `80.0` | Target SoC (%) |
+| `ev_second_planned_load_battery_capacity_kwh` | `0.0` | Second EV battery nameplate capacity (kWh) |
+| `ev_second_planned_load_charger_power_kw` | `0.0` | Charger AC output power (kW) |
+| `ev_second_planned_load_charger_efficiency_pct` | `100.0` | Charger efficiency (%) |
+| `ev_second_planned_load_deadline` | `None` | Timezone-aware charging deadline |
+| `ev_second_planned_load_base_load_includes_ev` | `False` | Prevent double-counting when house load includes second EV |
+
 ---
 
 ## Planning outputs
@@ -210,13 +247,14 @@ Each `PlannedSlot` in the output list covers one time interval and carries:
 | `price.export_price` | currency/kWh | Export price for this slot |
 | `solcast_pv_estimate` | kWh | Forecast PV production |
 | `avg_house_consumption` | kWh | Predicted house load (weighted average) |
-| `estimated_net_consumption` | kWh | `avg_house_consumption − solcast_pv_estimate` (negative = PV surplus) |
+| `estimated_net_consumption` | kWh | `avg_house_consumption + ev_planned_load_kwh − solcast_pv_estimate` (negative = PV surplus) |
 | `batteries_charged` | kWh | Energy scheduled to be stored (after losses) |
 | `batteries_discharged` | kWh | Energy drawn from battery |
 | `grid_import_kwh` | kWh | Grid import this slot |
 | `grid_export_kwh` | kWh | Grid export this slot |
 | `estimated_battery_soc` | % | Estimated SoC at end of slot |
 | `estimated_battery_capacity` | kWh | Usable remaining capacity at end of slot |
+| `ev_planned_load_kwh` | kWh | Combined EV charging load allocated to this slot (primary + second EV) |
 | `estimated_cost` | currency | Net grid cost this slot (positive = import, negative = export) |
 | `recommendation` | string | The action chosen for this slot (see below) |
 
@@ -228,10 +266,120 @@ Each `PlannedSlot` in the output list covers one time interval and carries:
 | `batteries_charge_solar` | Battery is charging from PV surplus |
 | `batteries_discharge_mode` | Battery discharges to cover house load during high-price window |
 | `force_batteries_discharge` | Forced discharge (excess export to grid) |
+| `force_export` | Negative import price — all available energy exported to earn money |
+| `ev_smart_charging` | EV charging load is allocated to this slot (planner or runtime resolver) |
 | `batteries_wait_mode` | Battery idle — neither charging nor discharging |
 | `time_passed` | Slot is in the past — no recommendation applied |
-| `ev_smart_charging` | EV smart charging active (EV-specific scheduling) |
 | `missing_input_entities` | Required HA entities were unavailable when this slot was scheduled |
+
+---
+
+#### How recommendations are assigned — priority layers
+
+Recommendations are set in three consecutive layers. Each later layer can
+override an earlier one only within defined priority rules.
+
+---
+
+##### Layer 1 — Planner engine (pre-slot population)
+
+The scheduler assigns the first recommendations during slot population, before
+candidate scoring. Rules are applied in strict priority order; once a slot has a
+recommendation it is not changed by later rules in the same layer.
+
+**Discharge schedule windows** (`apply_discharge_schedules`)
+
+| Priority | Condition | Recommendation |
+|---|---|---|
+| 1 | Slot falls inside a configured discharge window and price spread is met | `batteries_discharge_mode` |
+
+**Charge schedule windows** (`apply_charge_schedules`) — for each discharge window, eligible pre-charge slots are filled in order:
+
+| Priority | Condition | Recommendation |
+|---|---|---|
+| 1 | Import price < 0 (paid to import) | `batteries_charge_grid` |
+| 2 | Solar surplus (`estimated_net_consumption < threshold`) | `batteries_charge_solar` |
+| 3 | Cheapest grid hour where spread ≥ `min_price_difference + cycle_cost` | `batteries_charge_grid` |
+
+**Opportunistic grid charge** (`apply_opportunistic_charge`) — outside any schedule:
+
+| Priority | Condition | Recommendation |
+|---|---|---|
+| 1 | Import price < 0 | `batteries_charge_grid` |
+| 2 | Import price ≤ depreciation threshold − cycle cost | `batteries_charge_grid` |
+
+**Excess export** (`apply_excess_export`) — only when `excess_export_enabled = True`:
+
+| Priority | Condition | Recommendation |
+|---|---|---|
+| 1 | Export price > threshold AND battery has surplus above `required_capacity` | `force_batteries_discharge` |
+
+**Seasonal optimisation fill** (`apply_optimization_strategy`) — for all remaining `None` slots:
+
+| Priority | Condition | Recommendation |
+|---|---|---|
+| 1 | Export price > import price AND export price ≥ `export_min_price` | `force_export` |
+| 2 | Solar surplus available and battery not full | `batteries_charge_solar` |
+| 3 | Future `force_batteries_discharge` slot exists AND battery > required | `batteries_wait_mode` |
+| 4 | Winter month | `batteries_wait_mode` |
+| 5 | Summer month, solar surplus available | `batteries_charge_solar` |
+| 5 | Summer month, no solar surplus | `batteries_discharge_mode` |
+
+---
+
+##### Layer 2 — EV planned load labelling (engine, post-simulation)
+
+After the winning candidate is selected and the final SoC simulation is complete,
+slots with `ev_planned_load_kwh > 0` are re-labelled:
+
+| Current recommendation | Has EV load? | Result |
+|---|---|---|
+| `batteries_charge_solar` | Yes | → `ev_smart_charging` |
+| `batteries_wait_mode` | Yes | → `ev_smart_charging` |
+| `batteries_charge_grid` | Yes | Kept — grid charge takes priority |
+| `batteries_discharge_mode` | Yes | Kept — discharge takes priority |
+| `force_batteries_discharge` | Yes | Kept |
+| `force_export` | Yes | Kept |
+| `time_passed` | Yes | Kept |
+
+---
+
+##### Layer 3 — Runtime resolver (`resolve_current_recommendation`)
+
+Applied to the **current slot only** at hardware-write time. Overrides the planner
+output with live sensor readings that were unknown at planning time.
+
+| Priority | Condition | Result |
+|---|---|---|
+| 1 (highest) | Live import price < 0 | → `force_export` |
+| 2 | Current recommendation = `batteries_charge_grid` | Kept — grid charge never overridden |
+| 3 | Any EV (primary or second) is actively charging right now | → `ev_smart_charging` |
+| 4 | Battery energy > remaining discharge-schedule need | → `batteries_discharge_mode` |
+| — | None of the above | Planner recommendation kept unchanged |
+
+> **Note:** Priorities 1 and 3 interact. A negative import price always wins — even
+> when an EV is charging. However, a grid-charge slot (priority 2) is never overridden
+> by an actively charging EV (priority 3).
+
+---
+
+##### Summary: full priority stack (highest → lowest)
+
+```
+1. import_price < 0               → force_export           [runtime resolver]
+2. batteries_charge_grid active   → batteries_charge_grid  [runtime resolver guard]
+3. EV actively charging (live)    → ev_smart_charging      [runtime resolver]
+4. Battery above schedule need    → batteries_discharge_mode [runtime resolver]
+   ──────────────────────────────────────────────────────── resolver boundary ──
+5. force_batteries_discharge      [excess export, planner]
+6. batteries_charge_grid          [schedule/opportunistic, planner]
+7. batteries_discharge_mode       [discharge schedule, planner]
+8. force_export                   [seasonal optimisation, planner]
+9. ev_smart_charging              [EV load labelling, planner]
+10. batteries_charge_solar        [solar surplus, planner]
+11. batteries_wait_mode           [seasonal/idle, planner]
+12. time_passed / missing_input_entities
+```
 
 ### Charge and discharge windows (`charge_windows`, `discharge_windows`)
 
@@ -250,6 +398,8 @@ Higher-level groupings of consecutive slots with the same charge or discharge re
 | `data_quality` | Structured `DataQuality` report (see below) |
 | `explanation` | `PlanExplanation` with strategy summary, score, and rejected alternatives |
 | `time_series_index` | `TimeSeriesIndex` — shared slot grid used internally |
+| `ev_charging_plan` | `EVChargingPlan` for the primary EV (`None` when disabled) |
+| `ev_second_charging_plan` | `EVChargingPlan` for the second EV (`None` when disabled) |
 
 ### Plan explanation (`explanation`)
 
@@ -268,6 +418,136 @@ The `PlanExplanation` object is designed to be surfaced directly as a HA sensor 
 | `battery_soc_pct` / `battery_soc_at_end_pct` | Starting and ending SoC |
 | `constraints` | Active flags (e.g. `"winter_month"`, `"excess_export_enabled"`) |
 | `rejected_plans` | Alternatives with name, reason, and estimated cost |
+
+---
+
+## EV planned load integration
+
+### Overview
+
+When one or both EV planned load features are enabled, the planner allocates
+EV charging demand into slots **before** net consumption and solar surplus are
+computed. This ensures the home battery planner sees the true net demand and
+does not misinterpret EV-consumed solar as available for battery charging.
+
+The EV planner is a separate, pure-Python module (`planner/ev_planner.py`).
+It runs once per planning cycle, ahead of the home battery planner, and injects
+`ev_planned_load_kwh` into each `PlannedSlot`.
+
+### No circular dependency
+
+EV plans are built from raw inputs only (EV SoC, target SoC, capacity, charger
+power, deadline, and pre-injection solar surplus). They are computed independently
+of the home battery planner output. The one-pass design prevents circular
+dependency.
+
+### Net load formula with EV
+
+```text
+effective_net_load_kwh
+    = avg_house_consumption
+    + ev_planned_load_kwh          ← sum of primary + second EV loads
+    − solcast_pv_estimate
+```
+
+When EV integration is disabled, `ev_planned_load_kwh` is `0.0` for every slot
+and the formula is identical to the non-EV case.
+
+### Slot selection strategy
+
+The EV planner selects slots in two passes:
+
+1. **Solar surplus slots first** — slots where `pv − house_load > 0` are
+   prioritised (free solar energy for the EV).
+2. **Cheapest import slots next** — among remaining slots, the lowest import
+   price comes first.
+
+Allocation stops when the total energy needed to reach `target_soc_pct` is
+satisfied, or the deadline is reached.
+
+### Partial current-slot scaling
+
+The currently active slot is scaled by its remaining duration to avoid
+over-counting energy in the partially elapsed slot:
+
+```text
+slot_remaining_hours = remaining_minutes_in_slot(now, slot_end) / 60.0
+max_charge_this_slot = charger_power_kw × slot_remaining_hours × (efficiency / 100)
+```
+
+### Double-count prevention
+
+When the house consumption sensor already includes EV charger power
+(e.g. the CT clamp is upstream of the EVSE), set `base_load_includes_ev = True`
+for that EV. The planner will not add `ev_planned_load_kwh` on top of
+`avg_house_consumption` for that EV, preventing double-counting.
+
+### EV plan states
+
+| State | Meaning |
+|---|---|
+| `not_connected` | No vehicle plugged in |
+| `smart_charging_disabled` | Feature disabled or smart charging turned off |
+| `fully_charged` | EV has already reached target SoC — no load allocated |
+| `charging` | Slots have been allocated; charging is active or planned |
+| `waiting` | EV is connected but no candidate slots exist before the deadline |
+| `unavailable` | Required config values (capacity or charger power) are zero/missing |
+
+### HA sensor entities
+
+Two sensor entities expose the EV charging plan as attributes:
+
+| Entity | Purpose |
+|---|---|
+| `sensor.hsem_ev_optimal_charging_plan` | Primary EV plan state and slot details |
+| `sensor.hsem_ev_second_optimal_charging_plan` | Second EV plan state and slot details |
+
+Both sensors share the same attribute schema:
+
+```json
+{
+  "battery_capacity_kwh": 60.0,
+  "charge_power_kw": 11.0,
+  "current_soc": 32.0,
+  "target_soc": 80.0,
+  "ev_connected": true,
+  "total_kwh_needed": 28.8,
+  "deadline": "2026-05-15T07:00:00+02:00",
+  "charging_slots": [
+    {
+      "start": "2026-05-14T10:00:00+02:00",
+      "end":   "2026-05-14T11:00:00+02:00",
+      "estimated_charged_kwh": 8.5,
+      "solar_surplus_kwh": 9.2,
+      "import_needed_kwh": 0.0,
+      "import_price": 1.25,
+      "estimated_cost": 0.0
+    }
+  ],
+  "planned_load_by_slot": {
+    "2026-05-14T10:00:00+02:00": 8.5
+  },
+  "current_slot_planned_load_kwh": 8.5,
+  "data_quality": {}
+}
+```
+
+### Solar surplus bug fix
+
+**Background:** Before PR #397 the EV planner incorrectly computed `solar_surplus`
+from `slot.estimated_net_consumption`, which is `0.0` at the time the EV planner
+runs (the `populate_net_consumption` call had not happened yet). Every slot
+appeared to have zero surplus, so the EV was always scheduled on grid import.
+
+**Fix:** Surplus is now derived from the raw base fields that are already populated
+at EV planning time:
+
+```text
+surplus = max(slot.solcast_pv_estimate − slot.avg_house_consumption, 0.0)
+```
+
+`populate_net_consumption` later computes net load from the same fields, so the
+values are consistent.
 
 ---
 
@@ -799,6 +1079,47 @@ than pure `no_action` because the PV surplus would otherwise export at only
   ]
 }
 ```
+
+---
+
+### Scenario 6: EV charging — solar-first smart plan
+
+**Conditions:**
+- EV plugged in at 08:00, target SoC 80 %, deadline 07:00 next morning
+- EV battery: 60 kWh, current SoC 32 % → 28.8 kWh needed
+- Charger: 11 kW AC (efficiency 100 %)
+- House load: 0.5 kWh/h
+- PV forecast: 0→2→8→10→8→4→1→0 kWh/h (peak midday)
+- Import price: 0.80 DKK/kWh off-peak, 2.00 DKK/kWh peak (09–13, 17–21)
+- `base_load_includes_ev = False` (CT clamp is downstream of EVSE)
+
+**What the EV planner does:**
+
+```
+Pass 1 — solar surplus slots (pv − house_load > 0):
+  10:00–11:00: surplus = 8 − 0.5 = 7.5 kWh  → allocate 7.5 kWh (capped by charger: 11 kWh/h)
+  11:00–12:00: surplus = 10 − 0.5 = 9.5 kWh → allocate 9.5 kWh → total = 17.0 kWh
+  09:00–10:00: surplus = 2 − 0.5 = 1.5 kWh  → allocate 1.5 kWh → total = 18.5 kWh
+
+Pass 2 — cheapest import slots (remaining need = 28.8 − 18.5 = 10.3 kWh):
+  00:00–01:00: 0.80 DKK/kWh → allocate 10.3 kWh (final slot, partial fill)
+```
+
+**Net load seen by home battery planner (slot 10:00–11:00):**
+
+```
+effective_net_load = 0.5 (house) + 7.5 (EV) − 8.0 (PV) = 0.0 kWh
+```
+
+The battery planner sees zero net consumption in that slot, meaning no battery
+solar charge is triggered — the solar energy goes entirely to the EV.
+
+**Cost comparison (EV charging cost only):**
+
+| Strategy | EV cost (DKK) |
+|---|---|
+| Smart (solar-first) | 0.80 × 10.3 + 0 × 18.5 = 8.24 DKK |
+| Dumb (charge immediately from grid at 2.00 DKK/kWh) | 2.00 × 28.8 = 57.60 DKK |
 
 ---
 

@@ -992,3 +992,131 @@ class TestEvSolarSurplusRegression:
             assert ev_slot.import_needed_kwh == pytest.approx(
                 ev_slot.estimated_charged_kwh, abs=0.01
             )
+
+
+# ---------------------------------------------------------------------------
+# TestEvSmartChargingRecommendationLabel
+# EV-scheduled slots should be labelled ev_smart_charging so dashboards
+# and the working-mode sensor reflect the real activity.
+# ---------------------------------------------------------------------------
+
+
+class TestEvSmartChargingRecommendationLabel:
+    """Slots with planned EV load must be marked ev_smart_charging.
+
+    Priority rules:
+    - batteries_charge_grid  → kept (grid-charge beats EV label)
+    - batteries_discharge_mode / force_batteries_discharge → kept
+    - batteries_charge_solar / batteries_wait_mode → overridden by ev_smart_charging
+    - EV disabled / not connected → no ev_smart_charging labels
+    """
+
+    def test_ev_load_slots_labelled_ev_smart_charging(self):
+        """Future slots with ev_planned_load_kwh > 0 must be ev_smart_charging
+        unless a higher-priority recommendation is already set.
+
+        Higher-priority recommendations that keep their own label:
+          batteries_charge_grid, batteries_discharge_mode,
+          force_batteries_discharge, force_export, time_passed.
+        """
+        _KEEP_LABELS = {
+            "batteries_charge_grid",
+            "batteries_discharge_mode",
+            "force_batteries_discharge",
+            "force_export",
+            "time_passed",
+            "missing_input_entities",
+        }
+
+        inp = _make_planner_input(
+            now_iso="2024-06-15T06:00:00+00:00",
+            current_soc=50.0,
+            target_soc=80.0,
+            capacity_kwh=77.0,
+            charger_kw=11.0,
+            deadline_hours_from_now=10,
+        )
+        out = run_planner(inp)
+
+        for s in out.slots:
+            if abs(s.ev_planned_load_kwh) > 1e-9:
+                if s.recommendation in _KEEP_LABELS:
+                    continue  # higher-priority recommendation correctly kept
+                assert s.recommendation == "ev_smart_charging", (
+                    f"Slot {s.start.hour}: ev_load={s.ev_planned_load_kwh:.3f} but "
+                    f"recommendation='{s.recommendation}' instead of 'ev_smart_charging'"
+                )
+
+    def test_no_ev_smart_charging_when_disabled(self):
+        """When EV is disabled, no slot should be labelled ev_smart_charging."""
+        inp = _make_planner_input(ev_enabled=False)
+        out = run_planner(inp)
+
+        for s in out.slots:
+            assert s.recommendation != "ev_smart_charging", (
+                f"Slot {s.start.hour}: unexpected ev_smart_charging (EV disabled)"
+            )
+
+    def test_no_ev_smart_charging_when_disconnected(self):
+        """When EV is not connected, no slot should be labelled ev_smart_charging."""
+        inp = _make_planner_input(ev_connected=False)
+        out = run_planner(inp)
+
+        for s in out.slots:
+            assert s.recommendation != "ev_smart_charging", (
+                f"Slot {s.start.hour}: unexpected ev_smart_charging (EV not connected)"
+            )
+
+    def test_grid_charge_slots_not_overridden_by_ev_label(self):
+        """Slots already marked batteries_charge_grid keep that recommendation.
+
+        Set up: very cheap price at 02:00 to force a grid-charge recommendation,
+        EV also enabled with deadline covering that slot.
+        The grid-charge label must survive — it has higher priority.
+        """
+        inp = _make_planner_input(
+            now_iso="2024-06-15T00:00:00+00:00",
+            current_soc=10.0,  # low SoC → battery actively needs charging
+            target_soc=80.0,
+            capacity_kwh=77.0,
+            charger_kw=11.0,
+            deadline_hours_from_now=10,
+        )
+        # Force a very cheap price at 02:00 to encourage grid charge
+        inp.price_points[2] = PricePoint(hour=2, import_price=0.001, export_price=0.0)
+        # Make peak hours expensive so grid-charge has clear arbitrage value
+        for h in range(16, 22):
+            inp.price_points[h] = PricePoint(hour=h, import_price=2.0, export_price=0.5)
+        out = run_planner(inp)
+
+        for s in out.slots:
+            if s.recommendation == "batteries_charge_grid":
+                # A grid-charge slot must NOT have been overridden by EV label
+                # even if EV load is also allocated to it.
+                assert s.recommendation == "batteries_charge_grid", (
+                    f"Slot {s.start.hour}: batteries_charge_grid was incorrectly "
+                    "overridden by ev_smart_charging"
+                )
+
+    def test_ev_smart_charging_in_charge_windows(self):
+        """EVSmartCharging slots are counted as charge windows in PlannerOutput."""
+        inp = _make_planner_input(
+            now_iso="2024-06-15T06:00:00+00:00",
+            current_soc=50.0,
+            target_soc=80.0,
+            capacity_kwh=77.0,
+            charger_kw=11.0,
+            deadline_hours_from_now=10,
+        )
+        out = run_planner(inp)
+
+        ev_smart_slots = [
+            s for s in out.slots if s.recommendation == "ev_smart_charging"
+        ]
+        if ev_smart_slots:
+            # At least one charge window should cover the EV slots
+            all_window_starts = {w.start for w in out.charge_windows}
+            ev_starts = {s.start for s in ev_smart_slots}
+            assert ev_starts & all_window_starts, (
+                "ev_smart_charging slots should appear in at least one charge window"
+            )

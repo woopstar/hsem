@@ -42,17 +42,99 @@ Power values in kW must be converted to energy using:
 energy_kwh = power_kw * duration_hours
 ```
 
+## Recommendation priority rules
+
+### Three-layer model
+
+Recommendations are assigned and potentially overridden in three layers.
+Every layer must respect the rules below.
+
+#### Layer 1 — Planner engine (pre-simulation)
+
+Slots are assigned recommendations by the scheduling functions in strict
+priority order.  Once a slot has a non-`None` recommendation, later rules
+in the same layer must not change it.
+
+**Discharge schedule windows** (highest priority in layer 1):
+
+1. Slot falls inside a configured discharge window and price spread is met → `batteries_discharge_mode`
+
+**Charge schedule windows** (before each discharge window):
+
+1. Import price < 0 → `batteries_charge_grid`
+2. Solar surplus (`estimated_net_consumption < threshold`) → `batteries_charge_solar`
+3. Cheapest grid hour where spread ≥ `min_price_difference + cycle_cost` → `batteries_charge_grid`
+
+**Opportunistic grid charge** (outside any schedule):
+
+1. Import price < 0 → `batteries_charge_grid`
+2. Import price ≤ depreciation threshold − cycle cost → `batteries_charge_grid`
+
+**Excess export** (only when enabled):
+
+1. Export price > threshold AND battery above required capacity → `force_batteries_discharge`
+
+**Seasonal fill** (remaining `None` slots):
+
+1. Export price > import price AND export price ≥ `export_min_price` → `force_export`
+2. Solar surplus and battery not full → `batteries_charge_solar`
+3. Future `force_batteries_discharge` AND battery > required → `batteries_wait_mode`
+4. Winter month → `batteries_wait_mode`
+5. Summer month, solar surplus → `batteries_charge_solar`; else → `batteries_discharge_mode`
+
+#### Layer 2 — EV planned load labelling (post-simulation)
+
+After the final SoC simulation, slots with `ev_planned_load_kwh > 0` are relabelled:
+
+- `batteries_charge_solar` → `ev_smart_charging`
+- `batteries_wait_mode` → `ev_smart_charging`
+- All other recommendations: **kept unchanged** (must not be overridden by EV label)
+
+The following must never be overridden by the EV label:
+`batteries_charge_grid`, `batteries_discharge_mode`, `force_batteries_discharge`,
+`force_export`, `time_passed`, `missing_input_entities`.
+
+#### Layer 3 — Runtime resolver (current slot only, at hardware-write time)
+
+Applied to the current slot immediately before hardware writes, using live sensor data:
+
+1. `import_price < 0` → `force_export` (overrides everything)
+2. `batteries_charge_grid` → kept (must never be overridden by EV or discharge rule)
+3. Any EV actively charging → `ev_smart_charging`
+4. Battery energy > remaining discharge-schedule need → `batteries_discharge_mode`
+
+### Invariants for tests
+
+- A slot assigned `batteries_charge_grid` by the planner must never be relabelled by
+  the EV load labelling pass (layer 2).
+- A slot assigned `batteries_discharge_mode` must never be relabelled by the EV load
+  labelling pass.
+- A slot with `ev_planned_load_kwh > 0` and recommendation `batteries_charge_solar`
+  must be relabelled `ev_smart_charging` after layer 2.
+- A slot with `ev_planned_load_kwh > 0` and recommendation `batteries_wait_mode`
+  must be relabelled `ev_smart_charging` after layer 2.
+- The runtime resolver must set `force_export` when `import_price < 0`, regardless
+  of the planner recommendation.
+- The runtime resolver must NOT override `batteries_charge_grid` even when an EV
+  is actively charging.
+- The runtime resolver must NOT override `batteries_charge_grid` even when
+  `import_price < 0` is False and EV is charging.
+- Priority 1 (negative price → `force_export`) always beats priority 3 (EV charging).
+
 ## Energy balance per slot
 
 For every slot:
 
 ```text
-net_load_kwh = house_load_kwh - pv_kwh
+net_load_kwh = house_load_kwh + ev_planned_load_kwh - pv_kwh
 ```
 
-Positive `net_load_kwh` means the house needs energy.
+`ev_planned_load_kwh` is the combined EV charging load allocated to this slot
+(primary + second EV). When EV integration is disabled it is `0.0`.
 
-Negative `net_load_kwh` means there is PV surplus.
+Positive `net_load_kwh` means the house (plus EV) needs energy.
+
+Negative `net_load_kwh` means there is PV surplus after serving the house and EV.
 
 Battery and grid flows must satisfy:
 
@@ -466,6 +548,62 @@ carry the day+2 gap lists for 72-hour horizon runs.
 - Missing day+2 price data surfaces in `day2_price_missing_hours`.
 - Missing day+2 PV data surfaces in `day2_pv_missing_hours`.
 - `DataQuality.is_complete` is ``False`` when any future-day data is missing.
+
+## EV planned load integration
+
+### Design invariants
+
+The EV planner (`planner/ev_planner.py`) MUST satisfy these invariants:
+
+1. **One-pass, no circularity**: EV plans are built entirely from raw inputs
+   (EV SoC, target SoC, capacity, charger power, deadline, and pre-injection
+   solar surplus). They must never depend on the home battery planner output.
+2. **Solar surplus computed before net consumption**: Surplus passed to the EV
+   planner must be derived from raw base fields:
+   ```text
+   surplus = max(slot.solcast_pv_estimate − slot.avg_house_consumption, 0.0)
+   ```
+   It must NOT use `slot.estimated_net_consumption`, which is `0.0` at EV
+   planning time.
+3. **`ev_planned_load_kwh` injected before `populate_net_consumption`**: The
+   engine must call the EV planner and write `ev_planned_load_kwh` to every
+   slot before calling `populate_net_consumption`. Net consumption must reflect
+   the combined EV load.
+4. **No double-counting**: When `base_load_includes_ev = True` for an EV, its
+   planned load must NOT be added to `ev_planned_load_kwh`.
+5. **Partial current slot**: The currently active slot must be scaled by
+   remaining slot duration, not the full slot width.
+6. **Deadline enforcement**: Slots with `slot_start >= deadline` must receive
+   zero EV load.
+7. **Guard states**: The EV planner must return a valid `EVChargingPlan` with
+   an appropriate `state` string in all edge cases (disabled, not connected,
+   smart charging off, fully charged, no slots before deadline, invalid config).
+8. **Disabled EV is zero-cost**: When `ev_planned_load_enabled = False`, all
+   `ev_planned_load_kwh` values must be `0.0` and the home battery planner
+   output must be identical to the non-EV case.
+
+### Net load formula with EV
+
+```text
+effective_net_load_kwh
+    = avg_house_consumption
+    + ev_planned_load_kwh
+    − solcast_pv_estimate
+```
+
+### Invariants for tests
+
+- When `ev_planned_load_enabled = False`, all `ev_planned_load_kwh == 0.0`.
+- When EV is fully charged (`current_soc >= target_soc`), all `ev_planned_load_kwh == 0.0`.
+- When `base_load_includes_ev = True`, planned EV load is not added to net consumption.
+- Solar surplus slots are allocated before grid-import slots.
+- `sum(ev_planned_load_kwh over all slots)` equals `total_kwh_needed` (±charger rounding).
+- Deadline: no load after `deadline`.
+- Partial slot: current slot load ≤ `charger_power_kw × remaining_minutes / 60`.
+- When EV consumes all solar surplus, home battery `batteries_charged == 0.0` in that slot.
+- `winner.cost == final_output.cost` still holds when EV load is active (no post-selection mutation).
+- Both `ev_charging_plan` and `ev_second_charging_plan` on `PlannerOutput` are `None` when disabled.
+- Enabling only the second EV does not affect primary EV fields and vice versa.
 
 ## Documentation expectations
 

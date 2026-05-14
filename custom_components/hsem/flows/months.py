@@ -12,14 +12,16 @@ def _month_options():
 async def get_months_schema(config_entry) -> vol.Schema:
     """Return the data schema for the 'power' step."""
 
+    # Stored months are integers; the multi-select selector requires string
+    # option values.  Convert here so the form pre-selects the saved months.
+    raw = get_config_value(config_entry, "hsem_months_winter")
+    default_months = [str(m) for m in raw] if raw else []
+
     return vol.Schema(
         {
             vol.Required(
                 "hsem_months_winter",
-                default=get_config_value(
-                    config_entry,
-                    "hsem_months_winter",
-                ),
+                default=default_months,
             ): selector(
                 {
                     "select": {

@@ -2,10 +2,11 @@
 
 # Mock the logging to avoid file creation errors during testing
 from logging.handlers import RotatingFileHandler
+from unittest.mock import MagicMock
 
 import pytest
 
-from custom_components.hsem.flows.months import validate_months_input
+from custom_components.hsem.flows.months import get_months_schema, validate_months_input
 from custom_components.hsem.utils.misc import convert_months_to_int
 
 # Monkey-patch RotatingFileHandler to use NullHandler during tests
@@ -153,6 +154,49 @@ class TestValidateMonthsInput:
         user_input = {"hsem_months_winter": ["1", 2, "3", 4]}
         errors = await validate_months_input(None, user_input)
         assert not errors
+
+
+@pytest.mark.asyncio
+class TestGetMonthsSchema:
+    """Test that get_months_schema converts stored integers back to strings for the UI."""
+
+    def _get_default(self, schema) -> list:
+        """Extract the default value for hsem_months_winter from a vol.Schema."""
+        import voluptuous as vol
+
+        for key in schema.schema:
+            if isinstance(key, vol.Required) and key.schema == "hsem_months_winter":
+                return key.default()
+        raise KeyError("hsem_months_winter not found in schema")
+
+    async def test_schema_default_is_strings_when_config_has_integers(self):
+        """Stored integer months must be converted to strings for the multi-select."""
+        config_entry = MagicMock()
+        config_entry.options = {"hsem_months_winter": [1, 2, 3, 4, 10, 11, 12]}
+        config_entry.data = {}
+
+        schema = await get_months_schema(config_entry)
+        default = self._get_default(schema)
+        assert default == ["1", "2", "3", "4", "10", "11", "12"]
+        assert all(isinstance(m, str) for m in default)
+
+    async def test_schema_default_is_strings_when_config_has_strings(self):
+        """String months stored in config must remain strings."""
+        config_entry = MagicMock()
+        config_entry.options = {"hsem_months_winter": ["1", "2", "12"]}
+        config_entry.data = {}
+
+        schema = await get_months_schema(config_entry)
+        default = self._get_default(schema)
+        assert default == ["1", "2", "12"]
+
+    async def test_schema_default_uses_const_default_when_no_config(self):
+        """With no config entry, the schema default must use the const default as strings."""
+        schema = await get_months_schema(None)
+        default = self._get_default(schema)
+        # const default is [1, 2, 3, 4, 10, 11, 12] — must come back as strings
+        assert set(default) == {"1", "2", "3", "4", "10", "11", "12"}
+        assert all(isinstance(m, str) for m in default)
 
 
 class TestMonthMembership:

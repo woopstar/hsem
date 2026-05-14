@@ -702,6 +702,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             rec.batteries_charged = slot.batteries_charged
             rec.batteries_discharged = slot.batteries_discharged
             rec.estimated_net_consumption = slot.estimated_net_consumption
+            rec.ev_planned_load_kwh = slot.ev_planned_load_kwh
             rec.estimated_cost = slot.estimated_cost
             rec.estimated_battery_capacity = slot.estimated_battery_capacity
             rec.estimated_battery_soc = slot.estimated_battery_soc
@@ -754,6 +755,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                     estimated_battery_soc=0,
                     estimated_cost=0.0,
                     estimated_net_consumption=0.0,
+                    ev_planned_load_kwh=0.0,
                     export_price=0.0,
                     grid_export_kwh=0.0,
                     grid_import_kwh=0.0,
