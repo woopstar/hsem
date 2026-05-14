@@ -32,6 +32,7 @@ from custom_components.hsem.utils.misc import (
     convert_to_float,
     ha_get_entity_state_and_convert,
 )
+from custom_components.hsem.utils.sensornames import get_force_working_mode_selector_key
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -73,7 +74,7 @@ async def async_collect_live_state(
     fwm_entity = force_working_mode_cache
     if fwm_entity is None:
         fwm_entity = await async_resolve_entity_id_from_unique_id(
-            sensor, "hsem_force_working_mode", "select"
+            sensor, get_force_working_mode_selector_key(), "select"
         )
     state.force_working_mode = fwm_entity
 
@@ -103,7 +104,7 @@ async def async_collect_live_state(
             return None
 
     # Force working mode
-    raw_fwm = _read(fwm_entity, "string", label="hsem_force_working_mode")
+    raw_fwm = _read(fwm_entity, "string", label=get_force_working_mode_selector_key())
     state.force_working_mode_state = raw_fwm if raw_fwm is not None else "auto"
 
     # --- First EV charger ---

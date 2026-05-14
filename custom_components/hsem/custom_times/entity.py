@@ -14,8 +14,55 @@ from homeassistant.components.time import TimeEntity, TimeEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from custom_components.hsem.const import DOMAIN
 from custom_components.hsem.entity import HSEMEntity
+from custom_components.hsem.utils.sensornames import (
+    get_schedule_1_end_time_entity_id,
+    get_schedule_1_end_time_key,
+    get_schedule_1_end_time_unique_id,
+    get_schedule_1_start_time_entity_id,
+    get_schedule_1_start_time_key,
+    get_schedule_1_start_time_unique_id,
+    get_schedule_2_end_time_entity_id,
+    get_schedule_2_end_time_key,
+    get_schedule_2_end_time_unique_id,
+    get_schedule_2_start_time_entity_id,
+    get_schedule_2_start_time_key,
+    get_schedule_2_start_time_unique_id,
+    get_schedule_3_end_time_entity_id,
+    get_schedule_3_end_time_key,
+    get_schedule_3_end_time_unique_id,
+    get_schedule_3_start_time_entity_id,
+    get_schedule_3_start_time_key,
+    get_schedule_3_start_time_unique_id,
+)
+
+# Map from config-entry key → (unique_id, entity_id)
+_TIME_ID_MAP: dict[str, tuple[str, str]] = {
+    get_schedule_1_start_time_key(): (
+        get_schedule_1_start_time_unique_id(),
+        get_schedule_1_start_time_entity_id(),
+    ),
+    get_schedule_1_end_time_key(): (
+        get_schedule_1_end_time_unique_id(),
+        get_schedule_1_end_time_entity_id(),
+    ),
+    get_schedule_2_start_time_key(): (
+        get_schedule_2_start_time_unique_id(),
+        get_schedule_2_start_time_entity_id(),
+    ),
+    get_schedule_2_end_time_key(): (
+        get_schedule_2_end_time_unique_id(),
+        get_schedule_2_end_time_entity_id(),
+    ),
+    get_schedule_3_start_time_key(): (
+        get_schedule_3_start_time_unique_id(),
+        get_schedule_3_start_time_entity_id(),
+    ),
+    get_schedule_3_end_time_key(): (
+        get_schedule_3_end_time_unique_id(),
+        get_schedule_3_end_time_entity_id(),
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -70,9 +117,10 @@ class HSEMTimeEntity(TimeEntity, HSEMEntity):
         self._config_entry = config_entry
         self.entity_description = description
         self._attr_name = description.name
-        # Preserve the existing unique_id format so existing entity registry
-        # entries are not invalidated: "hsem_<key>_time".
-        self._attr_unique_id = f"{DOMAIN}_{description.key}_time"
+        # Resolve unique_id and entity_id from the centralized sensornames map.
+        unique_id, entity_id = _TIME_ID_MAP[description.key]
+        self._attr_unique_id = unique_id
+        self.entity_id = entity_id
         self._attr_native_value: time | None = self._parse_time(
             description.default_value
         )
