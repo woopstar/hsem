@@ -13,9 +13,63 @@ from homeassistant.components.switch import SwitchEntity, SwitchEntityDescriptio
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from custom_components.hsem.const import DOMAIN
 from custom_components.hsem.entity import HSEMEntity
 from custom_components.hsem.utils.misc import get_config_value
+from custom_components.hsem.utils.sensornames import (
+    get_batteries_schedule_1_switch_entity_id,
+    get_batteries_schedule_1_switch_key,
+    get_batteries_schedule_1_switch_unique_id,
+    get_batteries_schedule_2_switch_entity_id,
+    get_batteries_schedule_2_switch_key,
+    get_batteries_schedule_2_switch_unique_id,
+    get_batteries_schedule_3_switch_entity_id,
+    get_batteries_schedule_3_switch_key,
+    get_batteries_schedule_3_switch_unique_id,
+    get_ev_force_discharge_switch_entity_id,
+    get_ev_force_discharge_switch_key,
+    get_ev_force_discharge_switch_unique_id,
+    get_extended_attributes_switch_entity_id,
+    get_extended_attributes_switch_key,
+    get_extended_attributes_switch_unique_id,
+    get_read_only_switch_entity_id,
+    get_read_only_switch_key,
+    get_read_only_switch_unique_id,
+    get_verbose_logging_switch_entity_id,
+    get_verbose_logging_switch_key,
+    get_verbose_logging_switch_unique_id,
+)
+
+# Map from config-entry key → (unique_id getter, entity_id getter)
+_SWITCH_ID_MAP: dict[str, tuple[str, str]] = {
+    get_read_only_switch_key(): (
+        get_read_only_switch_unique_id(),
+        get_read_only_switch_entity_id(),
+    ),
+    get_extended_attributes_switch_key(): (
+        get_extended_attributes_switch_unique_id(),
+        get_extended_attributes_switch_entity_id(),
+    ),
+    get_verbose_logging_switch_key(): (
+        get_verbose_logging_switch_unique_id(),
+        get_verbose_logging_switch_entity_id(),
+    ),
+    get_batteries_schedule_1_switch_key(): (
+        get_batteries_schedule_1_switch_unique_id(),
+        get_batteries_schedule_1_switch_entity_id(),
+    ),
+    get_batteries_schedule_2_switch_key(): (
+        get_batteries_schedule_2_switch_unique_id(),
+        get_batteries_schedule_2_switch_entity_id(),
+    ),
+    get_batteries_schedule_3_switch_key(): (
+        get_batteries_schedule_3_switch_unique_id(),
+        get_batteries_schedule_3_switch_entity_id(),
+    ),
+    get_ev_force_discharge_switch_key(): (
+        get_ev_force_discharge_switch_unique_id(),
+        get_ev_force_discharge_switch_entity_id(),
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -66,9 +120,10 @@ class HSEMSwitch(SwitchEntity, HSEMEntity):
         self._config_entry = config_entry
         self.entity_description = description
         self._attr_name = description.name
-        # Preserve the existing unique_id format so existing entity registry
-        # entries are not invalidated: "hsem_<key>_switch".
-        self._attr_unique_id = f"{DOMAIN}_{description.key}_switch"
+        # Resolve unique_id and entity_id from the centralized sensornames map.
+        unique_id, entity_id = _SWITCH_ID_MAP[description.key]
+        self._attr_unique_id = unique_id
+        self.entity_id = entity_id
         self._attr_is_on = bool(get_config_value(self._config_entry, description.key))
 
     @property

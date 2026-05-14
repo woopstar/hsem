@@ -13,9 +13,9 @@ Verifies that the select, switch, and time platform entities:
 Unique-ID format contract (must never change):
   - Switch:  ``"hsem_<key>_switch"``   e.g. ``"hsem_hsem_read_only_switch"``
   - Time:    ``"hsem_<key>_time"``     e.g. ``"hsem_hsem_batteries_enable_batteries_schedule_1_start_time"``
-  - Select:  ``"<entry_id>_<key>"``    e.g. ``"test_entry_id_hsem_force_working_mode"``
-    (The selector was previously unscoped; this refactor scopes it to the
-    entry_id so multiple HSEM config entries never collide.)
+  - Select:  ``"<key>"``               e.g. ``"hsem_force_working_mode"``
+    (The key already carries the ``hsem_`` prefix, keeping it consistent with
+    the switch/time convention and compatible with state-collector lookups.)
 """
 
 from __future__ import annotations
@@ -193,32 +193,44 @@ class TestEntityDescriptions:
 
 
 class TestSwitchUniqueId:
-    """Switch unique_id must preserve the existing format to avoid breaking registries."""
+    """Switch unique_id must be sourced from sensornames getters."""
 
     def test_unique_id_format(self) -> None:
-        """unique_id must be 'hsem_<key>_switch'."""
-        entity = _make_switch(key="hsem_read_only")
-        assert entity.unique_id == "hsem_hsem_read_only_switch"
+        """unique_id must equal the canonical value from sensornames."""
+        from custom_components.hsem.utils.sensornames import (
+            get_read_only_switch_key,
+            get_read_only_switch_unique_id,
+        )
+
+        entity = _make_switch(key=get_read_only_switch_key())
+        assert entity.unique_id == get_read_only_switch_unique_id()
 
     def test_unique_id_all_switches(self) -> None:
-        """Every switch key produces the expected 'hsem_<key>_switch' id."""
+        """Every switch key produces the unique_id from the sensornames getter."""
+        from custom_components.hsem.custom_switches.entity import _SWITCH_ID_MAP
         from custom_components.hsem.switch import SWITCH_DESCRIPTIONS
 
         for desc in SWITCH_DESCRIPTIONS:
             entity = _make_switch(key=desc.key, name=str(desc.name))
-            assert entity.unique_id == f"{DOMAIN}_{desc.key}_switch"
+            expected_uid, _ = _SWITCH_ID_MAP[desc.key]
+            assert entity.unique_id == expected_uid
 
     def test_unique_id_is_attr_not_property(self) -> None:
         """unique_id must be set via _attr_unique_id, not a @property override."""
-        entity = _make_switch()
-        # If _attr_unique_id is set, HSEMSwitch.__dict__ won't have 'unique_id'
-        # as an instance attribute (it lives on _attr_unique_id instead).
+        from custom_components.hsem.utils.sensornames import get_read_only_switch_key
+
+        entity = _make_switch(key=get_read_only_switch_key())
         assert hasattr(entity, "_attr_unique_id")
         assert entity._attr_unique_id == entity.unique_id
 
     def test_different_keys_produce_different_unique_ids(self) -> None:
-        e1 = _make_switch(key="hsem_read_only")
-        e2 = _make_switch(key="hsem_verbose_logging")
+        from custom_components.hsem.utils.sensornames import (
+            get_read_only_switch_key,
+            get_verbose_logging_switch_key,
+        )
+
+        e1 = _make_switch(key=get_read_only_switch_key())
+        e2 = _make_switch(key=get_verbose_logging_switch_key())
         assert e1.unique_id != e2.unique_id
 
 
@@ -614,20 +626,25 @@ class TestSelectPlatformSetup:
 
 
 class TestSelectorUniqueId:
-    """Selector unique_id must be scoped to the config entry."""
+    """Selector unique_id must use the key directly (hsem_ prefix convention)."""
 
-    def test_unique_id_includes_entry_id(self) -> None:
-        entity = _make_selector(entry_id="entry_abc")
-        assert "entry_abc" in entity.unique_id
-
-    def test_unique_id_includes_key(self) -> None:
+    def test_unique_id_is_key(self) -> None:
+        """unique_id must equal the description key exactly."""
         entity = _make_selector(key="hsem_force_working_mode")
-        assert "hsem_force_working_mode" in entity.unique_id
+        assert entity.unique_id == "hsem_force_working_mode"
 
-    def test_different_entries_produce_different_unique_ids(self) -> None:
-        e1 = _make_selector(entry_id="entry_001")
-        e2 = _make_selector(entry_id="entry_002")
-        assert e1.unique_id != e2.unique_id
+    def test_unique_id_includes_hsem_prefix(self) -> None:
+        entity = _make_selector(key="hsem_force_working_mode")
+        assert entity.unique_id.startswith("hsem_")
+
+    def test_unique_id_equals_canonical_key(self) -> None:
+        """unique_id must equal the canonical key from sensornames, not a caller-supplied key."""
+        from custom_components.hsem.utils.sensornames import (
+            get_force_working_mode_selector_key,
+        )
+
+        entity = _make_selector(key="hsem_force_working_mode")
+        assert entity.unique_id == get_force_working_mode_selector_key()
 
     def test_unique_id_is_attr_not_property(self) -> None:
         entity = _make_selector()
@@ -635,9 +652,9 @@ class TestSelectorUniqueId:
         assert entity._attr_unique_id == entity.unique_id
 
     def test_unique_id_format(self) -> None:
-        """unique_id must be '<entry_id>_<key>'."""
-        entity = _make_selector(entry_id="test_entry_id", key="hsem_force_working_mode")
-        assert entity.unique_id == "test_entry_id_hsem_force_working_mode"
+        """unique_id must be the key string (e.g. 'hsem_force_working_mode')."""
+        entity = _make_selector(key="hsem_force_working_mode")
+        assert entity.unique_id == "hsem_force_working_mode"
 
 
 # ===========================================================================

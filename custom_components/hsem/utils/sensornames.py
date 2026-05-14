@@ -1,4 +1,4 @@
-from homeassistant.components import sensor
+from homeassistant.components import select, sensor, switch, time
 from homeassistant.util import slugify as s
 
 from custom_components.hsem.const import DOMAIN
@@ -466,6 +466,22 @@ def get_plan_explanation_sensor_entity_id() -> str:
     return sensor.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_plan_explanation_sensor"))
 
 
+# Force Working Mode Selector
+def get_force_working_mode_selector_key() -> str:
+    """Return the entity description key for the force-working-mode select entity."""
+    return f"{DOMAIN}_force_working_mode"
+
+
+def get_force_working_mode_selector_name() -> str:
+    """Return the display name for the force-working-mode select entity."""
+    return "Force Working Mode"
+
+
+def get_force_working_mode_selector_entity_id() -> str:
+    """Return the entity_id for the force-working-mode select entity."""
+    return select.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_force_working_mode"))
+
+
 # Applier Status Sensor
 def get_applier_status_sensor_name() -> str:
     """Return the display name for the applier-status diagnostic sensor."""
@@ -480,3 +496,279 @@ def get_applier_status_sensor_unique_id() -> str:
 def get_applier_status_sensor_entity_id() -> str:
     """Return the entity_id for the applier-status sensor."""
     return sensor.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_applier_status_sensor"))
+
+
+# ---------------------------------------------------------------------------
+# Switch entities
+# ---------------------------------------------------------------------------
+
+
+def get_read_only_switch_key() -> str:
+    """Return the config-entry key / unique_id basis for the read-only switch."""
+    return f"{DOMAIN}_read_only"
+
+
+def get_read_only_switch_name() -> str:
+    """Return the display name for the read-only switch."""
+    return "Read Only"
+
+
+def get_read_only_switch_unique_id() -> str:
+    """Return the unique_id for the read-only switch."""
+    return f"{DOMAIN}_{get_read_only_switch_key()}_switch"
+
+
+def get_read_only_switch_entity_id() -> str:
+    """Return the entity_id for the read-only switch."""
+    return switch.ENTITY_ID_FORMAT.format(s(get_read_only_switch_unique_id()))
+
+
+def get_extended_attributes_switch_key() -> str:
+    """Return the config-entry key / unique_id basis for the extended-attributes switch."""
+    return f"{DOMAIN}_extended_attributes"
+
+
+def get_extended_attributes_switch_name() -> str:
+    """Return the display name for the extended-attributes switch."""
+    return "Extended Attributes"
+
+
+def get_extended_attributes_switch_unique_id() -> str:
+    """Return the unique_id for the extended-attributes switch."""
+    return f"{DOMAIN}_{get_extended_attributes_switch_key()}_switch"
+
+
+def get_extended_attributes_switch_entity_id() -> str:
+    """Return the entity_id for the extended-attributes switch."""
+    return switch.ENTITY_ID_FORMAT.format(s(get_extended_attributes_switch_unique_id()))
+
+
+def get_verbose_logging_switch_key() -> str:
+    """Return the config-entry key / unique_id basis for the verbose-logging switch."""
+    return f"{DOMAIN}_verbose_logging"
+
+
+def get_verbose_logging_switch_name() -> str:
+    """Return the display name for the verbose-logging switch."""
+    return "Verbose Logging"
+
+
+def get_verbose_logging_switch_unique_id() -> str:
+    """Return the unique_id for the verbose-logging switch."""
+    return f"{DOMAIN}_{get_verbose_logging_switch_key()}_switch"
+
+
+def get_verbose_logging_switch_entity_id() -> str:
+    """Return the entity_id for the verbose-logging switch."""
+    return switch.ENTITY_ID_FORMAT.format(s(get_verbose_logging_switch_unique_id()))
+
+
+def get_batteries_schedule_1_switch_key() -> str:
+    """Return the config-entry key / unique_id basis for the batteries-schedule-1 switch."""
+    return f"{DOMAIN}_batteries_enable_batteries_schedule_1"
+
+
+def get_batteries_schedule_1_switch_name() -> str:
+    """Return the display name for the batteries-schedule-1 switch."""
+    return "Batteries Discharge Schedule 1"
+
+
+def get_batteries_schedule_1_switch_unique_id() -> str:
+    """Return the unique_id for the batteries-schedule-1 switch."""
+    return f"{DOMAIN}_{get_batteries_schedule_1_switch_key()}_switch"
+
+
+def get_batteries_schedule_1_switch_entity_id() -> str:
+    """Return the entity_id for the batteries-schedule-1 switch."""
+    return switch.ENTITY_ID_FORMAT.format(
+        s(get_batteries_schedule_1_switch_unique_id())
+    )
+
+
+def get_batteries_schedule_2_switch_key() -> str:
+    """Return the config-entry key / unique_id basis for the batteries-schedule-2 switch."""
+    return f"{DOMAIN}_batteries_enable_batteries_schedule_2"
+
+
+def get_batteries_schedule_2_switch_name() -> str:
+    """Return the display name for the batteries-schedule-2 switch."""
+    return "Batteries Discharge Schedule 2"
+
+
+def get_batteries_schedule_2_switch_unique_id() -> str:
+    """Return the unique_id for the batteries-schedule-2 switch."""
+    return f"{DOMAIN}_{get_batteries_schedule_2_switch_key()}_switch"
+
+
+def get_batteries_schedule_2_switch_entity_id() -> str:
+    """Return the entity_id for the batteries-schedule-2 switch."""
+    return switch.ENTITY_ID_FORMAT.format(
+        s(get_batteries_schedule_2_switch_unique_id())
+    )
+
+
+def get_batteries_schedule_3_switch_key() -> str:
+    """Return the config-entry key / unique_id basis for the batteries-schedule-3 switch."""
+    return f"{DOMAIN}_batteries_enable_batteries_schedule_3"
+
+
+def get_batteries_schedule_3_switch_name() -> str:
+    """Return the display name for the batteries-schedule-3 switch."""
+    return "Batteries Discharge Schedule 3"
+
+
+def get_batteries_schedule_3_switch_unique_id() -> str:
+    """Return the unique_id for the batteries-schedule-3 switch."""
+    return f"{DOMAIN}_{get_batteries_schedule_3_switch_key()}_switch"
+
+
+def get_batteries_schedule_3_switch_entity_id() -> str:
+    """Return the entity_id for the batteries-schedule-3 switch."""
+    return switch.ENTITY_ID_FORMAT.format(
+        s(get_batteries_schedule_3_switch_unique_id())
+    )
+
+
+def get_ev_force_discharge_switch_key() -> str:
+    """Return the config-entry key / unique_id basis for the EV-force-discharge switch."""
+    return f"{DOMAIN}_ev_charger_force_max_discharge_power"
+
+
+def get_ev_force_discharge_switch_name() -> str:
+    """Return the display name for the EV-force-discharge switch."""
+    return "EV Charger Force Max Discharge Power"
+
+
+def get_ev_force_discharge_switch_unique_id() -> str:
+    """Return the unique_id for the EV-force-discharge switch."""
+    return f"{DOMAIN}_{get_ev_force_discharge_switch_key()}_switch"
+
+
+def get_ev_force_discharge_switch_entity_id() -> str:
+    """Return the entity_id for the EV-force-discharge switch."""
+    return switch.ENTITY_ID_FORMAT.format(s(get_ev_force_discharge_switch_unique_id()))
+
+
+# ---------------------------------------------------------------------------
+# Time entities
+# ---------------------------------------------------------------------------
+
+
+def get_schedule_1_start_time_key() -> str:
+    """Return the config-entry key / unique_id basis for schedule-1-start time."""
+    return f"{DOMAIN}_batteries_enable_batteries_schedule_1_start"
+
+
+def get_schedule_1_start_time_name() -> str:
+    """Return the display name for the schedule-1-start time entity."""
+    return "Batteries Discharge Schedule 1 Start"
+
+
+def get_schedule_1_start_time_unique_id() -> str:
+    """Return the unique_id for the schedule-1-start time entity."""
+    return f"{DOMAIN}_{get_schedule_1_start_time_key()}_time"
+
+
+def get_schedule_1_start_time_entity_id() -> str:
+    """Return the entity_id for the schedule-1-start time entity."""
+    return time.ENTITY_ID_FORMAT.format(s(get_schedule_1_start_time_unique_id()))
+
+
+def get_schedule_1_end_time_key() -> str:
+    """Return the config-entry key / unique_id basis for schedule-1-end time."""
+    return f"{DOMAIN}_batteries_enable_batteries_schedule_1_end"
+
+
+def get_schedule_1_end_time_name() -> str:
+    """Return the display name for the schedule-1-end time entity."""
+    return "Batteries Discharge Schedule 1 End"
+
+
+def get_schedule_1_end_time_unique_id() -> str:
+    """Return the unique_id for the schedule-1-end time entity."""
+    return f"{DOMAIN}_{get_schedule_1_end_time_key()}_time"
+
+
+def get_schedule_1_end_time_entity_id() -> str:
+    """Return the entity_id for the schedule-1-end time entity."""
+    return time.ENTITY_ID_FORMAT.format(s(get_schedule_1_end_time_unique_id()))
+
+
+def get_schedule_2_start_time_key() -> str:
+    """Return the config-entry key / unique_id basis for schedule-2-start time."""
+    return f"{DOMAIN}_batteries_enable_batteries_schedule_2_start"
+
+
+def get_schedule_2_start_time_name() -> str:
+    """Return the display name for the schedule-2-start time entity."""
+    return "Batteries Discharge Schedule 2 Start"
+
+
+def get_schedule_2_start_time_unique_id() -> str:
+    """Return the unique_id for the schedule-2-start time entity."""
+    return f"{DOMAIN}_{get_schedule_2_start_time_key()}_time"
+
+
+def get_schedule_2_start_time_entity_id() -> str:
+    """Return the entity_id for the schedule-2-start time entity."""
+    return time.ENTITY_ID_FORMAT.format(s(get_schedule_2_start_time_unique_id()))
+
+
+def get_schedule_2_end_time_key() -> str:
+    """Return the config-entry key / unique_id basis for schedule-2-end time."""
+    return f"{DOMAIN}_batteries_enable_batteries_schedule_2_end"
+
+
+def get_schedule_2_end_time_name() -> str:
+    """Return the display name for the schedule-2-end time entity."""
+    return "Batteries Discharge Schedule 2 End"
+
+
+def get_schedule_2_end_time_unique_id() -> str:
+    """Return the unique_id for the schedule-2-end time entity."""
+    return f"{DOMAIN}_{get_schedule_2_end_time_key()}_time"
+
+
+def get_schedule_2_end_time_entity_id() -> str:
+    """Return the entity_id for the schedule-2-end time entity."""
+    return time.ENTITY_ID_FORMAT.format(s(get_schedule_2_end_time_unique_id()))
+
+
+def get_schedule_3_start_time_key() -> str:
+    """Return the config-entry key / unique_id basis for schedule-3-start time."""
+    return f"{DOMAIN}_batteries_enable_batteries_schedule_3_start"
+
+
+def get_schedule_3_start_time_name() -> str:
+    """Return the display name for the schedule-3-start time entity."""
+    return "Batteries Discharge Schedule 3 Start"
+
+
+def get_schedule_3_start_time_unique_id() -> str:
+    """Return the unique_id for the schedule-3-start time entity."""
+    return f"{DOMAIN}_{get_schedule_3_start_time_key()}_time"
+
+
+def get_schedule_3_start_time_entity_id() -> str:
+    """Return the entity_id for the schedule-3-start time entity."""
+    return time.ENTITY_ID_FORMAT.format(s(get_schedule_3_start_time_unique_id()))
+
+
+def get_schedule_3_end_time_key() -> str:
+    """Return the config-entry key / unique_id basis for schedule-3-end time."""
+    return f"{DOMAIN}_batteries_enable_batteries_schedule_3_end"
+
+
+def get_schedule_3_end_time_name() -> str:
+    """Return the display name for the schedule-3-end time entity."""
+    return "Batteries Discharge Schedule 3 End"
+
+
+def get_schedule_3_end_time_unique_id() -> str:
+    """Return the unique_id for the schedule-3-end time entity."""
+    return f"{DOMAIN}_{get_schedule_3_end_time_key()}_time"
+
+
+def get_schedule_3_end_time_entity_id() -> str:
+    """Return the entity_id for the schedule-3-end time entity."""
+    return time.ENTITY_ID_FORMAT.format(s(get_schedule_3_end_time_unique_id()))

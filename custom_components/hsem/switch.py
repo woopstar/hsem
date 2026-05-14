@@ -13,49 +13,65 @@ from custom_components.hsem.custom_switches.entity import (
     HSEMSwitch,
     HSEMSwitchEntityDescription,
 )
+from custom_components.hsem.utils.sensornames import (
+    get_batteries_schedule_1_switch_key,
+    get_batteries_schedule_1_switch_name,
+    get_batteries_schedule_2_switch_key,
+    get_batteries_schedule_2_switch_name,
+    get_batteries_schedule_3_switch_key,
+    get_batteries_schedule_3_switch_name,
+    get_ev_force_discharge_switch_key,
+    get_ev_force_discharge_switch_name,
+    get_extended_attributes_switch_key,
+    get_extended_attributes_switch_name,
+    get_read_only_switch_key,
+    get_read_only_switch_name,
+    get_verbose_logging_switch_key,
+    get_verbose_logging_switch_name,
+)
 
-# One description per switch.  The ``key`` is the config-entry option key used
-# to persist the value; it is also the basis for the ``unique_id``.
+# One description per switch.  Keys and names are sourced from sensornames.py
+# so that unique_ids, entity_ids, and display names are defined in one place.
 SWITCH_DESCRIPTIONS: tuple[HSEMSwitchEntityDescription, ...] = (
     HSEMSwitchEntityDescription(
-        key="hsem_read_only",
-        name="Read Only",
+        key=get_read_only_switch_key(),
+        name=get_read_only_switch_name(),
         icon="mdi:toggle-switch",
         description="Toggle read-only mode for the integration.",
     ),
     HSEMSwitchEntityDescription(
-        key="hsem_extended_attributes",
-        name="Extended Attributes",
+        key=get_extended_attributes_switch_key(),
+        name=get_extended_attributes_switch_name(),
         icon="mdi:toggle-switch",
         description="Extend amount of attributes provided by the working mode sensor.",
     ),
     HSEMSwitchEntityDescription(
-        key="hsem_verbose_logging",
-        name="Verbose Logging",
+        key=get_verbose_logging_switch_key(),
+        name=get_verbose_logging_switch_name(),
         icon="mdi:toggle-switch",
         description="Enable to get verbose logging into the HA log.",
     ),
     HSEMSwitchEntityDescription(
-        key="hsem_batteries_enable_batteries_schedule_1",
-        name="Batteries Discharge Schedule 1",
+        key=get_batteries_schedule_1_switch_key(),
+        name=get_batteries_schedule_1_switch_name(),
         icon="mdi:toggle-switch",
         description="Enable or disable batteries schedule 1.",
     ),
     HSEMSwitchEntityDescription(
-        key="hsem_batteries_enable_batteries_schedule_2",
-        name="Batteries Discharge Schedule 2",
+        key=get_batteries_schedule_2_switch_key(),
+        name=get_batteries_schedule_2_switch_name(),
         icon="mdi:toggle-switch",
         description="Enable or disable batteries schedule 2.",
     ),
     HSEMSwitchEntityDescription(
-        key="hsem_batteries_enable_batteries_schedule_3",
-        name="Batteries Discharge Schedule 3",
+        key=get_batteries_schedule_3_switch_key(),
+        name=get_batteries_schedule_3_switch_name(),
         icon="mdi:toggle-switch",
         description="Enable or disable batteries schedule 3.",
     ),
     HSEMSwitchEntityDescription(
-        key="hsem_ev_charger_force_max_discharge_power",
-        name="EV Charger Force Max Discharge Power",
+        key=get_ev_force_discharge_switch_key(),
+        name=get_ev_force_discharge_switch_name(),
         icon="mdi:toggle-switch",
         description=(
             "Enable this if you want to force a specific maximum discharge power"

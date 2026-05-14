@@ -10,6 +10,10 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from custom_components.hsem.entity import HSEMEntity
+from custom_components.hsem.utils.sensornames import (
+    get_force_working_mode_selector_entity_id,
+    get_force_working_mode_selector_key,
+)
 
 
 class HSEMWorkingModeSelector(SelectEntity, HSEMEntity):
@@ -48,9 +52,10 @@ class HSEMWorkingModeSelector(SelectEntity, HSEMEntity):
         self.hass = hass
         self._config_entry = config_entry
         self.entity_description = description
-        # Scope unique_id to the config entry so multiple HSEM instances
-        # each have a distinct entity in the registry.
-        self._attr_unique_id = f"{config_entry.entry_id}_{description.key}"
+        # unique_id and entity_id are sourced from sensornames.py to keep
+        # all HSEM entity identifiers in one canonical location.
+        self._attr_unique_id = get_force_working_mode_selector_key()
+        self.entity_id = get_force_working_mode_selector_entity_id()
         self._attr_options = list(description.options or [])
         self._attr_current_option = default
         self._attr_name = description.name

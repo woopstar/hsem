@@ -13,43 +13,57 @@ from custom_components.hsem.custom_times.entity import (
     HSEMTimeEntityDescription,
 )
 from custom_components.hsem.utils.misc import get_config_value
+from custom_components.hsem.utils.sensornames import (
+    get_schedule_1_end_time_key,
+    get_schedule_1_end_time_name,
+    get_schedule_1_start_time_key,
+    get_schedule_1_start_time_name,
+    get_schedule_2_end_time_key,
+    get_schedule_2_end_time_name,
+    get_schedule_2_start_time_key,
+    get_schedule_2_start_time_name,
+    get_schedule_3_end_time_key,
+    get_schedule_3_end_time_name,
+    get_schedule_3_start_time_key,
+    get_schedule_3_start_time_name,
+)
 
-# One description per time entity.  The ``key`` is the config-entry option key
-# used to persist the value; it is also the basis for the ``unique_id``.
+# One description per time entity.  Keys and names are sourced from sensornames.py
+# so that unique_ids, entity_ids, and display names are defined in one place.
 TIME_DESCRIPTIONS: tuple[HSEMTimeEntityDescription, ...] = (
     HSEMTimeEntityDescription(
-        key="hsem_batteries_enable_batteries_schedule_1_start",
-        name="Batteries Discharge Schedule 1 Start",
+        key=get_schedule_1_start_time_key(),
+        name=get_schedule_1_start_time_name(),
         icon="mdi:clock",
         description="Start time for schedule 1.",
     ),
     HSEMTimeEntityDescription(
-        key="hsem_batteries_enable_batteries_schedule_1_end",
-        name="Batteries Discharge Schedule 1 End",
+        key=get_schedule_1_end_time_key(),
+        name=get_schedule_1_end_time_name(),
         icon="mdi:clock",
         description="End time for schedule 1.",
     ),
     HSEMTimeEntityDescription(
-        key="hsem_batteries_enable_batteries_schedule_2_start",
-        name="Batteries Discharge Schedule 2 Start",
+        key=get_schedule_2_start_time_key(),
+        name=get_schedule_2_start_time_name(),
         icon="mdi:clock",
         description="Start time for schedule 2.",
     ),
     HSEMTimeEntityDescription(
-        key="hsem_batteries_enable_batteries_schedule_2_end",
-        name="Batteries Discharge Schedule 2 End",
+        key=get_schedule_2_end_time_key(),
+        name=get_schedule_2_end_time_name(),
         icon="mdi:clock",
         description="End time for schedule 2.",
     ),
     HSEMTimeEntityDescription(
-        key="hsem_batteries_enable_batteries_schedule_3_start",
-        name="Batteries Discharge Schedule 3 Start",
+        key=get_schedule_3_start_time_key(),
+        name=get_schedule_3_start_time_name(),
         icon="mdi:clock",
         description="Start time for schedule 3.",
     ),
     HSEMTimeEntityDescription(
-        key="hsem_batteries_enable_batteries_schedule_3_end",
-        name="Batteries Discharge Schedule 3 End",
+        key=get_schedule_3_end_time_key(),
+        name=get_schedule_3_end_time_name(),
         icon="mdi:clock",
         description="End time for schedule 3.",
     ),
