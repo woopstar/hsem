@@ -256,3 +256,75 @@ class TestDataStateSync:
         )
         assert rec.recommendation == Recommendations.BatteriesChargeSolar.value
         assert data.state == Recommendations.BatteriesChargeSolar.value
+
+
+# ---------------------------------------------------------------------------
+# EVSmartCharging label via resolver — live charging always overrides
+# ---------------------------------------------------------------------------
+
+
+class TestResolverEvSmartChargingLabel:
+    """Verify that the resolver applies EVSmartCharging when live EV is charging,
+    regardless of whether the slot carried planned EV load.
+
+    The resolver operates on live hardware state and is intentionally not gated
+    on ``ev_planned_load_kwh`` — an EV can start or stop charging at any moment,
+    independently of the planner's forward plan.  These tests document that
+    contract explicitly.
+    """
+
+    def test_ev_charging_overrides_wait_mode_no_planned_load(self):
+        """Live EV charging overrides BatteriesWaitMode even when ev_planned_load_kwh=0."""
+        rec = _make_rec(recommendation=Recommendations.BatteriesWaitMode.value)
+        rec.ev_planned_load_kwh = 0.0
+        live = _make_live(import_price=0.5, ev_charging=True)
+        resolve_current_recommendation(rec, live, 0.0)
+        assert rec.recommendation == Recommendations.EVSmartCharging.value
+
+    def test_ev_charging_overrides_wait_mode_with_planned_load(self):
+        """Live EV charging overrides BatteriesWaitMode when ev_planned_load_kwh > 0."""
+        rec = _make_rec(recommendation=Recommendations.BatteriesWaitMode.value)
+        rec.ev_planned_load_kwh = 3.5
+        live = _make_live(import_price=0.5, ev_charging=True)
+        resolve_current_recommendation(rec, live, 0.0)
+        assert rec.recommendation == Recommendations.EVSmartCharging.value
+
+    def test_no_live_ev_no_override_even_with_planned_load(self):
+        """Without live EV charging the recommendation must not change to EVSmartCharging."""
+        rec = _make_rec(recommendation=Recommendations.BatteriesWaitMode.value)
+        rec.ev_planned_load_kwh = (
+            3.5  # planner injected load but EV is not currently charging
+        )
+        live = _make_live(ev_charging=False, ev2_charging=False)
+        resolve_current_recommendation(rec, live, 0.0)
+        # Resolver branch 3 did not fire; later branches also don't match → stays as-is
+        assert rec.recommendation == Recommendations.BatteriesWaitMode.value
+
+    def test_ev2_live_charging_overrides_regardless_of_planned_load(self):
+        """Second-EV live charging also triggers EVSmartCharging override."""
+        rec = _make_rec(recommendation=Recommendations.BatteriesChargeSolar.value)
+        rec.ev_planned_load_kwh = 0.0
+        live = _make_live(import_price=0.5, ev2_charging=True)
+        resolve_current_recommendation(rec, live, 0.0)
+        assert rec.recommendation == Recommendations.EVSmartCharging.value
+
+    def test_planned_load_without_live_charging_label_unchanged(self):
+        """ev_planned_load_kwh > 0 alone does not trigger EVSmartCharging via resolver.
+
+        The planner's EV label pass (in engine.py) handles the static planned label;
+        the resolver only handles live hardware state.
+        """
+        rec = _make_rec(recommendation=Recommendations.BatteriesChargeSolar.value)
+        rec.ev_planned_load_kwh = 5.0
+        live = _make_live(ev_charging=False, ev2_charging=False, import_price=0.3)
+        resolve_current_recommendation(rec, live, 0.0)
+        # EV not live-charging → resolver branch 3 not taken → stays BatteriesChargeSolar
+        assert rec.recommendation == Recommendations.BatteriesChargeSolar.value
+
+    def test_grid_charge_still_not_overridden_when_ev_planned_load_present(self):
+        """BatteriesChargeGrid must never be overridden, even with ev_planned_load_kwh > 0."""
+        rec = _make_rec(recommendation=Recommendations.BatteriesChargeGrid.value)
+        rec.ev_planned_load_kwh = 4.0
+        live = _make_live(import_price=0.5, ev_charging=True)
+        resolve_current_recommendation(rec, live, 0.0)
+        assert rec.recommendation == Recommendations.BatteriesChargeGrid.value

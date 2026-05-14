@@ -347,6 +347,22 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 for warning in planner_output.warnings:
                     await async_logger(self, f"[planner] {warning}")
 
+                # Log EV planned load diagnostics so operators can debug zero-EV-load issues.
+                if planner_input.ev_planned_load_enabled:
+                    ev_plan = planner_output.ev_charging_plan
+                    ev_state = ev_plan.state if ev_plan else "no_plan"
+                    ev_total = sum(s.ev_planned_load_kwh for s in planner_output.slots)
+                    await async_logger(
+                        self,
+                        f"[planner] EV planned load: state={ev_state}, "
+                        f"total_ev_kwh={ev_total:.3f}, "
+                        f"connected={planner_input.ev_planned_load_connected}, "
+                        f"soc={planner_input.ev_planned_load_current_soc_pct}%, "
+                        f"target={planner_input.ev_planned_load_target_soc_pct}%, "
+                        f"capacity_kwh={planner_input.ev_planned_load_battery_capacity_kwh}, "
+                        f"charger_kw={planner_input.ev_planned_load_charger_power_kw}",
+                    )
+
                 self._apply_planner_output(planner_output)
                 self._current_required_battery = planner_output.required_capacity_kwh
                 self._data_quality = planner_output.data_quality
@@ -685,18 +701,51 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             ),
         )
 
+    @staticmethod
+    def _utc_key(dt) -> object:
+        """Normalise a timezone-aware datetime to a UTC key for slot matching.
+
+        Two datetimes that represent the **same instant** but carry different
+        ``tzinfo`` objects (e.g. ``ZoneInfo('Europe/Copenhagen')`` vs a fixed
+        ``+02:00`` offset) hash and compare as equal in Python.  However,
+        sub-second fields can differ when the recommendation slot was created
+        from ``dt_util.now()`` (which may carry microseconds) while the planner
+        slot was built from ``timedelta`` arithmetic anchored at midnight
+        (microseconds always zero).  Stripping microseconds on both sides
+        guarantees a deterministic match regardless of when each was created.
+
+        Args:
+            dt: A timezone-aware :class:`datetime.datetime`.
+
+        Returns:
+            A ``datetime`` normalised to UTC with ``microsecond=0`` that can be
+            used as a dictionary key for slot matching.
+        """
+        from datetime import UTC
+
+        return dt.astimezone(UTC).replace(microsecond=0)
+
     def _apply_planner_output(self, output) -> None:
         """Write :class:`PlannerOutput` decisions back into the recommendation list.
+
+        The lookup normalises both sides to UTC with ``microsecond=0`` so that
+        slots remain matched even when the recommendation list was created from
+        ``dt_util.now()`` (which may carry a non-zero microsecond component)
+        while the planner slots were built from timedelta arithmetic (always
+        zero microseconds).  Any recommendation slot that cannot be matched
+        emits a warning so the mismatch is visible in logs.
 
         Args:
             output: The :class:`~planner.engine.PlannerOutput` returned by the
                 planner engine.
         """
-        slot_by_start = {s.start: s for s in output.slots}
+        slot_by_utc = {self._utc_key(s.start): s for s in output.slots}
 
+        unmatched: list[str] = []
         for rec in self._hourly_recommendations:
-            slot = slot_by_start.get(rec.start)
+            slot = slot_by_utc.get(self._utc_key(rec.start))
             if slot is None:
+                unmatched.append(rec.start.isoformat())
                 continue
             rec.recommendation = slot.recommendation
             rec.batteries_charged = slot.batteries_charged
@@ -714,6 +763,16 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             # The planner may have applied confidence decay or other transforms
             # that differ from the raw value stored by the data populator.
             rec.solcast_pv_estimate = slot.solcast_pv_estimate
+
+        if unmatched:
+            _LOGGER.warning(
+                "[HSEM] _apply_planner_output: %d recommendation slot(s) had no "
+                "matching planner output slot — planner fields (ev_planned_load_kwh, "
+                "recommendation, …) will remain at default 0.0 for these slots. "
+                "First unmatched rec.start: %s",
+                len(unmatched),
+                unmatched[0],
+            )
 
         self._batteries_schedules_remaining_capacity_needed = sum(
             s.needed_batteries_capacity for s in self._batteries_schedules if s.enabled
