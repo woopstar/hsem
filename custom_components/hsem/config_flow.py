@@ -58,7 +58,16 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Config flow for HSEM."""
 
     VERSION = 1
-    _user_input = {}
+
+    def __init__(self) -> None:
+        """Initialise the config flow with instance-level state.
+
+        Each flow instance owns its own ``_user_input`` dict so that
+        concurrent or sequential config flow instances cannot share or
+        corrupt each other's in-progress user data.
+        """
+        super().__init__()
+        self._user_input: dict = {}
 
     async def async_step_user(self, user_input=None):
         errors = {}
