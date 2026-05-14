@@ -708,6 +708,8 @@ class TestWinnerCostIdentity:
             battery_rated_capacity_kwh=inp.battery_rated_capacity_kwh,
             battery_expected_cycles=inp.battery_expected_cycles,
             conversion_loss_pct=inp.battery_conversion_loss_pct,
+            charge_efficiency_pct=inp.battery_charge_efficiency_pct,
+            discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
         )
         fresh_bd = score_plan(result.slots, weights, slot_duration_hours=1.0)
         assert fresh_bd.total == pytest.approx(result.plan_cost.total, abs=1e-6), (
@@ -729,6 +731,8 @@ class TestWinnerCostIdentity:
             battery_rated_capacity_kwh=inp.battery_rated_capacity_kwh,
             battery_expected_cycles=inp.battery_expected_cycles,
             conversion_loss_pct=inp.battery_conversion_loss_pct,
+            charge_efficiency_pct=inp.battery_charge_efficiency_pct,
+            discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
         )
         fresh_bd = score_plan(result.slots, weights, slot_duration_hours=1.0)
         assert fresh_bd.total == pytest.approx(result.plan_cost.total, abs=1e-6), (
@@ -842,6 +846,8 @@ class TestNoPostSelectionMutation:
             battery_rated_capacity_kwh=inp.battery_rated_capacity_kwh,
             battery_expected_cycles=inp.battery_expected_cycles,
             conversion_loss_pct=inp.battery_conversion_loss_pct,
+            charge_efficiency_pct=inp.battery_charge_efficiency_pct,
+            discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
         )
         # A fresh score_plan on the returned slots must match plan_cost.
         # If the engine did not re-score after the fill pass, this will fail.

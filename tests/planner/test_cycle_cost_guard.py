@@ -49,7 +49,7 @@ def _make_two_slot_input(
     expensive_import: float,
     cycle_cost_per_kwh: float = 0.0,
     min_price_difference: float = 0.0,
-    battery_soc_pct: float = 20.0,
+    battery_soc_pct: float = 10.0,
     battery_conversion_loss_pct: float = 0.0,
     battery_purchase_price: float = 0.0,
     battery_expected_cycles: int = 6000,
@@ -60,9 +60,15 @@ def _make_two_slot_input(
     - Hour 0 (cheap_import): candidate charging slot — no load, no PV.
     - Hour 1 (expensive_import): discharge window — consumes 1 kWh of load.
 
+    Battery starts at the end-of-discharge floor (10 % SoC, 0 usable kWh) so
+    the planner MUST charge from the grid if it wants to cover the h1 load from
+    the battery rather than from expensive grid import.  This ensures the
+    charge-vs-no-charge decision is driven purely by the price spread and
+    cycle-cost guard rather than pre-existing battery capacity.
+
     If the planner decides to charge from the grid, slot 0 will be assigned
     ``batteries_charge_grid``.  If the spread does not justify cycling, slot 0
-    will remain unassigned (``batteries_wait_mode`` or ``batteries_discharge_mode``).
+    will remain unassigned and the h1 load will be covered by grid import.
     """
     prices = [
         PricePoint(hour=0, import_price=cheap_import, export_price=0.0),
@@ -92,7 +98,13 @@ def _make_two_slot_input(
         battery_end_of_discharge_soc_pct=10.0,
         battery_max_soc_pct=100.0,
         battery_max_charge_power_w=5000.0,
+        # Explicit 100 % efficiency so the loss-free test intent is preserved.
+        # Setting battery_conversion_loss_pct=0 alone is not enough now that the
+        # engine also considers battery_charge_efficiency_pct /
+        # battery_discharge_efficiency_pct.
+        battery_charge_efficiency_pct=100.0,
         battery_conversion_loss_pct=battery_conversion_loss_pct,
+        battery_discharge_efficiency_pct=100.0,
         battery_purchase_price=battery_purchase_price,
         battery_expected_cycles=battery_expected_cycles,
         battery_cycle_cost_per_kwh=cycle_cost_per_kwh,

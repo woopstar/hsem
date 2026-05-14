@@ -96,8 +96,17 @@ class PlannerInput:
         battery_max_discharge_power_w:
             Maximum discharging power in Watts.  ``None`` means unlimited /
             use the inverter default.
+        battery_charge_efficiency_pct:
+            Charge-side efficiency as a percentage (0-100).  Energy stored in
+            the battery equals input energy × (charge_efficiency_pct / 100).
+            Defaults to 95 % (5 % charge-side loss).
         battery_conversion_loss_pct:
-            Round-trip conversion loss as a percentage (0-100).
+            Round-trip conversion loss as a percentage (0-100).  Legacy field;
+            used by the cost function's conversion_loss_cost term.
+        battery_discharge_efficiency_pct:
+            Discharge-side efficiency as a percentage (0-100).  Energy delivered
+            to the house equals battery energy removed × (discharge_efficiency_pct / 100).
+            Defaults to 95 % (5 % discharge-side loss).
         battery_purchase_price:
             Purchase price of the battery pack (local currency).  Used for
             depreciation-based threshold calculation.
@@ -154,7 +163,9 @@ class PlannerInput:
     battery_max_soc_pct: float = 100.0
     battery_max_charge_power_w: float = 5000.0
     battery_max_discharge_power_w: float | None = None
+    battery_charge_efficiency_pct: float = 95.0
     battery_conversion_loss_pct: float = 10.0
+    battery_discharge_efficiency_pct: float = 95.0
 
     # --- battery economics ---
     battery_purchase_price: float = 0.0

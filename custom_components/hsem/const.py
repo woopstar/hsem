@@ -22,7 +22,9 @@ MIN_HUAWEI_SOLAR_VERSION = "1.5.0a1"
 
 DEFAULT_CONFIG_VALUES = {
     "device_name": NAME,
+    "hsem_batteries_charge_efficiency": 95,
     "hsem_batteries_conversion_loss": 10,
+    "hsem_batteries_discharge_efficiency": 95,
     "hsem_batteries_enable_excess_export": False,
     "hsem_batteries_excess_export_discharge_buffer": 10,
     "hsem_batteries_excess_export_price_threshold": 0.10,

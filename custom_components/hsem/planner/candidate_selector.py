@@ -60,6 +60,8 @@ def select_best_candidate(
     end_of_discharge_soc_pct: float,
     cost_weights: CostWeights,
     slot_duration_hours: float,
+    charge_efficiency_pct: float = 100.0,
+    discharge_efficiency_pct: float = 100.0,
 ) -> tuple[CandidatePlan, list[RejectedPlan]]:
     """Score all candidates, validate them, and return the best one.
 
@@ -92,6 +94,12 @@ def select_best_candidate(
             Cost weights for :func:`~cost_function.score_plan`.
         slot_duration_hours:
             Duration of each slot in hours (e.g. 0.25 for 15-min slots).
+        charge_efficiency_pct:
+            Charge-side efficiency (0-100 %).  Forwarded to
+            :func:`~soc_simulation.simulate_soc`.  Defaults to 100 %.
+        discharge_efficiency_pct:
+            Discharge-side efficiency (0-100 %).  Forwarded to
+            :func:`~soc_simulation.simulate_soc`.  Defaults to 100 %.
 
     Returns:
         A ``(winner, rejected_plans)`` tuple where *winner* is the
@@ -111,6 +119,8 @@ def select_best_candidate(
             max_discharge_per_slot,
             rated_kwh=rated_kwh,
             end_of_discharge_soc_pct=end_of_discharge_soc_pct,
+            charge_efficiency_pct=charge_efficiency_pct,
+            discharge_efficiency_pct=discharge_efficiency_pct,
         )
         candidate.is_valid, candidate.rejection_reason = _validate_candidate(
             candidate, end_of_discharge_soc_pct

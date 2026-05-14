@@ -397,6 +397,8 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         battery_rated_capacity_kwh=inp.battery_rated_capacity_kwh,
         battery_expected_cycles=inp.battery_expected_cycles,
         conversion_loss_pct=inp.battery_conversion_loss_pct,
+        charge_efficiency_pct=inp.battery_charge_efficiency_pct,
+        discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
     )
     slot_duration_hours = inp.interval_minutes / 60.0
 
@@ -418,6 +420,8 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         end_of_discharge_soc_pct=inp.battery_end_of_discharge_soc_pct,
         cost_weights=cost_weights,
         slot_duration_hours=slot_duration_hours,
+        charge_efficiency_pct=inp.battery_charge_efficiency_pct,
+        discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
     )
     # Use the winning candidate's slots as the final plan
     slots = winner.slots
@@ -460,6 +464,8 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         max_discharge_per_slot,
         rated_kwh=inp.battery_rated_capacity_kwh,
         end_of_discharge_soc_pct=inp.battery_end_of_discharge_soc_pct,
+        charge_efficiency_pct=inp.battery_charge_efficiency_pct,
+        discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
     )
 
     # Current recommendation
