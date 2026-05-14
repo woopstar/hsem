@@ -337,6 +337,120 @@ def build_sensor_config(config_entry) -> SensorConfig:
         get_config_value(config_entry, "hsem_batteries_excess_export_price_threshold")
     )
 
+    # EV planned load integration
+    cfg.ev_planned_load_enabled = convert_to_boolean(
+        get_config_value(config_entry, "hsem_ev_planned_load_enabled")
+    )
+    cfg.ev_planned_load_connected_sensor = _optional_entity(
+        get_config_value(config_entry, "hsem_ev_planned_load_connected_sensor")
+    )
+    cfg.ev_planned_load_soc_sensor = _optional_entity(
+        get_config_value(config_entry, "hsem_ev_planned_load_soc_sensor")
+    )
+    cfg.ev_planned_load_target_soc_entity = _optional_entity(
+        get_config_value(config_entry, "hsem_ev_planned_load_target_soc_entity")
+    )
+    _target_soc_fixed = convert_to_float(
+        get_config_value(config_entry, "hsem_ev_planned_load_target_soc_fixed")
+    )
+    cfg.ev_planned_load_target_soc_fixed = (
+        _target_soc_fixed if _target_soc_fixed is not None else 80.0
+    )
+    cfg.ev_planned_load_deadline_entity = _optional_entity(
+        get_config_value(config_entry, "hsem_ev_planned_load_deadline_entity")
+    )
+    _deadline_fixed = get_config_value(
+        config_entry, "hsem_ev_planned_load_deadline_fixed"
+    )
+    cfg.ev_planned_load_deadline_fixed = (
+        str(_deadline_fixed) if _deadline_fixed else "07:00"
+    )
+    cfg.ev_planned_load_smart_charging_entity = _optional_entity(
+        get_config_value(config_entry, "hsem_ev_planned_load_smart_charging_entity")
+    )
+    _bat_cap = convert_to_float(
+        get_config_value(config_entry, "hsem_ev_planned_load_battery_capacity_kwh")
+    )
+    cfg.ev_planned_load_battery_capacity_kwh = _bat_cap if _bat_cap is not None else 0.0
+    _chg_pwr = convert_to_float(
+        get_config_value(config_entry, "hsem_ev_planned_load_charger_power_kw")
+    )
+    cfg.ev_planned_load_charger_power_kw = _chg_pwr if _chg_pwr is not None else 0.0
+    _chg_eff = convert_to_float(
+        get_config_value(config_entry, "hsem_ev_planned_load_charger_efficiency")
+    )
+    cfg.ev_planned_load_charger_efficiency_pct = (
+        _chg_eff if _chg_eff is not None else 100.0
+    )
+    cfg.ev_planned_load_base_load_includes_ev = convert_to_boolean(
+        get_config_value(config_entry, "hsem_ev_planned_load_base_load_includes_ev")
+    )
+    cfg.ev_planned_load_actual_power_sensor = _optional_entity(
+        get_config_value(config_entry, "hsem_ev_planned_load_actual_power_sensor")
+    )
+
+    # Second EV planned load integration
+    cfg.ev_second_planned_load_enabled = convert_to_boolean(
+        get_config_value(config_entry, "hsem_ev_second_planned_load_enabled")
+    )
+    cfg.ev_second_planned_load_connected_sensor = _optional_entity(
+        get_config_value(config_entry, "hsem_ev_second_planned_load_connected_sensor")
+    )
+    cfg.ev_second_planned_load_soc_sensor = _optional_entity(
+        get_config_value(config_entry, "hsem_ev_second_planned_load_soc_sensor")
+    )
+    cfg.ev_second_planned_load_target_soc_entity = _optional_entity(
+        get_config_value(config_entry, "hsem_ev_second_planned_load_target_soc_entity")
+    )
+    _s2_tsoc = convert_to_float(
+        get_config_value(config_entry, "hsem_ev_second_planned_load_target_soc_fixed")
+    )
+    cfg.ev_second_planned_load_target_soc_fixed = (
+        _s2_tsoc if _s2_tsoc is not None else 80.0
+    )
+    cfg.ev_second_planned_load_deadline_entity = _optional_entity(
+        get_config_value(config_entry, "hsem_ev_second_planned_load_deadline_entity")
+    )
+    _s2_dl = get_config_value(
+        config_entry, "hsem_ev_second_planned_load_deadline_fixed"
+    )
+    cfg.ev_second_planned_load_deadline_fixed = str(_s2_dl) if _s2_dl else "07:00"
+    cfg.ev_second_planned_load_smart_charging_entity = _optional_entity(
+        get_config_value(
+            config_entry, "hsem_ev_second_planned_load_smart_charging_entity"
+        )
+    )
+    _s2_cap = convert_to_float(
+        get_config_value(
+            config_entry, "hsem_ev_second_planned_load_battery_capacity_kwh"
+        )
+    )
+    cfg.ev_second_planned_load_battery_capacity_kwh = (
+        _s2_cap if _s2_cap is not None else 0.0
+    )
+    _s2_pwr = convert_to_float(
+        get_config_value(config_entry, "hsem_ev_second_planned_load_charger_power_kw")
+    )
+    cfg.ev_second_planned_load_charger_power_kw = (
+        _s2_pwr if _s2_pwr is not None else 0.0
+    )
+    _s2_eff = convert_to_float(
+        get_config_value(config_entry, "hsem_ev_second_planned_load_charger_efficiency")
+    )
+    cfg.ev_second_planned_load_charger_efficiency_pct = (
+        _s2_eff if _s2_eff is not None else 100.0
+    )
+    cfg.ev_second_planned_load_base_load_includes_ev = convert_to_boolean(
+        get_config_value(
+            config_entry, "hsem_ev_second_planned_load_base_load_includes_ev"
+        )
+    )
+    cfg.ev_second_planned_load_actual_power_sensor = _optional_entity(
+        get_config_value(
+            config_entry, "hsem_ev_second_planned_load_actual_power_sensor"
+        )
+    )
+
     # Consumption weights
     _w1d = convert_to_int(
         get_config_value(config_entry, "hsem_house_consumption_energy_weight_1d")

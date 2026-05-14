@@ -147,6 +147,21 @@ class LiveState:
     battery_current_capacity_kwh: float = 0.0
     battery_rated_capacity_min_kwh: float = 0.0
 
+    # EV planned load live state — primary EV
+    ev_planned_load_connected: bool = False
+    ev_planned_load_smart_charging_enabled: bool = True
+    ev_planned_load_current_soc_pct: float = 0.0
+    ev_planned_load_target_soc_pct: float = 80.0
+    ev_planned_load_deadline: Any = (
+        None  # datetime | None, typed as Any to avoid import
+    )
+    # EV planned load live state — second EV
+    ev_second_planned_load_connected: bool = False
+    ev_second_planned_load_smart_charging_enabled: bool = True
+    ev_second_planned_load_current_soc_pct: float = 0.0
+    ev_second_planned_load_target_soc_pct: float = 80.0
+    ev_second_planned_load_deadline: Any = None  # datetime | None
+
     @property
     def is_forced_mode(self) -> bool:
         """Return True when a manual working mode override is active."""

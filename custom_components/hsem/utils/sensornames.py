@@ -450,6 +450,40 @@ def get_ev_charging_sensor_entity_id() -> str:
     return sensor.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_ev_charging_sensor"))
 
 
+# EV Optimal Charging Plan Sensor
+def get_ev_optimal_charging_plan_sensor_name() -> str:
+    """Return the display name for the EV optimal charging plan sensor."""
+    return "EV Optimal Charging Plan"
+
+
+def get_ev_optimal_charging_plan_sensor_unique_id() -> str:
+    """Return a unique ID for the EV optimal charging plan sensor."""
+    return f"{DOMAIN}_ev_optimal_charging_plan"
+
+
+def get_ev_optimal_charging_plan_sensor_entity_id() -> str:
+    """Return the entity_id for the EV optimal charging plan sensor."""
+    return sensor.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_ev_optimal_charging_plan"))
+
+
+# EV Second Optimal Charging Plan Sensor
+def get_ev_second_optimal_charging_plan_sensor_name() -> str:
+    """Return the display name for the second EV optimal charging plan sensor."""
+    return "EV 2 Optimal Charging Plan"
+
+
+def get_ev_second_optimal_charging_plan_sensor_unique_id() -> str:
+    """Return a unique ID for the second EV optimal charging plan sensor."""
+    return f"{DOMAIN}_ev_second_optimal_charging_plan"
+
+
+def get_ev_second_optimal_charging_plan_sensor_entity_id() -> str:
+    """Return the entity_id for the second EV optimal charging plan sensor."""
+    return sensor.ENTITY_ID_FORMAT.format(
+        s(f"{DOMAIN}_ev_second_optimal_charging_plan")
+    )
+
+
 # Plan Explanation Sensor
 def get_plan_explanation_sensor_name() -> str:
     """Return the display name for the plan-explanation diagnostic sensor."""

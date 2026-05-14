@@ -9,7 +9,7 @@ plain unit tests without a running HA instance.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import time
+from datetime import datetime, time
 from typing import Any
 
 
@@ -202,6 +202,32 @@ class PlannerInput:
     months_winter: list[int] = field(default_factory=lambda: [1, 2, 3, 4, 10, 11, 12])
     house_power_includes_ev: bool = True
     is_read_only: bool = False  # False = hardware writes enabled; set True only in dry-run/test scenarios
+
+    # --- EV planned load integration — primary EV (optional, disabled by default) ---
+    #: When True, the primary EV planned load feature is active.
+    ev_planned_load_enabled: bool = False
+    ev_planned_load_connected: bool = False
+    ev_planned_load_smart_charging_enabled: bool = True
+    ev_planned_load_current_soc_pct: float = 0.0
+    ev_planned_load_target_soc_pct: float = 80.0
+    ev_planned_load_battery_capacity_kwh: float = 0.0
+    ev_planned_load_charger_power_kw: float = 0.0
+    ev_planned_load_charger_efficiency_pct: float = 100.0
+    ev_planned_load_deadline: datetime | None = None
+    ev_planned_load_base_load_includes_ev: bool = False
+
+    # --- EV planned load integration — second EV (optional, disabled by default) ---
+    #: When True, the second EV planned load feature is active.
+    ev_second_planned_load_enabled: bool = False
+    ev_second_planned_load_connected: bool = False
+    ev_second_planned_load_smart_charging_enabled: bool = True
+    ev_second_planned_load_current_soc_pct: float = 0.0
+    ev_second_planned_load_target_soc_pct: float = 80.0
+    ev_second_planned_load_battery_capacity_kwh: float = 0.0
+    ev_second_planned_load_charger_power_kw: float = 0.0
+    ev_second_planned_load_charger_efficiency_pct: float = 100.0
+    ev_second_planned_load_deadline: datetime | None = None
+    ev_second_planned_load_base_load_includes_ev: bool = False
 
     # --- optional extra context that tests may inspect ---
     extra: dict[str, Any] = field(default_factory=dict)

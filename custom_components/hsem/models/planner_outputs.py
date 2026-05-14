@@ -17,6 +17,7 @@ from custom_components.hsem.utils.prices import SlotPrice
 if TYPE_CHECKING:
     from custom_components.hsem.models.time_series import TimeSeriesIndex
     from custom_components.hsem.planner.cost_function import PlanCostBreakdown
+    from custom_components.hsem.planner.ev_planner import EVChargingPlan
 
 # ---------------------------------------------------------------------------
 # Data quality diagnostics
@@ -289,6 +290,11 @@ class PlannedSlot:
             The ``Recommendations`` enum value chosen for this slot
             (stored as its string value so the output stays framework-free)
             or ``None`` if no decision has been made.
+        ev_planned_load_kwh:
+            Planned EV charging energy for this slot (kWh, ≥ 0).  Zero when
+            EV planned load integration is disabled or the EV is not
+            scheduled to charge in this slot.  Added to net consumption
+            **before** solar surplus is calculated.
     """
 
     start: datetime
@@ -300,6 +306,7 @@ class PlannedSlot:
     avg_house_consumption_3d: float = 0.0
     avg_house_consumption_7d: float = 0.0
     avg_house_consumption_14d: float = 0.0
+    ev_planned_load_kwh: float = 0.0
     estimated_net_consumption: float = 0.0
     estimated_cost: float = 0.0
     estimated_battery_soc: float = 0.0
@@ -428,6 +435,10 @@ class PlannerOutput:
     #: ``is_valid`` and ``rejection_reason`` set by the selector.
     #: Empty when the planner produced no slots (missing inputs).
     candidates: list[Any] = field(default_factory=list, repr=False)
+    #: EV charging plan for the primary EV.  ``None`` when disabled.
+    ev_charging_plan: EVChargingPlan | None = field(default=None, repr=False)
+    #: EV charging plan for the second EV.  ``None`` when disabled.
+    ev_second_charging_plan: EVChargingPlan | None = field(default=None, repr=False)
 
     # ------------------------------------------------------------------
     # Convenience helpers used by tests
