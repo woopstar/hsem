@@ -452,7 +452,32 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         price_points: list[PricePoint] = []
         solcast_slots: list[SolcastSlot] = []
 
+        # Number of recommendation slots that fit inside one wall-clock hour.
+        # Used to up-scale per-slot energy values back to hourly totals before
+        # passing them to the planner engine (which works in Wh per hour).
         slots_per_hour = 60.0 / cfg.recommendation_interval_minutes
+
+        # ---------------------------------------------------------------------------
+        # Price interval semantics — see also hourly_data_populator.py
+        # ---------------------------------------------------------------------------
+        # `eds_share` is the ratio of the EDS update interval to the slot width:
+        #
+        #   eds_share = energi_data_service_update_interval / recommendation_interval_minutes
+        #
+        # In `hourly_data_populator._async_update_hourly_field`, each EDS price was
+        # divided by `eds_share` before storing into the per-slot recommendation
+        # object.  Here we multiply it back to recover the original price rate
+        # (currency/kWh) before handing it to the planner.
+        #
+        # This forward-and-back pair is intentional: the divide converts the price
+        # to a per-slot representation suitable for matching slot boundaries, while
+        # the multiply here converts it back to the original hourly rate required by
+        # the planner's cost function.
+        #
+        # Common configurations:
+        #   EDS 60 min / slots 15 min  →  eds_share = 4.0
+        #   EDS 15 min / slots 15 min  →  eds_share = 1.0  (no-op)
+        #   EDS 60 min / slots 60 min  →  eds_share = 1.0  (no-op)
         eds_share = (
             cfg.energi_data_service_update_interval
             / cfg.recommendation_interval_minutes
@@ -473,6 +498,8 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                     avg_14d=round(rec.avg_house_consumption_14d * slots_per_hour, 3),
                 )
             )
+            # Multiply by eds_share to reverse the per-slot divide applied during
+            # population; the planner receives the original currency/kWh rate.
             price_points.append(
                 PricePoint(
                     hour=h,
