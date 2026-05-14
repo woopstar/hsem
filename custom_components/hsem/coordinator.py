@@ -189,6 +189,9 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         self._plan_explanation: PlanExplanation = PlanExplanation()
         # Most recent data quality report produced by the planner engine.
         self._data_quality: DataQuality = DataQuality()
+        # Most recent planner input/output retained for diagnostics dumps.
+        self._last_planner_input: PlannerInput | None = None
+        self._last_planner_output = None
 
     # ------------------------------------------------------------------
     # HA lifecycle
@@ -328,7 +331,10 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
 
                 # 8. Run the pure-Python planner engine.
                 planner_input = self._build_planner_input()
+                # Retain for diagnostics dumps (cleared on each cycle).
+                self._last_planner_input = planner_input
                 planner_output = run_planner(planner_input)
+                self._last_planner_output = planner_output
 
                 for warning in planner_output.warnings:
                     await async_logger(self, f"[planner] {warning}")
