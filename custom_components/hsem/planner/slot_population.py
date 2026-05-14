@@ -46,6 +46,7 @@ from custom_components.hsem.const import (
     SPIKE14_REDIST_TO_7D,
     SPIKE14_REDUCE_FRACTION_MAX,
 )
+from custom_components.hsem.datetime_utils import as_tz
 from custom_components.hsem.models.planner_inputs import (
     HourlyConsumptionAverage,
     PlannerInput,
@@ -307,7 +308,7 @@ def mark_time_passed(slots: list[PlannedSlot], now: datetime) -> None:
         now: Timezone-aware current datetime.
     """
     for slot in slots:
-        if slot.end.astimezone(now.tzinfo) < now:
+        if as_tz(slot.end, now.tzinfo) < now:
             slot.recommendation = Recommendations.TimePassed.value
 
 
@@ -328,8 +329,8 @@ def populate_battery_capacity(
     previous_capacity = 0.0
 
     for slot in slots:
-        slot_start = slot.start.astimezone(now.tzinfo)
-        slot_end = slot.end.astimezone(now.tzinfo)
+        slot_start = as_tz(slot.start, now.tzinfo)
+        slot_end = as_tz(slot.end, now.tzinfo)
 
         if slot_start <= now < slot_end:
             cap = max(

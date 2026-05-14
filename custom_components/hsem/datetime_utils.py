@@ -18,11 +18,20 @@ Usage
 >>> from custom_components.hsem.datetime_utils import now, slot_key
 >>> current = now()
 >>> key = slot_key(current, interval_minutes=60)
+
+Pure-module usage (no HA dependency needed)
+-------------------------------------------
+The planner engine and related pure modules receive ``now`` as an argument.
+They should use ``as_tz(dt, now.tzinfo)`` instead of ``dt.astimezone(now.tzinfo)``
+so that all timezone normalisation is routed through this module.
+
+>>> from custom_components.hsem.datetime_utils import as_tz
+>>> slot_local = as_tz(slot.start, now.tzinfo)
 """
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, tzinfo
 
 import homeassistant.util.dt as dt_util
 
@@ -111,3 +120,40 @@ def slot_key(value: datetime, interval_minutes: int) -> datetime:
         the slot containing *value* under the given interval width.
     """
     return normalize_slot_start(value, interval_minutes)
+
+
+def as_tz(value: datetime, tz: tzinfo) -> datetime:
+    """Return *value* converted to the given timezone without microseconds.
+
+    This is the canonical replacement for the ``dt.astimezone(now.tzinfo)``
+    pattern used throughout the pure planner modules.  Using this function
+    instead of calling ``.astimezone()`` directly ensures all timezone
+    conversions are routed through one place and microseconds are always
+    stripped.
+
+    For pure planner modules that have no Home Assistant dependency, pass
+    ``now.tzinfo`` (where ``now`` was obtained from the coordinator via
+    ``dt_util.now()``).  For HA-aware modules, prefer ``normalize_datetime``
+    which also handles naive inputs.
+
+    Args:
+        value: A timezone-aware :class:`~datetime.datetime`.
+        tz: Target timezone (e.g. ``now.tzinfo``).
+
+    Returns:
+        A timezone-aware :class:`~datetime.datetime` in *tz* with
+        ``microsecond=0``.
+    """
+    return value.astimezone(tz).replace(microsecond=0)
+
+
+def utc_now_iso() -> str:
+    """Return the current HA-local datetime as an ISO-8601 string.
+
+    Replaces scattered ``dt_util.now().isoformat()`` calls so that the
+    microsecond=0 invariant is always honoured.
+
+    Returns:
+        ISO-8601 string of the current HA-local time without microseconds.
+    """
+    return now().isoformat()

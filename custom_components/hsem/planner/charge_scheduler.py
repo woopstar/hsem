@@ -15,6 +15,7 @@ from custom_components.hsem.const import (
     NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH,
     SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH,
 )
+from custom_components.hsem.datetime_utils import as_tz
 from custom_components.hsem.models.planner_inputs import BatteryScheduleInput
 from custom_components.hsem.models.planner_outputs import PlannedSlot
 from custom_components.hsem.utils.misc import next_window_start_dt
@@ -48,10 +49,10 @@ def apply_discharge_schedules(
         # Determine the last slot end in the planning horizon so we know how
         # many days to cover.  We apply the discharge window once per calendar
         # day that falls within [now, horizon_end].
-        future_slots = [s for s in slots if s.end.astimezone(now.tzinfo) > now]
+        future_slots = [s for s in slots if as_tz(s.end, now.tzinfo) > now]
         if not future_slots:
             continue
-        horizon_end = future_slots[-1].end.astimezone(now.tzinfo)
+        horizon_end = as_tz(future_slots[-1].end, now.tzinfo)
 
         # Collect all occurrences of this schedule window within the horizon.
         # Start from the first upcoming occurrence and advance one day at a time.
@@ -73,8 +74,8 @@ def apply_discharge_schedules(
                 ).replace(tzinfo=now.tzinfo)
 
             for slot in slots:
-                slot_start = slot.start.astimezone(now.tzinfo)
-                slot_end = slot.end.astimezone(now.tzinfo)
+                slot_start = as_tz(slot.start, now.tzinfo)
+                slot_end = as_tz(slot.end, now.tzinfo)
                 if slot_end <= now:
                     continue
                 if slot_start >= window_start_abs and slot_end <= window_end_abs:
@@ -84,8 +85,8 @@ def apply_discharge_schedules(
             occ_net = 0.0
             occ_prices: list[float] = []
             for s in slots:
-                s_start = s.start.astimezone(now.tzinfo)
-                s_end = s.end.astimezone(now.tzinfo)
+                s_start = as_tz(s.start, now.tzinfo)
+                s_end = as_tz(s.end, now.tzinfo)
                 if (
                     s.recommendation == Recommendations.BatteriesDischargeMode.value
                     and s_start >= window_start_abs
@@ -130,9 +131,9 @@ def _avg_price_in_window(
     prices = [
         s.price.import_price
         for s in slots
-        if s.start.astimezone(now.tzinfo) >= window_start
-        and s.end.astimezone(now.tzinfo) <= window_end
-        and s.end.astimezone(now.tzinfo) > now
+        if as_tz(s.start, now.tzinfo) >= window_start
+        and as_tz(s.end, now.tzinfo) <= window_end
+        and as_tz(s.end, now.tzinfo) > now
     ]
     return round(sum(prices) / len(prices), 3) if prices else 0.0
 
@@ -210,8 +211,8 @@ def apply_charge_schedules(
             eligible = [
                 s
                 for s in slots
-                if s.end.astimezone(now.tzinfo) > now
-                and s.end.astimezone(now.tzinfo) <= window_start_abs
+                if as_tz(s.end, now.tzinfo) > now
+                and as_tz(s.end, now.tzinfo) <= window_start_abs
                 and s.recommendation is None
             ]
 
@@ -380,7 +381,7 @@ def calculate_required_battery_until_solar(
     """
     required = 0.0
     for slot in slots:
-        if slot.start.astimezone(now.tzinfo) < now:
+        if as_tz(slot.start, now.tzinfo) < now:
             continue
         if slot.estimated_net_consumption < 0:
             break
@@ -452,7 +453,7 @@ def apply_excess_export(
         (
             s
             for s in slots
-            if s.start.astimezone(now.tzinfo) >= now
+            if as_tz(s.start, now.tzinfo) >= now
             and s.recommendation is None
             and (
                 battery_is_solar_charged
@@ -540,7 +541,7 @@ def apply_opportunistic_charge(
         (
             slot
             for slot in slots
-            if slot.end.astimezone(now.tzinfo) > now
+            if as_tz(slot.end, now.tzinfo) > now
             and slot.recommendation is None
             and slot.price.import_price < 0
         ),
@@ -565,7 +566,7 @@ def apply_opportunistic_charge(
             (
                 slot
                 for slot in slots
-                if slot.end.astimezone(now.tzinfo) > now
+                if as_tz(slot.end, now.tzinfo) > now
                 and slot.recommendation is None
                 and 0 <= slot.price.import_price < effective_threshold
             ),
@@ -641,7 +642,7 @@ def apply_optimization_strategy(
         (
             s
             for s in slots
-            if s.recommendation is None and s.start.astimezone(now.tzinfo) >= now
+            if s.recommendation is None and as_tz(s.start, now.tzinfo) >= now
         ),
         key=lambda x: x.price.export_price,
     ):

@@ -15,6 +15,7 @@ from datetime import datetime
 
 from homeassistant.exceptions import HomeAssistantError
 
+from custom_components.hsem.datetime_utils import normalize_datetime
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.sensor_config import SensorConfig
 
@@ -324,9 +325,8 @@ async def _async_update_hourly_field(
                     dt_key = datetime.fromisoformat(str(raw_time))
 
                 try:
-                    dt_key = dt_key.replace(
-                        minute=0, second=0, microsecond=0
-                    ).astimezone(tz)
+                    # Normalize to HA-local timezone, strip sub-minute precision
+                    dt_key = normalize_datetime(dt_key).replace(minute=0, second=0)
                 except (ValueError, OSError):  # noqa: TRY302
                     # Skip data points with unparseable or non-local timestamps
                     continue
@@ -353,9 +353,7 @@ async def _async_update_hourly_field(
                 value = value / share
 
                 for obj in recommendations:
-                    obj_hour = obj.start.replace(
-                        minute=0, second=0, microsecond=0
-                    ).astimezone(tz)
+                    obj_hour = normalize_datetime(obj.start).replace(minute=0, second=0)
                     if obj.start.date() == dt_key.date() and obj_hour == dt_key:
                         setattr(obj, field_name, round(value, 5))
 
