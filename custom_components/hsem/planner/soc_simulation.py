@@ -130,7 +130,11 @@ def simulate_soc(
             cap = current_kwh
 
         pv = slot.solcast_pv_estimate  # kWh produced by PV this slot
-        load = slot.avg_house_consumption  # kWh consumed by house this slot
+        # Total load = house consumption + EV AC-side draw (grid/PV).
+        # slot.ev_planned_load_kwh is the AC load injected by the EV planner
+        # (already divided by charger efficiency), so it represents the true
+        # grid/PV demand from the charger, not the energy stored in the EV.
+        load = slot.avg_house_consumption + slot.ev_planned_load_kwh
 
         # --- Enforce charge ceiling on pre-scheduled charge ---
         # The charge scheduler may have set batteries_charged without knowing

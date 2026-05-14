@@ -487,14 +487,24 @@ class TestApplyEvPlannedLoad:
     def _make_plan(
         self, slots_kw: list[float], starts: list[datetime]
     ) -> EVChargingPlan:
-        """Build a minimal EVChargingPlan with one slot per start."""
+        """Build a minimal EVChargingPlan with one slot per start.
+
+        ``ac_load_kwh`` is set equal to ``estimated_charged_kwh`` (100 %
+        efficiency assumed) so that injection produces the same numeric values
+        as the old battery-side values and existing assertions stay valid.
+        """
         from custom_components.hsem.planner.ev_planner import EVChargingSlot
 
         plan = EVChargingPlan()
         plan.state = "charging"
         for _i, (start, kw) in enumerate(zip(starts, slots_kw)):
             end = start + timedelta(hours=1)
-            ev_slot = EVChargingSlot(start=start, end=end, estimated_charged_kwh=kw)
+            ev_slot = EVChargingSlot(
+                start=start,
+                end=end,
+                estimated_charged_kwh=kw,
+                ac_load_kwh=kw,  # 100 % efficiency — AC = battery-side
+            )
             plan.charging_slots.append(ev_slot)
             plan.planned_load_by_slot[start.isoformat()] = kw
         return plan
@@ -1119,4 +1129,436 @@ class TestEvSmartChargingRecommendationLabel:
             ev_starts = {s.start for s in ev_smart_slots}
             assert ev_starts & all_window_starts, (
                 "ev_smart_charging slots should appear in at least one charge window"
+            )
+
+
+# ---------------------------------------------------------------------------
+# TestEvAcLoadAndSoCPath
+#
+# Hand-calculated tests proving that EV load flows through the full SoC/cost
+# path correctly:
+#
+#   1. ac_load_kwh = estimated_charged_kwh / charger_efficiency
+#   2. ev_planned_load_kwh injected = ac_load_kwh (not battery-side)
+#   3. estimated_net_consumption = house + ev_ac_load - pv
+#   4. grid_import_kwh includes EV AC draw
+#   5. plan_cost includes EV grid import cost
+#   6. SoC simulation uses the combined load
+#
+# All scenarios use:
+#   - 1-hour slots, 24-hour horizon
+#   - EV needed kWh known (set up to charge exactly one slot)
+#   - No home battery so SoC path is simple (battery_soc_pct = 5 = floor)
+# ---------------------------------------------------------------------------
+
+
+class TestEvAcLoadAndSoCPath:
+    """Prove EV load affects ac_load_kwh, net consumption, grid import and plan cost."""
+
+    def _make_no_battery_input(
+        self,
+        now_iso: str = "2024-06-15T08:00:00+00:00",
+        ev_soc: float = 70.0,
+        ev_target_soc: float = 80.0,
+        ev_capacity_kwh: float = 100.0,
+        charger_kw: float = 11.0,
+        charger_eff_pct: float = 100.0,
+        import_price: float = 0.5,
+        pv_estimate_kwh: float = 0.0,
+        house_consumption_kwh: float = 0.5,
+        deadline_hours: float = 3.0,
+    ) -> PlannerInput:
+        """Build a minimal input with the battery at the discharge floor."""
+        now_dt = datetime.fromisoformat(now_iso)
+        deadline = now_dt + timedelta(hours=deadline_hours)
+
+        prices = [
+            PricePoint(hour=h, import_price=import_price, export_price=0.1)
+            for h in range(24)
+        ]
+        pv = [SolcastSlot(hour=h, pv_estimate=pv_estimate_kwh) for h in range(24)]
+        avgs = [
+            HourlyConsumptionAverage(
+                hour=h,
+                avg_1d=house_consumption_kwh,
+                avg_3d=house_consumption_kwh,
+                avg_7d=house_consumption_kwh,
+                avg_14d=house_consumption_kwh,
+            )
+            for h in range(24)
+        ]
+        return PlannerInput(
+            now_iso=now_iso,
+            interval_minutes=60,
+            interval_length_hours=24,
+            # Battery at floor → no battery involvement
+            battery_soc_pct=5.0,
+            battery_rated_capacity_kwh=10.0,
+            battery_end_of_discharge_soc_pct=5.0,
+            battery_max_soc_pct=90.0,
+            battery_max_charge_power_w=5000.0,
+            battery_conversion_loss_pct=0.0,
+            battery_charge_efficiency_pct=100.0,
+            battery_discharge_efficiency_pct=100.0,
+            weight_1d=25,
+            weight_3d=30,
+            weight_7d=30,
+            weight_14d=15,
+            consumption_averages=avgs,
+            price_points=prices,
+            solcast_slots=pv,
+            ev_planned_load_enabled=True,
+            ev_planned_load_connected=True,
+            ev_planned_load_smart_charging_enabled=True,
+            ev_planned_load_current_soc_pct=ev_soc,
+            ev_planned_load_target_soc_pct=ev_target_soc,
+            ev_planned_load_battery_capacity_kwh=ev_capacity_kwh,
+            ev_planned_load_charger_power_kw=charger_kw,
+            ev_planned_load_charger_efficiency_pct=charger_eff_pct,
+            ev_planned_load_deadline=deadline,
+            ev_planned_load_base_load_includes_ev=False,
+        )
+
+    # ------------------------------------------------------------------
+    # ac_load_kwh unit test
+    # ------------------------------------------------------------------
+
+    def test_ac_load_kwh_equals_battery_delivered_divided_by_efficiency(self):
+        """EVChargingSlot.ac_load_kwh must equal estimated_charged_kwh / efficiency.
+
+        Hand calculation:
+          EV needs 10 kWh (battery-side, e.g. 10 → 20 % of 100 kWh battery)
+          charger_power = 11 kW, slot = 1 h → max_battery_side = 11 × 1 × 0.90 = 9.9 kWh
+          allocated (battery-side) = min(9.9, 10.0) = 9.9 kWh
+          ac_load_kwh = 9.9 / 0.90 = 11.0 kWh
+        """
+        now_dt = datetime(2024, 6, 15, 8, 0, tzinfo=UTC)
+        deadline = now_dt + timedelta(hours=2)
+        starts = [now_dt + timedelta(hours=h) for h in range(24)]
+        ends = [now_dt + timedelta(hours=h + 1) for h in range(24)]
+
+        inp = EVPlannerInput(
+            enabled=True,
+            ev_connected=True,
+            smart_charging_enabled=True,
+            current_soc_pct=90.0,  # 10 % below target
+            target_soc_pct=100.0,
+            battery_capacity_kwh=100.0,  # needs 10 kWh battery-side
+            charger_power_kw=11.0,
+            charger_efficiency_pct=90.0,
+            deadline=deadline,
+            base_load_includes_ev=False,
+            now=now_dt,
+        )
+        solar_surplus = [0.0] * 24
+        import_price = [0.5] * 24
+
+        plan = build_ev_charging_plan(inp, starts, ends, solar_surplus, import_price)
+
+        assert plan.charging_slots, "EV plan should have at least one charging slot"
+        slot = plan.charging_slots[0]
+        # battery-side
+        assert slot.estimated_charged_kwh == pytest.approx(9.9, abs=0.01)
+        # AC-side: 9.9 / 0.90 = 11.0
+        assert slot.ac_load_kwh == pytest.approx(11.0, abs=0.01)
+        # Invariant: ac_load_kwh = estimated_charged_kwh / efficiency
+        eff = 90.0 / 100.0
+        assert slot.ac_load_kwh == pytest.approx(
+            slot.estimated_charged_kwh / eff, abs=1e-9
+        )
+
+    # ------------------------------------------------------------------
+    # estimated_net_consumption includes AC EV draw
+    # ------------------------------------------------------------------
+
+    def test_estimated_net_consumption_includes_ev_ac_load(self):
+        """estimated_net_consumption must use the AC-side EV load, not battery-side.
+
+        Hand calculation (100 % efficiency, so AC = battery-side):
+          house_load       = 0.5 kWh/h
+          pv_estimate      = 0.0 kWh/h
+          EV needed        = 10 kWh  (10 → 20 % of 100 kWh battery)
+          charger          = 11 kW, eff = 100 %  →  max = 11 kWh
+          allocated        = min(11, 10) = 10 kWh  (battery-side = AC-side at 100 %)
+          ev_planned_load_kwh (AC) = 10.0
+
+          net for EV slot: 0.5 + 10.0 - 0.0 = 10.5 kWh
+        """
+        inp = self._make_no_battery_input(
+            ev_soc=10.0,
+            ev_target_soc=20.0,
+            ev_capacity_kwh=100.0,  # needs 10 kWh
+            charger_kw=11.0,
+            charger_eff_pct=100.0,
+            house_consumption_kwh=0.5,
+            pv_estimate_kwh=0.0,
+            import_price=0.5,
+            deadline_hours=3.0,
+        )
+        out = run_planner(inp)
+
+        ev_slots = [s for s in out.slots if abs(s.ev_planned_load_kwh) > 1e-9]
+        assert ev_slots, "At least one slot should have EV planned load"
+
+        for s in ev_slots:
+            expected_net = round(
+                s.avg_house_consumption + s.ev_planned_load_kwh - s.solcast_pv_estimate,
+                3,
+            )
+            assert s.estimated_net_consumption == pytest.approx(expected_net, abs=1e-6)
+            # With no PV and 100 % efficiency, AC load = battery-side
+            # net = 0.5 + ev_ac = 0.5 + 10.0 = 10.5
+            assert s.estimated_net_consumption == pytest.approx(10.5, abs=0.1), (
+                f"Slot {s.start.hour}: expected net=10.5, got {s.estimated_net_consumption}"
+            )
+
+    # ------------------------------------------------------------------
+    # grid_import_kwh includes EV AC draw (SoC simulation path)
+    # ------------------------------------------------------------------
+
+    def test_grid_import_kwh_includes_ev_ac_load(self):
+        """grid_import_kwh must include the EV AC load.
+
+        Hand calculation (100 % charger efficiency, no PV, battery at floor):
+          house_load = 0.5 kWh/h
+          EV AC load = 10.0 kWh/h  (10 kWh needed, allocated in one slot)
+          pv         = 0.0 kWh
+          battery    = at floor, cannot discharge
+
+          total_load = 0.5 + 10.0 = 10.5 kWh
+          grid_import = total_load = 10.5 kWh
+        """
+        inp = self._make_no_battery_input(
+            ev_soc=10.0,
+            ev_target_soc=20.0,
+            ev_capacity_kwh=100.0,
+            charger_kw=11.0,
+            charger_eff_pct=100.0,
+            house_consumption_kwh=0.5,
+            pv_estimate_kwh=0.0,
+            import_price=0.5,
+            deadline_hours=3.0,
+        )
+        out = run_planner(inp)
+
+        ev_slots = [s for s in out.slots if abs(s.ev_planned_load_kwh) > 1e-9]
+        assert ev_slots, "At least one slot should have EV planned load"
+
+        for s in ev_slots:
+            # With battery at floor and no PV, all demand comes from grid.
+            # grid_import = house + ev_ac = 0.5 + 10.0 = 10.5 kWh
+            expected_import = s.avg_house_consumption + s.ev_planned_load_kwh
+            assert s.grid_import_kwh == pytest.approx(expected_import, abs=0.05), (
+                f"Slot {s.start.hour}: expected grid_import={expected_import:.2f}, "
+                f"got {s.grid_import_kwh}"
+            )
+
+    # ------------------------------------------------------------------
+    # grid_import_kwh with charger efficiency < 100 %
+    # ------------------------------------------------------------------
+
+    def test_ev_ac_load_larger_than_battery_side_at_sub_100pct_efficiency(self):
+        """With 90 % charger efficiency, AC draw > battery-side energy.
+
+        Hand calculation:
+          EV needs 9 kWh battery-side  (e.g. 10 → 19 % of 100 kWh battery)
+          charger: 11 kW AC, 90 % eff  →  max_battery = 11 × 0.90 = 9.9 kWh/h
+          allocated (battery-side) = min(9.9, 9.0) = 9.0 kWh
+          ac_load_kwh = 9.0 / 0.90 = 10.0 kWh
+
+          house_load = 0.5 kWh, pv = 0.0, battery at floor
+          grid_import = 0.5 + 10.0 = 10.5 kWh
+          estimated_net = 0.5 + 10.0 - 0.0 = 10.5 kWh
+        """
+        inp = self._make_no_battery_input(
+            ev_soc=10.0,
+            ev_target_soc=19.0,  # needs 9 kWh battery-side
+            ev_capacity_kwh=100.0,
+            charger_kw=11.0,
+            charger_eff_pct=90.0,
+            house_consumption_kwh=0.5,
+            pv_estimate_kwh=0.0,
+            import_price=0.5,
+            deadline_hours=3.0,
+        )
+        out = run_planner(inp)
+
+        ev_slots = [s for s in out.slots if abs(s.ev_planned_load_kwh) > 1e-9]
+        assert ev_slots, "At least one slot should have EV planned load"
+
+        s = ev_slots[0]
+        # EV plan: battery-side = 9.0, ac_load = 9.0/0.9 = 10.0
+        assert out.ev_charging_plan is not None
+        plan_slot = out.ev_charging_plan.charging_slots[0]
+        assert plan_slot.estimated_charged_kwh == pytest.approx(9.0, abs=0.01)
+        assert plan_slot.ac_load_kwh == pytest.approx(10.0, abs=0.01)
+
+        # PlannedSlot: ev_planned_load_kwh = ac_load_kwh = 10.0
+        assert s.ev_planned_load_kwh == pytest.approx(10.0, abs=0.01), (
+            f"ev_planned_load_kwh should be AC-side 10.0, got {s.ev_planned_load_kwh}"
+        )
+        # net = house + ev_ac - pv = 0.5 + 10.0 - 0.0 = 10.5
+        assert s.estimated_net_consumption == pytest.approx(10.5, abs=0.05)
+        # grid_import = 10.5 (all from grid, battery at floor)
+        assert s.grid_import_kwh == pytest.approx(10.5, abs=0.1)
+
+    # ------------------------------------------------------------------
+    # plan_cost includes EV grid import cost
+    # ------------------------------------------------------------------
+
+    def test_plan_cost_includes_ev_grid_import(self):
+        """plan_cost must account for EV grid draw, not just house load.
+
+        Hand calculation (100 % efficiency, no PV, 24-hour horizon, flat price):
+          import_price  = 0.40 DKK/kWh
+          house_load    = 0.5 kWh/h × 24 h = 12.0 kWh
+          EV AC load    = 10.0 kWh (allocated to 1 slot)
+          pv            = 0.0
+          battery       = at floor
+
+          grid_import_total = 12.0 + 10.0 = 22.0 kWh
+          plan_cost = 22.0 × 0.40 = 8.80 DKK  (approximately)
+
+          Without EV fix: plan_cost ≈ 12.0 × 0.40 = 4.80 DKK  (too low)
+        """
+        inp = self._make_no_battery_input(
+            ev_soc=10.0,
+            ev_target_soc=20.0,
+            ev_capacity_kwh=100.0,
+            charger_kw=11.0,
+            charger_eff_pct=100.0,
+            house_consumption_kwh=0.5,
+            pv_estimate_kwh=0.0,
+            import_price=0.40,
+            deadline_hours=3.0,
+        )
+        out = run_planner(inp)
+
+        # Total EV AC load actually allocated across all slots
+        total_ev_ac = sum(s.ev_planned_load_kwh for s in out.slots)
+
+        # EV AC load must be positive — the fix is working
+        assert total_ev_ac > 1e-9, (
+            "total ev_planned_load_kwh should be > 0; EV load not injected"
+        )
+
+        # Use future/current slots only — past slots have grid_import=0 by design
+        # so including them in house sums would break the energy balance.
+        future_slots = [
+            s for s in out.slots if s.grid_import_kwh > 0 or s.ev_planned_load_kwh > 0
+        ]
+
+        house_future = sum(s.avg_house_consumption for s in future_slots)
+        ev_future = sum(s.ev_planned_load_kwh for s in future_slots)
+        battery_discharge_future = sum(s.batteries_discharged for s in future_slots)
+        battery_charge_future = sum(s.batteries_charged for s in future_slots)
+        gi_future = sum(s.grid_import_kwh for s in future_slots)
+
+        # Energy balance per slot: gi = house + ev_ac + battery_charge - battery_discharge
+        expected_gi = (
+            house_future + ev_future + battery_charge_future - battery_discharge_future
+        )
+        assert gi_future == pytest.approx(expected_gi, abs=0.5), (
+            f"grid_import ({gi_future:.2f}) should equal "
+            f"house ({house_future:.2f}) + ev_ac ({ev_future:.2f}) "
+            f"+ batt_chg ({battery_charge_future:.2f}) "
+            f"- batt_disch ({battery_discharge_future:.2f}) = {expected_gi:.2f}; "
+            "EV AC load not flowing through SoC simulation"
+        )
+
+        # The specific EV slot: grid import must include the full EV AC draw
+        ev_slot = next(s for s in out.slots if abs(s.ev_planned_load_kwh) > 1e-9)
+        expected_slot_gi = (
+            ev_slot.avg_house_consumption
+            + ev_slot.ev_planned_load_kwh
+            + ev_slot.batteries_charged
+            - ev_slot.batteries_discharged
+        )
+        assert ev_slot.grid_import_kwh == pytest.approx(expected_slot_gi, abs=0.1), (
+            f"EV slot grid_import ({ev_slot.grid_import_kwh:.3f}) should equal "
+            f"house ({ev_slot.avg_house_consumption:.3f}) + ev_ac "
+            f"({ev_slot.ev_planned_load_kwh:.3f}) + batt_chg "
+            f"({ev_slot.batteries_charged:.3f}) - batt_disch "
+            f"({ev_slot.batteries_discharged:.3f}) = {expected_slot_gi:.3f}"
+        )
+
+    # ------------------------------------------------------------------
+    # SoC simulation: EV load reduces battery via increased net demand
+    # ------------------------------------------------------------------
+
+    def test_soc_simulation_accounts_for_ev_load(self):
+        """Battery discharges more when EV increases total load.
+
+        Setup (battery has charge, no schedule forcing discharge):
+          battery_soc_pct  = 80 %  (8 kWh usable of 10 kWh rated at 5 % floor)
+          house_load       = 0.5 kWh/h
+          EV AC load       = 5.0 kWh/h  (5 kWh needed in one slot, 100 % eff)
+          pv               = 0.0
+          import_price     = flat 0.5
+
+        Without EV fix:
+          net = 0.5 kWh  →  battery discharges 0.5 kWh (or grid import 0.5 kWh)
+
+        With EV fix:
+          net = 0.5 + 5.0 = 5.5 kWh  →  battery/grid must cover 5.5 kWh
+
+        The sum of (batteries_discharged + grid_import_kwh) for the EV slot
+        must equal approximately 5.5 kWh after the fix.
+        """
+        inp = PlannerInput(
+            now_iso="2024-06-15T08:00:00+00:00",
+            interval_minutes=60,
+            interval_length_hours=24,
+            battery_soc_pct=80.0,  # 7.5 kWh above floor (10 × 0.75)
+            battery_rated_capacity_kwh=10.0,
+            battery_end_of_discharge_soc_pct=5.0,
+            battery_max_soc_pct=90.0,
+            battery_max_charge_power_w=5000.0,
+            battery_conversion_loss_pct=0.0,
+            battery_charge_efficiency_pct=100.0,
+            battery_discharge_efficiency_pct=100.0,
+            weight_1d=25,
+            weight_3d=30,
+            weight_7d=30,
+            weight_14d=15,
+            consumption_averages=[
+                HourlyConsumptionAverage(
+                    hour=h, avg_1d=0.5, avg_3d=0.5, avg_7d=0.5, avg_14d=0.5
+                )
+                for h in range(24)
+            ],
+            price_points=[
+                PricePoint(hour=h, import_price=0.5, export_price=0.1)
+                for h in range(24)
+            ],
+            solcast_slots=[SolcastSlot(hour=h, pv_estimate=0.0) for h in range(24)],
+            ev_planned_load_enabled=True,
+            ev_planned_load_connected=True,
+            ev_planned_load_smart_charging_enabled=True,
+            ev_planned_load_current_soc_pct=5.0,
+            ev_planned_load_target_soc_pct=10.0,  # 5 kWh needed
+            ev_planned_load_battery_capacity_kwh=100.0,
+            ev_planned_load_charger_power_kw=11.0,
+            ev_planned_load_charger_efficiency_pct=100.0,
+            ev_planned_load_deadline=datetime(2024, 6, 15, 12, 0, tzinfo=UTC),
+            ev_planned_load_base_load_includes_ev=False,
+        )
+        out = run_planner(inp)
+
+        ev_slots = [s for s in out.slots if abs(s.ev_planned_load_kwh) > 1e-9]
+        assert ev_slots, "Expected at least one EV-loaded slot"
+
+        for s in ev_slots:
+            # total supply = batteries_discharged + grid_import_kwh
+            total_supply = s.batteries_discharged + s.grid_import_kwh
+            total_demand = s.avg_house_consumption + s.ev_planned_load_kwh
+            # Energy balance: supply must cover demand (within floating-point tolerance)
+            assert total_supply == pytest.approx(total_demand, abs=0.1), (
+                f"Slot {s.start.hour}: supply ({total_supply:.3f}) != demand "
+                f"({total_demand:.3f}); EV load not in SoC path"
+            )
+            # With EV load, demand exceeds house-only 0.5 kWh
+            assert total_demand > 1.0, (
+                f"Slot {s.start.hour}: total demand {total_demand:.2f} should exceed "
+                "house-only load of 0.5 kWh; ev_planned_load_kwh not applied to SoC simulation"
             )

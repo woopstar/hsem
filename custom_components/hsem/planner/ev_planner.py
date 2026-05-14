@@ -33,12 +33,26 @@ from typing import Any
 class EVChargingSlot:
     """Per-slot EV charging plan entry.
 
-    Attributes:
+    Energy semantics
+    ----------------
+    EV chargers draw AC power from the grid or from solar and deliver a
+    fraction of that energy to the EV battery.
+
+    - ``estimated_charged_kwh``: energy **delivered to the EV battery** (DC
+      side, post charger-efficiency loss).  This is what advances the EV SoC.
+    - ``ac_load_kwh``: AC energy **consumed from the house/grid/PV side**.
+      ``ac_load_kwh = estimated_charged_kwh / charger_efficiency``.
+      With 90 % efficiency, 10 kWh delivered ⇒ 11.11 kWh AC load.
+      This value is injected into ``PlannedSlot.ev_planned_load_kwh`` so that
+      net consumption, SoC simulation, and cost calculations all see the true
+      grid/PV demand.
+
+    Other attributes:
         start: Timezone-aware start of the slot.
         end: Timezone-aware end of the slot.
-        estimated_charged_kwh: EV energy expected to charge in this slot.
-        solar_surplus_kwh: Solar surplus available after base house load.
-        import_needed_kwh: Grid import required for EV charging in this slot.
+        solar_surplus_kwh: Solar surplus (battery-side) used for EV charging.
+        import_needed_kwh: Battery-side energy from grid (= estimated_charged_kwh
+            − solar_surplus_kwh).
         import_price: Import price for this slot (currency/kWh).
         estimated_cost: Estimated grid cost for EV charging this slot.
     """
@@ -46,6 +60,7 @@ class EVChargingSlot:
     start: datetime
     end: datetime
     estimated_charged_kwh: float = 0.0
+    ac_load_kwh: float = 0.0
     solar_surplus_kwh: float = 0.0
     import_needed_kwh: float = 0.0
     import_price: float = 0.0
@@ -57,6 +72,7 @@ class EVChargingSlot:
             "start": self.start.isoformat(),
             "end": self.end.isoformat(),
             "estimated_charged_kwh": round(self.estimated_charged_kwh, 3),
+            "ac_load_kwh": round(self.ac_load_kwh, 3),
             "solar_surplus_kwh": round(self.solar_surplus_kwh, 3),
             "import_needed_kwh": round(self.import_needed_kwh, 3),
             "import_price": round(self.import_price, 4),
@@ -164,13 +180,17 @@ def compute_ev_energy_needed(
 ) -> float:
     """Return EV energy needed to reach target SoC from current SoC.
 
+    The returned value is the energy to be **delivered to the EV battery**
+    (DC side, post charger-efficiency).  To find the AC grid/PV draw divide
+    by the charger efficiency fraction.
+
     Args:
         current_soc_pct: Current EV battery SoC (0–100).
         target_soc_pct: Desired EV battery SoC (0–100).
         battery_capacity_kwh: EV battery nameplate capacity in kWh.
 
     Returns:
-        kWh of charging energy needed (≥ 0).
+        kWh of energy to deliver to EV battery (≥ 0).
     """
     delta = max(target_soc_pct - current_soc_pct, 0.0)
     return max(delta / 100.0 * battery_capacity_kwh, 0.0)
@@ -188,13 +208,18 @@ def max_charge_energy_for_slot(
 ) -> float:
     """Return the maximum energy deliverable to the EV battery in one slot.
 
+    This is the **battery-side** (DC) energy delivered to the EV battery after
+    charger efficiency losses.  The AC draw from the grid or PV is
+    ``charger_power_kw × hours`` — larger than the returned value when
+    ``charger_efficiency_pct < 100``.
+
     Args:
         slot_duration_min: Duration of the slot in minutes.
         charger_power_kw: Charger AC output power in kW.
         charger_efficiency_pct: Charger efficiency (0–100 %).
 
     Returns:
-        kWh that can be delivered to the EV battery.
+        kWh delivered to the EV battery (battery-side, post-efficiency).
     """
     hours = slot_duration_min / 60.0
     eff = max(charger_efficiency_pct, 1.0) / 100.0
@@ -338,19 +363,30 @@ def build_ev_charging_plan(
         if allocated < 1e-9:
             continue
 
+        # ``allocated`` is battery-side kWh delivered to the EV.
+        # AC load = battery-side / charger_efficiency (what grid/PV must supply).
+        eff = max(inp.charger_efficiency_pct, 1.0) / 100.0
+        ac_load = allocated / eff
+
         surplus = slot_solar_surplus_kwh[i]
+        # solar_used / import_needed are expressed as battery-side kWh for
+        # the EV plan display; ac_load_kwh is the grid/PV draw used for net
+        # consumption and SoC simulation.
         solar_used = min(allocated, surplus)
         import_needed = max(allocated - solar_used, 0.0)
-        cost = import_needed * slot_import_price[i]
+        cost = (ac_load - min(ac_load, surplus / eff * eff)) * slot_import_price[i]
+        # Simpler: cost = grid AC draw × price = import_needed / eff × price
+        cost = round((import_needed / eff) * slot_import_price[i], 4)
 
         ev_slot = EVChargingSlot(
             start=s_start,
             end=s_end,
             estimated_charged_kwh=round(allocated, 3),
+            ac_load_kwh=round(ac_load, 3),
             solar_surplus_kwh=round(solar_used, 3),
             import_needed_kwh=round(import_needed, 3),
             import_price=slot_import_price[i],
-            estimated_cost=round(cost, 4),
+            estimated_cost=cost,
         )
         selected.append(ev_slot)
         remaining_energy -= allocated
@@ -400,5 +436,8 @@ def apply_ev_planned_load_to_slots(
         key = ev_slot.start.isoformat()
         for i, s in enumerate(slot_starts):
             if s.isoformat() == key:
-                slot_ev_planned_load_kwh[i] = ev_slot.estimated_charged_kwh
+                # Inject AC-side load (grid/PV draw), not battery-side delivered
+                # energy.  With charger_efficiency < 100 %, the AC load is larger
+                # than the kWh arriving in the EV battery.
+                slot_ev_planned_load_kwh[i] = ev_slot.ac_load_kwh
                 break
