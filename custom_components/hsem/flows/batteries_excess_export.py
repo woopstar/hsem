@@ -6,6 +6,7 @@ from homeassistant.helpers.selector import selector
 from custom_components.hsem.flows.batteries_schedule_1 import (
     _resolve_usable_capacity_kwh,
 )
+from custom_components.hsem.utils.config_validator import merge_errors, validate_price
 from custom_components.hsem.utils.misc import (
     calculate_recommended_threshold,
     convert_to_float,
@@ -97,26 +98,18 @@ async def get_batteries_excess_export_step_schema(
 
 async def validate_batteries_excess_export_input(user_input) -> dict[str, str]:
     """Validate user input for batteries excess export configuration."""
-    errors = {}
-
-    try:
-        # Validate discharge buffer is between 0 and 50%
-        buffer = user_input.get("hsem_batteries_excess_export_discharge_buffer")
-        if buffer is not None:
-            if not isinstance(buffer, (int, float)) or buffer < 0 or buffer > 50:
-                errors["hsem_batteries_excess_export_discharge_buffer"] = (
-                    "invalid_buffer_range"
-                )
-
-        # Validate price threshold is non-negative
-        threshold = user_input.get("hsem_batteries_excess_export_price_threshold")
-        if threshold is not None:
-            if not isinstance(threshold, (int, float)) or threshold < 0:
-                errors["hsem_batteries_excess_export_price_threshold"] = (
-                    "invalid_price_threshold"
-                )
-
-    except (ValueError, TypeError):
-        errors["base"] = "invalid_value"
-
-    return errors
+    buffer_errors = validate_price(
+        user_input,
+        "hsem_batteries_excess_export_discharge_buffer",
+        min_price=0.0,
+        max_price=50.0,
+        allow_negative=False,
+    )
+    threshold_errors = validate_price(
+        user_input,
+        "hsem_batteries_excess_export_price_threshold",
+        min_price=0.0,
+        max_price=1.0,
+        allow_negative=False,
+    )
+    return merge_errors(buffer_errors, threshold_errors)

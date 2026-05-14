@@ -1,8 +1,7 @@
-from datetime import datetime
-
 import voluptuous as vol
 from homeassistant.helpers.selector import selector
 
+from custom_components.hsem.utils.config_validator import validate_time_window
 from custom_components.hsem.utils.misc import (
     calculate_recommended_threshold,
     convert_to_float,
@@ -108,26 +107,10 @@ async def get_batteries_schedule_1_step_schema(
 
 
 async def validate_batteries_schedule_1_input(user_input) -> dict[str, str]:
-    """Validate user input."""
-    errors = {}
-
-    try:
-        # Validate schedule 1 if enabled
-        if "hsem_batteries_enable_batteries_schedule_1" in user_input:
-            if user_input.get("hsem_batteries_enable_batteries_schedule_1"):
-                start = user_input.get(
-                    "hsem_batteries_enable_batteries_schedule_1_start"
-                )
-                end = user_input.get("hsem_batteries_enable_batteries_schedule_1_end")
-
-                # Allow cross-midnight windows (start >= end is valid, e.g. 23:00-02:00)
-                start_time = datetime.strptime(start, "%H:%M:%S").time()
-                end_time = datetime.strptime(end, "%H:%M:%S").time()
-
-                if start_time == end_time:
-                    errors["base"] = "start_time_equals_end_time"
-
-    except (ValueError, TypeError):
-        errors["base"] = "invalid_time_format"
-
-    return errors
+    """Validate user input for the battery schedule 1 step."""
+    return validate_time_window(
+        user_input,
+        enabled_field="hsem_batteries_enable_batteries_schedule_1",
+        start_field="hsem_batteries_enable_batteries_schedule_1_start",
+        end_field="hsem_batteries_enable_batteries_schedule_1_end",
+    )

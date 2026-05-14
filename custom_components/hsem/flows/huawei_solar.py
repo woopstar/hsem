@@ -1,11 +1,13 @@
 import voluptuous as vol
 from homeassistant.helpers.selector import selector
 
-from custom_components.hsem.utils.misc import (
-    async_device_exists,
-    async_entity_exists,
-    get_config_value,
+from custom_components.hsem.utils.config_validator import (
+    async_validate_device_ids,
+    async_validate_entity_ids,
+    merge_errors,
+    validate_price,
 )
+from custom_components.hsem.utils.misc import get_config_value
 
 
 async def get_huawei_solar_step_schema(config_entry) -> vol.Schema:
@@ -163,61 +165,55 @@ async def get_huawei_solar_step_schema(config_entry) -> vol.Schema:
 
 async def validate_huawei_solar_input(hass, user_input) -> dict[str, str]:
     """Validate user input for the 'huawei_solar' step."""
-    errors = {}
-
-    required_fields = [
-        "hsem_huawei_solar_device_id_inverter_1",
-        "hsem_huawei_solar_device_id_batteries",
-        "hsem_huawei_solar_batteries_working_mode",
-        "hsem_huawei_solar_batteries_state_of_capacity",
-        "hsem_huawei_solar_inverter_active_power_control",
-        "hsem_huawei_solar_batteries_maximum_charging_power",
-        "hsem_huawei_solar_batteries_maximum_discharging_power",
-        "hsem_huawei_solar_batteries_grid_charge_cutoff_soc",
-        "hsem_huawei_solar_batteries_charging_cutoff_capacity",
-        "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods",
-        "hsem_huawei_solar_batteries_rated_capacity",
+    # --- required scalar fields (no HA lookup needed) ---
+    scalar_required = [
         "hsem_batteries_purchase_price",
         "hsem_batteries_expected_cycles",
         "hsem_batteries_conversion_loss",
-        "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou",
-        "hsem_huawei_solar_batteries_end_of_discharge_soc",
     ]
+    required_errors: dict[str, str] = {
+        f: "required" for f in scalar_required if f not in user_input
+    }
 
-    for field in required_fields:
-        if field not in user_input:
-            errors[field] = "required"
-
-    if not errors:
-        # Tjek entities
-        entity_fields = [
+    # --- entity existence ---
+    entity_errors = await async_validate_entity_ids(
+        hass,
+        user_input,
+        required_fields=[
             "hsem_huawei_solar_batteries_working_mode",
             "hsem_huawei_solar_batteries_state_of_capacity",
             "hsem_huawei_solar_inverter_active_power_control",
             "hsem_huawei_solar_batteries_maximum_charging_power",
-            "hsem_huawei_solar_batteries_maximum_discharging_power",
             "hsem_huawei_solar_batteries_grid_charge_cutoff_soc",
             "hsem_huawei_solar_batteries_charging_cutoff_capacity",
             "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods",
             "hsem_huawei_solar_batteries_rated_capacity",
             "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou",
             "hsem_huawei_solar_batteries_end_of_discharge_soc",
-        ]
+        ],
+        optional_fields=[
+            "hsem_huawei_solar_batteries_maximum_discharging_power",
+        ],
+    )
 
-        for field in entity_fields:
-            entity_id = user_input.get(field)
-            if entity_id and not await async_entity_exists(hass, entity_id):
-                errors[field] = "entity_not_found"
-
-        # Tjek devices
-        device_fields = [
-            "hsem_huawei_solar_device_id_inverter_1",
+    # --- device existence ---
+    device_errors = await async_validate_device_ids(
+        hass,
+        user_input,
+        required_fields=["hsem_huawei_solar_device_id_inverter_1"],
+        optional_fields=[
+            "hsem_huawei_solar_device_id_inverter_2",
             "hsem_huawei_solar_device_id_batteries",
-        ]
+        ],
+    )
 
-        for field in device_fields:
-            device_id = user_input.get(field)
-            if device_id and not await async_device_exists(hass, device_id):
-                errors[field] = "device_not_found"
+    # --- price validation for purchase price ---
+    price_errors = validate_price(
+        user_input,
+        "hsem_batteries_purchase_price",
+        min_price=0.0,
+        max_price=100_000.0,
+        allow_negative=False,
+    )
 
-    return errors
+    return merge_errors(required_errors, entity_errors, device_errors, price_errors)
