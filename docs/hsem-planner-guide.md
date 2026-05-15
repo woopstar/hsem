@@ -341,9 +341,9 @@ slots are correctly labelled even when `base_load_includes_ev = True`, where
 |---|---|---|
 | `batteries_charge_solar` | Yes (`ev_total > 0`) | → `ev_smart_charging` |
 | `batteries_wait_mode` | Yes (`ev_total > 0`) | → `ev_smart_charging` |
+| `batteries_discharge_mode` | Yes (`ev_total > 0`) | → `ev_smart_charging` (EV label wins) |
 | `batteries_charge_grid` | Yes | Kept — grid charge takes priority |
-| `batteries_discharge_mode` | Yes | Kept — discharge takes priority |
-| `force_batteries_discharge` | Yes | Kept |
+| `force_batteries_discharge` | Yes | Kept — forced export takes priority |
 | `force_export` | Yes | Kept |
 | `time_passed` | Yes | Kept |
 

@@ -94,8 +94,14 @@ slots are correctly labelled even when `base_load_includes_ev = True`, where
 - All other recommendations: **kept unchanged** (must not be overridden by EV label)
 
 The following must never be overridden by the EV label:
-`batteries_charge_grid`, `batteries_discharge_mode`, `force_batteries_discharge`,
-`force_export`, `time_passed`, `missing_input_entities`.
+`batteries_charge_grid`, `force_batteries_discharge`, `force_export`,
+`time_passed`, `missing_input_entities`.
+
+`batteries_discharge_mode` is **not** in this protected set — it is intentionally
+overrideable.  When an EV is scheduled to charge in a slot that is also inside a
+discharge window, the `ev_smart_charging` label wins so dashboards correctly reflect
+EV activity rather than showing a discharge recommendation during an active charge
+session.
 
 #### Layer 3 — Runtime resolver (current slot only, at hardware-write time)
 
@@ -110,8 +116,8 @@ Applied to the current slot immediately before hardware writes, using live senso
 
 - A slot assigned `batteries_charge_grid` by the planner must never be relabelled by
   the EV load labelling pass (layer 2).
-- A slot assigned `batteries_discharge_mode` must never be relabelled by the EV load
-  labelling pass.
+- A slot assigned `batteries_discharge_mode` **may** be relabelled `ev_smart_charging`
+  by the EV load labelling pass when `ev_total_planned_load_kwh > 0`.
 - A slot with `ev_planned_load_kwh > 0` and recommendation `batteries_charge_solar`
   must be relabelled `ev_smart_charging` after layer 2.
 - A slot with `ev_planned_load_kwh > 0` and recommendation `batteries_wait_mode`

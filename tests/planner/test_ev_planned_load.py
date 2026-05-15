@@ -1028,12 +1028,16 @@ class TestEvSmartChargingRecommendationLabel:
         unless a higher-priority recommendation is already set.
 
         Higher-priority recommendations that keep their own label:
-          batteries_charge_grid, batteries_discharge_mode,
-          force_batteries_discharge, force_export, time_passed.
+          batteries_charge_grid, force_batteries_discharge, force_export,
+          time_passed, missing_input_entities.
+
+        batteries_discharge_mode is intentionally NOT in this set: when an
+        EV is scheduled to charge, ev_smart_charging takes precedence over
+        a scheduled discharge window so dashboards correctly reflect EV
+        activity.
         """
         _KEEP_LABELS = {
             "batteries_charge_grid",
-            "batteries_discharge_mode",
             "force_batteries_discharge",
             "force_export",
             "time_passed",
@@ -2347,7 +2351,6 @@ class TestEvLoadSemantics:
         _KEEP_LABELS = frozenset(
             {
                 "batteries_charge_grid",
-                "batteries_discharge_mode",
                 "force_batteries_discharge",
                 "force_export",
                 "time_passed",

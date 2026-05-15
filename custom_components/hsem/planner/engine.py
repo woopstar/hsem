@@ -681,18 +681,25 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     #   ev_smart_charging         ← applied when ev_planned_load_kwh > 0
     #   batteries_charge_solar    — overridden by EV label
     #   batteries_wait_mode       — overridden by EV label
-    # Recommendations that take absolute priority and must never be overridden
-    # by the EV label (discharge, forced export, grid charge, past).
-    # batteries_discharge_mode and force_batteries_discharge are intentional
-    # schedule-driven actions; labelling them ev_smart_charging would hide
-    # that a discharge is in progress.
-    # Any recommendation NOT in this set (i.e. batteries_charge_solar,
-    # batteries_wait_mode, None, and ev_smart_charging itself) will be
-    # replaced by ev_smart_charging when the slot carries EV planned load.
+    # Recommendations that must never be overridden by the EV label.
+    #
+    # batteries_charge_grid     — grid charge takes absolute priority; overriding
+    #                             it with ev_smart_charging would hide active grid
+    #                             charging and break hardware-write logic.
+    # force_batteries_discharge — forced export is a revenue action; EV label
+    #                             must not obscure it.
+    # force_export              — same reasoning as forced discharge.
+    # time_passed               — past slots must not be relabelled.
+    # missing_input_entities    — degraded-mode slots must not be relabelled.
+    #
+    # batteries_discharge_mode is intentionally NOT in this set.
+    # When an EV is scheduled to charge in a slot that would otherwise be a
+    # scheduled discharge window, the EV label takes precedence so dashboards
+    # and the working-mode sensor correctly reflect EV activity rather than
+    # showing a discharge recommendation during an active EV charge session.
     _EV_LABEL_KEEP = frozenset(
         {
             Recommendations.BatteriesChargeGrid.value,
-            Recommendations.BatteriesDischargeMode.value,
             Recommendations.ForceBatteriesDischarge.value,
             Recommendations.ForceExport.value,
             Recommendations.TimePassed.value,
