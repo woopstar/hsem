@@ -122,7 +122,7 @@ def slot_key(value: datetime, interval_minutes: int) -> datetime:
     return normalize_slot_start(value, interval_minutes)
 
 
-def as_tz(value: datetime, tz: tzinfo) -> datetime:
+def as_tz(value: datetime, tz: tzinfo | None) -> datetime:
     """Return *value* converted to the given timezone without microseconds.
 
     This is the canonical replacement for the ``dt.astimezone(now.tzinfo)``
@@ -138,7 +138,10 @@ def as_tz(value: datetime, tz: tzinfo) -> datetime:
 
     Args:
         value: A timezone-aware :class:`~datetime.datetime`.
-        tz: Target timezone (e.g. ``now.tzinfo``).
+        tz: Target timezone (e.g. ``now.tzinfo``).  When ``None`` the
+            system local timezone is used as a safe fallback — in practice
+            ``tz`` is always non-``None`` because callers pass
+            ``now.tzinfo`` from a timezone-aware ``now``.
 
     Returns:
         A timezone-aware :class:`~datetime.datetime` in *tz* with
