@@ -187,6 +187,27 @@ def select_best_candidate(
                 c_cost.terminal_soc_value,
             )
 
+            # Diagnostic: surface the candidate's terminal SoC trajectory so
+            # it is obvious WHY a given candidate's terminal_soc_value has the
+            # value it does.  When two candidates have identical term_soc it
+            # means they converge to the same end-of-horizon SoC; this trail
+            # makes that visible without needing a debugger.
+            _future_tail = [s for s in candidate.slots if s.end > now][-3:]
+            if _future_tail:
+                trail = "  ".join(
+                    f"{s.start.strftime('%d %H:%M')}→{s.end.strftime('%H:%M')} "
+                    f"rec={s.recommendation or '(none)'}  "
+                    f"cap={s.estimated_battery_capacity:.3f}  "
+                    f"soc={s.estimated_battery_soc:.1f}%"
+                    for s in _future_tail
+                )
+                log_planner(
+                    "debug",
+                    "[selector] tail   candidate=%-20s  %s",
+                    candidate.name,
+                    trail,
+                )
+
         # Sort by selector score ascending; baseline wins ties (it comes first)
         valid_sorted = sorted(
             valid,
