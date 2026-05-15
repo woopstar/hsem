@@ -18,11 +18,10 @@ All tests are pure-Python and require no running Home Assistant instance.
 
 Note on ``async_logger``
 ------------------------
-The real :func:`async_logger` uses ``loop.run_in_executor`` with a
-``ThreadPoolExecutor``, which spawns background threads that are caught by the
-pytest-homeassistant-custom-component teardown thread-leak check.  We therefore
-patch ``async_logger`` with a no-op coroutine in every test that calls an
-applier function so that no threads are leaked and teardown stays clean.
+:func:`async_logger` is patched with a no-op ``AsyncMock`` in every test so
+that planner/applier output never reaches the standard ``custom_components.hsem``
+logger during the test run.  This keeps test output clean and decouples the
+safety-gate assertions from log-formatting changes.
 """
 
 from __future__ import annotations

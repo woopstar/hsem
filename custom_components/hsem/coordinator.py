@@ -345,8 +345,9 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 # Retain for diagnostics dumps (cleared on each cycle).
                 self._last_planner_input = planner_input
                 # Propagate the verbose-logging flag into the pure-Python
-                # planner so detailed slot-level decisions appear in hsem.log
-                # when the user enables verbose logging.
+                # planner so detailed slot-level decisions appear in the
+                # standard Home Assistant log when the user enables
+                # verbose logging.
                 set_planner_verbose(cfg.verbose_logging)
                 planner_output = run_planner(planner_input)
                 self._last_planner_output = planner_output

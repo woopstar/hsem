@@ -1,18 +1,20 @@
 """Synchronous planner logger for the HSEM planning engine.
 
 Single responsibility: provide a lightweight, synchronous logging helper that
-writes structured debug output directly to the shared HSEM rotating log file
-(``/config/hsem.log``) from pure-Python planner modules that have no access
-to Home Assistant's async event loop or sensor ``self`` objects.
+emits structured debug output through the shared ``HSEM_LOGGER`` from
+pure-Python planner modules that have no access to a sensor ``self`` object.
 
 Design rationale
 ----------------
 The planner engine is intentionally pure Python (no HA imports, no ``self``).
-``async_logger`` in ``utils/logger.py`` requires a sensor object for the
-verbose-flag resolution, so it cannot be called from planner code.  This
-module bridges that gap by writing directly to ``HSEM_LOGGER`` in a
-thread-safe, blocking manner — acceptable because all planner code is
-CPU-bound and already runs off the event loop.
+:func:`~custom_components.hsem.utils.logger.async_logger` requires a sensor
+object for the verbose-flag resolution, so it cannot be called from planner
+code.  This module bridges that gap by forwarding messages straight to
+``HSEM_LOGGER``.
+
+``HSEM_LOGGER`` no longer owns a file handler — it propagates into Home
+Assistant's standard logging chain, so calls are non-blocking and respect
+the level configured via the user's ``logger:`` YAML block.
 
 Verbosity is controlled by a single module-level flag so that individual
 planner callers can enable/disable detailed output without passing ``self``
