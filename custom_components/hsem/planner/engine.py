@@ -329,14 +329,20 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     # net consumption (base_load_includes_ev=False only).
     combined_ev_injected_load = [0.0] * len(slots)
 
-    # Compute solar surplus ONCE before any EV injection (both EVs share it).
-    # IMPORTANT: estimated_net_consumption is still 0.0 here (populate_net_consumption
-    # hasn't run yet), so surplus must be derived from the raw base fields:
-    #   surplus = max(pv_estimate - avg_house_consumption, 0.0)
-    # This matches what populate_net_consumption will later compute as the base net load.
-    slot_solar_surplus = [
-        max(s.solcast_pv_estimate - s.avg_house_consumption, 0.0) for s in slots
-    ]
+    # Populate base net consumption BEFORE EV planning so the surplus signal
+    # used for EV slot selection reflects the true house load after solar.
+    # The house consumes solar first; only what remains (negative net = surplus)
+    # is available to the EV charger at no extra grid cost.
+    # After EV injection, populate_net_consumption is called again to incorporate
+    # ev_planned_load_kwh into the final estimated_net_consumption values.
+    populate_net_consumption(slots)
+
+    # Net surplus per slot = max(-estimated_net_consumption, 0).
+    # This is the energy available to the EV charger beyond house demand after
+    # solar — the correct starting point for EV slot selection.
+    # Using raw PV here would over-state available free energy because the
+    # house has already consumed a portion of the solar output.
+    slot_net_surplus = [max(-s.estimated_net_consumption, 0.0) for s in slots]
     _slot_starts = [s.start for s in slots]
     _slot_ends = [s.end for s in slots]
     _slot_prices = [s.price.import_price for s in slots]
@@ -380,7 +386,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
             ev_inp,
             slots_start=_slot_starts,
             slots_end=_slot_ends,
-            slot_solar_surplus_kwh=slot_solar_surplus,
+            slot_net_surplus_kwh=slot_net_surplus,
             slot_import_price=_slot_prices,
         )
 
@@ -461,8 +467,11 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     #   ev_accounted_load_kwh    — load already in avg_house_consumption
     #   ev_total_planned_load_kwh — raw total (injected + accounted)
     #
-    # populate_net_consumption uses ev_planned_load_kwh (the injected portion).
-    # Diagnostics and UI use ev_total_planned_load_kwh to detect any EV plan.
+    # Re-run populate_net_consumption to incorporate ev_planned_load_kwh into
+    # estimated_net_consumption.  The first run (above, before EV planning)
+    # was used purely to derive the per-slot net surplus for EV slot selection.
+    # This second run produces the final estimated_net_consumption values that
+    # include any extra EV load (base_load_includes_ev=False case).
     for i, slot in enumerate(slots):
         slot.ev_planned_load_kwh = combined_ev_injected_load[i]
         slot.ev_accounted_load_kwh = round(
@@ -470,7 +479,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         )
         slot.ev_total_planned_load_kwh = round(combined_ev_raw_load[i], 3)
 
-    populate_net_consumption(slots)
+    populate_net_consumption(slots)  # second pass: incorporates ev_planned_load_kwh
     populate_estimated_cost(slots)
 
     # Depreciation threshold diagnostic and C13 auto-fill.

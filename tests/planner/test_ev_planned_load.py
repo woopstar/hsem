@@ -787,23 +787,25 @@ class TestPlannerEngineEVIntegration:
 
 # ---------------------------------------------------------------------------
 # TestEvSolarSurplusRegression
-# Regression for bug: slot_solar_surplus was computed from estimated_net_consumption
-# which is 0.0 before populate_net_consumption runs, so EV never received solar slots.
-# Fix: compute surplus from raw base fields (pv_estimate - avg_house_consumption).
+# Regression: EV slot selection must use net surplus (after house consumption),
+# not raw PV.  The house uses solar first; only leftover surplus is free for EV.
+# The engine now runs populate_net_consumption before EV planning and derives:
+#   slot_net_surplus = max(-estimated_net_consumption, 0)
 # ---------------------------------------------------------------------------
 
 
 class TestEvSolarSurplusRegression:
-    """Regression tests for EV solar surplus computation bug.
+    """Regression tests for EV surplus computation correctness.
 
-    Before the fix, ``slot_solar_surplus`` was derived from
-    ``s.estimated_net_consumption`` which is still ``0.0`` at the point the
-    EV planner runs (``populate_net_consumption`` had not been called yet).
-    The EV therefore never saw any solar surplus and always treated every slot
-    as a grid-import slot.
+    The engine runs ``populate_net_consumption`` *before* EV planning so that
+    the net surplus signal is:
 
-    After the fix, surplus is computed directly from base fields:
-        surplus = max(pv_estimate - avg_house_consumption, 0.0)
+        slot_net_surplus[i] = max(-estimated_net_consumption[i], 0.0)
+                            = max(pv_estimate - avg_house_consumption, 0.0)
+
+    This correctly models that the house consumes solar first; only the
+    leftover net surplus is available to the EV charger at no extra grid cost.
+    Using raw PV estimates would over-state the free energy available.
     """
 
     def test_ev_receives_solar_slot_exact_hand_calculation(self):
@@ -1250,10 +1252,10 @@ class TestEvAcLoadAndSoCPath:
             base_load_includes_ev=False,
             now=now_dt,
         )
-        solar_surplus = [0.0] * 24
+        net_surplus = [0.0] * 24  # no solar surplus — all grid import
         import_price = [0.5] * 24
 
-        plan = build_ev_charging_plan(inp, starts, ends, solar_surplus, import_price)
+        plan = build_ev_charging_plan(inp, starts, ends, net_surplus, import_price)
 
         assert plan.charging_slots, "EV plan should have at least one charging slot"
         slot = plan.charging_slots[0]
