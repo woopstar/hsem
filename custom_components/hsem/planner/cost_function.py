@@ -1,13 +1,23 @@
-"""Plan cost function for the HSEM planner (issue #295).
+"""Plan cost function for the HSEM planner (issues #295, #413).
 
 This module scores a candidate plan (a fully-populated list of
 :class:`~custom_components.hsem.models.planner_outputs.PlannedSlot` objects)
-as a single numeric value.  **Lower cost is better**, so the planner can
-choose between alternatives by picking the plan with the minimum score.
+and exposes two distinct aggregate numbers:
+
+- :attr:`PlanCostBreakdown.total_cost` — the **real-money outcome** of the
+  plan within the horizon.  Sum of grid import cost minus export revenue
+  plus battery cycle (depreciation) cost plus round-trip conversion loss
+  cost.  Auditable; directly comparable to an electricity bill.
+- :attr:`PlanCostBreakdown.score` — the **selector objective**.  Equals
+  ``total_cost`` plus every synthetic penalty (SoC guard, grid limit,
+  override) plus the terminal-SoC opportunity cost.  The candidate selector
+  picks the plan with the **lowest score**, not the lowest money cost.
 
 Cost components
 ---------------
-The cost function aggregates seven independently-tunable penalty terms:
+The cost function aggregates eight independently-tunable terms:
+
+Money terms (sum to ``total_cost``):
 
 1. **Import cost** — energy imported from the grid × import price.
 2. **Export revenue** — energy exported to the grid × export price
@@ -17,6 +27,9 @@ The cost function aggregates seven independently-tunable penalty terms:
    proxy for its opportunity cost.
 4. **Battery cycle cost** — depreciation per kWh cycled, derived from the
    battery's purchase price, rated capacity, and expected lifetime cycles.
+
+Selector-only terms (added on top of ``total_cost`` to produce ``score``):
+
 5. **SoC penalties** — quadratic penalty when the end-of-slot SoC is too low
    (below the configured ``min_soc_pct`` guard) or too high (above the
    configured ``max_soc_pct`` guard), multiplied by a configurable weight.
@@ -25,6 +38,12 @@ The cost function aggregates seven independently-tunable penalty terms:
 7. **Override penalty** — per-slot cost added for any slot whose recommendation
    was forced by an override (e.g. read-only mode, manual schedule).  Penalises
    plans that deviate from the hardware's natural optimal state.
+8. **Terminal SoC value** — opportunity cost of the change in battery energy
+   over the horizon, priced at ``replacement_price_per_kwh``.  A plan that
+   ends the horizon with *more* stored energy than it started with receives a
+   *credit* (negative term that reduces ``score``); a plan that empties the
+   battery pays a *penalty* (positive term that increases ``score``).
+   Computed as ``(initial_kwh − final_kwh) × replacement_price_per_kwh``.
 
 All monetary values are in the caller's local currency (e.g. DKK or EUR).
 
@@ -36,6 +55,15 @@ Design constraints
 - **Float-safe** — NaN prices are treated as 0.0 rather than propagating.
 - **Immutable input** — slots are *never* mutated; the function is a pure
   read-only scan.
+- **Money / selector split** — ``total_cost`` never includes synthetic
+  penalties; ``score`` always does.  The selector minimises ``score``.
+
+Backward compatibility
+----------------------
+:attr:`PlanCostBreakdown.total` is preserved as a deprecated alias for
+``score`` so existing code and tests that compared plans by ``.total``
+keep selecting the same winner.  New code should use ``total_cost`` (money)
+or ``score`` (selector) explicitly.
 """
 
 from __future__ import annotations
@@ -150,7 +178,14 @@ class CostWeights:
 class PlanCostBreakdown:
     """Per-term breakdown of the cost computed by :func:`score_plan`.
 
-    Useful for debugging, logging, and surfacing in the plan explanation.
+    Two aggregate numbers are exposed:
+
+    - :attr:`total_cost` — sum of money terms only.  Auditable; comparable
+      to a real electricity bill.  Computed as
+      ``import_cost − export_revenue + cycle_cost + conversion_loss_cost``.
+    - :attr:`score` — selector objective.  Equals ``total_cost`` plus all
+      synthetic penalties and the terminal-SoC opportunity cost.  The
+      candidate selector minimises this value.
 
     Attributes:
         import_cost:
@@ -158,21 +193,40 @@ class PlanCostBreakdown:
         export_revenue:
             Total revenue from grid exports across all slots (≥ 0).
             This is a *positive* value representing earned money; it is
-            *subtracted* from the total cost in :attr:`total`.
+            *subtracted* from :attr:`total_cost`.
         conversion_loss_cost:
             Opportunity cost of energy lost in round-trip battery cycles.
         cycle_cost:
             Battery depreciation cost (kWh cycled × cost per kWh).
         soc_penalty:
             Quadratic SoC guard penalty (too-low + too-high violations).
+            Selector-only — does not enter :attr:`total_cost`.
         grid_limit_penalty:
             Penalty for exceeding the configured grid power limit.
+            Selector-only — does not enter :attr:`total_cost`.
         override_penalty:
-            Penalty for forced-override slots.
+            Penalty for forced-override slots.  Selector-only.
+        terminal_soc_value:
+            Opportunity cost of the change in stored battery energy across
+            the horizon, priced at ``replacement_price_per_kwh``.  Negative
+            (credit) when the plan ends with *more* stored energy than it
+            started with; positive (penalty) when the plan empties the
+            battery.  Selector-only — does not enter :attr:`total_cost`.
+        total_cost:
+            Money outcome of the plan in the horizon.  Equal to
+            ``import_cost − export_revenue + cycle_cost + conversion_loss_cost``.
+            Auditable; does **not** include any synthetic penalties.
+        score:
+            Selector objective.  Equal to
+            ``total_cost + soc_penalty + grid_limit_penalty
+            + override_penalty + terminal_soc_value``.
+            **Lower is better.**  The candidate selector picks the plan
+            with the lowest score.
         total:
-            Sum of all terms: ``import_cost − export_revenue
-            + conversion_loss_cost + cycle_cost + soc_penalty
-            + grid_limit_penalty + override_penalty``.
+            Deprecated alias for :attr:`score`, preserved so older code
+            and tests that compared plans by ``.total`` keep selecting the
+            same winner.  New code should use :attr:`total_cost` or
+            :attr:`score` explicitly.
     """
 
     import_cost: float = 0.0
@@ -182,6 +236,10 @@ class PlanCostBreakdown:
     soc_penalty: float = 0.0
     grid_limit_penalty: float = 0.0
     override_penalty: float = 0.0
+    terminal_soc_value: float = 0.0
+    total_cost: float = 0.0
+    score: float = 0.0
+    # Deprecated alias for ``score``; kept for backward compatibility.
     total: float = 0.0
 
 
@@ -254,6 +312,46 @@ def _resolve_cycle_cost(weights: CostWeights) -> float:
 
 
 # ---------------------------------------------------------------------------
+# Terminal-SoC helper
+# ---------------------------------------------------------------------------
+
+
+def _final_battery_kwh(
+    slots: Sequence[PlannedSlot],
+    now: datetime | None,
+) -> float:
+    """Return the estimated stored battery energy (kWh) at end of horizon.
+
+    Scans *slots* in reverse and returns the ``estimated_battery_capacity``
+    value of the last slot that is still in the future.
+
+    The SoC simulator writes ``estimated_battery_capacity`` as the remaining
+    usable energy above the discharge floor at the *end* of each slot.  Past
+    slots have this field zeroed as a sentinel, so we must explicitly skip
+    them when picking the horizon's terminal SoC.
+
+    Args:
+        slots: Ordered list of planned slots.
+        now: Timezone-aware current datetime.  When provided, slots with
+            ``slot.end <= now`` are skipped.  When ``None``, slots whose
+            recommendation equals the ``TimePassed`` sentinel are skipped.
+
+    Returns:
+        Remaining battery energy above the discharge floor (kWh) at the end
+        of the last future slot, or ``0.0`` when no future slot exists.
+    """
+    _time_passed_value = Recommendations.TimePassed.value
+    for slot in reversed(slots):
+        if now is not None:
+            if slot.end <= now:
+                continue
+        elif slot.recommendation == _time_passed_value:
+            continue
+        return slot.estimated_battery_capacity
+    return 0.0
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -265,6 +363,8 @@ def score_plan(
     slot_duration_hours: float = 1.0,
     grid_limit_kw: float | None = None,
     now: datetime | None = None,
+    initial_battery_kwh: float | None = None,
+    replacement_price_per_kwh: float | None = None,
 ) -> PlanCostBreakdown:
     """Score a candidate plan and return a full cost breakdown.
 
@@ -283,6 +383,21 @@ def score_plan(
     way, including past slots in the SoC-guard penalty would generate a
     false ``soc_low_penalty`` because the simulator zeros
     ``estimated_battery_soc`` on past slots as a sentinel value.
+
+    Two aggregate numbers are returned (issue #413):
+
+    - ``total_cost`` — money outcome only.  Equals
+      ``import_cost − export_revenue + cycle_cost + conversion_loss_cost``.
+    - ``score`` — selector objective.  Equals ``total_cost`` plus all
+      synthetic penalties (SoC guard, grid limit, override) and the
+      terminal-SoC opportunity cost.  The candidate selector minimises
+      this value.
+
+    Terminal-SoC accounting (the spec-mandated
+    ``terminal_soc_penalty_or_credit`` term) is enabled when both
+    ``initial_battery_kwh`` and ``replacement_price_per_kwh`` are provided.
+    It prevents the selector from preferring plans that look "cheap" only
+    because they empty the battery before the end of the horizon.
 
     Args:
         slots:
@@ -305,10 +420,23 @@ def score_plan(
             ``end`` is at or before *now* is skipped.  When ``None`` the
             fallback sentinel check (``recommendation == TimePassed``) is
             used instead.
+        initial_battery_kwh:
+            Energy stored above the discharge floor (kWh) at the start of
+            the horizon.  Required (together with
+            ``replacement_price_per_kwh``) to enable terminal-SoC accounting.
+            ``None`` disables the term.
+        replacement_price_per_kwh:
+            Currency-per-kWh price used to value the change in stored
+            battery energy across the horizon.  A conservative choice is the
+            *average future import price* across the planning horizon.
+            Required (together with ``initial_battery_kwh``) to enable
+            terminal-SoC accounting.  ``None`` disables the term.
 
     Returns:
-        A :class:`PlanCostBreakdown` containing every cost component and
-        the total score.  **Lower total = better plan.**
+        A :class:`PlanCostBreakdown` containing every cost component, the
+        money ``total_cost``, and the selector ``score``.
+        **Lower ``score`` = better plan** (this is what the selector
+        minimises).
 
     Examples:
         >>> from datetime import datetime
@@ -329,7 +457,11 @@ def score_plan(
         >>> bd = score_plan([slot])
         >>> bd.import_cost
         0.2
-        >>> bd.total
+        >>> bd.total_cost
+        0.2
+        >>> bd.score
+        0.2
+        >>> bd.total  # deprecated alias for score
         0.2
     """
     if weights is None:
@@ -444,15 +576,41 @@ def score_plan(
         if _is_override_slot(slot) and abs(weights.override_penalty_per_slot) > 1e-9:
             override_penalty += weights.override_penalty_per_slot
 
-    total = (
-        import_cost
-        - export_revenue
-        + conversion_loss_cost
-        + cycle_cost_total
+    # 8. Terminal-SoC opportunity cost (selector-only).
+    #
+    # Plans that end the horizon with more stored battery energy than they
+    # started with receive a credit (terminal_soc_value < 0, reducing score).
+    # Plans that empty the battery pay a penalty (terminal_soc_value > 0,
+    # increasing score).  This implements the spec-mandated
+    # ``terminal_soc_penalty_or_credit`` term and prevents the selector from
+    # preferring plans that look cheap only because they drained the battery.
+    #
+    # The term is computed only when both inputs are provided so unit tests
+    # that call score_plan without horizon context keep behaving as before.
+    terminal_soc_value = 0.0
+    if (
+        initial_battery_kwh is not None
+        and replacement_price_per_kwh is not None
+        and abs(replacement_price_per_kwh) > 1e-9
+    ):
+        final_battery_kwh = _final_battery_kwh(slots, now)
+        delta_kwh = initial_battery_kwh - final_battery_kwh
+        terminal_soc_value = delta_kwh * replacement_price_per_kwh
+
+    # ``total_cost`` is money only — never includes synthetic penalties.
+    total_cost = import_cost - export_revenue + conversion_loss_cost + cycle_cost_total
+
+    # ``score`` is the selector objective.  It adds every synthetic penalty
+    # and the terminal-SoC opportunity cost on top of ``total_cost``.
+    score = (
+        total_cost
         + soc_penalty
         + grid_limit_penalty
         + override_penalty
+        + terminal_soc_value
     )
+
+    score_rounded = round(score, 6)
 
     return PlanCostBreakdown(
         import_cost=round(import_cost, 6),
@@ -462,7 +620,11 @@ def score_plan(
         soc_penalty=round(soc_penalty, 6),
         grid_limit_penalty=round(grid_limit_penalty, 6),
         override_penalty=round(override_penalty, 6),
-        total=round(total, 6),
+        terminal_soc_value=round(terminal_soc_value, 6),
+        total_cost=round(total_cost, 6),
+        score=score_rounded,
+        # ``total`` is a deprecated alias for ``score`` (issue #413).
+        total=score_rounded,
     )
 
 
@@ -472,31 +634,56 @@ def compare_plans(
     weights: CostWeights | None = None,
     *,
     slot_duration_hours: float = 1.0,
+    now: datetime | None = None,
+    initial_battery_kwh: float | None = None,
+    replacement_price_per_kwh: float | None = None,
 ) -> tuple[PlanCostBreakdown, PlanCostBreakdown, str]:
     """Score two candidate plans and return which one wins.
+
+    The winner is the plan with the lower :attr:`PlanCostBreakdown.score`
+    (selector objective).  When the scores tie within ``1e-9``, the winner
+    is ``"tie"``.
 
     Args:
         plan_a: First candidate plan (list of slots).
         plan_b: Second candidate plan (list of slots).
         weights: Shared cost weights applied to both plans.
         slot_duration_hours: Duration of each slot in hours.
+        now: Forwarded to :func:`score_plan`.
+        initial_battery_kwh: Forwarded to :func:`score_plan` to enable
+            terminal-SoC accounting.
+        replacement_price_per_kwh: Forwarded to :func:`score_plan` to enable
+            terminal-SoC accounting.
 
     Returns:
         A three-tuple ``(breakdown_a, breakdown_b, winner)`` where
-        ``winner`` is either ``"plan_a"`` or ``"plan_b"`` (the plan
-        with the lower total cost).  When both plans have identical scores
-        within floating-point tolerance (``< 1e-9``), ``winner`` is
-        ``"tie"``.
+        ``winner`` is either ``"plan_a"`` or ``"plan_b"`` (the plan with
+        the lower selector score).  ``"tie"`` when both plans are
+        equivalent within floating-point tolerance.
 
     Examples:
         >>> bd_a, bd_b, winner = compare_plans(cheap_slots, expensive_slots)
         >>> winner
         'plan_a'
     """
-    bd_a = score_plan(plan_a, weights, slot_duration_hours=slot_duration_hours)
-    bd_b = score_plan(plan_b, weights, slot_duration_hours=slot_duration_hours)
+    bd_a = score_plan(
+        plan_a,
+        weights,
+        slot_duration_hours=slot_duration_hours,
+        now=now,
+        initial_battery_kwh=initial_battery_kwh,
+        replacement_price_per_kwh=replacement_price_per_kwh,
+    )
+    bd_b = score_plan(
+        plan_b,
+        weights,
+        slot_duration_hours=slot_duration_hours,
+        now=now,
+        initial_battery_kwh=initial_battery_kwh,
+        replacement_price_per_kwh=replacement_price_per_kwh,
+    )
 
-    diff = bd_a.total - bd_b.total
+    diff = bd_a.score - bd_b.score
     if abs(diff) < 1e-9:
         winner = "tie"
     elif diff < 0:
