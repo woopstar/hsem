@@ -81,7 +81,20 @@ def apply_discharge_schedules(
                 if slot_start >= window_start_abs and slot_end <= window_end_abs:
                     slot.recommendation = Recommendations.BatteriesDischargeMode.value
 
-            # Capture per-occurrence capacity and avg price
+            # Capture per-occurrence capacity and avg price.
+            #
+            # Battery-relevant net consumption excludes EV planned load:
+            #   battery_net = avg_house_consumption - pv
+            #
+            # When base_load_includes_ev=False, estimated_net_consumption includes
+            # ev_planned_load_kwh.  The EV draws directly from grid/PV, not from
+            # the home battery, so including it in occ_needed would over-inflate
+            # the pre-charge target and cause the price-spread guard in
+            # _apply_grid_charge to reject otherwise profitable charge slots.
+            #
+            # ev_accounted_load_kwh is already captured in avg_house_consumption
+            # (base_load_includes_ev=True), so no correction is needed for that
+            # case — the battery must cover it.
             occ_net = 0.0
             occ_prices: list[float] = []
             for s in slots:
@@ -92,7 +105,10 @@ def apply_discharge_schedules(
                     and s_start >= window_start_abs
                     and s_end <= window_end_abs
                 ):
-                    occ_net += s.estimated_net_consumption
+                    # Subtract extra EV load (injected, base_load_includes_ev=False)
+                    # so the battery only targets house coverage.
+                    battery_net = s.estimated_net_consumption - s.ev_planned_load_kwh
+                    occ_net += battery_net
                     occ_prices.append(s.price.import_price)
 
             occ_needed = max(occ_net, 0.0)

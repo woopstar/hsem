@@ -2416,3 +2416,197 @@ class TestEvLoadSemantics:
                 f"!= ev_planned ({s.ev_planned_load_kwh:.4f}) "
                 f"+ ev_accounted ({s.ev_accounted_load_kwh:.4f})"
             )
+
+
+# ---------------------------------------------------------------------------
+# TestEvLoadDoesNotInflateChargeNeeded (issue #404 / charge scheduler fix)
+# Regression: when base_load_includes_ev=False the charge scheduler was using
+# estimated_net_consumption (which includes ev_planned_load_kwh) to compute
+# occ_needed for each discharge window occurrence.  This inflated the target,
+# raised the average charge price over more slots, and caused the price-spread
+# guard to reject otherwise profitable grid-charge slots.
+# ---------------------------------------------------------------------------
+
+
+class TestEvLoadDoesNotInflateChargeNeeded:
+    """Battery pre-charge must not require more energy just because EV is planned.
+
+    The home battery discharges to cover house load; the EV charger draws from
+    grid/PV directly.  Adding ev_planned_load_kwh to the discharge-window needed
+    capacity over-counts the battery's responsibility.
+
+    Regression test: with a clear price spread and an EV scheduled to charge
+    in the same window, the planner must still assign batteries_charge_grid
+    slots before the discharge window — the same as without EV.
+    """
+
+    def _make_ev_discharge_input(
+        self,
+        base_includes_ev: bool = False,
+        ev_enabled: bool = True,
+    ) -> PlannerInput:
+        """Build an input with a clear price spread and a discharge window.
+
+        Price layout:
+          hours  0-05: cheap  (0.05) — ideal charge-from-grid hours
+          hours  6-15: normal (0.20)
+          hours 16-22: peak   (0.80) — configured discharge window
+
+        EV deadline: 08:00 (charges in cheap/normal hours).
+        Battery must pre-charge before the discharge window.
+        """
+        from datetime import datetime as _dt2
+
+        now_iso = "2024-06-15T00:00:00+00:00"
+        now = _dt2.fromisoformat(now_iso)
+        ev_deadline = now + timedelta(hours=8)
+
+        prices = []
+        for h in range(24):
+            if h < 6:
+                prices.append(PricePoint(hour=h, import_price=0.05, export_price=0.01))
+            elif h < 16:
+                prices.append(PricePoint(hour=h, import_price=0.20, export_price=0.05))
+            else:
+                prices.append(PricePoint(hour=h, import_price=0.80, export_price=0.20))
+
+        pv = [SolcastSlot(hour=h, pv_estimate=0.0) for h in range(24)]
+        avgs = [
+            HourlyConsumptionAverage(
+                hour=h, avg_1d=1.0, avg_3d=1.0, avg_7d=1.0, avg_14d=1.0
+            )
+            for h in range(24)
+        ]
+
+        from datetime import time as _time
+
+        from custom_components.hsem.models.planner_inputs import BatteryScheduleInput
+
+        discharge_schedule = BatteryScheduleInput(
+            enabled=True,
+            start=_time(16, 0),
+            end=_time(22, 0),
+            min_price_difference=0.10,  # spread needed: 0.05 vs 0.80 → 0.75 > 0.10
+        )
+
+        return PlannerInput(
+            now_iso=now_iso,
+            interval_minutes=60,
+            interval_length_hours=24,
+            battery_soc_pct=20.0,  # low — needs charging
+            battery_rated_capacity_kwh=10.0,
+            battery_end_of_discharge_soc_pct=10.0,
+            battery_max_soc_pct=90.0,
+            battery_max_charge_power_w=5000.0,
+            battery_max_discharge_power_w=5000.0,
+            battery_charge_efficiency_pct=100.0,
+            battery_conversion_loss_pct=0.0,
+            battery_discharge_efficiency_pct=100.0,
+            weight_1d=25,
+            weight_3d=30,
+            weight_7d=30,
+            weight_14d=15,
+            consumption_averages=avgs,
+            price_points=prices,
+            solcast_slots=pv,
+            battery_schedules=[discharge_schedule],
+            ev_planned_load_enabled=ev_enabled,
+            ev_planned_load_connected=ev_enabled,
+            ev_planned_load_smart_charging_enabled=ev_enabled,
+            ev_planned_load_current_soc_pct=0.0,
+            ev_planned_load_target_soc_pct=10.0,  # 10 kWh needed
+            ev_planned_load_battery_capacity_kwh=100.0,
+            ev_planned_load_charger_power_kw=11.0,
+            ev_planned_load_charger_efficiency_pct=100.0,
+            ev_planned_load_deadline=ev_deadline,
+            ev_planned_load_base_load_includes_ev=base_includes_ev,
+        )
+
+    def test_grid_charge_slots_exist_without_ev(self):
+        """Baseline: without EV, cheap hours 0-5 are assigned batteries_charge_grid."""
+        inp = self._make_ev_discharge_input(ev_enabled=False)
+        out = run_planner(inp)
+
+        charge_grid_slots = [
+            s for s in out.slots if s.recommendation == "batteries_charge_grid"
+        ]
+        assert charge_grid_slots, (
+            "Baseline without EV: expected batteries_charge_grid slots in cheap hours. "
+            "Check schedule config and price spread."
+        )
+        cheap_charge_hours = {s.start.hour for s in charge_grid_slots}
+        assert cheap_charge_hours & set(range(6)), (
+            f"Expected charge slots in hours 0-5 (cheap), got: {cheap_charge_hours}"
+        )
+
+    def test_grid_charge_slots_still_exist_with_ev_base_excludes(self):
+        """With EV + base_load_includes_ev=False, grid-charge slots must survive.
+
+        This is the regression test: ev_planned_load_kwh was inflating occ_needed,
+        which raised the average charge price and caused the price-spread guard
+        to reject the cheap-hour grid-charge slots.
+        """
+        inp = self._make_ev_discharge_input(base_includes_ev=False)
+        out = run_planner(inp)
+
+        charge_grid_slots = [
+            s for s in out.slots if s.recommendation == "batteries_charge_grid"
+        ]
+        assert charge_grid_slots, (
+            "With EV (base_load_includes_ev=False): batteries_charge_grid slots "
+            "are missing. EV ev_planned_load_kwh is inflating occ_needed in the "
+            "discharge window, causing the price-spread guard to reject cheap-hour "
+            "charge slots."
+        )
+
+    def test_grid_charge_slots_still_exist_with_ev_base_includes(self):
+        """With EV + base_load_includes_ev=True, grid-charge slots must survive."""
+        inp = self._make_ev_discharge_input(base_includes_ev=True)
+        out = run_planner(inp)
+
+        charge_grid_slots = [
+            s for s in out.slots if s.recommendation == "batteries_charge_grid"
+        ]
+        assert charge_grid_slots, (
+            "With EV (base_load_includes_ev=True): batteries_charge_grid slots "
+            "are missing even though EV load is already in house consumption."
+        )
+
+    def test_ev_load_does_not_change_discharge_window_needed_capacity(self):
+        """occ_needed for the discharge window must be the same with and without EV
+        when base_load_includes_ev=False.
+
+        Hand calculation:
+          discharge window: hours 16-22 (6 slots)
+          avg_house = 1.0 kWh/h, pv = 0 kWh → battery_net = 1.0 kWh/h
+          ev_planned_load_kwh: may be > 0 in some of these slots (EV charges
+            during cheap hours before deadline, so no EV in discharge window)
+
+        After fix: occ_needed = sum(house - pv) across discharge slots,
+        NOT sum(house + ev - pv).  So EV load in pre-discharge slots does not
+        affect the charge target for the discharge window.
+        """
+        inp_no_ev = self._make_ev_discharge_input(ev_enabled=False)
+        inp_ev = self._make_ev_discharge_input(base_includes_ev=False)
+
+        out_no_ev = run_planner(inp_no_ev)
+        out_ev = run_planner(inp_ev)
+
+        # The discharge window is hours 16-21; EV deadline is 08:00 so no EV
+        # load in discharge window.  Both outputs should have identical
+        # discharge-window net consumption.
+        discharge_net_no_ev = sum(
+            s.avg_house_consumption - s.solcast_pv_estimate
+            for s in out_no_ev.slots
+            if 16 <= s.start.hour < 22
+        )
+        discharge_net_ev = sum(
+            s.avg_house_consumption - s.solcast_pv_estimate
+            for s in out_ev.slots
+            if 16 <= s.start.hour < 22
+        )
+        assert discharge_net_ev == pytest.approx(discharge_net_no_ev, abs=1e-6), (
+            f"Discharge window battery-relevant net differs between EV and no-EV cases: "
+            f"no_ev={discharge_net_no_ev:.3f}, ev={discharge_net_ev:.3f}. "
+            "EV load should not affect the battery's discharge window target."
+        )
