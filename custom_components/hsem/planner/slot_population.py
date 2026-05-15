@@ -131,8 +131,18 @@ def populate_prices(
             missing slots are tracked centrally.
     """
     if tsi is not None:
-        imp_prices = {pp.hour: pp.import_price for pp in price_points}
-        exp_prices = {pp.hour: pp.export_price for pp in price_points}
+        # Use (day_offset, hour) keys when any entry carries a non-zero
+        # day_offset so that tomorrow's prices are not overwritten by today's.
+        if any(pp.day_offset != 0 for pp in price_points):
+            imp_prices: dict[tuple[int, int], float] = {
+                (pp.day_offset, pp.hour): pp.import_price for pp in price_points
+            }
+            exp_prices: dict[tuple[int, int], float] = {
+                (pp.day_offset, pp.hour): pp.export_price for pp in price_points
+            }
+        else:
+            imp_prices = {pp.hour: pp.import_price for pp in price_points}  # type: ignore[assignment]
+            exp_prices = {pp.hour: pp.export_price for pp in price_points}  # type: ignore[assignment]
         aligned_imp, aligned_exp = tsi.align_hourly_prices(imp_prices, exp_prices)
         for slot, imp, exp in zip(slots, aligned_imp, aligned_exp):
             # Missing hours (NaN sentinel) fall back to 0.0 — preserve
@@ -173,7 +183,14 @@ def populate_solcast(
         tsi: Optional shared time-series index.
     """
     if tsi is not None:
-        pv_by_hour = {sc.hour: sc.pv_estimate for sc in solcast_slots}
+        # Use (day_offset, hour) keys when any entry carries a non-zero
+        # day_offset so that tomorrow's PV forecast is not shadowed by today's.
+        if any(sc.day_offset != 0 for sc in solcast_slots):
+            pv_by_hour: dict[tuple[int, int], float] = {
+                (sc.day_offset, sc.hour): sc.pv_estimate for sc in solcast_slots
+            }
+        else:
+            pv_by_hour = {sc.hour: sc.pv_estimate for sc in solcast_slots}  # type: ignore[assignment]
         aligned = tsi.align_hourly_pv(pv_by_hour)
         for slot, val in zip(slots, aligned):
             slot.solcast_pv_estimate = 0.0 if math.isnan(val) else round(val, 3)
@@ -211,10 +228,27 @@ def populate_consumption(
         tsi: Optional shared time-series index.
     """
     if tsi is not None:
-        avg_1d = {ca.hour: ca.avg_1d for ca in averages}
-        avg_3d = {ca.hour: ca.avg_3d for ca in averages}
-        avg_7d = {ca.hour: ca.avg_7d for ca in averages}
-        avg_14d = {ca.hour: ca.avg_14d for ca in averages}
+        # Use (day_offset, hour) keys when any entry carries a non-zero
+        # day_offset so that tomorrow's consumption forecast is not overwritten
+        # by today's cyclical averages.
+        if any(ca.day_offset != 0 for ca in averages):
+            avg_1d: dict[tuple[int, int], float] = {
+                (ca.day_offset, ca.hour): ca.avg_1d for ca in averages
+            }
+            avg_3d: dict[tuple[int, int], float] = {
+                (ca.day_offset, ca.hour): ca.avg_3d for ca in averages
+            }
+            avg_7d: dict[tuple[int, int], float] = {
+                (ca.day_offset, ca.hour): ca.avg_7d for ca in averages
+            }
+            avg_14d: dict[tuple[int, int], float] = {
+                (ca.day_offset, ca.hour): ca.avg_14d for ca in averages
+            }
+        else:
+            avg_1d = {ca.hour: ca.avg_1d for ca in averages}  # type: ignore[assignment]
+            avg_3d = {ca.hour: ca.avg_3d for ca in averages}  # type: ignore[assignment]
+            avg_7d = {ca.hour: ca.avg_7d for ca in averages}  # type: ignore[assignment]
+            avg_14d = {ca.hour: ca.avg_14d for ca in averages}  # type: ignore[assignment]
         aligned_1d = tsi.align_hourly_load(avg_1d)
         aligned_3d = tsi.align_hourly_load(avg_3d)
         aligned_7d = tsi.align_hourly_load(avg_7d)
