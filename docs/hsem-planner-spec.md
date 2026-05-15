@@ -411,10 +411,13 @@ Sign convention:
 - `delta_kwh > 0` (plan ends with **less** energy) →
   `terminal_soc_value > 0` → **penalty**, increases `score`.
 
-The recommended `replacement_price_per_kwh` is the **average future import
-price across the planning horizon**.  This is deterministic, requires no
-extra inputs, and is conservative: stored energy at end-of-horizon is valued
-at what it would cost on average to buy it back from the grid.
+The recommended `replacement_price_per_kwh` is the **minimum future import
+price across the planning horizon**.  This represents the marginal cost of
+re-purchasing one stored kWh at the cheapest available opportunity — the
+economically correct proxy for the opportunity cost of consuming stored energy
+now rather than later.  Using the average over all future slots (including
+expensive peak prices) systematically over-values stored energy during
+high-price periods and biases the selector against discharging.
 
 Terminal-SoC accounting is **only active** when both `initial_battery_kwh`
 and `replacement_price_per_kwh` are supplied to `score_plan`.  Unit tests

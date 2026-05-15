@@ -551,10 +551,15 @@ class TestPlannerOutputCandidates:
         assert CANDIDATE_BASELINE in names
 
     def test_all_six_candidates_present(self):
-        """All six named candidates must appear in a standard summer run."""
+        """The six core named candidates must appear in a standard summer run.
+
+        When scipy is available a 7th ``milp`` candidate is also added.  This
+        test only asserts the six mandatory candidates are present; the MILP
+        candidate is validated separately in test_milp_optimizer.py.
+        """
         output = run_planner(make_summer_day_input())
         names = {c.name for c in output.candidates}
-        expected = {
+        expected_core = {
             CANDIDATE_BASELINE,
             CANDIDATE_NO_ACTION,
             CANDIDATE_GRID_CHARGE,
@@ -562,7 +567,9 @@ class TestPlannerOutputCandidates:
             CANDIDATE_DISCHARGE_ONLY,
             CANDIDATE_AGGRESSIVE,
         }
-        assert expected == names
+        assert expected_core <= names, (
+            f"Missing core candidates: {expected_core - names}"
+        )
 
     def test_rejected_plans_include_candidate_alternatives(self):
         """explanation.rejected_plans must include non-winning candidates."""

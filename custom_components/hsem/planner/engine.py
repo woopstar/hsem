@@ -718,24 +718,25 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     slot_duration_hours = inp.interval_minutes / 60.0
 
     # Replacement price for the terminal-SoC opportunity cost term (issue #413).
-    # We use the *average future import price* across the horizon as a
-    # conservative, deterministic proxy: stored battery energy at end-of-
-    # horizon is valued at what it would cost on average to buy that energy
-    # back from the grid.  Past slots (recommendation == TimePassed) are
-    # excluded so the value reflects the actual decision window.
+    # We use the *minimum future import price* across the horizon (Bug 3 fix,
+    # issue #416).  The marginal cost of one stored kWh at end-of-horizon is
+    # the cheapest price at which that energy could be re-purchased — not the
+    # average.  Using the average over all future slots (including expensive
+    # peak prices) systematically over-values stored energy during high-price
+    # periods and biases the selector against discharging.
+    # Past slots (recommendation == TimePassed) are excluded so the value
+    # reflects the actual decision window.
     _future_import_prices = [
         s.price.import_price
         for s in slots
         if as_tz(s.end, now.tzinfo) > now and not math.isnan(s.price.import_price)
     ]
     replacement_price_per_kwh: float | None = (
-        sum(_future_import_prices) / len(_future_import_prices)
-        if _future_import_prices
-        else None
+        min(_future_import_prices) if _future_import_prices else None
     )
     log_planner(
         "debug",
-        "[engine] terminal-SoC replacement price: %s  (avg of %d future slots)",
+        "[engine] terminal-SoC replacement price: %s  (min of %d future slots)",
         (
             f"{replacement_price_per_kwh:.4f}"
             if replacement_price_per_kwh is not None
@@ -749,6 +750,9 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         inp,
         now,
         max_charge_per_slot,
+        current_kwh=current_kwh,
+        usable_kwh=usable_kwh,
+        max_discharge_per_slot=max_discharge_per_slot,
     )
     log_planner(
         "debug",
