@@ -288,7 +288,15 @@ No recommendation may be energetically invisible.
 
 ## Cost function
 
-The total plan cost is:
+The cost function returns **two distinct aggregates** for every plan
+(issue #413):
+
+- `total_cost` — the **money outcome** of the plan within the horizon.
+  Pure DKK / EUR.  Auditable; directly comparable to a real electricity bill.
+- `score` — the **selector objective**.  Equals `total_cost` plus every
+  synthetic penalty plus the terminal-SoC opportunity cost.  The candidate
+  selector picks the plan with the **lowest score** — not the lowest money
+  cost.
 
 ```text
 total_cost
@@ -297,9 +305,31 @@ total_cost
 + battery_cycle_cost
 + conversion_loss_cost
 + tariff_cost
-+ constraint_penalties
-+ terminal_soc_penalty_or_credit
 ```
+
+```text
+score
+= total_cost
++ soc_guard_penalty
++ grid_limit_penalty
++ override_penalty
++ terminal_soc_value
+```
+
+Where:
+
+- `soc_guard_penalty`, `grid_limit_penalty`, `override_penalty` are
+  **selector-only** synthetic terms.  They must **never** appear in
+  `total_cost`, because they do not represent real money paid or earned.
+- `terminal_soc_value` is **selector-only**.  It is negative (credit) when
+  the plan ends with more stored energy than it started with, and positive
+  (penalty) when the plan empties the battery.  It prevents the selector
+  from preferring plans that look cheap only because they drained the
+  battery to zero before end-of-horizon.
+
+The implementation exposes both numbers on `PlanCostBreakdown` together with
+a deprecated `total` alias that equals `score` (kept so older code and tests
+that compared plans by `.total` still select the same winner).
 
 ### Grid import cost
 
@@ -359,20 +389,55 @@ score_plan(slots_with_past).soc_penalty
 
 ### Terminal SoC value
 
-Plans must not look better merely because they empty the battery before the horizon ends.
+Plans must not look better merely because they empty the battery before the
+horizon ends.
 
-The cost function must include either:
-
-- terminal SoC credit
-- terminal SoC penalty
-- or a constraint that compares plans at equal terminal SoC
-
-A simple default:
+The cost function implements this via a `terminal_soc_value` term that
+contributes to `score` (not to `total_cost`):
 
 ```text
-terminal_soc_delta_kwh = baseline_terminal_soc_kwh - candidate_terminal_soc_kwh
-terminal_soc_penalty = terminal_soc_delta_kwh * replacement_energy_price
+initial_kwh = stored battery energy above the discharge floor at the start of the horizon
+final_kwh   = stored battery energy above the discharge floor at the end of the horizon
+            (taken from the last future slot's estimated_battery_capacity)
+delta_kwh   = initial_kwh - final_kwh
+
+terminal_soc_value = delta_kwh * replacement_price_per_kwh
 ```
+
+Sign convention:
+
+- `delta_kwh < 0` (plan ends with **more** energy than it started with) →
+  `terminal_soc_value < 0` → **credit**, reduces `score`.
+- `delta_kwh > 0` (plan ends with **less** energy) →
+  `terminal_soc_value > 0` → **penalty**, increases `score`.
+
+The recommended `replacement_price_per_kwh` is the **average future import
+price across the planning horizon**.  This is deterministic, requires no
+extra inputs, and is conservative: stored energy at end-of-horizon is valued
+at what it would cost on average to buy it back from the grid.
+
+Terminal-SoC accounting is **only active** when both `initial_battery_kwh`
+and `replacement_price_per_kwh` are supplied to `score_plan`.  Unit tests
+that call `score_plan` without horizon context (e.g. simple per-slot
+arithmetic checks) do not need the term and may omit both inputs; in that
+case `terminal_soc_value = 0.0` and `score == total_cost + penalties`.
+
+### Invariants for tests
+
+- `total_cost` must equal
+  `import_cost - export_revenue + cycle_cost + conversion_loss_cost`
+  exactly.  No synthetic penalty may enter `total_cost`.
+- `score` must equal
+  `total_cost + soc_penalty + grid_limit_penalty + override_penalty + terminal_soc_value`
+  exactly.
+- When all penalties are zero and terminal-SoC is disabled, `score == total_cost`.
+- The candidate selector must pick the candidate with the lowest `score`,
+  not the lowest `total_cost`.
+- `winner.score == output.plan_cost.score` for every planner run.
+- `winner.slots == output.slots` for every planner run.
+- Given two otherwise-identical plans, the one that ends with more stored
+  battery energy must have the lower `terminal_soc_value` and therefore the
+  lower `score` (all else equal).
 
 ## Price interval semantics
 
