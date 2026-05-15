@@ -716,20 +716,28 @@ class TestRunPlannerIntegration:
         assert bd.override_penalty >= 0.0
 
     def test_summer_plan_total_equals_sum_of_components(self):
-        """plan_cost.total must be consistent with all its components."""
+        """plan_cost.score must be consistent with all its components (issue #413).
+
+        Money cost (``total_cost``) excludes synthetic penalties; the selector
+        ``score`` adds them plus the terminal-SoC opportunity cost on top.
+        """
         result = run_planner(make_summer_day_input())
         assert result.plan_cost is not None
         bd = result.plan_cost
-        expected = (
-            bd.import_cost
-            - bd.export_revenue
-            + bd.conversion_loss_cost
-            + bd.cycle_cost
+        expected_total_cost = (
+            bd.import_cost - bd.export_revenue + bd.conversion_loss_cost + bd.cycle_cost
+        )
+        expected_score = (
+            expected_total_cost
             + bd.soc_penalty
             + bd.grid_limit_penalty
             + bd.override_penalty
+            + bd.terminal_soc_value
         )
-        assert bd.total == pytest.approx(expected, abs=1e-6)
+        assert bd.total_cost == pytest.approx(expected_total_cost, abs=1e-6)
+        assert bd.score == pytest.approx(expected_score, abs=1e-6)
+        # ``bd.total`` is a deprecated alias for ``bd.score``.
+        assert bd.total == pytest.approx(bd.score, abs=1e-6)
 
     def test_high_price_plan_costs_more_than_low_price_plan(self):
         """A plan run on high-price days must have a higher cost than on cheap days."""
