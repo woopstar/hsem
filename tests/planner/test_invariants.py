@@ -1892,3 +1892,113 @@ class TestEvPlannedLoadPipelineIntegrity:
                 f"+ chg={s.batteries_charged:.3f} - pv={s.solcast_pv_estimate:.3f}); "
                 "EV load not in SoC simulation."
             )
+
+
+# ---------------------------------------------------------------------------
+# Invariant — Past-slot SoC penalty exclusion (cost_function.py)
+# Past slots must not contribute a spurious SoC-low penalty to score_plan.
+# ---------------------------------------------------------------------------
+
+
+class TestPastSlotSocPenaltyExclusion:
+    """Past slots with soc=0.0 sentinel must not inflate the SoC penalty.
+
+    The SoC simulator zeros out ``estimated_battery_soc`` on past slots as a
+    sentinel.  If ``score_plan`` included those slots they would each
+    contribute ``soc_low_penalty_weight × min_soc_pct²`` to ``soc_penalty``
+    equally across every candidate, inflating totals and masking real
+    cost differences between strategies.
+    """
+
+    def _make_slots_with_past(self, n_past: int = 10, n_future: int = 5):
+        """Return a mixed list with *n_past* past slots and *n_future* future slots."""
+        tz = ZoneInfo("Europe/Copenhagen")
+        base = datetime(2024, 6, 15, 8, 0, tzinfo=tz)
+        slots = []
+        for i in range(n_past):
+            s = PlannedSlot(
+                start=base + timedelta(hours=i),
+                end=base + timedelta(hours=i + 1),
+                price=SlotPrice(import_price=0.50, export_price=0.10),
+            )
+            s.recommendation = Recommendations.TimePassed.value
+            s.estimated_battery_soc = 0.0  # sentinel written by simulate_soc
+            s.grid_import_kwh = 0.0
+            s.grid_export_kwh = 0.0
+            s.batteries_charged = 0.0
+            s.batteries_discharged = 0.0
+            slots.append(s)
+        for j in range(n_future):
+            s = PlannedSlot(
+                start=base + timedelta(hours=n_past + j),
+                end=base + timedelta(hours=n_past + j + 1),
+                price=SlotPrice(import_price=0.50, export_price=0.10),
+            )
+            s.recommendation = Recommendations.BatteriesWaitMode.value
+            s.estimated_battery_soc = 30.0  # above floor, no violation
+            s.grid_import_kwh = 0.5
+            s.grid_export_kwh = 0.0
+            s.batteries_charged = 0.0
+            s.batteries_discharged = 0.0
+            slots.append(s)
+        return slots
+
+    def test_past_slots_do_not_contribute_soc_penalty(self):
+        """score_plan must produce zero soc_penalty when future SoC is within bounds.
+
+        With 10 past slots (soc=0.0, rec=time_passed) and future slots at
+        soc=30% (well above min_soc=5%), the soc_penalty must be exactly 0.
+        Before the fix it would have been 10 × 0.01 × 5² = 2.5.
+        """
+        weights = CostWeights(min_soc_pct=5.0, max_soc_pct=100.0)
+        slots = self._make_slots_with_past(n_past=10, n_future=5)
+        breakdown = score_plan(slots, weights)
+        assert breakdown.soc_penalty == pytest.approx(0.0), (
+            f"Past slots must not generate soc_penalty; got {breakdown.soc_penalty:.4f}. "
+            "Each past slot (soc=0.0, min_soc=5%) would add 0.25 without the fix."
+        )
+
+    def test_future_soc_violation_still_penalised(self):
+        """Genuine future SoC violations must still be penalised after the fix."""
+        weights = CostWeights(min_soc_pct=10.0, max_soc_pct=100.0)
+        tz = ZoneInfo("Europe/Copenhagen")
+        base = datetime(2024, 6, 15, 8, 0, tzinfo=tz)
+        # One future slot with soc=5.0%, which is below min_soc=10% → violation=5%
+        s = PlannedSlot(
+            start=base,
+            end=base + timedelta(hours=1),
+            price=SlotPrice(import_price=0.50, export_price=0.10),
+        )
+        s.recommendation = Recommendations.BatteriesWaitMode.value
+        s.estimated_battery_soc = 5.0  # below floor
+        s.grid_import_kwh = 0.0
+        s.grid_export_kwh = 0.0
+        breakdown = score_plan([s], weights)
+        expected = (
+            weights.soc_low_penalty_weight * (10.0 - 5.0) ** 2
+        )  # 0.01 * 25 = 0.25
+        assert breakdown.soc_penalty == pytest.approx(expected, abs=1e-9), (
+            f"Future SoC violation must still be penalised; "
+            f"expected {expected:.4f}, got {breakdown.soc_penalty:.4f}"
+        )
+
+    def test_score_with_past_equals_score_future_only(self):
+        """Adding past slots must not change the total cost from future-only scoring.
+
+        This directly validates the spec invariant:
+          score_plan(future + past).total == score_plan(future_only).total
+        """
+        weights = CostWeights(min_soc_pct=5.0, max_soc_pct=100.0)
+        slots_mixed = self._make_slots_with_past(n_past=45, n_future=10)
+        slots_future = [
+            s
+            for s in slots_mixed
+            if s.recommendation != Recommendations.TimePassed.value
+        ]
+        score_mixed = score_plan(slots_mixed, weights)
+        score_future = score_plan(slots_future, weights)
+        assert score_mixed.total == pytest.approx(score_future.total, abs=1e-6), (
+            f"Adding past slots changed total cost: "
+            f"mixed={score_mixed.total:.6f} vs future_only={score_future.total:.6f}. "
+            "Past slots (rec=time_passed) must be skipped entirely."
+        )

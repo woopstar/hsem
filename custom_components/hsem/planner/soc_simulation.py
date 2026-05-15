@@ -146,8 +146,30 @@ def simulate_soc(
             cap = current_kwh
 
         pv = slot.solcast_pv_estimate  # kWh produced by PV this slot
-        house_load = slot.avg_house_consumption
-        ev_load = slot.ev_planned_load_kwh  # AC-side EV draw (grid/PV only)
+
+        # ev_planned_load_kwh  — extra EV AC load NOT yet in avg_house_consumption
+        #                        (base_load_includes_ev=False case)
+        # ev_accounted_load_kwh — EV AC load already baked into avg_house_consumption
+        #                        (base_load_includes_ev=True case)
+        #
+        # In BOTH cases the EV charger is an AC appliance drawing from grid/PV
+        # directly — it NEVER draws from the house battery.
+        #
+        # For base_load_includes_ev=False:
+        #   house_load = avg_house_consumption (pure house, no EV)
+        #   ev_load    = ev_planned_load_kwh   (extra EV draw, goes to grid)
+        #
+        # For base_load_includes_ev=True:
+        #   avg_house_consumption includes the EV AC draw.
+        #   We must strip it out so the battery's net demand is pure house only.
+        #   house_load = avg_house_consumption - ev_accounted_load_kwh
+        #   ev_load    = ev_planned_load_kwh (0.0) + ev_accounted_load_kwh
+        ev_accounted = slot.ev_accounted_load_kwh  # already in avg_house_consumption
+        ev_injected = (
+            slot.ev_planned_load_kwh
+        )  # extra, not yet in avg_house_consumption
+        ev_load = ev_injected + ev_accounted  # total AC EV draw → grid/PV only
+        house_load = slot.avg_house_consumption - ev_accounted  # pure house load
 
         # --- Enforce charge ceiling on pre-scheduled charge ---
         # The charge scheduler may have set batteries_charged without knowing
@@ -161,8 +183,8 @@ def simulate_soc(
         # --- Net demand on the HOUSE BATTERY (EV load excluded) ---
         # The EV charger is an AC appliance that draws directly from the grid
         # or from PV surplus.  It never draws from the house battery.
-        # Therefore the battery's net demand is computed from house load only;
-        # ev_load is added to grid_import separately at the end.
+        # Therefore the battery's net demand is computed from pure house load only;
+        # ev_load (both accounted and injected) is added to grid_import separately.
         #
         # PV covers house load first.  The remainder (positive = deficit,
         # negative = surplus) determines whether the battery charges or
@@ -280,7 +302,7 @@ def simulate_soc(
         log_planner(
             "debug",
             "[soc_sim] %s→%s  rec=%-28s  "
-            "pv=%.3f  house=%.3f  ev=%.3f  net_demand=%+.3f  "
+            "pv=%.3f  house=%.3f  ev_inj=%.3f  ev_acc=%.3f  net_demand=%+.3f  "
             "sched_chg=%.3f  discharge=%.3f  "
             "grid_in=%.3f  grid_out=%.3f  "
             "cap_after=%.3f  soc=%.1f%%",
@@ -289,7 +311,8 @@ def simulate_soc(
             slot.recommendation if slot.recommendation is not None else "(none)",
             pv,
             house_load,
-            ev_load,
+            ev_injected,
+            ev_accounted,
             net_demand,
             scheduled_charge,
             discharge,

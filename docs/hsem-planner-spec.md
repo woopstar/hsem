@@ -336,6 +336,27 @@ If using equivalent full cycles, document the formula.
 
 Avoid double-counting the same energy as both charge and discharge unless the cycle-cost definition explicitly expects throughput.
 
+### Past-slot exclusion
+
+The cost function must **skip** any slot whose recommendation is `time_passed`.
+
+Past slots have `estimated_battery_soc = 0.0` as a sentinel value written by
+the SoC simulator.  Including them in SoC-guard penalty calculations would
+generate a false `soc_low_penalty` of `soc_low_penalty_weight × min_soc_pct²`
+**per past slot**, added equally to every candidate plan.  Because the spurious
+penalty is identical across all candidates it does not change the winner but
+inflates the reported `total` cost and makes the logs misleading.
+
+All other energy-flow fields (`grid_import_kwh`, `batteries_charged`, etc.) are
+also zeroed on past slots by the simulator, so skipping them has no effect on
+any cost term other than eliminating the bogus SoC penalty.
+
+**Invariant for tests:**
+```text
+score_plan(slots_with_past).soc_penalty
+== score_plan(future_only_slots).soc_penalty
+```
+
 ### Terminal SoC value
 
 Plans must not look better merely because they empty the battery before the horizon ends.

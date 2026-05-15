@@ -350,6 +350,17 @@ def score_plan(
     override_penalty = 0.0
 
     for slot in slots:
+        # Skip past slots entirely.  The SoC simulation sets
+        # estimated_battery_soc = 0.0 on past slots as a sentinel, which
+        # would falsely trigger the SoC-low penalty on every past slot even
+        # though no real violation occurred.  All other energy-flow fields
+        # (grid_import_kwh, batteries_charged, etc.) are also zeroed on past
+        # slots, so skipping them has no effect on import cost, cycle cost, or
+        # any other term — the only impact is eliminating the bogus SoC
+        # penalty that was making all candidates score identically.
+        if slot.recommendation == "time_passed":
+            continue
+
         imp_price = slot.price.import_price
         exp_price = slot.price.export_price
 
@@ -382,7 +393,9 @@ def score_plan(
         if cycled_kwh > 1e-9 and cycle_cost_kwh > 1e-9:
             cycle_cost_total += cycled_kwh * cycle_cost_kwh
 
-        # 5. SoC guard penalties (quadratic in the violation magnitude)
+        # 5. SoC guard penalties (quadratic in the violation magnitude).
+        #    Only applied to future/current slots where the SoC reflects a
+        #    real simulation value, not the zeroed-out sentinel for past slots.
         soc = slot.estimated_battery_soc
         if soc < weights.min_soc_pct:
             violation = weights.min_soc_pct - soc
