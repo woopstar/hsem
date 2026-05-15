@@ -84,7 +84,10 @@ in the same layer must not change it.
 
 #### Layer 2 — EV planned load labelling (post-simulation)
 
-After the final SoC simulation, slots with `ev_planned_load_kwh > 0` are relabelled:
+After the final SoC simulation, slots with `ev_total_planned_load_kwh > 0` are relabelled.
+`ev_total_planned_load_kwh` is used (not `ev_planned_load_kwh`) so that EV-scheduled
+slots are correctly labelled even when `base_load_includes_ev = True`, where
+`ev_planned_load_kwh` is `0.0` but EV charging is still planned.
 
 - `batteries_charge_solar` → `ev_smart_charging`
 - `batteries_wait_mode` → `ev_smart_charging`
@@ -129,12 +132,16 @@ For every slot:
 net_load_kwh = house_load_kwh + ev_planned_load_kwh - pv_kwh
 ```
 
-`ev_planned_load_kwh` is the combined EV charging load allocated to this slot
-(primary + second EV). When EV integration is disabled it is `0.0`.
+`ev_planned_load_kwh` is the **extra** EV AC load to add to net consumption — the
+portion not already captured in `house_load_kwh`.  See the EV load semantics section
+for the three-field breakdown.
 
-Positive `net_load_kwh` means the house (plus EV) needs energy.
+When EV integration is disabled, `ev_planned_load_kwh` is `0.0` for every slot
+and the formula is identical to the non-EV case.
 
-Negative `net_load_kwh` means there is PV surplus after serving the house and EV.
+Positive `net_load_kwh` means the house (plus any extra EV load) needs energy.
+
+Negative `net_load_kwh` means there is net surplus (solar minus house and EV load).
 
 Battery and grid flows must satisfy:
 
@@ -551,36 +558,34 @@ carry the day+2 gap lists for 72-hour horizon runs.
 
 ## EV planned load integration
 
-### Design invariants
+### EV load field semantics
 
-The EV planner (`planner/ev_planner.py`) MUST satisfy these invariants:
+Three per-slot fields capture EV load intent precisely:
 
-1. **One-pass, no circularity**: EV plans are built entirely from raw inputs
-   (EV SoC, target SoC, capacity, charger power, deadline, and pre-injection
-   solar surplus). They must never depend on the home battery planner output.
-2. **Solar surplus computed before net consumption**: Surplus passed to the EV
-   planner must be derived from raw base fields:
-   ```text
-   surplus = max(slot.solcast_pv_estimate − slot.avg_house_consumption, 0.0)
-   ```
-   It must NOT use `slot.estimated_net_consumption`, which is `0.0` at EV
-   planning time.
-3. **`ev_planned_load_kwh` injected before `populate_net_consumption`**: The
-   engine must call the EV planner and write `ev_planned_load_kwh` to every
-   slot before calling `populate_net_consumption`. Net consumption must reflect
-   the combined EV load.
-4. **No double-counting**: When `base_load_includes_ev = True` for an EV, its
-   planned load must NOT be added to `ev_planned_load_kwh`.
-5. **Partial current slot**: The currently active slot must be scaled by
-   remaining slot duration, not the full slot width.
-6. **Deadline enforcement**: Slots with `slot_start >= deadline` must receive
-   zero EV load.
-7. **Guard states**: The EV planner must return a valid `EVChargingPlan` with
-   an appropriate `state` string in all edge cases (disabled, not connected,
-   smart charging off, fully charged, no slots before deadline, invalid config).
-8. **Disabled EV is zero-cost**: When `ev_planned_load_enabled = False`, all
-   `ev_planned_load_kwh` values must be `0.0` and the home battery planner
-   output must be identical to the non-EV case.
+| Field | Meaning |
+|---|---|
+| `ev_planned_load_kwh` | Extra EV AC load **added to net consumption** — only the portion not already in `avg_house_consumption`. Zero when `base_load_includes_ev = True`. |
+| `ev_accounted_load_kwh` | EV AC load **already included** in the house consumption sensor. Non-zero when `base_load_includes_ev = True`. Must not be added to net consumption again. |
+| `ev_total_planned_load_kwh` | Total planned EV AC load regardless of accounting mode: `ev_planned_load_kwh + ev_accounted_load_kwh`. Always non-zero when any EV charging is planned. |
+
+When `base_load_includes_ev = False`:
+```text
+ev_planned_load_kwh      = summed EV AC load (primary + second)
+ev_accounted_load_kwh    = 0
+ev_total_planned_load_kwh = summed EV AC load
+```
+
+When `base_load_includes_ev = True`:
+```text
+ev_planned_load_kwh      = 0
+ev_accounted_load_kwh    = summed EV AC load (primary + second)
+ev_total_planned_load_kwh = summed EV AC load
+```
+
+Multiple EVs are always **summed**, never overwritten:
+```text
+ev_total_planned_load_kwh = primary_ev_ac_load + second_ev_ac_load
+```
 
 ### Net load formula with EV
 
@@ -591,19 +596,83 @@ effective_net_load_kwh
     − solcast_pv_estimate
 ```
 
+Only `ev_planned_load_kwh` (the extra, non-accounted portion) is added.
+Using `ev_total_planned_load_kwh` when `base_load_includes_ev = True` would
+double-count the EV load.
+
+### Design invariants
+
+The EV planner (`planner/ev_planner.py`) MUST satisfy these invariants:
+
+1. **One-pass, no circularity**: EV plans are built entirely from raw inputs
+   (EV SoC, target SoC, capacity, charger power, deadline, and the net
+   surplus signal). They must never depend on the home battery planner output.
+
+2. **Net surplus as starting point**: The surplus signal passed to the EV
+   planner must represent **net surplus after house consumption**, not raw PV.
+   The house always uses solar first; only the leftover is available to the EV
+   at no extra grid cost.
+
+   The engine computes base net consumption first, then derives:
+   ```text
+   slot_net_surplus = max(−estimated_net_consumption, 0.0)
+                    = max(pv_estimate − avg_house_consumption, 0.0)
+   ```
+
+   `populate_net_consumption` is called **before** EV planning so that
+   `estimated_net_consumption` already reflects PV confidence decay
+   (day+1 at 90 %, day+2 at 80 %) and any other pre-EV transforms.
+
+3. **`ev_planned_load_kwh` injected before final `populate_net_consumption`**:
+   After the EV planner writes per-slot loads, `populate_net_consumption` is
+   called a **second time** to incorporate `ev_planned_load_kwh` into the
+   final `estimated_net_consumption` values. The final values include both
+   house load and any extra EV load.
+
+4. **Additive aggregation**: `apply_ev_planned_load_to_slots` must **add** to
+   the existing slot total, never overwrite it (`+=` not `=`). This ensures
+   primary and second EV loads are summed when they share a slot.
+
+5. **No double-counting**: When `base_load_includes_ev = True` for an EV, its
+   planned load must NOT be added to `ev_planned_load_kwh`. It is captured in
+   `ev_accounted_load_kwh` instead.
+
+6. **Partial current slot**: The currently active slot must be scaled by
+   remaining slot duration, not the full slot width.
+
+7. **Deadline enforcement**: Slots with `slot_start >= deadline` must receive
+   zero EV load.
+
+8. **Guard states**: The EV planner must return a valid `EVChargingPlan` with
+   an appropriate `state` string in all edge cases (disabled, not connected,
+   smart charging off, fully charged, no slots before deadline, invalid config).
+
+9. **Disabled EV is zero-cost**: When `ev_planned_load_enabled = False`, all
+   three EV load fields must be `0.0` and the home battery planner output
+   must be identical to the non-EV case.
+
 ### Invariants for tests
 
 - When `ev_planned_load_enabled = False`, all `ev_planned_load_kwh == 0.0`.
-- When EV is fully charged (`current_soc >= target_soc`), all `ev_planned_load_kwh == 0.0`.
-- When `base_load_includes_ev = True`, planned EV load is not added to net consumption.
-- Solar surplus slots are allocated before grid-import slots.
-- `sum(ev_planned_load_kwh over all slots)` equals `total_kwh_needed` (±charger rounding).
+- When EV is fully charged (`current_soc >= target_soc`), all three EV load fields are `0.0`.
+- When `base_load_includes_ev = True`:
+  - `ev_planned_load_kwh == 0.0` for all slots.
+  - `ev_accounted_load_kwh > 0` for charging slots.
+  - `ev_total_planned_load_kwh == ev_accounted_load_kwh`.
+  - Net consumption is not affected by the EV (no double-count).
+- `ev_total_planned_load_kwh == ev_planned_load_kwh + ev_accounted_load_kwh` for every slot.
+- Net surplus slots are allocated before grid-import slots.
+- `sum(ev_total_planned_load_kwh over all slots)` equals `total_kwh_needed` (±charger rounding).
 - Deadline: no load after `deadline`.
 - Partial slot: current slot load ≤ `charger_power_kw × remaining_minutes / 60`.
-- When EV consumes all solar surplus, home battery `batteries_charged == 0.0` in that slot.
+- When EV consumes all net surplus, home battery `batteries_charged == 0.0` in that slot.
 - `winner.cost == final_output.cost` still holds when EV load is active (no post-selection mutation).
 - Both `ev_charging_plan` and `ev_second_charging_plan` on `PlannerOutput` are `None` when disabled.
 - Enabling only the second EV does not affect primary EV fields and vice versa.
+- Two EVs charging in the same slot: `ev_total_planned_load_kwh == primary_ac + second_ac`.
+- One EV with zero load does not clear the other EV's load.
+- `ev_smart_charging` label is applied when `ev_total_planned_load_kwh > 0`, even when
+  `ev_planned_load_kwh == 0` (i.e. `base_load_includes_ev = True`).
 
 ## Documentation expectations
 
