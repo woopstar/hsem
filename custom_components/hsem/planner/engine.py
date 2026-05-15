@@ -41,6 +41,7 @@ from custom_components.hsem.models.planner_outputs import (
 from custom_components.hsem.planner.candidate_generator import generate_candidates
 from custom_components.hsem.planner.candidate_selector import select_best_candidate
 from custom_components.hsem.planner.charge_scheduler import (
+    apply_arbitrage_grid_charge,
     apply_charge_schedules,
     apply_discharge_schedules,
     apply_excess_export,
@@ -536,6 +537,24 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         max_charge_per_interval,
         recommended_threshold,
         cycle_cost_per_kwh=inp.battery_cycle_cost_per_kwh,
+    )
+
+    # Arbitrage grid charge: charge in cheap future slots whenever an
+    # expensive future import slot can be offset, even without a configured
+    # discharge schedule.  Runs after scheduled and opportunistic passes so
+    # that it never overwrites their assignments, and before the seasonal
+    # fallback so that newly chosen cheap slots are not turned into
+    # BatteriesDischarge by the fallback.
+    apply_arbitrage_grid_charge(
+        slots,
+        inp.battery_schedules,
+        now,
+        current_kwh,
+        usable_kwh,
+        max_charge_per_interval,
+        conversion_loss_pct=inp.battery_conversion_loss_pct,
+        cycle_cost_per_kwh=inp.battery_cycle_cost_per_kwh,
+        recommended_threshold=recommended_threshold,
     )
 
     # Derive per-slot power limits
