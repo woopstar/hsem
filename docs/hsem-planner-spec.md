@@ -149,6 +149,19 @@ Positive `net_load_kwh` means the house (plus any extra EV load) needs energy.
 
 Negative `net_load_kwh` means there is net surplus (solar minus house and EV load).
 
+### EV charger energy source
+
+The EV charger is an **AC appliance** that draws directly from the grid or from
+PV surplus.  **It never draws from the house battery.**  This means:
+
+- The battery's net demand is computed from `house_load - pv` only.
+- `ev_planned_load_kwh` is added to `grid_import_kwh` — not to the battery
+  discharge calculation.
+- When PV surplus is available the EV consumes from it first (reducing
+  `grid_export_kwh`); any residual EV demand that cannot be met by PV is
+  imported from the grid.
+- `batteries_discharged` is therefore independent of `ev_planned_load_kwh`.
+
 Battery and grid flows must satisfy:
 
 ```text
@@ -156,6 +169,11 @@ house_load_kwh
 = pv_used_for_house_kwh
 + battery_discharge_to_house_kwh
 + grid_import_for_house_kwh
+
+grid_import_kwh
+= grid_import_for_house_kwh
++ grid_import_for_battery_kwh
++ ev_grid_import_kwh
 ```
 
 PV production must satisfy:
@@ -163,6 +181,7 @@ PV production must satisfy:
 ```text
 pv_kwh
 = pv_used_for_house_kwh
++ pv_used_for_ev_kwh
 + pv_used_for_battery_kwh
 + pv_exported_kwh
 + pv_curtailed_kwh
@@ -316,6 +335,27 @@ cycle_cost = battery_throughput_kwh * cycle_cost_per_kwh
 If using equivalent full cycles, document the formula.
 
 Avoid double-counting the same energy as both charge and discharge unless the cycle-cost definition explicitly expects throughput.
+
+### Past-slot exclusion
+
+The cost function must **skip** any slot whose recommendation is `time_passed`.
+
+Past slots have `estimated_battery_soc = 0.0` as a sentinel value written by
+the SoC simulator.  Including them in SoC-guard penalty calculations would
+generate a false `soc_low_penalty` of `soc_low_penalty_weight × min_soc_pct²`
+**per past slot**, added equally to every candidate plan.  Because the spurious
+penalty is identical across all candidates it does not change the winner but
+inflates the reported `total` cost and makes the logs misleading.
+
+All other energy-flow fields (`grid_import_kwh`, `batteries_charged`, etc.) are
+also zeroed on past slots by the simulator, so skipping them has no effect on
+any cost term other than eliminating the bogus SoC penalty.
+
+**Invariant for tests:**
+```text
+score_plan(slots_with_past).soc_penalty
+== score_plan(future_only_slots).soc_penalty
+```
 
 ### Terminal SoC value
 

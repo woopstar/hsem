@@ -56,6 +56,7 @@ from custom_components.hsem.planner.ev_planner import (
     apply_ev_planned_load_to_slots,
     build_ev_charging_plan,
 )
+from custom_components.hsem.planner.planner_logger import log_planner
 from custom_components.hsem.planner.slot_population import (
     build_slots,
     build_time_series_index,
@@ -117,12 +118,55 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     # Parse now
     now = _parse_now(inp.now_iso)
 
+    log_planner(
+        "info",
+        "==== HSEM PLANNER RUN START ==== now=%s interval=%dmin horizon=%dh",
+        inp.now_iso,
+        inp.interval_minutes,
+        inp.interval_length_hours,
+    )
+
     # Battery state
     usable_kwh, current_kwh = usable_capacity(
         inp.battery_rated_capacity_kwh,
         inp.battery_soc_pct,
         inp.battery_end_of_discharge_soc_pct,
         inp.battery_max_soc_pct,
+    )
+
+    log_planner(
+        "debug",
+        "[engine] Battery inputs: rated=%.2f kWh  soc=%.1f%%  "
+        "min_soc=%.1f%%  max_soc=%.1f%%  "
+        "→ current_kwh=%.3f  usable_kwh=%.3f",
+        inp.battery_rated_capacity_kwh,
+        inp.battery_soc_pct,
+        inp.battery_end_of_discharge_soc_pct,
+        inp.battery_max_soc_pct,
+        current_kwh,
+        usable_kwh,
+    )
+    log_planner(
+        "debug",
+        "[engine] Battery power limits: max_charge=%dW  max_discharge=%s  "
+        "conversion_loss=%.1f%%  charge_eff=%.1f%%  discharge_eff=%.1f%%",
+        inp.battery_max_charge_power_w,
+        (
+            f"{inp.battery_max_discharge_power_w}W"
+            if inp.battery_max_discharge_power_w is not None
+            else "unlimited"
+        ),
+        inp.battery_conversion_loss_pct,
+        inp.battery_charge_efficiency_pct,
+        inp.battery_discharge_efficiency_pct,
+    )
+    log_planner(
+        "debug",
+        "[engine] Consumption weights: 1d=%d%%  3d=%d%%  7d=%d%%  14d=%d%%",
+        inp.weight_1d,
+        inp.weight_3d,
+        inp.weight_7d,
+        inp.weight_14d,
     )
 
     if inp.battery_rated_capacity_kwh <= 0:
@@ -150,6 +194,8 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
             "No slots generated; check interval_minutes and interval_length_hours."
         )
         return PlannerOutput(missing_inputs=missing_inputs, warnings=warnings)
+
+    log_planner("debug", "[engine] Generated %d planning slots", len(slots))
 
     # Populate time-series — all series aligned to the shared TSI axis
     populate_prices(slots, inp.price_points, tsi)
@@ -505,6 +551,34 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
             if sched.enabled and abs(sched.min_price_difference) < 1e-9:
                 sched.min_price_difference = recommended_threshold
 
+    log_planner(
+        "debug",
+        "[engine] Recommended price threshold: %.4f  "
+        "(purchase=%.0f  cycles=%d  usable=%.2f kWh  conv_loss=%.1f%%)",
+        recommended_threshold,
+        inp.battery_purchase_price,
+        inp.battery_expected_cycles,
+        usable_kwh,
+        inp.battery_conversion_loss_pct,
+    )
+
+    # Log per-slot populated data for full transparency
+    log_planner("debug", "[engine] ---- Slot population summary ----")
+    for slot in slots:
+        log_planner(
+            "debug",
+            "[slot] %s→%s  import=%.4f  export=%.4f  "
+            "pv=%.3f  cons=%.3f  net=%.3f  est_cost=%.4f",
+            slot.start.strftime("%d %H:%M"),
+            slot.end.strftime("%H:%M"),
+            slot.price.import_price,
+            slot.price.export_price,
+            slot.solcast_pv_estimate,
+            slot.avg_house_consumption,
+            slot.estimated_net_consumption,
+            slot.estimated_cost,
+        )
+
     # Mark past slots
     mark_time_passed(slots, now)
 
@@ -602,6 +676,30 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         export_min_price=inp.export_min_price,
     )
 
+    log_planner(
+        "debug",
+        "[engine] max_charge_per_slot=%.3f kWh  max_discharge_per_slot=%s kWh  "
+        "max_soc_capacity=%.3f kWh",
+        max_charge_per_slot,
+        f"{max_discharge_per_slot:.3f}" if max_discharge_per_slot is not None else "∞",
+        max_soc_capacity_kwh,
+    )
+
+    # Log scheduled baseline recommendations before candidate generation
+    log_planner(
+        "debug", "[engine] ---- Baseline slot recommendations (pre-candidate) ----"
+    )
+    for slot in slots:
+        log_planner(
+            "debug",
+            "[baseline] %s→%s  rec=%s  charged=%.3f kWh  ev_load=%.3f kWh",
+            slot.start.strftime("%d %H:%M"),
+            slot.end.strftime("%H:%M"),
+            slot.recommendation or "None",
+            slot.batteries_charged,
+            slot.ev_planned_load_kwh,
+        )
+
     # --- Candidate plan generation and selection -------------------------
     # Generate multiple independent strategies from the fully-scheduled
     # baseline slots (pre-SoC-simulation).  The selector runs simulate_soc
@@ -624,6 +722,14 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         now,
         max_charge_per_slot,
     )
+    log_planner(
+        "debug",
+        "[engine] ---- Candidate selection: %d candidates generated ----",
+        len(candidates),
+    )
+    for cand in candidates:
+        log_planner("debug", "[candidate] name=%s", cand.name)
+
     winner, candidate_rejected = select_best_candidate(
         candidates,
         now=now,
@@ -639,6 +745,23 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         charge_efficiency_pct=inp.battery_charge_efficiency_pct,
         discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
     )
+
+    winner_cost = getattr(getattr(winner, "_cost", None), "total", None)
+    log_planner(
+        "info",
+        "[engine] WINNER candidate: %s  cost=%.4f",
+        winner.name,
+        winner_cost if winner_cost is not None else float("nan"),
+    )
+    for rp in candidate_rejected:
+        log_planner(
+            "debug",
+            "[rejected] %s  cost=%.4f  reason=%s",
+            rp.name,
+            rp.estimated_cost,
+            rp.reason,
+        )
+
     # Use the winning candidate's slots as the final plan
     slots = winner.slots
 
@@ -735,6 +858,34 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         ):
             slot.recommendation = Recommendations.EVSmartCharging.value
 
+    # Log final per-slot decisions with full energy-flow detail
+    log_planner("info", "[engine] ---- Final slot decisions (post-simulation) ----")
+    for slot in slots:
+        is_current = as_tz(slot.start, now.tzinfo) <= now < as_tz(slot.end, now.tzinfo)
+        log_planner(
+            "info",
+            "[final] %s%s→%s  rec=%-30s  soc=%5.1f%%  "
+            "charged=%.3f  discharged=%.3f  "
+            "pv=%.3f  cons=%.3f  net=%.3f  "
+            "grid_in=%.3f  grid_out=%.3f  "
+            "import=%.4f  export=%.4f  ev=%.3f",
+            "▶ " if is_current else "  ",
+            slot.start.strftime("%d %H:%M"),
+            slot.end.strftime("%H:%M"),
+            slot.recommendation if slot.recommendation is not None else "(none!)",
+            slot.estimated_battery_soc,
+            slot.batteries_charged,
+            slot.batteries_discharged,
+            slot.solcast_pv_estimate,
+            slot.avg_house_consumption,
+            slot.estimated_net_consumption,
+            slot.grid_import_kwh,
+            slot.grid_export_kwh,
+            slot.price.import_price,
+            slot.price.export_price,
+            slot.ev_total_planned_load_kwh,
+        )
+
     # Current recommendation
     current_recommendation: str | None = None
     for slot in slots:
@@ -760,6 +911,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         slots,
         cost_weights,
         slot_duration_hours=slot_duration_hours,
+        now=now,
     )
 
     # Merge candidate-rejected alternatives into the explanation's rejected list
@@ -767,6 +919,26 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     # by _build_explanation; we append the candidate-selection rejections after).
     for rp in candidate_rejected:
         explanation.rejected_plans.append(rp)
+
+    log_planner(
+        "info",
+        "[engine] ==== PLANNER COMPLETE ==== "
+        "winner=%s  plan_cost=%.4f  "
+        "import=%.4f  export_rev=%.4f  "
+        "conv_loss=%.4f  cycle=%.4f  soc_pen=%.4f  "
+        "battery_soc_end=%.1f%%  required_cap=%.3f kWh  "
+        "current_rec=%s",
+        winner.name,
+        plan_cost.total,
+        plan_cost.import_cost,
+        plan_cost.export_revenue,
+        plan_cost.conversion_loss_cost,
+        plan_cost.cycle_cost,
+        plan_cost.soc_penalty,
+        battery_soc_at_end,
+        required_capacity,
+        current_recommendation if current_recommendation is not None else "(none)",
+    )
 
     return PlannerOutput(
         slots=slots,
