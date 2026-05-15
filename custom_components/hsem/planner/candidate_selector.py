@@ -33,6 +33,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from custom_components.hsem.datetime_utils import as_tz
 from custom_components.hsem.models.planner_outputs import RejectedPlan
 from custom_components.hsem.planner.candidate_generator import (
     CANDIDATE_BASELINE,
@@ -124,7 +125,7 @@ def select_best_candidate(
             discharge_efficiency_pct=discharge_efficiency_pct,
         )
         candidate.is_valid, candidate.rejection_reason = _validate_candidate(
-            candidate, end_of_discharge_soc_pct
+            candidate, end_of_discharge_soc_pct, now=now
         )
         log_planner(
             "debug",
@@ -159,6 +160,7 @@ def select_best_candidate(
                 candidate.slots,
                 cost_weights,
                 slot_duration_hours=slot_duration_hours,
+                now=now,
             )
             c_cost = candidate._cost  # type: ignore[attr-defined]
             log_planner(
@@ -241,33 +243,57 @@ def select_best_candidate(
 def _validate_candidate(
     candidate: CandidatePlan,
     end_of_discharge_soc_pct: float,
+    *,
+    now: datetime | None = None,
 ) -> tuple[bool, str]:
     """Return ``(is_valid, rejection_reason)`` for *candidate*.
 
-    A plan is invalid when any slot's ``estimated_battery_soc`` falls below
-    the end-of-discharge floor by more than :data:`_SOC_TOLERANCE_PCT`.
-    The SoC simulation already clamps discharges, so this catches numerical
-    edge cases only.
+    A plan is invalid when any *future* slot's ``estimated_battery_soc``
+    falls below the end-of-discharge floor by more than
+    :data:`_SOC_TOLERANCE_PCT`.  The SoC simulation already clamps
+    discharges, so this catches numerical edge cases only.
+
+    Validation is explicitly future-only: past slots (``slot.end <= now``)
+    are skipped because :func:`simulate_soc` zeroes out their SoC fields,
+    which would otherwise trip the floor check.  When *now* is ``None``,
+    we fall back to the legacy ``soc > 0`` heuristic for backward
+    compatibility with callers that do not supply ``now``.
 
     Args:
         candidate: The candidate to validate.
         end_of_discharge_soc_pct: Minimum allowed battery SoC (0-100).
+        now: Timezone-aware current datetime used to identify past slots.
 
     Returns:
         ``(True, "")`` when valid; ``(False, reason_string)`` when invalid.
     """
     floor = end_of_discharge_soc_pct - _SOC_TOLERANCE_PCT
     for slot in candidate.slots:
-        soc = slot.estimated_battery_soc
-        if soc > 0 and soc < floor:
-            return (
-                False,
-                (
-                    f"SoC {soc:.1f}% dropped below floor "
-                    f"{end_of_discharge_soc_pct:.1f}% "
-                    f"at slot starting {slot.start.isoformat()}."
-                ),
-            )
+        if now is not None:
+            slot_end = as_tz(slot.end, now.tzinfo)
+            if slot_end <= now:
+                continue
+            soc = slot.estimated_battery_soc
+            if soc < floor:
+                return (
+                    False,
+                    (
+                        f"SoC {soc:.1f}% dropped below floor "
+                        f"{end_of_discharge_soc_pct:.1f}% "
+                        f"at slot starting {slot.start.isoformat()}."
+                    ),
+                )
+        else:
+            soc = slot.estimated_battery_soc
+            if soc > 0 and soc < floor:
+                return (
+                    False,
+                    (
+                        f"SoC {soc:.1f}% dropped below floor "
+                        f"{end_of_discharge_soc_pct:.1f}% "
+                        f"at slot starting {slot.start.isoformat()}."
+                    ),
+                )
     return True, ""
 
 

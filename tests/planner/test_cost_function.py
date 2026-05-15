@@ -742,3 +742,212 @@ class TestRunPlannerIntegration:
         assert expensive_result.plan_cost is not None
         # The expensive plan must have higher (or equal) total cost
         assert expensive_result.plan_cost.total >= cheap_result.plan_cost.total
+
+
+# ===========================================================================
+# 12. Future-only scoring (past slots ignored when `now` is supplied)
+# ===========================================================================
+
+
+class TestFutureOnlyScoring:
+    """Past slots must not contribute cost when `now` is supplied.
+
+    After simulate_soc has run, past slots have ``estimated_battery_soc=0``
+    and zeroed energy flows.  Scoring them produces a candidate-independent
+    quadratic soc_penalty that drowns out future-slot differences between
+    candidates.  ``score_plan(..., now=now)`` must skip those slots.
+    """
+
+    def test_past_slots_do_not_add_soc_penalty(self):
+        """Past slots with estimated_battery_soc=0 must add no soc_penalty."""
+        # 24 past slots ending at-or-before `now`, each with soc=0 (the
+        # sentinel value written by simulate_soc).
+        past_slots = [_make_slot(hour=h, estimated_battery_soc=0.0) for h in range(24)]
+        now = datetime(2024, 6, 16, 0, 0, tzinfo=_TZ)
+
+        weights = CostWeights(min_soc_pct=10.0, soc_low_penalty_weight=0.01)
+
+        # Without `now`: legacy behaviour — every slot scored, big penalty.
+        legacy = score_plan(past_slots, weights)
+        assert legacy.soc_penalty > 0.0
+
+        # With `now`: past slots skipped, no penalty.
+        future_only = score_plan(past_slots, weights, now=now)
+        assert future_only.soc_penalty == pytest.approx(0.0)
+        assert future_only.total == pytest.approx(0.0)
+
+    def test_future_low_soc_still_adds_soc_penalty(self):
+        """A future slot whose SoC < min_soc_pct must still be penalised."""
+        # One past slot (soc=0 sentinel) followed by a future slot at SoC=5 %.
+        past_slot = _make_slot(hour=0, estimated_battery_soc=0.0)
+        future_slot = _make_slot(hour=23, estimated_battery_soc=5.0)
+        # `now` lies between the two so only the future slot scores.
+        now = datetime(2024, 6, 15, 1, 0, tzinfo=_TZ)
+
+        weights = CostWeights(min_soc_pct=10.0, soc_low_penalty_weight=0.01)
+
+        bd = score_plan([past_slot, future_slot], weights, now=now)
+        # Penalty = 0.01 * (10-5)^2 = 0.25 from the single future slot only.
+        assert bd.soc_penalty == pytest.approx(0.25)
+
+    def test_future_only_scoring_distinguishes_candidates(self):
+        """Two candidates differing only in future behaviour must score differently.
+
+        With past slots counted (the bug), shared past-slot penalty dominates
+        and both candidates look equal.  With past slots skipped, the
+        candidates' future-slot differences surface.
+        """
+        # Identical past slots for both candidates (the sunk-cost noise).
+        past_a = [_make_slot(hour=h, estimated_battery_soc=0.0) for h in range(12)]
+        past_b = [_make_slot(hour=h, estimated_battery_soc=0.0) for h in range(12)]
+
+        # Future slots: candidate A imports cheap, candidate B imports expensive.
+        future_a = [
+            _make_slot(
+                hour=h,
+                import_price=0.10,
+                grid_import_kwh=1.0,
+                estimated_battery_soc=50.0,
+            )
+            for h in range(12, 24)
+        ]
+        future_b = [
+            _make_slot(
+                hour=h,
+                import_price=0.50,
+                grid_import_kwh=1.0,
+                estimated_battery_soc=50.0,
+            )
+            for h in range(12, 24)
+        ]
+
+        candidate_a = past_a + future_a
+        candidate_b = past_b + future_b
+        now = datetime(2024, 6, 15, 12, 0, tzinfo=_TZ)
+        weights = CostWeights()
+
+        bd_a = score_plan(candidate_a, weights, now=now)
+        bd_b = score_plan(candidate_b, weights, now=now)
+
+        # Candidate A's future imports cost 12 * 1.0 * 0.10 = 1.20.
+        # Candidate B's future imports cost 12 * 1.0 * 0.50 = 6.00.
+        assert bd_a.total == pytest.approx(1.20)
+        assert bd_b.total == pytest.approx(6.00)
+        assert bd_a.total < bd_b.total
+
+    def test_cheap_now_expensive_later_beats_idle(self):
+        """A grid-charge-now / discharge-later candidate must beat an idle one
+        when prices favour arbitrage, once past-slot noise is excluded.
+        """
+        now = datetime(2024, 6, 15, 12, 0, tzinfo=_TZ)
+
+        # Past slots — both candidates share identical sunk-cost noise.
+        past = [_make_slot(hour=h, estimated_battery_soc=0.0) for h in range(12)]
+
+        # Future for "idle": no battery action, must import expensive energy at hour 23.
+        idle_future = [
+            _make_slot(
+                hour=h,
+                import_price=0.10 if h < 22 else 1.00,
+                grid_import_kwh=1.0 if h == 23 else 0.0,
+                estimated_battery_soc=50.0,
+            )
+            for h in range(12, 24)
+        ]
+
+        # Future for "arbitrage": charge battery from cheap grid at hour 12, no
+        # expensive import at hour 23 (covered by stored energy).
+        arb_future = [
+            _make_slot(
+                hour=h,
+                import_price=0.10 if h < 22 else 1.00,
+                grid_import_kwh=1.0 if h == 12 else 0.0,
+                batteries_charged=1.0 if h == 12 else 0.0,
+                batteries_discharged=1.0 if h == 23 else 0.0,
+                estimated_battery_soc=50.0,
+            )
+            for h in range(12, 24)
+        ]
+
+        idle_plan = past + idle_future
+        arb_plan = past + arb_future
+
+        # Disable cycle/conversion costs so only import_cost decides.
+        weights = CostWeights(
+            cycle_cost_per_kwh=0.0,
+            conversion_loss_pct=0.0,
+            charge_efficiency_pct=100.0,
+            discharge_efficiency_pct=100.0,
+        )
+
+        bd_idle = score_plan(idle_plan, weights, now=now)
+        bd_arb = score_plan(arb_plan, weights, now=now)
+
+        # Idle import = 1 kWh * 1.00 = 1.00. Arbitrage import = 1 kWh * 0.10 = 0.10.
+        assert bd_arb.total < bd_idle.total
+
+    def test_compare_plans_accepts_now(self):
+        """compare_plans must forward `now` to score_plan for both plans."""
+        past = [_make_slot(hour=h, estimated_battery_soc=0.0) for h in range(12)]
+        future_a = [
+            _make_slot(
+                hour=h,
+                import_price=0.10,
+                grid_import_kwh=1.0,
+                estimated_battery_soc=50.0,
+            )
+            for h in range(12, 24)
+        ]
+        future_b = [
+            _make_slot(
+                hour=h,
+                import_price=0.50,
+                grid_import_kwh=1.0,
+                estimated_battery_soc=50.0,
+            )
+            for h in range(12, 24)
+        ]
+        now = datetime(2024, 6, 15, 12, 0, tzinfo=_TZ)
+
+        _, _, winner = compare_plans(past + future_a, past + future_b, now=now)
+        assert winner == "plan_a"
+
+    def test_legacy_scoring_without_now_unchanged(self):
+        """Omitting `now` must preserve the legacy behaviour exactly."""
+        slot = _make_slot(grid_import_kwh=1.0, import_price=0.20)
+        bd = score_plan([slot])
+        assert bd.import_cost == pytest.approx(0.20)
+        assert bd.total == pytest.approx(0.20)
+
+    def test_engine_plan_cost_skips_past_slots(self):
+        """Final engine plan_cost must skip past slots.
+
+        run_planner now passes `now` into score_plan when computing
+        plan_cost.  A fresh score that also passes `now` must produce
+        the same total; a fresh score without `now` may differ when the
+        plan window contains past slots.
+        """
+        from tests.planner.fixtures import make_summer_day_input
+
+        # `now` mid-day so the plan window contains both past and future slots.
+        inp = make_summer_day_input(now_iso="2024-06-15T12:00:00+02:00")
+        result = run_planner(inp)
+        assert result.plan_cost is not None
+
+        weights = CostWeights(
+            min_soc_pct=inp.battery_end_of_discharge_soc_pct,
+            max_soc_pct=inp.battery_max_soc_pct,
+            battery_purchase_price=inp.battery_purchase_price,
+            battery_rated_capacity_kwh=inp.battery_rated_capacity_kwh,
+            battery_expected_cycles=inp.battery_expected_cycles,
+            conversion_loss_pct=inp.battery_conversion_loss_pct,
+            charge_efficiency_pct=inp.battery_charge_efficiency_pct,
+            discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
+        )
+        now = datetime.fromisoformat(inp.now_iso)
+        fresh_future_only = score_plan(
+            result.slots, weights, slot_duration_hours=1.0, now=now
+        )
+        assert fresh_future_only.total == pytest.approx(
+            result.plan_cost.total, abs=1e-6
+        )

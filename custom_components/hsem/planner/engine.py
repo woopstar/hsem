@@ -911,6 +911,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         slots,
         cost_weights,
         slot_duration_hours=slot_duration_hours,
+        now=now,
     )
 
     # Merge candidate-rejected alternatives into the explanation's rejected list

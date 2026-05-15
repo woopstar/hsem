@@ -43,7 +43,9 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import datetime
 
+from custom_components.hsem.datetime_utils import as_tz
 from custom_components.hsem.models.planner_outputs import PlannedSlot
 
 # ---------------------------------------------------------------------------
@@ -262,6 +264,7 @@ def score_plan(
     *,
     slot_duration_hours: float = 1.0,
     grid_limit_kw: float | None = None,
+    now: datetime | None = None,
 ) -> PlanCostBreakdown:
     """Score a candidate plan and return a full cost breakdown.
 
@@ -288,6 +291,14 @@ def score_plan(
             Override for the grid power limit in kW.  When provided, it
             supersedes ``weights.grid_limit_kw``.  ``None`` leaves the
             weights value unchanged.
+        now:
+            If provided, every slot whose ``end <= now`` is skipped (treated
+            as a sunk-cost past slot that contributes no import/export/
+            cycle/SoC/grid-limit/override cost).  This makes candidate
+            scoring future-only and avoids candidate-independent penalties
+            from past slots whose simulated SoC has been zeroed out by
+            :func:`simulate_soc`.  ``None`` (the default) preserves the
+            legacy behaviour of scoring every slot.
 
     Returns:
         A :class:`PlanCostBreakdown` containing every cost component and
@@ -351,14 +362,27 @@ def score_plan(
 
     for slot in slots:
         # Skip past slots entirely.  The SoC simulation sets
-        # estimated_battery_soc = 0.0 on past slots as a sentinel, which
-        # would falsely trigger the SoC-low penalty on every past slot even
-        # though no real violation occurred.  All other energy-flow fields
-        # (grid_import_kwh, batteries_charged, etc.) are also zeroed on past
-        # slots, so skipping them has no effect on import cost, cycle cost, or
-        # any other term — the only impact is eliminating the bogus SoC
-        # penalty that was making all candidates score identically.
-        if slot.recommendation == "time_passed":
+        # estimated_battery_soc = 0.0 (and zeroes the other energy-flow
+        # fields) on past slots as a sentinel.  Scoring them would falsely
+        # trigger the SoC-low penalty on every past slot — a large
+        # candidate-independent quadratic term that drowns out the
+        # future-slot differences which actually distinguish candidates.
+        #
+        # Two complementary guards are used so the fix is robust regardless
+        # of which path called us:
+        #   1. When `now` is provided (engine and candidate-selector path),
+        #      we identify past slots via ``slot.end <= now``.  This is the
+        #      preferred path — it does not depend on the slot's
+        #      ``recommendation`` being set to ``"time_passed"`` first.
+        #   2. As a belt-and-suspenders fallback for legacy callers that
+        #      do not pass ``now``, we also skip any slot whose
+        #      recommendation has been marked ``"time_passed"`` by
+        #      ``mark_time_passed``.
+        if now is not None:
+            slot_end = as_tz(slot.end, now.tzinfo)
+            if slot_end <= now:
+                continue
+        elif slot.recommendation == "time_passed":
             continue
 
         imp_price = slot.price.import_price
@@ -449,6 +473,7 @@ def compare_plans(
     weights: CostWeights | None = None,
     *,
     slot_duration_hours: float = 1.0,
+    now: datetime | None = None,
 ) -> tuple[PlanCostBreakdown, PlanCostBreakdown, str]:
     """Score two candidate plans and return which one wins.
 
@@ -470,8 +495,8 @@ def compare_plans(
         >>> winner
         'plan_a'
     """
-    bd_a = score_plan(plan_a, weights, slot_duration_hours=slot_duration_hours)
-    bd_b = score_plan(plan_b, weights, slot_duration_hours=slot_duration_hours)
+    bd_a = score_plan(plan_a, weights, slot_duration_hours=slot_duration_hours, now=now)
+    bd_b = score_plan(plan_b, weights, slot_duration_hours=slot_duration_hours, now=now)
 
     diff = bd_a.total - bd_b.total
     if abs(diff) < 1e-9:
