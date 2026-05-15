@@ -25,6 +25,7 @@ Design notes
 
 from __future__ import annotations
 
+import math
 from datetime import datetime
 
 from custom_components.hsem.datetime_utils import as_tz
@@ -716,6 +717,33 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     )
     slot_duration_hours = inp.interval_minutes / 60.0
 
+    # Replacement price for the terminal-SoC opportunity cost term (issue #413).
+    # We use the *average future import price* across the horizon as a
+    # conservative, deterministic proxy: stored battery energy at end-of-
+    # horizon is valued at what it would cost on average to buy that energy
+    # back from the grid.  Past slots (recommendation == TimePassed) are
+    # excluded so the value reflects the actual decision window.
+    _future_import_prices = [
+        s.price.import_price
+        for s in slots
+        if as_tz(s.end, now.tzinfo) > now and not math.isnan(s.price.import_price)
+    ]
+    replacement_price_per_kwh: float | None = (
+        sum(_future_import_prices) / len(_future_import_prices)
+        if _future_import_prices
+        else None
+    )
+    log_planner(
+        "debug",
+        "[engine] terminal-SoC replacement price: %s  (avg of %d future slots)",
+        (
+            f"{replacement_price_per_kwh:.4f}"
+            if replacement_price_per_kwh is not None
+            else "(none — no future slots)"
+        ),
+        len(_future_import_prices),
+    )
+
     candidates = generate_candidates(
         slots,
         inp,
@@ -744,19 +772,22 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         slot_duration_hours=slot_duration_hours,
         charge_efficiency_pct=inp.battery_charge_efficiency_pct,
         discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
+        replacement_price_per_kwh=replacement_price_per_kwh,
     )
 
-    winner_cost = getattr(getattr(winner, "_cost", None), "total", None)
+    winner_score = getattr(getattr(winner, "_cost", None), "score", None)
+    winner_total_cost = getattr(getattr(winner, "_cost", None), "total_cost", None)
     log_planner(
         "info",
-        "[engine] WINNER candidate: %s  cost=%.4f",
+        "[engine] WINNER candidate: %s  score=%.4f  total_cost=%.4f",
         winner.name,
-        winner_cost if winner_cost is not None else float("nan"),
+        winner_score if winner_score is not None else float("nan"),
+        winner_total_cost if winner_total_cost is not None else float("nan"),
     )
     for rp in candidate_rejected:
         log_planner(
             "debug",
-            "[rejected] %s  cost=%.4f  reason=%s",
+            "[rejected] %s  score=%.4f  reason=%s",
             rp.name,
             rp.estimated_cost,
             rp.reason,
@@ -907,11 +938,17 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     # The spec invariant requires: output.plan_cost == score_plan(output.slots).
     # Because we re-ran simulate_soc above, the slot fields are now fully
     # consistent with the final recommendations and this score is authoritative.
+    # The terminal-SoC opportunity cost (issue #413) uses the same
+    # ``current_kwh`` initial value and average-future-import replacement
+    # price that the selector used, so the final score is identical to the
+    # winning candidate's score for the same slots.
     plan_cost = score_plan(
         slots,
         cost_weights,
         slot_duration_hours=slot_duration_hours,
         now=now,
+        initial_battery_kwh=current_kwh,
+        replacement_price_per_kwh=replacement_price_per_kwh,
     )
 
     # Merge candidate-rejected alternatives into the explanation's rejected list
@@ -923,18 +960,20 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     log_planner(
         "info",
         "[engine] ==== PLANNER COMPLETE ==== "
-        "winner=%s  plan_cost=%.4f  "
+        "winner=%s  score=%.4f  total_cost=%.4f  "
         "import=%.4f  export_rev=%.4f  "
-        "conv_loss=%.4f  cycle=%.4f  soc_pen=%.4f  "
+        "conv_loss=%.4f  cycle=%.4f  soc_pen=%.4f  term_soc=%.4f  "
         "battery_soc_end=%.1f%%  required_cap=%.3f kWh  "
         "current_rec=%s",
         winner.name,
-        plan_cost.total,
+        plan_cost.score,
+        plan_cost.total_cost,
         plan_cost.import_cost,
         plan_cost.export_revenue,
         plan_cost.conversion_loss_cost,
         plan_cost.cycle_cost,
         plan_cost.soc_penalty,
+        plan_cost.terminal_soc_value,
         battery_soc_at_end,
         required_capacity,
         current_recommendation if current_recommendation is not None else "(none)",

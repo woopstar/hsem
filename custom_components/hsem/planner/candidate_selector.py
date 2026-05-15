@@ -63,6 +63,7 @@ def select_best_candidate(
     slot_duration_hours: float,
     charge_efficiency_pct: float = 100.0,
     discharge_efficiency_pct: float = 100.0,
+    replacement_price_per_kwh: float | None = None,
 ) -> tuple[CandidatePlan, list[RejectedPlan]]:
     """Score all candidates, validate them, and return the best one.
 
@@ -101,12 +102,18 @@ def select_best_candidate(
         discharge_efficiency_pct:
             Discharge-side efficiency (0-100 %).  Forwarded to
             :func:`~soc_simulation.simulate_soc`.  Defaults to 100 %.
+        replacement_price_per_kwh:
+            Currency-per-kWh price used by :func:`~cost_function.score_plan`
+            to evaluate the terminal-SoC opportunity cost (issue #413).
+            A conservative choice is the average future import price across
+            the horizon.  ``None`` disables the terminal-SoC term.
 
     Returns:
         A ``(winner, rejected_plans)`` tuple where *winner* is the
-        :class:`CandidatePlan` with the lowest valid total cost and
-        *rejected_plans* lists every non-selected candidate with an
-        explanation of why it was not chosen.
+        :class:`CandidatePlan` with the lowest valid selector
+        :attr:`~cost_function.PlanCostBreakdown.score` and *rejected_plans*
+        lists every non-selected candidate with an explanation of why it
+        was not chosen.
     """
     # --- Step 1 & 2: simulate and validate each candidate ---------------
     for candidate in candidates:
@@ -160,27 +167,52 @@ def select_best_candidate(
                 cost_weights,
                 slot_duration_hours=slot_duration_hours,
                 now=now,
+                initial_battery_kwh=current_kwh,
+                replacement_price_per_kwh=replacement_price_per_kwh,
             )
             c_cost = candidate._cost  # type: ignore[attr-defined]
             log_planner(
                 "debug",
                 "[selector] score  candidate=%-20s  "
-                "total=%.4f  import=%.4f  export_rev=%.4f  "
-                "conv_loss=%.4f  cycle=%.4f  soc_pen=%.4f",
+                "score=%.4f  total_cost=%.4f  import=%.4f  export_rev=%.4f  "
+                "conv_loss=%.4f  cycle=%.4f  soc_pen=%.4f  term_soc=%.4f",
                 candidate.name,
-                c_cost.total,
+                c_cost.score,
+                c_cost.total_cost,
                 c_cost.import_cost,
                 c_cost.export_revenue,
                 c_cost.conversion_loss_cost,
                 c_cost.cycle_cost,
                 c_cost.soc_penalty,
+                c_cost.terminal_soc_value,
             )
 
-        # Sort by total cost ascending; baseline wins ties (it comes first)
+            # Diagnostic: surface the candidate's terminal SoC trajectory so
+            # it is obvious WHY a given candidate's terminal_soc_value has the
+            # value it does.  When two candidates have identical term_soc it
+            # means they converge to the same end-of-horizon SoC; this trail
+            # makes that visible without needing a debugger.
+            _future_tail = [s for s in candidate.slots if s.end > now][-3:]
+            if _future_tail:
+                trail = "  ".join(
+                    f"{s.start.strftime('%d %H:%M')}→{s.end.strftime('%H:%M')} "
+                    f"rec={s.recommendation or '(none)'}  "
+                    f"cap={s.estimated_battery_capacity:.3f}  "
+                    f"soc={s.estimated_battery_soc:.1f}%"
+                    for s in _future_tail
+                )
+                log_planner(
+                    "debug",
+                    "[selector] tail   candidate=%-20s  %s",
+                    candidate.name,
+                    trail,
+                )
+
+        # Sort by selector score ascending; baseline wins ties (it comes first)
         valid_sorted = sorted(
             valid,
             key=lambda c: (
-                c._cost.total,  # type: ignore[attr-defined]
+                c._cost.score,  # type: ignore[attr-defined]
                 # Stable tie-break: baseline index is 0, so it wins ties
                 next(
                     (i for i, x in enumerate(candidates) if x is c),
@@ -191,9 +223,10 @@ def select_best_candidate(
         winner = valid_sorted[0]
         log_planner(
             "info",
-            "[selector] SELECTED candidate=%-20s  cost=%.4f",
+            "[selector] SELECTED candidate=%-20s  score=%.4f  total_cost=%.4f",
             winner.name,
-            winner._cost.total,  # type: ignore[attr-defined]
+            winner._cost.score,  # type: ignore[attr-defined]
+            winner._cost.total_cost,  # type: ignore[attr-defined]
         )
 
     # --- Step 5: build rejected-plan entries for all non-winners ---------
@@ -206,28 +239,33 @@ def select_best_candidate(
         if not candidate.is_valid:
             reason = candidate.rejection_reason
         else:
-            winner_cost = getattr(getattr(winner, "_cost", None), "total", float("inf"))
-            candidate_cost = getattr(
-                getattr(candidate, "_cost", None), "total", float("inf")
+            winner_score = getattr(
+                getattr(winner, "_cost", None), "score", float("inf")
             )
-            diff = round(candidate_cost - winner_cost, 4)
+            candidate_score = getattr(
+                getattr(candidate, "_cost", None), "score", float("inf")
+            )
+            diff = round(candidate_score - winner_score, 4)
             if diff > 1e-6:
                 reason = (
-                    f"Higher cost than selected plan "
-                    f"({candidate_cost:.4f} vs {winner_cost:.4f}; "
+                    f"Higher selector score than selected plan "
+                    f"({candidate_score:.4f} vs {winner_score:.4f}; "
                     f"Δ = +{diff:.4f})."
                 )
             else:
                 reason = (
-                    f"Tied or marginally worse cost "
-                    f"({candidate_cost:.4f}); baseline preferred."
+                    f"Tied or marginally worse score "
+                    f"({candidate_score:.4f}); baseline preferred."
                 )
 
         rejected.append(
             RejectedPlan(
                 name=candidate.name,
                 reason=reason,
-                estimated_cost=getattr(getattr(candidate, "_cost", None), "total", 0.0),
+                # estimated_cost surfaces the selector score so dashboards
+                # and tests sort rejected plans the same way the selector
+                # ranked them.
+                estimated_cost=getattr(getattr(candidate, "_cost", None), "score", 0.0),
             )
         )
 

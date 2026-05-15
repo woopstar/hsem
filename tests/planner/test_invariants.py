@@ -711,15 +711,24 @@ class TestWinnerCostIdentity:
             charge_efficiency_pct=inp.battery_charge_efficiency_pct,
             discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
         )
+        # Money outcome (``total_cost``) is a pure function of the slot
+        # energy fields and weights — it can be reproduced from ``output.slots``
+        # alone.  The ``score`` field additionally includes the terminal-SoC
+        # opportunity cost which depends on horizon context (initial battery
+        # energy and replacement price); that context is not embedded in the
+        # slots themselves, so checking the money invariant is the right
+        # spec-invariant test for "plan_cost describes the actual output slots".
         fresh_bd = score_plan(result.slots, weights, slot_duration_hours=1.0)
-        assert fresh_bd.total == pytest.approx(result.plan_cost.total, abs=1e-6), (
-            f"output.plan_cost.total ({result.plan_cost.total:.6f}) must equal "
-            f"score_plan(output.slots) ({fresh_bd.total:.6f}).\n"
+        assert fresh_bd.total_cost == pytest.approx(
+            result.plan_cost.total_cost, abs=1e-6
+        ), (
+            f"output.plan_cost.total_cost ({result.plan_cost.total_cost:.6f}) must equal "
+            f"score_plan(output.slots).total_cost ({fresh_bd.total_cost:.6f}).\n"
             f"Spec invariant 6 violated: plan_cost must describe the actual output slots."
         )
 
     def test_plan_cost_equals_fresh_score_of_output_slots_winter(self):
-        """score_plan(output.slots) must equal output.plan_cost (winter)."""
+        """score_plan(output.slots).total_cost must equal output.plan_cost.total_cost (winter)."""
         inp = make_winter_day_input()
         result = run_planner(inp)
         assert result.plan_cost is not None
@@ -734,31 +743,42 @@ class TestWinnerCostIdentity:
             charge_efficiency_pct=inp.battery_charge_efficiency_pct,
             discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
         )
+        # See ``test_plan_cost_equals_fresh_score_of_output_slots_summer`` —
+        # we compare money cost (reproducible from slots) not score
+        # (depends on horizon context).
         fresh_bd = score_plan(result.slots, weights, slot_duration_hours=1.0)
-        assert fresh_bd.total == pytest.approx(result.plan_cost.total, abs=1e-6), (
-            f"output.plan_cost.total ({result.plan_cost.total:.6f}) must equal "
-            f"score_plan(output.slots) ({fresh_bd.total:.6f})."
+        assert fresh_bd.total_cost == pytest.approx(
+            result.plan_cost.total_cost, abs=1e-6
+        ), (
+            f"output.plan_cost.total_cost ({result.plan_cost.total_cost:.6f}) must equal "
+            f"score_plan(output.slots).total_cost ({fresh_bd.total_cost:.6f})."
         )
 
     def test_plan_cost_components_sum_to_total(self):
-        """All cost components must sum to plan_cost.total.
+        """All cost components must sum to plan_cost.score.
 
-        Spec requires: total = import - export_revenue + cycle + loss + soc_penalty
-                              + grid_limit_penalty + override_penalty
+        Spec (issue #413) requires:
+            total_cost = import - export_revenue + cycle + conversion_loss
+            score      = total_cost + soc_penalty + grid_limit_penalty
+                         + override_penalty + terminal_soc_value
         """
         result = run_planner(make_winter_day_input())
         assert result.plan_cost is not None
         bd = result.plan_cost
-        expected = (
-            bd.import_cost
-            - bd.export_revenue
-            + bd.conversion_loss_cost
-            + bd.cycle_cost
+        expected_total_cost = (
+            bd.import_cost - bd.export_revenue + bd.conversion_loss_cost + bd.cycle_cost
+        )
+        expected_score = (
+            expected_total_cost
             + bd.soc_penalty
             + bd.grid_limit_penalty
             + bd.override_penalty
+            + bd.terminal_soc_value
         )
-        assert bd.total == pytest.approx(expected, abs=1e-9)
+        assert bd.total_cost == pytest.approx(expected_total_cost, abs=1e-9)
+        assert bd.score == pytest.approx(expected_score, abs=1e-9)
+        # ``bd.total`` is a deprecated alias for ``bd.score``.
+        assert bd.total == pytest.approx(bd.score, abs=1e-9)
 
 
 class TestWinnerSlotsIdentity:
@@ -849,13 +869,20 @@ class TestNoPostSelectionMutation:
             charge_efficiency_pct=inp.battery_charge_efficiency_pct,
             discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
         )
-        # A fresh score_plan on the returned slots must match plan_cost.
-        # If the engine did not re-score after the fill pass, this will fail.
+        # A fresh score_plan on the returned slots must match plan_cost's
+        # money cost.  ``total_cost`` is reproducible from the slot fields
+        # alone (no horizon context required) so it is the canonical signal
+        # that the engine re-simulated and re-scored after any fill pass.
+        # ``score`` additionally includes the terminal-SoC opportunity cost
+        # which depends on ``initial_battery_kwh``/``replacement_price`` that
+        # are not embedded in the slots themselves.
         fresh = score_plan(result.slots, weights, slot_duration_hours=1.0)
-        assert fresh.total == pytest.approx(result.plan_cost.total, abs=1e-6), (
+        assert fresh.total_cost == pytest.approx(
+            result.plan_cost.total_cost, abs=1e-6
+        ), (
             f"Post-selection mutation detected: "
-            f"score_plan(output.slots)={fresh.total:.6f} differs from "
-            f"output.plan_cost.total={result.plan_cost.total:.6f}.\n"
+            f"score_plan(output.slots).total_cost={fresh.total_cost:.6f} differs from "
+            f"output.plan_cost.total_cost={result.plan_cost.total_cost:.6f}.\n"
             f"The engine must re-simulate and re-score after any fill pass."
         )
 
