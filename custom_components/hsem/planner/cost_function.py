@@ -43,8 +43,10 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import datetime
 
 from custom_components.hsem.models.planner_outputs import PlannedSlot
+from custom_components.hsem.utils.recommendations import Recommendations
 
 # ---------------------------------------------------------------------------
 # Public configuration dataclass
@@ -262,6 +264,7 @@ def score_plan(
     *,
     slot_duration_hours: float = 1.0,
     grid_limit_kw: float | None = None,
+    now: datetime | None = None,
 ) -> PlanCostBreakdown:
     """Score a candidate plan and return a full cost breakdown.
 
@@ -271,6 +274,15 @@ def score_plan(
     The grid limit can be passed either via ``weights.grid_limit_kw`` or via
     the keyword argument ``grid_limit_kw``; the keyword argument takes
     precedence when not ``None``.
+
+    Past slots are skipped entirely.  When *now* is provided a slot is
+    considered past when ``slot.end <= now``.  When *now* is ``None`` the
+    function falls back to checking
+    ``slot.recommendation == Recommendations.TimePassed.value``, which is
+    the sentinel written by the SoC simulator on completed slots.  Either
+    way, including past slots in the SoC-guard penalty would generate a
+    false ``soc_low_penalty`` because the simulator zeros
+    ``estimated_battery_soc`` on past slots as a sentinel value.
 
     Args:
         slots:
@@ -288,6 +300,11 @@ def score_plan(
             Override for the grid power limit in kW.  When provided, it
             supersedes ``weights.grid_limit_kw``.  ``None`` leaves the
             weights value unchanged.
+        now:
+            Timezone-aware current datetime.  When provided, any slot whose
+            ``end`` is at or before *now* is skipped.  When ``None`` the
+            fallback sentinel check (``recommendation == TimePassed``) is
+            used instead.
 
     Returns:
         A :class:`PlanCostBreakdown` containing every cost component and
@@ -349,16 +366,22 @@ def score_plan(
     grid_limit_penalty = 0.0
     override_penalty = 0.0
 
+    _time_passed_value = Recommendations.TimePassed.value
+
     for slot in slots:
-        # Skip past slots entirely.  The SoC simulation sets
-        # estimated_battery_soc = 0.0 on past slots as a sentinel, which
-        # would falsely trigger the SoC-low penalty on every past slot even
-        # though no real violation occurred.  All other energy-flow fields
-        # (grid_import_kwh, batteries_charged, etc.) are also zeroed on past
-        # slots, so skipping them has no effect on import cost, cycle cost, or
-        # any other term — the only impact is eliminating the bogus SoC
-        # penalty that was making all candidates score identically.
-        if slot.recommendation == "time_passed":
+        # Skip past slots entirely.  The SoC simulation zeros
+        # estimated_battery_soc on past slots as a sentinel, which would
+        # falsely trigger the SoC-low penalty on every past slot.  All other
+        # energy-flow fields are also zeroed, so skipping past slots has no
+        # effect on import cost, cycle cost, or any other term.
+        #
+        # Primary guard: slot.end <= now (time-based, no string coupling).
+        # Fallback guard: recommendation == TimePassed (used when now is None,
+        # e.g. in unit tests that call score_plan without a clock).
+        if now is not None:
+            if slot.end <= now:
+                continue
+        elif slot.recommendation == _time_passed_value:
             continue
 
         imp_price = slot.price.import_price

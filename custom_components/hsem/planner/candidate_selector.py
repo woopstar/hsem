@@ -159,6 +159,7 @@ def select_best_candidate(
                 candidate.slots,
                 cost_weights,
                 slot_duration_hours=slot_duration_hours,
+                now=now,
             )
             c_cost = candidate._cost  # type: ignore[attr-defined]
             log_planner(

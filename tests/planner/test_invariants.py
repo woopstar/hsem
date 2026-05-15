@@ -2002,3 +2002,42 @@ class TestPastSlotSocPenaltyExclusion:
             f"mixed={score_mixed.total:.6f} vs future_only={score_future.total:.6f}. "
             "Past slots (rec=time_passed) must be skipped entirely."
         )
+
+    def test_now_based_guard_skips_past_slots(self):
+        """When ``now`` is supplied, slots ending before ``now`` must be skipped.
+
+        This validates the primary time-based guard path:
+          slot.end <= now  →  skip (no penalty, no cost contribution)
+
+        The slots use ``BatteriesWaitMode`` (not ``TimePassed``) so the
+        enum-fallback path cannot interfere — only the ``now`` comparison
+        drives the skipping.
+        """
+        tz = ZoneInfo("Europe/Copenhagen")
+        now = datetime(2024, 6, 15, 12, 0, tzinfo=tz)  # noon
+
+        # Three slots entirely in the past (end ≤ now), soc=0 (would violate floor).
+        past_slots = []
+        for h in range(3):
+            s = PlannedSlot(
+                start=datetime(2024, 6, 15, h, 0, tzinfo=tz),
+                end=datetime(2024, 6, 15, h + 1, 0, tzinfo=tz),
+                price=SlotPrice(import_price=0.50, export_price=0.10),
+            )
+            # Deliberately leave recommendation as BatteriesWaitMode so the
+            # enum-fallback path does NOT trigger — only now-based skip applies.
+            s.recommendation = Recommendations.BatteriesWaitMode.value
+            s.estimated_battery_soc = 0.0  # would violate min_soc=5% if scored
+            s.grid_import_kwh = 99.0  # large — must not appear in import_cost
+            past_slots.append(s)
+
+        weights = CostWeights(min_soc_pct=5.0, max_soc_pct=100.0)
+        breakdown = score_plan(past_slots, weights, now=now)
+        assert breakdown.soc_penalty == pytest.approx(0.0), (
+            "Past slots (slot.end <= now) must be skipped; "
+            f"soc_penalty={breakdown.soc_penalty:.4f} should be 0."
+        )
+        assert breakdown.import_cost == pytest.approx(0.0), (
+            "Past slots (slot.end <= now) must be skipped; "
+            f"import_cost={breakdown.import_cost:.4f} should be 0."
+        )
