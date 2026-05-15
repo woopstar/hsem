@@ -1785,17 +1785,41 @@ class TestApplyPlannerOutputEvLoad:
         )
         return coord
 
-    def _make_output_from_recs(self, recs, ev_load_by_hour: dict[int, float]):
-        """Build a PlannerOutput whose slot starts exactly match *recs*."""
+    def _make_output_from_recs(
+        self,
+        recs,
+        ev_load_by_hour: dict[int, float],
+        ev_accounted_by_hour: dict[int, float] | None = None,
+        ev_total_by_hour: dict[int, float] | None = None,
+    ):
+        """Build a PlannerOutput whose slot starts exactly match *recs*.
+
+        Args:
+            recs: The HourlyRecommendation objects whose starts define slot keys.
+            ev_load_by_hour: Mapping of hour → ev_planned_load_kwh (injected).
+            ev_accounted_by_hour: Mapping of hour → ev_accounted_load_kwh.  When
+                omitted, defaults to ``0.0`` for all hours.
+            ev_total_by_hour: Mapping of hour → ev_total_planned_load_kwh.  When
+                omitted, defaults to ``ev_load + ev_accounted`` per slot.
+        """
         from custom_components.hsem.models.planner_outputs import (
             PlannedSlot,
             PlannerOutput,
         )
         from custom_components.hsem.utils.prices import SlotPrice
 
+        if ev_accounted_by_hour is None:
+            ev_accounted_by_hour = {}
         slots = []
         for rec in recs:
-            ev = ev_load_by_hour.get(rec.start.hour, 0.0)
+            h = rec.start.hour
+            ev = ev_load_by_hour.get(h, 0.0)
+            ev_acc = ev_accounted_by_hour.get(h, 0.0)
+            ev_tot = (
+                ev_total_by_hour.get(h, ev + ev_acc)
+                if ev_total_by_hour is not None
+                else ev + ev_acc
+            )
             slots.append(
                 PlannedSlot(
                     start=rec.start,
@@ -1804,6 +1828,8 @@ class TestApplyPlannerOutputEvLoad:
                     avg_house_consumption=1.0,
                     solcast_pv_estimate=0.5,
                     ev_planned_load_kwh=ev,
+                    ev_accounted_load_kwh=ev_acc,
+                    ev_total_planned_load_kwh=ev_tot,
                     estimated_net_consumption=round(1.0 + ev - 0.5, 3),
                     recommendation="batteries_wait_mode",
                     batteries_charged=0.0,
@@ -2243,3 +2269,418 @@ class TestApplyPlannerOutputEvLoad:
 
         coord = make_bare_coordinator()
         assert coord._utc_key(t_zone) == coord._utc_key(t_fixed)
+
+    # ------------------------------------------------------------------
+    # base_load_includes_ev=True: ev_accounted and ev_total must be copied
+    # ------------------------------------------------------------------
+
+    def test_ev_accounted_and_total_copied_when_base_includes_ev(self):
+        """When base_load_includes_ev=True, ev_planned_load_kwh is 0 but
+        ev_accounted_load_kwh and ev_total_planned_load_kwh must be > 0 and
+        must be correctly propagated to HourlyRecommendation by _apply_planner_output.
+
+        This is the key regression test for the runtime issue: the planner sets
+        ev_total_planned_load_kwh on the slot, but unless _apply_planner_output
+        copies it, hourly_recommendations will always show 0.
+        """
+        coord = self._make_coord_with_recs()
+
+        # Simulate base_load_includes_ev=True: ev_planned_load_kwh=0,
+        # ev_accounted_load_kwh=5.5, ev_total_planned_load_kwh=5.5
+        output = self._make_output_from_recs(
+            coord._hourly_recommendations,
+            ev_load_by_hour={10: 0.0},  # zero — already in base load
+            ev_accounted_by_hour={10: 5.5},
+            ev_total_by_hour={10: 5.5},
+        )
+
+        coord._apply_planner_output(output)
+
+        rec_10 = next(r for r in coord._hourly_recommendations if r.start.hour == 10)
+
+        # ev_planned_load_kwh must be 0 (not injected into net consumption)
+        assert rec_10.ev_planned_load_kwh == pytest.approx(0.0), (
+            f"ev_planned_load_kwh should be 0 (base includes EV), got {rec_10.ev_planned_load_kwh}"
+        )
+        # ev_accounted_load_kwh must be > 0 (EV load is planned but already in base)
+        assert rec_10.ev_accounted_load_kwh == pytest.approx(5.5), (
+            f"ev_accounted_load_kwh should be 5.5, got {rec_10.ev_accounted_load_kwh}. "
+            "_apply_planner_output may not be copying this field."
+        )
+        # ev_total_planned_load_kwh must equal ev_accounted (since injected is 0)
+        assert rec_10.ev_total_planned_load_kwh == pytest.approx(5.5), (
+            f"ev_total_planned_load_kwh should be 5.5, got {rec_10.ev_total_planned_kwh}. "
+            "_apply_planner_output may not be copying this field."
+        )
+
+    def test_all_three_ev_fields_stay_zero_for_non_ev_hours(self):
+        """Non-EV hours must have all three EV fields at 0.0 after apply."""
+        coord = self._make_coord_with_recs()
+        output = self._make_output_from_recs(
+            coord._hourly_recommendations,
+            ev_load_by_hour={10: 0.0},
+            ev_accounted_by_hour={10: 3.3},
+            ev_total_by_hour={10: 3.3},
+        )
+        coord._apply_planner_output(output)
+
+        for rec in coord._hourly_recommendations:
+            if rec.start.hour != 10:
+                assert rec.ev_planned_load_kwh == pytest.approx(0.0)
+                assert rec.ev_accounted_load_kwh == pytest.approx(0.0)
+                assert rec.ev_total_planned_load_kwh == pytest.approx(0.0)
+
+    def test_ev_total_invariant_holds_in_recs_after_apply(self):
+        """ev_total_planned_load_kwh == ev_planned_load_kwh + ev_accounted_load_kwh
+        must hold in every HourlyRecommendation after _apply_planner_output.
+        """
+        coord = self._make_coord_with_recs()
+        # Partially injected: ev_planned=2.0, ev_accounted=3.5, ev_total=5.5
+        output = self._make_output_from_recs(
+            coord._hourly_recommendations,
+            ev_load_by_hour={10: 2.0},
+            ev_accounted_by_hour={10: 3.5},
+            ev_total_by_hour={10: 5.5},
+        )
+        coord._apply_planner_output(output)
+
+        for rec in coord._hourly_recommendations:
+            assert rec.ev_total_planned_load_kwh == pytest.approx(
+                rec.ev_planned_load_kwh + rec.ev_accounted_load_kwh, abs=1e-9
+            ), (
+                f"Hour {rec.start.hour}: ev_total ({rec.ev_total_planned_load_kwh}) "
+                f"!= ev_planned ({rec.ev_planned_load_kwh}) "
+                f"+ ev_accounted ({rec.ev_accounted_load_kwh})"
+            )
+
+
+# ---------------------------------------------------------------------------
+# TestEvFieldsEndToEnd — full run_planner + _apply_planner_output pipeline
+# Proves that ev_accounted_load_kwh and ev_total_planned_load_kwh from the
+# planner engine reach the final HourlyRecommendation objects.
+# ---------------------------------------------------------------------------
+
+
+class TestEvFieldsEndToEnd:
+    """Full pipeline test: run_planner with base_load_includes_ev=True then
+    _apply_planner_output — proves the three EV load fields propagate all
+    the way to hourly_recommendations as they would in production.
+
+    This is the real regression guard for the runtime issue: even though
+    ev_planned_load_kwh=0 when base_load_includes_ev=True, the other two
+    fields must be visible in hourly_recommendations.
+    """
+
+    def _run_end_to_end(self, base_includes_ev: bool):
+        """Run planner + apply_planner_output and return (coordinator, output)."""
+        from datetime import datetime, timedelta
+
+        from custom_components.hsem.models.hourly_recommendation import (
+            HourlyRecommendation,
+        )
+        from custom_components.hsem.models.planner_inputs import (
+            HourlyConsumptionAverage,
+            PlannerInput,
+            PricePoint,
+            SolcastSlot,
+        )
+        from custom_components.hsem.planner import run_planner
+
+        now_iso = "2024-06-15T06:00:00+00:00"
+        now = datetime.fromisoformat(now_iso)
+        deadline = now + timedelta(hours=6)
+
+        prices = [
+            PricePoint(hour=h, import_price=0.20, export_price=0.05) for h in range(24)
+        ]
+        pv = [SolcastSlot(hour=h, pv_estimate=0.0) for h in range(24)]
+        avgs = [
+            HourlyConsumptionAverage(
+                hour=h, avg_1d=2.0, avg_3d=2.0, avg_7d=2.0, avg_14d=2.0
+            )
+            for h in range(24)
+        ]
+
+        inp = PlannerInput(
+            now_iso=now_iso,
+            interval_minutes=60,
+            interval_length_hours=24,
+            battery_soc_pct=50.0,
+            battery_rated_capacity_kwh=10.0,
+            battery_end_of_discharge_soc_pct=10.0,
+            battery_max_soc_pct=90.0,
+            battery_max_charge_power_w=5000.0,
+            battery_max_discharge_power_w=5000.0,
+            battery_charge_efficiency_pct=100.0,
+            battery_conversion_loss_pct=0.0,
+            battery_discharge_efficiency_pct=100.0,
+            weight_1d=25,
+            weight_3d=30,
+            weight_7d=30,
+            weight_14d=15,
+            consumption_averages=avgs,
+            price_points=prices,
+            solcast_slots=pv,
+            ev_planned_load_enabled=True,
+            ev_planned_load_connected=True,
+            ev_planned_load_smart_charging_enabled=True,
+            ev_planned_load_current_soc_pct=0.0,
+            ev_planned_load_target_soc_pct=5.0,  # 5 kWh needed
+            ev_planned_load_battery_capacity_kwh=100.0,
+            ev_planned_load_charger_power_kw=11.0,
+            ev_planned_load_charger_efficiency_pct=100.0,
+            ev_planned_load_deadline=deadline,
+            ev_planned_load_base_load_includes_ev=base_includes_ev,
+        )
+
+        planner_output = run_planner(inp)
+
+        # Build coordinator with matching hourly_recommendations
+        coord = make_bare_coordinator()
+        coord._batteries_schedules = []
+        # Generate recs aligned to planner slot starts
+        coord._hourly_recommendations = [
+            HourlyRecommendation(
+                start=s.start,
+                end=s.end,
+                avg_house_consumption=0.0,
+                avg_house_consumption_1d=0.0,
+                avg_house_consumption_3d=0.0,
+                avg_house_consumption_7d=0.0,
+                avg_house_consumption_14d=0.0,
+                batteries_charged=0.0,
+                batteries_discharged=0.0,
+                estimated_battery_capacity=0.0,
+                estimated_battery_soc=0.0,
+                estimated_cost=0.0,
+                estimated_net_consumption=0.0,
+                ev_planned_load_kwh=0.0,
+                export_price=0.0,
+                grid_export_kwh=0.0,
+                grid_import_kwh=0.0,
+                import_price=0.0,
+                recommendation=None,
+                solcast_pv_estimate=0.0,
+            )
+            for s in planner_output.slots
+        ]
+
+        coord._apply_planner_output(planner_output)
+        return coord, planner_output
+
+    def test_base_excludes_ev_ev_planned_nonzero_in_recs(self):
+        """When base_load_includes_ev=False, ev_planned_load_kwh must be > 0
+        in HourlyRecommendation for charging slots after _apply_planner_output.
+        """
+        coord, output = self._run_end_to_end(base_includes_ev=False)
+
+        total_injected = sum(
+            r.ev_planned_load_kwh for r in coord._hourly_recommendations
+        )
+        assert total_injected > 1e-9, (
+            "base_load_includes_ev=False: ev_planned_load_kwh should be > 0 in recs. "
+            f"Got {total_injected:.3f}. EV load not reaching hourly_recommendations."
+        )
+
+    def test_base_includes_ev_ev_planned_zero_but_total_nonzero_in_recs(self):
+        """When base_load_includes_ev=True, hourly_recommendations must show:
+        - ev_planned_load_kwh == 0 (not injected into net consumption)
+        - ev_accounted_load_kwh > 0 (EV is planned but already in base load)
+        - ev_total_planned_load_kwh > 0 (total always visible)
+
+        This is the PRIMARY regression test for the runtime issue.
+        """
+        coord, output = self._run_end_to_end(base_includes_ev=True)
+
+        # Verify planner produced non-zero ev_total in slots first
+        total_ev_total_in_slots = sum(s.ev_total_planned_load_kwh for s in output.slots)
+        assert total_ev_total_in_slots > 1e-9, (
+            "Planner produced no ev_total_planned_load_kwh > 0 in slots — "
+            "check EV plan state and surplus calculation."
+        )
+
+        # Now verify these fields made it through to HourlyRecommendation
+        total_injected_in_recs = sum(
+            r.ev_planned_load_kwh for r in coord._hourly_recommendations
+        )
+        total_accounted_in_recs = sum(
+            r.ev_accounted_load_kwh for r in coord._hourly_recommendations
+        )
+        total_ev_total_in_recs = sum(
+            r.ev_total_planned_load_kwh for r in coord._hourly_recommendations
+        )
+
+        assert total_injected_in_recs == pytest.approx(0.0), (
+            f"base_load_includes_ev=True: ev_planned_load_kwh should be 0 "
+            f"in all recs, got {total_injected_in_recs:.3f}"
+        )
+        assert total_accounted_in_recs > 1e-9, (
+            f"base_load_includes_ev=True: ev_accounted_load_kwh should be > 0 "
+            f"in recs but got {total_accounted_in_recs:.3f}. "
+            "_apply_planner_output is not copying ev_accounted_load_kwh."
+        )
+        assert total_ev_total_in_recs > 1e-9, (
+            f"base_load_includes_ev=True: ev_total_planned_load_kwh should be > 0 "
+            f"in recs but got {total_ev_total_in_recs:.3f}. "
+            "_apply_planner_output is not copying ev_total_planned_load_kwh. "
+            "This is the runtime regression: EV plan is invisible to dashboard."
+        )
+
+    def test_ev_total_equals_accounted_when_base_includes_ev(self):
+        """When base_load_includes_ev=True, ev_total == ev_accounted in every rec
+        (since ev_planned is 0).
+        """
+        coord, _ = self._run_end_to_end(base_includes_ev=True)
+
+        for rec in coord._hourly_recommendations:
+            assert rec.ev_total_planned_load_kwh == pytest.approx(
+                rec.ev_accounted_load_kwh, abs=1e-9
+            ), (
+                f"Hour {rec.start.hour}: ev_total ({rec.ev_total_planned_load_kwh}) "
+                f"!= ev_accounted ({rec.ev_accounted_load_kwh}) "
+                "when base_load_includes_ev=True and ev_planned=0"
+            )
+
+    def test_ev_total_invariant_throughout_pipeline(self):
+        """ev_total == ev_planned + ev_accounted must hold in every rec."""
+        for base_includes in (False, True):
+            coord, _ = self._run_end_to_end(base_includes_ev=base_includes)
+            for rec in coord._hourly_recommendations:
+                assert rec.ev_total_planned_load_kwh == pytest.approx(
+                    rec.ev_planned_load_kwh + rec.ev_accounted_load_kwh, abs=1e-9
+                ), (
+                    f"base_includes={base_includes}, hour {rec.start.hour}: "
+                    f"ev_total ({rec.ev_total_planned_load_kwh}) != "
+                    f"ev_planned ({rec.ev_planned_load_kwh}) + "
+                    f"ev_accounted ({rec.ev_accounted_load_kwh})"
+                )
+
+
+# ---------------------------------------------------------------------------
+# TestEvSlotKeyNormalisation — UTC-normalised key matching in ev_planner
+# Proves apply_ev_planned_load_to_slots uses UTC-normalised keys so that
+# timezone-representation mismatches don't silently drop EV load.
+# ---------------------------------------------------------------------------
+
+
+class TestEvSlotKeyNormalisation:
+    """apply_ev_planned_load_to_slots must match slots by UTC instant, not
+    by isoformat() string.  Two datetimes at the same instant with different
+    tzinfo representations must produce the same match.
+    """
+
+    def test_fixed_offset_ev_slot_matches_utc_planner_slot(self):
+        """EV slot with fixed +02:00 offset must inject into a UTC planner slot
+        at the same instant.
+
+        This would silently fail with isoformat() comparison because
+        '2024-06-15T10:00:00+02:00' != '2024-06-15T08:00:00+00:00'
+        even though they are the same instant.
+        """
+        from datetime import UTC, datetime, timedelta, timezone
+
+        from custom_components.hsem.planner.ev_planner import (
+            EVChargingPlan,
+            EVChargingSlot,
+            apply_ev_planned_load_to_slots,
+        )
+
+        tz_fixed = timezone(timedelta(hours=2))
+        # Planner slot starts in UTC
+        utc_start = datetime(2024, 6, 15, 8, 0, 0, tzinfo=UTC)
+        # EV slot carries the same instant but with +02:00 tzinfo
+        ev_start = datetime(2024, 6, 15, 10, 0, 0, tzinfo=tz_fixed)
+
+        plan = EVChargingPlan()
+        plan.state = "charging"
+        ev_slot = EVChargingSlot(
+            start=ev_start,
+            end=ev_start + timedelta(hours=1),
+            estimated_charged_kwh=3.0,
+            ac_load_kwh=3.0,
+        )
+        plan.charging_slots.append(ev_slot)
+
+        result = [0.0] * 3
+        slot_starts = [
+            utc_start - timedelta(hours=1),  # 07:00 UTC
+            utc_start,  # 08:00 UTC = 10:00 +02:00
+            utc_start + timedelta(hours=1),  # 09:00 UTC
+        ]
+
+        apply_ev_planned_load_to_slots(
+            slot_starts, result, plan, base_load_includes_ev=False
+        )
+
+        assert result[1] == pytest.approx(3.0), (
+            f"UTC-normalised slot key failed: expected 3.0 at index 1, "
+            f"got {result[1]}. Fixed-offset EV slot start did not match UTC "
+            f"planner slot start at the same instant."
+        )
+        assert result[0] == pytest.approx(0.0)
+        assert result[2] == pytest.approx(0.0)
+
+    def test_zoninfo_ev_slot_matches_fixed_offset_planner_slot(self):
+        """EV slot with ZoneInfo tzinfo must inject into a fixed-offset planner slot
+        at the same instant.
+        """
+        from datetime import datetime, timedelta, timezone
+        from zoneinfo import ZoneInfo
+
+        from custom_components.hsem.planner.ev_planner import (
+            EVChargingPlan,
+            EVChargingSlot,
+            apply_ev_planned_load_to_slots,
+        )
+
+        tz_zone = ZoneInfo("Europe/Copenhagen")
+        tz_fixed = timezone(timedelta(hours=2))
+
+        # Planner slots use fixed offset
+        slot_starts = [
+            datetime(2024, 6, 15, h, 0, 0, tzinfo=tz_fixed) for h in range(24)
+        ]
+        # EV slot carries ZoneInfo at hour 10
+        ev_start = datetime(2024, 6, 15, 10, 0, 0, tzinfo=tz_zone)
+
+        plan = EVChargingPlan()
+        plan.state = "charging"
+        ev_slot = EVChargingSlot(
+            start=ev_start,
+            end=ev_start + timedelta(hours=1),
+            estimated_charged_kwh=4.5,
+            ac_load_kwh=4.5,
+        )
+        plan.charging_slots.append(ev_slot)
+
+        result = [0.0] * 24
+        apply_ev_planned_load_to_slots(
+            slot_starts, result, plan, base_load_includes_ev=False
+        )
+
+        assert result[10] == pytest.approx(4.5), (
+            f"ZoneInfo EV slot did not match fixed-offset planner slot: "
+            f"expected 4.5 at index 10, got {result[10]}."
+        )
+        for i, v in enumerate(result):
+            if i != 10:
+                assert v == pytest.approx(0.0), f"Unexpected load at index {i}: {v}"
+
+    def test_isoformat_mismatch_would_fail_without_utc_normalisation(self):
+        """Document that isoformat()-based matching is fragile by showing
+        two equal instants produce different isoformat strings.
+        """
+        from datetime import UTC, datetime, timedelta, timezone
+
+        utc_dt = datetime(2024, 6, 15, 8, 0, 0, tzinfo=UTC)
+        fixed_dt = datetime(2024, 6, 15, 10, 0, 0, tzinfo=timezone(timedelta(hours=2)))
+
+        # Same instant, different isoformat strings — this is why we use UTC keys
+        assert utc_dt.isoformat() != fixed_dt.isoformat(), (
+            "Test setup error: these should produce different isoformat strings"
+        )
+        # But they should be equal as UTC-normalised datetimes (using coordinator._utc_key)
+        coord = make_bare_coordinator()
+        assert coord._utc_key(utc_dt) == coord._utc_key(fixed_dt), (
+            "_utc_key must normalise timezone-representation mismatches"
+        )

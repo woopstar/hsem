@@ -355,6 +355,27 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 self._ev_charging_plan = planner_output.ev_charging_plan
                 self._ev_second_charging_plan = planner_output.ev_second_charging_plan
 
+                # Warn when an EV is physically charging but no current or future
+                # slot carries ev_total_planned_load_kwh > 0.  This surfaces the
+                # mismatch between live hardware state and planner intent so it is
+                # visible in logs without requiring a deep dive into slot attributes.
+                if self._live.any_ev_charging:
+                    has_planned = any(
+                        s.ev_total_planned_load_kwh > 1e-9
+                        for s in planner_output.slots
+                        if s.end > now
+                    )
+                    if not has_planned:
+                        await async_logger(
+                            self,
+                            "[planner] WARNING: EV is physically charging but no "
+                            "current or future slot has ev_total_planned_load_kwh > 0. "
+                            "The EV load is either outside the planning window, "
+                            "smart charging is disabled, or base_load_includes_ev is "
+                            "set but the plan produced zero accounted load. "
+                            "Check EV plan state and slot attributes.",
+                        )
+
                 # 9. Find the current time-slot recommendation.
                 self._hourly_recommendations.sort(key=lambda x: x.start)
                 hourly_rec = next(

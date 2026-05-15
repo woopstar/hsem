@@ -454,14 +454,29 @@ def apply_ev_planned_load_to_slots(
     """
     if base_load_includes_ev:
         return
+
+    from datetime import UTC
+
+    def _utc_key(dt: datetime) -> datetime:
+        """Normalise *dt* to UTC with microsecond=0 for robust slot matching.
+
+        Using isoformat() for comparison is fragile: two datetimes that
+        represent the same instant but carry different tzinfo types (e.g.
+        ``ZoneInfo('Europe/Copenhagen')`` vs a fixed ``+02:00`` offset)
+        produce different ISO strings even though they are equal instants.
+        Normalising both sides to UTC and stripping microseconds guarantees a
+        deterministic, timezone-representation-independent match.
+        """
+        return dt.astimezone(UTC).replace(microsecond=0)
+
+    # Pre-build a lookup from UTC-normalised key → slot index for O(n) matching.
+    slot_key_map = {_utc_key(s): i for i, s in enumerate(slot_starts)}
+
     for ev_slot in ev_plan.charging_slots:
-        key = ev_slot.start.isoformat()
-        for i, s in enumerate(slot_starts):
-            if s.isoformat() == key:
-                # Accumulate AC-side load (grid/PV draw), not battery-side
-                # delivered energy.  With charger_efficiency < 100 %, the AC
-                # load is larger than the kWh arriving in the EV battery.
-                # The += operator ensures multiple EVs sharing the same slot
-                # are summed rather than one overwriting the other.
-                slot_ev_planned_load_kwh[i] += ev_slot.ac_load_kwh
-                break
+        idx = slot_key_map.get(_utc_key(ev_slot.start))
+        if idx is not None:
+            # Accumulate AC-side load (grid/PV draw), not battery-side delivered
+            # energy.  With charger_efficiency < 100 %, the AC load is larger
+            # than the kWh arriving in the EV battery.  The += operator ensures
+            # multiple EVs sharing the same slot are summed, not overwritten.
+            slot_ev_planned_load_kwh[idx] += ev_slot.ac_load_kwh
