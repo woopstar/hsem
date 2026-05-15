@@ -254,7 +254,9 @@ Each `PlannedSlot` in the output list covers one time interval and carries:
 | `grid_export_kwh` | kWh | Grid export this slot |
 | `estimated_battery_soc` | % | Estimated SoC at end of slot |
 | `estimated_battery_capacity` | kWh | Usable remaining capacity at end of slot |
-| `ev_planned_load_kwh` | kWh | Combined EV charging load allocated to this slot (primary + second EV) |
+| `ev_planned_load_kwh` | kWh | **Extra** EV AC load added to net consumption (zero when `base_load_includes_ev = True`) |
+| `ev_accounted_load_kwh` | kWh | EV AC load already included in the house consumption sensor (non-zero when `base_load_includes_ev = True`) |
+| `ev_total_planned_load_kwh` | kWh | Total planned EV AC load: `ev_planned_load_kwh + ev_accounted_load_kwh`. Non-zero whenever EV charging is planned, regardless of `base_load_includes_ev` |
 | `estimated_cost` | currency | Net grid cost this slot (positive = import, negative = export) |
 | `recommendation` | string | The action chosen for this slot (see below) |
 
@@ -330,15 +332,18 @@ recommendation it is not changed by later rules in the same layer.
 ##### Layer 2 — EV planned load labelling (engine, post-simulation)
 
 After the winning candidate is selected and the final SoC simulation is complete,
-slots with `ev_planned_load_kwh > 0` are re-labelled:
+slots with **`ev_total_planned_load_kwh > 0`** are re-labelled.
+`ev_total_planned_load_kwh` is used — not `ev_planned_load_kwh` — so that EV-scheduled
+slots are correctly labelled even when `base_load_includes_ev = True`, where
+`ev_planned_load_kwh` is `0.0` but EV charging is still planned.
 
 | Current recommendation | Has EV load? | Result |
 |---|---|---|
-| `batteries_charge_solar` | Yes | → `ev_smart_charging` |
-| `batteries_wait_mode` | Yes | → `ev_smart_charging` |
+| `batteries_charge_solar` | Yes (`ev_total > 0`) | → `ev_smart_charging` |
+| `batteries_wait_mode` | Yes (`ev_total > 0`) | → `ev_smart_charging` |
+| `batteries_discharge_mode` | Yes (`ev_total > 0`) | → `ev_smart_charging` (EV label wins) |
 | `batteries_charge_grid` | Yes | Kept — grid charge takes priority |
-| `batteries_discharge_mode` | Yes | Kept — discharge takes priority |
-| `force_batteries_discharge` | Yes | Kept |
+| `force_batteries_discharge` | Yes | Kept — forced export takes priority |
 | `force_export` | Yes | Kept |
 | `time_passed` | Yes | Kept |
 
@@ -426,44 +431,83 @@ The `PlanExplanation` object is designed to be surfaced directly as a HA sensor 
 ### Overview
 
 When one or both EV planned load features are enabled, the planner allocates
-EV charging demand into slots **before** net consumption and solar surplus are
-computed. This ensures the home battery planner sees the true net demand and
-does not misinterpret EV-consumed solar as available for battery charging.
+EV charging demand into slots **before** the final net consumption is computed.
+This ensures the home battery planner sees the true net demand and does not
+misinterpret EV-consumed solar as available for battery charging.
 
 The EV planner is a separate, pure-Python module (`planner/ev_planner.py`).
-It runs once per planning cycle, ahead of the home battery planner, and injects
-`ev_planned_load_kwh` into each `PlannedSlot`.
+It runs once per planning cycle and writes three per-slot load fields to each
+`PlannedSlot`.
 
 ### No circular dependency
 
 EV plans are built from raw inputs only (EV SoC, target SoC, capacity, charger
-power, deadline, and pre-injection solar surplus). They are computed independently
-of the home battery planner output. The one-pass design prevents circular
-dependency.
+power, deadline, and the per-slot net surplus). They are computed independently
+of the home battery planner output. The one-pass design prevents circular dependency.
+
+### Three-field EV load model
+
+Three fields capture EV load intent precisely:
+
+| Field | Meaning |
+|---|---|
+| `ev_planned_load_kwh` | Extra EV AC load **added to net consumption** — only the portion not already in `avg_house_consumption`. Zero when `base_load_includes_ev = True`. |
+| `ev_accounted_load_kwh` | EV AC load **already included** in the house consumption sensor. Non-zero when `base_load_includes_ev = True`. |
+| `ev_total_planned_load_kwh` | Total planned EV AC load: `ev_planned_load_kwh + ev_accounted_load_kwh`. Always non-zero when EV charging is planned. |
 
 ### Net load formula with EV
 
 ```text
 effective_net_load_kwh
     = avg_house_consumption
-    + ev_planned_load_kwh          ← sum of primary + second EV loads
+    + ev_planned_load_kwh          ← extra load only (zero when base includes EV)
     − solcast_pv_estimate
 ```
 
-When EV integration is disabled, `ev_planned_load_kwh` is `0.0` for every slot
-and the formula is identical to the non-EV case.
+Only `ev_planned_load_kwh` is added.  When `base_load_includes_ev = True`,
+`ev_planned_load_kwh` is `0.0`; the EV load is already captured in
+`avg_house_consumption` and must not be added a second time.
 
 ### Slot selection strategy
 
-The EV planner selects slots in two passes:
+The EV planner selects slots in two passes, using **net surplus after house
+consumption** as the priority signal:
 
-1. **Solar surplus slots first** — slots where `pv − house_load > 0` are
-   prioritised (free solar energy for the EV).
-2. **Cheapest import slots next** — among remaining slots, the lowest import
-   price comes first.
+1. **Net-surplus slots first** — slots where `−estimated_net_consumption > 0`
+   (i.e. solar production exceeds house demand) are prioritised.  The energy
+   is free for the EV because the house has already consumed its share of
+   solar and the remainder would otherwise be exported.
+2. **Cheapest grid-import slots next** — among remaining slots, the lowest
+   import price comes first.
 
 Allocation stops when the total energy needed to reach `target_soc_pct` is
 satisfied, or the deadline is reached.
+
+**Why net surplus, not raw PV?**  The house sits between the PV inverter and the
+EV charger at the AC bus.  It always consumes solar first.  The EV charger only
+sees what is left over after house demand is satisfied.  Using raw PV would
+over-estimate the free energy available and schedule more EV load on
+"solar" slots than is physically available.
+
+### Engine execution order
+
+The engine processes EV load in three steps:
+
+1. **Base net consumption** — `populate_net_consumption(slots)` is called first,
+   populating `estimated_net_consumption = house − pv` (without EV).  PV
+   confidence decay (day+1 at 90 %, day+2 at 80 %) is applied before this
+   step so the surplus signal is already conservatively adjusted.
+
+2. **EV planning** — net surplus is derived from step 1:
+   ```text
+   slot_net_surplus = max(−estimated_net_consumption, 0.0)
+   ```
+   The EV planner selects slots using this signal and builds charging plans
+   for both EVs.  Per-slot loads are accumulated additively (primary + second).
+
+3. **Final net consumption** — `populate_net_consumption(slots)` runs a second
+   time to incorporate `ev_planned_load_kwh` into the final
+   `estimated_net_consumption` values.
 
 ### Partial current-slot scaling
 
@@ -475,12 +519,18 @@ slot_remaining_hours = remaining_minutes_in_slot(now, slot_end) / 60.0
 max_charge_this_slot = charger_power_kw × slot_remaining_hours × (efficiency / 100)
 ```
 
-### Double-count prevention
+### Double-count prevention (base_load_includes_ev)
 
 When the house consumption sensor already includes EV charger power
 (e.g. the CT clamp is upstream of the EVSE), set `base_load_includes_ev = True`
-for that EV. The planner will not add `ev_planned_load_kwh` on top of
-`avg_house_consumption` for that EV, preventing double-counting.
+for that EV.
+
+- `ev_planned_load_kwh` is **not** added to net consumption for that EV.
+- The load is captured in `ev_accounted_load_kwh` instead.
+- `ev_total_planned_load_kwh` is still set and non-zero, so diagnostics,
+  logs, and the `ev_smart_charging` label all reflect the planned EV activity.
+
+This prevents double-counting while keeping full observability.
 
 ### EV plan states
 
@@ -532,22 +582,37 @@ Both sensors share the same attribute schema:
 }
 ```
 
-### Solar surplus bug fix
+### Net surplus model (and historical notes)
 
-**Background:** Before PR #397 the EV planner incorrectly computed `solar_surplus`
-from `slot.estimated_net_consumption`, which is `0.0` at the time the EV planner
-runs (the `populate_net_consumption` call had not happened yet). Every slot
-appeared to have zero surplus, so the EV was always scheduled on grid import.
+**Current approach (PR #406):** The engine runs `populate_net_consumption` once
+before EV planning to derive the per-slot net surplus:
 
-**Fix:** Surplus is now derived from the raw base fields that are already populated
-at EV planning time:
+```text
+slot_net_surplus = max(−estimated_net_consumption, 0.0)
+                 = max(pv_estimate − avg_house_consumption, 0.0)
+```
 
+This is the correct physical model: the house uses solar first; only what
+remains is available to the EV charger at no extra grid cost.
+Using `estimated_net_consumption` as the starting point also ensures that
+PV confidence decay (day+1 at 90 %, day+2 at 80 %) is automatically applied
+before EV slot selection.
+
+After EV injection, `populate_net_consumption` runs a second time to produce
+final slot values that incorporate `ev_planned_load_kwh`.
+
+**Historical note (PR #397 fix):** Before PR #397 the surplus was computed from
+`slot.estimated_net_consumption` which was `0.0` at EV planning time (net
+consumption had not been populated yet). Every slot appeared to have zero surplus,
+so the EV was always scheduled as grid-import.
+
+The PR #397 workaround derived surplus directly from raw base fields:
 ```text
 surplus = max(slot.solcast_pv_estimate − slot.avg_house_consumption, 0.0)
 ```
-
-`populate_net_consumption` later computes net load from the same fields, so the
-values are consistent.
+This was correct but did not yet apply PV confidence decay.  PR #406 replaced it
+with the pre-populated `estimated_net_consumption` approach, which is both
+conceptually cleaner and more accurate.
 
 ---
 

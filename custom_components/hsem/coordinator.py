@@ -349,27 +349,32 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 for warning in planner_output.warnings:
                     await async_logger(self, f"[planner] {warning}")
 
-                # Log EV planned load diagnostics so operators can debug zero-EV-load issues.
-                if planner_input.ev_planned_load_enabled:
-                    ev_plan = planner_output.ev_charging_plan
-                    ev_state = ev_plan.state if ev_plan else "no_plan"
-                    ev_total = sum(s.ev_planned_load_kwh for s in planner_output.slots)
-                    await async_logger(
-                        self,
-                        f"[planner] EV planned load: state={ev_state}, "
-                        f"total_ev_kwh={ev_total:.3f}, "
-                        f"connected={planner_input.ev_planned_load_connected}, "
-                        f"soc={planner_input.ev_planned_load_current_soc_pct}%, "
-                        f"target={planner_input.ev_planned_load_target_soc_pct}%, "
-                        f"capacity_kwh={planner_input.ev_planned_load_battery_capacity_kwh}, "
-                        f"charger_kw={planner_input.ev_planned_load_charger_power_kw}",
-                    )
-
                 self._apply_planner_output(planner_output)
                 self._current_required_battery = planner_output.required_capacity_kwh
                 self._data_quality = planner_output.data_quality
                 self._ev_charging_plan = planner_output.ev_charging_plan
                 self._ev_second_charging_plan = planner_output.ev_second_charging_plan
+
+                # Warn when an EV is physically charging but no current or future
+                # slot carries ev_total_planned_load_kwh > 0.  This surfaces the
+                # mismatch between live hardware state and planner intent so it is
+                # visible in logs without requiring a deep dive into slot attributes.
+                if self._live.any_ev_charging:
+                    has_planned = any(
+                        s.ev_total_planned_load_kwh > 1e-9
+                        for s in planner_output.slots
+                        if s.end > now
+                    )
+                    if not has_planned:
+                        await async_logger(
+                            self,
+                            "[planner] WARNING: EV is physically charging but no "
+                            "current or future slot has ev_total_planned_load_kwh > 0. "
+                            "The EV load is either outside the planning window, "
+                            "smart charging is disabled, or base_load_includes_ev is "
+                            "set but the plan produced zero accounted load. "
+                            "Check EV plan state and slot attributes.",
+                        )
 
                 # 9. Find the current time-slot recommendation.
                 self._hourly_recommendations.sort(key=lambda x: x.start)
@@ -753,6 +758,8 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             rec.batteries_discharged = slot.batteries_discharged
             rec.estimated_net_consumption = slot.estimated_net_consumption
             rec.ev_planned_load_kwh = slot.ev_planned_load_kwh
+            rec.ev_accounted_load_kwh = slot.ev_accounted_load_kwh
+            rec.ev_total_planned_load_kwh = slot.ev_total_planned_load_kwh
             rec.estimated_cost = slot.estimated_cost
             rec.estimated_battery_capacity = slot.estimated_battery_capacity
             rec.estimated_battery_soc = slot.estimated_battery_soc
@@ -769,7 +776,8 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             _LOGGER.warning(
                 "[HSEM] _apply_planner_output: %d recommendation slot(s) had no "
                 "matching planner output slot — planner fields (ev_planned_load_kwh, "
-                "recommendation, …) will remain at default 0.0 for these slots. "
+                "ev_accounted_load_kwh, ev_total_planned_load_kwh, recommendation, …) "
+                "will remain at default 0.0 for these slots. "
                 "First unmatched rec.start: %s",
                 len(unmatched),
                 unmatched[0],

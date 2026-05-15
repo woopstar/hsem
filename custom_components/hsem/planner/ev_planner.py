@@ -235,16 +235,26 @@ def build_ev_charging_plan(
     inp: EVPlannerInput,
     slots_start: list[datetime],
     slots_end: list[datetime],
-    slot_solar_surplus_kwh: list[float],
+    slot_net_surplus_kwh: list[float],
     slot_import_price: list[float],
 ) -> EVChargingPlan:
     """Build an EV charging plan and return per-slot planned loads.
 
     Selection order:
-    1. Slots with solar surplus are prioritised (free energy for EV).
+    1. Slots with net surplus (solar minus house load) are prioritised — free
+       energy the house is already not using.
     2. Among remaining slots, cheapest import price first.
     3. Allocation stops once ``energy_needed_kwh`` is satisfied or the
        deadline is reached.
+
+    The surplus parameter ``slot_net_surplus_kwh`` must be derived from the
+    *net* load after house consumption, i.e.::
+
+        slot_net_surplus_kwh[i] = max(-estimated_net_consumption[i], 0.0)
+
+    This correctly models that the house uses solar power first; only what
+    is left over (net surplus) is available to the EV charger at no extra
+    grid cost.  Using raw PV estimates would over-state available free energy.
 
     The current slot is scaled by its remaining duration, not the full
     slot width, to avoid over-counting energy in the partially elapsed slot.
@@ -253,7 +263,8 @@ def build_ev_charging_plan(
         inp: EV planner inputs.
         slots_start: List of slot start datetimes (same length as other lists).
         slots_end: List of slot end datetimes.
-        slot_solar_surplus_kwh: Solar surplus available per slot (kWh, ≥ 0).
+        slot_net_surplus_kwh: Net surplus available per slot (kWh, ≥ 0).  This
+            is ``max(-estimated_net_consumption, 0)`` — solar minus house load.
         slot_import_price: Import electricity price per slot.
 
     Returns:
@@ -320,17 +331,19 @@ def build_ev_charging_plan(
         return plan
 
     # --- Two-pass slot selection ---
-    # Pass 1: solar surplus slots (sorted by descending surplus → free energy first)
-    # Pass 2: remaining slots sorted by ascending import price
-    solar_slots = sorted(
-        [i for i in candidate_indices if slot_solar_surplus_kwh[i] > 1e-9],
-        key=lambda i: -slot_solar_surplus_kwh[i],
+    # Pass 1: net-surplus slots (sorted by descending net surplus → free energy first).
+    #   Net surplus = max(-estimated_net_consumption, 0) = solar minus house load.
+    #   The house already uses solar first; only the leftover is free for the EV.
+    # Pass 2: remaining slots sorted by ascending import price.
+    surplus_slots = sorted(
+        [i for i in candidate_indices if slot_net_surplus_kwh[i] > 1e-9],
+        key=lambda i: -slot_net_surplus_kwh[i],
     )
-    non_solar_slots = sorted(
-        [i for i in candidate_indices if i not in set(solar_slots)],
+    non_surplus_slots = sorted(
+        [i for i in candidate_indices if i not in set(surplus_slots)],
         key=lambda i: slot_import_price[i],
     )
-    ordered = solar_slots + non_solar_slots
+    ordered = surplus_slots + non_surplus_slots
 
     remaining_energy = energy_needed
     selected: list[EVChargingSlot] = []
@@ -368,14 +381,15 @@ def build_ev_charging_plan(
         eff = max(inp.charger_efficiency_pct, 1.0) / 100.0
         ac_load = allocated / eff
 
-        surplus = slot_solar_surplus_kwh[i]
-        # solar_used / import_needed are expressed as battery-side kWh for
-        # the EV plan display; ac_load_kwh is the grid/PV draw used for net
-        # consumption and SoC simulation.
-        solar_used = min(allocated, surplus)
-        import_needed = max(allocated - solar_used, 0.0)
-        cost = (ac_load - min(ac_load, surplus / eff * eff)) * slot_import_price[i]
-        # Simpler: cost = grid AC draw × price = import_needed / eff × price
+        net_surplus = slot_net_surplus_kwh[i]
+        # net_surplus_used / import_needed are expressed as battery-side kWh
+        # for the EV plan display; ac_load_kwh is the grid/PV draw used for
+        # net consumption and SoC simulation.
+        # Net surplus is solar MINUS house load — the energy available to the
+        # EV at no extra grid cost, since the house has already consumed solar.
+        net_surplus_used = min(allocated, net_surplus)
+        import_needed = max(allocated - net_surplus_used, 0.0)
+        # Cost = grid AC draw × price.  Grid AC draw = import_needed / eff.
         cost = round((import_needed / eff) * slot_import_price[i], 4)
 
         ev_slot = EVChargingSlot(
@@ -383,7 +397,7 @@ def build_ev_charging_plan(
             end=s_end,
             estimated_charged_kwh=round(allocated, 3),
             ac_load_kwh=round(ac_load, 3),
-            solar_surplus_kwh=round(solar_used, 3),
+            solar_surplus_kwh=round(net_surplus_used, 3),
             import_needed_kwh=round(import_needed, 3),
             import_price=slot_import_price[i],
             estimated_cost=cost,
@@ -419,25 +433,50 @@ def apply_ev_planned_load_to_slots(
     ev_plan: EVChargingPlan,
     base_load_includes_ev: bool,
 ) -> None:
-    """Inject EV planned load into the per-slot EV load list (in-place).
+    """Accumulate EV planned AC load into the per-slot totals (in-place, additive).
 
-    When ``base_load_includes_ev`` is True the function is a no-op because
-    the EV load is already counted in the house consumption baseline.
+    This function is **always additive** — it never overwrites existing values.
+    Call it once per EV plan; primary and secondary EV loads will be summed
+    across calls because each call adds to (not replaces) the existing values.
+
+    When ``base_load_includes_ev`` is True the function is a no-op: the EV
+    load is already counted in the house consumption baseline and must not be
+    injected a second time into net consumption.  The caller is responsible
+    for tracking the accounted load separately via the raw EV plan totals.
 
     Args:
         slot_starts: Slot start datetimes aligned with the planner slot list.
-        slot_ev_planned_load_kwh: Mutable list to update (same length as slot_starts).
+        slot_ev_planned_load_kwh: Mutable list to accumulate into (same
+            length as slot_starts).  Existing values are preserved and the
+            new EV load is *added* to them.
         ev_plan: Computed EV charging plan.
         base_load_includes_ev: If True, skip injection to avoid double-counting.
     """
     if base_load_includes_ev:
         return
+
+    from datetime import UTC
+
+    def _utc_key(dt: datetime) -> datetime:
+        """Normalise *dt* to UTC with microsecond=0 for robust slot matching.
+
+        Using isoformat() for comparison is fragile: two datetimes that
+        represent the same instant but carry different tzinfo types (e.g.
+        ``ZoneInfo('Europe/Copenhagen')`` vs a fixed ``+02:00`` offset)
+        produce different ISO strings even though they are equal instants.
+        Normalising both sides to UTC and stripping microseconds guarantees a
+        deterministic, timezone-representation-independent match.
+        """
+        return dt.astimezone(UTC).replace(microsecond=0)
+
+    # Pre-build a lookup from UTC-normalised key → slot index for O(n) matching.
+    slot_key_map = {_utc_key(s): i for i, s in enumerate(slot_starts)}
+
     for ev_slot in ev_plan.charging_slots:
-        key = ev_slot.start.isoformat()
-        for i, s in enumerate(slot_starts):
-            if s.isoformat() == key:
-                # Inject AC-side load (grid/PV draw), not battery-side delivered
-                # energy.  With charger_efficiency < 100 %, the AC load is larger
-                # than the kWh arriving in the EV battery.
-                slot_ev_planned_load_kwh[i] = ev_slot.ac_load_kwh
-                break
+        idx = slot_key_map.get(_utc_key(ev_slot.start))
+        if idx is not None:
+            # Accumulate AC-side load (grid/PV draw), not battery-side delivered
+            # energy.  With charger_efficiency < 100 %, the AC load is larger
+            # than the kWh arriving in the EV battery.  The += operator ensures
+            # multiple EVs sharing the same slot are summed, not overwritten.
+            slot_ev_planned_load_kwh[idx] += ev_slot.ac_load_kwh
