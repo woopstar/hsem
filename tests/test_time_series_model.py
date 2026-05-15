@@ -191,9 +191,9 @@ class TestSlotMeta:
 
     def test_slots_are_contiguous(self):
         for a, b in zip(self.tsi.slots, self.tsi.slots[1:]):
-            assert a.end == b.start, (
-                f"Gap between {a.end.isoformat()} and {b.start.isoformat()}"
-            )
+            assert (
+                a.end == b.start
+            ), f"Gap between {a.end.isoformat()} and {b.start.isoformat()}"
 
     def test_total_span_is_24_hours(self):
         first = self.tsi.slots[0]

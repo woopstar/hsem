@@ -215,6 +215,10 @@ async def async_populate_avg_house_consumption(
             )
             return False
 
+        # Narrow types for pyright: the None check above ensures all values
+        # are float at this point.
+        assert v1 is not None and v3 is not None and v7 is not None and v14 is not None
+
         if w_total_config == 0:
             await async_logger(sensor, "All weights sum to 0. Skipping calculation.")
             continue

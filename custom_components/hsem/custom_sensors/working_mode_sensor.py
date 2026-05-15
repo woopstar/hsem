@@ -144,6 +144,18 @@ class HSEMWorkingModeSensor(
         cfg = data.cfg
         live = data.live
 
+        # Guard against a partially-initialised coordinator snapshot where cfg
+        # was not yet populated (should not happen after first cycle but
+        # prevents AttributeError on None during startup race).
+        if cfg is None:
+            return {
+                "status": "wait",
+                "description": "Waiting for coordinator configuration to be loaded.",
+                "last_updated": None,
+                "next_update": None,
+                "unique_id": self._attr_unique_id,
+            }
+
         if live.missing_entities:
             return {
                 "status": "error",

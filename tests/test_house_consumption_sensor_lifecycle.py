@@ -72,9 +72,7 @@ def _mock_config_entry(**overrides) -> MagicMock:
     return entry
 
 
-def _make_sensor(
-    hour_start: int = 14, *, config_entry=None
-) -> tuple[
+def _make_sensor(hour_start: int = 14, *, config_entry=None) -> tuple[
     HSEMHouseConsumptionPowerSensor,
     list,
 ]:
@@ -84,7 +82,7 @@ def _make_sensor(
 
     added: list = []
 
-    def fake_add(entities, update_before_add=False):
+    def fake_add(entities, _update_before_add=False):
         added.extend(entities)
 
     sensor = HSEMHouseConsumptionPowerSensor(
@@ -145,9 +143,9 @@ class TestIntegrationSensorMetadata:
     def test_state_class_is_total_increasing(self) -> None:
         # Verify the property is defined on the class and returns TOTAL_INCREASING.
         prop = HSEMIntegrationSensor.__dict__.get("state_class")
-        assert prop is not None and isinstance(prop, property), (
-            "state_class must be a @property on HSEMIntegrationSensor"
-        )
+        assert prop is not None and isinstance(
+            prop, property
+        ), "state_class must be a @property on HSEMIntegrationSensor"
         # Spot-check by calling it via the descriptor protocol with a minimal mock.
         mock_instance = MagicMock(spec=HSEMIntegrationSensor)
         result = HSEMIntegrationSensor.state_class.fget(mock_instance)
@@ -155,9 +153,9 @@ class TestIntegrationSensorMetadata:
 
     def test_device_class_is_energy(self) -> None:
         prop = HSEMIntegrationSensor.__dict__.get("device_class")
-        assert prop is not None and isinstance(prop, property), (
-            "device_class must be a @property on HSEMIntegrationSensor"
-        )
+        assert prop is not None and isinstance(
+            prop, property
+        ), "device_class must be a @property on HSEMIntegrationSensor"
         mock_instance = MagicMock(spec=HSEMIntegrationSensor)
         result = HSEMIntegrationSensor.device_class.fget(mock_instance)
         assert result == SensorDeviceClass.ENERGY
@@ -168,9 +166,9 @@ class TestAvgSensorMetadata:
 
     def test_device_class_is_energy(self) -> None:
         prop = HSEMAvgSensor.__dict__.get("device_class")
-        assert prop is not None and isinstance(prop, property), (
-            "device_class must be a @property on HSEMAvgSensor"
-        )
+        assert prop is not None and isinstance(
+            prop, property
+        ), "device_class must be a @property on HSEMAvgSensor"
         mock_instance = MagicMock(spec=HSEMAvgSensor)
         result = HSEMAvgSensor.device_class.fget(mock_instance)
         assert result == SensorDeviceClass.ENERGY
@@ -463,7 +461,7 @@ def _fake_utility_init(
     e_id,
     config_entry=None,
     source_entity=None,
-    parent_meter=None,
+    _parent_meter=None,
     **kwargs,
 ) -> None:
     """Minimal HSEMUtilityMeterSensor init that bypasses the real HA bootstrap."""
@@ -605,15 +603,15 @@ class TestDerivedSensorLifecycle:
             await sensor._async_handle_update()
 
         # Each type created exactly once.
-        assert len([e for e in added if isinstance(e, HSEMIntegrationSensor)]) == 1, (
-            "Integral sensor must be added exactly once per HA session"
-        )
-        assert len([e for e in added if isinstance(e, HSEMUtilityMeterSensor)]) == 1, (
-            "Utility meter must be added exactly once per HA session"
-        )
-        assert len([e for e in added if isinstance(e, HSEMAvgSensor)]) == 4, (
-            "Average sensors must be added exactly once per HA session"
-        )
+        assert (
+            len([e for e in added if isinstance(e, HSEMIntegrationSensor)]) == 1
+        ), "Integral sensor must be added exactly once per HA session"
+        assert (
+            len([e for e in added if isinstance(e, HSEMUtilityMeterSensor)]) == 1
+        ), "Utility meter must be added exactly once per HA session"
+        assert (
+            len([e for e in added if isinstance(e, HSEMAvgSensor)]) == 4
+        ), "Average sensors must be added exactly once per HA session"
 
     @pytest.mark.asyncio
     async def test_utility_meter_source_is_integral_not_power(self) -> None:
@@ -637,7 +635,7 @@ class TestDerivedSensorLifecycle:
             e_id,
             config_entry=None,
             source_entity=None,
-            parent_meter=None,
+            _parent_meter=None,
             **kwargs,
         ) -> None:
             self_inner._attr_unique_id = id
@@ -738,9 +736,9 @@ class TestRestartBehaviour:
 
         # The restore step sets _state; the update cycle is suppressed so the
         # value is visible here.
-        assert sensor._state == pytest.approx(1234.5), (
-            "Previous state must be restored by async_added_to_hass"
-        )
+        assert sensor._state == pytest.approx(
+            1234.5
+        ), "Previous state must be restored by async_added_to_hass"
         # _available must be False after restore (set explicitly before the update
         # cycle) so the IntegrationSensor does not accumulate the restored value.
         assert sensor._available is False

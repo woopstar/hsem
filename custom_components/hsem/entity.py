@@ -2,7 +2,8 @@ import logging
 
 import homeassistant.helpers.device_registry as dr
 import homeassistant.helpers.entity_registry as er
-from homeassistant.helpers.entity import DeviceInfo, Entity
+from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.entity import Entity
 
 from custom_components.hsem.const import DOMAIN, NAME
 

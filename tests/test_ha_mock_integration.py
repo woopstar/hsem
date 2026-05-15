@@ -1871,9 +1871,9 @@ class TestApplyPlannerOutputEvLoad:
 
         for rec in coord._hourly_recommendations:
             if rec.start.hour != 14:
-                assert abs(rec.ev_planned_load_kwh) < 1e-9, (
-                    f"Hour {rec.start.hour} should be 0 but got {rec.ev_planned_load_kwh}"
-                )
+                assert (
+                    abs(rec.ev_planned_load_kwh) < 1e-9
+                ), f"Hour {rec.start.hour} should be 0 but got {rec.ev_planned_load_kwh}"
 
     def test_all_energy_fields_are_copied(self):
         """Every field written by _apply_planner_output must reach the rec object."""
@@ -2223,13 +2223,13 @@ class TestApplyPlannerOutputEvLoad:
         coord._apply_planner_output(output)
 
         hour14_recs = [r for r in coord._hourly_recommendations if r.start.hour == 14]
-        assert len(hour14_recs) == 4, (
-            f"Expected 4 × 15-min slots, got {len(hour14_recs)}"
-        )
+        assert (
+            len(hour14_recs) == 4
+        ), f"Expected 4 × 15-min slots, got {len(hour14_recs)}"
         for rec in hour14_recs:
-            assert abs(rec.ev_planned_load_kwh - 1.85) < 1e-9, (
-                f"15-min slot {rec.start}: expected 1.85, got {rec.ev_planned_load_kwh}"
-            )
+            assert (
+                abs(rec.ev_planned_load_kwh - 1.85) < 1e-9
+            ), f"15-min slot {rec.start}: expected 1.85, got {rec.ev_planned_load_kwh}"
 
     def test_non_ev_hours_zero_at_15min_interval(self):
         """15-minute slots outside the EV hour must remain at 0."""
@@ -2299,9 +2299,9 @@ class TestApplyPlannerOutputEvLoad:
         rec_10 = next(r for r in coord._hourly_recommendations if r.start.hour == 10)
 
         # ev_planned_load_kwh must be 0 (not injected into net consumption)
-        assert rec_10.ev_planned_load_kwh == pytest.approx(0.0), (
-            f"ev_planned_load_kwh should be 0 (base includes EV), got {rec_10.ev_planned_load_kwh}"
-        )
+        assert rec_10.ev_planned_load_kwh == pytest.approx(
+            0.0
+        ), f"ev_planned_load_kwh should be 0 (base includes EV), got {rec_10.ev_planned_load_kwh}"
         # ev_accounted_load_kwh must be > 0 (EV load is planned but already in base)
         assert rec_10.ev_accounted_load_kwh == pytest.approx(5.5), (
             f"ev_accounted_load_kwh should be 5.5, got {rec_10.ev_accounted_load_kwh}. "
@@ -2309,7 +2309,7 @@ class TestApplyPlannerOutputEvLoad:
         )
         # ev_total_planned_load_kwh must equal ev_accounted (since injected is 0)
         assert rec_10.ev_total_planned_load_kwh == pytest.approx(5.5), (
-            f"ev_total_planned_load_kwh should be 5.5, got {rec_10.ev_total_planned_kwh}. "
+            f"ev_total_planned_load_kwh should be 5.5, got {rec_10.ev_total_planned_load_kwh}. "
             "_apply_planner_output may not be copying this field."
         )
 
@@ -2676,11 +2676,11 @@ class TestEvSlotKeyNormalisation:
         fixed_dt = datetime(2024, 6, 15, 10, 0, 0, tzinfo=timezone(timedelta(hours=2)))
 
         # Same instant, different isoformat strings — this is why we use UTC keys
-        assert utc_dt.isoformat() != fixed_dt.isoformat(), (
-            "Test setup error: these should produce different isoformat strings"
-        )
+        assert (
+            utc_dt.isoformat() != fixed_dt.isoformat()
+        ), "Test setup error: these should produce different isoformat strings"
         # But they should be equal as UTC-normalised datetimes (using coordinator._utc_key)
         coord = make_bare_coordinator()
-        assert coord._utc_key(utc_dt) == coord._utc_key(fixed_dt), (
-            "_utc_key must normalise timezone-representation mismatches"
-        )
+        assert coord._utc_key(utc_dt) == coord._utc_key(
+            fixed_dt
+        ), "_utc_key must normalise timezone-representation mismatches"

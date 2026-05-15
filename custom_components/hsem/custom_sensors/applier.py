@@ -317,7 +317,8 @@ async def async_apply_battery_settings(
             working_mode = WorkingModes.TimeOfUse.value
 
         case _:
-            return
+            # Unrecognised recommendation — nothing to apply.
+            return summary
 
     # Override discharge power when EV uses V2H
     if recommendation == Recommendations.EVSmartCharging.value and (
