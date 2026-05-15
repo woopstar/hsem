@@ -505,7 +505,9 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             )
         live = self._live
 
-        seen_hours: set[int] = set()
+        # Dedup key is (day_offset, hour) so that tomorrow's slots are kept
+        # separately from today's even when they share the same wall-clock hour.
+        seen_day_hours: set[tuple[int, int]] = set()
         consumption_averages: list[HourlyConsumptionAverage] = []
         price_points: list[PricePoint] = []
         solcast_slots: list[SolcastSlot] = []
@@ -541,11 +543,20 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             / cfg.recommendation_interval_minutes
         )
 
+        # Midnight of the planning day — used to compute per-slot day_offset.
+        planning_midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
         for rec in self._hourly_recommendations:
             h = rec.start.hour
-            if h in seen_hours:
+            # Compute day_offset: number of whole calendar days between
+            # planning midnight and this slot's date.  This preserves the
+            # distinction between today's hour-3 and tomorrow's hour-3 for
+            # multi-day planning horizons (e.g. 48 h or 72 h).
+            day_offset = (rec.start.date() - planning_midnight.date()).days
+            day_hour_key = (day_offset, h)
+            if day_hour_key in seen_day_hours:
                 continue
-            seen_hours.add(h)
+            seen_day_hours.add(day_hour_key)
 
             consumption_averages.append(
                 HourlyConsumptionAverage(
@@ -554,6 +565,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                     avg_3d=round(rec.avg_house_consumption_3d * slots_per_hour, 3),
                     avg_7d=round(rec.avg_house_consumption_7d * slots_per_hour, 3),
                     avg_14d=round(rec.avg_house_consumption_14d * slots_per_hour, 3),
+                    day_offset=day_offset,
                 )
             )
             # Multiply by eds_share to reverse the per-slot divide applied during
@@ -563,12 +575,14 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                     hour=h,
                     import_price=round(rec.import_price * eds_share, 5),
                     export_price=round(rec.export_price * eds_share, 5),
+                    day_offset=day_offset,
                 )
             )
             solcast_slots.append(
                 SolcastSlot(
                     hour=h,
                     pv_estimate=round(rec.solcast_pv_estimate * slots_per_hour, 3),
+                    day_offset=day_offset,
                 )
             )
 

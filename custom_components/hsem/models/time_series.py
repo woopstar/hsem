@@ -235,25 +235,35 @@ class TimeSeriesIndex:
 
     def align_hourly_prices(
         self,
-        import_prices: dict[int, float],
-        export_prices: dict[int, float],
+        import_prices: dict[int, float] | dict[tuple[int, int], float],
+        export_prices: dict[int, float] | dict[tuple[int, int], float],
     ) -> tuple[list[float], list[float]]:
         """Align hourly import and export price dicts onto the slot grid.
 
-        Both ``import_prices`` and ``export_prices`` are keyed by integer
-        hour (0-23).  Each slot in a given hour receives the same price
-        (i.e. prices are constant within the hour).
+        Accepts two key formats:
+
+        - **Hour-only** (``dict[int, float]``): every slot in a given hour
+          receives the same value regardless of which day of the horizon it
+          falls on.  This is the legacy format and is equivalent to cyclical
+          day-0 data.
+        - **Day-hour** (``dict[tuple[int, int], float]``): keys are
+          ``(day_offset, hour)`` pairs where *day_offset* is the number of
+          whole calendar days from the planning midnight (0 = today,
+          1 = tomorrow, …).  When this format is detected the lookup uses
+          the slot’s ``(key.day_offset, hour)`` first; if that key is absent
+          it falls back to ``(0, hour)`` so that callers providing only
+          today’s data still produce correct output for day-0 slots.
 
         Missing hours are filled with :data:`MISSING_SENTINEL` and their
         keys are added to :attr:`missing_slots`.
 
         Args:
             import_prices:
-                Dict mapping hour (0-23) to import price in local
-                currency/kWh.
+                Import prices — either ``{hour: price}`` or
+                ``{(day_offset, hour): price}``.
             export_prices:
-                Dict mapping hour (0-23) to export price in local
-                currency/kWh.
+                Export prices — either ``{hour: price}`` or
+                ``{(day_offset, hour): price}``.
 
         Returns:
             ``(aligned_import, aligned_export)`` — two lists, each
@@ -262,9 +272,19 @@ class TimeSeriesIndex:
         aligned_import: list[float] = []
         aligned_export: list[float] = []
 
+        # Detect whether callers supplied (day_offset, hour) tuple keys.
+        _use_day_key = bool(import_prices) and isinstance(
+            next(iter(import_prices)), tuple
+        )
+
         for meta in self.slots:
-            imp = import_prices.get(meta.hour)
-            exp = export_prices.get(meta.hour)
+            if _use_day_key:
+                day_hour_key = (meta.key.day_offset, meta.hour)
+                imp = import_prices.get(day_hour_key)  # type: ignore[call-overload]
+                exp = export_prices.get(day_hour_key)  # type: ignore[call-overload]
+            else:
+                imp = import_prices.get(meta.hour)  # type: ignore[call-overload]
+                exp = export_prices.get(meta.hour)  # type: ignore[call-overload]
 
             if imp is None:
                 self.missing_slots.add(meta.key)
@@ -284,26 +304,36 @@ class TimeSeriesIndex:
 
     def align_hourly_pv(
         self,
-        pv_by_hour: dict[int, float],
+        pv_by_hour: dict[int, float] | dict[tuple[int, int], float],
     ) -> list[float]:
         """Align an hourly PV forecast dict onto the slot grid.
 
         Each hourly kWh value is divided proportionally across the sub-hour
         slots so that the energy sum over the full hour is preserved.
 
+        Accepts two key formats (see :meth:`align_hourly_prices` for details):
+
+        - **Hour-only** (``dict[int, float]``): cyclical same-hour-every-day.
+        - **Day-hour** (``dict[tuple[int, int], float]``): per-day per-hour.
+
         Missing hours are filled with :data:`MISSING_SENTINEL`.
 
         Args:
             pv_by_hour:
-                Dict mapping hour (0-23) to PV energy estimate in kWh for
-                the full hour.
+                PV estimates — either ``{hour: kwh}`` or
+                ``{(day_offset, hour): kwh}``.
 
         Returns:
             List of per-slot PV estimates parallel to :attr:`slots`.
         """
+        _use_day_key = bool(pv_by_hour) and isinstance(next(iter(pv_by_hour)), tuple)
         aligned: list[float] = []
         for meta in self.slots:
-            hourly_kwh = pv_by_hour.get(meta.hour)
+            if _use_day_key:
+                key = (meta.key.day_offset, meta.hour)
+                hourly_kwh = pv_by_hour.get(key)  # type: ignore[call-overload]
+            else:
+                hourly_kwh = pv_by_hour.get(meta.hour)  # type: ignore[call-overload]
             if hourly_kwh is None:
                 self.missing_slots.add(meta.key)
                 self.missing_pv_slots.add(meta.key)
@@ -314,26 +344,38 @@ class TimeSeriesIndex:
 
     def align_hourly_load(
         self,
-        load_by_hour: dict[int, float],
+        load_by_hour: dict[int, float] | dict[tuple[int, int], float],
     ) -> list[float]:
         """Align an hourly load (consumption) dict onto the slot grid.
 
         Like :meth:`align_hourly_pv`, each hourly kWh value is divided
         proportionally across sub-hour slots.
 
+        Accepts two key formats (see :meth:`align_hourly_prices` for details):
+
+        - **Hour-only** (``dict[int, float]``): cyclical same-hour-every-day.
+        - **Day-hour** (``dict[tuple[int, int], float]``): per-day per-hour.
+
         Missing hours are filled with :data:`MISSING_SENTINEL`.
 
         Args:
             load_by_hour:
-                Dict mapping hour (0-23) to expected house load in kWh for
-                the full hour.
+                Load estimates — either ``{hour: kwh}`` or
+                ``{(day_offset, hour): kwh}``.
 
         Returns:
             List of per-slot load estimates parallel to :attr:`slots`.
         """
+        _use_day_key = bool(load_by_hour) and isinstance(
+            next(iter(load_by_hour)), tuple
+        )
         aligned: list[float] = []
         for meta in self.slots:
-            hourly_kwh = load_by_hour.get(meta.hour)
+            if _use_day_key:
+                key = (meta.key.day_offset, meta.hour)
+                hourly_kwh = load_by_hour.get(key)  # type: ignore[call-overload]
+            else:
+                hourly_kwh = load_by_hour.get(meta.hour)  # type: ignore[call-overload]
             if hourly_kwh is None:
                 self.missing_slots.add(meta.key)
                 aligned.append(MISSING_SENTINEL)
