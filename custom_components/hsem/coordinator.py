@@ -67,6 +67,7 @@ from custom_components.hsem.models.planner_outputs import DataQuality, PlanExpla
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.planner import run_planner
 from custom_components.hsem.planner.ev_planner import EVChargingPlan
+from custom_components.hsem.planner.planner_logger import set_planner_verbose
 from custom_components.hsem.utils.inverter_verify import CycleApplySummary
 from custom_components.hsem.utils.logger import async_logger
 from custom_components.hsem.utils.misc import convert_to_float, convert_to_int
@@ -343,6 +344,10 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 planner_input = self._build_planner_input()
                 # Retain for diagnostics dumps (cleared on each cycle).
                 self._last_planner_input = planner_input
+                # Propagate the verbose-logging flag into the pure-Python
+                # planner so detailed slot-level decisions appear in hsem.log
+                # when the user enables verbose logging.
+                set_planner_verbose(cfg.verbose_logging)
                 planner_output = run_planner(planner_input)
                 self._last_planner_output = planner_output
 

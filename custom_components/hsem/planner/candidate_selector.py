@@ -39,6 +39,7 @@ from custom_components.hsem.planner.candidate_generator import (
     CandidatePlan,
 )
 from custom_components.hsem.planner.cost_function import CostWeights, score_plan
+from custom_components.hsem.planner.planner_logger import log_planner
 from custom_components.hsem.planner.soc_simulation import simulate_soc
 
 # SoC floor tolerance — plans are accepted even if they dip this many
@@ -125,9 +126,22 @@ def select_best_candidate(
         candidate.is_valid, candidate.rejection_reason = _validate_candidate(
             candidate, end_of_discharge_soc_pct
         )
+        log_planner(
+            "debug",
+            "[selector] candidate=%-20s  valid=%s  reason=%s",
+            candidate.name,
+            candidate.is_valid,
+            candidate.rejection_reason if candidate.rejection_reason else "(none)",
+        )
 
     # --- Step 3: score valid candidates ----------------------------------
     valid = [c for c in candidates if c.is_valid]
+    log_planner(
+        "debug",
+        "[selector] %d/%d candidates valid after SoC validation",
+        len(valid),
+        len(candidates),
+    )
 
     # --- Step 4: pick winner (lowest cost) among valid candidates --------
     if not valid:
@@ -135,6 +149,9 @@ def select_best_candidate(
         winner = _find_by_name(candidates, CANDIDATE_BASELINE) or candidates[0]
         winner.is_valid = True
         winner.rejection_reason = ""
+        log_planner(
+            "warning", "[selector] No valid candidates — falling back to baseline"
+        )
     else:
         # Score all valid candidates
         for candidate in valid:
@@ -142,6 +159,20 @@ def select_best_candidate(
                 candidate.slots,
                 cost_weights,
                 slot_duration_hours=slot_duration_hours,
+            )
+            c_cost = candidate._cost  # type: ignore[attr-defined]
+            log_planner(
+                "debug",
+                "[selector] score  candidate=%-20s  "
+                "total=%.4f  import=%.4f  export_rev=%.4f  "
+                "conv_loss=%.4f  cycle=%.4f  soc_pen=%.4f",
+                candidate.name,
+                c_cost.total,
+                c_cost.import_cost,
+                c_cost.export_revenue,
+                c_cost.conversion_loss_cost,
+                c_cost.cycle_cost,
+                c_cost.soc_penalty,
             )
 
         # Sort by total cost ascending; baseline wins ties (it comes first)
@@ -157,6 +188,12 @@ def select_best_candidate(
             ),
         )
         winner = valid_sorted[0]
+        log_planner(
+            "info",
+            "[selector] SELECTED candidate=%-20s  cost=%.4f",
+            winner.name,
+            winner._cost.total,  # type: ignore[attr-defined]
+        )
 
     # --- Step 5: build rejected-plan entries for all non-winners ---------
     rejected: list[RejectedPlan] = []

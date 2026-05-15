@@ -1493,23 +1493,29 @@ class TestEvAcLoadAndSoCPath:
     # ------------------------------------------------------------------
 
     def test_soc_simulation_accounts_for_ev_load(self):
-        """Battery discharges more when EV increases total load.
+        """EV load goes to grid_import only; the house battery does NOT discharge for EV.
+
+        The EV charger is an AC appliance drawing from the grid or PV directly.
+        It never draws from the house battery.  Therefore `batteries_discharged`
+        reflects only house load coverage, while `grid_import_kwh` absorbs the
+        EV demand.
 
         Setup (battery has charge, no schedule forcing discharge):
-          battery_soc_pct  = 80 %  (8 kWh usable of 10 kWh rated at 5 % floor)
+          battery_soc_pct  = 80 %  (7.5 kWh above floor: (80-5)/100 × 10)
           house_load       = 0.5 kWh/h
           EV AC load       = 5.0 kWh/h  (5 kWh needed in one slot, 100 % eff)
           pv               = 0.0
           import_price     = flat 0.5
 
-        Without EV fix:
-          net = 0.5 kWh  →  battery discharges 0.5 kWh (or grid import 0.5 kWh)
+        Expected energy balance per EV slot:
+          net_demand (battery) = house_load - pv = 0.5 kWh
+          batteries_discharged ≈ 0.5 kWh  (covers house only)
+          grid_import ≈ ev_load = 5.0 kWh  (EV from grid; house shortfall is 0)
+          total supply = batteries_discharged + grid_import ≈ 5.5 kWh
 
-        With EV fix:
-          net = 0.5 + 5.0 = 5.5 kWh  →  battery/grid must cover 5.5 kWh
-
-        The sum of (batteries_discharged + grid_import_kwh) for the EV slot
-        must equal approximately 5.5 kWh after the fix.
+        The sum of (batteries_discharged + grid_import_kwh) must still equal
+        approximately 5.5 kWh — but the split is different: the battery covers
+        only the 0.5 kWh house deficit, and the EV's 5.0 kWh comes from the grid.
         """
         inp = PlannerInput(
             now_iso="2024-06-15T08:00:00+00:00",

@@ -149,6 +149,19 @@ Positive `net_load_kwh` means the house (plus any extra EV load) needs energy.
 
 Negative `net_load_kwh` means there is net surplus (solar minus house and EV load).
 
+### EV charger energy source
+
+The EV charger is an **AC appliance** that draws directly from the grid or from
+PV surplus.  **It never draws from the house battery.**  This means:
+
+- The battery's net demand is computed from `house_load - pv` only.
+- `ev_planned_load_kwh` is added to `grid_import_kwh` — not to the battery
+  discharge calculation.
+- When PV surplus is available the EV consumes from it first (reducing
+  `grid_export_kwh`); any residual EV demand that cannot be met by PV is
+  imported from the grid.
+- `batteries_discharged` is therefore independent of `ev_planned_load_kwh`.
+
 Battery and grid flows must satisfy:
 
 ```text
@@ -156,6 +169,11 @@ house_load_kwh
 = pv_used_for_house_kwh
 + battery_discharge_to_house_kwh
 + grid_import_for_house_kwh
+
+grid_import_kwh
+= grid_import_for_house_kwh
++ grid_import_for_battery_kwh
++ ev_grid_import_kwh
 ```
 
 PV production must satisfy:
@@ -163,6 +181,7 @@ PV production must satisfy:
 ```text
 pv_kwh
 = pv_used_for_house_kwh
++ pv_used_for_ev_kwh
 + pv_used_for_battery_kwh
 + pv_exported_kwh
 + pv_curtailed_kwh

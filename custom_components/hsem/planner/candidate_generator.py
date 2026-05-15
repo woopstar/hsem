@@ -37,6 +37,7 @@ from datetime import datetime
 from custom_components.hsem.datetime_utils import as_tz
 from custom_components.hsem.models.planner_inputs import PlannerInput
 from custom_components.hsem.models.planner_outputs import PlannedSlot
+from custom_components.hsem.planner.planner_logger import log_planner
 from custom_components.hsem.utils.recommendations import Recommendations
 
 # ---------------------------------------------------------------------------
@@ -180,6 +181,37 @@ def generate_candidates(
     aggressive = _copy_slots(baseline_slots)
     _apply_aggressive_strategy(aggressive, now, max_charge_per_slot)
     candidates.append(CandidatePlan(name=CANDIDATE_AGGRESSIVE, slots=aggressive))
+
+    # Log candidate slot-level recommendations for debugging
+    log_planner(
+        "debug",
+        "[gen] Generated %d candidates: %s",
+        len(candidates),
+        ", ".join(c.name for c in candidates),
+    )
+    for cand in candidates:
+        charge_slots = [
+            s.start.strftime("%d %H:%M")
+            for s in cand.slots
+            if s.recommendation in _CHARGE_RECS
+        ]
+        discharge_slots = [
+            s.start.strftime("%d %H:%M")
+            for s in cand.slots
+            if s.recommendation in _DISCHARGE_RECS
+        ]
+        total_charge = sum(s.batteries_charged for s in cand.slots)
+        log_planner(
+            "debug",
+            "[gen] %s: charge_slots=%d (%s)  discharge_slots=%d (%s)  "
+            "total_charge=%.3f kWh",
+            cand.name,
+            len(charge_slots),
+            ", ".join(charge_slots) if charge_slots else "—",
+            len(discharge_slots),
+            ", ".join(discharge_slots) if discharge_slots else "—",
+            total_charge,
+        )
 
     return candidates
 

@@ -33,6 +33,7 @@ from datetime import datetime
 
 from custom_components.hsem.datetime_utils import as_tz
 from custom_components.hsem.models.planner_outputs import PlannedSlot
+from custom_components.hsem.planner.planner_logger import log_planner
 
 
 def simulate_soc(
@@ -112,6 +113,20 @@ def simulate_soc(
     discharge_eff = max(min(discharge_efficiency_pct, 100.0), 1.0) / 100.0
     cap = current_kwh  # working state — kWh above discharge floor
 
+    log_planner(
+        "debug",
+        "[soc_sim] START  current=%.3f kWh  usable=%.3f kWh  "
+        "max_cap=%.3f kWh  charge_eff=%.2f  discharge_eff=%.2f  "
+        "max_charge/slot=%.3f  max_discharge/slot=%s",
+        current_kwh,
+        usable_kwh,
+        max_capacity_kwh,
+        charge_eff,
+        discharge_eff,
+        max_charge_per_slot,
+        f"{max_discharge_per_slot:.3f}" if max_discharge_per_slot is not None else "∞",
+    )
+
     for slot in slots:
         slot_start = as_tz(slot.start, now.tzinfo)
         slot_end = as_tz(slot.end, now.tzinfo)
@@ -131,11 +146,8 @@ def simulate_soc(
             cap = current_kwh
 
         pv = slot.solcast_pv_estimate  # kWh produced by PV this slot
-        # Total load = house consumption + EV AC-side draw (grid/PV).
-        # slot.ev_planned_load_kwh is the AC load injected by the EV planner
-        # (already divided by charger efficiency), so it represents the true
-        # grid/PV demand from the charger, not the energy stored in the EV.
-        load = slot.avg_house_consumption + slot.ev_planned_load_kwh
+        house_load = slot.avg_house_consumption
+        ev_load = slot.ev_planned_load_kwh  # AC-side EV draw (grid/PV only)
 
         # --- Enforce charge ceiling on pre-scheduled charge ---
         # The charge scheduler may have set batteries_charged without knowing
@@ -146,8 +158,18 @@ def simulate_soc(
         scheduled_charge = max(scheduled_charge, 0.0)
         slot.batteries_charged = round(scheduled_charge, 3)
 
-        # --- Net demand after PV covers house load ---
-        net_demand = load - pv  # positive = demand > PV; negative = PV surplus
+        # --- Net demand on the HOUSE BATTERY (EV load excluded) ---
+        # The EV charger is an AC appliance that draws directly from the grid
+        # or from PV surplus.  It never draws from the house battery.
+        # Therefore the battery's net demand is computed from house load only;
+        # ev_load is added to grid_import separately at the end.
+        #
+        # PV covers house load first.  The remainder (positive = deficit,
+        # negative = surplus) determines whether the battery charges or
+        # discharges.
+        net_demand = (
+            house_load - pv
+        )  # positive = house needs energy; negative = surplus
 
         if net_demand > 0:
             # House demand exceeds PV.  Battery discharges to cover the gap;
@@ -168,11 +190,14 @@ def simulate_soc(
             discharge = max(discharge, 0.0)
             # Energy actually delivered to the house from battery (post loss)
             house_from_battery = discharge * discharge_eff
-            # Remaining demand covered by grid import; plus grid energy needed
-            # to store the pre-scheduled charge (grid pays charge_input energy,
-            # but battery only stores charge_stored kWh due to charge_eff).
-            grid_import = max(
-                net_demand - house_from_battery + scheduled_charge / charge_eff, 0.0
+            # Remaining house demand from grid + grid energy for scheduled charge.
+            # EV load is added on top: the EV draws from grid/PV directly,
+            # independently of what the battery does.
+            house_grid_import = max(net_demand - house_from_battery, 0.0)
+            grid_import = (
+                house_grid_import
+                + scheduled_charge / charge_eff
+                + ev_load  # EV draws from grid (PV already consumed by house above)
             )
             grid_export = 0.0
         else:
@@ -184,10 +209,17 @@ def simulate_soc(
             discharge = 0.0
             pv_surplus = abs(net_demand)  # kWh of PV beyond house load (≥ 0)
 
+            # The EV charger draws from PV surplus first (free energy before
+            # exporting to grid or charging the house battery).  Whatever PV
+            # remains after serving the EV feeds the battery or is exported.
+            pv_for_ev = min(ev_load, pv_surplus)
+            ev_grid_import = max(ev_load - pv_for_ev, 0.0)  # EV residual from grid
+            pv_surplus_after_ev = max(pv_surplus - pv_for_ev, 0.0)
+
             # How much PV input is needed to store scheduled_charge in the battery?
             scheduled_charge_pv_input = scheduled_charge / charge_eff
-            # How much of that PV input is available?
-            pv_for_scheduled = min(scheduled_charge_pv_input, pv_surplus)
+            # How much of that PV input is available (after EV consumption)?
+            pv_for_scheduled = min(scheduled_charge_pv_input, pv_surplus_after_ev)
             # Battery-side energy sourced from PV for the scheduled charge:
             pv_battery_charge = pv_for_scheduled * charge_eff
             # Any shortfall in the scheduled charge must come from the grid:
@@ -196,8 +228,8 @@ def simulate_soc(
                 grid_charge_battery / charge_eff if grid_charge_battery > 1e-9 else 0.0
             )
 
-            # Remaining PV surplus after serving the scheduled charge:
-            pv_remaining = max(pv_surplus - pv_for_scheduled, 0.0)
+            # Remaining PV surplus after serving EV and the scheduled charge:
+            pv_remaining = max(pv_surplus_after_ev - pv_for_scheduled, 0.0)
 
             # Additional PV that can still be absorbed by the battery
             # (beyond what the scheduler already planned):
@@ -215,9 +247,9 @@ def simulate_soc(
             # Total battery-side energy stored this slot:
             total_charge = scheduled_charge + additional_pv_charge
 
-            # Grid import: only the grid-sourced portion of the scheduled charge
-            grid_import = grid_charge_input
-            # PV exported = remaining PV not absorbed by battery
+            # Grid import: grid-sourced battery charge + EV residual not covered by PV
+            grid_import = grid_charge_input + ev_grid_import
+            # PV exported = remaining PV not absorbed by battery or EV
             grid_export = max(pv_remaining - max_additional_pv_input, 0.0)
 
             # Override scheduled_charge for state update (include PV capture).
@@ -244,3 +276,25 @@ def simulate_soc(
         slot.batteries_discharged = round(discharge, 3)
         slot.grid_import_kwh = round(grid_import, 3)
         slot.grid_export_kwh = round(grid_export, 3)
+
+        log_planner(
+            "debug",
+            "[soc_sim] %s→%s  rec=%-28s  "
+            "pv=%.3f  house=%.3f  ev=%.3f  net_demand=%+.3f  "
+            "sched_chg=%.3f  discharge=%.3f  "
+            "grid_in=%.3f  grid_out=%.3f  "
+            "cap_after=%.3f  soc=%.1f%%",
+            slot.start.strftime("%d %H:%M"),
+            slot.end.strftime("%H:%M"),
+            slot.recommendation if slot.recommendation is not None else "(none)",
+            pv,
+            house_load,
+            ev_load,
+            net_demand,
+            scheduled_charge,
+            discharge,
+            grid_import,
+            grid_export,
+            cap,
+            slot.estimated_battery_soc,
+        )
