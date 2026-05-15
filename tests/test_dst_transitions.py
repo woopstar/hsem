@@ -155,18 +155,18 @@ class TestBuildSlotsDst:
         now = _parse_now("2024-03-31T00:00:00+01:00")
         slots = build_slots(self._make_input_stub(), now)
         for a, b in zip(slots, slots[1:]):
-            assert (
-                a.end == b.start
-            ), f"Gap between {a.end.isoformat()} and {b.start.isoformat()}"
+            assert a.end == b.start, (
+                f"Gap between {a.end.isoformat()} and {b.start.isoformat()}"
+            )
 
     def test_autumn_fallback_slots_are_contiguous(self):
         """Slots must be gapless and non-overlapping on autumn-fallback day."""
         now = _parse_now("2024-10-27T00:00:00+02:00")
         slots = build_slots(self._make_input_stub(), now)
         for a, b in zip(slots, slots[1:]):
-            assert (
-                a.end == b.start
-            ), f"Gap between {a.end.isoformat()} and {b.start.isoformat()}"
+            assert a.end == b.start, (
+                f"Gap between {a.end.isoformat()} and {b.start.isoformat()}"
+            )
 
     def test_spring_forward_slot_span_equals_24_hours(self):
         """Total duration of all slots on spring-forward day must be 24 hours."""

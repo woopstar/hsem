@@ -221,9 +221,9 @@ class TestScheduleValidator:
                 }
             )
         )
-        assert (
-            errors == {}
-        ), f"Expected no errors for cross-midnight window, got: {errors}"
+        assert errors == {}, (
+            f"Expected no errors for cross-midnight window, got: {errors}"
+        )
 
     def test_zero_to_six_window_valid(self):
         """A 00:00-06:00 window (P0-02 AC) passes validation."""
@@ -274,9 +274,9 @@ class TestScheduleValidator:
                 }
             )
         )
-        assert (
-            errors == {}
-        ), f"Expected no errors for cross-midnight window, got: {errors}"
+        assert errors == {}, (
+            f"Expected no errors for cross-midnight window, got: {errors}"
+        )
 
     def test_schedule_3_cross_midnight_window_valid(self):
         """Schedule 3: cross-midnight window passes validation."""
@@ -293,6 +293,6 @@ class TestScheduleValidator:
                 }
             )
         )
-        assert (
-            errors == {}
-        ), f"Expected no errors for cross-midnight window, got: {errors}"
+        assert errors == {}, (
+            f"Expected no errors for cross-midnight window, got: {errors}"
+        )

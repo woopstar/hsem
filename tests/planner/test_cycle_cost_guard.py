@@ -163,9 +163,9 @@ class TestProfitableCharging:
         )
         result = run_planner(inp)
         charge_slots = [s for s in result.slots if s.recommendation == _CHARGE_GRID]
-        assert (
-            len(charge_slots) >= 1
-        ), "Expected at least one grid-charge slot when spread justifies cycling"
+        assert len(charge_slots) >= 1, (
+            "Expected at least one grid-charge slot when spread justifies cycling"
+        )
 
     def test_spread_exceeds_combined_threshold_charges_grid(self):
         """Spread of 0.25 > min_diff (0.05) + cycle_cost (0.10) = 0.15 → charge.
@@ -181,9 +181,9 @@ class TestProfitableCharging:
         )
         result = run_planner(inp)
         charge_slots = [s for s in result.slots if s.recommendation == _CHARGE_GRID]
-        assert (
-            len(charge_slots) >= 1
-        ), "Expected grid charge when spread 0.25 exceeds combined threshold 0.15"
+        assert len(charge_slots) >= 1, (
+            "Expected grid charge when spread 0.25 exceeds combined threshold 0.15"
+        )
 
 
 # ===========================================================================
@@ -240,9 +240,9 @@ class TestUnprofitableCharging:
         )
         result = run_planner(inp)
         charge_slots = [s for s in result.slots if s.recommendation == _CHARGE_GRID]
-        assert (
-            len(charge_slots) == 0
-        ), "Large cycle cost (0.50) must block charging when spread is only 0.20"
+        assert len(charge_slots) == 0, (
+            "Large cycle cost (0.50) must block charging when spread is only 0.20"
+        )
 
     def test_zero_cycle_cost_unchanged_behaviour(self):
         """cycle_cost_per_kwh=0 must not change existing planner behaviour.
@@ -259,9 +259,9 @@ class TestUnprofitableCharging:
         result = run_planner(inp)
         charge_slots = [s for s in result.slots if s.recommendation == _CHARGE_GRID]
         # With spread 0.15 > min_diff 0.05 we expect charging
-        assert (
-            len(charge_slots) >= 1
-        ), "zero cycle_cost must not suppress charging when spread > min_diff"
+        assert len(charge_slots) >= 1, (
+            "zero cycle_cost must not suppress charging when spread > min_diff"
+        )
 
 
 # ===========================================================================
@@ -326,9 +326,9 @@ class TestOpportunisticChargeThreshold:
         )
         result = run_planner(inp)
         charge_slots = [s for s in result.slots if s.recommendation == _CHARGE_GRID]
-        assert (
-            len(charge_slots) >= 1
-        ), "Negative import price must trigger opportunistic charge regardless of cycle cost"
+        assert len(charge_slots) >= 1, (
+            "Negative import price must trigger opportunistic charge regardless of cycle cost"
+        )
 
     def test_high_cycle_cost_blocks_below_depreciation_opportunistic_charge(self):
         """High cycle_cost blocks opportunistic charge that would otherwise trigger.

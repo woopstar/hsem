@@ -201,9 +201,7 @@ class PlannerInput:
     # --- seasonal / mode config ---
     months_winter: list[int] = field(default_factory=lambda: [1, 2, 3, 4, 10, 11, 12])
     house_power_includes_ev: bool = True
-    is_read_only: bool = (
-        False  # False = hardware writes enabled; set True only in dry-run/test scenarios
-    )
+    is_read_only: bool = False  # False = hardware writes enabled; set True only in dry-run/test scenarios
 
     # --- EV planned load integration — primary EV (optional, disabled by default) ---
     #: When True, the primary EV planned load feature is active.

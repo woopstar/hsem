@@ -95,9 +95,9 @@ class TestNoMutableClassAttributes:
             for name, value in HSEMConfigFlow.__dict__.items()
             if isinstance(value, dict) and not name.startswith("__")
         ]
-        assert (
-            mutable_class_dicts == []
-        ), f"Mutable dict class attributes found: {mutable_class_dicts}"
+        assert mutable_class_dicts == [], (
+            f"Mutable dict class attributes found: {mutable_class_dicts}"
+        )
 
     def test_no_mutable_list_class_attributes(self) -> None:
         """No ``list`` instance should exist as a class-level attribute."""
@@ -106,9 +106,9 @@ class TestNoMutableClassAttributes:
             for name, value in HSEMConfigFlow.__dict__.items()
             if isinstance(value, list) and not name.startswith("__")
         ]
-        assert (
-            mutable_class_lists == []
-        ), f"Mutable list class attributes found: {mutable_class_lists}"
+        assert mutable_class_lists == [], (
+            f"Mutable list class attributes found: {mutable_class_lists}"
+        )
 
     def test_no_mutable_set_class_attributes(self) -> None:
         """No ``set`` instance should exist as a class-level attribute."""
@@ -117,15 +117,15 @@ class TestNoMutableClassAttributes:
             for name, value in HSEMConfigFlow.__dict__.items()
             if isinstance(value, set) and not name.startswith("__")
         ]
-        assert (
-            mutable_class_sets == []
-        ), f"Mutable set class attributes found: {mutable_class_sets}"
+        assert mutable_class_sets == [], (
+            f"Mutable set class attributes found: {mutable_class_sets}"
+        )
 
     def test_version_is_immutable_int(self) -> None:
         """``VERSION`` is an ``int``, which is immutable — this is safe."""
-        assert isinstance(
-            HSEMConfigFlow.__dict__.get("VERSION"), int
-        ), "VERSION must be an int class attribute."
+        assert isinstance(HSEMConfigFlow.__dict__.get("VERSION"), int), (
+            "VERSION must be an int class attribute."
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -171,9 +171,9 @@ class TestWritesDoNotLeak:
 
         flow_a._user_input["device_name"] = "Alpha Inverter"
 
-        assert (
-            "device_name" not in flow_b._user_input
-        ), "Writing to flow_a leaked into flow_b — class-level dict is still shared."
+        assert "device_name" not in flow_b._user_input, (
+            "Writing to flow_a leaked into flow_b — class-level dict is still shared."
+        )
 
     def test_write_to_second_does_not_affect_first(self) -> None:
         """Setting a key on flow_b must not appear in flow_a."""
@@ -204,9 +204,9 @@ class TestWritesDoNotLeak:
             {"hsem_ev_charger_enabled": True, "hsem_solcast_pv_forecast_1": "sensor.pv"}
         )
 
-        assert (
-            flow_b._user_input == {}
-        ), "flow_b._user_input was modified by an update() on flow_a."
+        assert flow_b._user_input == {}, (
+            "flow_b._user_input was modified by an update() on flow_a."
+        )
 
     def test_clear_on_one_does_not_affect_other(self) -> None:
         """Clearing one instance's dict must leave the other intact."""
@@ -218,9 +218,9 @@ class TestWritesDoNotLeak:
 
         flow_a._user_input.clear()
 
-        assert flow_b._user_input == {
-            "some_key": "other_value"
-        }, "Clearing flow_a._user_input also cleared flow_b._user_input."
+        assert flow_b._user_input == {"some_key": "other_value"}, (
+            "Clearing flow_a._user_input also cleared flow_b._user_input."
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -244,9 +244,9 @@ class TestSequentialInstanceIsolation:
         del flow_a
 
         flow_b = _make_flow()
-        assert (
-            flow_b._user_input == {}
-        ), "flow_b inherited non-empty _user_input from the previously used flow_a."
+        assert flow_b._user_input == {}, (
+            "flow_b inherited non-empty _user_input from the previously used flow_a."
+        )
 
     def test_three_sequential_instances_all_independent(self) -> None:
         """Three instances created in sequence must all have independent state."""
@@ -257,9 +257,9 @@ class TestSequentialInstanceIsolation:
 
         # Each instance should only contain its own key.
         for i, flow in enumerate(instances):
-            assert list(flow._user_input.keys()) == [
-                f"key_{i}"
-            ], f"Instance {i} contains unexpected keys: {list(flow._user_input.keys())}"
+            assert list(flow._user_input.keys()) == [f"key_{i}"], (
+                f"Instance {i} contains unexpected keys: {list(flow._user_input.keys())}"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -339,12 +339,12 @@ class TestAsyncStepUserPerInstanceState:
             await flow_a.async_step_user(user_input=input_a)
             await flow_b.async_step_user(user_input=input_b)
 
-        assert (
-            flow_a._user_input.get("device_name") == "Solar North"
-        ), f"flow_a has wrong device_name: {flow_a._user_input.get('device_name')}"
-        assert (
-            flow_b._user_input.get("device_name") == "Solar South"
-        ), f"flow_b has wrong device_name: {flow_b._user_input.get('device_name')}"
+        assert flow_a._user_input.get("device_name") == "Solar North", (
+            f"flow_a has wrong device_name: {flow_a._user_input.get('device_name')}"
+        )
+        assert flow_b._user_input.get("device_name") == "Solar South", (
+            f"flow_b has wrong device_name: {flow_b._user_input.get('device_name')}"
+        )
         # Cross-contamination check: flow_a must not contain flow_b's value.
         assert flow_a._user_input.get("device_name") != "Solar South"
         assert flow_b._user_input.get("device_name") != "Solar North"
@@ -369,7 +369,7 @@ class TestInitIsDefined:
     def test_init_initialises_user_input(self) -> None:
         """Calling ``__init__`` directly must result in ``_user_input`` being set."""
         flow = _make_flow()
-        assert hasattr(
-            flow, "_user_input"
-        ), "flow._user_input does not exist after __init__."
+        assert hasattr(flow, "_user_input"), (
+            "flow._user_input does not exist after __init__."
+        )
         assert flow._user_input == {}

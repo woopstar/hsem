@@ -390,9 +390,9 @@ class TestCompleteTomorrowData:
         tomorrow_entries = [
             m for m in result.missing_inputs if m.startswith("tomorrow_")
         ]
-        assert (
-            tomorrow_entries == []
-        ), f"Expected no tomorrow missing_inputs entries but got: {tomorrow_entries}"
+        assert tomorrow_entries == [], (
+            f"Expected no tomorrow missing_inputs entries but got: {tomorrow_entries}"
+        )
 
 
 # ===========================================================================
@@ -428,9 +428,9 @@ class TestPartialTomorrowPriceData:
             for m in result.missing_inputs
             if m.startswith("tomorrow_price_missing_hours")
         ]
-        assert (
-            len(tomorrow_entries) == 1
-        ), f"Expected one tomorrow_price_missing_hours entry; got {result.missing_inputs}"
+        assert len(tomorrow_entries) == 1, (
+            f"Expected one tomorrow_price_missing_hours entry; got {result.missing_inputs}"
+        )
         # The entry must include the missing hours
         entry = tomorrow_entries[0]
         assert "00" in entry
@@ -442,9 +442,9 @@ class TestPartialTomorrowPriceData:
         inp = self._make_partial_price_input(missing_hours={6, 7, 8})
         result = run_planner(inp)
         price_warnings = [w for w in result.warnings if "tomorrow price" in w.lower()]
-        assert (
-            len(price_warnings) >= 1
-        ), f"Expected a warning about tomorrow price data. Got: {result.warnings}"
+        assert len(price_warnings) >= 1, (
+            f"Expected a warning about tomorrow price data. Got: {result.warnings}"
+        )
 
     def test_missing_tomorrow_prices_data_quality_incomplete(self) -> None:
         """DataQuality.is_complete must be False when tomorrow prices are missing."""
@@ -459,9 +459,9 @@ class TestPartialTomorrowPriceData:
         inp = self._make_partial_price_input(missing_hours=set(range(12, 24)))
         result = run_planner(inp)
         # The planner must complete and produce slots
-        assert (
-            len(result.slots) == 48
-        ), f"Expected 48 slots for a 48h horizon; got {len(result.slots)}"
+        assert len(result.slots) == 48, (
+            f"Expected 48 slots for a 48h horizon; got {len(result.slots)}"
+        )
 
     def test_missing_tomorrow_price_is_non_critical_for_degraded_mode(self) -> None:
         """Missing tomorrow prices must produce Degraded, not Error, in degraded mode."""
@@ -477,9 +477,9 @@ class TestPartialTomorrowPriceData:
         # The label must NOT contain any critical keywords
         for entry in tomorrow_price_entries:
             mode = classify_degraded_mode(True, [entry])
-            assert (
-                mode is DegradedMode.Degraded
-            ), f"Missing tomorrow price should produce Degraded, not {mode}: {entry!r}"
+            assert mode is DegradedMode.Degraded, (
+                f"Missing tomorrow price should produce Degraded, not {mode}: {entry!r}"
+            )
 
 
 # ===========================================================================
@@ -514,9 +514,9 @@ class TestPartialTomorrowPvData:
             for m in result.missing_inputs
             if m.startswith("tomorrow_pv_missing_hours")
         ]
-        assert (
-            len(tomorrow_entries) == 1
-        ), f"Expected one tomorrow_pv_missing_hours entry; got {result.missing_inputs}"
+        assert len(tomorrow_entries) == 1, (
+            f"Expected one tomorrow_pv_missing_hours entry; got {result.missing_inputs}"
+        )
         entry = tomorrow_entries[0]
         assert "10" in entry
         assert "11" in entry
@@ -528,9 +528,9 @@ class TestPartialTomorrowPvData:
         inp = self._make_partial_pv_input(missing_hours={9, 10, 11, 12})
         result = run_planner(inp)
         pv_warnings = [w for w in result.warnings if "tomorrow pv" in w.lower()]
-        assert (
-            len(pv_warnings) >= 1
-        ), f"Expected a warning about tomorrow PV data. Got: {result.warnings}"
+        assert len(pv_warnings) >= 1, (
+            f"Expected a warning about tomorrow PV data. Got: {result.warnings}"
+        )
 
     def test_missing_tomorrow_pv_data_quality_incomplete(self) -> None:
         """DataQuality.is_complete must be False when tomorrow PV is missing."""
@@ -558,9 +558,9 @@ class TestPartialTomorrowPvData:
         ]
         for entry in tomorrow_pv_entries:
             mode = classify_degraded_mode(True, [entry])
-            assert (
-                mode is DegradedMode.Degraded
-            ), f"Missing tomorrow PV should produce Degraded, not {mode}: {entry!r}"
+            assert mode is DegradedMode.Degraded, (
+                f"Missing tomorrow PV should produce Degraded, not {mode}: {entry!r}"
+            )
 
 
 # ===========================================================================
@@ -628,9 +628,9 @@ class TestZeroVsMissingDistinction:
             solcast_slots=pv,
         )
         result = run_planner(inp)
-        assert (
-            result.data_quality.tomorrow_pv_missing_hours == []
-        ), "Explicit zero PV should NOT be flagged as missing data."
+        assert result.data_quality.tomorrow_pv_missing_hours == [], (
+            "Explicit zero PV should NOT be flagged as missing data."
+        )
 
     def test_explicit_zero_prices_not_flagged_as_missing(self) -> None:
         """Price slots explicitly set to 0.0 must not appear in missing price lists."""
@@ -642,9 +642,9 @@ class TestZeroVsMissingDistinction:
             solcast_slots=_pv_slots(),
         )
         result = run_planner(inp)
-        assert (
-            result.data_quality.tomorrow_price_missing_hours == []
-        ), "Explicit zero prices should NOT be flagged as missing data."
+        assert result.data_quality.tomorrow_price_missing_hours == [], (
+            "Explicit zero prices should NOT be flagged as missing data."
+        )
 
     def test_absent_pv_slot_flagged_as_missing(self) -> None:
         """An absent PV slot (not provided) must be flagged, even if 0 is expected."""
@@ -657,12 +657,12 @@ class TestZeroVsMissingDistinction:
         result = run_planner(inp)
         # Night hours 0-5 and 19-23 must be flagged as missing in tomorrow
         missing = result.data_quality.tomorrow_pv_missing_hours
-        assert any(
-            h < 6 for h in missing
-        ), f"Expected early morning hours to be missing. Got: {missing}"
-        assert any(
-            h >= 19 for h in missing
-        ), f"Expected late night hours to be missing. Got: {missing}"
+        assert any(h < 6 for h in missing), (
+            f"Expected early morning hours to be missing. Got: {missing}"
+        )
+        assert any(h >= 19 for h in missing), (
+            f"Expected late night hours to be missing. Got: {missing}"
+        )
 
 
 # ===========================================================================

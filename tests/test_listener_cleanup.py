@@ -173,9 +173,9 @@ class TestAvgSensorListenerCleanup:
             await sensor._async_track_entities()
 
         # Must register exactly once despite two calls
-        assert (
-            len(register_calls) == 1
-        ), f"Expected 1 registration (idempotent), got {len(register_calls)}"
+        assert len(register_calls) == 1, (
+            f"Expected 1 registration (idempotent), got {len(register_calls)}"
+        )
 
 
 # ---------------------------------------------------------------------------
