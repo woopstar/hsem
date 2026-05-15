@@ -2616,3 +2616,219 @@ class TestEvLoadDoesNotInflateChargeNeeded:
             f"no_ev={discharge_net_no_ev:.3f}, ev={discharge_net_ev:.3f}. "
             "EV load should not affect the battery's discharge window target."
         )
+
+
+# ---------------------------------------------------------------------------
+# EV deadline window — "one midnight crossing" clamp (issue #413)
+# ---------------------------------------------------------------------------
+
+
+def _make_slots_48(now: datetime, tz=_UTC):
+    """Return 48 contiguous 1-hour slot ``(start, end)`` pairs anchored at ``now``.
+
+    Slot ``i`` runs ``[now + i h, now + (i+1) h]``.  This mimics a 48-hour
+    planner horizon used to exercise the EV deadline clamp.
+    """
+    starts = [now + timedelta(hours=i) for i in range(48)]
+    ends = [now + timedelta(hours=i + 1) for i in range(48)]
+    return starts, ends
+
+
+class TestEvDeadlineWindowOneMidnight:
+    """The EV charging window must span at most one midnight crossing.
+
+    These tests pin down the spec-mandated semantic that an EV plan rooted
+    at ``now`` may extend into tomorrow but must NEVER reach into the day
+    after tomorrow, regardless of the planner's overall slot horizon.
+
+    Regression for the bug where, with a 48-hour planner horizon and a
+    ``None`` deadline reaching the EV planner, EV load was scheduled on
+    slots that started more than 24 hours after ``now``.
+    """
+
+    def test_none_deadline_with_48h_horizon_clamps_to_end_of_tomorrow(self):
+        """A ``None`` deadline must not let the EV planner use day-2 slots.
+
+        Setup mirrors the user-reported failure:
+        - ``now = 2024-06-15 17:00 UTC`` (mid-afternoon)
+        - Planner horizon: 48 one-hour slots
+        - ``deadline = None`` (entity unconfigured)
+        - Cheap prices on the day-after-tomorrow morning to try to lure the
+          EV planner into scheduling there
+
+        Before the fix the EV planner would schedule the cheap day-2 slots.
+        After the fix the clamp restricts allocation to slots ending before
+        the start of day-after-tomorrow (``2024-06-17 00:00 UTC``).
+        """
+        now = _dt(17)  # 2024-06-15 17:00 UTC
+        starts, ends = _make_slots_48(now)
+        surplus = [0.0] * 48
+        prices = [0.10] * 48
+        # Make the day-after-tomorrow early hours *very* attractive so the
+        # planner has a strong incentive to schedule them if it could.
+        # Slot index 31 = now + 31h = 2024-06-17 00:00 → exactly at the cap.
+        for i in range(31, 40):
+            prices[i] = 0.001
+
+        inp = EVPlannerInput(
+            enabled=True,
+            ev_connected=True,
+            smart_charging_enabled=True,
+            current_soc_pct=70.0,
+            target_soc_pct=80.0,  # 10 kWh needed
+            battery_capacity_kwh=100.0,
+            charger_power_kw=11.0,
+            charger_efficiency_pct=100.0,
+            deadline=None,  # the bug scenario
+            now=now,
+        )
+        plan = build_ev_charging_plan(inp, starts, ends, surplus, prices)
+
+        end_of_tomorrow = datetime(2024, 6, 17, 0, 0, tzinfo=UTC)
+        for slot in plan.charging_slots:
+            assert slot.start < end_of_tomorrow, (
+                f"EV slot {slot.start.isoformat()} starts at or after "
+                f"end-of-tomorrow ({end_of_tomorrow.isoformat()}); "
+                "the one-midnight-crossing clamp failed."
+            )
+            assert slot.end <= end_of_tomorrow, (
+                f"EV slot {slot.start.isoformat()}→{slot.end.isoformat()} ends "
+                f"after end-of-tomorrow ({end_of_tomorrow.isoformat()})."
+            )
+
+    def test_deadline_tomorrow_1700_does_not_pick_day_after_tomorrow(self):
+        """Deadline = tomorrow 17:00 must keep EV slots within [now, tomorrow 17:00].
+
+        This is the user-reported scenario: ``now ≈ 17:00`` and deadline
+        configured as ``17:00`` rolls forward to tomorrow 17:00.  The EV
+        planner must not schedule into the day after tomorrow even though
+        the slot horizon extends 48 hours.
+        """
+        now = _dt(17)  # 2024-06-15 17:00 UTC
+        deadline = datetime(2024, 6, 16, 17, 0, tzinfo=UTC)  # tomorrow 17:00
+        starts, ends = _make_slots_48(now)
+        surplus = [0.0] * 48
+        prices = [0.10] * 48
+        # Make day-after-tomorrow cheapest to verify the clamp wins over price.
+        for i in range(31, 48):
+            prices[i] = 0.001
+
+        inp = EVPlannerInput(
+            enabled=True,
+            ev_connected=True,
+            smart_charging_enabled=True,
+            current_soc_pct=70.0,
+            target_soc_pct=80.0,  # 10 kWh needed
+            battery_capacity_kwh=100.0,
+            charger_power_kw=11.0,
+            charger_efficiency_pct=100.0,
+            deadline=deadline,
+            now=now,
+        )
+        plan = build_ev_charging_plan(inp, starts, ends, surplus, prices)
+
+        for slot in plan.charging_slots:
+            assert slot.start < deadline, (
+                f"EV slot {slot.start.isoformat()} starts at or after deadline "
+                f"({deadline.isoformat()})."
+            )
+
+    def test_short_deadline_within_today_unchanged(self):
+        """Deadline within today (no rollover) must continue to work."""
+        now = _dt(6)  # 06:00 UTC
+        deadline = now + timedelta(hours=8)  # today 14:00 UTC
+        starts, ends = _make_slots_48(now)
+        surplus = [0.0] * 48
+        prices = [0.10] * 48
+
+        inp = EVPlannerInput(
+            enabled=True,
+            ev_connected=True,
+            smart_charging_enabled=True,
+            current_soc_pct=70.0,
+            target_soc_pct=75.0,  # 5 kWh needed
+            battery_capacity_kwh=100.0,
+            charger_power_kw=11.0,
+            charger_efficiency_pct=100.0,
+            deadline=deadline,
+            now=now,
+        )
+        plan = build_ev_charging_plan(inp, starts, ends, surplus, prices)
+
+        # Total still 5 kWh; all slots within deadline.
+        total = sum(s.estimated_charged_kwh for s in plan.charging_slots)
+        assert total == pytest.approx(5.0, abs=0.01)
+        for slot in plan.charging_slots:
+            assert slot.start < deadline
+            assert slot.end <= deadline
+
+    def test_deadline_beyond_horizon_cap_is_clamped(self):
+        """A deadline further than end-of-tomorrow is clamped to end-of-tomorrow.
+
+        With ``now = 14:00 today`` and ``deadline = 20:00 day-after-tomorrow``
+        (almost 54 h ahead), the EV planner must not schedule beyond
+        ``2024-06-17 00:00 UTC`` — the start of day-after-tomorrow.
+        """
+        now = _dt(14)
+        deadline = datetime(2024, 6, 17, 20, 0, tzinfo=UTC)  # day-after-tomorrow 20:00
+        starts, ends = _make_slots_48(now)
+        surplus = [0.0] * 48
+        prices = [0.10] * 48
+        # Cheapest hour is the slot starting at 2024-06-17 19:00 (slot index
+        # 53 from now=14:00).  We have only 48 slots, but make slot 47 cheap.
+        prices[47] = 0.001
+        # And make slot 33 (day-after-tomorrow 00:00→01:00) cheap — outside cap.
+        prices[33] = 0.001
+
+        inp = EVPlannerInput(
+            enabled=True,
+            ev_connected=True,
+            smart_charging_enabled=True,
+            current_soc_pct=70.0,
+            target_soc_pct=80.0,
+            battery_capacity_kwh=100.0,
+            charger_power_kw=11.0,
+            charger_efficiency_pct=100.0,
+            deadline=deadline,
+            now=now,
+        )
+        plan = build_ev_charging_plan(inp, starts, ends, surplus, prices)
+
+        end_of_tomorrow = datetime(2024, 6, 17, 0, 0, tzinfo=UTC)
+        # All scheduled slots must end on or before the clamp — the safety
+        # invariant the user asked for.  The clamp diagnostic on
+        # ``plan.data_quality`` is currently only written on the "no
+        # candidate slots" path; in the success path it may be absent.
+        for slot in plan.charging_slots:
+            assert slot.start < end_of_tomorrow, (
+                f"EV slot {slot.start.isoformat()} bypassed the one-midnight cap."
+            )
+
+    def test_deadline_at_horizon_cap_exactly(self):
+        """A deadline exactly equal to end-of-tomorrow is honoured as-is.
+
+        No clamp should activate (deadline already at the limit).
+        """
+        now = _dt(0)  # 2024-06-15 00:00 UTC
+        deadline = datetime(2024, 6, 17, 0, 0, tzinfo=UTC)  # end-of-tomorrow
+        starts, ends = _make_slots_48(now)
+        surplus = [0.0] * 48
+        prices = [0.10] * 48
+
+        inp = EVPlannerInput(
+            enabled=True,
+            ev_connected=True,
+            smart_charging_enabled=True,
+            current_soc_pct=70.0,
+            target_soc_pct=75.0,  # 5 kWh
+            battery_capacity_kwh=100.0,
+            charger_power_kw=11.0,
+            charger_efficiency_pct=100.0,
+            deadline=deadline,
+            now=now,
+        )
+        plan = build_ev_charging_plan(inp, starts, ends, surplus, prices)
+
+        for slot in plan.charging_slots:
+            assert slot.start < deadline
+            assert slot.end <= deadline
