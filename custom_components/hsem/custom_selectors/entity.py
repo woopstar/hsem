@@ -58,7 +58,10 @@ class HSEMWorkingModeSelector(SelectEntity, HSEMEntity):
         self.entity_id = get_force_working_mode_selector_entity_id()
         self._attr_options = list(description.options or [])
         self._attr_current_option = default
-        self._attr_name = description.name
+        # description.name may be UndefinedType (HA sentinel) or None when not
+        # set; fall back to None so HA derives the name from the entity key.
+        raw_name = description.name
+        self._attr_name = str(raw_name) if isinstance(raw_name, str) else None
 
     async def async_select_option(self, option: str) -> None:
         """Handle the user selecting a new option.

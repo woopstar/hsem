@@ -329,7 +329,7 @@ class TestSwitchPlatformSetup:
         config_entry = _mock_config_entry()
         added: list[HSEMSwitch] = []
 
-        def add_entities(entities: list, update_before_add: bool = False) -> None:
+        def add_entities(entities: list, _update_before_add: bool = False) -> None:
             added.extend(entities)
 
         with patch(
@@ -349,7 +349,7 @@ class TestSwitchPlatformSetup:
         config_entry = _mock_config_entry()
         added: list = []
 
-        def add_entities(entities: list, update_before_add: bool = False) -> None:
+        def add_entities(entities: list, _update_before_add: bool = False) -> None:
             added.extend(entities)
 
         with patch(
@@ -371,7 +371,7 @@ class TestSwitchPlatformSetup:
         config_entry = _mock_config_entry()
         added: list[HSEMSwitch] = []
 
-        def add_entities(entities: list, update_before_add: bool = False) -> None:
+        def add_entities(entities: list, _update_before_add: bool = False) -> None:
             added.extend(entities)
 
         with patch(
@@ -401,7 +401,7 @@ class TestSwitchPlatformSetup:
         config_entry = _mock_config_entry(**opts)
         added: list[HSEMSwitch] = []
 
-        def add_entities(entities: list, update_before_add: bool = False) -> None:
+        def add_entities(entities: list, _update_before_add: bool = False) -> None:
             added.extend(entities)
 
         with patch(
@@ -464,7 +464,7 @@ class TestTimePlatformSetupExtended:
         config_entry = _mock_config_entry()
         added: list[HSEMTimeEntity] = []
 
-        def add_entities(entities: list, update_before_add: bool = False) -> None:
+        def add_entities(entities: list, _update_before_add: bool = False) -> None:
             added.extend(entities)
 
         with patch(
@@ -493,7 +493,7 @@ class TestTimePlatformSetupExtended:
         config_entry = _mock_config_entry(**opts)
         added: list[HSEMTimeEntity] = []
 
-        def add_entities(entities: list, update_before_add: bool = False) -> None:
+        def add_entities(entities: list, _update_before_add: bool = False) -> None:
             added.extend(entities)
 
         with patch(
@@ -531,7 +531,7 @@ class TestTimePlatformSetupExtended:
         config_entry = _mock_config_entry()
         added: list[HSEMTimeEntity] = []
 
-        def add_entities(entities: list, update_before_add: bool = False) -> None:
+        def add_entities(entities: list, _update_before_add: bool = False) -> None:
             added.extend(entities)
 
         with patch(
@@ -564,7 +564,7 @@ class TestSelectPlatformSetup:
         config_entry = _mock_config_entry()
         added: list[HSEMWorkingModeSelector] = []
 
-        def add_entities(entities: list, update_before_add: bool = False) -> None:
+        def add_entities(entities: list, _update_before_add: bool = False) -> None:
             added.extend(entities)
 
         await async_setup_entry(hass, config_entry, add_entities)
@@ -580,7 +580,7 @@ class TestSelectPlatformSetup:
         config_entry = _mock_config_entry()
         added: list = []
 
-        def add_entities(entities: list, update_before_add: bool = False) -> None:
+        def add_entities(entities: list, _update_before_add: bool = False) -> None:
             added.extend(entities)
 
         await async_setup_entry(hass, config_entry, add_entities)
@@ -597,7 +597,7 @@ class TestSelectPlatformSetup:
         config_entry = _mock_config_entry()
         added: list[HSEMWorkingModeSelector] = []
 
-        def add_entities(entities: list, update_before_add: bool = False) -> None:
+        def add_entities(entities: list, _update_before_add: bool = False) -> None:
             added.extend(entities)
 
         await async_setup_entry(hass, config_entry, add_entities)
@@ -612,7 +612,7 @@ class TestSelectPlatformSetup:
         config_entry = _mock_config_entry()
         added: list[HSEMWorkingModeSelector] = []
 
-        def add_entities(entities: list, update_before_add: bool = False) -> None:
+        def add_entities(entities: list, _update_before_add: bool = False) -> None:
             added.extend(entities)
 
         await async_setup_entry(hass, config_entry, add_entities)
@@ -766,13 +766,13 @@ class TestAttrPatternEnforcement:
     def test_hsem_selector_no_unique_id_property(self) -> None:
         """HSEMWorkingModeSelector must NOT define a @property 'unique_id'."""
         prop = HSEMWorkingModeSelector.__dict__.get("unique_id")
-        assert prop is None, (
-            "HSEMWorkingModeSelector must not override unique_id as a @property"
-        )
+        assert (
+            prop is None
+        ), "HSEMWorkingModeSelector must not override unique_id as a @property"
 
     def test_hsem_selector_no_current_option_property(self) -> None:
         """HSEMWorkingModeSelector must NOT override current_option as a @property."""
         prop = HSEMWorkingModeSelector.__dict__.get("current_option")
-        assert prop is None, (
-            "HSEMWorkingModeSelector must not override current_option as a @property"
-        )
+        assert (
+            prop is None
+        ), "HSEMWorkingModeSelector must not override current_option as a @property"

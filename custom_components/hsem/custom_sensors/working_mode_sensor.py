@@ -20,7 +20,6 @@ from typing import Any
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.const import MATCH_ALL
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from custom_components.hsem.coordinator import (
     CoordinatorData,
@@ -33,7 +32,7 @@ from custom_components.hsem.custom_sensors.applier import (
 from custom_components.hsem.custom_sensors.recommendation_resolver import (
     resolve_current_recommendation,
 )
-from custom_components.hsem.entity import HSEMEntity
+from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.utils.degraded_mode import hardware_writes_allowed
 from custom_components.hsem.utils.inverter_verify import ApplyStatus, CycleApplySummary
 from custom_components.hsem.utils.logger import async_logger
@@ -45,9 +44,7 @@ from custom_components.hsem.utils.sensornames import (
 )
 
 
-class HSEMWorkingModeSensor(
-    CoordinatorEntity[HSEMDataUpdateCoordinator], SensorEntity, HSEMEntity
-):
+class HSEMWorkingModeSensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
     """HA sensor entity for the HSEM working-mode recommendation.
 
     Subscribes to :class:`HSEMDataUpdateCoordinator` for shared state and
@@ -80,7 +77,7 @@ class HSEMWorkingModeSensor(
             config_entry: The HSEM config entry.
             coordinator: The shared :class:`HSEMDataUpdateCoordinator`.
         """
-        CoordinatorEntity.__init__(self, coordinator)
+        HSEMCoordinatorEntity.__init__(self, coordinator)
         HSEMEntity.__init__(self, config_entry)
 
         self._config_entry = config_entry
@@ -143,6 +140,18 @@ class HSEMWorkingModeSensor(
 
         cfg = data.cfg
         live = data.live
+
+        # Guard against a partially-initialised coordinator snapshot where cfg
+        # was not yet populated (should not happen after first cycle but
+        # prevents AttributeError on None during startup race).
+        if cfg is None:
+            return {
+                "status": "wait",
+                "description": "Waiting for coordinator configuration to be loaded.",
+                "last_updated": None,
+                "next_update": None,
+                "unique_id": self._attr_unique_id,
+            }
 
         if live.missing_entities:
             return {

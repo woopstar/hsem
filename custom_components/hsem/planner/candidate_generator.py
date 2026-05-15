@@ -326,7 +326,7 @@ def _apply_aggressive_strategy(
             if s.recommendation not in _DISCHARGE_RECS
             and (
                 earliest_discharge_start is None
-                or s.end.astimezone(now.tzinfo) <= earliest_discharge_start
+                or as_tz(s.end, now.tzinfo) <= earliest_discharge_start
             )
         ),
         key=lambda s: (s.price.import_price, s.start),

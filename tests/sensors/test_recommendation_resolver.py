@@ -185,9 +185,21 @@ class TestDataStateSync:
     """
 
     def _make_coordinator_data(
-        self, planner_recommendation: str, resolved_recommendation: str, live: LiveState
+        self,
+        planner_recommendation: str,
+        resolved_recommendation: str,
+        live: LiveState,
     ):
-        """Return a CoordinatorData-like namespace simulating the sync behaviour."""
+        """Return a CoordinatorData-like namespace simulating the sync behaviour.
+
+        The ``resolved_recommendation`` parameter is passed by callers as
+        documentation of the expected post-resolution state.  It is not used
+        in the method body because the resolver under test computes it
+        dynamically from the live state.
+        """
+        # Acknowledge the parameter explicitly so static-analysis tools do not
+        # flag it as unused; its purpose is to document the expected outcome.
+        del resolved_recommendation
         from dataclasses import dataclass
 
         @dataclass

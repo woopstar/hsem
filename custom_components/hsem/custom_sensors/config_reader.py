@@ -11,6 +11,8 @@ called synchronously and tested without a running HA instance.
 
 from __future__ import annotations
 
+from datetime import time
+
 import voluptuous as vol
 
 from custom_components.hsem.models.battery_schedule import BatterySchedule
@@ -156,8 +158,9 @@ def build_sensor_config(config_entry) -> SensorConfig:
     cfg.solcast_pv_forecast_forecast_tomorrow = get_config_value(
         config_entry, "hsem_solcast_pv_forecast_forecast_tomorrow"
     )
-    cfg.solcast_pv_forecast_forecast_likelihood = get_config_value(
-        config_entry, "hsem_solcast_pv_forecast_forecast_likelihood"
+    cfg.solcast_pv_forecast_forecast_likelihood = (
+        get_config_value(config_entry, "hsem_solcast_pv_forecast_forecast_likelihood")
+        or "pv_estimate"
     )
 
     # Energi Data Service
@@ -167,8 +170,11 @@ def build_sensor_config(config_entry) -> SensorConfig:
     cfg.energi_data_service_export = get_config_value(
         config_entry, "hsem_energi_data_service_export"
     )
-    cfg.energi_data_service_export_min_price = convert_to_float(
-        get_config_value(config_entry, "hsem_energi_data_service_export_min_price")
+    cfg.energi_data_service_export_min_price = (
+        convert_to_float(
+            get_config_value(config_entry, "hsem_energi_data_service_export_min_price")
+        )
+        or 0.0
     )
 
     # First EV charger
@@ -238,8 +244,11 @@ def build_sensor_config(config_entry) -> SensorConfig:
         )
         or 95.0
     )
-    cfg.batteries_conversion_loss = convert_to_float(
-        get_config_value(config_entry, "hsem_batteries_conversion_loss")
+    cfg.batteries_conversion_loss = (
+        convert_to_float(
+            get_config_value(config_entry, "hsem_batteries_conversion_loss")
+        )
+        or 0.0
     )
     cfg.batteries_discharge_efficiency = (
         convert_to_float(
@@ -247,8 +256,11 @@ def build_sensor_config(config_entry) -> SensorConfig:
         )
         or 95.0
     )
-    cfg.batteries_purchase_price = convert_to_float(
-        get_config_value(config_entry, "hsem_batteries_purchase_price")
+    cfg.batteries_purchase_price = (
+        convert_to_float(
+            get_config_value(config_entry, "hsem_batteries_purchase_price")
+        )
+        or 0.0
     )
     _expected_cycles = convert_to_int(
         get_config_value(config_entry, "hsem_batteries_expected_cycles")
@@ -281,7 +293,8 @@ def build_sensor_config(config_entry) -> SensorConfig:
                 config_entry,
                 "hsem_batteries_enable_batteries_schedule_1_min_price_difference",
             )
-        ),
+        )
+        or 0.0,
     )
     cfg.batteries_schedule_2 = BatteryScheduleConfig(
         enabled=convert_to_boolean(
@@ -302,7 +315,8 @@ def build_sensor_config(config_entry) -> SensorConfig:
                 config_entry,
                 "hsem_batteries_enable_batteries_schedule_2_min_price_difference",
             )
-        ),
+        )
+        or 0.0,
     )
     cfg.batteries_schedule_3 = BatteryScheduleConfig(
         enabled=convert_to_boolean(
@@ -323,18 +337,29 @@ def build_sensor_config(config_entry) -> SensorConfig:
                 config_entry,
                 "hsem_batteries_enable_batteries_schedule_3_min_price_difference",
             )
-        ),
+        )
+        or 0.0,
     )
 
     # Excess export
-    cfg.batteries_enable_excess_export = get_config_value(
-        config_entry, "hsem_batteries_enable_excess_export"
+    cfg.batteries_enable_excess_export = bool(
+        get_config_value(config_entry, "hsem_batteries_enable_excess_export")
     )
-    cfg.batteries_excess_export_discharge_buffer = convert_to_float(
-        get_config_value(config_entry, "hsem_batteries_excess_export_discharge_buffer")
+    cfg.batteries_excess_export_discharge_buffer = (
+        convert_to_float(
+            get_config_value(
+                config_entry, "hsem_batteries_excess_export_discharge_buffer"
+            )
+        )
+        or 10.0
     )
-    cfg.batteries_excess_export_price_threshold = convert_to_float(
-        get_config_value(config_entry, "hsem_batteries_excess_export_price_threshold")
+    cfg.batteries_excess_export_price_threshold = (
+        convert_to_float(
+            get_config_value(
+                config_entry, "hsem_batteries_excess_export_price_threshold"
+            )
+        )
+        or 0.10
     )
 
     # EV planned load integration
@@ -482,13 +507,16 @@ def build_battery_schedules(cfg: SensorConfig) -> list[BatterySchedule]:
         A list of three :class:`BatterySchedule` objects (always three, regardless
         of whether they are enabled).
     """
+    _midnight = time(0, 0)  # safe fallback for unconfigured schedules
     schedules = []
     for sc in cfg.schedule_configs():
         schedules.append(
             BatterySchedule(
                 enabled=sc.enabled,
-                start=sc.start,
-                end=sc.end,
+                # start/end are time|None in BatteryScheduleConfig (optional schedule);
+                # BatterySchedule requires time, so fall back to midnight when not set.
+                start=sc.start if sc.start is not None else _midnight,
+                end=sc.end if sc.end is not None else _midnight,
                 avg_import_price=0.0,
                 needed_batteries_capacity=0.0,
                 needed_batteries_capacity_cost=0.0,

@@ -29,13 +29,12 @@ from typing import Any
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.const import EntityCategory
 from homeassistant.helpers.restore_state import RestoreEntity
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from custom_components.hsem.coordinator import (
     CoordinatorData,
     HSEMDataUpdateCoordinator,
 )
-from custom_components.hsem.entity import HSEMEntity
+from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.models.planner_outputs import PlanExplanation
 from custom_components.hsem.utils.sensornames import (
     get_plan_explanation_sensor_entity_id,
@@ -47,7 +46,7 @@ _UNKNOWN_STRATEGY = "unknown"
 
 
 class HSEMPlanExplanationSensor(
-    CoordinatorEntity[HSEMDataUpdateCoordinator],
+    HSEMCoordinatorEntity,
     SensorEntity,
     HSEMEntity,
     RestoreEntity,
@@ -74,7 +73,7 @@ class HSEMPlanExplanationSensor(
             config_entry: The HSEM config entry.
             coordinator: The shared :class:`HSEMDataUpdateCoordinator`.
         """
-        CoordinatorEntity.__init__(self, coordinator)
+        HSEMCoordinatorEntity.__init__(self, coordinator)
         HSEMEntity.__init__(self, config_entry)
 
         self._config_entry = config_entry

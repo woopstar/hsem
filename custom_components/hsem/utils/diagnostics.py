@@ -143,18 +143,6 @@ def redact_dict(data: dict[str, Any]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def _time_to_str(t: time | None) -> str | None:
-    """Serialise a :class:`datetime.time` to ``HH:MM:SS`` or ``None``.
-
-    Args:
-        t: A time instance or ``None``.
-
-    Returns:
-        ``"HH:MM:SS"`` string, or ``None``.
-    """
-    return t.strftime("%H:%M:%S") if t is not None else None
-
-
 def _planner_input_to_dict(inp: PlannerInput) -> dict[str, Any]:
     """Convert a :class:`PlannerInput` to a JSON-safe dictionary.
 
@@ -173,13 +161,9 @@ def _planner_input_to_dict(inp: PlannerInput) -> dict[str, Any]:
     # Patch datetime.time objects that asdict() cannot serialise to JSON.
     for sched in raw.get("battery_schedules", []):
         sched["start"] = (
-            _time_to_str(inp.battery_schedules[0].start)
-            if False
-            else (
-                sched["start"].strftime("%H:%M:%S")
-                if isinstance(sched["start"], time)
-                else sched["start"]
-            )
+            sched["start"].strftime("%H:%M:%S")
+            if isinstance(sched["start"], time)
+            else sched["start"]
         )
         sched["end"] = (
             sched["end"].strftime("%H:%M:%S")

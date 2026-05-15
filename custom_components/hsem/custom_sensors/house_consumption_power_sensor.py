@@ -346,14 +346,14 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
                 raw = ha_get_entity_state_and_convert(
                     self, self._hsem_house_consumption_power, "float"
                 )
-                self._hsem_house_consumption_power_state = convert_to_float(raw)
+                self._hsem_house_consumption_power_state = convert_to_float(raw) or 0.0
 
             # Update the state of the sensor for EV charger power
             if self._hsem_ev_charger_power:
                 raw_ev = ha_get_entity_state_and_convert(
                     self, self._hsem_ev_charger_power, "float"
                 )
-                self._hsem_ev_charger_power_state = convert_to_float(raw_ev)
+                self._hsem_ev_charger_power_state = convert_to_float(raw_ev) or 0.0
 
         except (HomeAssistantError, ValueError, TypeError) as exc:
             _LOGGER.warning(

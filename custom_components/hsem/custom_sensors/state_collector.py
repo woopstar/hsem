@@ -105,7 +105,9 @@ async def async_collect_live_state(
 
     # Force working mode
     raw_fwm = _read(fwm_entity, "string", label=get_force_working_mode_selector_key())
-    state.force_working_mode_state = raw_fwm if raw_fwm is not None else "auto"
+    # Cast to str because _read() returns Any; str() is safe here since the
+    # value comes from a HA select entity that always produces a string state.
+    state.force_working_mode_state = str(raw_fwm) if raw_fwm is not None else "auto"
 
     # --- First EV charger ---
     ev = EVLiveState()
@@ -184,16 +186,22 @@ async def async_collect_live_state(
     )
 
     # --- Huawei Solar battery entities ---
-    state.huawei_batteries_excess_pv_use_in_tou = _read(
+    # _read() returns float|int|bool|str|None; these calls use conv_type="string"
+    # so the result is always str|None — cast explicitly for pyright.
+    _raw_excess = _read(
         cfg.huawei_solar_batteries_excess_pv_energy_use_in_tou,
         "string",
         label="excess_pv_energy_use_in_tou",
     )
-    state.huawei_batteries_working_mode = _read(
+    state.huawei_batteries_excess_pv_use_in_tou = (
+        str(_raw_excess) if _raw_excess is not None else None
+    )
+    _raw_wm = _read(
         cfg.huawei_solar_batteries_working_mode,
         "string",
         label="batteries_working_mode",
     )
+    state.huawei_batteries_working_mode = str(_raw_wm) if _raw_wm is not None else None
     soc_pct = convert_to_float(
         _read(
             cfg.huawei_solar_batteries_state_of_capacity,
@@ -273,10 +281,13 @@ async def async_collect_live_state(
             "Critical: battery rated capacity returned None (unavailable/invalid)"
         )
     state.huawei_batteries_rated_capacity_wh = rated_capacity_wh
-    state.huawei_inverter_active_power_control = _read(
+    _raw_apc = _read(
         cfg.huawei_solar_inverter_active_power_control,
         "string",
         label="inverter_active_power_control",
+    )
+    state.huawei_inverter_active_power_control = (
+        str(_raw_apc) if _raw_apc is not None else None
     )
 
     # --- EDS prices ---

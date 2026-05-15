@@ -383,6 +383,11 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
 
                 # 9. Find the current time-slot recommendation.
                 self._hourly_recommendations.sort(key=lambda x: x.start)
+                # now.tzinfo is guaranteed non-None because hsem_now() returns
+                # a timezone-aware datetime; assert so pyright narrows the type.
+                assert (
+                    now.tzinfo is not None
+                ), "hsem_now() must return tz-aware datetime"
                 hourly_rec = next(
                     (
                         r
@@ -489,8 +494,15 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             A fully populated :class:`PlannerInput` ready for the planner engine.
         """
         cfg = self._cfg
-        live = self._live
         now = hsem_now()
+
+        # self._live is always populated by async_collect_live_state before
+        # this method is called; assert to narrow the type for static analysis.
+        if self._live is None:
+            raise RuntimeError(
+                "_build_planner_input called before live state was collected"
+            )
+        live = self._live
 
         seen_hours: set[int] = set()
         consumption_averages: list[HourlyConsumptionAverage] = []
@@ -573,21 +585,23 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             now_iso=now.isoformat(),
             interval_minutes=cfg.recommendation_interval_minutes,
             interval_length_hours=cfg.recommendation_interval_length,
-            battery_soc_pct=convert_to_float(live.huawei_batteries_soc_pct),
+            battery_soc_pct=convert_to_float(live.huawei_batteries_soc_pct) or 50.0,
             battery_rated_capacity_kwh=(
                 convert_to_float(live.huawei_batteries_rated_capacity_wh) or 0.0
             )
             / 1000.0,
             battery_end_of_discharge_soc_pct=convert_to_float(
                 live.huawei_batteries_end_of_discharge_soc_pct or 5.0
-            ),
+            )
+            or 5.0,
             battery_max_soc_pct=convert_to_float(
                 live.huawei_batteries_charging_cutoff_capacity_pct
             )
             or 100.0,
             battery_max_charge_power_w=convert_to_float(
                 live.huawei_batteries_max_charge_power_w
-            ),
+            )
+            or 5000.0,
             battery_max_discharge_power_w=convert_to_float(
                 live.huawei_batteries_max_discharge_power_w
             )
@@ -596,12 +610,14 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 cfg.batteries_charge_efficiency
             )
             or 95.0,
-            battery_conversion_loss_pct=convert_to_float(cfg.batteries_conversion_loss),
+            battery_conversion_loss_pct=convert_to_float(cfg.batteries_conversion_loss)
+            or 10.0,
             battery_discharge_efficiency_pct=convert_to_float(
                 cfg.batteries_discharge_efficiency
             )
             or 95.0,
-            battery_purchase_price=convert_to_float(cfg.batteries_purchase_price),
+            battery_purchase_price=convert_to_float(cfg.batteries_purchase_price)
+            or 0.0,
             battery_expected_cycles=(
                 v
                 if (v := convert_to_int(cfg.batteries_expected_cycles)) is not None
@@ -640,11 +656,14 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             excess_export_enabled=bool(cfg.batteries_enable_excess_export),
             excess_export_discharge_buffer_pct=convert_to_float(
                 cfg.batteries_excess_export_discharge_buffer
-            ),
+            )
+            or 10.0,
             excess_export_price_threshold=convert_to_float(
                 cfg.batteries_excess_export_price_threshold
-            ),
-            export_min_price=convert_to_float(cfg.energi_data_service_export_min_price),
+            )
+            or 0.10,
+            export_min_price=convert_to_float(cfg.energi_data_service_export_min_price)
+            or 0.0,
             months_winter=list(cfg.months_winter or []),
             house_power_includes_ev=bool(cfg.house_power_includes_ev_charger_power),
             is_read_only=bool(cfg.read_only),

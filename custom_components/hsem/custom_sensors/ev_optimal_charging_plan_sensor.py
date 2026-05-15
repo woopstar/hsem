@@ -28,13 +28,12 @@ from typing import Any
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.const import EntityCategory
 from homeassistant.helpers.restore_state import RestoreEntity
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from custom_components.hsem.coordinator import (
     CoordinatorData,
     HSEMDataUpdateCoordinator,
 )
-from custom_components.hsem.entity import HSEMEntity
+from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.utils.sensornames import (
     get_ev_optimal_charging_plan_sensor_entity_id,
     get_ev_optimal_charging_plan_sensor_name,
@@ -52,7 +51,7 @@ _VALID_STATES = {
 
 
 class HSEMEVOptimalChargingPlanSensor(
-    CoordinatorEntity[HSEMDataUpdateCoordinator],
+    HSEMCoordinatorEntity,
     SensorEntity,
     HSEMEntity,
     RestoreEntity,
@@ -78,7 +77,7 @@ class HSEMEVOptimalChargingPlanSensor(
             config_entry: The HSEM config entry.
             coordinator: The shared :class:`HSEMDataUpdateCoordinator`.
         """
-        CoordinatorEntity.__init__(self, coordinator)
+        HSEMCoordinatorEntity.__init__(self, coordinator)
         HSEMEntity.__init__(self, config_entry)
 
         self._config_entry = config_entry

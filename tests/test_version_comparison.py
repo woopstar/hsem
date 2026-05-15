@@ -42,6 +42,18 @@ class TestParseVersion:
         assert result == Version("1.5.0a1")
 
 
+def _v(version_str: str) -> "Version":
+    """Parse a version string and assert it is not None.
+
+    Helper that wraps :func:`_parse_version` for ordering tests where the
+    input is always a valid PEP 440 string.  The assertion both validates the
+    assumption and narrows the ``Version | None`` return type for Pyright.
+    """
+    result = _parse_version(version_str)
+    assert result is not None, f"Expected valid version, got None for {version_str!r}"
+    return result
+
+
 class TestVersionOrdering:
     """Tests for numeric version ordering correctness.
 
@@ -52,42 +64,42 @@ class TestVersionOrdering:
 
     def test_1_10_greater_than_1_9(self):
         """1.10 must compare as greater than 1.9 (not less, as string comparison gives)."""
-        assert _parse_version("1.10") > _parse_version("1.9")
+        assert _v("1.10") > _v("1.9")
 
     def test_1_9_less_than_1_10(self):
         """1.9 must compare as less than 1.10."""
-        assert _parse_version("1.9") < _parse_version("1.10")
+        assert _v("1.9") < _v("1.10")
 
     def test_1_10_1_greater_than_1_10(self):
         """1.10.1 must compare as greater than 1.10."""
-        assert _parse_version("1.10.1") > _parse_version("1.10")
+        assert _v("1.10.1") > _v("1.10")
 
     def test_1_10_less_than_1_10_1(self):
         """1.10 must compare as less than 1.10.1."""
-        assert _parse_version("1.10") < _parse_version("1.10.1")
+        assert _v("1.10") < _v("1.10.1")
 
     def test_equal_versions(self):
         """Two identical version strings must compare as equal."""
-        assert _parse_version("1.10") == _parse_version("1.10")
+        assert _v("1.10") == _v("1.10")
 
     def test_pre_release_less_than_release(self):
         """A pre-release version (1.5.0a1) must compare as less than the release (1.5.0)."""
-        assert _parse_version("1.5.0a1") < _parse_version("1.5.0")
+        assert _v("1.5.0a1") < _v("1.5.0")
 
     def test_min_huawei_version_accepted(self):
         """Installed version equal to the minimum required version must be accepted."""
-        installed = _parse_version("1.5.0a1")
-        required = _parse_version("1.5.0a1")
+        installed = _v("1.5.0a1")
+        required = _v("1.5.0a1")
         assert installed >= required
 
     def test_version_above_minimum_accepted(self):
         """A version higher than the minimum required must be accepted."""
-        installed = _parse_version("1.10.0")
-        required = _parse_version("1.5.0a1")
+        installed = _v("1.10.0")
+        required = _v("1.5.0a1")
         assert installed >= required
 
     def test_version_below_minimum_rejected(self):
         """A version lower than the minimum required must be rejected."""
-        installed = _parse_version("1.4.9")
-        required = _parse_version("1.5.0a1")
+        installed = _v("1.4.9")
+        required = _v("1.5.0a1")
         assert installed < required

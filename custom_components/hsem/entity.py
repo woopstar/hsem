@@ -1,10 +1,18 @@
+from __future__ import annotations
+
 import logging
+from typing import TYPE_CHECKING
 
 import homeassistant.helpers.device_registry as dr
 import homeassistant.helpers.entity_registry as er
-from homeassistant.helpers.entity import DeviceInfo, Entity
+from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.entity import Entity
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from custom_components.hsem.const import DOMAIN, NAME
+
+if TYPE_CHECKING:
+    from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -57,3 +65,25 @@ class HSEMEntity(Entity):
         entity_reg.async_update_entity(self.entity_id, device_id=device_id)
 
         await super().async_added_to_hass()
+
+
+class HSEMCoordinatorEntity(CoordinatorEntity["HSEMDataUpdateCoordinator"]):
+    """Typed :class:`~homeassistant.helpers.update_coordinator.CoordinatorEntity`
+    base for all HSEM coordinator-backed sensors.
+
+    Pre-parametrises ``CoordinatorEntity`` with :class:`HSEMDataUpdateCoordinator`
+    so that Pyright correctly resolves the ``coordinator`` type at every
+    ``super().__init__`` call site and in every ``self.coordinator`` access.
+
+    Inheriting sensors should call
+    ``HSEMCoordinatorEntity.__init__(self, coordinator)`` (or ``super().__init__``)
+    instead of the raw ``CoordinatorEntity.__init__``.
+    """
+
+    def __init__(self, coordinator: HSEMDataUpdateCoordinator) -> None:
+        """Initialise with a typed coordinator.
+
+        Args:
+            coordinator: The shared :class:`HSEMDataUpdateCoordinator`.
+        """
+        super().__init__(coordinator)

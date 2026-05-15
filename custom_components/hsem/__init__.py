@@ -78,8 +78,14 @@ async def check_huawei_solar_version(hass: HomeAssistant) -> bool:
     return True
 
 
-async def async_setup(hass: HomeAssistant, config: dict) -> bool:
-    """Set up the HSEM integration."""
+async def async_setup(hass: HomeAssistant, _config: dict) -> bool:
+    """Set up the HSEM integration.
+
+    The ``_config`` parameter is required by the Home Assistant component-setup
+    protocol (passed when HA loads YAML configuration) but is not used because
+    HSEM is a config-entry-only integration.  The leading underscore signals
+    this is intentionally unused.
+    """
     if not await check_huawei_solar_version(hass):
         _LOGGER.error(
             "Failed to set up HSEM due to missing or incompatible Huawei Solar version."

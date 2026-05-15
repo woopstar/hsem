@@ -34,13 +34,12 @@ from typing import Any
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.const import EntityCategory
 from homeassistant.helpers.restore_state import RestoreEntity
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from custom_components.hsem.coordinator import (
     CoordinatorData,
     HSEMDataUpdateCoordinator,
 )
-from custom_components.hsem.entity import HSEMEntity
+from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.utils.inverter_verify import ApplyStatus
 from custom_components.hsem.utils.sensornames import (
     get_applier_status_sensor_entity_id,
@@ -53,7 +52,7 @@ _VALID_STATES = {s.value for s in ApplyStatus} | {_PENDING}
 
 
 class HSEMApplierStatusSensor(
-    CoordinatorEntity[HSEMDataUpdateCoordinator],
+    HSEMCoordinatorEntity,
     SensorEntity,
     HSEMEntity,
     RestoreEntity,
@@ -89,7 +88,7 @@ class HSEMApplierStatusSensor(
             config_entry: The HSEM config entry.
             coordinator: The shared :class:`HSEMDataUpdateCoordinator`.
         """
-        CoordinatorEntity.__init__(self, coordinator)
+        HSEMCoordinatorEntity.__init__(self, coordinator)
         HSEMEntity.__init__(self, config_entry)
 
         self._config_entry = config_entry
