@@ -29,13 +29,22 @@ Why no custom ``/config/hsem.log``:
 * Home Assistant already provides log rotation, level filtering, and a
   central log viewer.  Mirroring the same lines into a second file added
   no diagnostic value while doubling the disk-I/O cost.
-* Users can still get HSEM-only output by setting the log level in
-  ``configuration.yaml``::
+* Home Assistant's bootstrap sets the **root logger** level to ``WARNING``
+  (or ``INFO`` with ``hass -v``).  Without an override, every HSEM
+  ``debug``/``info`` call would be filtered out before reaching the
+  ``home-assistant.log`` queue handler.  We therefore set
+  ``HSEM_LOGGER.setLevel(logging.DEBUG)`` so that the HSEM in-config
+  *verbose_logging* checkbox (and ``set_planner_verbose``) remain the
+  single source of truth: when they are ``True``, planner / pipeline
+  detail flows straight into ``home-assistant.log`` without any YAML
+  reconfiguration.
+* Users who want still finer control can layer the standard
+  ``configuration.yaml`` block on top — it overrides our default level::
 
       logger:
         default: warning
         logs:
-          custom_components.hsem: debug
+          custom_components.hsem: info   # quieter than our DEBUG default
 
 Verbose flag resolution order (first match wins):
 
@@ -59,6 +68,17 @@ import logging
 # all HSEM modules share a single configurable logger that the user can
 # control via the standard Home Assistant ``logger:`` YAML block.
 HSEM_LOGGER = logging.getLogger("custom_components.hsem")
+
+# Accept records down to DEBUG so the HSEM in-config verbose_logging flag
+# is the single gate that decides what is emitted.  Records still propagate
+# (``propagate`` defaults to ``True``) to Home Assistant's root logger,
+# whose queue handler writes them to ``home-assistant.log`` from a
+# background thread — non-blocking, no private file handler required.
+#
+# A user-supplied ``logger:`` YAML entry for ``custom_components.hsem``
+# overrides this default, so power users can still raise the floor (e.g.
+# to INFO or WARNING) without code changes.
+HSEM_LOGGER.setLevel(logging.DEBUG)
 
 
 # ---------------------------------------------------------------------------

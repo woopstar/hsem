@@ -1,0 +1,52 @@
+fix(logger): restore HSEM_LOGGER.setLevel(DEBUG) so planner output reaches home-assistant.log
+
+Without this the planner's verbose slot-decision output (and all other
+HSEM info/debug lines) was silently dropped.
+
+Root cause
+----------
+The previous fix (PR #415 first commit) removed the RotatingFileHandler
+and its associated ``HSEM_LOGGER.setLevel(logging.DEBUG)`` call.  The
+removal of setLevel meant that ``HSEM_LOGGER.getEffectiveLevel()``
+inherited the root logger level — which Home Assistant's bootstrap sets
+to WARNING (``logger.setLevel(logging.INFO if verbose else logging.WARNING)``
+in homeassistant/bootstrap.py).  With an effective level of WARNING,
+``HSEM_LOGGER.isEnabledFor(INFO)`` returned False, so every
+``log_planner("info", ...)`` and ``log_planner("debug", ...)`` call was
+rejected before the record could propagate to HA's queue handler.
+
+How Python logging propagation works
+-------------------------------------
+When a logger calls ``isEnabledFor(level)``, Python walks up the parent
+chain until it finds a logger with a non-NOTSET level.  That floor is
+used as the gate.  Once a record passes the gate and is dispatched via
+``callHandlers``, parent loggers' *levels* are NOT re-checked — only
+handler levels matter, and HA's QueueHandler level defaults to NOTSET
+(pass all).  So setting ``HSEM_LOGGER.setLevel(DEBUG)`` makes the logger
+its own gate and bypasses the root WARNING floor, allowing records to
+propagate through to ``home-assistant.log``.
+
+Fix
+---
+Restore ``HSEM_LOGGER.setLevel(logging.DEBUG)`` in utils/logger.py so
+that the HSEM in-config verbose_logging flag (and set_planner_verbose)
+remain the single gate for what is emitted — no user YAML edit required.
+
+A user-supplied ``logger:`` YAML entry for ``custom_components.hsem``
+still overrides this default, so power users can raise the floor if
+they want.
+
+New regression tests (tests/test_logger_no_file_handler.py)
+-------------------------------------------------------------
+- test_logger_level_is_debug: asserts HSEM_LOGGER.level == DEBUG
+- test_logger_is_enabled_for_info_and_debug: asserts isEnabledFor(INFO/DEBUG)
+- test_log_planner_info_reaches_caplog_when_root_is_warning: end-to-end
+  simulation of HA's root-at-WARNING + planner INFO emission via log_planner
+- test_log_planner_debug_reaches_caplog_when_root_is_warning: same for DEBUG
+- test_log_planner_suppressed_when_not_verbose: verbose=False → no output
+
+Verification
+------------
+- pytest tests/: 1801 passed, 3 xfailed (no regressions)
+- pytest tests/test_logger_no_file_handler.py: 15 passed (all new tests green)
+- tox -e lint: All checks passed

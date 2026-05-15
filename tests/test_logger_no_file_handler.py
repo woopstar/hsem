@@ -76,6 +76,35 @@ class TestLoggerHandlerHygiene:
         """HSEM_LOGGER must propagate so Home Assistant captures every record."""
         assert HSEM_LOGGER.propagate is True
 
+    def test_logger_level_is_debug(self) -> None:
+        """HSEM_LOGGER must accept DEBUG records.
+
+        Home Assistant's bootstrap sets the **root logger** level to WARNING
+        (or INFO with ``hass -v``).  Without an override on ``HSEM_LOGGER``
+        itself, every HSEM ``debug``/``info`` call would be rejected by
+        :meth:`Logger.isEnabledFor` before the record could propagate to
+        Home Assistant's queue handler.  Setting level=DEBUG keeps the
+        HSEM-config ``verbose_logging`` checkbox (and
+        :func:`set_planner_verbose`) as the single gate — no YAML edit
+        required for users to see planner detail in ``home-assistant.log``.
+        """
+        assert HSEM_LOGGER.level == logging.DEBUG, (
+            "HSEM_LOGGER must be set to DEBUG so the in-config verbose flag "
+            "controls visibility without requiring users to override the "
+            "root level via configuration.yaml. Got: "
+            f"{logging.getLevelName(HSEM_LOGGER.level)}"
+        )
+
+    def test_logger_is_enabled_for_info_and_debug(self) -> None:
+        """End-to-end: HSEM_LOGGER must accept both INFO and DEBUG records.
+
+        Guards against any future regression that re-introduces a higher
+        floor (e.g. ``setLevel(WARNING)``), which would silently drop the
+        planner's structured slot-decision output.
+        """
+        assert HSEM_LOGGER.isEnabledFor(logging.DEBUG)
+        assert HSEM_LOGGER.isEnabledFor(logging.INFO)
+
 
 class TestAsyncLoggerNonBlocking:
     """Verify ``async_logger`` is a non-blocking coroutine."""
@@ -141,3 +170,111 @@ class TestAsyncLoggerNonBlocking:
         replacement = AsyncMock()
         await replacement(MagicMock(), "noop")
         replacement.assert_awaited_once()
+
+
+class TestPlannerLoggerEndToEnd:
+    """End-to-end: ``log_planner`` records must reach Home Assistant's log.
+
+    Reproduces the production failure mode: Home Assistant boots with the
+    root logger pinned to WARNING (its default), the user enables HSEM
+    verbose logging, the coordinator calls ``set_planner_verbose(True)``,
+    and the pure-Python planner emits an INFO record via ``log_planner``.
+
+    Before the ``setLevel(logging.DEBUG)`` fix, the INFO record was rejected
+    at ``HSEM_LOGGER.isEnabledFor(INFO)`` because the logger inherited the
+    root's WARNING floor, so nothing reached ``home-assistant.log``.
+    """
+
+    def test_log_planner_info_reaches_caplog_when_root_is_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Simulate HA's WARNING root + planner INFO emission."""
+        from custom_components.hsem.planner.planner_logger import (
+            log_planner,
+            set_planner_verbose,
+        )
+
+        # Pin the root logger to WARNING (HA's default) for the duration
+        # of this test — this is the exact condition that masked the
+        # planner output in production.
+        original_root_level = logging.root.level
+        logging.root.setLevel(logging.WARNING)
+        try:
+            set_planner_verbose(True)
+            try:
+                # caplog attaches its capture handler at the propagation
+                # path; HSEM_LOGGER.setLevel(DEBUG) ensures the record is
+                # not filtered before it reaches the handler chain.
+                with caplog.at_level(logging.DEBUG, logger="custom_components.hsem"):
+                    log_planner("info", "[engine] e2e: slot %d cost=%.4f", 5, 0.1234)
+
+                matching = [
+                    r
+                    for r in caplog.records
+                    if r.levelno == logging.INFO
+                    and "e2e: slot 5 cost=0.1234" in r.getMessage()
+                ]
+                assert matching, (
+                    "log_planner('info', ...) must reach the standard logging "
+                    "chain even when the HA root logger is at WARNING. "
+                    f"Captured records: {[r.getMessage() for r in caplog.records]}"
+                )
+            finally:
+                set_planner_verbose(False)
+        finally:
+            logging.root.setLevel(original_root_level)
+
+    def test_log_planner_debug_reaches_caplog_when_root_is_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """DEBUG records — the most aggressive level — must also survive."""
+        from custom_components.hsem.planner.planner_logger import (
+            log_planner,
+            set_planner_verbose,
+        )
+
+        original_root_level = logging.root.level
+        logging.root.setLevel(logging.WARNING)
+        try:
+            set_planner_verbose(True)
+            try:
+                with caplog.at_level(logging.DEBUG, logger="custom_components.hsem"):
+                    log_planner("debug", "[engine] e2e: debug slot=%d", 7)
+
+                matching = [
+                    r
+                    for r in caplog.records
+                    if r.levelno == logging.DEBUG
+                    and "e2e: debug slot=7" in r.getMessage()
+                ]
+                assert matching, (
+                    "log_planner('debug', ...) must reach the standard logging "
+                    "chain when verbose logging is enabled, regardless of the "
+                    "HA root logger level. "
+                    f"Captured records: {[r.getMessage() for r in caplog.records]}"
+                )
+            finally:
+                set_planner_verbose(False)
+        finally:
+            logging.root.setLevel(original_root_level)
+
+    def test_log_planner_suppressed_when_not_verbose(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """With verbose disabled, ``log_planner`` must emit nothing.
+
+        The HSEM-config verbose flag remains the single gate — even when
+        the underlying logger is at DEBUG.
+        """
+        from custom_components.hsem.planner.planner_logger import (
+            log_planner,
+            set_planner_verbose,
+        )
+
+        set_planner_verbose(False)
+        with caplog.at_level(logging.DEBUG, logger="custom_components.hsem"):
+            log_planner("info", "must-not-appear")
+
+        assert not any("must-not-appear" in r.getMessage() for r in caplog.records), (
+            "log_planner must respect _PLANNER_VERBOSE=False"
+        )
