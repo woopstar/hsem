@@ -1,4 +1,4 @@
-"""Async file logger for HSEM sensor pipeline modules.
+"""Async-safe logger for HSEM sensor pipeline modules.
 
 Single responsibility: provide :func:`async_logger`, the single logging
 entry-point used throughout the HSEM pipeline.
@@ -7,6 +7,35 @@ Splitting this out of ``utils/misc.py`` removes the ``_hsem_verbose_logging``
 coupling from the old sensor and allows the new pipeline modules (which carry
 their verbose flag inside ``self._cfg.verbose_logging``) to share the same
 logger without circular imports.
+
+Logging strategy
+----------------
+HSEM intentionally **does not** install its own file handler.  All messages
+are emitted through the standard ``custom_components.hsem`` logger, which
+Home Assistant routes into ``home-assistant.log`` (and any other handler the
+user configures via the ``logger:`` block in ``configuration.yaml``).
+
+Why no custom ``/config/hsem.log``:
+
+* ``RotatingFileHandler`` performs synchronous ``open()``/``write()``/
+  ``rotate()`` calls.  When invoked from inside the event loop (which all
+  HSEM async code is), Home Assistant raises a ``Detected blocking call to
+  open`` warning and asks the integration author to file a bug.  The
+  previous design also wrapped writes in a private ``ThreadPoolExecutor``,
+  but only the ``async_logger`` callers used it — synchronous callers in
+  pure-Python planner modules (``planner/planner_logger.py``) still wrote
+  directly to the file handler, which is exactly the blocking-I/O code path
+  Home Assistant flagged.
+* Home Assistant already provides log rotation, level filtering, and a
+  central log viewer.  Mirroring the same lines into a second file added
+  no diagnostic value while doubling the disk-I/O cost.
+* Users can still get HSEM-only output by setting the log level in
+  ``configuration.yaml``::
+
+      logger:
+        default: warning
+        logs:
+          custom_components.hsem: debug
 
 Verbose flag resolution order (first match wins):
 
@@ -20,35 +49,16 @@ Verbose flag resolution order (first match wins):
 
 from __future__ import annotations
 
-import asyncio
 import logging
-import sys
-from concurrent.futures import ThreadPoolExecutor
-from logging.handlers import RotatingFileHandler
 
 # ---------------------------------------------------------------------------
-# File-based rotating logger shared across all pipeline modules
+# Shared logger — propagates to Home Assistant's root handlers
 # ---------------------------------------------------------------------------
 
-HSEM_LOGGER = logging.getLogger("hsem_logger")
-LOG_FILE_PATH = "/config/hsem.log"
-LOG_FILE_MAX_BYTES = 5 * 1024 * 1024  # 5 MB
-LOG_FILE_BACKUP_COUNT = 1
-
-if "pytest" not in sys.modules:
-    _file_handler = RotatingFileHandler(
-        LOG_FILE_PATH,
-        maxBytes=LOG_FILE_MAX_BYTES,
-        backupCount=LOG_FILE_BACKUP_COUNT,
-    )
-    _formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-    _file_handler.setFormatter(_formatter)
-    HSEM_LOGGER.addHandler(_file_handler)
-
-HSEM_LOGGER.setLevel(logging.DEBUG)
-HSEM_LOGGER.propagate = False
-
-LOG_EXECUTOR = ThreadPoolExecutor(max_workers=1)
+# Use the same canonical name as ``custom_components/hsem/__init__.py`` so
+# all HSEM modules share a single configurable logger that the user can
+# control via the standard Home Assistant ``logger:`` YAML block.
+HSEM_LOGGER = logging.getLogger("custom_components.hsem")
 
 
 # ---------------------------------------------------------------------------
@@ -57,7 +67,13 @@ LOG_EXECUTOR = ThreadPoolExecutor(max_workers=1)
 
 
 async def async_logger(self, msg: str, level: str = "debug") -> None:
-    """Write *msg* to the HSEM rotating log file if verbose logging is enabled.
+    """Emit *msg* through the standard HSEM logger if verbose logging is on.
+
+    The implementation is intentionally a plain (non-blocking) call to the
+    standard ``logging`` module: Python's ``logging`` handlers used by Home
+    Assistant are safe to invoke from within the event loop.  The function
+    remains a coroutine so callers do not need to change their ``await``
+    syntax.
 
     Works with both the refactored sensor (``self._cfg.verbose_logging``) and
     the legacy attribute (``self._hsem_verbose_logging``) so that no callers
@@ -82,5 +98,4 @@ async def async_logger(self, msg: str, level: str = "debug") -> None:
         return
 
     log_method = getattr(HSEM_LOGGER, level.lower(), HSEM_LOGGER.debug)
-    loop = asyncio.get_running_loop()
-    await loop.run_in_executor(LOG_EXECUTOR, log_method, msg)
+    log_method(msg)
