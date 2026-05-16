@@ -32,8 +32,8 @@ from __future__ import annotations
 from datetime import datetime
 
 from custom_components.hsem.models.planner_outputs import PlannedSlot
-from custom_components.hsem.planner.planner_logger import log_planner
 from custom_components.hsem.utils.datetime_utils import as_tz
+from custom_components.hsem.utils.logger import log_planner
 
 
 def simulate_soc(
@@ -152,8 +152,12 @@ def simulate_soc(
         # ev_accounted_load_kwh — EV AC load already baked into avg_house_consumption
         #                        (base_load_includes_ev=True case)
         #
-        # In BOTH cases the EV charger is an AC appliance drawing from grid/PV
-        # directly — it NEVER draws from the house battery.
+        # The EV charger and the house loads share the same AC bus with the
+        # battery inverter.  When the battery discharges, the AC power feeds
+        # EVERYTHING on the bus — you cannot selectively skip the EV charger.
+        # Therefore, when ev_load > 0, battery discharge is suppressed and
+        # ALL demand is covered from the grid to avoid DC→AC→DC conversion
+        # losses through the EV charger.
         #
         # For base_load_includes_ev=False:
         #   house_load = avg_house_consumption (pure house, no EV)
@@ -180,11 +184,13 @@ def simulate_soc(
         scheduled_charge = max(scheduled_charge, 0.0)
         slot.batteries_charged = round(scheduled_charge, 3)
 
-        # --- Net demand on the HOUSE BATTERY (EV load excluded) ---
-        # The EV charger is an AC appliance that draws directly from the grid
-        # or from PV surplus.  It never draws from the house battery.
-        # Therefore the battery's net demand is computed from pure house load only;
-        # ev_load (both accounted and injected) is added to grid_import separately.
+        # --- Net demand on the shared AC bus ---
+        # The battery, house loads, and EV charger all share one AC bus.
+        # When the battery discharges, the AC power flows to everything on
+        # the bus — you cannot selectively skip the EV.  Therefore when the
+        # EV is charging we MUST NOT discharge the battery; doing so would
+        # create DC→AC→DC conversion losses through the EV charger for no
+        # benefit.
         #
         # PV covers house load first.  The remainder (positive = deficit,
         # negative = surplus) determines whether the battery charges or
@@ -194,34 +200,48 @@ def simulate_soc(
         )  # positive = house needs energy; negative = surplus
 
         if net_demand > 0:
-            # House demand exceeds PV.  Battery discharges to cover the gap;
-            # anything the battery cannot supply is imported from the grid.
-            # Scheduled charge (from grid or pre-planned solar) is in addition
-            # to the discharge.
+            # House demand exceeds PV on the shared AC bus.
+            #
+            # When the EV is charging, the battery MUST NOT discharge.
+            # The battery, house loads, and EV charger all share one AC bus —
+            # you cannot selectively route discharge power to the house while
+            # excluding the EV.  Any DC→AC discharge would feed both, creating
+            # needless DC→AC→DC conversion losses through the EV charger.
+            # Instead, cover everything (house + EV + scheduled charge) from
+            # the grid when EV is active.
             #
             # Discharge efficiency: to deliver `net_demand` kWh to the house
             # the battery must release `net_demand / discharge_eff` kWh.
             # We cap to available capacity and per-slot limit then compute
             # what the house actually receives from that draw.
-            max_discharge_cap = cap  # can't discharge beyond available capacity
-            if max_discharge_per_slot is not None:
-                max_discharge_cap = min(max_discharge_cap, max_discharge_per_slot)
-            # Battery energy to remove: enough to cover demand via discharge_eff
-            discharge_needed = net_demand / discharge_eff
-            discharge = min(discharge_needed, max_discharge_cap)
-            discharge = max(discharge, 0.0)
-            # Energy actually delivered to the house from battery (post loss)
-            house_from_battery = discharge * discharge_eff
-            # Remaining house demand from grid + grid energy for scheduled charge.
-            # EV load is added on top: the EV draws from grid/PV directly,
-            # independently of what the battery does.
-            house_grid_import = max(net_demand - house_from_battery, 0.0)
-            grid_import = (
-                house_grid_import
-                + scheduled_charge / charge_eff
-                + ev_load  # EV draws from grid (PV already consumed by house above)
-            )
-            grid_export = 0.0
+            if ev_load > 1e-9:
+                # EV is charging — no battery discharge.  Everything from grid.
+                discharge = 0.0
+                house_grid_import = net_demand
+                grid_import = (
+                    house_grid_import + scheduled_charge / charge_eff + ev_load
+                )
+                grid_export = 0.0
+            else:
+                max_discharge_cap = cap  # can't discharge beyond available capacity
+                if max_discharge_per_slot is not None:
+                    max_discharge_cap = min(max_discharge_cap, max_discharge_per_slot)
+                # Battery energy to remove: enough to cover demand via discharge_eff
+                discharge_needed = net_demand / discharge_eff
+                discharge = min(discharge_needed, max_discharge_cap)
+                discharge = max(discharge, 0.0)
+                # Energy actually delivered to the house from battery (post loss)
+                house_from_battery = discharge * discharge_eff
+                # Remaining house demand from grid + grid energy for scheduled charge.
+                # EV load is added on top: the EV draws from grid/PV directly,
+                # independently of what the battery does.
+                house_grid_import = max(net_demand - house_from_battery, 0.0)
+                grid_import = (
+                    house_grid_import
+                    + scheduled_charge / charge_eff
+                    + ev_load  # EV draws from grid (PV already consumed by house above)
+                )
+                grid_export = 0.0
         else:
             # PV surplus (or balanced: net_demand == 0) beyond house load.
             # The pre-scheduled charge (batteries_charged) is expressed as battery-side

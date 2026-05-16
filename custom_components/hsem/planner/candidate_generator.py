@@ -49,8 +49,8 @@ from custom_components.hsem.planner.milp_optimizer import (
     is_scipy_available,
     solve_milp,
 )
-from custom_components.hsem.planner.planner_logger import log_planner
 from custom_components.hsem.utils.datetime_utils import as_tz
+from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.recommendations import Recommendations
 
 # ---------------------------------------------------------------------------

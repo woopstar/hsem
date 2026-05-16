@@ -58,7 +58,6 @@ from custom_components.hsem.planner.ev_planner import (
     apply_ev_planned_load_to_slots,
     build_ev_charging_plan,
 )
-from custom_components.hsem.planner.planner_logger import log_planner
 from custom_components.hsem.planner.slot_population import (
     build_slots,
     build_time_series_index,
@@ -73,6 +72,7 @@ from custom_components.hsem.planner.slot_population import (
 )
 from custom_components.hsem.planner.soc_simulation import simulate_soc
 from custom_components.hsem.utils.datetime_utils import as_tz
+from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import calculate_recommended_threshold
 from custom_components.hsem.utils.recommendations import Recommendations
 
@@ -561,7 +561,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     for slot in slots:
         log_planner(
             "debug",
-            "[slot] %s→%s  import=%.4f  export=%.4f  "
+            "[slot] %s→%s  import_price=%.4f  export_price=%.4f  "
             "pv=%.3f  cons=%.3f  net=%.3f  est_cost=%.4f",
             slot.start.strftime("%d %H:%M"),
             slot.end.strftime("%H:%M"),
@@ -884,7 +884,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
             "charged=%.3f  discharged=%.3f  "
             "pv=%.3f  cons=%.3f  net=%.3f  "
             "grid_in=%.3f  grid_out=%.3f  "
-            "import=%.4f  export=%.4f  ev=%.3f",
+            "import_price=%.4f  export_price=%.4f  ev=%.3f",
             "▶ " if is_current else "  ",
             slot.start.strftime("%d %H:%M"),
             slot.end.strftime("%H:%M"),

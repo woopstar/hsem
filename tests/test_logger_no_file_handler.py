@@ -189,10 +189,7 @@ class TestPlannerLoggerEndToEnd:
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
         """Simulate HA's WARNING root + planner INFO emission."""
-        from custom_components.hsem.planner.planner_logger import (
-            log_planner,
-            set_planner_verbose,
-        )
+        from custom_components.hsem.utils.logger import log_planner, set_planner_verbose
 
         # Pin the root logger to WARNING (HA's default) for the duration
         # of this test — this is the exact condition that masked the
@@ -228,10 +225,7 @@ class TestPlannerLoggerEndToEnd:
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
         """DEBUG records — the most aggressive level — must also survive."""
-        from custom_components.hsem.planner.planner_logger import (
-            log_planner,
-            set_planner_verbose,
-        )
+        from custom_components.hsem.utils.logger import log_planner, set_planner_verbose
 
         original_root_level = logging.root.level
         logging.root.setLevel(logging.WARNING)
@@ -266,10 +260,7 @@ class TestPlannerLoggerEndToEnd:
         The HSEM-config verbose flag remains the single gate — even when
         the underlying logger is at DEBUG.
         """
-        from custom_components.hsem.planner.planner_logger import (
-            log_planner,
-            set_planner_verbose,
-        )
+        from custom_components.hsem.utils.logger import log_planner, set_planner_verbose
 
         set_planner_verbose(False)
         with caplog.at_level(logging.DEBUG, logger="custom_components.hsem"):

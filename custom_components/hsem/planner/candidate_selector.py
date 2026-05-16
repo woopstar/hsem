@@ -41,9 +41,9 @@ from custom_components.hsem.planner.candidate_generator import (
     CandidatePlan,
 )
 from custom_components.hsem.planner.cost_function import CostWeights, score_plan
-from custom_components.hsem.planner.planner_logger import log_planner
 from custom_components.hsem.planner.soc_simulation import simulate_soc
 from custom_components.hsem.utils.datetime_utils import as_tz
+from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.recommendations import Recommendations
 
 # SoC floor tolerance — plans are accepted even if they dip this many
