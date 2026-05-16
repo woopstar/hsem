@@ -94,11 +94,9 @@ jobs:
 
       - name: Run Pyright type checker
         run: python -m pyright
-        continue-on-error: true  # Staged: informational until baseline is clean
 
       - name: Run Vulture dead-code detector
         run: python -m vulture custom_components/hsem tests vulture_whitelist.py --min-confidence 80
-        continue-on-error: true  # Staged: informational until baseline is clean
 
   tests:
     name: Tests with pytest (Python ${{ matrix.python-version }})
