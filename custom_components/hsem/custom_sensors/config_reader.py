@@ -47,6 +47,8 @@ def build_sensor_config(config_entry) -> SensorConfig:
     """
     cfg = SensorConfig()
 
+    cfg.batteries_conversion_loss = 0.04
+
     cfg.read_only = convert_to_boolean(get_config_value(config_entry, "hsem_read_only"))
     cfg.verbose_logging = convert_to_boolean(
         get_config_value(config_entry, "hsem_verbose_logging")

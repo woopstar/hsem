@@ -9,7 +9,9 @@
     "venv",
     ".tox",
     "build",
-    "dist"
+    "dist",
+    "**/node_modules",
+    "**/.*"
   ],
   "pythonVersion": "3.13",
   "typeCheckingMode": "basic",
