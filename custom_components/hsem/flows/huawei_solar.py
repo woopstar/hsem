@@ -124,22 +124,6 @@ async def get_huawei_solar_step_schema(config_entry) -> vol.Schema:
                 }
             ),
             vol.Required(
-                "hsem_batteries_conversion_loss",
-                default=get_config_value(
-                    config_entry, "hsem_batteries_conversion_loss"
-                ),
-            ): selector(
-                {
-                    "number": {
-                        "min": 0,
-                        "max": 50,
-                        "step": 1,
-                        "unit_of_measurement": "%",
-                        "mode": "slider",
-                    }
-                }
-            ),
-            vol.Required(
                 "hsem_batteries_cycle_cost",
                 default=get_config_value(config_entry, "hsem_batteries_cycle_cost"),
             ): selector(
@@ -169,7 +153,6 @@ async def validate_huawei_solar_input(hass, user_input) -> dict[str, str]:
     scalar_required = [
         "hsem_batteries_purchase_price",
         "hsem_batteries_expected_cycles",
-        "hsem_batteries_conversion_loss",
     ]
     required_errors: dict[str, str] = {
         f: "required" for f in scalar_required if f not in user_input

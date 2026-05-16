@@ -31,9 +31,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from custom_components.hsem.datetime_utils import as_tz
 from custom_components.hsem.models.planner_outputs import PlannedSlot
 from custom_components.hsem.planner.planner_logger import log_planner
+from custom_components.hsem.utils.datetime_utils import as_tz
 
 
 def simulate_soc(

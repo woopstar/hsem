@@ -42,7 +42,6 @@ import copy
 from dataclasses import dataclass
 from datetime import datetime
 
-from custom_components.hsem.datetime_utils import as_tz
 from custom_components.hsem.models.planner_inputs import PlannerInput
 from custom_components.hsem.models.planner_outputs import PlannedSlot
 from custom_components.hsem.planner.milp_optimizer import (
@@ -51,6 +50,7 @@ from custom_components.hsem.planner.milp_optimizer import (
     solve_milp,
 )
 from custom_components.hsem.planner.planner_logger import log_planner
+from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.recommendations import Recommendations
 
 # ---------------------------------------------------------------------------

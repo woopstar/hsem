@@ -234,13 +234,11 @@ def _default_schedules() -> list[BatteryScheduleInput]:
             enabled=True,
             start=time(7, 0),
             end=time(9, 0),
-            min_price_difference=0.05,
         ),
         BatteryScheduleInput(
             enabled=True,
             start=time(17, 0),
             end=time(21, 0),
-            min_price_difference=0.05,
         ),
     ]
 
@@ -257,7 +255,6 @@ def make_summer_day_input(
     battery_rated_capacity_kwh: float = 10.0,
     battery_end_of_discharge_soc_pct: float = 10.0,
     battery_max_charge_power_w: float = 5000.0,
-    battery_conversion_loss_pct: float = 10.0,
     interval_minutes: int = 60,
     interval_length_hours: int = 24,
     schedules: list[BatteryScheduleInput] | None = None,
@@ -274,7 +271,7 @@ def make_summer_day_input(
         battery_rated_capacity_kwh: Nameplate battery capacity in kWh.
         battery_end_of_discharge_soc_pct: End-of-discharge reserve (0-100 %).
         battery_max_charge_power_w: Maximum charge power in Watts.
-        battery_conversion_loss_pct: Round-trip conversion loss (0-100 %).
+        onversion loss (0-100 %).
         interval_minutes: Slot width in minutes (15 or 60).
         interval_length_hours: Planning horizon in hours (e.g. 24 or 48).
         schedules: Override the default discharge schedules.
@@ -292,7 +289,6 @@ def make_summer_day_input(
         battery_rated_capacity_kwh=battery_rated_capacity_kwh,
         battery_end_of_discharge_soc_pct=battery_end_of_discharge_soc_pct,
         battery_max_charge_power_w=battery_max_charge_power_w,
-        battery_conversion_loss_pct=battery_conversion_loss_pct,
         battery_purchase_price=10_000.0,
         battery_expected_cycles=6000,
         # weights
@@ -326,7 +322,6 @@ def make_winter_day_input(
     battery_rated_capacity_kwh: float = 10.0,
     battery_end_of_discharge_soc_pct: float = 10.0,
     battery_max_charge_power_w: float = 5000.0,
-    battery_conversion_loss_pct: float = 10.0,
     interval_minutes: int = 60,
     interval_length_hours: int = 24,
     schedules: list[BatteryScheduleInput] | None = None,
@@ -343,7 +338,7 @@ def make_winter_day_input(
         battery_rated_capacity_kwh: Nameplate battery capacity in kWh.
         battery_end_of_discharge_soc_pct: End-of-discharge reserve (0-100 %).
         battery_max_charge_power_w: Maximum charge power in Watts.
-        battery_conversion_loss_pct: Round-trip conversion loss (0-100 %).
+        onversion loss (0-100 %).
         interval_minutes: Slot width in minutes (15 or 60).
         interval_length_hours: Planning horizon in hours (e.g. 24 or 48).
         schedules: Override the default discharge schedules.
@@ -361,7 +356,6 @@ def make_winter_day_input(
         battery_rated_capacity_kwh=battery_rated_capacity_kwh,
         battery_end_of_discharge_soc_pct=battery_end_of_discharge_soc_pct,
         battery_max_charge_power_w=battery_max_charge_power_w,
-        battery_conversion_loss_pct=battery_conversion_loss_pct,
         battery_purchase_price=10_000.0,
         battery_expected_cycles=6000,
         # weights
@@ -428,7 +422,6 @@ def make_flat_price_input(
         battery_rated_capacity_kwh=10.0,
         battery_end_of_discharge_soc_pct=10.0,
         battery_max_charge_power_w=5000.0,
-        battery_conversion_loss_pct=10.0,
         battery_purchase_price=0.0,
         battery_expected_cycles=6000,
         weight_1d=25,
@@ -487,7 +480,6 @@ def make_negative_price_input(
         battery_rated_capacity_kwh=10.0,
         battery_end_of_discharge_soc_pct=10.0,
         battery_max_charge_power_w=5000.0,
-        battery_conversion_loss_pct=10.0,
         battery_purchase_price=0.0,
         battery_expected_cycles=6000,
         weight_1d=25,

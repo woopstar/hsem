@@ -10,4 +10,3 @@ class BatterySchedule:
     avg_import_price: float
     needed_batteries_capacity: float
     needed_batteries_capacity_cost: float
-    min_price_difference_required: float

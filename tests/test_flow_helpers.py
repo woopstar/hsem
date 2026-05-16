@@ -58,8 +58,8 @@ class TestBuildBatteriesScheduleStepSchema:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("n", [1, 2, 3])
-    async def test_schema_contains_all_four_fields(self, n: int):
-        """All four expected keys must be present in the built schema."""
+    async def test_schema_contains_three_fields(self, n: int):
+        """All expected keys must be present in the built schema."""
         from custom_components.hsem.flows.schedule_helpers import (
             build_batteries_schedule_step_schema,
         )
@@ -70,7 +70,7 @@ class TestBuildBatteriesScheduleStepSchema:
         assert prefix in keys
         assert f"{prefix}_start" in keys
         assert f"{prefix}_end" in keys
-        assert f"{prefix}_min_price_difference" in keys
+        # min_price_difference field removed
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("n", [1, 2, 3])
@@ -97,29 +97,19 @@ class TestBuildBatteriesScheduleStepSchema:
         assert keys_helper == keys_wrapper
 
     @pytest.mark.asyncio
-    async def test_schema_default_falls_back_to_recommended_threshold(self):
-        """min_price_difference default uses recommended threshold when config value is 0."""
+    async def test_schema_has_no_min_price_difference(self):
+        """The min_price_difference field was removed from the schedule schema."""
         from custom_components.hsem.flows.schedule_helpers import (
             build_batteries_schedule_step_schema,
         )
-        from custom_components.hsem.utils.misc import calculate_recommended_threshold
 
-        # purchase_price=1000, cycles=6000, capacity=10 kWh, loss=10%
-        entry = _make_config_entry(
-            {
-                "hsem_batteries_purchase_price": 1000.0,
-                "hsem_batteries_expected_cycles": 6000,
-                "hsem_batteries_conversion_loss": 10.0,
-                # force min_price_difference to 0 so recommended kicks in
-                "hsem_batteries_enable_batteries_schedule_1_min_price_difference": 0.0,
-            }
-        )
+        entry = _make_config_entry()
         schema = await build_batteries_schedule_step_schema(1, entry)
-        defaults = {str(k): k.default() for k in schema.schema if hasattr(k, "default")}
-        expected = calculate_recommended_threshold(1000.0, 6000, 10.0, 10.0)
-        assert defaults[
+        keys = {str(k) for k in schema.schema}
+        assert (
             "hsem_batteries_enable_batteries_schedule_1_min_price_difference"
-        ] == pytest.approx(expected, abs=1e-6)
+            not in keys
+        )
 
     @pytest.mark.asyncio
     async def test_rated_capacity_resolved_from_hass_state(self):
@@ -179,7 +169,6 @@ class TestValidateBatteriesScheduleInput:
                 prefix: False,
                 f"{prefix}_start": "INVALID",
                 f"{prefix}_end": "INVALID",
-                f"{prefix}_min_price_difference": 0.0,
             },
         )
         assert errors == {}
@@ -199,7 +188,6 @@ class TestValidateBatteriesScheduleInput:
                 prefix: True,
                 f"{prefix}_start": "12:00:00",
                 f"{prefix}_end": "12:00:00",
-                f"{prefix}_min_price_difference": 0.0,
             },
         )
         assert errors.get("base") == "start_time_equals_end_time"
@@ -219,7 +207,6 @@ class TestValidateBatteriesScheduleInput:
                 prefix: True,
                 f"{prefix}_start": "23:00:00",
                 f"{prefix}_end": "02:00:00",
-                f"{prefix}_min_price_difference": 0.0,
             },
         )
         assert errors == {}
@@ -239,7 +226,6 @@ class TestValidateBatteriesScheduleInput:
                 prefix: True,
                 f"{prefix}_start": "not-a-time",
                 f"{prefix}_end": "09:00:00",
-                f"{prefix}_min_price_difference": 0.0,
             },
         )
         assert errors.get(f"{prefix}_start") == "invalid_time_format"
@@ -264,7 +250,6 @@ class TestValidateBatteriesScheduleInput:
             prefix: True,
             f"{prefix}_start": "08:00:00",
             f"{prefix}_end": "08:00:00",
-            f"{prefix}_min_price_difference": 0.1,
         }
         errors_helper = await validate_batteries_schedule_input(n, user_input)
         errors_wrapper = await wrapper_validate(user_input)
@@ -520,7 +505,6 @@ class TestSchemaRoundTrip:
             prefix: True,
             f"{prefix}_start": "07:00:00",
             f"{prefix}_end": "09:00:00",
-            f"{prefix}_min_price_difference": 0.05,
         }
         # Should not raise
         result = schema(valid_input)

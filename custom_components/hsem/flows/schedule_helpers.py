@@ -17,12 +17,7 @@ import voluptuous as vol
 from homeassistant.helpers.selector import selector
 
 from custom_components.hsem.utils.config_validator import validate_time_window
-from custom_components.hsem.utils.misc import (
-    calculate_recommended_threshold,
-    convert_to_float,
-    convert_to_int,
-    get_config_value,
-)
+from custom_components.hsem.utils.misc import convert_to_float, get_config_value
 
 
 def resolve_usable_capacity_kwh(
@@ -89,22 +84,6 @@ async def build_batteries_schedule_step_schema(
     n = schedule_number
     prefix = f"hsem_batteries_enable_batteries_schedule_{n}"
 
-    purchase_price = convert_to_float(
-        get_config_value(config_entry, "hsem_batteries_purchase_price") or 0.0
-    )
-    _cycles = convert_to_int(
-        get_config_value(config_entry, "hsem_batteries_expected_cycles")
-    )
-    expected_cycles = _cycles if _cycles is not None else 6000
-    usable_capacity = resolve_usable_capacity_kwh(hass, config_entry, user_input)
-    conversion_loss = convert_to_float(
-        get_config_value(config_entry, "hsem_batteries_conversion_loss") or 10.0
-    )
-
-    recommended = calculate_recommended_threshold(
-        purchase_price, expected_cycles, usable_capacity, conversion_loss
-    )
-
     return vol.Schema(
         {
             vol.Required(
@@ -119,20 +98,6 @@ async def build_batteries_schedule_step_schema(
                 f"{prefix}_end",
                 default=get_config_value(config_entry, f"{prefix}_end"),
             ): selector({"time": {}}),
-            vol.Required(
-                f"{prefix}_min_price_difference",
-                default=get_config_value(config_entry, f"{prefix}_min_price_difference")
-                or recommended,
-            ): selector(
-                {
-                    "number": {
-                        "min": 0,
-                        "max": 5,
-                        "step": 0.01,
-                        "mode": "box",
-                    }
-                }
-            ),
         }
     )
 

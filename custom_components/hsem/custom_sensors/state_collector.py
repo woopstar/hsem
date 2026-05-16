@@ -529,7 +529,7 @@ def _resolve_ev_deadline_from_params(sensor, deadline_entity, deadline_fixed):
         return None
 
     hour, minute = int(m.group(1)), int(m.group(2))
-    from custom_components.hsem.datetime_utils import now as hsem_now
+    from custom_components.hsem.utils.datetime_utils import now as hsem_now
 
     now_local = hsem_now()
     today = now_local.date()

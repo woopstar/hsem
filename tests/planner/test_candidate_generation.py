@@ -414,7 +414,6 @@ class TestSelectBestCandidate:
             battery_purchase_price=10_000.0,
             battery_rated_capacity_kwh=10.0,
             battery_expected_cycles=6000,
-            conversion_loss_pct=10.0,
         )
 
     def test_returns_a_candidate_plan(self):
@@ -530,7 +529,6 @@ class TestSelectBestCandidate:
             battery_purchase_price=10_000.0,
             battery_rated_capacity_kwh=10.0,
             battery_expected_cycles=6000,
-            conversion_loss_pct=10.0,
         )
         winner, rejected = select_best_candidate(
             candidates,

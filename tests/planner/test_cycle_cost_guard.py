@@ -48,9 +48,7 @@ def _make_two_slot_input(
     cheap_import: float,
     expensive_import: float,
     cycle_cost_per_kwh: float = 0.0,
-    min_price_difference: float = 0.0,
     battery_soc_pct: float = 10.0,
-    battery_conversion_loss_pct: float = 0.0,
     battery_purchase_price: float = 0.0,
     battery_expected_cycles: int = 6000,
 ) -> PlannerInput:
@@ -87,7 +85,6 @@ def _make_two_slot_input(
         enabled=True,
         start=time(1, 0),
         end=time(2, 0),
-        min_price_difference=min_price_difference,
     )
     return PlannerInput(
         now_iso="2024-06-15T00:00:00+02:00",
@@ -99,11 +96,10 @@ def _make_two_slot_input(
         battery_max_soc_pct=100.0,
         battery_max_charge_power_w=5000.0,
         # Explicit 100 % efficiency so the loss-free test intent is preserved.
-        # Setting battery_conversion_loss_pct=0 alone is not enough now that the
+        # Setting alone is not enough now that the
         # engine also considers battery_charge_efficiency_pct /
         # battery_discharge_efficiency_pct.
         battery_charge_efficiency_pct=100.0,
-        battery_conversion_loss_pct=battery_conversion_loss_pct,
         battery_discharge_efficiency_pct=100.0,
         battery_purchase_price=battery_purchase_price,
         battery_expected_cycles=battery_expected_cycles,
@@ -158,7 +154,6 @@ class TestProfitableCharging:
         inp = _make_two_slot_input(
             cheap_import=0.05,
             expensive_import=0.30,
-            min_price_difference=0.05,
             cycle_cost_per_kwh=0.0,
         )
         result = run_planner(inp)
@@ -176,7 +171,6 @@ class TestProfitableCharging:
         inp = _make_two_slot_input(
             cheap_import=0.05,
             expensive_import=0.30,
-            min_price_difference=0.05,
             cycle_cost_per_kwh=0.10,
         )
         result = run_planner(inp)
@@ -195,16 +189,15 @@ class TestUnprofitableCharging:
     """Planner MUST NOT charge when spread < min_diff + cycle_cost."""
 
     def test_cycle_cost_blocks_marginal_grid_charge(self):
-        """Spread just meets min_diff but not min_diff + cycle_cost → no charge.
+        """Spread just meets cycle_cost but no min_price_difference → no charge.
 
-        Spread = 0.20 − 0.10 = 0.10; min_diff = 0.05; cycle_cost = 0.10
+        Spread = 0.20 − 0.10 = 0.10; cycle_cost = 0.15
         → combined threshold = 0.15; 0.10 < 0.15 → must NOT charge.
         """
         inp = _make_two_slot_input(
             cheap_import=0.10,
             expensive_import=0.20,
-            min_price_difference=0.05,
-            cycle_cost_per_kwh=0.10,
+            cycle_cost_per_kwh=0.15,
         )
         result = run_planner(inp)
         charge_slots = [s for s in result.slots if s.recommendation == _CHARGE_GRID]
@@ -218,7 +211,6 @@ class TestUnprofitableCharging:
         inp = _make_two_slot_input(
             cheap_import=0.20,
             expensive_import=0.20,
-            min_price_difference=0.0,
             cycle_cost_per_kwh=0.05,
         )
         result = run_planner(inp)
@@ -229,13 +221,11 @@ class TestUnprofitableCharging:
         """Very high cycle cost (0.50/kWh) blocks even a reasonable spread.
 
         Spread = 0.30 − 0.10 = 0.20; cycle_cost = 0.50 → threshold = 0.50
-        (ignoring min_price_difference = 0.0)
         → 0.20 < 0.50 → must NOT charge.
         """
         inp = _make_two_slot_input(
             cheap_import=0.10,
             expensive_import=0.30,
-            min_price_difference=0.0,
             cycle_cost_per_kwh=0.50,
         )
         result = run_planner(inp)
@@ -253,7 +243,6 @@ class TestUnprofitableCharging:
         inp = _make_two_slot_input(
             cheap_import=0.05,
             expensive_import=0.20,
-            min_price_difference=0.05,
             cycle_cost_per_kwh=0.0,
         )
         result = run_planner(inp)
@@ -279,7 +268,6 @@ class TestOpportunisticChargeThreshold:
         cycle_cost_per_kwh: float,
         battery_purchase_price: float = 0.0,
         battery_expected_cycles: int = 6000,
-        battery_conversion_loss_pct: float = 0.0,
     ) -> PlannerInput:
         """24-slot flat-price input with no discharge schedule."""
         prices = [
@@ -301,7 +289,6 @@ class TestOpportunisticChargeThreshold:
             battery_rated_capacity_kwh=10.0,
             battery_end_of_discharge_soc_pct=10.0,
             battery_max_charge_power_w=5000.0,
-            battery_conversion_loss_pct=battery_conversion_loss_pct,
             battery_purchase_price=battery_purchase_price,
             battery_expected_cycles=battery_expected_cycles,
             battery_cycle_cost_per_kwh=cycle_cost_per_kwh,
@@ -452,7 +439,7 @@ class TestKnownWinnerWithCycleCost:
         tz = ZoneInfo("Europe/Copenhagen")
         start = datetime(2024, 6, 15, 0, 0, tzinfo=tz)
 
-        weights = CostWeights(cycle_cost_per_kwh=0.10, conversion_loss_pct=0.0)
+        weights = CostWeights(cycle_cost_per_kwh=0.10)
 
         plan_a = [
             PlannedSlot(
@@ -498,7 +485,7 @@ class TestKnownWinnerWithCycleCost:
         tz = ZoneInfo("Europe/Copenhagen")
         start = datetime(2024, 6, 15, 0, 0, tzinfo=tz)
 
-        weights = CostWeights(cycle_cost_per_kwh=0.05, conversion_loss_pct=0.0)
+        weights = CostWeights(cycle_cost_per_kwh=0.05)
 
         plan_a = [
             PlannedSlot(

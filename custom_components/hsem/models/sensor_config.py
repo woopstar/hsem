@@ -37,7 +37,6 @@ class BatteryScheduleConfig:
     enabled: bool = False
     start: time | None = None
     end: time | None = None
-    min_price_difference: float = 0.0
 
 
 @dataclass
@@ -91,7 +90,6 @@ class SensorConfig:
         batteries_charge_efficiency: Charge efficiency as a percentage (0-100).
             Energy stored in the battery = input_energy × (charge_efficiency / 100).
             Defaults to 95 % (5 % charge-side loss).
-        batteries_conversion_loss: Round-trip loss percentage (legacy field).
         batteries_discharge_efficiency: Discharge efficiency as a percentage (0-100).
             Energy delivered to the house = battery_energy × (discharge_efficiency / 100).
             Defaults to 95 % (5 % discharge-side loss).
@@ -166,7 +164,6 @@ class SensorConfig:
 
     # Battery economics
     batteries_charge_efficiency: float = 95.0
-    batteries_conversion_loss: float = 0.0
     batteries_discharge_efficiency: float = 95.0
     batteries_purchase_price: float = 0.0
     batteries_expected_cycles: int = 6000

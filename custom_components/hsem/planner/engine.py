@@ -27,7 +27,6 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from custom_components.hsem.datetime_utils import as_tz
 from custom_components.hsem.models.planner_inputs import PlannerInput
 from custom_components.hsem.models.planner_outputs import (
     ChargeWindow,
@@ -73,6 +72,7 @@ from custom_components.hsem.planner.slot_population import (
     usable_capacity,
 )
 from custom_components.hsem.planner.soc_simulation import simulate_soc
+from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.misc import calculate_recommended_threshold
 from custom_components.hsem.utils.recommendations import Recommendations
 
@@ -152,14 +152,13 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     log_planner(
         "debug",
         "[engine] Battery power limits: max_charge=%dW  max_discharge=%s  "
-        "conversion_loss=%.1f%%  charge_eff=%.1f%%  discharge_eff=%.1f%%",
+        "charge_eff=%.1f%%  discharge_eff=%.1f%%",
         inp.battery_max_charge_power_w,
         (
             f"{inp.battery_max_discharge_power_w}W"
             if inp.battery_max_discharge_power_w is not None
             else "unlimited"
         ),
-        inp.battery_conversion_loss_pct,
         inp.battery_charge_efficiency_pct,
         inp.battery_discharge_efficiency_pct,
     )
@@ -532,37 +531,29 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     populate_net_consumption(slots)  # second pass: incorporates ev_planned_load_kwh
     populate_estimated_cost(slots)
 
-    # Depreciation threshold diagnostic and C13 auto-fill.
+    # Depreciation threshold diagnostic.
     # calculate_recommended_threshold returns the minimum economically
     # justified price difference (depreciation + conversion loss).
-    # When a battery schedule has min_price_difference == 0 (user left it
-    # at the default), we automatically fill it with the depreciation
-    # threshold so the planner never charges from the grid unless it is
-    # actually profitable.
     recommended_threshold = calculate_recommended_threshold(
         inp.battery_purchase_price,
         inp.battery_expected_cycles,
         usable_kwh,
-        inp.battery_conversion_loss_pct,
+        0.0,
     )
     if recommended_threshold > 0:
         warnings.append(
             f"Recommended price threshold: {recommended_threshold:.4f} "
             f"(depreciation + conversion loss)."
         )
-        for sched in inp.battery_schedules:
-            if sched.enabled and abs(sched.min_price_difference) < 1e-9:
-                sched.min_price_difference = recommended_threshold
 
     log_planner(
         "debug",
         "[engine] Recommended price threshold: %.4f  "
-        "(purchase=%.0f  cycles=%d  usable=%.2f kWh  conv_loss=%.1f%%)",
+        "(purchase=%.0f  cycles=%d  usable=%.2f kWh)",
         recommended_threshold,
         inp.battery_purchase_price,
         inp.battery_expected_cycles,
         usable_kwh,
-        inp.battery_conversion_loss_pct,
     )
 
     # Log per-slot populated data for full transparency
@@ -589,10 +580,11 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     apply_discharge_schedules(slots, inp.battery_schedules, now)
 
     # Charge scheduling
-    conversion_loss_factor = 1 - (inp.battery_conversion_loss_pct / 100)
-    max_charge_per_hour = (
-        inp.battery_max_charge_power_w / 1000
-    ) * conversion_loss_factor
+    charge_eff_dec = inp.battery_charge_efficiency_pct / 100.0
+    discharge_eff_dec = inp.battery_discharge_efficiency_pct / 100.0
+    # Roundtrip loss derived from separate charge/discharge efficiencies.
+    roundtrip_loss_pct = (1.0 - charge_eff_dec * discharge_eff_dec) * 100.0
+    max_charge_per_hour = (inp.battery_max_charge_power_w / 1000) * charge_eff_dec
     max_charge_per_interval = max_charge_per_hour / (60 / inp.interval_minutes)
 
     apply_charge_schedules(
@@ -601,6 +593,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         now,
         max_charge_per_interval,
         cycle_cost_per_kwh=inp.battery_cycle_cost_per_kwh,
+        recommended_threshold=recommended_threshold,
     )
 
     # Opportunistic grid charge (A2/H28/H29): charge from grid when prices
@@ -629,17 +622,15 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         current_kwh,
         usable_kwh,
         max_charge_per_interval,
-        conversion_loss_pct=inp.battery_conversion_loss_pct,
+        conversion_loss_pct=roundtrip_loss_pct,
         cycle_cost_per_kwh=inp.battery_cycle_cost_per_kwh,
         recommended_threshold=recommended_threshold,
     )
 
     # Derive per-slot power limits
-    max_charge_per_slot = (
-        inp.battery_max_charge_power_w
-        / 1000
-        * (1 - inp.battery_conversion_loss_pct / 100)
-    ) / (60 / inp.interval_minutes)
+    max_charge_per_slot = (inp.battery_max_charge_power_w / 1000 * charge_eff_dec) / (
+        60 / inp.interval_minutes
+    )
     max_discharge_per_slot: float | None = None
     if inp.battery_max_discharge_power_w is not None:
         max_discharge_per_slot = (inp.battery_max_discharge_power_w / 1000) / (
@@ -713,7 +704,6 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         battery_purchase_price=inp.battery_purchase_price,
         battery_rated_capacity_kwh=inp.battery_rated_capacity_kwh,
         battery_expected_cycles=inp.battery_expected_cycles,
-        conversion_loss_pct=inp.battery_conversion_loss_pct,
         charge_efficiency_pct=inp.battery_charge_efficiency_pct,
         discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
     )
@@ -1118,6 +1108,16 @@ def _build_explanation(
     off_peak_import = min(import_prices) if import_prices else 0.0
     price_spread = round(peak_import - off_peak_import, 4)
 
+    # --- Depreciation threshold for spread rejection diagnostics ---------
+    eod_soc = inp.battery_end_of_discharge_soc_pct / 100.0
+    usable_kwh = inp.battery_rated_capacity_kwh * (1.0 - eod_soc)
+    recommended_threshold = calculate_recommended_threshold(
+        inp.battery_purchase_price,
+        inp.battery_expected_cycles,
+        usable_kwh,
+        0.0,
+    )
+
     # --- Forecast metrics ------------------------------------------------
     forecast_pv = round(sum(s.solcast_pv_estimate for s in future_slots), 3)
     forecast_net = round(sum(s.estimated_net_consumption for s in future_slots), 3)
@@ -1284,20 +1284,14 @@ def _build_explanation(
         )
 
     # Alternative: grid charge skipped when price spread too small
-    if not has_grid_charge and price_spread > 0:
-        min_diff_values = [
-            s.min_price_difference
-            for s in inp.battery_schedules
-            if s.enabled and abs(s.min_price_difference) > 1e-9
-        ]
-        min_diff = min(min_diff_values) if min_diff_values else 0.0
-        if price_spread < min_diff:
+    if not has_grid_charge and price_spread > 0 and recommended_threshold > 1e-9:
+        if price_spread < recommended_threshold:
             rejected.append(
                 RejectedPlan(
                     name="grid_charge_rejected_spread",
                     reason=(
                         f"Price spread {price_spread:.4f} is below the minimum "
-                        f"required difference {min_diff:.4f}; grid charging "
+                        f"required difference {recommended_threshold:.4f}; grid charging "
                         "not profitable."
                     ),
                     estimated_cost=do_nothing_cost,

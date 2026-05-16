@@ -244,12 +244,6 @@ def build_sensor_config(config_entry) -> SensorConfig:
         )
         or 95.0
     )
-    cfg.batteries_conversion_loss = (
-        convert_to_float(
-            get_config_value(config_entry, "hsem_batteries_conversion_loss")
-        )
-        or 0.0
-    )
     cfg.batteries_discharge_efficiency = (
         convert_to_float(
             get_config_value(config_entry, "hsem_batteries_discharge_efficiency")
@@ -288,13 +282,6 @@ def build_sensor_config(config_entry) -> SensorConfig:
                 config_entry, "hsem_batteries_enable_batteries_schedule_1_end"
             )
         ),
-        min_price_difference=convert_to_float(
-            get_config_value(
-                config_entry,
-                "hsem_batteries_enable_batteries_schedule_1_min_price_difference",
-            )
-        )
-        or 0.0,
     )
     cfg.batteries_schedule_2 = BatteryScheduleConfig(
         enabled=convert_to_boolean(
@@ -310,13 +297,6 @@ def build_sensor_config(config_entry) -> SensorConfig:
                 config_entry, "hsem_batteries_enable_batteries_schedule_2_end"
             )
         ),
-        min_price_difference=convert_to_float(
-            get_config_value(
-                config_entry,
-                "hsem_batteries_enable_batteries_schedule_2_min_price_difference",
-            )
-        )
-        or 0.0,
     )
     cfg.batteries_schedule_3 = BatteryScheduleConfig(
         enabled=convert_to_boolean(
@@ -332,13 +312,6 @@ def build_sensor_config(config_entry) -> SensorConfig:
                 config_entry, "hsem_batteries_enable_batteries_schedule_3_end"
             )
         ),
-        min_price_difference=convert_to_float(
-            get_config_value(
-                config_entry,
-                "hsem_batteries_enable_batteries_schedule_3_min_price_difference",
-            )
-        )
-        or 0.0,
     )
 
     # Excess export
@@ -520,7 +493,6 @@ def build_battery_schedules(cfg: SensorConfig) -> list[BatterySchedule]:
                 avg_import_price=0.0,
                 needed_batteries_capacity=0.0,
                 needed_batteries_capacity_cost=0.0,
-                min_price_difference_required=sc.min_price_difference,
             )
         )
     return schedules

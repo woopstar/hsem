@@ -50,7 +50,6 @@ def _make_minimal_input(
     battery_max_soc_pct: float = 100.0,
     battery_max_charge_power_w: float = 5000.0,
     battery_max_discharge_power_w: float | None = None,
-    battery_conversion_loss_pct: float = 0.0,
     pv_kwh_per_hour: float = 0.0,
     load_kwh_per_hour: float = 0.5,
     import_price: float = 0.20,
@@ -86,7 +85,6 @@ def _make_minimal_input(
         battery_max_soc_pct=battery_max_soc_pct,
         battery_max_charge_power_w=battery_max_charge_power_w,
         battery_max_discharge_power_w=battery_max_discharge_power_w,
-        battery_conversion_loss_pct=battery_conversion_loss_pct,
         battery_purchase_price=0.0,
         battery_expected_cycles=6000,
         weight_1d=25,
@@ -502,8 +500,7 @@ class TestPowerLimits:
     def test_charge_power_limit_respected_in_full_run(self):
         """batteries_charged per slot must not exceed max_charge_per_slot."""
         inp = _make_minimal_input(
-            battery_max_charge_power_w=1000.0,  # 1 kW → 1 kWh/h per slot
-            battery_conversion_loss_pct=0.0,
+            battery_max_charge_power_w=1000.0,  # 1 kW → 1 kWh/h per slot,
             pv_kwh_per_hour=5.0,  # large PV to force charging
             load_kwh_per_hour=0.2,
             schedules=[],
@@ -535,7 +532,6 @@ class TestPowerLimits:
         inp = _make_minimal_input(
             battery_soc_pct=100.0,
             battery_max_discharge_power_w=None,
-            battery_conversion_loss_pct=0.0,
             load_kwh_per_hour=4.0,  # heavy load
             pv_kwh_per_hour=0.0,
             schedules=[],

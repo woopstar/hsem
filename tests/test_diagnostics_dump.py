@@ -152,9 +152,6 @@ class TestPlannerInputRoundTrip:
             assert recon_sched.start == orig_sched.start
             assert recon_sched.end == orig_sched.end
             assert recon_sched.enabled == orig_sched.enabled
-            assert recon_sched.min_price_difference == pytest.approx(
-                orig_sched.min_price_difference
-            )
 
     def test_null_battery_max_discharge_preserved(self) -> None:
         original = make_summer_day_input()

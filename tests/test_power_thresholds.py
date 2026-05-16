@@ -101,7 +101,6 @@ def _make_minimal_input(
         battery_rated_capacity_kwh=10.0,
         battery_end_of_discharge_soc_pct=10.0,
         battery_max_charge_power_w=5000.0,
-        battery_conversion_loss_pct=10.0,
         battery_purchase_price=10_000.0,
         battery_expected_cycles=6000,
         weight_1d=25,
@@ -165,10 +164,10 @@ class TestSolarSurplusThresholdInChargeSchedules:
         """Return the recommendation assigned to a single candidate slot.
 
         Priority-3 (cheapest grid hours) is disabled by setting a very large
-        ``min_price_difference`` (1000.0) so the test can isolate whether
-        Priority-2 (solar surplus) fires.  The flat 0.20 import price would
-        never satisfy a 1000-unit spread, so the slot stays unassigned unless
-        the solar surplus condition triggers.
+        depreciation threshold so the test can isolate whether Priority-2
+        (solar surplus) fires.  The flat 0.20 import price would never satisfy
+        a high depreciation guard, so the slot stays unassigned unless the
+        solar surplus condition triggers.
         """
         now = _now(0)
         # Put the candidate slot just before a discharge window
@@ -185,10 +184,6 @@ class TestSolarSurplusThresholdInChargeSchedules:
             enabled=True,
             start=time(8, 0),
             end=time(9, 0),
-            # Very large min_price_difference disables Priority-3 (grid charge)
-            # so only Priority-1 (negative price) and Priority-2 (solar surplus)
-            # can assign a recommendation.
-            min_price_difference=1000.0,
         )
         # Pre-set discharge schedule metadata (normally done by apply_discharge_schedules)
         sched._needed_capacity = 0.5  # type: ignore[attr-defined]
@@ -199,6 +194,7 @@ class TestSolarSurplusThresholdInChargeSchedules:
             battery_schedules=[sched],
             now=now,
             max_charge_per_interval=5.0,
+            recommended_threshold=1000.0,
         )
         return candidate.recommendation
 

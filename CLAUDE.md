@@ -14,8 +14,9 @@ please refer to `AGENTS.md`.
 3. **Create a feature branch** — Use format: `feat/<issue-number>-<description>`
 4. **Make focused changes** — Solve one issue at a time
 5. **Run `tox -e lint` before committing** — Runs isort, black, ruff format, and ruff check in one command
-6. **Run all checks** — Linting, formatting, tests, type checking
-7. **Submit PR for review** — Do not merge without explicit permission
+6. **Run `tox -e quality` after lint** — Runs pyright and vulture static checks
+7. **Run all checks** — Linting, formatting, tests, type checking, quality
+8. **Submit PR for review** — Do not merge without explicit permission
 
 ## Core Principles
 
@@ -34,6 +35,7 @@ please refer to `AGENTS.md`.
 
 3. **Code Quality**
    - Run `tox -e lint` before committing (single command: isort + black + ruff format + ruff check)
+   - Run `tox -e quality` after lint (single command: pyright + vulture)
    - Include type hints for all public functions
    - Write docstrings for all public modules, classes, and functions
    - Write tests for new functionality
@@ -127,8 +129,9 @@ git checkout -b feat/<issue-number>-<description>
 
 # 4. Format and lint (REQUIRED - single command)
 tox -e lint
-
-# 5. Run tests
+# 5. Run quality checks (REQUIRED - single command)
+tox -e quality
+# 6. Run tests
 pytest tests/
 
 # 7. Verify changes
@@ -184,7 +187,10 @@ See `AGENTS.md` → **Home Assistant Compliance** section for detailed requireme
 # Step 1: Format and lint (MUST be done — isort + black + ruff format + ruff check)
 tox -e lint
 
-# Step 2: Run tests
+# Step 2: Quality checks (pyright + vulture)
+tox -e quality
+
+# Step 3: Run tests
 pytest tests/
 
 # Step 3: Type checking
@@ -273,7 +279,7 @@ atomic and focused ✅ Reference `AGENTS.md` for comprehensive rules
 
 ## What to Avoid
 
-❌ Submitting a PR without running `tox -e lint` first ❌ Ignoring lint warnings or errors
+❌ Submitting a PR without running `tox -e lint` and `tox -e quality` first ❌ Ignoring lint warnings or errors
 ❌ Using Python versions other than 3.13 ❌ Refactoring unrelated code ❌ Changing planner or safety
 features without explicit issue ❌ Reformatting code outside your changes ❌ Adding new dependencies
 without justification ❌ Changing logging levels or sensitive output ❌ Modifying configuration

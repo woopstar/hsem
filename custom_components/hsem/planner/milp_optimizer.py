@@ -85,7 +85,7 @@ import logging
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from custom_components.hsem.datetime_utils import as_tz
+from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.recommendations import Recommendations
 
 if TYPE_CHECKING:

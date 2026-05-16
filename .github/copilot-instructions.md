@@ -16,7 +16,7 @@ When asked to solve a GitHub issue, always follow these steps in order:
 4. **Implement the smallest safe fix** — No unrelated changes, no broad refactors.
 5. **Add or update regression tests** — Cover the bug or new behavior.
 6. **Run the relevant tests** — `pytest tests/` or the targeted test file.
-7. **Run lint/type checks** — `tox -e lint` (runs isort, black, ruff format, and ruff check)
+7. **Run lint/type + quality checks** — `tox -e lint` (runs isort, black, ruff format, and ruff check) then `tox -e quality` (runs pyright and vulture)
 8. **Report a summary** including:
    - Issue title
    - Branch name
@@ -95,6 +95,7 @@ When asked to solve a GitHub issue, always follow these steps in order:
 - **Never use `==` or `!=` to compare floating-point values.** In production code use an epsilon
   guard (`abs(x) > 1e-9` instead of `x != 0`). In tests always use `pytest.approx()`.
 - Run `tox -e lint` before every commit (isort + black + ruff format + ruff check in one command).
+- Run `tox -e quality` after lint (pyright + vulture static checks).
 
 ## Write Modular Code
 - Break code into modules and components for easy reuse.

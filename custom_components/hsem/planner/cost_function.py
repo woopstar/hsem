@@ -135,12 +135,6 @@ class CostWeights:
             ``batteries_charged / (charge_efficiency_pct / 100)``.
             Defaults to 100 % (no charge-side loss) so existing callers are
             unaffected unless they explicitly pass this value.
-        conversion_loss_pct:
-            Round-trip conversion loss as a percentage (0-100).  Legacy term
-            used to compute the ``conversion_loss_cost`` penalty.  When
-            ``charge_efficiency_pct`` and ``discharge_efficiency_pct`` are set,
-            the roundtrip loss implied by those values supersedes this field for
-            the ``conversion_loss_cost`` calculation.
         discharge_efficiency_pct:
             Discharge-side efficiency as a percentage (0-100).  Energy delivered
             to the house equals battery energy removed × (discharge_efficiency_pct / 100).
@@ -169,9 +163,6 @@ class CostWeights:
     # Separate charge / discharge efficiencies
     charge_efficiency_pct: float = 100.0
     discharge_efficiency_pct: float = 100.0
-
-    # Conversion loss (legacy round-trip term)
-    conversion_loss_pct: float = 10.0
 
 
 @dataclass
@@ -484,7 +475,7 @@ def score_plan(
     # When separate charge/discharge efficiencies are provided (both non-default),
     # we compute the roundtrip loss from them:
     #   roundtrip_loss = 1 - (charge_eff × discharge_eff)
-    # Otherwise fall back to the legacy conversion_loss_pct field.
+    # Compute roundtrip loss from charge/discharge efficiencies.
     charge_eff = max(min(weights.charge_efficiency_pct, 100.0), 1.0) / 100.0
     discharge_eff = max(min(weights.discharge_efficiency_pct, 100.0), 1.0) / 100.0
 

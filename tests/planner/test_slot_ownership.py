@@ -117,7 +117,6 @@ def _make_ev_input(
         battery_rated_capacity_kwh=10.0,
         battery_end_of_discharge_soc_pct=10.0,
         battery_max_charge_power_w=5000.0,
-        battery_conversion_loss_pct=10.0,
         battery_purchase_price=10_000.0,
         battery_expected_cycles=6000,
         weight_1d=25,

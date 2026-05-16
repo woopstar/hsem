@@ -15,13 +15,13 @@ from datetime import datetime
 
 from homeassistant.exceptions import HomeAssistantError
 
-from custom_components.hsem.datetime_utils import normalize_datetime
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.sensor_config import SensorConfig
 
 # Delegate the spike-aware weighting algorithm to the canonical implementation
 # in planner.slot_population so the logic lives in exactly one place.
 from custom_components.hsem.planner.slot_population import weighted_avg_consumption
+from custom_components.hsem.utils.datetime_utils import normalize_datetime
 from custom_components.hsem.utils.logger import async_logger
 from custom_components.hsem.utils.misc import (
     async_resolve_entity_id_from_unique_id,
