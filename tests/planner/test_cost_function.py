@@ -132,7 +132,8 @@ class TestReturnTypeContract:
             battery_purchase_price=10_000.0,
             battery_rated_capacity_kwh=10.0,
             battery_expected_cycles=6000,
-            conversion_loss_pct=10.0,
+            charge_efficiency_pct=90.0,
+            discharge_efficiency_pct=90.0,
         )
         bd = score_plan(slots, weights)
         expected = (
@@ -228,7 +229,7 @@ class TestExportRevenue:
 
 
 class TestConversionLoss:
-    """Verify conversion loss is computed from cycled energy × mid-price."""
+    """Verify conversion loss is computed from per-side efficiency losses."""
 
     def test_no_cycling_no_loss(self):
         """No battery activity → conversion_loss_cost = 0."""
@@ -238,31 +239,55 @@ class TestConversionLoss:
             batteries_charged=0.0,
             batteries_discharged=0.0,
         )
-        bd = score_plan([slot], CostWeights(conversion_loss_pct=10.0))
+        bd = score_plan([slot], CostWeights())
         assert bd.conversion_loss_cost == pytest.approx(0.0)
 
     def test_charge_only_loss_computed(self):
-        """1 kWh charged with 10% loss @ mid-price = 0.125 → loss cost = 0.0125."""
-        # import_price=0.20, export_price=0.05 → mid = 0.125
-        # cycled = 1.0, loss = 0.10 × 1.0 = 0.10 → cost = 0.10 × 0.125 = 0.0125
+        """1 kWh charged with 90 % efficiency → 0.1 kWh lost @ 0.20 = 0.02."""
         slot = _make_slot(
             import_price=0.20,
             export_price=0.05,
             batteries_charged=1.0,
             batteries_discharged=0.0,
         )
-        bd = score_plan([slot], CostWeights(conversion_loss_pct=10.0))
-        assert bd.conversion_loss_cost == pytest.approx(0.0125, rel=1e-5)
+        bd = score_plan(
+            [slot],
+            CostWeights(charge_efficiency_pct=90.0, discharge_efficiency_pct=100.0),
+        )
+        # charge_loss_fraction = 1 - 0.90 = 0.10
+        # lost_kwh = 1.0 × 0.10 = 0.10
+        # cost = 0.10 × 0.20 = 0.02
+        assert bd.conversion_loss_cost == pytest.approx(0.02, rel=1e-5)
 
-    def test_zero_loss_pct_disables_term(self):
-        """Setting conversion_loss_pct=0 disables the term entirely."""
+    def test_discharge_only_loss_computed(self):
+        """1 kWh discharged with 90 % efficiency → 0.1 kWh lost @ 0.20 = 0.02."""
+        slot = _make_slot(
+            import_price=0.20,
+            export_price=0.05,
+            batteries_charged=0.0,
+            batteries_discharged=1.0,
+        )
+        bd = score_plan(
+            [slot],
+            CostWeights(charge_efficiency_pct=100.0, discharge_efficiency_pct=90.0),
+        )
+        # discharge_loss_fraction = 1 - 0.90 = 0.10
+        # lost_kwh = 1.0 × 0.10 = 0.10
+        # cost = 0.10 × 0.20 = 0.02
+        assert bd.conversion_loss_cost == pytest.approx(0.02, rel=1e-5)
+
+    def test_full_efficiency_disables_term(self):
+        """100 % charge and discharge efficiency → conversion_loss_cost = 0."""
         slot = _make_slot(
             import_price=0.20,
             export_price=0.05,
             batteries_charged=5.0,
             batteries_discharged=5.0,
         )
-        bd = score_plan([slot], CostWeights(conversion_loss_pct=0.0))
+        bd = score_plan(
+            [slot],
+            CostWeights(charge_efficiency_pct=100.0, discharge_efficiency_pct=100.0),
+        )
         assert bd.conversion_loss_cost == pytest.approx(0.0)
 
 
@@ -275,13 +300,16 @@ class TestCycleCost:
     """Verify battery depreciation is computed from cycled energy."""
 
     def test_explicit_cycle_cost_per_kwh(self):
-        """Explicit cycle_cost_per_kwh of 0.05 → 2 kWh cycled = 0.10."""
+        """Explicit cycle_cost_per_kwh of 0.05 → max(1,1)=1 kWh cycled = 0.05."""
         slot = _make_slot(batteries_charged=1.0, batteries_discharged=1.0)
         bd = score_plan([slot], CostWeights(cycle_cost_per_kwh=0.05))
-        assert bd.cycle_cost == pytest.approx(0.10, rel=1e-5)
+        assert bd.cycle_cost == pytest.approx(0.05, rel=1e-5)
 
     def test_auto_cycle_cost_from_economics(self):
-        """Auto-derived cycle cost: 10000 / (10 × 6000) = 0.1667 per kWh."""
+        """Auto-derived cycle cost: 10000 / (10 × 6000) = 0.1667 per kWh.
+
+        Sets min_soc_pct=0 so usable capacity equals rated capacity.
+        """
         expected_per_kwh = 10_000.0 / (10.0 * 6000)
         slot = _make_slot(batteries_charged=1.0, batteries_discharged=0.0)
         bd = score_plan(
@@ -291,6 +319,8 @@ class TestCycleCost:
                 battery_purchase_price=10_000.0,
                 battery_rated_capacity_kwh=10.0,
                 battery_expected_cycles=6000,
+                min_soc_pct=0.0,
+                max_soc_pct=100.0,
             ),
         )
         assert bd.cycle_cost == pytest.approx(expected_per_kwh, rel=1e-5)
@@ -555,12 +585,13 @@ class TestComparePlansKnownWinner:
         """Plan with unnecessary battery cycling costs more due to depreciation.
 
         Plan A: no battery activity, 1 kWh import @ 0.20
-        Plan B: 3 kWh cycled (charge + discharge), same import
+        Plan B: 3 kWh cycled (max charge or discharge, not sum), same import
         Expected winner: plan_a (lower total because no cycle depreciation).
         """
         weights = CostWeights(
             cycle_cost_per_kwh=0.05,
-            conversion_loss_pct=0.0,  # isolate cycle cost only
+            charge_efficiency_pct=100.0,
+            discharge_efficiency_pct=100.0,
         )
         plan_a = [_make_slot(grid_import_kwh=1.0, import_price=0.20)]
         plan_b = [
@@ -636,7 +667,8 @@ class TestComparePlansKnownWinner:
         """
         weights = CostWeights(
             cycle_cost_per_kwh=0.02,
-            conversion_loss_pct=10.0,
+            charge_efficiency_pct=90.0,
+            discharge_efficiency_pct=90.0,
             min_soc_pct=10.0,
             max_soc_pct=100.0,
         )
@@ -668,6 +700,70 @@ class TestComparePlansKnownWinner:
         # plan_b import: 5×0.30=1.50; plan_a wins clearly
         assert winner == "plan_a"
         assert bd_a.total < bd_b.total
+
+    def test_arbitrage_cycle_cost_no_double_count(self):
+        """Regression: cycle cost counts throughput once per slot (max, not sum).
+
+        Charge slot: 9 kWh charged @ 0.22 DKK, no discharge.
+        Discharge slot: 9 kWh discharged @ 1.68 DKK, no charge.
+        Usable capacity = 10 × (100−10)/100 = 9 kWh.
+        cycle_cost_per_kwh = 25000 / (9 × 6000) ≈ 0.46296 DKK.
+
+        Expected cycle_cost = 9 kWh × 0.46296 × 2 slots ≈ 8.33 DKK.
+        The arbitrage plan must be cheaper than a no-action plan importing
+        9 kWh at 1.68 DKK (15.12 DKK).
+        """
+        charge_slot = _make_slot(
+            hour=0,
+            import_price=0.22,
+            export_price=0.05,
+            batteries_charged=9.0,
+            batteries_discharged=0.0,
+            grid_import_kwh=9.0 / 0.95,  # charge_stored / charge_eff
+            grid_export_kwh=0.0,
+            estimated_battery_soc=50.0,
+        )
+        discharge_slot = _make_slot(
+            hour=1,
+            import_price=1.68,
+            export_price=0.05,
+            batteries_charged=0.0,
+            batteries_discharged=9.0,
+            grid_import_kwh=0.0,
+            grid_export_kwh=0.0,
+            estimated_battery_soc=50.0,
+        )
+        no_action_slot = _make_slot(
+            hour=0,
+            import_price=1.68,
+            export_price=0.05,
+            batteries_charged=0.0,
+            batteries_discharged=0.0,
+            grid_import_kwh=9.0,
+            grid_export_kwh=0.0,
+            estimated_battery_soc=50.0,
+        )
+
+        weights = CostWeights(
+            battery_purchase_price=25_000.0,
+            battery_rated_capacity_kwh=10.0,
+            battery_expected_cycles=6000,
+            min_soc_pct=10.0,
+            max_soc_pct=100.0,
+            charge_efficiency_pct=95.0,
+            discharge_efficiency_pct=95.0,
+            cycle_cost_per_kwh=None,
+        )
+
+        usable_kwh = 10.0 * (100.0 - 10.0) / 100.0  # 9.0
+        expected_cycle_cost_per_kwh = 25_000.0 / (usable_kwh * 6000)
+        expected_cycle_cost = 2 * 9.0 * expected_cycle_cost_per_kwh  # two slots
+
+        bd_arbitrage = score_plan([charge_slot, discharge_slot], weights)
+        bd_no_action = score_plan([no_action_slot], weights)
+
+        assert bd_arbitrage.cycle_cost == pytest.approx(expected_cycle_cost, rel=1e-5)
+        assert bd_arbitrage.total_cost < bd_no_action.total_cost
 
 
 # ===========================================================================
