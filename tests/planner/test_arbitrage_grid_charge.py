@@ -68,12 +68,10 @@ def _make_arbitrage_input(
     expensive_price: float = 1.68,
     battery_soc_pct: float = 20.0,
     battery_rated_capacity_kwh: float = 10.0,
-    battery_conversion_loss_pct: float = 0.0,
     battery_cycle_cost_per_kwh: float = 0.0,
     battery_purchase_price: float = 0.0,
     schedules: list[BatteryScheduleInput] | None = None,
     base_price: float = 1.0,
-    min_price_difference: float = 0.0,
 ) -> PlannerInput:
     """Build a 24-hour PlannerInput with one cheap slot and N expensive slots."""
     if expensive_hours is None:
@@ -104,7 +102,6 @@ def _make_arbitrage_input(
                 enabled=True,
                 start=time(3, 0),
                 end=time(3, 30),
-                min_price_difference=min_price_difference,
             )
         ]
 
@@ -118,7 +115,6 @@ def _make_arbitrage_input(
         battery_max_soc_pct=100.0,
         battery_max_charge_power_w=5000.0,
         battery_charge_efficiency_pct=100.0,
-        battery_conversion_loss_pct=battery_conversion_loss_pct,
         battery_discharge_efficiency_pct=100.0,
         battery_purchase_price=battery_purchase_price,
         battery_expected_cycles=6000,
@@ -210,13 +206,13 @@ class TestArbitrageNegatives:
         The key invariant is that any charge slot chosen by the winner must
         have a strictly lower import price than the peak it offsets.
         """
-        # cheap 1.00, expensive 1.05 — spread 0.05 — min_diff 0.20 blocks rule-based.
+        # cheap 1.00, expensive 1.05 — spread 0.05 — recommended_threshold 0.20 blocks rule-based.
         result = run_planner(
             _make_arbitrage_input(
                 cheap_price=1.00,
                 expensive_price=1.05,
                 base_price=1.02,
-                min_price_difference=0.20,
+                battery_purchase_price=999999,  # high → high recommended_threshold
             )
         )
         # Rule-based pass must not charge at the base or expensive price
@@ -232,14 +228,14 @@ class TestArbitrageNegatives:
                 )
 
     def test_no_charge_when_spread_below_cycle_cost(self):
-        """Spread below cycle cost → no charge even with min_diff=0."""
+        """Spread below cycle cost → no charge even with zero purchase price."""
         result = run_planner(
             _make_arbitrage_input(
                 cheap_price=1.00,
                 expensive_price=1.10,
                 base_price=1.05,
                 battery_cycle_cost_per_kwh=0.25,
-                min_price_difference=0.0,
+                battery_purchase_price=0.0,
             )
         )
         for s in result.slots:
@@ -263,7 +259,6 @@ class TestArbitrageNegatives:
                 enabled=False,
                 start=time(3, 0),
                 end=time(3, 30),
-                min_price_difference=0.0,
             )
         ]
         result = run_planner(_make_arbitrage_input(schedules=disabled))

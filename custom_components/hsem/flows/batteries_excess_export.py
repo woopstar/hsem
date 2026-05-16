@@ -39,17 +39,12 @@ async def get_batteries_excess_export_step_schema(
         or (user_input.get("hsem_batteries_expected_cycles") if user_input else None)
     )
     expected_cycles = _cycles_ex if _cycles_ex is not None else 6000
-    conversion_loss = convert_to_float(
-        get_config_value(config_entry, "hsem_batteries_conversion_loss")
-        or (user_input.get("hsem_batteries_conversion_loss") if user_input else None)
-        or 10.0
-    )
     # Resolve rated capacity from the live HA entity when possible (Wh → kWh).
     # Falls back to 10.0 kWh for the UI preview when the entity is unavailable.
     usable_capacity = _resolve_usable_capacity_kwh(hass, config_entry, user_input)
 
     recommended = calculate_recommended_threshold(
-        purchase_price, expected_cycles, usable_capacity, conversion_loss
+        purchase_price, expected_cycles, usable_capacity, 0.0
     )
 
     return vol.Schema(

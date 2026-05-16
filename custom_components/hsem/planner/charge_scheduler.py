@@ -16,9 +16,9 @@ from custom_components.hsem.const import (
     NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH,
     SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH,
 )
-from custom_components.hsem.datetime_utils import as_tz
 from custom_components.hsem.models.planner_inputs import BatteryScheduleInput
 from custom_components.hsem.models.planner_outputs import PlannedSlot
+from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.misc import next_window_start_dt
 from custom_components.hsem.utils.recommendations import Recommendations
 
@@ -168,26 +168,24 @@ def apply_charge_schedules(
     now: datetime,
     max_charge_per_interval: float,
     cycle_cost_per_kwh: float = 0.0,
+    recommended_threshold: float = 0.0,
 ) -> None:
     """Assign charge recommendations to slots before each discharge window.
 
-    Three-priority ordering (mirrors ``_async_find_best_time_to_charge_battery_schedule``):
+    Three-priority ordering:
 
     1. Negative import price (free/paid-to-charge)
     2. Solar surplus (``estimated_net_consumption < SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH``)
-    3. Cheapest remaining grid hours (guarded by min price difference + cycle cost)
+    3. Cheapest remaining grid hours (guarded by depreciation threshold + cycle cost)
 
     Args:
         slots: Mutable list of planned slots.
-        battery_schedules: Schedule configurations (must have ``_needed_capacity``
-            and ``_avg_import_price`` set by :func:`apply_discharge_schedules`).
+        battery_schedules: Schedule configurations.
         now: Timezone-aware current datetime.
         max_charge_per_interval: Maximum energy (kWh) chargeable per slot.
-        cycle_cost_per_kwh: Additional per-kWh cycle wear cost added to the
-            price-difference guard.  When > 0 the planner only charges from
-            the grid when ``discharge_price - charge_price ≥
-            min_price_difference + cycle_cost_per_kwh``.  Defaults to 0.0
-            (no extra guard beyond the schedule's min_price_difference).
+        cycle_cost_per_kwh: Additional per-kWh cycle wear cost.
+        recommended_threshold: Depreciation-derived price floor passed to
+            ``_apply_grid_charge`` to guard profitability.
     """
     if max_charge_per_interval <= 0:
         return
@@ -276,7 +274,7 @@ def apply_charge_schedules(
                         s.batteries_charged = round(energy, 3)
                         charged += energy
 
-            # Priority 3: cheapest grid hours (min price difference + cycle cost guard)
+            # Priority 3: cheapest grid hours (depreciation threshold + cycle cost guard)
             if charged < needed:
                 _apply_grid_charge(
                     eligible,
@@ -286,6 +284,7 @@ def apply_charge_schedules(
                     max_charge_per_interval,
                     avg_discharge_price,
                     cycle_cost_per_kwh=cycle_cost_per_kwh,
+                    recommended_threshold=recommended_threshold,
                 )
 
 
@@ -297,16 +296,15 @@ def _apply_grid_charge(
     max_charge_per_interval: float,
     avg_discharge_price: float,
     cycle_cost_per_kwh: float = 0.0,
+    recommended_threshold: float = 0.0,
 ) -> None:
-    """Apply cheapest-grid-hour charging with min-price-difference + cycle-cost guard.
+    """Apply cheapest-grid-hour charging with depreciation + cycle-cost guard.
 
     The combined profitability condition is:
 
-        avg_discharge_price − avg_charge_price ≥ min_price_difference + cycle_cost_per_kwh
+        avg_discharge_price − avg_charge_price ≥ recommended_threshold + cycle_cost_per_kwh
 
-    Both ``min_price_difference`` (from the battery schedule) and
-    ``cycle_cost_per_kwh`` (from the planner input) must be covered by the
-    price spread before grid charging is approved.
+    where ``recommended_threshold`` is the depreciation-derived price floor.
 
     Args:
         eligible: Pre-filtered candidate slots.
@@ -317,6 +315,7 @@ def _apply_grid_charge(
         avg_discharge_price: Average import price during the discharge window.
         cycle_cost_per_kwh: Per-kWh battery wear cost added to the guard.
             Defaults to 0.0 (backwards compatible).
+        recommended_threshold: Depreciation + loss derived price floor.
     """
     grid_candidates = sorted(
         (e for e in eligible if e.recommendation is None),
@@ -347,9 +346,9 @@ def _apply_grid_charge(
         tentative_price_sum / tentative_count if tentative_count > 0 else 0.0
     )
     price_diff = avg_discharge_price - avg_charge_price
-    # Combined threshold: user-configured schedule minimum + per-kWh wear cost.
+    # Combined threshold: depreciation-derived price floor + per-kWh wear cost.
     # Both must be covered by the price spread for grid charging to be profitable.
-    min_diff = sched.min_price_difference + cycle_cost_per_kwh
+    min_diff = recommended_threshold + cycle_cost_per_kwh
 
     if abs(min_diff) > 1e-9 and price_diff < min_diff:
         return  # Price spread does not cover loss + cycle wear cost
@@ -686,19 +685,9 @@ def apply_arbitrage_grid_charge(
         )
         return
 
-    # Pick the smallest enabled min_price_difference as the guard floor.
-    # Schedules with min_price_difference == 0 fall back to the
-    # depreciation-derived recommended_threshold so that a misconfigured
-    # schedule still gets a sensible profitability gate.
-    min_diffs = [
-        (
-            s.min_price_difference
-            if abs(s.min_price_difference) > 1e-9
-            else recommended_threshold
-        )
-        for s in enabled
-    ]
-    sched_min_diff = min(min_diffs) if min_diffs else recommended_threshold
+    # Pick the smallest enabled schedule's recommended_threshold as the guard floor.
+    # All schedules fall back to the depreciation-derived recommended_threshold.
+    sched_min_diff = recommended_threshold
 
     # Conversion loss cost per kWh charged: a rough lower bound — charging
     # one stored kWh requires (1 / (1 - loss)) kWh of grid energy, so each

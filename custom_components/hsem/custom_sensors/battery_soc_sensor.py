@@ -19,7 +19,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
+from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor.const import SensorDeviceClass
 from homeassistant.const import PERCENTAGE, EntityCategory
 from homeassistant.helpers.restore_state import RestoreEntity
 

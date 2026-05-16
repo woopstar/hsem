@@ -283,7 +283,6 @@ class TestComparePlansUsesScore:
         # Disable cycle and conversion-loss terms; isolate terminal-SoC.
         weights = CostWeights(
             cycle_cost_per_kwh=0.0,
-            conversion_loss_pct=0.0,
             soc_low_penalty_weight=0.0,
             soc_high_penalty_weight=0.0,
         )

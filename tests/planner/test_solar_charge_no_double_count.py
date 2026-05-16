@@ -98,7 +98,6 @@ def _make_solar_only_input(
         battery_rated_capacity_kwh=battery_rated_capacity_kwh,
         battery_end_of_discharge_soc_pct=battery_end_of_discharge_soc_pct,
         battery_max_charge_power_w=battery_max_charge_power_w,
-        battery_conversion_loss_pct=10.0,
         battery_purchase_price=10_000.0,
         battery_expected_cycles=6000,
         weight_1d=25,

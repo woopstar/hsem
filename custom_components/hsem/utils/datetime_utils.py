@@ -15,7 +15,7 @@ normalisation and slot-key computation inside HSEM.
 
 Usage
 -----
->>> from custom_components.hsem.datetime_utils import now, slot_key
+>>> from custom_components.hsem.utils.datetime_utils import now, slot_key
 >>> current = now()
 >>> key = slot_key(current, interval_minutes=60)
 
@@ -25,7 +25,7 @@ The planner engine and related pure modules receive ``now`` as an argument.
 They should use ``as_tz(dt, now.tzinfo)`` instead of ``dt.astimezone(now.tzinfo)``
 so that all timezone normalisation is routed through this module.
 
->>> from custom_components.hsem.datetime_utils import as_tz
+>>> from custom_components.hsem.utils.datetime_utils import as_tz
 >>> slot_local = as_tz(slot.start, now.tzinfo)
 """
 

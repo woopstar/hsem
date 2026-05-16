@@ -2412,7 +2412,6 @@ class TestEvFieldsEndToEnd:
             battery_max_charge_power_w=5000.0,
             battery_max_discharge_power_w=5000.0,
             battery_charge_efficiency_pct=100.0,
-            battery_conversion_loss_pct=0.0,
             battery_discharge_efficiency_pct=100.0,
             weight_1d=25,
             weight_3d=30,

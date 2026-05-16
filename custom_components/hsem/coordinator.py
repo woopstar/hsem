@@ -51,9 +51,6 @@ from custom_components.hsem.custom_sensors.state_collector import (
     build_battery_schedules,
     build_sensor_config,
 )
-from custom_components.hsem.datetime_utils import as_tz
-from custom_components.hsem.datetime_utils import now as hsem_now
-from custom_components.hsem.datetime_utils import utc_now_iso
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.planner_inputs import (
@@ -68,6 +65,9 @@ from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.planner import run_planner
 from custom_components.hsem.planner.ev_planner import EVChargingPlan
 from custom_components.hsem.planner.planner_logger import set_planner_verbose
+from custom_components.hsem.utils.datetime_utils import as_tz
+from custom_components.hsem.utils.datetime_utils import now as hsem_now
+from custom_components.hsem.utils.datetime_utils import utc_now_iso
 from custom_components.hsem.utils.inverter_verify import CycleApplySummary
 from custom_components.hsem.utils.logger import async_logger
 from custom_components.hsem.utils.misc import convert_to_float, convert_to_int
@@ -591,7 +591,6 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 enabled=s.enabled,
                 start=s.start,
                 end=s.end,
-                min_price_difference=s.min_price_difference_required,
             )
             for s in self._batteries_schedules
         ]
@@ -625,8 +624,6 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 cfg.batteries_charge_efficiency
             )
             or 95.0,
-            battery_conversion_loss_pct=convert_to_float(cfg.batteries_conversion_loss)
-            or 10.0,
             battery_discharge_efficiency_pct=convert_to_float(
                 cfg.batteries_discharge_efficiency
             )

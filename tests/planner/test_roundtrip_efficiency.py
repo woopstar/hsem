@@ -354,7 +354,6 @@ class TestCostFunctionEfficiency:
         weights = CostWeights(
             charge_efficiency_pct=100.0,
             discharge_efficiency_pct=100.0,
-            conversion_loss_pct=10.0,
         )
         bd = score_plan([slot], weights)
         # charge_loss_fraction = 1 - 1.0 = 0.0
@@ -369,8 +368,7 @@ class TestCostFunctionEfficiency:
         )
         weights = CostWeights(
             charge_efficiency_pct=90.0,
-            discharge_efficiency_pct=90.0,
-            conversion_loss_pct=0.0,  # legacy term irrelevant
+            discharge_efficiency_pct=90.0,  # legacy term irrelevant
         )
         bd = score_plan([slot], weights)
         # charge_loss_fraction = 1 - 0.90 = 0.10
@@ -404,7 +402,6 @@ class TestCostFunctionEfficiency:
         weights = CostWeights(
             charge_efficiency_pct=90.0,
             discharge_efficiency_pct=90.0,
-            conversion_loss_pct=50.0,
         )
         bd = score_plan([slot], weights)
         # charge_loss_fraction = 0.10, lost_kwh_charge = 0.5 @ 0.20 = 0.10
@@ -447,7 +444,7 @@ class TestPlannerInputEfficiencyFields:
         """Planner runs successfully with 90 % charge / 90 % discharge."""
         from tests.planner.fixtures import make_summer_day_input
 
-        inp = make_summer_day_input(battery_conversion_loss_pct=0.0)
+        inp = make_summer_day_input()
         inp.battery_charge_efficiency_pct = 90.0
         inp.battery_discharge_efficiency_pct = 90.0
 
@@ -466,8 +463,7 @@ class TestPlannerInputEfficiencyFields:
         from tests.planner.fixtures import make_summer_day_input
 
         inp = make_summer_day_input(
-            battery_soc_pct=10.0,  # nearly empty → planner likely charges
-            battery_conversion_loss_pct=0.0,
+            battery_soc_pct=10.0,  # nearly empty → planner likely charges,
         )
         inp.battery_charge_efficiency_pct = 100.0
         inp.battery_discharge_efficiency_pct = 100.0
@@ -492,7 +488,6 @@ class TestPlannerInputEfficiencyFields:
 
         inp = make_summer_day_input(
             battery_soc_pct=10.0,
-            battery_conversion_loss_pct=0.0,
         )
         inp.battery_charge_efficiency_pct = 90.0
         inp.battery_discharge_efficiency_pct = 100.0

@@ -119,3 +119,63 @@ async def async_logger(self, msg: str, level: str = "debug") -> None:
 
     log_method = getattr(HSEM_LOGGER, level.lower(), HSEM_LOGGER.debug)
     log_method(msg)
+
+
+# ---------------------------------------------------------------------------
+# Planner synchronous logging helpers
+# ---------------------------------------------------------------------------
+# The planner engine is intentionally pure Python (no HA imports, no ``self``).
+# :func:`async_logger` requires a sensor object for the verbose-flag
+# resolution, so it cannot be called from planner code.  These helpers bridge
+# that gap by forwarding messages straight to ``HSEM_LOGGER`` with a
+# module-level verbosity gate.
+
+_PLANNER_VERBOSE: bool = False
+
+
+def set_planner_verbose(enabled: bool) -> None:
+    """Enable or disable planner debug logging.
+
+    Should be called once per planning run from the async sensor layer
+    (coordinator or ``HSEMWorkingModeSensor``) before calling the planner.
+
+    Args:
+        enabled: ``True`` to enable debug output; ``False`` to suppress.
+    """
+    global _PLANNER_VERBOSE  # noqa: PLW0603
+    _PLANNER_VERBOSE = enabled
+
+
+def is_planner_verbose() -> bool:
+    """Return the current verbosity state.
+
+    Returns:
+        ``True`` when planner debug logging is active.
+    """
+    return _PLANNER_VERBOSE
+
+
+def log_planner(level: str, msg: str, *args: object) -> None:
+    """Write a structured log message to the HSEM log file.
+
+    The message is only written when planner verbose logging is enabled
+    (see :func:`set_planner_verbose`).  Uses ``%``-style formatting so that
+    string interpolation is deferred until the handler decides to emit the
+    record — consistent with Home Assistant logging conventions.
+
+    Args:
+        level: Log level string — one of ``"debug"``, ``"info"``,
+               ``"warning"``, ``"error"``.  Unknown values fall back to
+               ``"debug"``.
+        msg: Log message template.  Use ``%s``, ``%d``, ``%.4f`` etc. for
+             positional substitutions.
+        *args: Positional arguments for the ``%``-style format template.
+    """
+    if not _PLANNER_VERBOSE:
+        return
+
+    log_fn = getattr(HSEM_LOGGER, level.lower(), HSEM_LOGGER.debug)
+    if args:
+        log_fn(msg, *args)
+    else:
+        log_fn(msg)

@@ -157,11 +157,9 @@ class TestBuildSensorConfig:
                 hsem_batteries_enable_batteries_schedule_1=True,
                 hsem_batteries_enable_batteries_schedule_1_start="06:00:00",
                 hsem_batteries_enable_batteries_schedule_1_end="09:00:00",
-                hsem_batteries_enable_batteries_schedule_1_min_price_difference=0.05,
             )
         )
         assert cfg.batteries_schedule_1.enabled is True
-        assert cfg.batteries_schedule_1.min_price_difference == pytest.approx(0.05)
 
     def test_months_winter_list_converted(self):
         # convert_months_to_int accepts numeric strings like '1', '2'

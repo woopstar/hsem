@@ -82,7 +82,6 @@ def _make_uniform_input(
     battery_soc_pct: float = 50.0,
     battery_rated_capacity_kwh: float = 10.0,
     battery_end_of_discharge_soc_pct: float = 10.0,
-    battery_conversion_loss_pct: float = 0.0,
     battery_max_charge_power_w: float = 5000.0,
     battery_purchase_price: float = 0.0,
     battery_expected_cycles: int = 6000,
@@ -117,7 +116,6 @@ def _make_uniform_input(
         battery_rated_capacity_kwh=battery_rated_capacity_kwh,
         battery_end_of_discharge_soc_pct=battery_end_of_discharge_soc_pct,
         battery_max_charge_power_w=battery_max_charge_power_w,
-        battery_conversion_loss_pct=battery_conversion_loss_pct,
         battery_purchase_price=battery_purchase_price,
         battery_expected_cycles=battery_expected_cycles,
         weight_1d=25,
@@ -340,7 +338,6 @@ class TestEnergyBalance:
             load_kwh=0.5,
             pv_kwh=3.0,
             battery_soc_pct=100.0,
-            battery_conversion_loss_pct=0.0,
         )
         result = run_planner(inp)
         for slot in result.slots:
@@ -363,7 +360,6 @@ class TestEnergyBalance:
             load_kwh=0.5,
             pv_kwh=3.0,
             battery_soc_pct=100.0,
-            battery_conversion_loss_pct=0.0,
         )
         result = run_planner(inp)
         slots_with_pv = [
@@ -470,7 +466,7 @@ class TestForcedDischarge:
         slot_b.batteries_discharged = 0.0
         slot_b.grid_import_kwh = 1.0
 
-        weights = CostWeights(cycle_cost_per_kwh=0.0, conversion_loss_pct=0.0)
+        weights = CostWeights(cycle_cost_per_kwh=0.0)
         bd_a = score_plan([slot_a], weights)
         bd_b = score_plan([slot_b], weights)
         assert bd_a.total < bd_b.total, (
@@ -504,7 +500,6 @@ class TestForceExport:
         # Disable SoC penalties so they don't obscure the export-revenue test
         weights = CostWeights(
             cycle_cost_per_kwh=0.0,
-            conversion_loss_pct=0.0,
             soc_low_penalty_weight=0.0,
             soc_high_penalty_weight=0.0,
         )
@@ -573,7 +568,6 @@ class TestForceExport:
 
         weights = CostWeights(
             cycle_cost_per_kwh=0.0,
-            conversion_loss_pct=0.0,
             soc_low_penalty_weight=0.0,
             soc_high_penalty_weight=0.0,
         )
@@ -611,7 +605,6 @@ class TestGridChargeAccounting:
         # Build a minimal scenario: battery empty, one cheap slot, schedule forces charge
         inp = _make_uniform_input(
             battery_soc_pct=10.0,
-            battery_conversion_loss_pct=20.0,
             battery_rated_capacity_kwh=10.0,
             battery_end_of_discharge_soc_pct=10.0,
             import_price=0.10,
@@ -625,7 +618,6 @@ class TestGridChargeAccounting:
                 enabled=True,
                 start=dtime(0, 0),
                 end=dtime(2, 0),
-                min_price_difference=0.0,
             )
         ]
         # We need a discharge schedule later so the charge schedule fires
@@ -634,7 +626,6 @@ class TestGridChargeAccounting:
                 enabled=True,
                 start=dtime(18, 0),
                 end=dtime(20, 0),
-                min_price_difference=0.0,
             )
         )
         result = run_planner(inp)
@@ -666,7 +657,7 @@ class TestGridChargeAccounting:
         slot.batteries_charged = 0.8
         slot.grid_import_kwh = 1.0  # includes conversion overhead
 
-        weights = CostWeights(cycle_cost_per_kwh=0.0, conversion_loss_pct=0.0)
+        weights = CostWeights(cycle_cost_per_kwh=0.0)
         bd = score_plan([slot], weights)
         # import_cost is based on grid_import_kwh, not batteries_charged
         assert bd.import_cost == pytest.approx(0.10, abs=1e-6), (
@@ -707,7 +698,6 @@ class TestWinnerCostIdentity:
             battery_purchase_price=inp.battery_purchase_price,
             battery_rated_capacity_kwh=inp.battery_rated_capacity_kwh,
             battery_expected_cycles=inp.battery_expected_cycles,
-            conversion_loss_pct=inp.battery_conversion_loss_pct,
             charge_efficiency_pct=inp.battery_charge_efficiency_pct,
             discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
         )
@@ -739,7 +729,6 @@ class TestWinnerCostIdentity:
             battery_purchase_price=inp.battery_purchase_price,
             battery_rated_capacity_kwh=inp.battery_rated_capacity_kwh,
             battery_expected_cycles=inp.battery_expected_cycles,
-            conversion_loss_pct=inp.battery_conversion_loss_pct,
             charge_efficiency_pct=inp.battery_charge_efficiency_pct,
             discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
         )
@@ -865,7 +854,6 @@ class TestNoPostSelectionMutation:
             battery_purchase_price=inp.battery_purchase_price,
             battery_rated_capacity_kwh=inp.battery_rated_capacity_kwh,
             battery_expected_cycles=inp.battery_expected_cycles,
-            conversion_loss_pct=inp.battery_conversion_loss_pct,
             charge_efficiency_pct=inp.battery_charge_efficiency_pct,
             discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
         )
@@ -1066,7 +1054,6 @@ class TestTerminalSoC:
             soc_low_penalty_weight=0.05,
             soc_high_penalty_weight=0.0,
             cycle_cost_per_kwh=0.0,
-            conversion_loss_pct=0.0,
         )
         bd_a = score_plan([slot_a], weights)
         bd_b = score_plan([slot_b], weights)
@@ -1109,7 +1096,6 @@ class TestTerminalSoC:
 
         weights = CostWeights(
             cycle_cost_per_kwh=0.10,
-            conversion_loss_pct=0.0,
             min_soc_pct=10.0,
             soc_low_penalty_weight=0.05,
         )
@@ -1306,7 +1292,6 @@ class TestMissingDataSentinel:
             battery_rated_capacity_kwh=10.0,
             battery_end_of_discharge_soc_pct=10.0,
             battery_max_charge_power_w=5000.0,
-            battery_conversion_loss_pct=0.0,
             battery_purchase_price=0.0,
             battery_expected_cycles=6000,
             weight_1d=25,
@@ -1435,7 +1420,6 @@ class TestNegativeExportPrice:
 
         weights = CostWeights(
             cycle_cost_per_kwh=0.0,
-            conversion_loss_pct=0.0,
             soc_low_penalty_weight=0.0,
             soc_high_penalty_weight=0.0,
         )
@@ -1784,7 +1768,6 @@ class TestEvPlannedLoadPipelineIntegrity:
             battery_end_of_discharge_soc_pct=5.0,
             battery_max_soc_pct=90.0,
             battery_max_charge_power_w=5000.0,
-            battery_conversion_loss_pct=5.0,
             weight_1d=25,
             weight_3d=30,
             weight_7d=30,
