@@ -32,7 +32,7 @@ Design constraints
 from __future__ import annotations
 
 import math
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from custom_components.hsem.datetime_utils import as_tz
 from custom_components.hsem.models.planner_outputs import RejectedPlan
@@ -337,10 +337,17 @@ def replacement_price_from_next_discharge(
     """Derive the terminal-SoC replacement price from the next discharge window.
 
     The energy stored at end-of-horizon is worth what it would cost to
-    re-purchase that energy from the grid during the first active discharge
-    schedule window.  Within that window the battery discharges in priority
-    order from the most expensive slots, so we use the average of the
-    *top_n* most expensive import prices among future discharge slots.
+    re-purchase that energy from the grid during the **first** upcoming
+    discharge schedule window.  Within that window the battery discharges
+    in priority order from the most expensive slots, so we use the average
+    of the *top_n* most expensive import prices within that window.
+
+    In a 48h or 72h horizon the planner marks ``BatteriesDischargeMode``
+    across all days, but the replacement price must reflect only the
+    closest discharge window — not windows 2+ days away.  We identify the
+    first window by collecting all future discharge slots, sorting them by
+    start time, and taking the first contiguous block of slots belonging
+    to the same schedule occurrence.
 
     Args:
         slots:
@@ -356,9 +363,10 @@ def replacement_price_from_next_discharge(
         Replacement price in currency/kWh, or ``None`` when no future
         discharge slot exists.
     """
-    discharge_prices = sorted(
+    # Collect all future discharge slots sorted by start time
+    future_discharge = sorted(
         [
-            slot.price.import_price
+            slot
             for slot in slots
             if (
                 slot.recommendation == Recommendations.BatteriesDischargeMode.value
@@ -366,9 +374,27 @@ def replacement_price_from_next_discharge(
                 and not math.isnan(slot.price.import_price)
             )
         ],
-        reverse=True,
+        key=lambda s: as_tz(s.start, now.tzinfo),
     )
-    if not discharge_prices:
+
+    if not future_discharge:
         return None
-    top = discharge_prices[:top_n]
-    return sum(top) / len(top)
+
+    # Find the first contiguous block of discharge slots.  A 15-min gap
+    # between consecutive discharge slots signals a new schedule occurrence
+    # (the gap between discharge windows).  We take only the first block.
+    GAP_THRESHOLD = timedelta(minutes=20)
+    first_block: list = [future_discharge[0]]
+    tz = now.tzinfo
+    for slot in future_discharge[1:]:
+        prev_end = as_tz(first_block[-1].end, tz)
+        this_start = as_tz(slot.start, tz)
+        if this_start - prev_end <= GAP_THRESHOLD:
+            first_block.append(slot)
+        else:
+            break  # reached the next schedule occurrence
+
+    # Average the top_n most expensive import prices within the first block
+    first_block.sort(key=lambda s: s.price.import_price, reverse=True)
+    top = [s.price.import_price for s in first_block[:top_n]]
+    return sum(top) / len(top) if top else None
