@@ -144,7 +144,7 @@ class TestSlotKeyTimezoneEquivalence:
         numeric offset (+02:00) while the coordinator builds recommendation
         slots from ``dt_util.now()`` which carries a ``ZoneInfo`` tzinfo.
         """
-        from custom_components.hsem.datetime_utils import slot_key
+        from custom_components.hsem.utils.datetime_utils import slot_key
 
         utc_time = datetime(2026, 5, 14, 20, 0, 0, tzinfo=UTC)
         local_time = datetime(2026, 5, 14, 22, 0, 0, tzinfo=_FIXED_LOCAL_TZ)
@@ -164,7 +164,7 @@ class TestSlotKeyTimezoneEquivalence:
         coordinator recs use ZoneInfo('Europe/Copenhagen'), planner slots use
         a fixed +02:00 numeric offset from parsing now_iso.
         """
-        from custom_components.hsem.datetime_utils import slot_key
+        from custom_components.hsem.utils.datetime_utils import slot_key
 
         tz_fixed = timezone(timedelta(hours=2))
         tz_zone = ZoneInfo("Europe/Copenhagen")
@@ -176,7 +176,7 @@ class TestSlotKeyTimezoneEquivalence:
 
     def test_utc_and_local_same_instant_15min(self):
         """Same instant in UTC vs local works for 15-minute slots too."""
-        from custom_components.hsem.datetime_utils import slot_key
+        from custom_components.hsem.utils.datetime_utils import slot_key
 
         utc_time = datetime(2026, 5, 14, 20, 17, 0, tzinfo=UTC)
         local_time = datetime(2026, 5, 14, 22, 17, 0, tzinfo=_FIXED_LOCAL_TZ)
@@ -184,9 +184,9 @@ class TestSlotKeyTimezoneEquivalence:
         key_utc = slot_key(utc_time, interval_minutes=15)
         key_local = slot_key(local_time, interval_minutes=15)
 
-        assert key_utc == key_local, (
-            f"15-min slot: UTC key={key_utc!r}, local key={key_local!r}"
-        )
+        assert (
+            key_utc == key_local
+        ), f"15-min slot: UTC key={key_utc!r}, local key={key_local!r}"
 
 
 # ===========================================================================
@@ -199,19 +199,19 @@ class TestSlotKeyMicroseconds:
 
     def test_microseconds_stripped_60min(self):
         """Datetimes differing only in microseconds must yield the same slot key (60 min)."""
-        from custom_components.hsem.datetime_utils import slot_key
+        from custom_components.hsem.utils.datetime_utils import slot_key
 
         tz = _FIXED_LOCAL_TZ
         t_clean = datetime(2026, 5, 14, 22, 0, 0, microsecond=0, tzinfo=tz)
         t_dirty = datetime(2026, 5, 14, 22, 0, 0, microsecond=123456, tzinfo=tz)
 
-        assert slot_key(t_clean, 60) == slot_key(t_dirty, 60), (
-            "Microseconds must not prevent slot matching for 60-min intervals"
-        )
+        assert slot_key(t_clean, 60) == slot_key(
+            t_dirty, 60
+        ), "Microseconds must not prevent slot matching for 60-min intervals"
 
     def test_microseconds_stripped_15min(self):
         """Same check for 15-minute slots."""
-        from custom_components.hsem.datetime_utils import slot_key
+        from custom_components.hsem.utils.datetime_utils import slot_key
 
         tz = _FIXED_LOCAL_TZ
         t_clean = datetime(2026, 5, 14, 22, 15, 0, microsecond=0, tzinfo=tz)
@@ -221,7 +221,7 @@ class TestSlotKeyMicroseconds:
 
     def test_utc_microsecond_vs_local_zero(self):
         """A UTC datetime with microseconds must match a local datetime with microsecond=0."""
-        from custom_components.hsem.datetime_utils import slot_key
+        from custom_components.hsem.utils.datetime_utils import slot_key
 
         # Simulate rec.start from dt_util.now() → microsecond != 0
         rec_start = datetime(2026, 5, 14, 20, 0, 0, microsecond=654321, tzinfo=UTC)
@@ -230,9 +230,9 @@ class TestSlotKeyMicroseconds:
             2026, 5, 14, 22, 0, 0, microsecond=0, tzinfo=_FIXED_LOCAL_TZ
         )
 
-        assert slot_key(rec_start, 60) == slot_key(slot_start, 60), (
-            "UTC rec.start with microseconds must match local slot.start with microsecond=0"
-        )
+        assert slot_key(rec_start, 60) == slot_key(
+            slot_start, 60
+        ), "UTC rec.start with microseconds must match local slot.start with microsecond=0"
 
 
 # ===========================================================================
@@ -260,21 +260,21 @@ class TestNormalizeSlotStart15Min:
     )
     def test_floor_to_15min_boundary(self, minute_in: int, minute_out: int):
         """22:mm:ss → 22:floored:00 for various minutes."""
-        from custom_components.hsem.datetime_utils import normalize_slot_start
+        from custom_components.hsem.utils.datetime_utils import normalize_slot_start
 
         tz = _FIXED_LOCAL_TZ
         value = datetime(2026, 5, 14, 22, minute_in, 42, tzinfo=tz)
         result = normalize_slot_start(value, interval_minutes=15)
 
-        assert result.minute == minute_out, (
-            f"minute={minute_in} should floor to {minute_out}, got {result.minute}"
-        )
+        assert (
+            result.minute == minute_out
+        ), f"minute={minute_in} should floor to {minute_out}, got {result.minute}"
         assert result.second == 0, "second must be 0 after normalisation"
         assert result.microsecond == 0, "microsecond must be 0 after normalisation"
 
     def test_issue_example_22_17_42(self):
         """Issue example: 22:17:42 with 15-min interval → 22:15:00."""
-        from custom_components.hsem.datetime_utils import normalize_slot_start
+        from custom_components.hsem.utils.datetime_utils import normalize_slot_start
 
         value = datetime(2026, 5, 14, 22, 17, 42, tzinfo=_FIXED_LOCAL_TZ)
         result = normalize_slot_start(value, interval_minutes=15)
@@ -299,21 +299,21 @@ class TestNormalizeSlotStart60Min:
     )
     def test_floor_to_60min_boundary(self, minute_in: int):
         """Any 22:mm:ss → 22:00:00 for 60-min slots."""
-        from custom_components.hsem.datetime_utils import normalize_slot_start
+        from custom_components.hsem.utils.datetime_utils import normalize_slot_start
 
         tz = _FIXED_LOCAL_TZ
         value = datetime(2026, 5, 14, 22, minute_in, 42, tzinfo=tz)
         result = normalize_slot_start(value, interval_minutes=60)
 
-        assert result.minute == 0, (
-            f"minute={minute_in} should floor to 0 for 60-min, got {result.minute}"
-        )
+        assert (
+            result.minute == 0
+        ), f"minute={minute_in} should floor to 0 for 60-min, got {result.minute}"
         assert result.second == 0
         assert result.microsecond == 0
 
     def test_issue_example_22_17_42(self):
         """Issue example: 22:17:42 with 60-min interval → 22:00:00."""
-        from custom_components.hsem.datetime_utils import normalize_slot_start
+        from custom_components.hsem.utils.datetime_utils import normalize_slot_start
 
         value = datetime(2026, 5, 14, 22, 17, 42, tzinfo=_FIXED_LOCAL_TZ)
         result = normalize_slot_start(value, interval_minutes=60)
@@ -325,7 +325,7 @@ class TestNormalizeSlotStart60Min:
 
     def test_already_on_boundary_unchanged(self):
         """22:00:00 floored to 60-min boundary must still be 22:00:00."""
-        from custom_components.hsem.datetime_utils import normalize_slot_start
+        from custom_components.hsem.utils.datetime_utils import normalize_slot_start
 
         value = datetime(2026, 5, 14, 22, 0, 0, tzinfo=_FIXED_LOCAL_TZ)
         result = normalize_slot_start(value, interval_minutes=60)
@@ -344,7 +344,7 @@ class TestNormalizeDateTime:
 
     def test_utc_aware_converted_to_local(self):
         """A UTC-aware datetime must be converted to HA-local timezone."""
-        from custom_components.hsem.datetime_utils import normalize_datetime
+        from custom_components.hsem.utils.datetime_utils import normalize_datetime
 
         utc_dt = datetime(2026, 5, 14, 20, 0, 0, tzinfo=UTC)
         result = normalize_datetime(utc_dt)
@@ -357,7 +357,7 @@ class TestNormalizeDateTime:
 
     def test_microseconds_stripped(self):
         """normalize_datetime must always strip microseconds."""
-        from custom_components.hsem.datetime_utils import normalize_datetime
+        from custom_components.hsem.utils.datetime_utils import normalize_datetime
 
         dt_with_us = datetime(
             2026, 5, 14, 22, 0, 0, microsecond=999999, tzinfo=_FIXED_LOCAL_TZ
@@ -368,7 +368,7 @@ class TestNormalizeDateTime:
 
     def test_naive_datetime_gets_local_tz(self):
         """A naive datetime must get the HA-local timezone attached."""
-        from custom_components.hsem.datetime_utils import normalize_datetime
+        from custom_components.hsem.utils.datetime_utils import normalize_datetime
 
         naive_dt = datetime(2026, 5, 14, 22, 0, 0)
         result = normalize_datetime(naive_dt)
@@ -382,14 +382,14 @@ class TestNow:
 
     def test_now_is_timezone_aware(self):
         """now() must be timezone-aware (not naive)."""
-        from custom_components.hsem.datetime_utils import now
+        from custom_components.hsem.utils.datetime_utils import now
 
         result = now()
         assert result.tzinfo is not None
 
     def test_now_has_no_microseconds(self):
         """now() must return microsecond=0."""
-        from custom_components.hsem.datetime_utils import now
+        from custom_components.hsem.utils.datetime_utils import now
 
         result = now()
         assert result.microsecond == 0
@@ -446,9 +446,9 @@ class TestEvPlannedLoadReachesRecommendation:
         coord._apply_planner_output(output)
 
         ev_rec = next(r for r in recs if r.start.hour == ev_hour)
-        assert ev_rec.ev_planned_load_kwh == pytest.approx(ev_load, abs=1e-9), (
-            f"ev_planned_load_kwh should be {ev_load} but got {ev_rec.ev_planned_load_kwh}"
-        )
+        assert ev_rec.ev_planned_load_kwh == pytest.approx(
+            ev_load, abs=1e-9
+        ), f"ev_planned_load_kwh should be {ev_load} but got {ev_rec.ev_planned_load_kwh}"
 
     def test_ev_load_stays_zero_in_non_ev_hours(self):
         """Hours without EV planned load must remain at ev_planned_load_kwh=0."""
@@ -505,9 +505,9 @@ class TestEvPlannedLoadReachesRecommendation:
         coord._apply_planner_output(PlannerOutput(slots=slots))
 
         ev_rec = next(r for r in recs if r.start.hour == 20)
-        assert ev_rec.ev_planned_load_kwh == pytest.approx(4.2, abs=1e-9), (
-            f"ZoneInfo/fixed-offset: ev_planned_load_kwh={ev_rec.ev_planned_load_kwh}"
-        )
+        assert ev_rec.ev_planned_load_kwh == pytest.approx(
+            4.2, abs=1e-9
+        ), f"ZoneInfo/fixed-offset: ev_planned_load_kwh={ev_rec.ev_planned_load_kwh}"
 
     def test_ev_load_with_microsecond_jitter_in_recs(self):
         """EV load must propagate even when rec.start carries non-zero microseconds."""
@@ -540,9 +540,9 @@ class TestEvPlannedLoadReachesRecommendation:
         coord._apply_planner_output(PlannerOutput(slots=slots))
 
         ev_rec = next(r for r in recs if r.start.hour == 14)
-        assert ev_rec.ev_planned_load_kwh == pytest.approx(2.8, abs=1e-9), (
-            f"Microsecond mismatch: ev_planned_load_kwh={ev_rec.ev_planned_load_kwh}"
-        )
+        assert ev_rec.ev_planned_load_kwh == pytest.approx(
+            2.8, abs=1e-9
+        ), f"Microsecond mismatch: ev_planned_load_kwh={ev_rec.ev_planned_load_kwh}"
 
 
 # ===========================================================================
@@ -751,12 +751,12 @@ class TestResolverDoesNotEraseEVFields:
 
         # Label changes but energy fields must be preserved
         assert rec.recommendation == "ev_smart_charging"
-        assert rec.ev_planned_load_kwh == pytest.approx(3.5, abs=1e-9), (
-            f"ev_planned_load_kwh was erased by resolver: {rec.ev_planned_load_kwh}"
-        )
-        assert rec.estimated_net_consumption == pytest.approx(4.0, abs=1e-9), (
-            f"estimated_net_consumption was erased by resolver: {rec.estimated_net_consumption}"
-        )
+        assert rec.ev_planned_load_kwh == pytest.approx(
+            3.5, abs=1e-9
+        ), f"ev_planned_load_kwh was erased by resolver: {rec.ev_planned_load_kwh}"
+        assert rec.estimated_net_consumption == pytest.approx(
+            4.0, abs=1e-9
+        ), f"estimated_net_consumption was erased by resolver: {rec.estimated_net_consumption}"
 
     def test_resolver_preserves_ev_load_on_negative_price_override(self):
         """ForceExport override must not clear ev_planned_load_kwh."""
@@ -835,7 +835,7 @@ class TestSlotKeyEdgeCases:
 
     def test_invalid_interval_raises(self):
         """slot_key with interval_minutes <= 0 must raise ValueError."""
-        from custom_components.hsem.datetime_utils import slot_key
+        from custom_components.hsem.utils.datetime_utils import slot_key
 
         t = datetime(2026, 5, 14, 22, 0, 0, tzinfo=_FIXED_LOCAL_TZ)
 
@@ -847,7 +847,7 @@ class TestSlotKeyEdgeCases:
 
     def test_slot_key_is_idempotent(self):
         """Calling slot_key on an already-normalised datetime returns the same value."""
-        from custom_components.hsem.datetime_utils import slot_key
+        from custom_components.hsem.utils.datetime_utils import slot_key
 
         t = datetime(2026, 5, 14, 22, 0, 0, tzinfo=_FIXED_LOCAL_TZ)
         key1 = slot_key(t, 60)
@@ -857,7 +857,7 @@ class TestSlotKeyEdgeCases:
 
     def test_60min_multiple_calls_stable(self):
         """slot_key is deterministic: same input always produces same output."""
-        from custom_components.hsem.datetime_utils import slot_key
+        from custom_components.hsem.utils.datetime_utils import slot_key
 
         t = datetime(
             2026, 5, 14, 22, 33, 44, microsecond=500000, tzinfo=_FIXED_LOCAL_TZ
