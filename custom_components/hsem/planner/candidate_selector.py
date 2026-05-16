@@ -36,6 +36,7 @@ from datetime import datetime
 from custom_components.hsem.models.planner_outputs import RejectedPlan
 from custom_components.hsem.planner.candidate_generator import (
     CANDIDATE_BASELINE,
+    CANDIDATE_NO_ACTION,
     CandidatePlan,
 )
 from custom_components.hsem.planner.cost_function import CostWeights, score_plan
@@ -150,17 +151,21 @@ def select_best_candidate(
         len(candidates),
     )
 
-    # --- Step 4: pick winner (lowest cost) among valid candidates --------
-    if not valid:
+    # --- Step 4: pick winner (lowest cost) among eligible candidates ------
+    # Exclude no_action from winner selection — it is a diagnostic floor
+    # only and must never win.
+    eligible = [c for c in valid if c.name != CANDIDATE_NO_ACTION]
+
+    if not eligible:
         # Degenerate case — fall back to baseline regardless of validity
         winner = _find_by_name(candidates, CANDIDATE_BASELINE) or candidates[0]
         winner.is_valid = True
         winner.rejection_reason = ""
         log_planner(
-            "warning", "[selector] No valid candidates — falling back to baseline"
+            "warning", "[selector] No eligible candidates — falling back to baseline"
         )
     else:
-        # Score all valid candidates
+        # Score all valid candidates (including no_action for diagnostics)
         for candidate in valid:
             candidate._cost = score_plan(  # type: ignore[attr-defined]
                 candidate.slots,
@@ -209,8 +214,8 @@ def select_best_candidate(
                 )
 
         # Sort by selector score ascending; baseline wins ties (it comes first)
-        valid_sorted = sorted(
-            valid,
+        eligible_sorted = sorted(
+            eligible,
             key=lambda c: (
                 c._cost.score,  # type: ignore[attr-defined]
                 # Stable tie-break: baseline index is 0, so it wins ties
@@ -220,7 +225,7 @@ def select_best_candidate(
                 ),
             ),
         )
-        winner = valid_sorted[0]
+        winner = eligible_sorted[0]
         log_planner(
             "info",
             "[selector] SELECTED candidate=%-20s  score=%.4f  total_cost=%.4f",
@@ -238,6 +243,12 @@ def select_best_candidate(
 
         if not candidate.is_valid:
             reason = candidate.rejection_reason
+        elif candidate.name == CANDIDATE_NO_ACTION:
+            reason = (
+                "Diagnostic floor only — excluded from winner selection. "
+                "The no_action candidate models a fully idle battery and "
+                "is never a realistic operating choice."
+            )
         else:
             winner_score = getattr(
                 getattr(winner, "_cost", None), "score", float("inf")

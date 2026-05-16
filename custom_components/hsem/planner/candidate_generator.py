@@ -21,15 +21,18 @@ Candidates produced
 -------------------
 1. ``baseline``       — current HSEM scheduling output (slots already processed).
 2. ``no_action``      — all recommendations cleared; battery is completely idle.
-3. ``grid_charge``    — grid-charge slots are kept; solar charging is removed.
-4. ``solar_only``     — only solar-charge slots are kept; grid charging cleared.
-5. ``discharge_only`` — discharge slots are kept; all charge slots cleared.
-6. ``aggressive``     — cheapest N slots forced to grid-charge regardless of
+                        Diagnostic floor only — never eligible to win selection.
+3. ``passive``        — solar charging where PV surplus exists; no grid charge or
+                        forced discharge. Models the inverter default behaviour.
+4. ``grid_charge``    — grid-charge slots are kept; solar charging is removed.
+5. ``solar_only``     — only solar-charge slots are kept; grid charging cleared.
+6. ``discharge_only`` — discharge slots are kept; all charge slots cleared.
+7. ``aggressive``     — cheapest N slots forced to grid-charge regardless of
                         schedule; most expensive M slots forced to discharge.
                         N is derived dynamically from battery headroom and
                         max charge per slot so it scales with the horizon and
                         battery size (fix for issue #416 Bug 2).
-7. ``milp``           — globally-optimal LP solution (when scipy is available);
+8. ``milp``           — globally-optimal LP solution (when scipy is available);
                         falls back gracefully if the solver fails.
 """
 
@@ -57,6 +60,7 @@ from custom_components.hsem.utils.recommendations import Recommendations
 
 CANDIDATE_BASELINE = "baseline"
 CANDIDATE_NO_ACTION = "no_action"
+CANDIDATE_PASSIVE = "passive"
 CANDIDATE_GRID_CHARGE = "grid_charge"
 CANDIDATE_SOLAR_ONLY = "solar_only"
 CANDIDATE_DISCHARGE_ONLY = "discharge_only"
@@ -66,6 +70,7 @@ CANDIDATE_AGGRESSIVE = "aggressive"
 __all__ = [
     "CANDIDATE_BASELINE",
     "CANDIDATE_NO_ACTION",
+    "CANDIDATE_PASSIVE",
     "CANDIDATE_GRID_CHARGE",
     "CANDIDATE_SOLAR_ONLY",
     "CANDIDATE_DISCHARGE_ONLY",
@@ -190,29 +195,36 @@ def generate_candidates(
         )
     )
 
-    # 2. No-action — battery completely idle
+    # 2. No-action — battery completely idle (diagnostic floor only, never
+    #    eligible to win selection).
     no_action = _copy_slots(baseline_slots)
     _clear_all_charge_discharge(no_action)
     candidates.append(CandidatePlan(name=CANDIDATE_NO_ACTION, slots=no_action))
 
-    # 3. Grid-charge only — keep discharge windows; drop solar-only charge slots
+    # 3. Passive — solar charging only where PV surplus exists; no grid charge,
+    #    no forced discharge. Models the inverter default behaviour.
+    passive = _copy_slots(baseline_slots)
+    _apply_passive_solar(passive, now)
+    candidates.append(CandidatePlan(name=CANDIDATE_PASSIVE, slots=passive))
+
+    # 4. Grid-charge only — keep discharge windows; drop solar-only charge slots
     grid_charge = _copy_slots(baseline_slots)
     _remove_solar_charge(grid_charge)
     candidates.append(CandidatePlan(name=CANDIDATE_GRID_CHARGE, slots=grid_charge))
 
-    # 4. Solar-only — keep solar charge + discharge windows; drop grid-charge slots
+    # 5. Solar-only — keep solar charge + discharge windows; drop grid-charge slots
     solar_only = _copy_slots(baseline_slots)
     _remove_grid_charge(solar_only)
     candidates.append(CandidatePlan(name=CANDIDATE_SOLAR_ONLY, slots=solar_only))
 
-    # 5. Discharge-only — keep discharge slots; drop ALL charge slots
+    # 6. Discharge-only — keep discharge slots; drop ALL charge slots
     discharge_only = _copy_slots(baseline_slots)
     _remove_all_charge(discharge_only)
     candidates.append(
         CandidatePlan(name=CANDIDATE_DISCHARGE_ONLY, slots=discharge_only)
     )
 
-    # 6. Aggressive — force-charge during N cheapest future slots,
+    # 7. Aggressive — force-charge during N cheapest future slots,
     #    force-discharge during M most-expensive future slots.
     #    N is derived from remaining battery headroom (Bug 2 fix, issue #416).
     aggressive = _copy_slots(baseline_slots)
@@ -225,7 +237,7 @@ def generate_candidates(
     )
     candidates.append(CandidatePlan(name=CANDIDATE_AGGRESSIVE, slots=aggressive))
 
-    # 7. MILP — globally-optimal LP solution (requires scipy, falls back gracefully)
+    # 8. MILP — globally-optimal LP solution (requires scipy, falls back gracefully)
     if is_scipy_available():
         milp_slots = solve_milp(
             baseline_slots,
@@ -322,6 +334,33 @@ def _clear_all_charge_discharge(slots: list[PlannedSlot]) -> None:
         if slot.recommendation in _CHARGE_RECS | _DISCHARGE_RECS:
             slot.recommendation = None
             slot.batteries_charged = 0.0
+
+
+def _apply_passive_solar(slots: list[PlannedSlot], now: datetime) -> None:
+    """Allow solar charging wherever estimated_net_consumption < 0 (PV surplus).
+
+    This models the inverter default behaviour: no grid charging, no forced
+    discharge, but passive absorption of PV surplus into the battery.
+    estimated_net_consumption is negative when PV production exceeds house
+    load (including EV).  The surplus magnitude is used directly as
+    batteries_charged.  The SoC simulation caps it against actual battery
+    limits afterwards.
+    """
+    for slot in slots:
+        # Clear all active scheduling first
+        if slot.recommendation in _CHARGE_RECS | _DISCHARGE_RECS:
+            slot.recommendation = None
+            slot.batteries_charged = 0.0
+
+        # Passively absorb surplus into battery for future slots only
+        # NaN < 0.0 is False in Python so no explicit NaN guard is needed
+        if (
+            as_tz(slot.end, now.tzinfo) > now
+            and slot.estimated_net_consumption is not None
+            and slot.estimated_net_consumption < 0.0
+        ):
+            slot.recommendation = Recommendations.BatteriesChargeSolar.value
+            slot.batteries_charged = round(-slot.estimated_net_consumption, 3)
 
 
 def _remove_solar_charge(slots: list[PlannedSlot]) -> None:
