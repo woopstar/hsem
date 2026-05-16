@@ -65,7 +65,29 @@ CANDIDATE_GRID_CHARGE = "grid_charge"
 CANDIDATE_SOLAR_ONLY = "solar_only"
 CANDIDATE_DISCHARGE_ONLY = "discharge_only"
 CANDIDATE_AGGRESSIVE = "aggressive"
+
+# Partial-SoC candidates (BatPred-inspired) — each charges a different
+# fraction of the energy needed for the upcoming discharge windows so
+# the selector can find the optimal charge level.
 CANDIDATE_SOC_PLAN = "soc_plan"
+CANDIDATE_SOC_25 = "soc_plan_25"
+CANDIDATE_SOC_50 = "soc_plan_50"
+CANDIDATE_SOC_75 = "soc_plan_75"
+CANDIDATE_SOC_100 = "soc_plan_100"
+CANDIDATE_SOC_125 = "soc_plan_125"
+CANDIDATE_SOC_FULL = "soc_plan_full"
+
+# Charge fractions for partial-SoC candidates — each is a multiplier
+# applied to the calculated energy needed for the discharge windows.
+# A fraction of 1.0 means "charge exactly what's needed."
+_SOC_FRACTIONS: dict[str, float] = {
+    CANDIDATE_SOC_25: 0.25,
+    CANDIDATE_SOC_50: 0.50,
+    CANDIDATE_SOC_75: 0.75,
+    CANDIDATE_SOC_100: 1.00,
+    CANDIDATE_SOC_125: 1.25,
+    CANDIDATE_SOC_FULL: 2.00,  # fill to max usable capacity
+}
 
 # Re-export MILP candidate name so callers only need to import from here
 __all__ = [
@@ -77,6 +99,12 @@ __all__ = [
     "CANDIDATE_DISCHARGE_ONLY",
     "CANDIDATE_AGGRESSIVE",
     "CANDIDATE_SOC_PLAN",
+    "CANDIDATE_SOC_25",
+    "CANDIDATE_SOC_50",
+    "CANDIDATE_SOC_75",
+    "CANDIDATE_SOC_100",
+    "CANDIDATE_SOC_125",
+    "CANDIDATE_SOC_FULL",
     "CANDIDATE_MILP",
     "CandidatePlan",
     "generate_candidates",
@@ -239,20 +267,25 @@ def generate_candidates(
     )
     candidates.append(CandidatePlan(name=CANDIDATE_AGGRESSIVE, slots=aggressive))
 
-    # 8. SoC plan — BatPred-inspired: charge only what's needed for the
-    #    upcoming discharge windows, then hold (wait mode) until discharge.
-    #    This avoids over-charging the battery when the evening peak only
-    #    needs a fraction of the battery's capacity.
-    soc_plan = _copy_slots(baseline_slots)
-    _apply_soc_plan(
-        soc_plan,
-        now,
-        max_charge_per_slot,
-        current_kwh=current_kwh,
-        usable_kwh=usable_kwh,
-        cycle_cost_per_kwh=inp.battery_cycle_cost_per_kwh,
-    )
-    candidates.append(CandidatePlan(name=CANDIDATE_SOC_PLAN, slots=soc_plan))
+    # 8-13. Partial-SoC plans — BatPred-inspired: charge different fractions
+    #     of what's needed for the upcoming discharge windows, then hold.
+    #     By trying multiple charge levels (0.25x, 0.50x, 0.75x, 1.00x,
+    #     1.25x, fill) the selector finds the optimal charge amount instead
+    #     of a single "all or nothing" decision.
+    for soc_candidate_name, charge_fraction in _SOC_FRACTIONS.items():
+        soc_candidate = _copy_slots(baseline_slots)
+        _apply_soc_plan(
+            soc_candidate,
+            now,
+            max_charge_per_slot,
+            current_kwh=current_kwh,
+            usable_kwh=usable_kwh,
+            cycle_cost_per_kwh=inp.battery_cycle_cost_per_kwh,
+            charge_fraction=charge_fraction,
+        )
+        candidates.append(
+            CandidatePlan(name=soc_candidate_name, slots=soc_candidate)
+        )
 
     # 9. MILP — globally-optimal LP solution (requires scipy, falls back gracefully)
     if is_scipy_available():
@@ -529,18 +562,25 @@ def _apply_soc_plan(
     current_kwh: float = 0.0,
     usable_kwh: float = 0.0,
     cycle_cost_per_kwh: float = 0.0,
+    charge_fraction: float = 1.0,
 ) -> None:
     """BatPred-inspired SoC plan: charge only what's needed, then hold.
 
     This strategy:
     1. Identifies all discharge windows (slots with BatteriesDischargeMode).
     2. Calculates the total net energy needed across all discharge windows.
-    3. Clears all existing charge/discharge recommendations.
-    4. Charges only enough to cover the needed energy, using the cheapest
-       slots before the first discharge window.
-    5. Keeps solar charging where PV surplus exists (free energy).
-    6. Leaves remaining slots as None — the seasonal fill pass will assign
+    3. Scales the needed energy by *charge_fraction* (e.g. 0.50 charges
+       half of what's needed, 1.25 charges 25 % extra).
+    4. Clears all existing charge/discharge recommendations.
+    5. Charges only enough to cover the (scaled) needed energy, using the
+       cheapest slots before the first discharge window.
+    6. Keeps solar charging where PV surplus exists (free energy).
+    7. Leaves remaining slots as None — the seasonal fill pass will assign
        BatteriesWaitMode or BatteriesDischargeMode as appropriate.
+
+    Multiple charge_fraction values are generated as separate candidates
+    (soc_plan_25, soc_plan_50, etc.) so the selector can pick the optimal
+    charge level instead of a binary "empty or full" decision.
 
     Unlike the aggressive strategy which fills the battery completely, this
     strategy charges only what's strictly needed, avoiding unnecessary
@@ -587,6 +627,20 @@ def _apply_soc_plan(
     charge_needed = min(charge_needed, usable_kwh - current_kwh)
     charge_needed = max(charge_needed, 0.0)
 
+    # Apply charge fraction — different candidates try charging 25 %, 50 %,
+    # 75 %, 100 %, 125 %, or fill-to-max of what's actually needed.
+    # This is the key BatPred-inspired optimization: instead of a binary
+    # "all or nothing" decision, the selector can pick the optimal charge
+    # level by comparing cost vs benefit across candidates.
+    if charge_fraction >= 1.99:
+        # CANDIDATE_SOC_FULL: fill the battery to max usable capacity
+        charge_target = max(usable_kwh - current_kwh, 0.0)
+    else:
+        charge_target = charge_needed * charge_fraction
+        # Clamp to usable capacity ceiling
+        charge_target = min(charge_target, usable_kwh - current_kwh)
+        charge_target = max(charge_target, 0.0)
+
     # Step 2: Clear all existing charge/discharge recommendations
     for slot in slots:
         if slot.recommendation in _CHARGE_RECS | _DISCHARGE_RECS:
@@ -604,7 +658,7 @@ def _apply_soc_plan(
         (s for s in future if s.recommendation is None),
         key=lambda x: (x.price.import_price, x.start),
     ):
-        if charged >= charge_needed:
+        if charged >= charge_target:
             break
         # Solar surplus: net consumption < 0 means PV > house load
         if (
@@ -612,7 +666,7 @@ def _apply_soc_plan(
             and slot.estimated_net_consumption < 0.0
         ):
             available_solar = abs(slot.estimated_net_consumption)
-            energy = min(max_charge_per_slot, charge_needed - charged, available_solar)
+            energy = min(max_charge_per_slot, charge_target - charged, available_solar)
             if energy > 0:
                 slot.recommendation = Recommendations.BatteriesChargeSolar.value
                 slot.batteries_charged = round(energy, 3)
@@ -657,9 +711,9 @@ def _apply_soc_plan(
         pass
     else:
         for slot in grid_candidates:
-            if charged >= charge_needed:
+            if charged >= charge_target:
                 break
-            energy = min(max_charge_per_slot, charge_needed - charged)
+            energy = min(max_charge_per_slot, charge_target - charged)
             if energy > 0:
                 slot.recommendation = Recommendations.BatteriesChargeGrid.value
                 slot.batteries_charged = round(energy, 3)
