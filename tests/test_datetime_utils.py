@@ -184,9 +184,9 @@ class TestSlotKeyTimezoneEquivalence:
         key_utc = slot_key(utc_time, interval_minutes=15)
         key_local = slot_key(local_time, interval_minutes=15)
 
-        assert (
-            key_utc == key_local
-        ), f"15-min slot: UTC key={key_utc!r}, local key={key_local!r}"
+        assert key_utc == key_local, (
+            f"15-min slot: UTC key={key_utc!r}, local key={key_local!r}"
+        )
 
 
 # ===========================================================================
@@ -205,9 +205,9 @@ class TestSlotKeyMicroseconds:
         t_clean = datetime(2026, 5, 14, 22, 0, 0, microsecond=0, tzinfo=tz)
         t_dirty = datetime(2026, 5, 14, 22, 0, 0, microsecond=123456, tzinfo=tz)
 
-        assert slot_key(t_clean, 60) == slot_key(
-            t_dirty, 60
-        ), "Microseconds must not prevent slot matching for 60-min intervals"
+        assert slot_key(t_clean, 60) == slot_key(t_dirty, 60), (
+            "Microseconds must not prevent slot matching for 60-min intervals"
+        )
 
     def test_microseconds_stripped_15min(self):
         """Same check for 15-minute slots."""
@@ -230,9 +230,9 @@ class TestSlotKeyMicroseconds:
             2026, 5, 14, 22, 0, 0, microsecond=0, tzinfo=_FIXED_LOCAL_TZ
         )
 
-        assert slot_key(rec_start, 60) == slot_key(
-            slot_start, 60
-        ), "UTC rec.start with microseconds must match local slot.start with microsecond=0"
+        assert slot_key(rec_start, 60) == slot_key(slot_start, 60), (
+            "UTC rec.start with microseconds must match local slot.start with microsecond=0"
+        )
 
 
 # ===========================================================================
@@ -266,9 +266,9 @@ class TestNormalizeSlotStart15Min:
         value = datetime(2026, 5, 14, 22, minute_in, 42, tzinfo=tz)
         result = normalize_slot_start(value, interval_minutes=15)
 
-        assert (
-            result.minute == minute_out
-        ), f"minute={minute_in} should floor to {minute_out}, got {result.minute}"
+        assert result.minute == minute_out, (
+            f"minute={minute_in} should floor to {minute_out}, got {result.minute}"
+        )
         assert result.second == 0, "second must be 0 after normalisation"
         assert result.microsecond == 0, "microsecond must be 0 after normalisation"
 
@@ -305,9 +305,9 @@ class TestNormalizeSlotStart60Min:
         value = datetime(2026, 5, 14, 22, minute_in, 42, tzinfo=tz)
         result = normalize_slot_start(value, interval_minutes=60)
 
-        assert (
-            result.minute == 0
-        ), f"minute={minute_in} should floor to 0 for 60-min, got {result.minute}"
+        assert result.minute == 0, (
+            f"minute={minute_in} should floor to 0 for 60-min, got {result.minute}"
+        )
         assert result.second == 0
         assert result.microsecond == 0
 
@@ -446,9 +446,9 @@ class TestEvPlannedLoadReachesRecommendation:
         coord._apply_planner_output(output)
 
         ev_rec = next(r for r in recs if r.start.hour == ev_hour)
-        assert ev_rec.ev_planned_load_kwh == pytest.approx(
-            ev_load, abs=1e-9
-        ), f"ev_planned_load_kwh should be {ev_load} but got {ev_rec.ev_planned_load_kwh}"
+        assert ev_rec.ev_planned_load_kwh == pytest.approx(ev_load, abs=1e-9), (
+            f"ev_planned_load_kwh should be {ev_load} but got {ev_rec.ev_planned_load_kwh}"
+        )
 
     def test_ev_load_stays_zero_in_non_ev_hours(self):
         """Hours without EV planned load must remain at ev_planned_load_kwh=0."""
@@ -505,9 +505,9 @@ class TestEvPlannedLoadReachesRecommendation:
         coord._apply_planner_output(PlannerOutput(slots=slots))
 
         ev_rec = next(r for r in recs if r.start.hour == 20)
-        assert ev_rec.ev_planned_load_kwh == pytest.approx(
-            4.2, abs=1e-9
-        ), f"ZoneInfo/fixed-offset: ev_planned_load_kwh={ev_rec.ev_planned_load_kwh}"
+        assert ev_rec.ev_planned_load_kwh == pytest.approx(4.2, abs=1e-9), (
+            f"ZoneInfo/fixed-offset: ev_planned_load_kwh={ev_rec.ev_planned_load_kwh}"
+        )
 
     def test_ev_load_with_microsecond_jitter_in_recs(self):
         """EV load must propagate even when rec.start carries non-zero microseconds."""
@@ -540,9 +540,9 @@ class TestEvPlannedLoadReachesRecommendation:
         coord._apply_planner_output(PlannerOutput(slots=slots))
 
         ev_rec = next(r for r in recs if r.start.hour == 14)
-        assert ev_rec.ev_planned_load_kwh == pytest.approx(
-            2.8, abs=1e-9
-        ), f"Microsecond mismatch: ev_planned_load_kwh={ev_rec.ev_planned_load_kwh}"
+        assert ev_rec.ev_planned_load_kwh == pytest.approx(2.8, abs=1e-9), (
+            f"Microsecond mismatch: ev_planned_load_kwh={ev_rec.ev_planned_load_kwh}"
+        )
 
 
 # ===========================================================================
@@ -751,12 +751,12 @@ class TestResolverDoesNotEraseEVFields:
 
         # Label changes but energy fields must be preserved
         assert rec.recommendation == "ev_smart_charging"
-        assert rec.ev_planned_load_kwh == pytest.approx(
-            3.5, abs=1e-9
-        ), f"ev_planned_load_kwh was erased by resolver: {rec.ev_planned_load_kwh}"
-        assert rec.estimated_net_consumption == pytest.approx(
-            4.0, abs=1e-9
-        ), f"estimated_net_consumption was erased by resolver: {rec.estimated_net_consumption}"
+        assert rec.ev_planned_load_kwh == pytest.approx(3.5, abs=1e-9), (
+            f"ev_planned_load_kwh was erased by resolver: {rec.ev_planned_load_kwh}"
+        )
+        assert rec.estimated_net_consumption == pytest.approx(4.0, abs=1e-9), (
+            f"estimated_net_consumption was erased by resolver: {rec.estimated_net_consumption}"
+        )
 
     def test_resolver_preserves_ev_load_on_negative_price_override(self):
         """ForceExport override must not clear ev_planned_load_kwh."""
