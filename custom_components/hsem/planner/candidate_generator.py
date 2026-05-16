@@ -283,9 +283,7 @@ def generate_candidates(
             cycle_cost_per_kwh=inp.battery_cycle_cost_per_kwh,
             charge_fraction=charge_fraction,
         )
-        candidates.append(
-            CandidatePlan(name=soc_candidate_name, slots=soc_candidate)
-        )
+        candidates.append(CandidatePlan(name=soc_candidate_name, slots=soc_candidate))
 
     # 9. MILP — globally-optimal LP solution (requires scipy, falls back gracefully)
     if is_scipy_available():
@@ -593,7 +591,6 @@ def _apply_soc_plan(
         current_kwh: Current battery energy above the discharge floor (kWh).
         usable_kwh: Maximum usable battery capacity (kWh).
     """
-    import math
 
     future = [s for s in slots if as_tz(s.end, now.tzinfo) > now]
 
@@ -675,9 +672,7 @@ def _apply_soc_plan(
     # Step 5: Charge remaining needed energy from cheapest grid slots
     # before the first discharge window, but only if the price spread
     # covers the cycle cost (avoid uneconomical cycling).
-    first_discharge_start = min(
-        as_tz(s.start, now.tzinfo) for s in discharge_slots
-    )
+    first_discharge_start = min(as_tz(s.start, now.tzinfo) for s in discharge_slots)
 
     # Average discharge price — what we'd save by discharging instead of importing
     avg_discharge_price = (

@@ -34,6 +34,7 @@ from datetime import datetime
 from custom_components.hsem.models.planner_outputs import PlannedSlot
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import log_planner
+from custom_components.hsem.utils.recommendations import Recommendations
 
 
 def simulate_soc(
@@ -210,12 +211,28 @@ def simulate_soc(
             # Instead, cover everything (house + EV + scheduled charge) from
             # the grid when EV is active.
             #
+            # Additionally, only discharge when the slot's recommendation
+            # explicitly calls for it — BatteriesDischargeMode or
+            # ForceBatteriesDischarge.  Slots with other recommendations
+            # (e.g. BatteriesWaitMode, None) should NOT drain the battery
+            # even if capacity is available, preserving stored energy for
+            # more expensive future slots.
+            #
             # Discharge efficiency: to deliver `net_demand` kWh to the house
             # the battery must release `net_demand / discharge_eff` kWh.
             # We cap to available capacity and per-slot limit then compute
             # what the house actually receives from that draw.
             if ev_load > 1e-9:
                 # EV is charging — no battery discharge.  Everything from grid.
+                discharge = 0.0
+                house_grid_import = net_demand
+                grid_import = (
+                    house_grid_import + scheduled_charge / charge_eff + ev_load
+                )
+                grid_export = 0.0
+            elif slot.recommendation == Recommendations.BatteriesWaitMode.value:
+                # Slot explicitly marked as wait mode — preserve battery
+                # for more expensive slots later in the horizon.
                 discharge = 0.0
                 house_grid_import = net_demand
                 grid_import = (

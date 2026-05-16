@@ -50,6 +50,7 @@ from custom_components.hsem.planner.charge_scheduler import (
     apply_opportunistic_charge,
     apply_optimization_strategy,
     calculate_required_battery_until_solar,
+    concentrate_discharge_on_expensive_slots,
 )
 from custom_components.hsem.planner.cost_function import CostWeights, score_plan
 from custom_components.hsem.planner.ev_planner import (
@@ -723,6 +724,18 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
             if replacement_price_per_kwh is not None
             else "(none — no future discharge slots)"
         ),
+    )
+
+    # Concentrate battery discharge on the most expensive slots — avoid
+    # draining the battery on moderate-price slots when there are high-price
+    # slots later in the horizon that would benefit more from the stored energy.
+    concentrate_discharge_on_expensive_slots(
+        slots,
+        now,
+        current_kwh,
+        usable_kwh,
+        max_discharge_per_slot,
+        discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
     )
 
     candidates = generate_candidates(

@@ -830,6 +830,95 @@ def apply_arbitrage_grid_charge(
 
 
 # ---------------------------------------------------------------------------
+# Discharge concentration — avoid wasting battery on cheap slots
+# ---------------------------------------------------------------------------
+
+
+def concentrate_discharge_on_expensive_slots(
+    slots: list[PlannedSlot],
+    now: datetime,
+    current_kwh: float,
+    usable_kwh: float,
+    max_discharge_per_slot: float | None,
+    discharge_efficiency_pct: float = 100.0,
+) -> None:
+    """Clear cheap discharge slots the battery cannot fully serve.
+
+    ``apply_discharge_schedules`` and ``apply_optimization_strategy`` mark
+    *every* slot in a discharge window as ``BatteriesDischargeMode``, but
+    the battery can only cover a fraction of them.  Without concentration
+    the SoC simulation greedily discharges in the *first* (cheapest) slots
+    and runs out before the most expensive ones.
+
+    This function ranks all ``BatteriesDischargeMode`` slots by import price
+    (descending) and clears the recommendation on the cheapest slots that
+    exceed the battery's discharge capacity, turning them into grid-import
+    slots (marked ``BatteriesWaitMode``).  The most expensive slots keep
+    their discharge recommendation.
+
+    The estimate is conservative: it assumes the battery starts at full
+    and there is no incoming charge between discharge slots.
+
+    Args:
+        slots: Mutable list of planned slots.
+        now: Timezone-aware current datetime.
+        current_kwh: Energy currently stored above the discharge floor (kWh).
+        usable_kwh: Maximum usable energy above the discharge floor (kWh).
+        max_discharge_per_slot: Maximum energy dischargeable per slot (kWh).
+            ``None`` means unlimited (inverter default).
+        discharge_efficiency_pct: Discharge-side efficiency (0-100 %).
+    """
+    discharge_eff = max(min(discharge_efficiency_pct, 100.0), 1.0) / 100.0
+
+    # Collect all future BatteriesDischargeMode slots
+    discharge_slots = [
+        s
+        for s in slots
+        if s.recommendation == Recommendations.BatteriesDischargeMode.value
+        and as_tz(s.end, now.tzinfo) > now
+    ]
+    if not discharge_slots:
+        return
+
+    # Sort by import price descending — most expensive first
+    discharge_slots.sort(key=lambda s: s.price.import_price, reverse=True)
+
+    # Calculate cumulative battery energy needed for each slot (most expensive first)
+    # and keep only as many as the battery can serve.
+    # The battery is charged to near-full before discharge, so use usable_kwh
+    # as the available energy.
+    total_battery_kwh = usable_kwh
+    keep_set: set[int] = set()
+    for s in discharge_slots:
+        # Energy the battery must release to cover net_demand
+        slot_demand = max(s.estimated_net_consumption, 0.0)
+        battery_needed = slot_demand / discharge_eff if discharge_eff > 1e-9 else 0.0
+
+        if battery_needed <= total_battery_kwh:
+            total_battery_kwh -= battery_needed
+            keep_set.add(id(s))
+        else:
+            # Not enough battery — this and all cheaper slots get cleared
+            break
+
+    for s in discharge_slots:
+        if id(s) not in keep_set:
+            _LOGGER.debug(
+                "concentrate: clearing discharge at %s→%s  price=%.4f  "
+                "(battery can only cover %d of %d slots)",
+                s.start.strftime("%d %H:%M"),
+                s.end.strftime("%H:%M"),
+                s.price.import_price,
+                len(keep_set),
+                len(discharge_slots),
+            )
+            # Use BatteriesWaitMode so the fill pass in engine.py does NOT
+            # re-mark this as BatteriesDischargeMode.
+            s.recommendation = Recommendations.BatteriesWaitMode.value
+            s.batteries_charged = 0.0
+
+
+# ---------------------------------------------------------------------------
 # Seasonal optimization
 # ---------------------------------------------------------------------------
 

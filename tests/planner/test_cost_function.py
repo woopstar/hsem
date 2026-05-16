@@ -312,7 +312,9 @@ class TestCycleCost:
         which sees both directions of every full cycle.
         Sets min_soc_pct=0 so usable capacity equals rated capacity.
         """
-        expected_per_kwh = 10_000.0 / (2.0 * 10.0 * 6000)  # 2× for throughput double-count
+        expected_per_kwh = 10_000.0 / (
+            2.0 * 10.0 * 6000
+        )  # 2× for throughput double-count
         slot = _make_slot(batteries_charged=1.0, batteries_discharged=0.0)
         bd = score_plan(
             [slot],
@@ -759,7 +761,9 @@ class TestComparePlansKnownWinner:
         )
 
         usable_kwh = 10.0 * (100.0 - 10.0) / 100.0  # 9.0
-        expected_cycle_cost_per_kwh = 25_000.0 / (2.0 * usable_kwh * 6000)  # 2× for throughput double-count
+        expected_cycle_cost_per_kwh = 25_000.0 / (
+            2.0 * usable_kwh * 6000
+        )  # 2× for throughput double-count
         # max(9,0) + max(0,9) = 9 + 9 = 18 kWh throughput counted
         expected_cycle_cost = 18.0 * expected_cycle_cost_per_kwh
 

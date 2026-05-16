@@ -365,9 +365,9 @@ def solve_milp(
             out_slots[slot_i].recommendation = Recommendations.BatteriesChargeGrid.value
             out_slots[slot_i].batteries_charged = round(ec_kwh, 3)
         elif ed_kwh > _MIN_ACTION_KWH:
-            out_slots[slot_i].recommendation = (
-                Recommendations.BatteriesDischargeMode.value
-            )
+            out_slots[
+                slot_i
+            ].recommendation = Recommendations.BatteriesDischargeMode.value
             # batteries_charged stays 0 for discharge slots
 
     _LOGGER.debug(
