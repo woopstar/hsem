@@ -31,8 +31,10 @@ Design constraints
 
 from __future__ import annotations
 
+import math
 from datetime import datetime
 
+from custom_components.hsem.datetime_utils import as_tz
 from custom_components.hsem.models.planner_outputs import RejectedPlan
 from custom_components.hsem.planner.candidate_generator import (
     CANDIDATE_BASELINE,
@@ -42,6 +44,7 @@ from custom_components.hsem.planner.candidate_generator import (
 from custom_components.hsem.planner.cost_function import CostWeights, score_plan
 from custom_components.hsem.planner.planner_logger import log_planner
 from custom_components.hsem.planner.soc_simulation import simulate_soc
+from custom_components.hsem.utils.recommendations import Recommendations
 
 # SoC floor tolerance — plans are accepted even if they dip this many
 # percentage points below end_of_discharge_soc_pct (rounding / simulation
@@ -324,3 +327,48 @@ def _validate_candidate(
 def _find_by_name(candidates: list[CandidatePlan], name: str) -> CandidatePlan | None:
     """Return the first candidate with the given name, or ``None``."""
     return next((c for c in candidates if c.name == name), None)
+
+
+def replacement_price_from_next_discharge(
+    slots: list,
+    now: datetime,
+    top_n: int = 4,
+) -> float | None:
+    """Derive the terminal-SoC replacement price from the next discharge window.
+
+    The energy stored at end-of-horizon is worth what it would cost to
+    re-purchase that energy from the grid during the first active discharge
+    schedule window.  Within that window the battery discharges in priority
+    order from the most expensive slots, so we use the average of the
+    *top_n* most expensive import prices among future discharge slots.
+
+    Args:
+        slots:
+            Any candidate's populated slot list (must have
+            ``recommendation``, ``price.import_price``, ``start`` set).
+        now:
+            Timezone-aware current datetime.  Past slots are excluded.
+        top_n:
+            Number of most expensive discharge slots to average over.
+            Default 4 corresponds to ~1 hour at 15-min resolution.
+
+    Returns:
+        Replacement price in currency/kWh, or ``None`` when no future
+        discharge slot exists.
+    """
+    discharge_prices = sorted(
+        [
+            slot.price.import_price
+            for slot in slots
+            if (
+                slot.recommendation == Recommendations.BatteriesDischargeMode.value
+                and as_tz(slot.start, now.tzinfo) > now
+                and not math.isnan(slot.price.import_price)
+            )
+        ],
+        reverse=True,
+    )
+    if not discharge_prices:
+        return None
+    top = discharge_prices[:top_n]
+    return sum(top) / len(top)
