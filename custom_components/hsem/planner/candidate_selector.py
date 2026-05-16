@@ -31,16 +31,20 @@ Design constraints
 
 from __future__ import annotations
 
-from datetime import datetime
+import math
+from datetime import datetime, timedelta
 
+from custom_components.hsem.datetime_utils import as_tz
 from custom_components.hsem.models.planner_outputs import RejectedPlan
 from custom_components.hsem.planner.candidate_generator import (
     CANDIDATE_BASELINE,
+    CANDIDATE_NO_ACTION,
     CandidatePlan,
 )
 from custom_components.hsem.planner.cost_function import CostWeights, score_plan
 from custom_components.hsem.planner.planner_logger import log_planner
 from custom_components.hsem.planner.soc_simulation import simulate_soc
+from custom_components.hsem.utils.recommendations import Recommendations
 
 # SoC floor tolerance — plans are accepted even if they dip this many
 # percentage points below end_of_discharge_soc_pct (rounding / simulation
@@ -150,17 +154,21 @@ def select_best_candidate(
         len(candidates),
     )
 
-    # --- Step 4: pick winner (lowest cost) among valid candidates --------
-    if not valid:
+    # --- Step 4: pick winner (lowest cost) among eligible candidates ------
+    # Exclude no_action from winner selection — it is a diagnostic floor
+    # only and must never win.
+    eligible = [c for c in valid if c.name != CANDIDATE_NO_ACTION]
+
+    if not eligible:
         # Degenerate case — fall back to baseline regardless of validity
         winner = _find_by_name(candidates, CANDIDATE_BASELINE) or candidates[0]
         winner.is_valid = True
         winner.rejection_reason = ""
         log_planner(
-            "warning", "[selector] No valid candidates — falling back to baseline"
+            "warning", "[selector] No eligible candidates — falling back to baseline"
         )
     else:
-        # Score all valid candidates
+        # Score all valid candidates (including no_action for diagnostics)
         for candidate in valid:
             candidate._cost = score_plan(  # type: ignore[attr-defined]
                 candidate.slots,
@@ -209,8 +217,8 @@ def select_best_candidate(
                 )
 
         # Sort by selector score ascending; baseline wins ties (it comes first)
-        valid_sorted = sorted(
-            valid,
+        eligible_sorted = sorted(
+            eligible,
             key=lambda c: (
                 c._cost.score,  # type: ignore[attr-defined]
                 # Stable tie-break: baseline index is 0, so it wins ties
@@ -220,7 +228,7 @@ def select_best_candidate(
                 ),
             ),
         )
-        winner = valid_sorted[0]
+        winner = eligible_sorted[0]
         log_planner(
             "info",
             "[selector] SELECTED candidate=%-20s  score=%.4f  total_cost=%.4f",
@@ -238,6 +246,12 @@ def select_best_candidate(
 
         if not candidate.is_valid:
             reason = candidate.rejection_reason
+        elif candidate.name == CANDIDATE_NO_ACTION:
+            reason = (
+                "Diagnostic floor only — excluded from winner selection. "
+                "The no_action candidate models a fully idle battery and "
+                "is never a realistic operating choice."
+            )
         else:
             winner_score = getattr(
                 getattr(winner, "_cost", None), "score", float("inf")
@@ -313,3 +327,74 @@ def _validate_candidate(
 def _find_by_name(candidates: list[CandidatePlan], name: str) -> CandidatePlan | None:
     """Return the first candidate with the given name, or ``None``."""
     return next((c for c in candidates if c.name == name), None)
+
+
+def replacement_price_from_next_discharge(
+    slots: list,
+    now: datetime,
+    top_n: int = 4,
+) -> float | None:
+    """Derive the terminal-SoC replacement price from the next discharge window.
+
+    The energy stored at end-of-horizon is worth what it would cost to
+    re-purchase that energy from the grid during the **first** upcoming
+    discharge schedule window.  Within that window the battery discharges
+    in priority order from the most expensive slots, so we use the average
+    of the *top_n* most expensive import prices within that window.
+
+    In a 48h or 72h horizon the planner marks ``BatteriesDischargeMode``
+    across all days, but the replacement price must reflect only the
+    closest discharge window — not windows 2+ days away.  We identify the
+    first window by collecting all future discharge slots, sorting them by
+    start time, and taking the first contiguous block of slots belonging
+    to the same schedule occurrence.
+
+    Args:
+        slots:
+            Any candidate's populated slot list (must have
+            ``recommendation``, ``price.import_price``, ``start`` set).
+        now:
+            Timezone-aware current datetime.  Past slots are excluded.
+        top_n:
+            Number of most expensive discharge slots to average over.
+            Default 4 corresponds to ~1 hour at 15-min resolution.
+
+    Returns:
+        Replacement price in currency/kWh, or ``None`` when no future
+        discharge slot exists.
+    """
+    # Collect all future discharge slots sorted by start time
+    future_discharge = sorted(
+        [
+            slot
+            for slot in slots
+            if (
+                slot.recommendation == Recommendations.BatteriesDischargeMode.value
+                and as_tz(slot.start, now.tzinfo) > now
+                and not math.isnan(slot.price.import_price)
+            )
+        ],
+        key=lambda s: as_tz(s.start, now.tzinfo),
+    )
+
+    if not future_discharge:
+        return None
+
+    # Find the first contiguous block of discharge slots.  A 15-min gap
+    # between consecutive discharge slots signals a new schedule occurrence
+    # (the gap between discharge windows).  We take only the first block.
+    GAP_THRESHOLD = timedelta(minutes=20)
+    first_block: list = [future_discharge[0]]
+    tz = now.tzinfo
+    for slot in future_discharge[1:]:
+        prev_end = as_tz(first_block[-1].end, tz)
+        this_start = as_tz(slot.start, tz)
+        if this_start - prev_end <= GAP_THRESHOLD:
+            first_block.append(slot)
+        else:
+            break  # reached the next schedule occurrence
+
+    # Average the top_n most expensive import prices within the first block
+    first_block.sort(key=lambda s: s.price.import_price, reverse=True)
+    top = [s.price.import_price for s in first_block[:top_n]]
+    return sum(top) / len(top) if top else None

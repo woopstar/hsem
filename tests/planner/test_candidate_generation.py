@@ -31,8 +31,10 @@ from custom_components.hsem.planner.candidate_generator import (
     CANDIDATE_DISCHARGE_ONLY,
     CANDIDATE_GRID_CHARGE,
     CANDIDATE_NO_ACTION,
+    CANDIDATE_PASSIVE,
     CANDIDATE_SOLAR_ONLY,
     CandidatePlan,
+    _apply_passive_solar,
     _clear_all_charge_discharge,
     _copy_slots,
     _remove_all_charge,
@@ -259,7 +261,7 @@ class TestGenerateCandidates:
         return make_summer_day_input()
 
     def test_all_candidate_names_present(self):
-        """generate_candidates must return all six named candidates."""
+        """generate_candidates must return all seven named candidates."""
         inp = self._inp()
         now = datetime.fromisoformat(inp.now_iso)
         slots = self._make_baseline()
@@ -267,6 +269,7 @@ class TestGenerateCandidates:
         names = {c.name for c in candidates}
         assert CANDIDATE_BASELINE in names
         assert CANDIDATE_NO_ACTION in names
+        assert CANDIDATE_PASSIVE in names
         assert CANDIDATE_GRID_CHARGE in names
         assert CANDIDATE_SOLAR_ONLY in names
         assert CANDIDATE_DISCHARGE_ONLY in names
@@ -489,8 +492,8 @@ class TestSelectBestCandidate:
             )
             assert winner_cost <= candidate_cost + 1e-9
 
-    def test_no_action_wins_when_all_others_invalid(self):
-        """When only no_action is valid, it must be selected as the winner."""
+    def test_no_action_never_wins_when_only_valid(self):
+        """When only no_action is valid, it must NOT win — baseline must win."""
         inp = make_summer_day_input()
         now = datetime.fromisoformat(inp.now_iso)
         slots = _populated_slots_for_input(inp)
@@ -500,9 +503,7 @@ class TestSelectBestCandidate:
             if candidate.name != CANDIDATE_NO_ACTION:
                 candidate.is_valid = False
                 candidate.rejection_reason = "forced invalid for test"
-        # Run select (skip SoC simulation — candidates already have is_valid set)
-        # We need to call simulate_soc on each to populate grid flows, then
-        # manually re-set invalidity.
+        # Run select
         for candidate in candidates:
             from custom_components.hsem.planner.soc_simulation import simulate_soc
 
@@ -517,18 +518,42 @@ class TestSelectBestCandidate:
                 rated_kwh=10.0,
                 end_of_discharge_soc_pct=10.0,
             )
-        # Re-force invalidity (simulate_soc resets nothing, just populates fields)
+        # Re-force invalidity
         for candidate in candidates:
             if candidate.name != CANDIDATE_NO_ACTION:
                 candidate.is_valid = False
                 candidate.rejection_reason = "forced invalid for test"
 
-        # Now call select, but pre-set is_valid to bypass the internal validate step.
-        # We test the fallback path by checking that when valid list == [no_action]
-        # the winner is no_action.
-        valid_candidates = [c for c in candidates if c.is_valid]
-        assert len(valid_candidates) == 1
-        assert valid_candidates[0].name == CANDIDATE_NO_ACTION
+        cost_weights = CostWeights(
+            min_soc_pct=10.0,
+            max_soc_pct=100.0,
+            battery_purchase_price=10_000.0,
+            battery_rated_capacity_kwh=10.0,
+            battery_expected_cycles=6000,
+            conversion_loss_pct=10.0,
+        )
+        winner, rejected = select_best_candidate(
+            candidates,
+            now=now,
+            current_kwh=4.5,
+            usable_kwh=9.0,
+            max_soc_capacity_kwh=9.0,
+            max_charge_per_slot=1.25,
+            max_discharge_per_slot=None,
+            rated_kwh=10.0,
+            end_of_discharge_soc_pct=10.0,
+            cost_weights=cost_weights,
+            slot_duration_hours=1.0,
+        )
+        # With only no_action valid (and excluded), the fallback is baseline
+        assert winner.name == CANDIDATE_BASELINE, (
+            f"Expected baseline to win (fallback), got {winner.name}"
+        )
+        # Verify no_action is in rejected with an exclusion reason
+        no_action_rejected = next(
+            (r for r in rejected if r.name == CANDIDATE_NO_ACTION), None
+        )
+        assert no_action_rejected is not None, "no_action must appear in rejected plans"
 
 
 # ===========================================================================
@@ -550,11 +575,11 @@ class TestPlannerOutputCandidates:
         names = [c.name for c in output.candidates]
         assert CANDIDATE_BASELINE in names
 
-    def test_all_six_candidates_present(self):
-        """The six core named candidates must appear in a standard summer run.
+    def test_all_seven_candidates_present(self):
+        """The seven core named candidates must appear in a standard summer run.
 
-        When scipy is available a 7th ``milp`` candidate is also added.  This
-        test only asserts the six mandatory candidates are present; the MILP
+        When scipy is available an 8th ``milp`` candidate is also added.  This
+        test only asserts the seven mandatory candidates are present; the MILP
         candidate is validated separately in test_milp_optimizer.py.
         """
         output = run_planner(make_summer_day_input())
@@ -562,6 +587,7 @@ class TestPlannerOutputCandidates:
         expected_core = {
             CANDIDATE_BASELINE,
             CANDIDATE_NO_ACTION,
+            CANDIDATE_PASSIVE,
             CANDIDATE_GRID_CHARGE,
             CANDIDATE_SOLAR_ONLY,
             CANDIDATE_DISCHARGE_ONLY,
@@ -624,3 +650,113 @@ class TestPlannerOutputCandidates:
         assert len(winner_candidates) == 1, (
             "Exactly one candidate should share its slots list with output.slots"
         )
+
+
+# ===========================================================================
+# 7. Passive candidate tests (issue #420)
+# ===========================================================================
+
+
+class TestPassiveCandidate:
+    """Tests for the passive candidate and _apply_passive_solar helper."""
+
+    def test_passive_candidate_present(self):
+        """CANDIDATE_PASSIVE must be present after a standard summer day run."""
+        output = run_planner(make_summer_day_input())
+        names = {c.name for c in output.candidates}
+        assert CANDIDATE_PASSIVE in names, (
+            f"Expected CANDIDATE_PASSIVE in candidates, got {names}"
+        )
+
+    def test_passive_charges_on_pv_surplus(self):
+        """Slots with negative estimated_net_consumption get solar charge."""
+        tz = ZoneInfo("Europe/Copenhagen")
+        now = datetime(2024, 6, 15, 12, 0, tzinfo=tz)
+        slots = [
+            _make_simple_slot(
+                hour=8,  # start=08:00, end=09:00 — past
+                recommendation=Recommendations.BatteriesChargeGrid.value,
+                batteries_charged=3.0,
+            ),
+            _make_simple_slot(
+                hour=13,  # start=13:00, end=14:00 — future
+                recommendation=Recommendations.BatteriesDischargeMode.value,
+                batteries_charged=0.0,
+            ),
+            _make_simple_slot(
+                hour=14,  # start=14:00, end=15:00 — future
+                recommendation=None,
+                batteries_charged=0.0,
+            ),
+            _make_simple_slot(
+                hour=15,  # start=15:00, end=16:00 — future
+                recommendation=None,
+                batteries_charged=0.0,
+            ),
+        ]
+        # Set up: slot 0 (past, surplus), slot 1 (future, surplus),
+        # slot 2 (future, net positive), slot 3 (future, surplus)
+        slots[0].estimated_net_consumption = -2.0  # past surplus — ignored
+        slots[1].estimated_net_consumption = -2.0  # future surplus
+        slots[2].estimated_net_consumption = 1.5  # positive — ignored
+        slots[3].estimated_net_consumption = -0.5  # future surplus
+
+        _apply_passive_solar(slots, now)
+
+        # Past slot with surplus: recommendation cleared, not re-assigned
+        assert slots[0].recommendation is None
+        assert abs(slots[0].batteries_charged) < 1e-9
+
+        # Future slot with surplus (-2.0): gets BatteriesChargeSolar, charged=2.0
+        assert slots[1].recommendation == Recommendations.BatteriesChargeSolar.value
+        assert slots[1].batteries_charged == pytest.approx(2.0)
+
+        # Future slot with positive net consumption: remains None
+        assert slots[2].recommendation is None
+        assert abs(slots[2].batteries_charged) < 1e-9
+
+        # Future slot with surplus (-0.5): gets BatteriesChargeSolar, charged=0.5
+        assert slots[3].recommendation == Recommendations.BatteriesChargeSolar.value
+        assert slots[3].batteries_charged == pytest.approx(0.5)
+
+    def test_no_action_never_wins(self):
+        """run_planner on a summer day must never select no_action as winner."""
+        output = run_planner(make_summer_day_input())
+        # The winning candidate is the one whose slots list IS output.slots
+        winner_candidates = [
+            c
+            for c in output.candidates
+            if len(c.slots) == len(output.slots)
+            and all(a is b for a, b in zip(c.slots, output.slots))
+        ]
+        assert len(winner_candidates) == 1
+        winner = winner_candidates[0]
+        assert winner.name != CANDIDATE_NO_ACTION, (
+            "no_action must never be the winning candidate"
+        )
+
+    def test_passive_never_grid_charges(self):
+        """_apply_passive_solar must never assign BatteriesChargeGrid."""
+        tz = ZoneInfo("Europe/Copenhagen")
+        now = datetime(2024, 6, 15, 0, 0, tzinfo=tz)
+        slots = [
+            _make_simple_slot(
+                hour=h,
+                recommendation=(
+                    Recommendations.BatteriesChargeGrid.value
+                    if h % 2 == 0
+                    else Recommendations.BatteriesDischargeMode.value
+                ),
+            )
+            for h in range(24)
+        ]
+        for s in slots:
+            s.estimated_net_consumption = -1.0  # all surplus
+
+        _apply_passive_solar(slots, now)
+
+        for slot in slots:
+            assert slot.recommendation != Recommendations.BatteriesChargeGrid.value, (
+                f"_apply_passive_solar must never assign BatteriesChargeGrid "
+                f"(found at slot starting {slot.start})"
+            )

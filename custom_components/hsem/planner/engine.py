@@ -25,7 +25,6 @@ Design notes
 
 from __future__ import annotations
 
-import math
 from datetime import datetime
 
 from custom_components.hsem.datetime_utils import as_tz
@@ -40,7 +39,10 @@ from custom_components.hsem.models.planner_outputs import (
     RejectedPlan,
 )
 from custom_components.hsem.planner.candidate_generator import generate_candidates
-from custom_components.hsem.planner.candidate_selector import select_best_candidate
+from custom_components.hsem.planner.candidate_selector import (
+    replacement_price_from_next_discharge,
+    select_best_candidate,
+)
 from custom_components.hsem.planner.charge_scheduler import (
     apply_arbitrage_grid_charge,
     apply_charge_schedules,
@@ -718,31 +720,20 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     slot_duration_hours = inp.interval_minutes / 60.0
 
     # Replacement price for the terminal-SoC opportunity cost term (issue #413).
-    # We use the *minimum future import price* across the horizon (Bug 3 fix,
-    # issue #416).  The marginal cost of one stored kWh at end-of-horizon is
-    # the cheapest price at which that energy could be re-purchased — not the
-    # average.  Using the average over all future slots (including expensive
-    # peak prices) systematically over-values stored energy during high-price
-    # periods and biases the selector against discharging.
-    # Past slots (recommendation == TimePassed) are excluded so the value
-    # reflects the actual decision window.
-    _future_import_prices = [
-        s.price.import_price
-        for s in slots
-        if as_tz(s.end, now.tzinfo) > now and not math.isnan(s.price.import_price)
-    ]
-    replacement_price_per_kwh: float | None = (
-        min(_future_import_prices) if _future_import_prices else None
+    # We use the most expensive import prices from the next active discharge
+    # schedule window.  The energy stored at end-of-horizon avoids importing at
+    # those peak prices, so those are the appropriate replacement cost.
+    replacement_price_per_kwh: float | None = replacement_price_from_next_discharge(
+        slots, now
     )
     log_planner(
         "debug",
-        "[engine] terminal-SoC replacement price: %s  (min of %d future slots)",
+        "[engine] terminal-SoC replacement price: %s  (from next discharge window)",
         (
             f"{replacement_price_per_kwh:.4f}"
             if replacement_price_per_kwh is not None
-            else "(none — no future slots)"
+            else "(none — no future discharge slots)"
         ),
-        len(_future_import_prices),
     )
 
     candidates = generate_candidates(
