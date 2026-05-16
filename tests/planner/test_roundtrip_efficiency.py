@@ -357,26 +357,28 @@ class TestCostFunctionEfficiency:
             conversion_loss_pct=10.0,
         )
         bd = score_plan([slot], weights)
-        # cycled = 4+4 = 8; loss = 8 × 0.10 = 0.8; mid_price = 0.125; cost = 0.1
-        expected_loss_cost = 8.0 * 0.10 * ((0.20 + 0.05) / 2.0)
-        assert bd.conversion_loss_cost == pytest.approx(expected_loss_cost, abs=1e-6)
+        # charge_loss_fraction = 1 - 1.0 = 0.0
+        # discharge_loss_fraction = 1 - 1.0 = 0.0
+        # Since both efficiencies are 100 %, conversion_loss is 0
+        assert bd.conversion_loss_cost == pytest.approx(0.0, abs=1e-6)
 
     def test_90_90_efficiency_roundtrip_loss_fraction(self) -> None:
-        """90 % charge × 90 % discharge → roundtrip loss = 1 - 0.81 = 0.19."""
+        """90 % charge × 90 % discharge → per-side loss fractions = 0.10 each."""
         slot = self._make_cost_slot(
             batteries_charged=5.0, batteries_discharged=5.0, grid_import_kwh=5.0
         )
         weights = CostWeights(
             charge_efficiency_pct=90.0,
             discharge_efficiency_pct=90.0,
-            conversion_loss_pct=0.0,  # legacy term disabled
+            conversion_loss_pct=0.0,  # legacy term irrelevant
         )
         bd = score_plan([slot], weights)
-        cycled = 10.0  # 5 + 5
-        loss_fraction = 1.0 - 0.90 * 0.90  # = 0.19
-        mid_price = (0.20 + 0.05) / 2.0
-        expected = cycled * loss_fraction * mid_price
-        assert bd.conversion_loss_cost == pytest.approx(expected, abs=1e-6)
+        # charge_loss_fraction = 1 - 0.90 = 0.10
+        # discharge_loss_fraction = 1 - 0.90 = 0.10
+        # lost_kwh_charge = 5.0 × 0.10 = 0.5 @ 0.20 = 0.10
+        # lost_kwh_discharge = 5.0 × 0.10 = 0.5 @ 0.20 = 0.10
+        # total = 0.20
+        assert bd.conversion_loss_cost == pytest.approx(0.20, abs=1e-6)
 
     def test_95_95_efficiency_lower_loss_than_90_90(self) -> None:
         """95 % / 95 % efficiency produces lower conversion_loss_cost than 90 % / 90 %."""
@@ -405,12 +407,10 @@ class TestCostFunctionEfficiency:
             conversion_loss_pct=50.0,
         )
         bd = score_plan([slot], weights)
-        # Should use roundtrip loss = 1 - 0.81 = 0.19, not 0.50
-        cycled = 10.0
-        loss_fraction = 1.0 - 0.90 * 0.90  # 0.19
-        mid_price = (0.20 + 0.05) / 2.0
-        expected = cycled * loss_fraction * mid_price
-        assert bd.conversion_loss_cost == pytest.approx(expected, abs=1e-6)
+        # charge_loss_fraction = 0.10, lost_kwh_charge = 0.5 @ 0.20 = 0.10
+        # discharge_loss_fraction = 0.10, lost_kwh_discharge = 0.5 @ 0.20 = 0.10
+        # total = 0.20 (not the absurd 50 % roundtrip)
+        assert bd.conversion_loss_cost == pytest.approx(0.20, abs=1e-6)
 
     def test_import_cost_reflects_real_grid_draw_at_90pct_charge(self) -> None:
         """Grid import cost uses grid_import_kwh (which includes charge-side loss).

@@ -531,4 +531,4 @@ class TestFlowExpectedCyclesNullSafety:
             usable_capacity=10.0,
             conversion_loss=10.0,
         )
-        assert result == pytest.approx(0.240, abs=1e-3)
+        assert result == pytest.approx(0.800, abs=1e-3)
