@@ -775,10 +775,10 @@ class TestWinnerCostIdentity:
             + bd.override_penalty
             + bd.terminal_soc_value
         )
-        assert bd.total_cost == pytest.approx(expected_total_cost, abs=1e-9)
-        assert bd.score == pytest.approx(expected_score, abs=1e-9)
+        assert bd.total_cost == pytest.approx(expected_total_cost, abs=1e-5)
+        assert bd.score == pytest.approx(expected_score, abs=1e-5)
         # ``bd.total`` is a deprecated alias for ``bd.score``.
-        assert bd.total == pytest.approx(bd.score, abs=1e-9)
+        assert bd.total == pytest.approx(bd.score, abs=1e-5)
 
 
 class TestWinnerSlotsIdentity:

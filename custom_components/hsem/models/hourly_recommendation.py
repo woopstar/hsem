@@ -48,6 +48,8 @@ class HourlyRecommendation:
         grid_export_kwh: Energy exported to the grid during this slot (kWh).
     """
 
+    start: datetime
+    end: datetime
     avg_house_consumption: float
     avg_house_consumption_1d: float
     avg_house_consumption_3d: float
@@ -55,7 +57,6 @@ class HourlyRecommendation:
     avg_house_consumption_14d: float
     batteries_charged: float
     batteries_discharged: float
-    end: datetime
     estimated_battery_capacity: float
     estimated_battery_soc: float
     estimated_cost: float
@@ -66,7 +67,6 @@ class HourlyRecommendation:
     import_price: float
     recommendation: Any | None
     solcast_pv_estimate: float
-    start: datetime
     ev_planned_load_kwh: float = 0.0
     ev_accounted_load_kwh: float = 0.0
     ev_total_planned_load_kwh: float = 0.0

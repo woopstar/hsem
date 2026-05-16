@@ -282,13 +282,15 @@ def _is_override_slot(slot: PlannedSlot) -> bool:
 def _resolve_cycle_cost(weights: CostWeights) -> float:
     """Return the battery cycle depreciation cost per kWh cycled.
 
+    Uses usable capacity (rated × DoD fraction) in the denominator, not
+    rated capacity, because battery degradation is driven by cycling within
+    the usable SoC range.
+
+        cycle_cost_per_kwh = purchase_price / (usable_capacity_kwh × expected_cycles)
+
     If ``weights.cycle_cost_per_kwh`` is explicitly set (not ``None``), that
-    value is used directly.  Otherwise the cost is computed from the battery
-    economics in *weights*:
-
-        cycle_cost = purchase_price / (rated_capacity_kwh × expected_cycles)
-
-    Returns 0.0 when any required value is non-positive or missing.
+    value is used directly.  Returns 0.0 when any required value is non-positive
+    or missing.
 
     Args:
         weights: Configuration object from which to resolve the cost.
@@ -304,8 +306,12 @@ def _resolve_cycle_cost(weights: CostWeights) -> float:
         and weights.battery_rated_capacity_kwh > 1e-9
         and weights.battery_expected_cycles > 0
     ):
+        dod_fraction = (weights.max_soc_pct - weights.min_soc_pct) / 100.0
+        usable_kwh = weights.battery_rated_capacity_kwh * dod_fraction
+        if usable_kwh < 1e-9:
+            usable_kwh = weights.battery_rated_capacity_kwh  # fallback: full rated
         return weights.battery_purchase_price / (
-            weights.battery_rated_capacity_kwh * weights.battery_expected_cycles
+            usable_kwh * weights.battery_expected_cycles
         )
 
     return 0.0
@@ -481,14 +487,6 @@ def score_plan(
     # Otherwise fall back to the legacy conversion_loss_pct field.
     charge_eff = max(min(weights.charge_efficiency_pct, 100.0), 1.0) / 100.0
     discharge_eff = max(min(weights.discharge_efficiency_pct, 100.0), 1.0) / 100.0
-    if (
-        weights.charge_efficiency_pct < 100.0 - 1e-9
-        or weights.discharge_efficiency_pct < 100.0 - 1e-9
-    ):
-        # At least one efficiency is below 100 % — use the product-based roundtrip loss.
-        loss_fraction = 1.0 - charge_eff * discharge_eff
-    else:
-        loss_fraction = weights.conversion_loss_pct / 100.0
 
     import_cost = 0.0
     export_revenue = 0.0
@@ -535,18 +533,36 @@ def score_plan(
         if slot.grid_export_kwh > 1e-9:
             export_revenue += slot.grid_export_kwh * exp_price
 
-        # 3. Conversion loss cost — opportunity cost of energy burned in the
-        #    round-trip (charge loss + discharge loss), priced at mid-market
-        #    (average of import and export) as a neutral proxy.
-        cycled_kwh = slot.batteries_charged + slot.batteries_discharged
-        if cycled_kwh > 1e-9 and loss_fraction > 1e-9:
-            lost_kwh = cycled_kwh * loss_fraction
-            mid_price = (imp_price + exp_price) / 2.0
-            conversion_loss_cost += lost_kwh * mid_price
+        # 3. Conversion loss cost — opportunity cost of energy lost in the
+        #    round-trip.  The loss occurred at purchase time (charge slot) and
+        #    at delivery time (discharge slot).  Each side is priced at the
+        #    import price of its own slot — the price of the energy that was
+        #    lost.
+        #
+        #    Charge-side loss: energy drawn from grid but not stored in the
+        #    battery.  lost_kwh = batteries_charged × charge_loss_fraction
+        #    where charge_loss_fraction = 1 - charge_eff
+        #    priced at imp_price (what you paid for that energy).
+        #
+        #    Discharge-side loss: energy removed from battery but not delivered
+        #    to the house.  lost_kwh = batteries_discharged × discharge_loss_fraction
+        #    where discharge_loss_fraction = 1 - discharge_eff
+        #    priced at imp_price (the import you would have avoided).
+        charge_loss_fraction = 1.0 - charge_eff
+        discharge_loss_fraction = 1.0 - discharge_eff
+        if slot.batteries_charged > 1e-9 and charge_loss_fraction > 1e-9:
+            lost_kwh_charge = slot.batteries_charged * charge_loss_fraction
+            conversion_loss_cost += lost_kwh_charge * imp_price
+        if slot.batteries_discharged > 1e-9 and discharge_loss_fraction > 1e-9:
+            lost_kwh_discharge = slot.batteries_discharged * discharge_loss_fraction
+            conversion_loss_cost += lost_kwh_discharge * imp_price
 
         # 4. Battery cycle depreciation
-        if cycled_kwh > 1e-9 and cycle_cost_kwh > 1e-9:
-            cycle_cost_total += cycled_kwh * cycle_cost_kwh
+        #    One round-trip = one cycle worth of degradation.
+        #    Count throughput once (the larger of charge or discharge), not both.
+        throughput_kwh = max(slot.batteries_charged, slot.batteries_discharged)
+        if throughput_kwh > 1e-9 and cycle_cost_kwh > 1e-9:
+            cycle_cost_total += throughput_kwh * cycle_cost_kwh
 
         # 5. SoC guard penalties (quadratic in the violation magnitude).
         #    Only applied to future/current slots where the SoC reflects a

@@ -505,13 +505,8 @@ def calculate_recommended_threshold(
     if purchase_price <= 0 or expected_cycles <= 0 or usable_capacity <= 0:
         return 0.0
 
-    # Capacity loss is typically 30% over lifetime for LiFePO4
-    capacity_loss = 0.30
-
     # 1. Depreciation cost per kWh
-    depreciation = (purchase_price * capacity_loss) / (
-        expected_cycles * usable_capacity
-    )
+    depreciation = purchase_price / (expected_cycles * usable_capacity)
 
     # 2. Conversion loss cost (approx 10% of current import price)
     conversion_loss_cost = import_price * (conversion_loss / 100)

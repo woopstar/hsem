@@ -5,4 +5,3 @@ pytest-socket>=0.7.0
 pytest-timeout>=2.4.0
 pyright>=1.1.409
 vulture>=2.14
-scipy>=1.11.0
