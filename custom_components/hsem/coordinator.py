@@ -64,12 +64,11 @@ from custom_components.hsem.models.planner_outputs import DataQuality, PlanExpla
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.planner import run_planner
 from custom_components.hsem.planner.ev_planner import EVChargingPlan
-from custom_components.hsem.planner.planner_logger import set_planner_verbose
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.datetime_utils import now as hsem_now
 from custom_components.hsem.utils.datetime_utils import utc_now_iso
 from custom_components.hsem.utils.inverter_verify import CycleApplySummary
-from custom_components.hsem.utils.logger import async_logger
+from custom_components.hsem.utils.logger import async_logger, set_planner_verbose
 from custom_components.hsem.utils.misc import convert_to_float, convert_to_int
 from custom_components.hsem.utils.recommendations import Recommendations
 

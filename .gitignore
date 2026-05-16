@@ -18,3 +18,5 @@ scripts/sync.*
 # Home Assistant configuration
 config/*
 !config/configuration.yaml
+
+cycle.log

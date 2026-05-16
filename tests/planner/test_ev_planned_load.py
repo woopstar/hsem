@@ -1489,12 +1489,12 @@ class TestEvAcLoadAndSoCPath:
     # ------------------------------------------------------------------
 
     def test_soc_simulation_accounts_for_ev_load(self):
-        """EV load goes to grid_import only; the house battery does NOT discharge for EV.
+        """EV load goes to grid_import only; the battery does NOT discharge.
 
-        The EV charger is an AC appliance drawing from the grid or PV directly.
-        It never draws from the house battery.  Therefore `batteries_discharged`
-        reflects only house load coverage, while `grid_import_kwh` absorbs the
-        EV demand.
+        The EV charger and house loads share the same AC bus.  When the EV is
+        charging, battery discharge is suppressed to avoid DC→AC→DC conversion
+        losses.  Therefore `batteries_discharged` is 0 during EV slots, and
+        `grid_import_kwh` absorbs BOTH house and EV demand.
 
         Setup (battery has charge, no schedule forcing discharge):
           battery_soc_pct  = 80 %  (7.5 kWh above floor: (80-5)/100 × 10)
@@ -1504,14 +1504,12 @@ class TestEvAcLoadAndSoCPath:
           import_price     = flat 0.5
 
         Expected energy balance per EV slot:
-          net_demand (battery) = house_load - pv = 0.5 kWh
-          batteries_discharged ≈ 0.5 kWh  (covers house only)
-          grid_import ≈ ev_load = 5.0 kWh  (EV from grid; house shortfall is 0)
+          batteries_discharged ≈ 0.0 kWh  (suppressed — EV is charging)
+          grid_import ≈ house + ev = 5.5 kWh  (everything from grid)
           total supply = batteries_discharged + grid_import ≈ 5.5 kWh
 
-        The sum of (batteries_discharged + grid_import_kwh) must still equal
-        approximately 5.5 kWh — but the split is different: the battery covers
-        only the 0.5 kWh house deficit, and the EV's 5.0 kWh comes from the grid.
+        The energy balance must still hold: supply ≈ demand — but the battery
+        does not discharge when the EV is active on the shared AC bus.
         """
         inp = PlannerInput(
             now_iso="2024-06-15T08:00:00+00:00",
