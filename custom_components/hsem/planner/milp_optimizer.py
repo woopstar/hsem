@@ -112,6 +112,8 @@ def solve_milp(
     max_charge_per_slot: float,
     max_discharge_per_slot: float | None,
     cycle_cost_per_kwh: float = 0.0,
+    charge_efficiency_pct: float = 97.0,
+    discharge_efficiency_pct: float = 97.0,
 ) -> list[PlannedSlot] | None:
     """Solve the LP and return a deep-copy slot list with MILP recommendations.
 
@@ -125,6 +127,11 @@ def solve_milp(
     The SoC simulation (:func:`~soc_simulation.simulate_soc`) must be run
     by the caller **after** receiving these slots to populate
     ``grid_import_kwh``, ``grid_export_kwh``, and ``estimated_battery_soc``.
+
+    The MILP objective now includes conversion loss costs so its optimisation
+    matches the cost function's ``total_cost``.  The energy balance equation
+    accounts for charge/discharge efficiencies so ``gi[t]`` reflects real grid
+    import (not the idealised lossless value).
 
     Args:
         slots:
@@ -146,6 +153,14 @@ def solve_milp(
             the LP uses ``usable_kwh`` as the effective ceiling in that case.
         cycle_cost_per_kwh:
             Battery cycle (depreciation) cost per kWh cycled.  Defaults to 0.0.
+        charge_efficiency_pct:
+            Charge-side efficiency as a percentage (0-100).  Energy stored in
+            the battery equals input energy x (charge_efficiency_pct / 100).
+            Defaults to 95 % (5 % charge-side loss).
+        discharge_efficiency_pct:
+            Discharge-side efficiency as a percentage (0-100).  Energy delivered
+            to the house equals battery energy removed x (discharge_efficiency_pct / 100).
+            Defaults to 95 % (5 % discharge-side loss).
 
     Returns:
         A list of :class:`PlannedSlot` copies with MILP-derived recommendations,
@@ -217,26 +232,48 @@ def solve_milp(
     ec_off, ed_off, gi_off, ge_off = 0, m, 2 * m, 3 * m
     n_vars = 4 * m
 
+    # Resolve charge/discharge efficiencies for the energy balance equation.
+    # The MILP must account for real-world conversion losses so its solution
+    # matches the cost function's total_cost (which includes conversion loss
+    # via the conversion_loss_cost term).
+    charge_eff = max(min(charge_efficiency_pct, 100.0), 1.0) / 100.0
+    discharge_eff = max(min(discharge_efficiency_pct, 100.0), 1.0) / 100.0
+    charge_loss = 1.0 - charge_eff
+    discharge_loss = 1.0 - discharge_eff
+
     # ------------------------------------------------------------------
-    # Objective vector: minimise grid_import_cost − export_revenue + cycle_cost
+    # Objective vector: minimise grid_import_cost - export_revenue + cycle_cost
+    # + conversion_loss_cost
+    #
+    # The energy balance equation uses actual efficiencies so gi[t] * p_imp[t]
+    # correctly reflects the REAL grid import (including the extra draw for
+    # charge-side losses).  We add conversion loss costs on charge and
+    # discharge actions so the MILP's objective matches score_plan's total_cost.
     # ------------------------------------------------------------------
     c_obj = np.zeros(n_vars)
-    c_obj[ec_off : ec_off + m] = cycle_cost_per_kwh  # charge cycle cost
-    c_obj[ed_off : ed_off + m] = cycle_cost_per_kwh  # discharge cycle cost
+    # Charge-side: cycle cost + energy lost during charge, priced at import price
+    c_obj[ec_off : ec_off + m] = cycle_cost_per_kwh + charge_loss * p_imp
+    # Discharge-side: cycle cost + energy lost during discharge, priced at import price
+    c_obj[ed_off : ed_off + m] = cycle_cost_per_kwh + discharge_loss * p_imp
     c_obj[gi_off : gi_off + m] = p_imp  # grid import cost
     c_obj[ge_off : ge_off + m] = -p_exp  # export revenue (negative = gain)
 
     # ------------------------------------------------------------------
     # Equality constraints: energy balance per slot
-    # gi[t] + ed[t] = net_load[t] + ec[t] + ge[t]
-    # → gi[t] − ec[t] + ed[t] − ge[t] = net_load[t]
+    # gi[t] + ed[t]*discharge_eff = net_load[t] + ec[t]/charge_eff + ge[t]
+    # -> gi[t] - ec[t]/charge_eff + ed[t]*discharge_eff - ge[t] = net_load[t]
+    #
+    # ec[t] is the battery-side stored energy (post charge loss).  To store
+    # ec[t] kWh the grid must supply ec[t]/charge_eff kWh.
+    # ed[t] is the battery-side removed energy (pre discharge loss).  The
+    # house receives ed[t]*discharge_eff kWh.
     # ------------------------------------------------------------------
     A_eq = np.zeros((m, n_vars))
     for t in range(m):
-        A_eq[t, ec_off + t] = -1.0  # −ec[t]
-        A_eq[t, ed_off + t] = 1.0  # +ed[t]
+        A_eq[t, ec_off + t] = -1.0 / charge_eff  # -ec[t]/charge_eff
+        A_eq[t, ed_off + t] = 1.0 * discharge_eff  # +ed[t]*discharge_eff
         A_eq[t, gi_off + t] = 1.0  # +gi[t]
-        A_eq[t, ge_off + t] = -1.0  # −ge[t]
+        A_eq[t, ge_off + t] = -1.0  # -ge[t]
     b_eq = net_load.copy()
 
     # ------------------------------------------------------------------
@@ -328,9 +365,9 @@ def solve_milp(
             out_slots[slot_i].recommendation = Recommendations.BatteriesChargeGrid.value
             out_slots[slot_i].batteries_charged = round(ec_kwh, 3)
         elif ed_kwh > _MIN_ACTION_KWH:
-            out_slots[
-                slot_i
-            ].recommendation = Recommendations.BatteriesDischargeMode.value
+            out_slots[slot_i].recommendation = (
+                Recommendations.BatteriesDischargeMode.value
+            )
             # batteries_charged stays 0 for discharge slots
 
     _LOGGER.debug(

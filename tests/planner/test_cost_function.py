@@ -306,11 +306,13 @@ class TestCycleCost:
         assert bd.cycle_cost == pytest.approx(0.05, rel=1e-5)
 
     def test_auto_cycle_cost_from_economics(self):
-        """Auto-derived cycle cost: 10000 / (10 × 6000) = 0.1667 per kWh.
+        """Auto-derived cycle cost: 10000 / (2 × 10 × 6000) = 0.0833 per kWh.
 
+        The 2× accounts for the max(charge, discharge) throughput counting
+        which sees both directions of every full cycle.
         Sets min_soc_pct=0 so usable capacity equals rated capacity.
         """
-        expected_per_kwh = 10_000.0 / (10.0 * 6000)
+        expected_per_kwh = 10_000.0 / (2.0 * 10.0 * 6000)  # 2× for throughput double-count
         slot = _make_slot(batteries_charged=1.0, batteries_discharged=0.0)
         bd = score_plan(
             [slot],
@@ -707,9 +709,10 @@ class TestComparePlansKnownWinner:
         Charge slot: 9 kWh charged @ 0.22 DKK, no discharge.
         Discharge slot: 9 kWh discharged @ 1.68 DKK, no charge.
         Usable capacity = 10 × (100−10)/100 = 9 kWh.
-        cycle_cost_per_kwh = 25000 / (9 × 6000) ≈ 0.46296 DKK.
+        cycle_cost_per_kwh (with 2× fix) = 25000 / (2 × 9 × 6000) ≈ 0.23148 DKK.
+        Charged throughput counted = 9 kWh, discharged = 9 kWh.
+        Each counted via max(charge, discharge) = 9 each = 18 total × 0.23148 ≈ 4.17.
 
-        Expected cycle_cost = 9 kWh × 0.46296 × 2 slots ≈ 8.33 DKK.
         The arbitrage plan must be cheaper than a no-action plan importing
         9 kWh at 1.68 DKK (15.12 DKK).
         """
@@ -756,8 +759,9 @@ class TestComparePlansKnownWinner:
         )
 
         usable_kwh = 10.0 * (100.0 - 10.0) / 100.0  # 9.0
-        expected_cycle_cost_per_kwh = 25_000.0 / (usable_kwh * 6000)
-        expected_cycle_cost = 2 * 9.0 * expected_cycle_cost_per_kwh  # two slots
+        expected_cycle_cost_per_kwh = 25_000.0 / (2.0 * usable_kwh * 6000)  # 2× for throughput double-count
+        # max(9,0) + max(0,9) = 9 + 9 = 18 kWh throughput counted
+        expected_cycle_cost = 18.0 * expected_cycle_cost_per_kwh
 
         bd_arbitrage = score_plan([charge_slot, discharge_slot], weights)
         bd_no_action = score_plan([no_action_slot], weights)

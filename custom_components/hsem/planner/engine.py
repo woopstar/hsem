@@ -535,10 +535,9 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     # calculate_recommended_threshold returns the minimum economically
     # justified price difference (depreciation + conversion loss).
     recommended_threshold = calculate_recommended_threshold(
-        inp.battery_purchase_price,
-        inp.battery_expected_cycles,
-        usable_kwh,
-        0.0,
+        purchase_price=inp.battery_purchase_price,
+        expected_cycles=inp.battery_expected_cycles,
+        usable_capacity=usable_kwh,
     )
     if recommended_threshold > 0:
         warnings.append(
@@ -1112,10 +1111,9 @@ def _build_explanation(
     eod_soc = inp.battery_end_of_discharge_soc_pct / 100.0
     usable_kwh = inp.battery_rated_capacity_kwh * (1.0 - eod_soc)
     recommended_threshold = calculate_recommended_threshold(
-        inp.battery_purchase_price,
-        inp.battery_expected_cycles,
-        usable_kwh,
-        0.0,
+        purchase_price=inp.battery_purchase_price,
+        expected_cycles=inp.battery_expected_cycles,
+        usable_capacity=usable_kwh,
     )
 
     # --- Forecast metrics ------------------------------------------------

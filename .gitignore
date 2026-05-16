@@ -4,7 +4,8 @@ __pycache__
 *.egg-info
 */build/*
 */dist/*
-
+.mypy_cache
+.ruff_cache
 
 # misc
 .coverage
@@ -14,6 +15,7 @@ notes.txt
 .DS_Store
 scripts/sync.*
 .tox
+logs
 
 # Home Assistant configuration
 config/*

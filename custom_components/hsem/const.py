@@ -23,10 +23,6 @@ MIN_HUAWEI_SOLAR_VERSION = "1.5.0a1"
 DEFAULT_CONFIG_VALUES = {
     "device_name": NAME,
     "hsem_batteries_charge_efficiency": 95,
-    # DEPRECATED: hsem_batteries_conversion_loss removed in favour of separate
-    # charge/discharge efficiencies.  Kept in DEFAULT_CONFIG_VALUES so that
-    # get_config_value() does not raise KeyError for old config entries.
-    "hsem_batteries_conversion_loss": 10,
     "hsem_batteries_discharge_efficiency": 95,
     "hsem_batteries_enable_excess_export": False,
     "hsem_batteries_excess_export_discharge_buffer": 10,
@@ -35,17 +31,12 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_batteries_expected_cycles": 6000,
     "hsem_batteries_cycle_cost": 0.0,
     "hsem_batteries_enable_batteries_schedule_1_end": "09:00:00",
-    # DEPRECATED: hsem_batteries_enable_batteries_schedule_1_min_price_difference
-    # removed in favour of auto-calculated depreciation threshold in planner.
-    "hsem_batteries_enable_batteries_schedule_1_min_price_difference": 0.00,
     "hsem_batteries_enable_batteries_schedule_1_start": "07:00:00",
     "hsem_batteries_enable_batteries_schedule_1": True,
     "hsem_batteries_enable_batteries_schedule_2_end": "21:00:00",
-    "hsem_batteries_enable_batteries_schedule_2_min_price_difference": 0.00,
     "hsem_batteries_enable_batteries_schedule_2_start": "17:00:00",
     "hsem_batteries_enable_batteries_schedule_2": True,
     "hsem_batteries_enable_batteries_schedule_3_end": "02:00:00",
-    "hsem_batteries_enable_batteries_schedule_3_min_price_difference": 0.00,
     "hsem_batteries_enable_batteries_schedule_3_start": "23:00:00",
     "hsem_batteries_enable_batteries_schedule_3": False,
     "hsem_energi_data_service_export_min_price": -0.00,

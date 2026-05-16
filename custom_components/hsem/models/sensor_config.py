@@ -171,7 +171,6 @@ class SensorConfig:
     #: the min-price-difference guard so cycling only happens when the price
     #: spread covers both losses AND wear.  0.0 means no extra guard.
     batteries_cycle_cost: float = 0.0
-    batteries_conversion_loss: float = 0.04
 
     # Battery discharge schedules
     batteries_schedule_1: BatteryScheduleConfig = field(

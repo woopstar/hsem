@@ -576,9 +576,9 @@ class TestPlannerOutputCandidates:
     def test_all_seven_candidates_present(self):
         """The seven core named candidates must appear in a standard summer run.
 
-        When scipy is available an 8th ``milp`` candidate is also added.  This
-        test only asserts the seven mandatory candidates are present; the MILP
-        candidate is validated separately in test_milp_optimizer.py.
+        When scipy is available, ``milp`` and ``soc_plan`` candidates are also
+        added.  This test only asserts the seven mandatory candidates are
+        present; the MILP candidate is validated separately in test_milp_optimizer.py.
         """
         output = run_planner(make_summer_day_input())
         names = {c.name for c in output.candidates}

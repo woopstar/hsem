@@ -277,7 +277,7 @@ def _resolve_cycle_cost(weights: CostWeights) -> float:
     rated capacity, because battery degradation is driven by cycling within
     the usable SoC range.
 
-        cycle_cost_per_kwh = purchase_price / (usable_capacity_kwh × expected_cycles)
+        cycle_cost_per_kwh = purchase_price / (2 * usable_capacity_kwh × expected_cycles)
 
     If ``weights.cycle_cost_per_kwh`` is explicitly set (not ``None``), that
     value is used directly.  Returns 0.0 when any required value is non-positive
@@ -302,7 +302,7 @@ def _resolve_cycle_cost(weights: CostWeights) -> float:
         if usable_kwh < 1e-9:
             usable_kwh = weights.battery_rated_capacity_kwh  # fallback: full rated
         return weights.battery_purchase_price / (
-            usable_kwh * weights.battery_expected_cycles
+            2 * usable_kwh * weights.battery_expected_cycles
         )
 
     return 0.0

@@ -441,7 +441,7 @@ class TestThresholdCalculationWithNoneInputs:
             purchase_price=48_000.0,
             expected_cycles=0,  # edge case: 0 cycles
             usable_capacity=10.0,
-            conversion_loss=10.0,
+            conversion_loss_pct=10.0,
         )
         assert result == pytest.approx(0.0)
 
@@ -453,7 +453,7 @@ class TestThresholdCalculationWithNoneInputs:
             purchase_price=0.0,
             expected_cycles=6000,
             usable_capacity=10.0,
-            conversion_loss=10.0,
+            conversion_loss_pct=10.0,
         )
         assert result == pytest.approx(0.0)
 
@@ -465,7 +465,7 @@ class TestThresholdCalculationWithNoneInputs:
             purchase_price=48_000.0,
             expected_cycles=6_000,
             usable_capacity=10.0,
-            conversion_loss=10.0,
+            conversion_loss_pct=10.0,
             import_price=0.15,
         )
         assert result > 0
@@ -529,6 +529,6 @@ class TestFlowExpectedCyclesNullSafety:
             purchase_price=48_000.0,
             expected_cycles=cycles,
             usable_capacity=10.0,
-            conversion_loss=10.0,
+            conversion_loss_pct=10.0,
         )
-        assert result == pytest.approx(0.800, abs=1e-3)
+        assert result == pytest.approx(0.240, abs=1e-3)

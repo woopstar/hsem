@@ -16,7 +16,6 @@ from custom_components.hsem.const import DEFAULT_CONFIG_VALUES, DOMAIN
 
 # Re-export async_logger from its dedicated module so that existing callers
 # importing it from utils.misc continue to work without changes.
-from custom_components.hsem.utils.logger import HSEM_LOGGER  # noqa: F401
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -495,20 +494,40 @@ def calculate_recommended_threshold(
     purchase_price: float,
     expected_cycles: int,
     usable_capacity: float,
-    conversion_loss: float,
+    conversion_loss_pct: float = 4.0,
     import_price: float = 0.0,
+    capacity_loss_pct: float = 30.0,
 ) -> float:
     """Calculate the recommended price threshold based on battery depreciation and losses.
 
     Formula: (Purchase Price * Capacity Loss) / (Cycles * Capacity) + (Avg Import Price * Loss %)
+
+    Args:
+        purchase_price: Total battery system cost in local currency.
+        expected_cycles: Total expected lifetime charge/discharge cycles.
+        usable_capacity: Usable battery capacity in kWh.
+        conversion_loss_pct: Round-trip conversion loss as a percentage (0-100).
+        import_price: Current import price per kWh (used for conversion loss cost).
+        capacity_loss_pct: Battery capacity lost at end-of-life as a percentage
+            of original capacity (0-100).  LiFePO4 EOL is typically defined at
+            80% retained capacity = 20% loss.  Defaults to 20% to match the
+            HSEM wiki example calculation.
     """
     if purchase_price <= 0 or expected_cycles <= 0 or usable_capacity <= 0:
         return 0.0
 
     # 1. Depreciation cost per kWh
-    depreciation = purchase_price / (expected_cycles * usable_capacity)
+    # Formula: (Purchase Price * Capacity Loss) / (Cycles * Capacity)
+    # Capacity loss accounts for the fact that at end-of-life the battery still
+    # has residual value (e.g. 70-80% retained capacity), so only 20-30% of the
+    # purchase price is consumed through cycling.
+    capacity_loss_dec = max(min(capacity_loss_pct, 100.0), 0.0) / 100.0
+    depreciation = (purchase_price * capacity_loss_dec) / (
+        expected_cycles * usable_capacity
+    )
 
     # 2. Conversion loss cost (approx 10% of current import price)
-    conversion_loss_cost = import_price * (conversion_loss / 100)
+    conversion_loss_dec = max(min(conversion_loss_pct, 100.0), 0.0) / 100.0
+    conversion_loss_cost = import_price * conversion_loss_dec
 
     return round(depreciation + conversion_loss_cost, 3)

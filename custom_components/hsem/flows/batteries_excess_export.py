@@ -44,7 +44,9 @@ async def get_batteries_excess_export_step_schema(
     usable_capacity = _resolve_usable_capacity_kwh(hass, config_entry, user_input)
 
     recommended = calculate_recommended_threshold(
-        purchase_price, expected_cycles, usable_capacity, 0.0
+        purchase_price=purchase_price,
+        expected_cycles=expected_cycles,
+        usable_capacity=usable_capacity,
     )
 
     return vol.Schema(
