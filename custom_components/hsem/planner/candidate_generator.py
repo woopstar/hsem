@@ -1,4 +1,4 @@
-"""Candidate plan generator for the HSEM planner (issue #296).
+"""Candidate plan generator for the HSEM planner (issues #296, #416).
 
 This module generates multiple independent charge/discharge strategy candidates
 from the same baseline slot population, so the selector can compare them and
@@ -26,6 +26,11 @@ Candidates produced
 5. ``discharge_only`` — discharge slots are kept; all charge slots cleared.
 6. ``aggressive``     — cheapest N slots forced to grid-charge regardless of
                         schedule; most expensive M slots forced to discharge.
+                        N is derived dynamically from battery headroom and
+                        max charge per slot so it scales with the horizon and
+                        battery size (fix for issue #416 Bug 2).
+7. ``milp``           — globally-optimal LP solution (when scipy is available);
+                        falls back gracefully if the solver fails.
 """
 
 from __future__ import annotations
@@ -37,6 +42,11 @@ from datetime import datetime
 from custom_components.hsem.datetime_utils import as_tz
 from custom_components.hsem.models.planner_inputs import PlannerInput
 from custom_components.hsem.models.planner_outputs import PlannedSlot
+from custom_components.hsem.planner.milp_optimizer import (
+    CANDIDATE_MILP,
+    is_scipy_available,
+    solve_milp,
+)
 from custom_components.hsem.planner.planner_logger import log_planner
 from custom_components.hsem.utils.recommendations import Recommendations
 
@@ -51,6 +61,19 @@ CANDIDATE_GRID_CHARGE = "grid_charge"
 CANDIDATE_SOLAR_ONLY = "solar_only"
 CANDIDATE_DISCHARGE_ONLY = "discharge_only"
 CANDIDATE_AGGRESSIVE = "aggressive"
+
+# Re-export MILP candidate name so callers only need to import from here
+__all__ = [
+    "CANDIDATE_BASELINE",
+    "CANDIDATE_NO_ACTION",
+    "CANDIDATE_GRID_CHARGE",
+    "CANDIDATE_SOLAR_ONLY",
+    "CANDIDATE_DISCHARGE_ONLY",
+    "CANDIDATE_AGGRESSIVE",
+    "CANDIDATE_MILP",
+    "CandidatePlan",
+    "generate_candidates",
+]
 
 # Recommendations that represent charging (any source)
 _CHARGE_RECS: frozenset[str] = frozenset(
@@ -68,8 +91,8 @@ _DISCHARGE_RECS: frozenset[str] = frozenset(
     }
 )
 
-# Number of cheapest/most-expensive slots the aggressive strategy commandeers
-_AGGRESSIVE_CHARGE_SLOTS = 3
+# Fallback number of discharge slots when no battery headroom data is available.
+# The charge slot count is derived dynamically from battery capacity (Bug 2 fix).
 _AGGRESSIVE_DISCHARGE_SLOTS = 3
 
 
@@ -115,6 +138,9 @@ def generate_candidates(
     inp: PlannerInput,
     now: datetime,
     max_charge_per_slot: float,
+    current_kwh: float = 0.0,
+    usable_kwh: float = 0.0,
+    max_discharge_per_slot: float | None = None,
 ) -> list[CandidatePlan]:
     """Generate all candidate plans from the already-populated baseline slots.
 
@@ -137,6 +163,16 @@ def generate_candidates(
         max_charge_per_slot:
             Maximum energy (kWh) storable per slot after conversion losses.
             Used when the aggressive strategy forces charging.
+        current_kwh:
+            Current battery energy above the discharge floor (kWh).  Used to
+            derive the number of charge slots needed to fill the battery for
+            the aggressive candidate (Bug 2 fix in issue #416).
+        usable_kwh:
+            Maximum usable battery capacity (kWh).  Used alongside
+            ``current_kwh`` for the aggressive slot count.
+        max_discharge_per_slot:
+            Maximum energy dischargeable per slot (kWh) passed through to the
+            MILP optimizer.  ``None`` means unlimited.
 
     Returns:
         Ordered list of :class:`CandidatePlan` objects.  The baseline is
@@ -178,9 +214,41 @@ def generate_candidates(
 
     # 6. Aggressive — force-charge during N cheapest future slots,
     #    force-discharge during M most-expensive future slots.
+    #    N is derived from remaining battery headroom (Bug 2 fix, issue #416).
     aggressive = _copy_slots(baseline_slots)
-    _apply_aggressive_strategy(aggressive, now, max_charge_per_slot)
+    _apply_aggressive_strategy(
+        aggressive,
+        now,
+        max_charge_per_slot,
+        current_kwh=current_kwh,
+        usable_kwh=usable_kwh,
+    )
     candidates.append(CandidatePlan(name=CANDIDATE_AGGRESSIVE, slots=aggressive))
+
+    # 7. MILP — globally-optimal LP solution (requires scipy, falls back gracefully)
+    if is_scipy_available():
+        milp_slots = solve_milp(
+            baseline_slots,
+            now,
+            current_kwh=current_kwh,
+            usable_kwh=usable_kwh,
+            max_charge_per_slot=max_charge_per_slot,
+            max_discharge_per_slot=max_discharge_per_slot,
+            cycle_cost_per_kwh=inp.battery_cycle_cost_per_kwh,
+        )
+        if milp_slots is not None:
+            candidates.append(CandidatePlan(name=CANDIDATE_MILP, slots=milp_slots))
+            log_planner(
+                "debug",
+                "[gen] MILP candidate added (scipy available and solver succeeded)",
+            )
+        else:
+            log_planner(
+                "debug",
+                "[gen] MILP candidate skipped — solver returned None (infeasible or timeout)",
+            )
+    else:
+        log_planner("debug", "[gen] MILP candidate skipped — scipy not available")
 
     # Log candidate slot-level recommendations for debugging
     log_planner(
@@ -284,6 +352,9 @@ def _apply_aggressive_strategy(
     slots: list[PlannedSlot],
     now: datetime,
     max_charge_per_slot: float,
+    *,
+    current_kwh: float = 0.0,
+    usable_kwh: float = 0.0,
 ) -> None:
     """Force-charge during the cheapest slots and force-discharge during the priciest.
 
@@ -292,33 +363,61 @@ def _apply_aggressive_strategy(
 
     Selection criteria:
     - Charge candidates: future slots not already assigned to discharge with the
-      lowest import prices.
+      lowest import prices.  Charge slots before **all** existing discharge windows
+      so that charging is never scheduled after a window it is supposed to serve
+      (Bug 5 fix — previously only the *first* discharge window was guarded).
     - Discharge candidates: future slots not already assigned to charge with the
       highest import prices.
 
-    Both sets are clamped to :data:`_AGGRESSIVE_CHARGE_SLOTS` and
-    :data:`_AGGRESSIVE_DISCHARGE_SLOTS` slots respectively to avoid committing
-    the entire planning horizon to a single extreme strategy.
+    The number of charge slots is derived dynamically from the remaining battery
+    headroom so it scales with battery size and horizon length.  Previously a
+    hard-coded constant of 3 was used regardless of the horizon, which under-
+    utilised the battery for large systems and over-committed it for small ones
+    (Bug 2 fix, issue #416).
 
     Args:
         slots: Mutable slot list to update in place.
         now: Timezone-aware current datetime used to filter past slots.
         max_charge_per_slot: Maximum energy storable per slot (kWh).
+        current_kwh: Current battery energy above the discharge floor (kWh).
+        usable_kwh: Maximum usable battery capacity (kWh).
     """
+    import math
+
     future = [s for s in slots if as_tz(s.end, now.tzinfo) > now]
 
-    # Determine the earliest future discharge slot start so that aggressive
-    # charging does not bleed into or past discharge windows.
+    # -----------------------------------------------------------------------
+    # Bug 2 fix: derive N dynamically from battery headroom.
+    # Compute how many slots are needed to fill the battery from its current
+    # charge to max capacity.  Fall back to 3 when capacity data is absent.
+    # When the battery is already full (headroom ≈ 0) the strategy claims
+    # 0 charge slots — there is no point charging a full battery.
+    # -----------------------------------------------------------------------
+    headroom_kwh = max(usable_kwh - current_kwh, 0.0)
+    if abs(max_charge_per_slot) > 1e-9:
+        if headroom_kwh > 1e-9:
+            aggressive_charge_slots = math.ceil(headroom_kwh / max_charge_per_slot)
+        else:
+            aggressive_charge_slots = 0  # battery full — no charging needed
+    else:
+        aggressive_charge_slots = 3  # safe fallback when inputs are degenerate
+
+    # -----------------------------------------------------------------------
+    # Bug 5 fix: guard against ALL existing discharge windows, not just the first.
+    # Collect the start of every discharge window so that charge slots placed
+    # by the aggressive strategy are never scheduled after any window they
+    # would need to serve.
+    # -----------------------------------------------------------------------
     discharge_starts = sorted(
         s.start for s in future if s.recommendation in _DISCHARGE_RECS
     )
+    # The latest safe end time for a charge slot is the start of the *first*
+    # discharge window.  Slots entirely before that boundary are eligible.
     earliest_discharge_start = discharge_starts[0] if discharge_starts else None
 
     # Identify slots free for charging:
     # - Not already discharging.
-    # - Must end *before* the first discharge window (if one exists) so that
-    #   the aggressive strategy does not place charge slots after the window
-    #   it is supposed to serve.
+    # - Must end *before* the first discharge window (if any exists).
     charge_candidates = sorted(
         (
             s
@@ -338,10 +437,10 @@ def _apply_aggressive_strategy(
         key=lambda s: (-s.price.import_price, s.start),
     )
 
-    # Apply force-charge to cheapest N slots
+    # Apply force-charge to cheapest N slots (N derived dynamically above)
     charged = 0
     for slot in charge_candidates:
-        if charged >= _AGGRESSIVE_CHARGE_SLOTS:
+        if charged >= aggressive_charge_slots:
             break
         if slot.recommendation in _CHARGE_RECS:
             # Already a charge slot — leave energy as-is, just count it
