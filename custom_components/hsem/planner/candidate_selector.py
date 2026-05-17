@@ -357,7 +357,9 @@ def replacement_price_from_next_discharge(
             Timezone-aware current datetime.  Past slots are excluded.
         top_n:
             Number of most expensive discharge slots to average over.
-            Default 4 corresponds to ~1 hour at 15-min resolution.
+            Derived dynamically from ``ceil(usable_kwh / max_discharge_per_slot)``
+            in the engine so it reflects how many slots the battery can actually
+            serve.  Default 4 is a safe fallback (~1 hour at 15-min resolution).
 
     Returns:
         Replacement price in currency/kWh, or ``None`` when no future

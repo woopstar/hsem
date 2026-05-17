@@ -713,8 +713,15 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     # We use the most expensive import prices from the next active discharge
     # schedule window.  The energy stored at end-of-horizon avoids importing at
     # those peak prices, so those are the appropriate replacement cost.
+    # top_n is derived from battery capacity / discharge rate so it reflects
+    # how many slots the battery can actually serve (fixes hardcoded 4-slot bug).
+    import math
+
+    top_n: int = 4  # safe fallback
+    if max_discharge_per_slot is not None and max_discharge_per_slot > 1e-9:
+        top_n = math.ceil(usable_kwh / max_discharge_per_slot)
     replacement_price_per_kwh: float | None = replacement_price_from_next_discharge(
-        slots, now
+        slots, now, top_n=top_n
     )
     log_planner(
         "debug",
