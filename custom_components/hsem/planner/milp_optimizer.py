@@ -96,8 +96,10 @@ _LOGGER = logging.getLogger(__name__)
 # Name exported so the engine and tests can reference it without re-defining
 CANDIDATE_MILP = "milp"
 
-# Solver timeout in seconds — HiGHS respects this via ``options``
-_SOLVER_TIME_LIMIT_S = 0.5
+# Solver timeout in seconds — HiGHS respects this via ``options``.
+# Increased from 0.5 to 2.0 to handle 192-slot (768 variable) problems
+# where preprocessing overhead alone can reach 200-400ms.
+_SOLVER_TIME_LIMIT_S = 2.0
 
 # Minimum energy threshold below which a slot is treated as zero-charge/discharge
 # to avoid writing tiny floating-point artefacts into recommendations.
@@ -211,9 +213,12 @@ def solve_milp(
     p_imp = np.nan_to_num(p_imp, nan=0.0)
     p_exp = np.nan_to_num(p_exp, nan=0.0)
 
-    # Net load = house consumption + EV extra load − PV available to battery/export.
+    # Net load = house consumption + EV extra load − PV estimate.
     # A positive value means the battery/grid must supply extra energy.
-    # A negative value means there is PV surplus available for battery/export.
+    # A negative value means there is PV surplus.
+    # Split into base_load (positive demand) and pv_avail (PV surplus after load).
+    # pv_avail[t] is added as an explicit LP variable to prevent infeasibility
+    # when net_load is strongly negative and SoC limits constrain charge.
     net_load = np.array(
         [
             slots[i].avg_house_consumption
@@ -223,14 +228,20 @@ def solve_milp(
         ],
         dtype=float,
     )
+    pv_avail = np.maximum(-net_load, 0.0)  # PV surplus after house consumption
+    base_load = np.maximum(net_load, 0.0)  # remaining demand after PV
     m = len(future_idx)  # number of active LP slots
 
     # ------------------------------------------------------------------
-    # Variable layout: x = [ec(0..m-1), ed(0..m-1), gi(0..m-1), ge(0..m-1)]
-    # Offsets: ec_off=0, ed_off=m, gi_off=2m, ge_off=3m
+    # Variable layout: x = [ec(0..m-1), ed(0..m-1), gi(0..m-1), ge(0..m-1), pv(0..m-1)]
+    # Offsets: ec_off=0, ed_off=m, gi_off=2m, ge_off=3m, pv_off=4m
+    # pv[t] is a FIXED variable bounded to [pv_avail[t], pv_avail[t]] — the
+    # solar energy available after house consumption.  Making it explicit in
+    # the LP (rather than netting it into b_eq) prevents infeasibility when
+    # net_load is strongly negative and SoC constraints limit charge/export.
     # ------------------------------------------------------------------
-    ec_off, ed_off, gi_off, ge_off = 0, m, 2 * m, 3 * m
-    n_vars = 4 * m
+    ec_off, ed_off, gi_off, ge_off, pv_off = 0, m, 2 * m, 3 * m, 4 * m
+    n_vars = 5 * m
 
     # Resolve charge/discharge efficiencies for the energy balance equation.
     # The MILP must account for real-world conversion losses so its solution
@@ -243,12 +254,7 @@ def solve_milp(
 
     # ------------------------------------------------------------------
     # Objective vector: minimise grid_import_cost - export_revenue + cycle_cost
-    # + conversion_loss_cost
-    #
-    # The energy balance equation uses actual efficiencies so gi[t] * p_imp[t]
-    # correctly reflects the REAL grid import (including the extra draw for
-    # charge-side losses).  We add conversion loss costs on charge and
-    # discharge actions so the MILP's objective matches score_plan's total_cost.
+    # + conversion_loss_cost.  pv[t] has zero objective cost (it's free).
     # ------------------------------------------------------------------
     c_obj = np.zeros(n_vars)
     # Charge-side: cycle cost + energy lost during charge, priced at import price
@@ -257,14 +263,15 @@ def solve_milp(
     c_obj[ed_off : ed_off + m] = cycle_cost_per_kwh + discharge_loss * p_imp
     c_obj[gi_off : gi_off + m] = p_imp  # grid import cost
     c_obj[ge_off : ge_off + m] = -p_exp  # export revenue (negative = gain)
+    # pv[t] has zero objective cost
 
     # ------------------------------------------------------------------
     # Equality constraints: energy balance per slot
-    # gi[t] + ed[t]*discharge_eff = net_load[t] + ec[t]/charge_eff + ge[t]
-    # -> gi[t] - ec[t]/charge_eff + ed[t]*discharge_eff - ge[t] = net_load[t]
+    # gi[t] + pv[t] + ed[t]*discharge_eff = base_load[t] + ec[t]/charge_eff + ge[t]
+    # -> gi[t] - ec[t]/charge_eff + ed[t]*discharge_eff + pv[t] - ge[t] = base_load[t]
     #
     # ec[t] is the battery-side stored energy (post charge loss).  To store
-    # ec[t] kWh the grid must supply ec[t]/charge_eff kWh.
+    # ec[t] kWh the grid + PV must supply ec[t]/charge_eff kWh.
     # ed[t] is the battery-side removed energy (pre discharge loss).  The
     # house receives ed[t]*discharge_eff kWh.
     # ------------------------------------------------------------------
@@ -274,7 +281,8 @@ def solve_milp(
         A_eq[t, ed_off + t] = 1.0 * discharge_eff  # +ed[t]*discharge_eff
         A_eq[t, gi_off + t] = 1.0  # +gi[t]
         A_eq[t, ge_off + t] = -1.0  # -ge[t]
-    b_eq = net_load.copy()
+        A_eq[t, pv_off + t] = 1.0  # +pv[t] (fixed to pv_avail[t])
+    b_eq = base_load.copy()  # always non-negative — pv[t] covers surplus
 
     # ------------------------------------------------------------------
     # Inequality constraints:
@@ -310,6 +318,9 @@ def solve_milp(
         + [(0.0, max_dis)] * m  # ed[t]
         + [(0.0, None)] * m  # gi[t] (unbounded above)
         + [(0.0, None)] * m  # ge[t] (unbounded above)
+        + [
+            (pv_avail[t], pv_avail[t]) for t in range(m)
+        ]  # pv[t] fixed to actual surplus
     )
 
     # ------------------------------------------------------------------
@@ -355,10 +366,17 @@ def solve_milp(
         ed_kwh = float(ed_sol[lp_t])
 
         if ec_kwh > _MIN_ACTION_KWH and ed_kwh > _MIN_ACTION_KWH:
-            # Simultaneous charge + discharge (numerical artefact) — pick larger
-            if ec_kwh >= ed_kwh:
+            # Simultaneous charge + discharge (numerical artefact) — resolve
+            # by keeping the CHEAPER action, not the larger magnitude.
+            # When import price is low, charging is cheap so prefer it.
+            # When import price is high, discharging saves money so prefer it.
+            p_imp_t = float(p_imp[lp_t])
+            p_exp_t = float(p_exp[lp_t])
+            if p_imp_t <= p_exp_t:
+                # Cheap to import — keep charge, drop discharge
                 ed_kwh = 0.0
             else:
+                # Expensive to import — keep discharge, drop charge
                 ec_kwh = 0.0
 
         if ec_kwh > _MIN_ACTION_KWH:
