@@ -535,7 +535,6 @@ def calculate_recommended_threshold(
     # Capacity loss accounts for residual value at end-of-life.
     capacity_loss_dec = max(min(capacity_loss_pct, 100.0), 0.0) / 100.0
     return round(
-        (purchase_price * capacity_loss_dec)
-        / (2 * expected_cycles * usable_capacity),
+        (purchase_price * capacity_loss_dec) / (2 * expected_cycles * usable_capacity),
         3,
     )

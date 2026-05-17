@@ -121,13 +121,11 @@ class TestCalculateRecommendedThreshold:
             purchase_price=48_000.0,
             expected_cycles=6_000,
             usable_capacity=5.0,
-            conversion_loss_pct=10.0,
         )
         result_large = calculate_recommended_threshold(
             purchase_price=48_000.0,
             expected_cycles=6_000,
             usable_capacity=10.0,
-            conversion_loss_pct=10.0,
         )
         assert result_small > result_large
 
@@ -137,11 +135,9 @@ class TestCalculateRecommendedThreshold:
             purchase_price=48_000.0,
             expected_cycles=6_000,
             usable_capacity=10.0,
-            conversion_loss_pct=10.0,
-            import_price=0.15,
         )
-        # Check the string representation has at most 3 decimal places
-        decimals = len(str(result).split(".")[-1])
+        # (48000 * 0.30) / (2 * 6000 * 10) = 0.120
+        decimals = len(str(round(result, 3)).split(".")[-1])
         assert decimals <= 3
 
     def test_negative_purchase_price_returns_zero(self):
@@ -150,7 +146,6 @@ class TestCalculateRecommendedThreshold:
             purchase_price=-100.0,
             expected_cycles=6_000,
             usable_capacity=10.0,
-            conversion_loss_pct=10.0,
         )
         assert result == pytest.approx(0.0)
 

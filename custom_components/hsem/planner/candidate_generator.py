@@ -638,19 +638,30 @@ def _apply_soc_plan(
     charge_needed = min(charge_needed, usable_kwh - current_kwh)
     charge_needed = max(charge_needed, 0.0)
 
-    # Apply charge fraction — different candidates try charging 25 %, 50 %,
-    # 75 %, 100 %, 125 %, or fill-to-max of what's actually needed.
-    # This is the key BatPred-inspired optimization: instead of a binary
-    # "all or nothing" decision, the selector can pick the optimal charge
-    # level by comparing cost vs benefit across candidates.
-    if charge_fraction >= 1.99:
-        # CANDIDATE_SOC_FULL: fill the battery to max usable capacity
-        charge_target = max(usable_kwh - current_kwh, 0.0)
+    # When the battery is already mostly charged, charge_needed is tiny
+    # and all soc_plan* candidates become identical (no grid charging).
+    # Switch to discharge_fraction mode: limit how much of the battery's
+    # stored energy is actually used during discharge.
+    # discharge_fraction = charge_fraction (same values: 0.25-1.25, 2.0=full).
+    # This lets the selector choose partial discharge levels.
+    if charge_needed < 0.5 and current_kwh > 1.0:
+        # Discharge-fraction mode: only use charge_fraction of battery.
+        if charge_fraction >= 1.99:
+            discharge_target = usable_kwh  # use full battery
+        else:
+            discharge_target = current_kwh * charge_fraction
+            discharge_target = min(discharge_target, usable_kwh)
+            discharge_target = max(discharge_target, 0.5)
+
+        charge_target = 0.0  # no grid charging needed
     else:
-        charge_target = charge_needed * charge_fraction
-        # Clamp to usable capacity ceiling
-        charge_target = min(charge_target, usable_kwh - current_kwh)
-        charge_target = max(charge_target, 0.0)
+        # Normal charge-fraction mode: charge_fraction of what's needed.
+        if charge_fraction >= 1.99:
+            charge_target = max(usable_kwh - current_kwh, 0.0)
+        else:
+            charge_target = charge_needed * charge_fraction
+            charge_target = min(charge_target, usable_kwh - current_kwh)
+            charge_target = max(charge_target, 0.0)
 
     # Step 2: Clear all existing charge/discharge recommendations
     for slot in slots:
@@ -658,10 +669,36 @@ def _apply_soc_plan(
             slot.recommendation = None
             slot.batteries_charged = 0.0
 
-    # Step 3: Re-apply discharge window labels (cosmetic — SoC simulation
-    # handles the actual physics)
-    for slot in discharge_slots:
-        slot.recommendation = Recommendations.BatteriesDischargeMode.value
+    # Step 3: Re-apply discharge window labels — but in discharge-fraction
+    # mode, only apply to the most expensive slots within the discharge_target.
+    if charge_needed < 0.5 and current_kwh > 1.0:
+        # Sort discharge slots by price descending, keep only the top N
+        # that fit within discharge_target (accounting for discharge efficiency).
+        sorted_discharge = sorted(
+            discharge_slots, key=lambda s: s.price.import_price, reverse=True
+        )
+        remaining = discharge_target
+        kept_discharge: list = []
+        for s in sorted_discharge:
+            slot_demand = max(s.estimated_net_consumption, 0.0)
+            battery_needed = (
+                slot_demand / discharge_eff if discharge_eff > 1e-9 else 0.0
+            )
+            if battery_needed <= remaining:
+                remaining -= battery_needed
+                kept_discharge.append(s)
+            else:
+                break  # Not enough battery — cheaper slots are skipped
+        # Ensure at least the most expensive slot is kept
+        if not kept_discharge and sorted_discharge:
+            kept_discharge = [sorted_discharge[0]]
+        for s in kept_discharge:
+            s.recommendation = Recommendations.BatteriesDischargeMode.value
+        # Remaining discharge slots stay None → will become WaitMode in fill pass
+        discharge_slots = kept_discharge
+    else:
+        for slot in discharge_slots:
+            slot.recommendation = Recommendations.BatteriesDischargeMode.value
 
     # Step 4: Apply solar charging where PV surplus exists (free energy)
     charged = 0.0
@@ -686,6 +723,9 @@ def _apply_soc_plan(
     # Step 5: Charge remaining needed energy from cheapest grid slots
     # before the first discharge window, but only if the price spread
     # covers the cycle cost (avoid uneconomical cycling).
+    if not discharge_slots:
+        return  # No discharge slots after filtering — nothing to plan for
+
     first_discharge_start = min(as_tz(s.start, now.tzinfo) for s in discharge_slots)
 
     # Average discharge price — what we'd save by discharging instead of importing
@@ -705,15 +745,19 @@ def _apply_soc_plan(
         key=lambda x: (x.price.import_price, x.start),
     )
 
-    # Only charge when the price spread covers the cycle cost on both
-    # directions (charge + discharge) plus a conversion loss guard.
-    # This mirrors the guard in _apply_grid_charge.
+    # Only charge when the price spread covers the depreciation + cycle cost.
+    # This mirrors the guard in _apply_grid_charge which uses:
+    #   min_diff = recommended_threshold + cycle_cost_per_kwh
+    # where recommended_threshold is the depreciation-derived price floor.
+    # Since soc_plan doesn't have recommended_threshold, we approximate it
+    # from cycle_cost_per_kwh * capacity_loss_pct (default 30%).
     cheapest_price = grid_candidates[0].price.import_price if grid_candidates else 0.0
     price_spread = avg_discharge_price - cheapest_price
-    # The effective cost is cycle cost per direction times 2 directions,
-    # plus ~10% conversion loss on the charge price.
-    conversion_loss_guard = cheapest_price * 0.10  # rough approximation
-    min_profitable_spread = 2.0 * cycle_cost_per_kwh + conversion_loss_guard
+    # Approximate recommended_threshold from cycle_cost_per_kwh.
+    # cycle_cost_per_kwh already includes the 2x throughput factor.
+    # recommended_threshold ≈ cycle_cost_per_kwh * 0.30 (capacity_loss_pct).
+    approx_threshold = cycle_cost_per_kwh * 0.30
+    min_profitable_spread = approx_threshold + cycle_cost_per_kwh
 
     if price_spread < min_profitable_spread - 1e-9:
         # Spread too small — skip grid charging, just let solar charging happen
