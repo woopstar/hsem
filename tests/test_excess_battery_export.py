@@ -68,7 +68,6 @@ class TestCalculateRecommendedThreshold:
             purchase_price=0.0,
             expected_cycles=6000,
             usable_capacity=10.0,
-            conversion_loss_pct=10.0,
         )
         assert result == pytest.approx(0.0)
 
@@ -78,7 +77,6 @@ class TestCalculateRecommendedThreshold:
             purchase_price=48000.0,
             expected_cycles=0,
             usable_capacity=10.0,
-            conversion_loss_pct=10.0,
         )
         assert result == pytest.approx(0.0)
 
@@ -88,39 +86,34 @@ class TestCalculateRecommendedThreshold:
             purchase_price=48000.0,
             expected_cycles=6000,
             usable_capacity=0.0,
-            conversion_loss_pct=10.0,
         )
         assert result == pytest.approx(0.0)
 
     def test_depreciation_only_no_import_price(self):
-        """With import_price=0 only depreciation component is returned.
+        """With default params only depreciation component is returned.
 
-        Formula: (48 000 * 0.30) / (6 000 * 10) = 14 400 / 60 000 = 0.240
+        Formula: (48 000 * 0.30) / (2 * 6 000 * 10) = 14 400 / 120 000 = 0.120
         """
         result = calculate_recommended_threshold(
             purchase_price=48_000.0,
             expected_cycles=6_000,
             usable_capacity=10.0,
-            conversion_loss_pct=10.0,
-            import_price=0.0,
         )
-        assert result == pytest.approx(0.240, abs=1e-3)
+        assert result == pytest.approx(0.120, abs=1e-3)
 
-    def test_depreciation_plus_conversion_loss(self):
-        """Conversion loss cost is added on top of depreciation.
+    def test_depreciation_with_custom_capacity_loss(self):
+        """Custom capacity loss percentage is reflected in the threshold.
 
-        depreciation = (48 000 * 0.30) / (6 000 * 10) = 0.240
-        conversion_loss_cost = 0.15 * (10 / 100) = 0.015
-        total = 0.255
+        capacity_loss_pct=30 (default) → 0.120
+        capacity_loss_pct=50 → (48000 * 0.50) / (2 * 6000 * 10) = 0.200
         """
         result = calculate_recommended_threshold(
             purchase_price=48_000.0,
             expected_cycles=6_000,
             usable_capacity=10.0,
-            conversion_loss_pct=10.0,
-            import_price=0.15,
+            capacity_loss_pct=50.0,
         )
-        assert result == pytest.approx(0.255, abs=1e-3)
+        assert result == pytest.approx(0.200, abs=1e-3)
 
     def test_smaller_battery_higher_threshold(self):
         """A smaller usable capacity raises the per-kWh depreciation cost."""

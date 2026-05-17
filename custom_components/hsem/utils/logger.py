@@ -299,7 +299,17 @@ def _resolve_hass_config(hass: object) -> str:
     """
     # Use getattr so this module stays importable without Home Assistant
     # (for unit tests, linting, etc.).
-    config_path: str | None = getattr(hass, "config", None)
-    if config_path is None:
+    # hass.config is a Config object, not a string — use its path() or
+    # config_dir attribute to get the directory path.
+    try:
+        if hasattr(hass, "config"):
+            config = getattr(hass, "config")
+            # Config objects expose config_dir; string paths are fallback.
+            if hasattr(config, "config_dir") and config.config_dir:
+                return config.config_dir
+            # On some HA versions config might still be a string path.
+            if isinstance(config, str):
+                return config
         return os.getcwd()  # fallback for tests / lint context
-    return config_path
+    except Exception:
+        return os.getcwd()
