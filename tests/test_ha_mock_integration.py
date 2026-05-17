@@ -2084,8 +2084,9 @@ class TestApplyPlannerOutputEvLoad:
     # Warning on unmatched slots
     # ------------------------------------------------------------------
 
-    def test_warning_emitted_for_unmatched_rec_slot(self, caplog):
+    def test_warning_emitted_for_unmatched_rec_slot(self):
         """A WARNING must be logged when a rec cannot be matched to any planner slot."""
+        import io
         import logging
         from datetime import UTC, datetime, timedelta
 
@@ -2096,6 +2097,7 @@ class TestApplyPlannerOutputEvLoad:
             PlannedSlot,
             PlannerOutput,
         )
+        from custom_components.hsem.utils.logger import HSEM_LOGGER
         from custom_components.hsem.utils.prices import SlotPrice
 
         midnight = datetime(2024, 6, 15, 0, 0, 0, tzinfo=UTC)
@@ -2138,18 +2140,20 @@ class TestApplyPlannerOutputEvLoad:
         coord._batteries_schedules = []
         coord._hourly_recommendations = [orphan_rec]
 
-        with caplog.at_level(
-            logging.WARNING, logger="custom_components.hsem.coordinator"
-        ):
+        # Capture WARNING from HSEM_LOGGER directly (propagation is False)
+        capture = io.StringIO()
+        handler = logging.StreamHandler(capture)
+        handler.setLevel(logging.WARNING)
+        HSEM_LOGGER.addHandler(handler)
+        try:
             coord._apply_planner_output(PlannerOutput(slots=slots))
+            output = capture.getvalue()
+        finally:
+            HSEM_LOGGER.removeHandler(handler)
 
-        assert any(
-            "unmatched" in record.message.lower()
-            or "no matching" in record.message.lower()
-            for record in caplog.records
-        ), (
+        assert any(word in output.lower() for word in ("unmatched", "no matching")), (
             "Expected a WARNING about unmatched slots but found none. "
-            f"Logged messages: {[r.message for r in caplog.records]}"
+            f"Logged output: {output}"
         )
 
     def test_unmatched_rec_fields_stay_at_default(self):

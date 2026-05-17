@@ -11,6 +11,10 @@ from packaging.version import InvalidVersion, Version
 
 from custom_components.hsem.const import DOMAIN, MIN_HUAWEI_SOLAR_VERSION
 from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
+from custom_components.hsem.utils.logger import (
+    async_close_hsem_logger,
+    async_init_hsem_logger,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -102,6 +106,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not await check_huawei_solar_version(hass):
         return False
 
+    # Initialise the HSEM dedicated log file (hsem.log in the config dir).
+    await async_init_hsem_logger(hass)
+
     # Create the shared DataUpdateCoordinator and run the first update cycle.
     coordinator = HSEMDataUpdateCoordinator(hass, entry)
     hass.data[DOMAIN][entry.entry_id] = {"coordinator": coordinator}
@@ -130,6 +137,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id, None)
+
+    # Close the HSEM dedicated log file handler.
+    await async_close_hsem_logger()
 
     return unload_ok
 
