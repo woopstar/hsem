@@ -277,7 +277,21 @@ def _resolve_cycle_cost(weights: CostWeights) -> float:
     rated capacity, because battery degradation is driven by cycling within
     the usable SoC range.
 
-        cycle_cost_per_kwh = purchase_price / (2 * usable_capacity_kwh × expected_cycles)
+    The ``2×`` factor in the denominator accounts for the fact that one full
+    battery cycle involves energy flow in *both* directions::
+
+        throughput_per_cycle = 2 × usable_kwh
+                              (charge once + discharge once)
+
+    Since ``purchase_price / expected_cycles`` is the cost *per full cycle*
+    and the cycle cost is expressed *per kWh of throughput*, the cost must
+    be spread over the total lifetime throughput:
+
+        cycle_cost_per_kwh = purchase_price / expected_cycles / (2 × usable_kwh)
+
+    This is mathematically equivalent to:
+
+        purchase_price / (2 × usable_kwh × expected_cycles)
 
     If ``weights.cycle_cost_per_kwh`` is explicitly set (not ``None``), that
     value is used directly.  Returns 0.0 when any required value is non-positive

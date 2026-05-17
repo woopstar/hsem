@@ -282,6 +282,7 @@ def generate_candidates(
             usable_kwh=usable_kwh,
             cycle_cost_per_kwh=inp.battery_cycle_cost_per_kwh,
             charge_fraction=charge_fraction,
+            discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
         )
         candidates.append(CandidatePlan(name=soc_candidate_name, slots=soc_candidate))
 
@@ -574,6 +575,7 @@ def _apply_soc_plan(
     usable_kwh: float = 0.0,
     cycle_cost_per_kwh: float = 0.0,
     charge_fraction: float = 1.0,
+    discharge_efficiency_pct: float = 97.0,
 ) -> None:
     """BatPred-inspired SoC plan: charge only what's needed, then hold.
 
@@ -626,8 +628,7 @@ def _apply_soc_plan(
 
     # Account for discharge efficiency: to deliver total_needed_kwh to the
     # house, the battery must release total_needed_kwh / discharge_eff.
-    # We approximate discharge_eff as 0.95 (95 %).
-    discharge_eff = 0.95
+    discharge_eff = max(min(discharge_efficiency_pct, 100.0), 1.0) / 100.0
     battery_energy_needed = total_needed_kwh / discharge_eff
 
     # Subtract what's already in the battery

@@ -538,7 +538,22 @@ class TestEdgeCases:
             BatteryScheduleInput(enabled=False, start=time(17, 0), end=time(21, 0)),
         ]
         inp = make_summer_day_input(battery_soc_pct=100.0, schedules=disabled_schedules)
-        run_planner(inp)
+        result = run_planner(inp)
+
+        # Check the baseline candidate's slots (first candidate) — the
+        # rule-based pipeline must not produce grid-charge slots when all
+        # schedules are disabled.  The winner (result.slots) may differ
+        # if MILP or soc_plan found a profitable cycle.
+        baseline_slots = result.candidates[0].slots if result.candidates else []
+        baseline_charge = [
+            s
+            for s in baseline_slots
+            if s.recommendation == Recommendations.BatteriesChargeGrid.value
+        ]
+        assert not baseline_charge, (
+            "Baseline candidate must have no grid charge slots when schedules "
+            f"are disabled. Found {len(baseline_charge)} charge slots."
+        )
 
     def test_zero_pv_no_solar_charge_slots(self):
         """With zero PV production there must be no BatteriesChargeSolar slots."""

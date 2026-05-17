@@ -885,8 +885,9 @@ def concentrate_discharge_on_expensive_slots(
 
     # Calculate cumulative battery energy needed for each slot (most expensive first)
     # and keep only as many as the battery can serve.
-    # The battery is charged to near-full before discharge, so use usable_kwh
-    # as the available energy.
+    # Use usable_kwh because the battery will be charged by the scheduler
+    # before the discharge window starts — current_kwh is only the starting
+    # state and does not reflect the available capacity at discharge time.
     total_battery_kwh = usable_kwh
     keep_set: set[int] = set()
     for s in discharge_slots:
