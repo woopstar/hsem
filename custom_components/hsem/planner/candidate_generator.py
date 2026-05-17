@@ -126,9 +126,8 @@ _DISCHARGE_RECS: frozenset[str] = frozenset(
     }
 )
 
-# Fallback number of discharge slots when no battery headroom data is available.
-# The charge slot count is derived dynamically from battery capacity (Bug 2 fix).
-_AGGRESSIVE_DISCHARGE_SLOTS = 3
+# The charge and discharge slot counts are derived dynamically from battery
+# capacity (see _apply_aggressive_strategy).
 
 
 # ---------------------------------------------------------------------------
@@ -264,6 +263,7 @@ def generate_candidates(
         max_charge_per_slot,
         current_kwh=current_kwh,
         usable_kwh=usable_kwh,
+        max_discharge_per_slot=max_discharge_per_slot,
     )
     candidates.append(CandidatePlan(name=CANDIDATE_AGGRESSIVE, slots=aggressive))
 
@@ -444,6 +444,7 @@ def _apply_aggressive_strategy(
     *,
     current_kwh: float = 0.0,
     usable_kwh: float = 0.0,
+    max_discharge_per_slot: float | None = None,
 ) -> None:
     """Force-charge during the cheapest slots and force-discharge during the priciest.
 
@@ -464,12 +465,18 @@ def _apply_aggressive_strategy(
     utilised the battery for large systems and over-committed it for small ones
     (Bug 2 fix, issue #416).
 
+    The number of discharge slots is also derived dynamically from
+    ``ceil(usable_kwh / max_discharge_per_slot)`` so it matches the battery's
+    actual discharge capacity (same formula as ``top_n`` in engine.py).
+
     Args:
         slots: Mutable slot list to update in place.
         now: Timezone-aware current datetime used to filter past slots.
         max_charge_per_slot: Maximum energy storable per slot (kWh).
         current_kwh: Current battery energy above the discharge floor (kWh).
         usable_kwh: Maximum usable battery capacity (kWh).
+        max_discharge_per_slot: Maximum energy dischargeable per slot (kWh).
+            ``None`` means unlimited (fallback to 3).
     """
     import math
 
@@ -539,10 +546,16 @@ def _apply_aggressive_strategy(
         slot.batteries_charged = round(max_charge_per_slot, 3)
         charged += 1
 
-    # Apply force-discharge to most-expensive M slots
+    # Apply force-discharge to most-expensive M slots.
+    # Derive M dynamically from battery capacity / discharge rate so it
+    # scales with battery size (same formula as top_n in engine.py).
+    if max_discharge_per_slot is not None and max_discharge_per_slot > 1e-9:
+        aggressive_discharge_slots = math.ceil(usable_kwh / max_discharge_per_slot)
+    else:
+        aggressive_discharge_slots = 3  # safe fallback
     discharged = 0
     for slot in discharge_candidates:
-        if discharged >= _AGGRESSIVE_DISCHARGE_SLOTS:
+        if discharged >= aggressive_discharge_slots:
             break
         if slot.recommendation in _DISCHARGE_RECS:
             # Already a discharge slot — leave as-is, just count it

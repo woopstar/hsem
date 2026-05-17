@@ -333,6 +333,7 @@ def replacement_price_from_next_discharge(
     slots: list,
     now: datetime,
     top_n: int = 4,
+    interval_minutes: int = 15,
 ) -> float | None:
     """Derive the terminal-SoC replacement price from the next discharge window.
 
@@ -360,6 +361,10 @@ def replacement_price_from_next_discharge(
             Derived dynamically from ``ceil(usable_kwh / max_discharge_per_slot)``
             in the engine so it reflects how many slots the battery can actually
             serve.  Default 4 is a safe fallback (~1 hour at 15-min resolution).
+        interval_minutes:
+            Slot duration in minutes.  Used to derive the gap threshold for
+            detecting separate discharge window occurrences.
+            Default 15.
 
     Returns:
         Replacement price in currency/kWh, or ``None`` when no future
@@ -382,10 +387,11 @@ def replacement_price_from_next_discharge(
     if not future_discharge:
         return None
 
-    # Find the first contiguous block of discharge slots.  A 15-min gap
-    # between consecutive discharge slots signals a new schedule occurrence
-    # (the gap between discharge windows).  We take only the first block.
-    GAP_THRESHOLD = timedelta(minutes=20)
+    # Find the first contiguous block of discharge slots.  A gap larger than
+    # interval_minutes + 5 min between consecutive discharge slots signals a
+    # new schedule occurrence (the gap between discharge windows).
+    # We take only the first block.
+    GAP_THRESHOLD = timedelta(minutes=interval_minutes + 5)
     first_block: list = [future_discharge[0]]
     tz = now.tzinfo
     for slot in future_discharge[1:]:

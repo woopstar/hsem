@@ -721,7 +721,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     if max_discharge_per_slot is not None and max_discharge_per_slot > 1e-9:
         top_n = math.ceil(usable_kwh / max_discharge_per_slot)
     replacement_price_per_kwh: float | None = replacement_price_from_next_discharge(
-        slots, now, top_n=top_n
+        slots, now, top_n=top_n, interval_minutes=inp.interval_minutes
     )
     log_planner(
         "debug",
