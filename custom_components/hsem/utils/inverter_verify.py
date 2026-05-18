@@ -34,7 +34,9 @@ _LOGGER = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 #: Default seconds to wait between write and read-back.
-DEFAULT_SETTLE_SECONDS: float = 1.5
+#: The inverter is polled every 5-10 s by HA, so the settle time must be
+#: long enough for at least one full poll cycle to complete.
+DEFAULT_SETTLE_SECONDS: float = 10.0
 
 #: Default maximum number of write+verify attempts.
 DEFAULT_MAX_RETRIES: int = 3

@@ -935,6 +935,11 @@ def concentrate_discharge_on_expensive_slots(
         # Energy the battery must release to cover net_demand
         slot_demand = max(s.estimated_net_consumption, 0.0)
         battery_needed = slot_demand / discharge_eff if discharge_eff > 1e-9 else 0.0
+        # Respect the inverter's per-slot discharge power limit — the SoC
+        # simulation caps at max_discharge_per_slot, so the concentration
+        # estimate must match to avoid over-counting how many slots fit.
+        if max_discharge_per_slot is not None:
+            battery_needed = min(battery_needed, max_discharge_per_slot)
 
         if battery_needed <= total_battery_kwh:
             total_battery_kwh -= battery_needed
