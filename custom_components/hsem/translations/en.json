@@ -247,8 +247,8 @@
           "hsem_huawei_solar_inverter_active_power_control": "Huawei Inverter Active Power Control Sensor"
         },
         "data_description": {
-          "hsem_batteries_charge_efficiency": "Specify the charge-side efficiency of your battery as a percentage (0–100). Energy stored in the battery equals the input energy multiplied by this factor. Typical lithium batteries achieve 95–98 %. Defaults to 95 %.",
-          "hsem_batteries_discharge_efficiency": "Specify the discharge-side efficiency of your battery as a percentage (0–100). Energy delivered to the house equals the battery energy removed multiplied by this factor. Typical lithium batteries achieve 95–98 %. Defaults to 95 %.",
+          "hsem_batteries_charge_efficiency": "Specify the charge-side efficiency of your battery as a percentage (0–100). Energy stored in the battery equals the input energy multiplied by this factor. Typical lithium batteries achieve 95–98 %. Defaults to 97 %.",
+          "hsem_batteries_discharge_efficiency": "Specify the discharge-side efficiency of your battery as a percentage (0–100). Energy delivered to the house equals the battery energy removed multiplied by this factor. Typical lithium batteries achieve 95–98 %. Defaults to 97 %.",
           "hsem_batteries_cycle_cost": "Optional extra per-kWh cost of cycling the battery (EUR/kWh). Added on top of the auto-calculated depreciation threshold. Set to 0 to rely solely on the depreciation guard. Example: 0.02 means the planner requires 2 cent extra spread per kWh cycled before approving grid charging.",
           "hsem_batteries_expected_cycles": "Enter the expected number of full charge/discharge cycles over the battery's lifetime. Used to calculate depreciation cost per kWh and the recommended minimum export price threshold. Typical LiFePO4 batteries support 4000–8000 cycles.",
           "hsem_batteries_purchase_price": "Enter the total purchase price of your battery system in EUR. Used together with expected cycles and usable capacity to calculate the depreciation cost per kWh and the recommended minimum export price threshold.",
@@ -600,8 +600,8 @@
           "hsem_huawei_solar_inverter_active_power_control": "Huawei Inverter Active Power Control Sensor"
         },
         "data_description": {
-          "hsem_batteries_charge_efficiency": "Specify the charge-side efficiency of your battery as a percentage (0–100). Energy stored in the battery equals the input energy multiplied by this factor. Typical lithium batteries achieve 95–98 %. Defaults to 95 %.",
-          "hsem_batteries_discharge_efficiency": "Specify the discharge-side efficiency of your battery as a percentage (0–100). Energy delivered to the house equals the battery energy removed multiplied by this factor. Typical lithium batteries achieve 95–98 %. Defaults to 95 %.",
+          "hsem_batteries_charge_efficiency": "Specify the charge-side efficiency of your battery as a percentage (0–100). Energy stored in the battery equals the input energy multiplied by this factor. Typical lithium batteries achieve 95–98 %. Defaults to 97 %.",
+          "hsem_batteries_discharge_efficiency": "Specify the discharge-side efficiency of your battery as a percentage (0–100). Energy delivered to the house equals the battery energy removed multiplied by this factor. Typical lithium batteries achieve 95–98 %. Defaults to 97 %.",
           "hsem_batteries_cycle_cost": "Optional extra per-kWh cost of cycling the battery (EUR/kWh). Added on top of the auto-calculated depreciation threshold. Set to 0 to rely solely on the depreciation guard. Example: 0.02 means the planner requires 2 cent extra spread per kWh cycled before approving grid charging.",
           "hsem_batteries_expected_cycles": "Enter the expected number of full charge/discharge cycles over the battery's lifetime. Used to calculate depreciation cost per kWh and the recommended minimum export price threshold. Typical LiFePO4 batteries support 4000–8000 cycles.",
           "hsem_batteries_purchase_price": "Enter the total purchase price of your battery system in EUR. Used together with expected cycles and usable capacity to calculate the depreciation cost per kWh and the recommended minimum export price threshold.",

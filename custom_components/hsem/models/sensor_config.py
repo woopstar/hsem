@@ -89,10 +89,10 @@ class SensorConfig:
 
         batteries_charge_efficiency: Charge efficiency as a percentage (0-100).
             Energy stored in the battery = input_energy × (charge_efficiency / 100).
-            Defaults to 95 % (5 % charge-side loss).
+            Defaults to 97 % (3 % charge-side loss).
         batteries_discharge_efficiency: Discharge efficiency as a percentage (0-100).
             Energy delivered to the house = battery_energy × (discharge_efficiency / 100).
-            Defaults to 95 % (5 % discharge-side loss).
+            Defaults to 97 % (3 % discharge-side loss).
         batteries_purchase_price: Battery pack purchase price for depreciation calc.
         batteries_expected_cycles: Expected total cycle life of the battery.
         batteries_cycle_cost: User-configured extra per-kWh cycle cost (EUR/kWh).
@@ -163,8 +163,8 @@ class SensorConfig:
     ev_second: EVChargerConfig = field(default_factory=EVChargerConfig)
 
     # Battery economics
-    batteries_charge_efficiency: float = 95.0
-    batteries_discharge_efficiency: float = 95.0
+    batteries_charge_efficiency: float = 97.0
+    batteries_discharge_efficiency: float = 97.0
     batteries_purchase_price: float = 0.0
     batteries_expected_cycles: int = 6000
     #: User-configured per-kWh cycle cost. When > 0 it is added directly to

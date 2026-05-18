@@ -174,11 +174,11 @@ def solve_milp(
         charge_efficiency_pct:
             Charge-side efficiency as a percentage (0-100).  Energy stored in
             the battery equals input energy x (charge_efficiency_pct / 100).
-            Defaults to 95 % (5 % charge-side loss).
+            Defaults to 97 % (3 % charge-side loss).
         discharge_efficiency_pct:
             Discharge-side efficiency as a percentage (0-100).  Energy delivered
             to the house equals battery energy removed x (discharge_efficiency_pct / 100).
-            Defaults to 95 % (5 % discharge-side loss).
+            Defaults to 97 % (3 % discharge-side loss).
 
     Returns:
         A list of :class:`PlannedSlot` copies with MILP-derived recommendations,
@@ -458,9 +458,9 @@ def solve_milp(
             out_slots[slot_i].recommendation = Recommendations.BatteriesChargeGrid.value
             out_slots[slot_i].batteries_charged = round(ec_kwh, 3)
         elif ed_kwh > _MIN_ACTION_KWH:
-            out_slots[
-                slot_i
-            ].recommendation = Recommendations.BatteriesDischargeMode.value
+            out_slots[slot_i].recommendation = (
+                Recommendations.BatteriesDischargeMode.value
+            )
             # batteries_charged stays 0 for discharge slots
 
     _LOGGER.debug(
