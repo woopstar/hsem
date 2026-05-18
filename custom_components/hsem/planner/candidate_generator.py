@@ -298,6 +298,7 @@ def generate_candidates(
             cycle_cost_per_kwh=inp.battery_cycle_cost_per_kwh,
             charge_efficiency_pct=inp.battery_charge_efficiency_pct,
             discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
+            time_discount_rate=inp.time_discount_rate,
         )
         if milp_slots is not None:
             candidates.append(CandidatePlan(name=CANDIDATE_MILP, slots=milp_slots))

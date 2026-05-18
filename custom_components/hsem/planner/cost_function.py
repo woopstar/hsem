@@ -139,6 +139,21 @@ class CostWeights:
             Discharge-side efficiency as a percentage (0-100).  Energy delivered
             to the house equals battery energy removed × (discharge_efficiency_pct / 100).
             Defaults to 100 % (no discharge-side loss) for backward compatibility.
+        time_discount_rate:
+            Per-hour exponential discount factor applied to the ``score``
+            (selector objective) but **not** to ``total_cost`` (auditable
+            (auditable money).  A value of ``1.0`` disables the discount
+            entirely.  Default ``0.995`` gives:
+
+            | Horizon | Factor |
+            |---|---|
+            | 1 hour | 0.995 |
+            | 6 hours | 0.970 |
+            | 24 hours | 0.887 |
+            | 48 hours | 0.787 |
+
+            This prevents the selector from preferring plans that look cheap
+            only because they rely on uncertain distant-future slots.
     """
 
     # SoC guard penalties
@@ -163,6 +178,9 @@ class CostWeights:
     # Separate charge / discharge efficiencies
     charge_efficiency_pct: float = 100.0
     discharge_efficiency_pct: float = 100.0
+
+    # Time discount for selector score (1.0 = no discount)
+    time_discount_rate: float = 0.995
 
 
 @dataclass
@@ -501,6 +519,17 @@ def score_plan(
     grid_limit_penalty = 0.0
     override_penalty = 0.0
 
+    # Discounted versions for the selector score (total_cost stays raw).
+    # time_discount_rate < 1.0 means future savings are worth less.
+    discount_rate = weights.time_discount_rate
+    use_discount = discount_rate < 1.0 - 1e-9 and now is not None
+    import_cost_disc = 0.0
+    export_revenue_disc = 0.0
+    conversion_loss_cost_disc = 0.0
+    cycle_cost_total_disc = 0.0
+    soc_penalty_disc = 0.0
+    grid_limit_penalty_disc = 0.0
+
     _time_passed_value = Recommendations.TimePassed.value
 
     for slot in slots:
@@ -519,6 +548,16 @@ def score_plan(
         elif slot.recommendation == _time_passed_value:
             continue
 
+        # Compute time discount for this slot.
+        # discount = discount_rate ^ hours_from_now
+        # Past slots are already skipped above, so hours_ahead >= 0.
+        if use_discount:
+            slot_mid = slot.start + (slot.end - slot.start) / 2
+            hours_ahead = max((slot_mid - now).total_seconds() / 3600.0, 0.0)
+            discount = discount_rate**hours_ahead
+        else:
+            discount = 1.0
+
         imp_price = slot.price.import_price
         exp_price = slot.price.export_price
 
@@ -532,53 +571,53 @@ def score_plan(
         #    needed to store energy through the charge efficiency (i.e. the
         #    simulation writes grid_import_kwh = charge_stored / charge_eff).
         if slot.grid_import_kwh > 1e-9:
-            import_cost += slot.grid_import_kwh * imp_price
+            cost = slot.grid_import_kwh * imp_price
+            import_cost += cost
+            import_cost_disc += cost * discount
 
         # 2. Export revenue
         if slot.grid_export_kwh > 1e-9:
-            export_revenue += slot.grid_export_kwh * exp_price
+            rev = slot.grid_export_kwh * exp_price
+            export_revenue += rev
+            export_revenue_disc += rev * discount
 
         # 3. Conversion loss cost — opportunity cost of energy lost in the
         #    round-trip.  The loss occurred at purchase time (charge slot) and
         #    at delivery time (discharge slot).  Each side is priced at the
         #    import price of its own slot — the price of the energy that was
         #    lost.
-        #
-        #    Charge-side loss: energy drawn from grid but not stored in the
-        #    battery.  lost_kwh = batteries_charged × charge_loss_fraction
-        #    where charge_loss_fraction = 1 - charge_eff
-        #    priced at imp_price (what you paid for that energy).
-        #
-        #    Discharge-side loss: energy removed from battery but not delivered
-        #    to the house.  lost_kwh = batteries_discharged × discharge_loss_fraction
-        #    where discharge_loss_fraction = 1 - discharge_eff
-        #    priced at imp_price (the import you would have avoided).
         charge_loss_fraction = 1.0 - charge_eff
         discharge_loss_fraction = 1.0 - discharge_eff
         if slot.batteries_charged > 1e-9 and charge_loss_fraction > 1e-9:
             lost_kwh_charge = slot.batteries_charged * charge_loss_fraction
-            conversion_loss_cost += lost_kwh_charge * imp_price
+            conv = lost_kwh_charge * imp_price
+            conversion_loss_cost += conv
+            conversion_loss_cost_disc += conv * discount
         if slot.batteries_discharged > 1e-9 and discharge_loss_fraction > 1e-9:
             lost_kwh_discharge = slot.batteries_discharged * discharge_loss_fraction
-            conversion_loss_cost += lost_kwh_discharge * imp_price
+            conv = lost_kwh_discharge * imp_price
+            conversion_loss_cost += conv
+            conversion_loss_cost_disc += conv * discount
 
         # 4. Battery cycle depreciation
-        #    One round-trip = one cycle worth of degradation.
-        #    Count throughput once (the larger of charge or discharge), not both.
         throughput_kwh = max(slot.batteries_charged, slot.batteries_discharged)
         if throughput_kwh > 1e-9 and cycle_cost_kwh > 1e-9:
-            cycle_cost_total += throughput_kwh * cycle_cost_kwh
+            cycle = throughput_kwh * cycle_cost_kwh
+            cycle_cost_total += cycle
+            cycle_cost_total_disc += cycle * discount
 
         # 5. SoC guard penalties (quadratic in the violation magnitude).
-        #    Only applied to future/current slots where the SoC reflects a
-        #    real simulation value, not the zeroed-out sentinel for past slots.
         soc = slot.estimated_battery_soc
         if soc < weights.min_soc_pct:
             violation = weights.min_soc_pct - soc
-            soc_penalty += weights.soc_low_penalty_weight * violation**2
+            pen = weights.soc_low_penalty_weight * violation**2
+            soc_penalty += pen
+            soc_penalty_disc += pen * discount
         elif soc > weights.max_soc_pct:
             violation = soc - weights.max_soc_pct
-            soc_penalty += weights.soc_high_penalty_weight * violation**2
+            pen = weights.soc_high_penalty_weight * violation**2
+            soc_penalty += pen
+            soc_penalty_disc += pen * discount
 
         # 6. Grid limit penalty
         if effective_grid_limit_kw is not None and slot_duration_hours > 1e-9:
@@ -587,27 +626,19 @@ def score_plan(
             for kw in (import_kw, export_kw):
                 excess_kw = kw - effective_grid_limit_kw
                 if excess_kw > 1e-9:
-                    grid_limit_penalty += (
+                    pen = (
                         excess_kw
                         * slot_duration_hours
                         * weights.grid_limit_penalty_per_kwh
                     )
+                    grid_limit_penalty += pen
+                    grid_limit_penalty_disc += pen * discount
 
         # 7. Override penalty
         if _is_override_slot(slot) and abs(weights.override_penalty_per_slot) > 1e-9:
             override_penalty += weights.override_penalty_per_slot
 
     # 8. Terminal-SoC opportunity cost (selector-only).
-    #
-    # Plans that end the horizon with more stored battery energy than they
-    # started with receive a credit (terminal_soc_value < 0, reducing score).
-    # Plans that empty the battery pay a penalty (terminal_soc_value > 0,
-    # increasing score).  This implements the spec-mandated
-    # ``terminal_soc_penalty_or_credit`` term and prevents the selector from
-    # preferring plans that look cheap only because they drained the battery.
-    #
-    # The term is computed only when both inputs are provided so unit tests
-    # that call score_plan without horizon context keep behaving as before.
     terminal_soc_value = 0.0
     if (
         initial_battery_kwh is not None
@@ -621,15 +652,29 @@ def score_plan(
     # ``total_cost`` is money only — never includes synthetic penalties.
     total_cost = import_cost - export_revenue + conversion_loss_cost + cycle_cost_total
 
-    # ``score`` is the selector objective.  It adds every synthetic penalty
-    # and the terminal-SoC opportunity cost on top of ``total_cost``.
-    score = (
-        total_cost
-        + soc_penalty
-        + grid_limit_penalty
-        + override_penalty
-        + terminal_soc_value
-    )
+    # ``score`` is the selector objective.  It uses discounted values when
+    # time_discount_rate < 1.0 so that uncertain distant savings are weighted
+    # less than near-term certain savings.  ``total_cost`` is always raw
+    # (undiscounted) so it remains auditable as real money.
+    if use_discount:
+        score = (
+            import_cost_disc
+            - export_revenue_disc
+            + conversion_loss_cost_disc
+            + cycle_cost_total_disc
+            + soc_penalty_disc
+            + grid_limit_penalty_disc
+            + override_penalty
+            + terminal_soc_value
+        )
+    else:
+        score = (
+            total_cost
+            + soc_penalty
+            + grid_limit_penalty
+            + override_penalty
+            + terminal_soc_value
+        )
 
     score_rounded = round(score, 6)
 

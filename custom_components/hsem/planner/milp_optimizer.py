@@ -116,6 +116,7 @@ def solve_milp(
     cycle_cost_per_kwh: float = 0.0,
     charge_efficiency_pct: float = 97.0,
     discharge_efficiency_pct: float = 97.0,
+    time_discount_rate: float = 1.0,
 ) -> list[PlannedSlot] | None:
     """Solve the LP and return a deep-copy slot list with MILP recommendations.
 
@@ -255,15 +256,27 @@ def solve_milp(
     # ------------------------------------------------------------------
     # Objective vector: minimise grid_import_cost - export_revenue + cycle_cost
     # + conversion_loss_cost.  pv[t] has zero objective cost (it's free).
+    # Apply time discount so the MILP objective matches the selector's
+    # discounted score (distant savings are worth less).
     # ------------------------------------------------------------------
+    use_discount = time_discount_rate < 1.0 - 1e-9
     c_obj = np.zeros(n_vars)
-    # Charge-side: cycle cost + energy lost during charge, priced at import price
-    c_obj[ec_off : ec_off + m] = cycle_cost_per_kwh + charge_loss * p_imp
-    # Discharge-side: cycle cost + energy lost during discharge, priced at import price
-    c_obj[ed_off : ed_off + m] = cycle_cost_per_kwh + discharge_loss * p_imp
-    c_obj[gi_off : gi_off + m] = p_imp  # grid import cost
-    c_obj[ge_off : ge_off + m] = -p_exp  # export revenue (negative = gain)
-    # pv[t] has zero objective cost
+    for t in range(m):
+        discount = 1.0
+        if use_discount:
+            # Compute hours from now for this slot's midpoint
+            slot = slots[future_idx[t]]
+            slot_mid = slot.start + (slot.end - slot.start) / 2
+            hours_ahead = max((slot_mid - now).total_seconds() / 3600.0, 0.0)
+            discount = time_discount_rate**hours_ahead
+
+        # Charge-side: cycle cost + energy lost during charge, priced at import price
+        c_obj[ec_off + t] = (cycle_cost_per_kwh + charge_loss * p_imp[t]) * discount
+        # Discharge-side: cycle cost + energy lost during discharge, priced at import price
+        c_obj[ed_off + t] = (cycle_cost_per_kwh + discharge_loss * p_imp[t]) * discount
+        c_obj[gi_off + t] = p_imp[t] * discount  # grid import cost
+        c_obj[ge_off + t] = -p_exp[t] * discount  # export revenue (negative = gain)
+        # pv[t] has zero objective cost
 
     # ------------------------------------------------------------------
     # Equality constraints: energy balance per slot

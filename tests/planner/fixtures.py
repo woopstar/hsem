@@ -312,6 +312,7 @@ def make_summer_day_input(
         ),
         house_power_includes_ev=True,
         is_read_only=True,
+        time_discount_rate=1.0,
     )
 
 
