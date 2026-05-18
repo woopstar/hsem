@@ -39,11 +39,12 @@ Candidates produced
 from __future__ import annotations
 
 import copy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
 from custom_components.hsem.models.planner_inputs import PlannerInput
 from custom_components.hsem.models.planner_outputs import PlannedSlot
+from custom_components.hsem.planner.cost_function import PlanCostBreakdown
 from custom_components.hsem.planner.milp_optimizer import (
     CANDIDATE_MILP,
     is_scipy_available,
@@ -160,6 +161,7 @@ class CandidatePlan:
     slots: list[PlannedSlot]
     is_valid: bool = True
     rejection_reason: str = ""
+    _cost: PlanCostBreakdown | None = field(default=None, repr=False, compare=False)
 
 
 # ---------------------------------------------------------------------------

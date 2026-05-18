@@ -36,6 +36,7 @@ from datetime import datetime, timedelta
 
 from custom_components.hsem.models.planner_outputs import RejectedPlan
 from custom_components.hsem.planner.candidate_generator import (
+    _DISCHARGE_RECS,
     CANDIDATE_BASELINE,
     CANDIDATE_NO_ACTION,
     CandidatePlan,
@@ -44,7 +45,6 @@ from custom_components.hsem.planner.cost_function import CostWeights, score_plan
 from custom_components.hsem.planner.soc_simulation import simulate_soc
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import log_planner
-from custom_components.hsem.utils.recommendations import Recommendations
 
 # SoC floor tolerance — plans are accepted even if they dip this many
 # percentage points below end_of_discharge_soc_pct (rounding / simulation
@@ -170,7 +170,7 @@ def select_best_candidate(
     else:
         # Score all valid candidates (including no_action for diagnostics)
         for candidate in valid:
-            candidate._cost = score_plan(  # type: ignore[attr-defined]
+            candidate._cost = score_plan(
                 candidate.slots,
                 cost_weights,
                 slot_duration_hours=slot_duration_hours,
@@ -178,7 +178,7 @@ def select_best_candidate(
                 initial_battery_kwh=current_kwh,
                 replacement_price_per_kwh=replacement_price_per_kwh,
             )
-            c_cost = candidate._cost  # type: ignore[attr-defined]
+            c_cost = candidate._cost
             log_planner(
                 "debug",
                 "[selector] score  candidate=%-20s  "
@@ -221,8 +221,8 @@ def select_best_candidate(
         eligible_sorted = sorted(
             eligible,
             key=lambda c: (
-                c._cost.score,  # type: ignore[attr-defined]
-                c._cost.total_cost,  # type: ignore[attr-defined]
+                c._cost.score,
+                c._cost.total_cost,
                 c.name,
             ),
         )
@@ -231,8 +231,8 @@ def select_best_candidate(
             "info",
             "[selector] SELECTED candidate=%-20s  score=%.4f  total_cost=%.4f",
             winner.name,
-            winner._cost.score,  # type: ignore[attr-defined]
-            winner._cost.total_cost,  # type: ignore[attr-defined]
+            winner._cost.score,
+            winner._cost.total_cost,
         )
 
     # --- Step 5: build rejected-plan entries for all non-winners ---------
@@ -375,13 +375,15 @@ def replacement_price_from_next_discharge(
         Replacement price in currency/kWh, or ``None`` when no future
         discharge slot exists.
     """
-    # Collect all future discharge slots sorted by start time
+    # Collect all future discharge slots sorted by start time.
+    # Use _DISCHARGE_RECS so both BatteriesDischargeMode and
+    # ForceBatteriesDischarge are included (Bug I fix).
     future_discharge = sorted(
         [
             slot
             for slot in slots
             if (
-                slot.recommendation == Recommendations.BatteriesDischargeMode.value
+                slot.recommendation in _DISCHARGE_RECS
                 and as_tz(slot.start, now.tzinfo) > now
                 and not math.isnan(slot.price.import_price)
             )

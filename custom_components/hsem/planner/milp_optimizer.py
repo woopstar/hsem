@@ -439,16 +439,20 @@ def solve_milp(
         if ec_kwh > _MIN_ACTION_KWH and ed_kwh > _MIN_ACTION_KWH:
             # Mutual exclusion is guaranteed by the LP constraint
             # (ec/max_charge + ed/max_dis <= 1).  If we reach here,
-            # something is wrong — log a warning and zero both.
-            _LOGGER.warning(
-                "[milp] Unexpected simultaneous charge+discharge at slot %d "
-                "(ec=%.4f ed=%.4f) — zeroing both.",
-                slot_i,
-                ec_kwh,
-                ed_kwh,
+            # reach here due to numerical tolerance, resolve by checking
+            # whether the round-trip is net profitable (Bug J fix).
+            net_charge_profit = (
+                p_exp[lp_t] * discharge_eff
+                - p_imp[lp_t] / charge_eff
+                - 2.0 * cycle_cost_per_kwh
             )
-            ec_kwh = 0.0
-            ed_kwh = 0.0
+            if net_charge_profit > 0:
+                # Charging is net profitable — keep charge, drop discharge
+                ed_kwh = 0.0
+            else:
+                # Round trip is not profitable — drop both (idle)
+                ec_kwh = 0.0
+                ed_kwh = 0.0
 
         if ec_kwh > _MIN_ACTION_KWH:
             out_slots[slot_i].recommendation = Recommendations.BatteriesChargeGrid.value
