@@ -492,7 +492,7 @@ class TestSelectBestCandidate:
             assert winner_cost <= candidate_cost + 1e-9
 
     def test_no_action_never_wins_when_only_valid(self):
-        """When only no_action is valid, it must NOT win — baseline must win."""
+        """When only no_action is valid, it must NOT win — some other valid candidate must win."""
         inp = make_summer_day_input()
         now = datetime.fromisoformat(inp.now_iso)
         slots = _populated_slots_for_input(inp)
@@ -543,9 +543,9 @@ class TestSelectBestCandidate:
             cost_weights=cost_weights,
             slot_duration_hours=1.0,
         )
-        # With only no_action valid (and excluded), the fallback is baseline
-        assert winner.name == CANDIDATE_BASELINE, (
-            f"Expected baseline to win (fallback), got {winner.name}"
+        # no_action must never win — it is excluded from eligible selection
+        assert winner.name != CANDIDATE_NO_ACTION, (
+            f"no_action must never win; got {winner.name}"
         )
         # Verify no_action is in rejected with an exclusion reason
         no_action_rejected = next(

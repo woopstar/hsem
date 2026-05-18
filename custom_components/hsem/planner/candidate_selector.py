@@ -216,16 +216,14 @@ def select_best_candidate(
                     trail,
                 )
 
-        # Sort by selector score ascending; baseline wins ties (it comes first)
+        # Sort by score ascending, then total_cost ascending (real savings),
+        # then name for determinism. Baseline gets no positional advantage.
         eligible_sorted = sorted(
             eligible,
             key=lambda c: (
                 c._cost.score,  # type: ignore[attr-defined]
-                # Stable tie-break: baseline index is 0, so it wins ties
-                next(
-                    (i for i, x in enumerate(candidates) if x is c),
-                    len(candidates),
-                ),
+                c._cost.total_cost,  # type: ignore[attr-defined]
+                c.name,
             ),
         )
         winner = eligible_sorted[0]
@@ -267,9 +265,16 @@ def select_best_candidate(
                     f"Δ = +{diff:.4f})."
                 )
             else:
+                winner_total = getattr(
+                    getattr(winner, "_cost", None), "total_cost", float("inf")
+                )
+                candidate_total = getattr(
+                    getattr(candidate, "_cost", None), "total_cost", float("inf")
+                )
                 reason = (
-                    f"Tied or marginally worse score "
-                    f"({candidate_score:.4f}); baseline preferred."
+                    f"Tied score ({candidate_score:.4f}); "
+                    f"higher total_cost than winner "
+                    f"({candidate_total:.4f} vs {winner_total:.4f})."
                 )
 
         rejected.append(
