@@ -4,4 +4,4 @@ pytest-cov>=7.1.0
 pytest-socket>=0.7.0
 pytest-timeout>=2.4.0
 pyright>=1.1.409
-vulture>=2.14
+vulture>=2.16
