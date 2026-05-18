@@ -13,7 +13,7 @@ are relaxed to continuous values in [0, 1] because the mutual-exclusion
 constraint together with the per-slot energy caps already prevents
 simultaneous charge + discharge in the optimal solution.
 
-Decision variables (flattened into a single vector ``x`` of length 4*n)
+Decision variables (flattened into a single vector ``x`` of length 6*n)
 -----------------------------------------------------------------------
 For each slot ``t ∈ 0…n-1``:
 
@@ -21,15 +21,19 @@ For each slot ``t ∈ 0…n-1``:
 - ``ed[t]``  — energy discharged *from* the battery this slot (kWh)
 - ``gi[t]``  — total grid import this slot (kWh)
 - ``ge[t]``  — total grid export this slot (kWh)
+- ``pv[t]``  — PV energy available after house consumption (kWh, fixed)
+- ``hold[t]`` — battery energy explicitly held/reserved this slot (kWh)
 
 ``soc[t]`` is derived from ``ec`` and ``ed`` via the forward recurrence and
 does not need to be an explicit variable.
 
 Objective (minimise)
 --------------------
-``Σ_t [ p_imp[t] * gi[t] - p_exp[t] * ge[t] + α * (ec[t] + ed[t]) ]``
+``Σ_t [ p_imp[t] * gi[t] - p_exp[t] * ge[t] + α * (ec[t] + ed[t]) - β * hold[t] ]``
 
-where ``α`` = battery cycle cost per kWh.
+where ``α`` = battery cycle cost per kWh and ``β`` = hold reward (a small
+positive value that makes the LP prefer holding stored energy over marginal
+discharge).
 
 Constraints
 -----------
@@ -234,15 +238,19 @@ def solve_milp(
     m = len(future_idx)  # number of active LP slots
 
     # ------------------------------------------------------------------
-    # Variable layout: x = [ec(0..m-1), ed(0..m-1), gi(0..m-1), ge(0..m-1), pv(0..m-1)]
-    # Offsets: ec_off=0, ed_off=m, gi_off=2m, ge_off=3m, pv_off=4m
+    # Variable layout: x = [ec(0..m-1), ed(0..m-1), gi(0..m-1), ge(0..m-1),
+    #                       pv(0..m-1), hold(0..m-1)]
+    # Offsets: ec_off=0, ed_off=m, gi_off=2m, ge_off=3m, pv_off=4m, hold_off=5m
     # pv[t] is a FIXED variable bounded to [pv_avail[t], pv_avail[t]] — the
     # solar energy available after house consumption.  Making it explicit in
     # the LP (rather than netting it into b_eq) prevents infeasibility when
     # net_load is strongly negative and SoC constraints limit charge/export.
+    # hold[t] is an objective-only variable that rewards the LP for preserving
+    # stored energy instead of marginal discharge.  It has zero coefficient in
+    # the energy balance equation and is coupled to SoC via an inequality.
     # ------------------------------------------------------------------
-    ec_off, ed_off, gi_off, ge_off, pv_off = 0, m, 2 * m, 3 * m, 4 * m
-    n_vars = 5 * m
+    ec_off, ed_off, gi_off, ge_off, pv_off, hold_off = 0, m, 2 * m, 3 * m, 4 * m, 5 * m
+    n_vars = 6 * m
 
     # Resolve charge/discharge efficiencies for the energy balance equation.
     # The MILP must account for real-world conversion losses so its solution
@@ -255,12 +263,22 @@ def solve_milp(
 
     # ------------------------------------------------------------------
     # Objective vector: minimise grid_import_cost - export_revenue + cycle_cost
-    # + conversion_loss_cost.  pv[t] has zero objective cost (it's free).
+    # + conversion_loss_cost - hold_reward.  pv[t] has zero objective cost (it's free).
+    # hold[t] gets a small negative coefficient (reward) to discourage marginal
+    # discharge — the LP prefers holding stored energy over barely-profitable
+    # discharge that would drain the battery before high-price slots.
     # Apply time discount so the MILP objective matches the selector's
     # discounted score (distant savings are worth less).
     # ------------------------------------------------------------------
     use_discount = time_discount_rate < 1.0 - 1e-9
     c_obj = np.zeros(n_vars)
+
+    # Hold reward: small positive value that makes c_obj[hold] negative.
+    # Scaled to avg import price so it works across currencies.
+    hold_reward = (
+        0.001 * float(np.mean(p_imp[p_imp > 1e-9])) if np.any(p_imp > 1e-9) else 1e-4
+    )
+
     for t in range(m):
         discount = 1.0
         if use_discount:
@@ -277,6 +295,8 @@ def solve_milp(
         c_obj[gi_off + t] = p_imp[t] * discount  # grid import cost
         c_obj[ge_off + t] = -p_exp[t] * discount  # export revenue (negative = gain)
         # pv[t] has zero objective cost
+        # hold[t]: negative = reward (prefer holding over marginal discharge)
+        c_obj[hold_off + t] = -hold_reward * discount
 
     # ------------------------------------------------------------------
     # Equality constraints: energy balance per slot
@@ -302,15 +322,19 @@ def solve_milp(
     #   1. SoC recurrence: soc[t] = soc[0] + Σ_{k≤t} (ec[k] − ed[k])
     #      We need: soc[t] ≤ usable_kwh  →  Σ_{k≤t}(ec[k]−ed[k]) ≤ usable−soc0
     #      And:    soc[t] ≥ 0          → -Σ_{k≤t}(ec[k]−ed[k]) ≤ soc0
-    #   2. ec[t] ≤ max_charge_per_slot  (via bounds)
-    #   3. ed[t] ≤ max_dis              (via bounds)
+    #   2. hold[t] ≤ soc[t-1]  →  hold[t] - Σ_{k<t}(ec[k]−ed[k]) ≤ current_kwh
+    #      (can't hold more than what's in the battery at the start of slot t)
+    #   3. ec[t] ≤ max_charge_per_slot  (via bounds)
+    #   4. ed[t] ≤ max_dis              (via bounds)
     # ------------------------------------------------------------------
     # We encode SoC bounds as inequality rows:
     #   upper: cumsum(ec−ed)[t] ≤ (usable_kwh − current_kwh)
     #   lower: −cumsum(ec−ed)[t] ≤ current_kwh
     soc_rows = 2 * m
-    A_ub = np.zeros((soc_rows, n_vars))
-    b_ub = np.zeros(soc_rows)
+    # hold-coupling rows: hold[t] - Σ_{k<t}(ec[k]−ed[k]) ≤ current_kwh
+    hold_rows = m
+    A_ub = np.zeros((soc_rows + hold_rows, n_vars))
+    b_ub = np.zeros(soc_rows + hold_rows)
 
     for t in range(m):
         for k in range(t + 1):
@@ -323,6 +347,13 @@ def solve_milp(
         b_ub[t] = usable_kwh - current_kwh  # upper SoC headroom
         b_ub[m + t] = current_kwh  # lower SoC headroom
 
+        # hold[t] SoC-coupling row: hold[t] - Σ_{k<t}(ec[k]−ed[k]) ≤ current_kwh
+        A_ub[2 * m + t, hold_off + t] = 1.0
+        for k in range(t):
+            A_ub[2 * m + t, ec_off + k] = -1.0
+            A_ub[2 * m + t, ed_off + k] = 1.0
+        b_ub[2 * m + t] = current_kwh
+
     # ------------------------------------------------------------------
     # Variable bounds: all ≥ 0, charge/discharge capped by power limits
     # ------------------------------------------------------------------
@@ -334,6 +365,7 @@ def solve_milp(
         + [
             (pv_avail[t], pv_avail[t]) for t in range(m)
         ]  # pv[t] fixed to actual surplus
+        + [(0.0, usable_kwh)] * m  # hold[t] (bounded by usable capacity)
     )
 
     # ------------------------------------------------------------------
@@ -400,6 +432,14 @@ def solve_milp(
                 slot_i
             ].recommendation = Recommendations.BatteriesDischargeMode.value
             # batteries_charged stays 0 for discharge slots
+
+    # Log hold[t] solution for debugging
+    hold_sol = result.x[hold_off : hold_off + m]
+    _LOGGER.debug(
+        "[milp] hold reward total=%.6f  avg_hold_kwh=%.3f",
+        float(np.sum(-c_obj[hold_off : hold_off + m] * hold_sol)),
+        float(np.mean(hold_sol)),
+    )
 
     _LOGGER.debug(
         "[milp] LP solved: objective=%.4f  charge_slots=%d  discharge_slots=%d",
