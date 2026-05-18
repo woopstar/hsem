@@ -50,6 +50,7 @@ def _make_minimal_input(
     battery_max_soc_pct: float = 100.0,
     battery_max_charge_power_w: float = 5000.0,
     battery_max_discharge_power_w: float | None = None,
+    battery_purchase_price: float = 0.0,
     pv_kwh_per_hour: float = 0.0,
     load_kwh_per_hour: float = 0.5,
     import_price: float = 0.20,
@@ -85,7 +86,7 @@ def _make_minimal_input(
         battery_max_soc_pct=battery_max_soc_pct,
         battery_max_charge_power_w=battery_max_charge_power_w,
         battery_max_discharge_power_w=battery_max_discharge_power_w,
-        battery_purchase_price=0.0,
+        battery_purchase_price=battery_purchase_price,
         battery_expected_cycles=6000,
         weight_1d=25,
         weight_3d=30,
@@ -470,6 +471,9 @@ class TestSoCEdgeCases:
                 pv_kwh_per_hour=0.0,
                 # Disable all schedules so the simulation simply drains
                 schedules=[],
+                # Set a modest cycle cost so the MILP doesn't arbitrage
+                # terminal-SoC credit for free
+                battery_purchase_price=5000.0,
             )
         )
         future_slots = [

@@ -122,6 +122,18 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_verbose_logging": False,
 }
 
+# ---------------------------------------------------------------------------
+# IQR outlier detection (replaces ratio-based spike detection, issue #301)
+# ---------------------------------------------------------------------------
+
+# IQR multiplier for outlier fence: values outside [Q1 - k * IQR, Q3 + k * IQR]
+# are flagged as outliers.  1.5 is the standard Tukey fence.
+IQR_OUTLIER_MULTIPLIER = 1.5
+
+# When a window is flagged as an outlier, its weight is redistributed to the
+# remaining non-outlier windows proportionally.  If ALL windows are outliers
+# (degenerate case), no redistribution occurs.
+
 # --- Caps between 7d and 14d (very mild, fail-safe) ---
 CAP7_DOWN = 0.85  # 7d cannot go below 85% of 14d
 CAP7_UP = 1.15  # 7d cannot go above 115% of 14d

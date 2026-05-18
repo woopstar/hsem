@@ -42,11 +42,11 @@ Design note — blocking I/O:
 ``rotate()`` calls.  When invoked from inside the event loop (which all HSEM
 async code is), Home Assistant raises a ``Detected blocking call to open``
 warning.  To avoid this we delegate writes to a global ``ThreadPoolExecutor``
-in :func:`async_logger`.  The synchronous :func:`log_planner` helper writes
-directly to the file handler (the planner engine itself is CPU-bound so the
-marginal blocking write is negligible), but the init/teardown methods
-(:func:`init_hsem_logger` / :func:`close_hsem_logger`) are exposed as
-coroutines that offload file-handler setup to the executor so they can be
+in both :func:`async_logger` (which is always async) and :func:`log_planner`
+(which is synchronous but offloads file I/O when a running event loop is
+detected, falling back to a direct write only when no loop is present).
+The init/teardown methods (:func:`init_hsem_logger` / :func:`close_hsem_logger`)
+are exposed as coroutines that offload file-handler setup to the executor so they can be
 safely called from ``async_setup_entry`` / ``async_unload_entry``.
 
 Verbose flag resolution order (first match wins):
@@ -76,7 +76,7 @@ _HSEM_LOG_FILENAME = "hsem.log"
 # Maximum size per log file before rotation (10 MB).
 _HSEM_LOG_MAX_BYTES = 10 * 1024 * 1024
 # Number of rotated log files to keep.
-_HSEM_LOG_BACKUP_COUNT = 5
+_HSEM_LOG_BACKUP_COUNT = 2
 
 # ---------------------------------------------------------------------------
 # Shared logger
@@ -261,9 +261,12 @@ def log_planner(level: str, msg: str, *args: object) -> None:
     string interpolation is deferred until the handler decides to emit the
     record — consistent with Home Assistant logging conventions.
 
-    This helper is called from **synchronous** planner code, so file I/O
-    happens on the calling thread.  The planner is CPU-bound; the marginal
-    cost of a blocking write is negligible compared to the solver runtime.
+    This helper may be called from **synchronous** planner code while the
+    event loop is running (e.g. from ``run_planner`` invoked by the
+    coordinator).  To avoid the "Detected blocking call to open" warning,
+    the actual file I/O is offloaded to the shared HSEM thread pool
+    executor.  If no event loop is running (tests, early init) the write
+    falls back to the current thread.
 
     Args:
         level: Log level string — one of ``"debug"``, ``"info"``,
@@ -277,10 +280,23 @@ def log_planner(level: str, msg: str, *args: object) -> None:
         return
 
     log_fn = getattr(HSEM_LOGGER, level.lower(), HSEM_LOGGER.debug)
-    if args:
-        log_fn(msg, *args)
-    else:
-        log_fn(msg)
+
+    # Offload blocking file I/O to the thread pool executor so that the
+    # RotatingFileHandler's synchronous open()/write() does not block the
+    # event loop.  This avoids the "Detected blocking call to open" warning.
+    try:
+        loop = asyncio.get_running_loop()
+        executor = _get_executor()
+        # Fire-and-forget: run_in_executor returns a Future, not a coroutine,
+        # so we use ensure_future (and discard) ensure_future instead of create_task.
+        asyncio.ensure_future(loop.run_in_executor(executor, log_fn, msg, *args))  # noqa: RUF006
+    except RuntimeError:
+        # No running event loop (tests, early init) — fall back to
+        # a direct synchronous call on the current thread.
+        if args:
+            log_fn(msg, *args)
+        else:
+            log_fn(msg)
 
 
 # ---------------------------------------------------------------------------

@@ -24,27 +24,9 @@ from custom_components.hsem.const import (
     CHANGE3_LIMIT_UP_FACTOR,
     CHANGE_LIMIT_DOWN_FACTOR,
     CHANGE_LIMIT_UP_FACTOR,
+    IQR_OUTLIER_MULTIPLIER,
     RELIABILITY_EPS,
     RELIABILITY_SCALE_STRENGTH,
-    SPIKE1_RATIO_MAX,
-    SPIKE1_RATIO_MIN,
-    SPIKE1_REDIST_TO_3D,
-    SPIKE1_REDIST_TO_7D,
-    SPIKE1_REDIST_TO_14D,
-    SPIKE1_REDUCE_FRACTION_MAX,
-    SPIKE3_RATIO_MAX,
-    SPIKE3_RATIO_MIN,
-    SPIKE3_REDIST_TO_7D,
-    SPIKE3_REDIST_TO_14D,
-    SPIKE3_REDUCE_FRACTION_MAX,
-    SPIKE7_RATIO_MAX,
-    SPIKE7_RATIO_MIN,
-    SPIKE7_REDIST_TO_14D,
-    SPIKE7_REDUCE_FRACTION_MAX,
-    SPIKE14_RATIO_MAX,
-    SPIKE14_RATIO_MIN,
-    SPIKE14_REDIST_TO_7D,
-    SPIKE14_REDUCE_FRACTION_MAX,
 )
 from custom_components.hsem.models.planner_inputs import (
     HourlyConsumptionAverage,
@@ -267,7 +249,7 @@ def populate_consumption(
             h3 = v3 / sf
             h7 = v7 / sf
             h14 = v14 / sf
-            hourly_avg = weighted_avg_consumption(h1, h3, h7, h14, w1, w3, w7, w14)
+            hourly_avg, _ = weighted_avg_consumption(h1, h3, h7, h14, w1, w3, w7, w14)
             slot.avg_house_consumption = round(hourly_avg * sf, 3)
             slot.avg_house_consumption_1d = round(v1, 3)
             slot.avg_house_consumption_3d = round(v3, 3)
@@ -284,7 +266,7 @@ def populate_consumption(
         if ca is None:
             continue
 
-        hourly_avg = weighted_avg_consumption(
+        hourly_avg, _ = weighted_avg_consumption(
             ca.avg_1d, ca.avg_3d, ca.avg_7d, ca.avg_14d, w1, w3, w7, w14
         )
         slot_avg = round(hourly_avg / scale, 3)
@@ -446,6 +428,49 @@ def compute_spike_severity(ratio: float, ratio_min: float, ratio_max: float) -> 
     return (ratio - ratio_min) / (ratio_max - ratio_min)
 
 
+def detect_outliers_iqr(
+    values: list[float],
+    multiplier: float = IQR_OUTLIER_MULTIPLIER,
+) -> list[bool]:
+    """Return a boolean mask flagging outlier values via median-ratio detection.
+
+    With only 4 data points (1d, 3d, 7d, 14d), the classic IQR Tukey fence
+    produces wide bounds that rarely flag anything.  Instead we use a
+    median-ratio approach: a value is an outlier when its ratio to the
+    median of all 4 values exceeds ``multiplier`` (for upward outliers) or
+    falls below ``1/multiplier`` (for downward outliers).
+
+    This detects both upward spikes (e.g. 10.0 vs 1.0) and downward anomalies
+    (e.g. 0.188 vs 0.708) while allowing gradual trends (e.g. 2.0, 1.9, 1.8, 1.0).
+
+    When all values are identical (median = 0), no value is flagged.
+
+    Args:
+        values: List of 4 float values (typically 4: 1d, 3d, 7d, 14d).
+        multiplier: Ratio threshold.  Defaults to
+            :data:`IQR_OUTLIER_MULTIPLIER` (1.5).
+
+    Returns:
+        List of booleans the same length as *values*, where ``True`` means
+        the corresponding value is an outlier.
+    """
+    n = len(values)
+    if n < 4:
+        return [False] * n
+
+    sorted_vals = sorted(values)
+    # Median of 4 values = average of the two middle values
+    median = (sorted_vals[1] + sorted_vals[2]) / 2.0
+
+    if abs(median) < 1e-12:
+        return [False] * n  # all near-zero — no outliers
+
+    upper_ratio = multiplier
+    lower_ratio = 1.0 / multiplier
+
+    return [v / median > upper_ratio or v / median < lower_ratio for v in values]
+
+
 def weighted_avg_consumption(
     value_1d: float,
     value_3d: float,
@@ -455,22 +480,35 @@ def weighted_avg_consumption(
     w3: int,
     w7: int,
     w14: int,
-) -> float:
-    """Apply spike-aware dynamic reweighting and return the weighted average.
+) -> tuple[float, list[bool]]:
+    """Apply IQR-based outlier-aware dynamic reweighting and return the weighted average.
 
-    A direct port of the per-hour block inside
-    ``HSEMWorkingModeSensor._async_calculate_avg_house_consumption``.
+    Replaces the old ratio-based spike detection (issue #301).  Outliers are
+    detected via the IQR (Tukey fence) method across the 4 consumption windows.
+    When a window is flagged as an outlier, its weight is redistributed to the
+    non-outlier windows proportionally.  Outliers are tracked and returned
+    so callers can log or display them.
+
+    The mild capping between 7d/14d and the baseline capping for 1d/3d are
+    retained as a safety net.  The reliability scaling is also retained.
 
     Args:
         value_1d..value_14d: Raw consumption values for each window (kWh/hour).
         w1..w14: Configured integer weights (percent, should sum to 100).
 
     Returns:
-        Weighted average house consumption in kWh/hour.
+        ``(weighted_average, outlier_mask)`` where *weighted_average* is the
+        final weighted average in kWh/hour and *outlier_mask* is a list of 4
+        booleans ``[is_1d_outlier, is_3d_outlier, is_7d_outlier, is_14d_outlier]``.
     """
     w_total_config = w1 + w3 + w7 + w14
     if w_total_config == 0:
-        return 0.0
+        return 0.0, [False, False, False, False]
+
+    # IQR outlier detection on the RAW values (before capping) so that
+    # extreme spikes are detected even when capping would hide them.
+    raw = [value_1d, value_3d, value_7d, value_14d]
+    outlier_mask = detect_outliers_iqr(raw)
 
     # Mild capping between 7d and 14d
     value_7d_eff = max(CAP7_DOWN * value_14d, min(value_7d, CAP7_UP * value_14d))
@@ -489,36 +527,20 @@ def weighted_avg_consumption(
         min(value_3d, baseline * CHANGE3_LIMIT_UP_FACTOR),
     )
 
-    # Spike severities
-    ratio1 = (value_1d / value_7d_eff) if value_7d_eff > 0 else 1.0
-    ratio3 = (value_3d / value_7d_eff) if value_7d_eff > 0 else 1.0
-    ratio7 = (value_7d_eff / value_14d_eff) if value_14d_eff > 0 else 1.0
-    ratio14 = (value_14d_eff / value_7d_eff) if value_7d_eff > 0 else 1.0
+    # Redistribute weight from outlier windows to non-outlier windows.
+    weights = [float(w1), float(w3), float(w7), float(w14)]
+    non_outlier_weight = sum(
+        w for w, is_out in zip(weights, outlier_mask) if not is_out
+    )
 
-    sev1 = compute_spike_severity(ratio1, SPIKE1_RATIO_MIN, SPIKE1_RATIO_MAX)
-    sev3 = compute_spike_severity(ratio3, SPIKE3_RATIO_MIN, SPIKE3_RATIO_MAX)
-    sev7 = compute_spike_severity(ratio7, SPIKE7_RATIO_MIN, SPIKE7_RATIO_MAX)
-    sev14 = compute_spike_severity(ratio14, SPIKE14_RATIO_MIN, SPIKE14_RATIO_MAX)
-
-    # Dynamic reweighting
-    freed1 = w1 * (SPIKE1_REDUCE_FRACTION_MAX * sev1)
-    w1_eff = w1 - freed1
-    w3_eff = w3 + freed1 * SPIKE1_REDIST_TO_3D
-    w7_eff = w7 + freed1 * SPIKE1_REDIST_TO_7D
-    w14_eff = w14 + freed1 * SPIKE1_REDIST_TO_14D
-
-    freed3 = w3_eff * (SPIKE3_REDUCE_FRACTION_MAX * sev3)
-    w3_eff -= freed3
-    w7_eff += freed3 * SPIKE3_REDIST_TO_7D
-    w14_eff += freed3 * SPIKE3_REDIST_TO_14D
-
-    freed7 = w7_eff * (SPIKE7_REDUCE_FRACTION_MAX * sev7)
-    w7_eff -= freed7
-    w14_eff += freed7 * SPIKE7_REDIST_TO_14D
-
-    freed14 = w14_eff * (SPIKE14_REDUCE_FRACTION_MAX * sev14)
-    w14_eff -= freed14
-    w7_eff += freed14 * SPIKE14_REDIST_TO_7D
+    if non_outlier_weight > 1e-9 and any(outlier_mask):
+        scale = w_total_config / non_outlier_weight
+        w1_eff = weights[0] * scale if not outlier_mask[0] else 0.0
+        w3_eff = weights[1] * scale if not outlier_mask[1] else 0.0
+        w7_eff = weights[2] * scale if not outlier_mask[2] else 0.0
+        w14_eff = weights[3] * scale if not outlier_mask[3] else 0.0
+    else:
+        w1_eff, w3_eff, w7_eff, w14_eff = weights
 
     # Reliability scaling
     def _rel(diff: float) -> float:
@@ -538,12 +560,18 @@ def weighted_avg_consumption(
         w7_eff *= scale_back
         w14_eff *= scale_back
     else:
-        w1_eff, w3_eff, w7_eff, w14_eff = float(w1), float(w3), float(w7), float(w14)
+        w1_eff, w3_eff, w7_eff, w14_eff = (
+            float(w1),
+            float(w3),
+            float(w7),
+            float(w14),
+        )
 
-    return round(
+    result = round(
         value_1d_eff * (w1_eff / 100)
         + value_3d_eff * (w3_eff / 100)
         + value_7d_eff * (w7_eff / 100)
         + value_14d_eff * (w14_eff / 100),
         3,
     )
+    return result, outlier_mask

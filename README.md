@@ -425,7 +425,7 @@ The Excess Battery Export feature automatically forces battery discharge to sell
 ## Weighted & Average Consumption Sensors
 
 HSEM uses a set of custom sensors to calculate **expected house consumption** for each hour of the day.
-These sensors track your energy usage over different time windows (1, 3, 7, and 14 days) and combine them using **adaptive weighting, spike detection, and reliability scaling** to produce a highly robust and realistic forecast.
+These sensors track your energy usage over different time windows (1, 3, 7, and 14 days) and combine them using **IQR-based outlier detection, baseline capping, and reliability scaling** to produce a highly robust and realistic forecast.
 
 ### **How it works**
 
@@ -442,12 +442,14 @@ The values are then combined through several steps:
 1. **Baseline capping**
 
    * 1d and 3d values are capped relative to a calm baseline (a mix of 7d and 14d).
-   * This prevents extreme spikes (e.g., a one-off oven or EV charging session) from dominating the forecast.
+   * This prevents extreme values (e.g., a one-off oven or EV charging session) from dominating the forecast.
 
-2. **Spike-aware reweighting**
+2. **IQR median-ratio outlier detection**
 
-   * If short-term averages (1d, 3d) deviate strongly from mid- and long-term averages, some of their weight is automatically redistributed to more stable periods.
-   * Likewise, if 7d and 14d diverge, weights are slightly adjusted to maintain balance.
+   * Before capping, the four raw values are tested for outliers using a median-ratio method.
+   * A value is flagged as an outlier when its ratio to the median exceeds 1.5× (upward spike) or falls below 1/1.5× (downward anomaly, e.g. an empty house day).
+   * When a window is flagged, its entire configured weight is redistributed to the remaining non-outlier windows.
+   * Outliers are **tracked** (not silently deleted) so the system can log or display them.
 
 3. **Reliability scaling**
 
@@ -468,7 +470,7 @@ The values are then combined through several steps:
   Short-term averages adapt quickly when household usage changes.
 
 * **Resilience to anomalies:**
-  Spike detection and capping prevent unusual days from misleading the forecast.
+  IQR outlier detection prevents both upward spikes and downward anomalies from misleading the forecast. Real repeated loads (e.g. daily EV charging) are not flagged as outliers and still affect the forecast.
 
 * **Better decisions:**
   A more accurate consumption profile enables smarter automation for:
@@ -493,12 +495,12 @@ The sum of all weights **must equal 100**.
 
 Suppose your household has a sudden spike yesterday between 17:00 and 18:00 due to EV charging.
 
-* Without spike detection, the system might assume you will do the same today and inflate the forecast.
-* With the new adaptive weighting:
+* Without outlier detection, the system might assume you will do the same today and inflate the forecast.
+* With IQR median-ratio outlier detection:
 
-  * The 1d sensor is capped and partially down-weighted.
-  * More weight shifts to 7d and 14d averages, preserving stability.
-  * The final forecast reflects typical behavior rather than a one-off event.
+  * The 1d sensor is flagged as an outlier and its weight is fully redistributed.
+  * The forecast relies on the stable 3d, 7d, and 14d averages instead.
+  * If the EV charging is actually a daily pattern (all windows show elevated load), no window is flagged as an outlier and the forecast reacts appropriately.
 
 ---
 
