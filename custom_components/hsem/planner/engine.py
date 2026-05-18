@@ -592,6 +592,8 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         inp.battery_schedules,
         now,
         max_charge_per_interval,
+        current_kwh=current_kwh,
+        usable_kwh=usable_kwh,
         cycle_cost_per_kwh=inp.battery_cycle_cost_per_kwh,
         recommended_threshold=recommended_threshold,
     )

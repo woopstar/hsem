@@ -167,6 +167,9 @@ def apply_charge_schedules(
     battery_schedules: list[BatteryScheduleInput],
     now: datetime,
     max_charge_per_interval: float,
+    *,
+    current_kwh: float = 0.0,
+    usable_kwh: float = 0.0,
     cycle_cost_per_kwh: float = 0.0,
     recommended_threshold: float = 0.0,
 ) -> None:
@@ -178,17 +181,36 @@ def apply_charge_schedules(
     2. Solar surplus (``estimated_net_consumption < SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH``)
     3. Cheapest remaining grid hours (guarded by depreciation threshold + cycle cost)
 
+    A cross-occurrence battery capacity limit is enforced: once the total
+    planned charge across all discharge-window occurrences reaches the
+    battery's remaining capacity (``usable_kwh - current_kwh``), no further
+    charge slots are assigned.  This prevents the scheduler from marking
+    dozens of slots as ``batteries_charge_grid`` when the battery can only
+    hold 14 kWh.
+
     Args:
         slots: Mutable list of planned slots.
         battery_schedules: Schedule configurations.
         now: Timezone-aware current datetime.
         max_charge_per_interval: Maximum energy (kWh) chargeable per slot.
+        current_kwh: Current battery energy above the discharge floor (kWh).
+            Used to cap total charge across all occurrences.
+        usable_kwh: Maximum usable battery capacity (kWh).  Used together
+            with *current_kwh* to derive remaining capacity.
         cycle_cost_per_kwh: Additional per-kWh cycle wear cost.
         recommended_threshold: Depreciation-derived price floor passed to
             ``_apply_grid_charge`` to guard profitability.
     """
     if max_charge_per_interval <= 0:
         return
+
+    # Cross-occurrence capacity cap: only enforce when usable_kwh is
+    # provided (> 0).  When both current_kwh and usable_kwh are 0.0
+    # (backward-compatible default), no cap is applied.
+    remaining_capacity = (
+        max(usable_kwh - current_kwh, 0.0) if usable_kwh > 0 else float("inf")
+    )
+    total_charged = 0.0
 
     for sched in battery_schedules:
         if not sched.enabled:
@@ -223,6 +245,12 @@ def apply_charge_schedules(
             if needed <= 0:
                 continue
 
+            # Cross-occurrence capacity cap: don't charge more than the
+            # battery can hold across all discharge-window occurrences.
+            if total_charged >= remaining_capacity - 1e-9:
+                break
+            occurrence_budget = min(needed, remaining_capacity - total_charged)
+
             # Eligible charge slots: future, unassigned, and ending before
             # this specific occurrence's window start.
             eligible = [
@@ -240,16 +268,16 @@ def apply_charge_schedules(
                 (e for e in eligible if e.price.import_price < 0.0),
                 key=lambda x: (x.price.import_price, x.start),
             ):
-                if charged >= needed:
+                if charged >= occurrence_budget:
                     break
-                energy = min(max_charge_per_interval, needed - charged)
+                energy = min(max_charge_per_interval, occurrence_budget - charged)
                 if energy > 0:
                     s.recommendation = Recommendations.BatteriesChargeGrid.value
                     s.batteries_charged = round(energy, 3)
                     charged += energy
 
             # Priority 2: solar surplus
-            if charged < needed:
+            if charged < occurrence_budget:
                 for s in sorted(
                     (
                         e
@@ -263,11 +291,13 @@ def apply_charge_schedules(
                     # (i.e., there is a meaningful solar surplus to charge from).
                     key=lambda x: (x.estimated_net_consumption, x.start),
                 ):
-                    if charged >= needed:
+                    if charged >= occurrence_budget:
                         break
                     available_solar = abs(s.estimated_net_consumption)
                     energy = min(
-                        max_charge_per_interval, needed - charged, available_solar
+                        max_charge_per_interval,
+                        occurrence_budget - charged,
+                        available_solar,
                     )
                     if energy > 0:
                         s.recommendation = Recommendations.BatteriesChargeSolar.value
@@ -275,17 +305,19 @@ def apply_charge_schedules(
                         charged += energy
 
             # Priority 3: cheapest grid hours (depreciation threshold + cycle cost guard)
-            if charged < needed:
+            if charged < occurrence_budget:
                 _apply_grid_charge(
                     eligible,
                     sched,
-                    needed,
+                    occurrence_budget,
                     charged,
                     max_charge_per_interval,
                     avg_discharge_price,
                     cycle_cost_per_kwh=cycle_cost_per_kwh,
                     recommended_threshold=recommended_threshold,
                 )
+
+            total_charged += charged
 
 
 def _apply_grid_charge(
