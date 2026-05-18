@@ -121,8 +121,8 @@ Each `HourlyConsumptionAverage` carries:
 - `hour` — 0-based clock-hour (0–23)
 - `avg_1d`, `avg_3d`, `avg_7d`, `avg_14d` — average kWh for that hour over each window
 
-The planner applies a spike-aware blending algorithm that down-weights historical
-outliers before combining the averages.
+The planner applies a median-ratio outlier detection algorithm that flags anomalous
+windows and redistributes their weight to stable windows before combining the averages.
 
 ### Price data
 
@@ -1255,8 +1255,10 @@ but may under- or over-predict when:
 - Seasonal load shifts (e.g. heating vs. cooling) haven't had time to appear in the lookback window.
 - Spike days (e.g. a party) pull the average up permanently.
 
-The spike-aware blending algorithm mitigates outliers but does not eliminate them.
-A Kalman-filter-based predictor is planned as a future improvement.
+The IQR median-ratio outlier detection algorithm flags anomalous windows as
+outliers and redistributes their weight, mitigating both upward spikes and
+downward anomalies. A Kalman-filter-based predictor is planned as a future
+improvement.
 
 ### Prices are assumed known for the full horizon
 

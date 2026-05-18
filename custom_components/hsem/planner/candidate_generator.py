@@ -177,6 +177,7 @@ def generate_candidates(
     current_kwh: float = 0.0,
     usable_kwh: float = 0.0,
     max_discharge_per_slot: float | None = None,
+    replacement_price_per_kwh: float | None = None,
 ) -> list[CandidatePlan]:
     """Generate all candidate plans from the already-populated baseline slots.
 
@@ -209,6 +210,9 @@ def generate_candidates(
         max_discharge_per_slot:
             Maximum energy dischargeable per slot (kWh) passed through to the
             MILP optimizer.  ``None`` means unlimited.
+        replacement_price_per_kwh:
+            Terminal-SoC replacement price (currency/kWh) passed through to the
+            MILP optimizer.  ``None`` disables the terminal-SoC credit term.
 
     Returns:
         Ordered list of :class:`CandidatePlan` objects.  The baseline is
@@ -319,6 +323,7 @@ def generate_candidates(
             charge_efficiency_pct=inp.battery_charge_efficiency_pct,
             discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
             time_discount_rate=inp.time_discount_rate,
+            replacement_price_per_kwh=replacement_price_per_kwh,
         )
         if milp_slots is not None:
             candidates.append(CandidatePlan(name=CANDIDATE_MILP, slots=milp_slots))

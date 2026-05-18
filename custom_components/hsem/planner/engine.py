@@ -756,6 +756,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         current_kwh=current_kwh,
         usable_kwh=usable_kwh,
         max_discharge_per_slot=max_discharge_per_slot,
+        replacement_price_per_kwh=replacement_price_per_kwh,
     )
     log_planner(
         "debug",

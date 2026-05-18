@@ -223,7 +223,7 @@ async def async_populate_avg_house_consumption(
             await async_logger(sensor, "All weights sum to 0. Skipping calculation.")
             continue
 
-        avg = weighted_avg_consumption(
+        avg, _ = weighted_avg_consumption(
             v1,
             v3,
             v7,

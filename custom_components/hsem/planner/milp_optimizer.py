@@ -96,21 +96,11 @@ Design constraints
 from __future__ import annotations
 
 import logging
-import math
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.recommendations import Recommendations
-
-# Recommendations that represent discharging (any form) — local copy to
-# avoid circular imports from candidate_generator.
-_DISCHARGE_RECS: frozenset[str] = frozenset(
-    {
-        Recommendations.BatteriesDischargeMode.value,
-        Recommendations.ForceBatteriesDischarge.value,
-    }
-)
 
 if TYPE_CHECKING:
     from custom_components.hsem.models.planner_outputs import PlannedSlot
@@ -141,6 +131,7 @@ def solve_milp(
     charge_efficiency_pct: float = 97.0,
     discharge_efficiency_pct: float = 97.0,
     time_discount_rate: float = 1.0,
+    replacement_price_per_kwh: float | None = None,
 ) -> list[PlannedSlot] | None:
     """Solve the LP and return a deep-copy slot list with MILP recommendations.
 
@@ -188,6 +179,11 @@ def solve_milp(
             Discharge-side efficiency as a percentage (0-100).  Energy delivered
             to the house equals battery energy removed x (discharge_efficiency_pct / 100).
             Defaults to 97 % (3 % discharge-side loss).
+        replacement_price_per_kwh:
+            Terminal-SoC replacement price (currency/kWh) used to value the
+            opportunity cost of ending the horizon with less stored energy.
+            Passed from the engine (computed from the next discharge window).
+            ``None`` disables the terminal-SoC credit term.
 
     Returns:
         A list of :class:`PlannedSlot` copies with MILP-derived recommendations,
@@ -299,21 +295,6 @@ def solve_milp(
     use_discount = time_discount_rate < 1.0 - 1e-9
     c_obj = np.zeros(n_vars)
 
-    # Compute terminal-SoC replacement price from future discharge slots
-    # in the baseline (pre-MILP) slot list.
-    replacement_price = _compute_replacement_price(
-        slots, future_idx, usable_kwh, max_dis
-    )
-
-    # Terminal discount: apply at horizon end since the terminal SoC value
-    # is realised at the end of the planning horizon.
-    terminal_discount = 1.0
-    if use_discount and future_idx:
-        last_future = slots[future_idx[-1]]
-        horizon_mid = last_future.start + (last_future.end - last_future.start) / 2
-        total_hours_ahead = max((horizon_mid - now).total_seconds() / 3600.0, 0.0)
-        terminal_discount = time_discount_rate**total_hours_ahead
-
     for t in range(m):
         discount = 1.0
         if use_discount:
@@ -332,10 +313,15 @@ def solve_milp(
         # pv[t] has zero objective cost
 
         # Terminal-SoC credit: storing energy (ec) reduces future import cost;
-        # discharging (ed) increases future import cost.
-        if replacement_price is not None and abs(replacement_price) > 1e-9:
-            c_obj[ec_off + t] -= replacement_price * terminal_discount
-            c_obj[ed_off + t] += replacement_price * terminal_discount
+        # discharging (ed) increases future import cost.  The terminal value
+        # is undiscounted to match the selector's cost_function.score_plan()
+        # (which keeps terminal_soc_value raw regardless of time_discount_rate).
+        if (
+            replacement_price_per_kwh is not None
+            and abs(replacement_price_per_kwh) > 1e-9
+        ):
+            c_obj[ec_off + t] -= replacement_price_per_kwh
+            c_obj[ed_off + t] += replacement_price_per_kwh
 
     # ------------------------------------------------------------------
     # Equality constraints: energy balance per slot
@@ -448,10 +434,12 @@ def solve_milp(
         if ec_kwh > _MIN_ACTION_KWH and ed_kwh > _MIN_ACTION_KWH:
             # Mutual exclusion is guaranteed by the LP constraint
             # (ec/max_charge + ed/max_dis <= 1).  If we reach here,
-            # reach here due to numerical tolerance, resolve by checking
+            # it is due to numerical tolerance.  Resolve by checking
             # whether the round-trip is net profitable (Bug J fix).
+            # The value of discharging is avoided import (p_imp),
+            # not export revenue (p_exp).
             net_charge_profit = (
-                p_exp[lp_t] * discharge_eff
+                p_imp[lp_t] * discharge_eff
                 - p_imp[lp_t] / charge_eff
                 - 2.0 * cycle_cost_per_kwh
             )
@@ -487,84 +475,14 @@ def solve_milp(
             if out_slots[i].recommendation
             == Recommendations.BatteriesDischargeMode.value
         ),
-        (f"{replacement_price:.4f}" if replacement_price is not None else "(none)"),
+        (
+            f"{replacement_price_per_kwh:.4f}"
+            if replacement_price_per_kwh is not None
+            else "(none)"
+        ),
     )
 
     return out_slots
-
-
-def _compute_replacement_price(
-    slots: list[PlannedSlot],
-    future_idx: list[int],
-    usable_kwh: float,
-    max_dis: float,
-) -> float | None:
-    """Compute the terminal-SoC replacement price from the first discharge window.
-
-    This mirrors ``replacement_price_from_next_discharge`` in
-    ``candidate_selector.py`` but operates on the **baseline** slot list
-    (pre-MILP) where discharge recommendations come from the rule-based
-    pipeline (schedules, seasonal strategy).
-
-    The energy stored at end-of-horizon is worth what it would cost to
-    re-purchase that energy from the grid during the **first** upcoming
-    discharge schedule window.  Within that window the battery discharges
-    in priority order from the most expensive slots, so we use the average
-    of the *top_n* most expensive import prices within that window.
-
-    ``top_n`` is derived dynamically from ``ceil(usable_kwh / max_dis)``
-    so it reflects how many slots the battery can actually fit in the battery.
-
-    Args:
-        slots: Full slot list (including past slots).
-        future_idx: Indices of future (active) slots.
-        usable_kwh: Maximum usable battery capacity (kWh).
-        max_dis: Maximum discharge energy per slot (kWh).
-
-    Returns:
-        Replacement price in currency/kWh, or ``None`` when no future
-        discharge slot exists.
-    """
-    # Collect all future discharge slots sorted by start time.
-    # Use _DISCHARGE_RECS so both BatteriesDischargeMode and
-    # ForceBatteriesDischarge are included (issue #425 Bug I fix).
-    future_discharge = sorted(
-        [
-            slots[i]
-            for i in future_idx
-            if (
-                slots[i].recommendation in _DISCHARGE_RECS
-                and not math.isnan(slots[i].price.import_price)
-            )
-        ],
-        key=lambda s: s.start,
-    )
-
-    if not future_discharge:
-        return None
-
-    # Find the first contiguous block of discharge slots.
-    # A gap larger than 20 min between consecutive discharge slots signals
-    # a new schedule occurrence.
-    GAP_THRESHOLD = timedelta(minutes=20)
-    first_block: list = [future_discharge[0]]
-    for slot in future_discharge[1:]:
-        prev_end = first_block[-1].end
-        this_start = slot.start
-        if this_start - prev_end <= GAP_THRESHOLD:
-            first_block.append(slot)
-        else:
-            break  # reached the next schedule occurrence
-
-    # Derive top_n from battery capacity / discharge rate
-    top_n: int = 4  # safe fallback
-    if max_dis > 1e-9:
-        top_n = math.ceil(usable_kwh / max_dis)
-
-    # Average the top_n most expensive import prices within the first block
-    first_block.sort(key=lambda s: s.price.import_price, reverse=True)
-    top = [s.price.import_price for s in first_block[:top_n]]
-    return sum(top) / len(top) if top else None
 
 
 def is_scipy_available() -> bool:
