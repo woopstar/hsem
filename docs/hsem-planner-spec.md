@@ -222,8 +222,8 @@ HSEM tracks charge-side and discharge-side efficiency independently.
 
 | Parameter | Field | Default | Description |
 |---|---|---|---|
-| Charge efficiency | `battery_charge_efficiency_pct` | 95 % | Fraction of input energy stored. |
-| Discharge efficiency | `battery_discharge_efficiency_pct` | 95 % | Fraction of stored energy delivered to house. |
+| Charge efficiency | `battery_charge_efficiency_pct` | 97 % | Fraction of input energy stored. |
+| Discharge efficiency | `battery_discharge_efficiency_pct` | 97 % | Fraction of stored energy delivered to house. |
 
 ### Semantics
 
@@ -836,4 +836,3 @@ Every test fixture should state:
 - expected SoC trajectory
 - expected import/export
 - expected total cost
-

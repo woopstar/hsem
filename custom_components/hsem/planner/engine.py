@@ -50,6 +50,7 @@ from custom_components.hsem.planner.charge_scheduler import (
     apply_opportunistic_charge,
     apply_optimization_strategy,
     calculate_required_battery_until_solar,
+    concentrate_discharge_on_expensive_slots,
 )
 from custom_components.hsem.planner.cost_function import CostWeights, score_plan
 from custom_components.hsem.planner.ev_planner import (
@@ -535,10 +536,9 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     # calculate_recommended_threshold returns the minimum economically
     # justified price difference (depreciation + conversion loss).
     recommended_threshold = calculate_recommended_threshold(
-        inp.battery_purchase_price,
-        inp.battery_expected_cycles,
-        usable_kwh,
-        0.0,
+        purchase_price=inp.battery_purchase_price,
+        expected_cycles=inp.battery_expected_cycles,
+        usable_capacity=usable_kwh,
     )
     if recommended_threshold > 0:
         warnings.append(
@@ -592,6 +592,8 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         inp.battery_schedules,
         now,
         max_charge_per_interval,
+        current_kwh=current_kwh,
+        usable_kwh=usable_kwh,
         cycle_cost_per_kwh=inp.battery_cycle_cost_per_kwh,
         recommended_threshold=recommended_threshold,
     )
@@ -706,6 +708,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         battery_expected_cycles=inp.battery_expected_cycles,
         charge_efficiency_pct=inp.battery_charge_efficiency_pct,
         discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
+        time_discount_rate=inp.time_discount_rate,
     )
     slot_duration_hours = inp.interval_minutes / 60.0
 
@@ -713,8 +716,15 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     # We use the most expensive import prices from the next active discharge
     # schedule window.  The energy stored at end-of-horizon avoids importing at
     # those peak prices, so those are the appropriate replacement cost.
+    # top_n is derived from battery capacity / discharge rate so it reflects
+    # how many slots the battery can actually serve (fixes hardcoded 4-slot bug).
+    import math
+
+    top_n: int = 4  # safe fallback
+    if max_discharge_per_slot is not None and max_discharge_per_slot > 1e-9:
+        top_n = math.ceil(usable_kwh / max_discharge_per_slot)
     replacement_price_per_kwh: float | None = replacement_price_from_next_discharge(
-        slots, now
+        slots, now, top_n=top_n, interval_minutes=inp.interval_minutes
     )
     log_planner(
         "debug",
@@ -724,6 +734,18 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
             if replacement_price_per_kwh is not None
             else "(none — no future discharge slots)"
         ),
+    )
+
+    # Concentrate battery discharge on the most expensive slots — avoid
+    # draining the battery on moderate-price slots when there are high-price
+    # slots later in the horizon that would benefit more from the stored energy.
+    concentrate_discharge_on_expensive_slots(
+        slots,
+        now,
+        current_kwh,
+        usable_kwh,
+        max_discharge_per_slot,
+        discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
     )
 
     candidates = generate_candidates(
@@ -1112,10 +1134,9 @@ def _build_explanation(
     eod_soc = inp.battery_end_of_discharge_soc_pct / 100.0
     usable_kwh = inp.battery_rated_capacity_kwh * (1.0 - eod_soc)
     recommended_threshold = calculate_recommended_threshold(
-        inp.battery_purchase_price,
-        inp.battery_expected_cycles,
-        usable_kwh,
-        0.0,
+        purchase_price=inp.battery_purchase_price,
+        expected_cycles=inp.battery_expected_cycles,
+        usable_capacity=usable_kwh,
     )
 
     # --- Forecast metrics ------------------------------------------------

@@ -1218,6 +1218,7 @@ class TestEvAcLoadAndSoCPath:
             ev_planned_load_charger_power_kw=charger_kw,
             ev_planned_load_charger_efficiency_pct=charger_eff_pct,
             ev_planned_load_deadline=deadline,
+            time_discount_rate=1.0,  # no discount for EV tests
             ev_planned_load_base_load_includes_ev=False,
         )
 

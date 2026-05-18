@@ -740,6 +740,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             ev_second_planned_load_base_load_includes_ev=bool(
                 cfg.ev_second_planned_load_base_load_includes_ev
             ),
+            time_discount_rate=0.995,
         )
 
     @staticmethod

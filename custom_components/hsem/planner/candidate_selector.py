@@ -36,6 +36,7 @@ from datetime import datetime, timedelta
 
 from custom_components.hsem.models.planner_outputs import RejectedPlan
 from custom_components.hsem.planner.candidate_generator import (
+    _DISCHARGE_RECS,
     CANDIDATE_BASELINE,
     CANDIDATE_NO_ACTION,
     CandidatePlan,
@@ -44,7 +45,6 @@ from custom_components.hsem.planner.cost_function import CostWeights, score_plan
 from custom_components.hsem.planner.soc_simulation import simulate_soc
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import log_planner
-from custom_components.hsem.utils.recommendations import Recommendations
 
 # SoC floor tolerance — plans are accepted even if they dip this many
 # percentage points below end_of_discharge_soc_pct (rounding / simulation
@@ -170,7 +170,7 @@ def select_best_candidate(
     else:
         # Score all valid candidates (including no_action for diagnostics)
         for candidate in valid:
-            candidate._cost = score_plan(  # type: ignore[attr-defined]
+            candidate._cost = score_plan(
                 candidate.slots,
                 cost_weights,
                 slot_duration_hours=slot_duration_hours,
@@ -178,7 +178,7 @@ def select_best_candidate(
                 initial_battery_kwh=current_kwh,
                 replacement_price_per_kwh=replacement_price_per_kwh,
             )
-            c_cost = candidate._cost  # type: ignore[attr-defined]
+            c_cost = candidate._cost
             log_planner(
                 "debug",
                 "[selector] score  candidate=%-20s  "
@@ -216,16 +216,14 @@ def select_best_candidate(
                     trail,
                 )
 
-        # Sort by selector score ascending; baseline wins ties (it comes first)
+        # Sort by score ascending, then total_cost ascending (real savings),
+        # then name for determinism. Baseline gets no positional advantage.
         eligible_sorted = sorted(
             eligible,
             key=lambda c: (
-                c._cost.score,  # type: ignore[attr-defined]
-                # Stable tie-break: baseline index is 0, so it wins ties
-                next(
-                    (i for i, x in enumerate(candidates) if x is c),
-                    len(candidates),
-                ),
+                c._cost.score,
+                c._cost.total_cost,
+                c.name,
             ),
         )
         winner = eligible_sorted[0]
@@ -233,8 +231,8 @@ def select_best_candidate(
             "info",
             "[selector] SELECTED candidate=%-20s  score=%.4f  total_cost=%.4f",
             winner.name,
-            winner._cost.score,  # type: ignore[attr-defined]
-            winner._cost.total_cost,  # type: ignore[attr-defined]
+            winner._cost.score,
+            winner._cost.total_cost,
         )
 
     # --- Step 5: build rejected-plan entries for all non-winners ---------
@@ -267,9 +265,16 @@ def select_best_candidate(
                     f"Δ = +{diff:.4f})."
                 )
             else:
+                winner_total = getattr(
+                    getattr(winner, "_cost", None), "total_cost", float("inf")
+                )
+                candidate_total = getattr(
+                    getattr(candidate, "_cost", None), "total_cost", float("inf")
+                )
                 reason = (
-                    f"Tied or marginally worse score "
-                    f"({candidate_score:.4f}); baseline preferred."
+                    f"Tied score ({candidate_score:.4f}); "
+                    f"higher total_cost than winner "
+                    f"({candidate_total:.4f} vs {winner_total:.4f})."
                 )
 
         rejected.append(
@@ -333,6 +338,7 @@ def replacement_price_from_next_discharge(
     slots: list,
     now: datetime,
     top_n: int = 4,
+    interval_minutes: int = 15,
 ) -> float | None:
     """Derive the terminal-SoC replacement price from the next discharge window.
 
@@ -357,19 +363,27 @@ def replacement_price_from_next_discharge(
             Timezone-aware current datetime.  Past slots are excluded.
         top_n:
             Number of most expensive discharge slots to average over.
-            Default 4 corresponds to ~1 hour at 15-min resolution.
+            Derived dynamically from ``ceil(usable_kwh / max_discharge_per_slot)``
+            in the engine so it reflects how many slots the battery can actually
+            serve.  Default 4 is a safe fallback (~1 hour at 15-min resolution).
+        interval_minutes:
+            Slot duration in minutes.  Used to derive the gap threshold for
+            detecting separate discharge window occurrences.
+            Default 15.
 
     Returns:
         Replacement price in currency/kWh, or ``None`` when no future
         discharge slot exists.
     """
-    # Collect all future discharge slots sorted by start time
+    # Collect all future discharge slots sorted by start time.
+    # Use _DISCHARGE_RECS so both BatteriesDischargeMode and
+    # ForceBatteriesDischarge are included (Bug I fix).
     future_discharge = sorted(
         [
             slot
             for slot in slots
             if (
-                slot.recommendation == Recommendations.BatteriesDischargeMode.value
+                slot.recommendation in _DISCHARGE_RECS
                 and as_tz(slot.start, now.tzinfo) > now
                 and not math.isnan(slot.price.import_price)
             )
@@ -380,10 +394,11 @@ def replacement_price_from_next_discharge(
     if not future_discharge:
         return None
 
-    # Find the first contiguous block of discharge slots.  A 15-min gap
-    # between consecutive discharge slots signals a new schedule occurrence
-    # (the gap between discharge windows).  We take only the first block.
-    GAP_THRESHOLD = timedelta(minutes=20)
+    # Find the first contiguous block of discharge slots.  A gap larger than
+    # interval_minutes + 5 min between consecutive discharge slots signals a
+    # new schedule occurrence (the gap between discharge windows).
+    # We take only the first block.
+    GAP_THRESHOLD = timedelta(minutes=interval_minutes + 5)
     first_block: list = [future_discharge[0]]
     tz = now.tzinfo
     for slot in future_discharge[1:]:

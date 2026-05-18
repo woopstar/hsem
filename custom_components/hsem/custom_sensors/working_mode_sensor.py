@@ -208,15 +208,12 @@ class HSEMWorkingModeSensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
             }
 
         attributes = {
-            "batteries_conversion_loss": cfg.batteries_conversion_loss,
             "batteries_current_capacity": live.battery_current_capacity_kwh,
             "batteries_usable_capacity": live.battery_usable_capacity_kwh,
             "batteries_recommended_min_price_threshold": calculate_recommended_threshold(
-                cfg.batteries_purchase_price,
-                cfg.batteries_expected_cycles,
-                live.battery_usable_capacity_kwh,
-                cfg.batteries_conversion_loss,
-                live.energi_data_service_import_price,
+                purchase_price=cfg.batteries_purchase_price,
+                expected_cycles=cfg.batteries_expected_cycles,
+                usable_capacity=live.battery_usable_capacity_kwh,
             ),
             "energi_data_service_export_state": live.energi_data_service_export_price,
             "energi_data_service_import_state": live.energi_data_service_import_price,

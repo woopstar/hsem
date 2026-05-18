@@ -125,11 +125,11 @@ class PlannerInput:
         battery_charge_efficiency_pct:
             Charge-side efficiency as a percentage (0-100).  Energy stored in
             the battery equals input energy × (charge_efficiency_pct / 100).
-            Defaults to 95 % (5 % charge-side loss).
+            Defaults to 97 % (3 % charge-side loss).
         battery_discharge_efficiency_pct:
             Discharge-side efficiency as a percentage (0-100).  Energy delivered
             to the house equals battery energy removed × (discharge_efficiency_pct / 100).
-            Defaults to 95 % (5 % discharge-side loss).
+            Defaults to 97 % (3 % discharge-side loss).
         battery_purchase_price:
             Purchase price of the battery pack (local currency).  Used for
             depreciation-based threshold calculation.
@@ -186,8 +186,8 @@ class PlannerInput:
     battery_max_soc_pct: float = 100.0
     battery_max_charge_power_w: float = 5000.0
     battery_max_discharge_power_w: float | None = None
-    battery_charge_efficiency_pct: float = 95.0
-    battery_discharge_efficiency_pct: float = 95.0
+    battery_charge_efficiency_pct: float = 97.0
+    battery_discharge_efficiency_pct: float = 97.0
 
     # --- battery economics ---
     battery_purchase_price: float = 0.0
@@ -224,6 +224,13 @@ class PlannerInput:
     months_winter: list[int] = field(default_factory=lambda: [1, 2, 3, 4, 10, 11, 12])
     house_power_includes_ev: bool = True
     is_read_only: bool = False  # False = hardware writes enabled; set True only in dry-run/test scenarios
+
+    # --- time discount for selector score ---
+    #: Per-hour exponential discount factor applied to the selector score
+    #: (not to total_cost).  A value of 1.0 disables the discount entirely.
+    #: Default 0.995 means a saving 48 hours from now is worth ~79% of a
+    #: saving right now in the selector's eyes.
+    time_discount_rate: float = 0.995
 
     # --- EV planned load integration — primary EV (optional, disabled by default) ---
     #: When True, the primary EV planned load feature is active.

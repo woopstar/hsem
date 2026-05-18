@@ -435,10 +435,10 @@ class TestPlannerInputEfficiencyFields:
     """Smoke tests: run_planner honours charge/discharge efficiency fields."""
 
     def test_default_efficiency_matches_100pct_backwards_compat(self) -> None:
-        """Default PlannerInput efficiency fields are 95 % (issue default, not 100 %)."""
+        """Default PlannerInput efficiency fields are 97 % (matching current default)."""
         inp = PlannerInput()
-        assert inp.battery_charge_efficiency_pct == pytest.approx(95.0)
-        assert inp.battery_discharge_efficiency_pct == pytest.approx(95.0)
+        assert inp.battery_charge_efficiency_pct == pytest.approx(97.0)
+        assert inp.battery_discharge_efficiency_pct == pytest.approx(97.0)
 
     def test_explicit_90_90_planner_run_completes(self) -> None:
         """Planner runs successfully with 90 % charge / 90 % discharge."""

@@ -13,7 +13,7 @@ are relaxed to continuous values in [0, 1] because the mutual-exclusion
 constraint together with the per-slot energy caps already prevents
 simultaneous charge + discharge in the optimal solution.
 
-Decision variables (flattened into a single vector ``x`` of length 4*n)
+Decision variables (flattened into a single vector ``x`` of length 5*n)
 -----------------------------------------------------------------------
 For each slot ``t ∈ 0…n-1``:
 
@@ -21,15 +21,24 @@ For each slot ``t ∈ 0…n-1``:
 - ``ed[t]``  — energy discharged *from* the battery this slot (kWh)
 - ``gi[t]``  — total grid import this slot (kWh)
 - ``ge[t]``  — total grid export this slot (kWh)
+- ``pv[t]``  — PV energy available after house consumption (kWh, fixed)
 
 ``soc[t]`` is derived from ``ec`` and ``ed`` via the forward recurrence and
 does not need to be an explicit variable.
 
 Objective (minimise)
 --------------------
-``Σ_t [ p_imp[t] * gi[t] - p_exp[t] * ge[t] + α * (ec[t] + ed[t]) ]``
+``Σ_t [ p_imp[t] * gi[t] - p_exp[t] * ge[t] + α * (ec[t] + ed[t])
+       + γ * (ed[t] - ec[t]) ]``
 
-where ``α`` = battery cycle cost per kWh.
+where ``α`` = battery cycle cost per kWh and ``γ`` = terminal-SoC
+replacement price (opportunity cost of ending the horizon with less stored
+energy).  The cycle cost is counted once per slot (matching
+``cost_function.py``'s ``max(charge, discharge)`` counting), and
+``cycle_cost_per_kwh`` already includes the 2× throughput factor in its
+denominator (``purchase_price / (2 × usable_kwh × expected_cycles)``),
+so one full round-trip (charge + discharge) correctly costs
+``2 × usable_kwh × cycle_cost_per_kwh = purchase_price / expected_cycles``.
 
 Constraints
 -----------
@@ -48,14 +57,19 @@ For each slot ``t``:
 4. **Discharge limit** (inequality):
    ``ed[t] ≤ max_discharge_per_slot``  (relaxed to usable_kwh when unlimited)
 
-5. **Energy balance** (equality):
-   ``gi[t] + pv_avail[t] + ed[t] = load[t] + ec[t] + ge[t]``
+5. **Mutual exclusion** (inequality):
+   ``ec[t] / max_charge_per_slot + ed[t] / max_discharge_per_slot ≤ 1``
+   Prevents simultaneous charge + discharge without binary variables.
+
+6. **Energy balance** (equality):
+   ``gi[t] + pv_avail[t] + ed[t] * discharge_eff
+       = load[t] + ec[t] / charge_eff + ge[t]``
 
    Where ``pv_avail[t]`` is the PV energy available after house consumption is
    subtracted.  Because PV first serves the house load, the net residual PV
    is what the battery or export can absorb.
 
-6. **Non-negativity**: All variables ≥ 0.
+7. **Non-negativity**: All variables ≥ 0.
 
 Past slots (recommendation == TimePassed) are fixed at zero by using
 zero-capacity bounds and are excluded from the energy balance.
@@ -82,11 +96,21 @@ Design constraints
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+import math
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.recommendations import Recommendations
+
+# Recommendations that represent discharging (any form) — local copy to
+# avoid circular imports from candidate_generator.
+_DISCHARGE_RECS: frozenset[str] = frozenset(
+    {
+        Recommendations.BatteriesDischargeMode.value,
+        Recommendations.ForceBatteriesDischarge.value,
+    }
+)
 
 if TYPE_CHECKING:
     from custom_components.hsem.models.planner_outputs import PlannedSlot
@@ -96,8 +120,10 @@ _LOGGER = logging.getLogger(__name__)
 # Name exported so the engine and tests can reference it without re-defining
 CANDIDATE_MILP = "milp"
 
-# Solver timeout in seconds — HiGHS respects this via ``options``
-_SOLVER_TIME_LIMIT_S = 0.5
+# Solver timeout in seconds — HiGHS respects this via ``options``.
+# Increased from 0.5 to 2.0 to handle 192-slot (768 variable) problems
+# where preprocessing overhead alone can reach 200-400ms.
+_SOLVER_TIME_LIMIT_S = 2.0
 
 # Minimum energy threshold below which a slot is treated as zero-charge/discharge
 # to avoid writing tiny floating-point artefacts into recommendations.
@@ -112,6 +138,9 @@ def solve_milp(
     max_charge_per_slot: float,
     max_discharge_per_slot: float | None,
     cycle_cost_per_kwh: float = 0.0,
+    charge_efficiency_pct: float = 97.0,
+    discharge_efficiency_pct: float = 97.0,
+    time_discount_rate: float = 1.0,
 ) -> list[PlannedSlot] | None:
     """Solve the LP and return a deep-copy slot list with MILP recommendations.
 
@@ -125,6 +154,11 @@ def solve_milp(
     The SoC simulation (:func:`~soc_simulation.simulate_soc`) must be run
     by the caller **after** receiving these slots to populate
     ``grid_import_kwh``, ``grid_export_kwh``, and ``estimated_battery_soc``.
+
+    The MILP objective now includes conversion loss costs so its optimisation
+    matches the cost function's ``total_cost``.  The energy balance equation
+    accounts for charge/discharge efficiencies so ``gi[t]`` reflects real grid
+    import (not the idealised lossless value).
 
     Args:
         slots:
@@ -146,6 +180,14 @@ def solve_milp(
             the LP uses ``usable_kwh`` as the effective ceiling in that case.
         cycle_cost_per_kwh:
             Battery cycle (depreciation) cost per kWh cycled.  Defaults to 0.0.
+        charge_efficiency_pct:
+            Charge-side efficiency as a percentage (0-100).  Energy stored in
+            the battery equals input energy x (charge_efficiency_pct / 100).
+            Defaults to 97 % (3 % charge-side loss).
+        discharge_efficiency_pct:
+            Discharge-side efficiency as a percentage (0-100).  Energy delivered
+            to the house equals battery energy removed x (discharge_efficiency_pct / 100).
+            Defaults to 97 % (3 % discharge-side loss).
 
     Returns:
         A list of :class:`PlannedSlot` copies with MILP-derived recommendations,
@@ -196,9 +238,12 @@ def solve_milp(
     p_imp = np.nan_to_num(p_imp, nan=0.0)
     p_exp = np.nan_to_num(p_exp, nan=0.0)
 
-    # Net load = house consumption + EV extra load − PV available to battery/export.
+    # Net load = house consumption + EV extra load − PV estimate.
     # A positive value means the battery/grid must supply extra energy.
-    # A negative value means there is PV surplus available for battery/export.
+    # A negative value means there is PV surplus.
+    # Split into base_load (positive demand) and pv_avail (PV surplus after load).
+    # pv_avail[t] is added as an explicit LP variable to prevent infeasibility
+    # when net_load is strongly negative and SoC limits constrain charge.
     net_load = np.array(
         [
             slots[i].avg_house_consumption
@@ -208,51 +253,126 @@ def solve_milp(
         ],
         dtype=float,
     )
+    pv_avail = np.maximum(-net_load, 0.0)  # PV surplus after house consumption
+    base_load = np.maximum(net_load, 0.0)  # remaining demand after PV
     m = len(future_idx)  # number of active LP slots
 
     # ------------------------------------------------------------------
-    # Variable layout: x = [ec(0..m-1), ed(0..m-1), gi(0..m-1), ge(0..m-1)]
-    # Offsets: ec_off=0, ed_off=m, gi_off=2m, ge_off=3m
+    # Variable layout: x = [ec(0..m-1), ed(0..m-1), gi(0..m-1), ge(0..m-1),
+    #                       pv(0..m-1)]
+    # Offsets: ec_off=0, ed_off=m, gi_off=2m, ge_off=3m, pv_off=4m
+    # pv[t] is a FIXED variable bounded to [pv_avail[t], pv_avail[t]] — the
+    # solar energy available after house consumption.  Making it explicit in
+    # the LP (rather than netting it into b_eq) prevents infeasibility when
+    # net_load is strongly negative and SoC constraints limit charge/export.
     # ------------------------------------------------------------------
-    ec_off, ed_off, gi_off, ge_off = 0, m, 2 * m, 3 * m
-    n_vars = 4 * m
+    ec_off, ed_off, gi_off, ge_off, pv_off = 0, m, 2 * m, 3 * m, 4 * m
+    n_vars = 5 * m
+
+    # Resolve charge/discharge efficiencies for the energy balance equation.
+    # The MILP must account for real-world conversion losses so its solution
+    # matches the cost function's total_cost (which includes conversion loss
+    # via the conversion_loss_cost term).
+    charge_eff = max(min(charge_efficiency_pct, 100.0), 1.0) / 100.0
+    discharge_eff = max(min(discharge_efficiency_pct, 100.0), 1.0) / 100.0
+    charge_loss = 1.0 - charge_eff
+    discharge_loss = 1.0 - discharge_eff
 
     # ------------------------------------------------------------------
-    # Objective vector: minimise grid_import_cost − export_revenue + cycle_cost
+    # Objective vector: minimise grid_import_cost - export_revenue + cycle_cost
+    # + conversion_loss_cost - terminal_soc_credit.
+    # pv[t] has zero objective cost (it's free).
+    #
+    # Cycle cost is counted once per slot (matching cost_function.py's
+    # max(charge, discharge) counting).  cycle_cost_per_kwh already includes
+    # the 2× throughput factor in its denominator, so one full round-trip
+    # (charge + discharge) correctly costs 2 × usable_kwh × cycle_cost_per_kwh
+    # per direction.
+    #
+    # Terminal-SoC credit: energy left in the battery at end of horizon
+    # avoids importing at the next discharge window price.  This mirrors
+    # terminal_soc_value in cost_function.py.
+    #
+    # Apply time discount so the MILP objective matches the selector's
+    # discounted score (distant savings are worth less).
     # ------------------------------------------------------------------
+    use_discount = time_discount_rate < 1.0 - 1e-9
     c_obj = np.zeros(n_vars)
-    c_obj[ec_off : ec_off + m] = cycle_cost_per_kwh  # charge cycle cost
-    c_obj[ed_off : ed_off + m] = cycle_cost_per_kwh  # discharge cycle cost
-    c_obj[gi_off : gi_off + m] = p_imp  # grid import cost
-    c_obj[ge_off : ge_off + m] = -p_exp  # export revenue (negative = gain)
+
+    # Compute terminal-SoC replacement price from future discharge slots
+    # in the baseline (pre-MILP) slot list.
+    replacement_price = _compute_replacement_price(
+        slots, future_idx, usable_kwh, max_dis
+    )
+
+    # Terminal discount: apply at horizon end since the terminal SoC value
+    # is realised at the end of the planning horizon.
+    terminal_discount = 1.0
+    if use_discount and future_idx:
+        last_future = slots[future_idx[-1]]
+        horizon_mid = last_future.start + (last_future.end - last_future.start) / 2
+        total_hours_ahead = max((horizon_mid - now).total_seconds() / 3600.0, 0.0)
+        terminal_discount = time_discount_rate**total_hours_ahead
+
+    for t in range(m):
+        discount = 1.0
+        if use_discount:
+            # Compute hours from now for this slot's midpoint
+            slot = slots[future_idx[t]]
+            slot_mid = slot.start + (slot.end - slot.start) / 2
+            hours_ahead = max((slot_mid - now).total_seconds() / 3600.0, 0.0)
+            discount = time_discount_rate**hours_ahead
+
+        # Charge-side: cycle cost + energy lost during charge, priced at import price
+        c_obj[ec_off + t] = (cycle_cost_per_kwh + charge_loss * p_imp[t]) * discount
+        # Discharge-side: cycle cost + energy lost during discharge, priced at import price
+        c_obj[ed_off + t] = (cycle_cost_per_kwh + discharge_loss * p_imp[t]) * discount
+        c_obj[gi_off + t] = p_imp[t] * discount  # grid import cost
+        c_obj[ge_off + t] = -p_exp[t] * discount  # export revenue (negative = gain)
+        # pv[t] has zero objective cost
+
+        # Terminal-SoC credit: storing energy (ec) reduces future import cost;
+        # discharging (ed) increases future import cost.
+        if replacement_price is not None and abs(replacement_price) > 1e-9:
+            c_obj[ec_off + t] -= replacement_price * terminal_discount
+            c_obj[ed_off + t] += replacement_price * terminal_discount
 
     # ------------------------------------------------------------------
     # Equality constraints: energy balance per slot
-    # gi[t] + ed[t] = net_load[t] + ec[t] + ge[t]
-    # → gi[t] − ec[t] + ed[t] − ge[t] = net_load[t]
+    # gi[t] + pv[t] + ed[t]*discharge_eff = base_load[t] + ec[t]/charge_eff + ge[t]
+    # -> gi[t] - ec[t]/charge_eff + ed[t]*discharge_eff + pv[t] - ge[t] = base_load[t]
+    #
+    # ec[t] is the battery-side stored energy (post charge loss).  To store
+    # ec[t] kWh the grid + PV must supply ec[t]/charge_eff kWh.
+    # ed[t] is the battery-side removed energy (pre discharge loss).  The
+    # house receives ed[t]*discharge_eff kWh.
     # ------------------------------------------------------------------
     A_eq = np.zeros((m, n_vars))
     for t in range(m):
-        A_eq[t, ec_off + t] = -1.0  # −ec[t]
-        A_eq[t, ed_off + t] = 1.0  # +ed[t]
+        A_eq[t, ec_off + t] = -1.0 / charge_eff  # -ec[t]/charge_eff
+        A_eq[t, ed_off + t] = 1.0 * discharge_eff  # +ed[t]*discharge_eff
         A_eq[t, gi_off + t] = 1.0  # +gi[t]
-        A_eq[t, ge_off + t] = -1.0  # −ge[t]
-    b_eq = net_load.copy()
+        A_eq[t, ge_off + t] = -1.0  # -ge[t]
+        A_eq[t, pv_off + t] = 1.0  # +pv[t] (fixed to pv_avail[t])
+    b_eq = base_load.copy()  # always non-negative — pv[t] covers surplus
 
     # ------------------------------------------------------------------
     # Inequality constraints:
-    #   1. SoC recurrence: soc[t] = soc[0] + Σ_{k≤t} (ec[k] − ed[k])
+    #   1. SoC recurrence: soc[t] = soc[0] + Σ_{k≤t} (t) (ec[k] − ed[k])
     #      We need: soc[t] ≤ usable_kwh  →  Σ_{k≤t}(ec[k]−ed[k]) ≤ usable−soc0
     #      And:    soc[t] ≥ 0          → -Σ_{k≤t}(ec[k]−ed[k]) ≤ soc0
-    #   2. ec[t] ≤ max_charge_per_slot  (via bounds)
-    #   3. ed[t] ≤ max_dis              (via bounds)
+    #   2. Mutual exclusion: ec[t]/max_charge + ed[t]/max_dis ≤ 1
+    #   3. ec[t] ≤ max_charge_per_slot  (via bounds)
+    #   4. ed[t] ≤ max_dis              (via bounds)
     # ------------------------------------------------------------------
     # We encode SoC bounds as inequality rows:
     #   upper: cumsum(ec−ed)[t] ≤ (usable_kwh − current_kwh)
     #   lower: −cumsum(ec−ed)[t] ≤ current_kwh
     soc_rows = 2 * m
-    A_ub = np.zeros((soc_rows, n_vars))
-    b_ub = np.zeros(soc_rows)
+    # Mutual exclusion rows: ec[t]/max_charge + ed[t]/max_dis <= 1
+    mutex_rows = m
+    A_ub = np.zeros((soc_rows + mutex_rows, n_vars))
+    b_ub = np.zeros(soc_rows + mutex_rows)
 
     for t in range(m):
         for k in range(t + 1):
@@ -265,6 +385,11 @@ def solve_milp(
         b_ub[t] = usable_kwh - current_kwh  # upper SoC headroom
         b_ub[m + t] = current_kwh  # lower SoC headroom
 
+        # Mutual exclusion: ec[t]/max_charge + ed[t]/max_dis <= 1
+        A_ub[2 * m + t, ec_off + t] = 1.0 / max_charge_per_slot
+        A_ub[2 * m + t, ed_off + t] = 1.0 / max_dis
+        b_ub[2 * m + t] = 1.0
+
     # ------------------------------------------------------------------
     # Variable bounds: all ≥ 0, charge/discharge capped by power limits
     # ------------------------------------------------------------------
@@ -273,6 +398,9 @@ def solve_milp(
         + [(0.0, max_dis)] * m  # ed[t]
         + [(0.0, None)] * m  # gi[t] (unbounded above)
         + [(0.0, None)] * m  # ge[t] (unbounded above)
+        + [
+            (pv_avail[t], pv_avail[t]) for t in range(m)
+        ]  # pv[t] fixed to actual surplus
     )
 
     # ------------------------------------------------------------------
@@ -318,11 +446,22 @@ def solve_milp(
         ed_kwh = float(ed_sol[lp_t])
 
         if ec_kwh > _MIN_ACTION_KWH and ed_kwh > _MIN_ACTION_KWH:
-            # Simultaneous charge + discharge (numerical artefact) — pick larger
-            if ec_kwh >= ed_kwh:
+            # Mutual exclusion is guaranteed by the LP constraint
+            # (ec/max_charge + ed/max_dis <= 1).  If we reach here,
+            # reach here due to numerical tolerance, resolve by checking
+            # whether the round-trip is net profitable (Bug J fix).
+            net_charge_profit = (
+                p_exp[lp_t] * discharge_eff
+                - p_imp[lp_t] / charge_eff
+                - 2.0 * cycle_cost_per_kwh
+            )
+            if net_charge_profit > 0:
+                # Charging is net profitable — keep charge, drop discharge
                 ed_kwh = 0.0
             else:
+                # Round trip is not profitable — drop both (idle)
                 ec_kwh = 0.0
+                ed_kwh = 0.0
 
         if ec_kwh > _MIN_ACTION_KWH:
             out_slots[slot_i].recommendation = Recommendations.BatteriesChargeGrid.value
@@ -334,7 +473,8 @@ def solve_milp(
             # batteries_charged stays 0 for discharge slots
 
     _LOGGER.debug(
-        "[milp] LP solved: objective=%.4f  charge_slots=%d  discharge_slots=%d",
+        "[milp] LP solved: objective=%.4f  charge_slots=%d  discharge_slots=%d"
+        "  replacement_price=%s",
         float(result.fun),
         sum(
             1
@@ -347,9 +487,84 @@ def solve_milp(
             if out_slots[i].recommendation
             == Recommendations.BatteriesDischargeMode.value
         ),
+        (f"{replacement_price:.4f}" if replacement_price is not None else "(none)"),
     )
 
     return out_slots
+
+
+def _compute_replacement_price(
+    slots: list[PlannedSlot],
+    future_idx: list[int],
+    usable_kwh: float,
+    max_dis: float,
+) -> float | None:
+    """Compute the terminal-SoC replacement price from the first discharge window.
+
+    This mirrors ``replacement_price_from_next_discharge`` in
+    ``candidate_selector.py`` but operates on the **baseline** slot list
+    (pre-MILP) where discharge recommendations come from the rule-based
+    pipeline (schedules, seasonal strategy).
+
+    The energy stored at end-of-horizon is worth what it would cost to
+    re-purchase that energy from the grid during the **first** upcoming
+    discharge schedule window.  Within that window the battery discharges
+    in priority order from the most expensive slots, so we use the average
+    of the *top_n* most expensive import prices within that window.
+
+    ``top_n`` is derived dynamically from ``ceil(usable_kwh / max_dis)``
+    so it reflects how many slots the battery can actually fit in the battery.
+
+    Args:
+        slots: Full slot list (including past slots).
+        future_idx: Indices of future (active) slots.
+        usable_kwh: Maximum usable battery capacity (kWh).
+        max_dis: Maximum discharge energy per slot (kWh).
+
+    Returns:
+        Replacement price in currency/kWh, or ``None`` when no future
+        discharge slot exists.
+    """
+    # Collect all future discharge slots sorted by start time.
+    # Use _DISCHARGE_RECS so both BatteriesDischargeMode and
+    # ForceBatteriesDischarge are included (issue #425 Bug I fix).
+    future_discharge = sorted(
+        [
+            slots[i]
+            for i in future_idx
+            if (
+                slots[i].recommendation in _DISCHARGE_RECS
+                and not math.isnan(slots[i].price.import_price)
+            )
+        ],
+        key=lambda s: s.start,
+    )
+
+    if not future_discharge:
+        return None
+
+    # Find the first contiguous block of discharge slots.
+    # A gap larger than 20 min between consecutive discharge slots signals
+    # a new schedule occurrence.
+    GAP_THRESHOLD = timedelta(minutes=20)
+    first_block: list = [future_discharge[0]]
+    for slot in future_discharge[1:]:
+        prev_end = first_block[-1].end
+        this_start = slot.start
+        if this_start - prev_end <= GAP_THRESHOLD:
+            first_block.append(slot)
+        else:
+            break  # reached the next schedule occurrence
+
+    # Derive top_n from battery capacity / discharge rate
+    top_n: int = 4  # safe fallback
+    if max_dis > 1e-9:
+        top_n = math.ceil(usable_kwh / max_dis)
+
+    # Average the top_n most expensive import prices within the first block
+    first_block.sort(key=lambda s: s.price.import_price, reverse=True)
+    top = [s.price.import_price for s in first_block[:top_n]]
+    return sum(top) / len(top) if top else None
 
 
 def is_scipy_available() -> bool:

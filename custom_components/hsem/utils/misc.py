@@ -16,7 +16,6 @@ from custom_components.hsem.const import DEFAULT_CONFIG_VALUES, DOMAIN
 
 # Re-export async_logger from its dedicated module so that existing callers
 # importing it from utils.misc continue to work without changes.
-from custom_components.hsem.utils.logger import HSEM_LOGGER  # noqa: F401
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -495,20 +494,47 @@ def calculate_recommended_threshold(
     purchase_price: float,
     expected_cycles: int,
     usable_capacity: float,
-    conversion_loss: float,
-    import_price: float = 0.0,
+    capacity_loss_pct: float = 30.0,
 ) -> float:
-    """Calculate the recommended price threshold based on battery depreciation and losses.
+    """Calculate the recommended price threshold based on battery depreciation.
 
-    Formula: (Purchase Price * Capacity Loss) / (Cycles * Capacity) + (Avg Import Price * Loss %)
+    This threshold represents the minimum import price spread required for
+    grid charging to be economically rational (depreciation-only, excluding
+    conversion loss — that is added by callers when relevant).
+
+    The ``2×`` factor in the denominator accounts for the fact that one full
+    battery cycle involves energy flow in *both* directions:
+
+        throughput_per_cycle = 2 × usable_capacity
+                              (charge once + discharge once)
+
+    Since ``purchase_price / expected_cycles`` is the cost *per full cycle*
+    and the cycle cost is expressed *per kWh of throughput*, the cost must
+    be spread over the total lifetime throughput:
+
+        threshold = (purchase_price * capacity_loss_pct)
+                    / (2 × usable_capacity × expected_cycles)
+
+    This is the same formula as ``_resolve_cycle_cost`` in ``cost_function.py``,
+    which also uses ``2 × usable_kwh × expected_cycles`` in the denominator.
+
+    Args:
+        purchase_price: Total battery system cost in local currency.
+        expected_cycles: Total expected lifetime charge/discharge cycles.
+        usable_capacity: Usable battery capacity in kWh.
+        capacity_loss_pct: Battery capacity lost at end-of-life as a percentage
+            of original capacity (0-100).  LiFePO4 EOL is typically defined at
+            80% retained capacity = 20% loss.  Defaults to 30% to account for
+            both EOL degradation and calendar ageing.
     """
     if purchase_price <= 0 or expected_cycles <= 0 or usable_capacity <= 0:
         return 0.0
 
-    # 1. Depreciation cost per kWh
-    depreciation = purchase_price / (expected_cycles * usable_capacity)
-
-    # 2. Conversion loss cost (approx 10% of current import price)
-    conversion_loss_cost = import_price * (conversion_loss / 100)
-
-    return round(depreciation + conversion_loss_cost, 3)
+    # Depreciation cost per kWh of throughput.
+    # The 2× factor accounts for charge + discharge per full cycle.
+    # Capacity loss accounts for residual value at end-of-life.
+    capacity_loss_dec = max(min(capacity_loss_pct, 100.0), 0.0) / 100.0
+    return round(
+        (purchase_price * capacity_loss_dec) / (2 * expected_cycles * usable_capacity),
+        3,
+    )

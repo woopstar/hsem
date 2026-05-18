@@ -22,6 +22,15 @@ from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.misc import next_window_start_dt
 from custom_components.hsem.utils.recommendations import Recommendations
 
+# Recommendations that represent discharging (any form) — local copy to
+# avoid circular imports from candidate_generator.
+_DISCHARGE_RECS: frozenset[str] = frozenset(
+    {
+        Recommendations.BatteriesDischargeMode.value,
+        Recommendations.ForceBatteriesDischarge.value,
+    }
+)
+
 _LOGGER = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -167,6 +176,9 @@ def apply_charge_schedules(
     battery_schedules: list[BatteryScheduleInput],
     now: datetime,
     max_charge_per_interval: float,
+    *,
+    current_kwh: float = 0.0,
+    usable_kwh: float = 0.0,
     cycle_cost_per_kwh: float = 0.0,
     recommended_threshold: float = 0.0,
 ) -> None:
@@ -178,17 +190,36 @@ def apply_charge_schedules(
     2. Solar surplus (``estimated_net_consumption < SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH``)
     3. Cheapest remaining grid hours (guarded by depreciation threshold + cycle cost)
 
+    A cross-occurrence battery capacity limit is enforced: once the total
+    planned charge across all discharge-window occurrences reaches the
+    battery's remaining capacity (``usable_kwh - current_kwh``), no further
+    charge slots are assigned.  This prevents the scheduler from marking
+    dozens of slots as ``batteries_charge_grid`` when the battery can only
+    hold 14 kWh.
+
     Args:
         slots: Mutable list of planned slots.
         battery_schedules: Schedule configurations.
         now: Timezone-aware current datetime.
         max_charge_per_interval: Maximum energy (kWh) chargeable per slot.
+        current_kwh: Current battery energy above the discharge floor (kWh).
+            Used to cap total charge across all occurrences.
+        usable_kwh: Maximum usable battery capacity (kWh).  Used together
+            with *current_kwh* to derive remaining capacity.
         cycle_cost_per_kwh: Additional per-kWh cycle wear cost.
         recommended_threshold: Depreciation-derived price floor passed to
             ``_apply_grid_charge`` to guard profitability.
     """
     if max_charge_per_interval <= 0:
         return
+
+    # Cross-occurrence capacity cap: only enforce when usable_kwh is
+    # provided (> 0).  When both current_kwh and usable_kwh are 0.0
+    # (backward-compatible default), no cap is applied.
+    remaining_capacity = (
+        max(usable_kwh - current_kwh, 0.0) if usable_kwh > 0 else float("inf")
+    )
+    total_charged = 0.0
 
     for sched in battery_schedules:
         if not sched.enabled:
@@ -223,6 +254,12 @@ def apply_charge_schedules(
             if needed <= 0:
                 continue
 
+            # Cross-occurrence capacity cap: don't charge more than the
+            # battery can hold across all discharge-window occurrences.
+            if total_charged >= remaining_capacity - 1e-9:
+                break
+            occurrence_budget = min(needed, remaining_capacity - total_charged)
+
             # Eligible charge slots: future, unassigned, and ending before
             # this specific occurrence's window start.
             eligible = [
@@ -240,16 +277,16 @@ def apply_charge_schedules(
                 (e for e in eligible if e.price.import_price < 0.0),
                 key=lambda x: (x.price.import_price, x.start),
             ):
-                if charged >= needed:
+                if charged >= occurrence_budget:
                     break
-                energy = min(max_charge_per_interval, needed - charged)
+                energy = min(max_charge_per_interval, occurrence_budget - charged)
                 if energy > 0:
                     s.recommendation = Recommendations.BatteriesChargeGrid.value
                     s.batteries_charged = round(energy, 3)
                     charged += energy
 
             # Priority 2: solar surplus
-            if charged < needed:
+            if charged < occurrence_budget:
                 for s in sorted(
                     (
                         e
@@ -263,11 +300,13 @@ def apply_charge_schedules(
                     # (i.e., there is a meaningful solar surplus to charge from).
                     key=lambda x: (x.estimated_net_consumption, x.start),
                 ):
-                    if charged >= needed:
+                    if charged >= occurrence_budget:
                         break
                     available_solar = abs(s.estimated_net_consumption)
                     energy = min(
-                        max_charge_per_interval, needed - charged, available_solar
+                        max_charge_per_interval,
+                        occurrence_budget - charged,
+                        available_solar,
                     )
                     if energy > 0:
                         s.recommendation = Recommendations.BatteriesChargeSolar.value
@@ -275,17 +314,19 @@ def apply_charge_schedules(
                         charged += energy
 
             # Priority 3: cheapest grid hours (depreciation threshold + cycle cost guard)
-            if charged < needed:
+            if charged < occurrence_budget:
                 _apply_grid_charge(
                     eligible,
                     sched,
-                    needed,
+                    occurrence_budget,
                     charged,
                     max_charge_per_interval,
                     avg_discharge_price,
                     cycle_cost_per_kwh=cycle_cost_per_kwh,
                     recommended_threshold=recommended_threshold,
                 )
+
+            total_charged += charged
 
 
 def _apply_grid_charge(
@@ -827,6 +868,96 @@ def apply_arbitrage_grid_charge(
             sched_min_diff,
             cycle_cost_per_kwh,
         )
+
+
+# ---------------------------------------------------------------------------
+# Discharge concentration — avoid wasting battery on cheap slots
+# ---------------------------------------------------------------------------
+
+
+def concentrate_discharge_on_expensive_slots(
+    slots: list[PlannedSlot],
+    now: datetime,
+    current_kwh: float,
+    usable_kwh: float,
+    max_discharge_per_slot: float | None,
+    discharge_efficiency_pct: float = 100.0,
+) -> None:
+    """Clear cheap discharge slots the battery cannot fully serve.
+
+    ``apply_discharge_schedules`` and ``apply_optimization_strategy`` mark
+    *every* slot in a discharge window as ``BatteriesDischargeMode``, but
+    the battery can only cover a fraction of them.  Without concentration
+    the SoC simulation greedily discharges in the *first* (cheapest) slots
+    and runs out before the most expensive ones.
+
+    This function ranks all ``BatteriesDischargeMode`` slots by import price
+    (descending) and clears the recommendation on the cheapest slots that
+    exceed the battery's discharge capacity, turning them into grid-import
+    slots (marked ``BatteriesWaitMode``).  The most expensive slots keep
+    their discharge recommendation.
+
+    The estimate is conservative: it assumes the battery starts at full
+    and there is no incoming charge between discharge slots.
+
+    Args:
+        slots: Mutable list of planned slots.
+        now: Timezone-aware current datetime.
+        current_kwh: Energy currently stored above the discharge floor (kWh).
+        usable_kwh: Maximum usable energy above the discharge floor (kWh).
+        max_discharge_per_slot: Maximum energy dischargeable per slot (kWh).
+            ``None`` means unlimited (inverter default).
+        discharge_efficiency_pct: Discharge-side efficiency (0-100 %).
+    """
+    discharge_eff = max(min(discharge_efficiency_pct, 100.0), 1.0) / 100.0
+
+    # Collect all future discharge slots (both BatteriesDischargeMode and
+    # ForceBatteriesDischarge — issue #425 Bug I fix).
+    discharge_slots = [
+        s
+        for s in slots
+        if s.recommendation in _DISCHARGE_RECS and as_tz(s.end, now.tzinfo) > now
+    ]
+    if not discharge_slots:
+        return
+
+    # Sort by import price descending — most expensive first
+    discharge_slots.sort(key=lambda s: s.price.import_price, reverse=True)
+
+    # Calculate cumulative battery energy needed for each slot (most expensive first)
+    # and keep only as many as the battery can serve.
+    # Use usable_kwh because the battery will be charged by the scheduler
+    # before the discharge window starts — current_kwh is only the starting
+    # state and does not reflect the available capacity at discharge time.
+    total_battery_kwh = usable_kwh
+    keep_set: set[int] = set()
+    for s in discharge_slots:
+        # Energy the battery must release to cover net_demand
+        slot_demand = max(s.estimated_net_consumption, 0.0)
+        battery_needed = slot_demand / discharge_eff if discharge_eff > 1e-9 else 0.0
+
+        if battery_needed <= total_battery_kwh:
+            total_battery_kwh -= battery_needed
+            keep_set.add(id(s))
+        else:
+            # Not enough battery — this and all cheaper slots get cleared
+            break
+
+    for s in discharge_slots:
+        if id(s) not in keep_set:
+            _LOGGER.debug(
+                "concentrate: clearing discharge at %s→%s  price=%.4f  "
+                "(battery can only cover %d of %d slots)",
+                s.start.strftime("%d %H:%M"),
+                s.end.strftime("%H:%M"),
+                s.price.import_price,
+                len(keep_set),
+                len(discharge_slots),
+            )
+            # Use BatteriesWaitMode so the fill pass in engine.py does NOT
+            # re-mark this as BatteriesDischargeMode.
+            s.recommendation = Recommendations.BatteriesWaitMode.value
+            s.batteries_charged = 0.0
 
 
 # ---------------------------------------------------------------------------
