@@ -462,17 +462,23 @@ def test_aggressive_slots_fallback_on_degenerate_max_charge():
 def test_aggressive_large_headroom_claims_all_available_charge_candidates():
     """When headroom requires more slots than available, all eligible slots are charged.
 
-    With usable_kwh=50, current_kwh=0, and max_charge_per_slot=2.0,
-    the strategy wants ceil(50/2)=25 charge slots but the slot list has only
-    24 future slots available.  The discharge pass may overwrite up to
-    _AGGRESSIVE_DISCHARGE_SLOTS (3) of the cheapest/most-expensive slots,
-    so the net charge count is at least (24 - 3) = 21.
+    With usable_kwh=10, current_kwh=0, and max_charge_per_slot=2.0,
+    the strategy wants ceil(10/2)=5 charge slots.  With Bug D fix, the
+    aggressive strategy first identifies prospective discharge slots (the
+    most expensive ones), then charges only before those.  We use a mix of
+    cheap (0.05) and expensive (0.50) hours so that the expensive slots
+    become discharge and the cheap slots before them become charge.
 
     Key invariant: at large headroom we claim significantly more than the old
     fixed value of 3.
     """
-    # 24 slots, all future, no pre-existing discharge windows
-    slots = _make_arbitrage_slots(cheap_hours=list(range(24)), expensive_hours=[])
+    # 24 slots: first 20 cheap (0.05), last 4 expensive (0.50)
+    slots = _make_arbitrage_slots(
+        cheap_hours=list(range(20)),
+        expensive_hours=[20, 21, 22, 23],
+        cheap_price=0.05,
+        expensive_price=0.50,
+    )
     slots_copy = _copy_slots(slots)
 
     _apply_aggressive_strategy(
@@ -480,7 +486,8 @@ def test_aggressive_large_headroom_claims_all_available_charge_candidates():
         _NOW,
         max_charge_per_slot=2.0,
         current_kwh=0.0,
-        usable_kwh=50.0,  # very large headroom → wants ceil(50/2)=25 slots
+        usable_kwh=10.0,  # headroom = 10 → wants ceil(10/2)=5 charge slots
+        max_discharge_per_slot=2.0,  # ceil(10/2)=5 discharge slots
     )
 
     charge_slots_count = sum(
@@ -489,14 +496,13 @@ def test_aggressive_large_headroom_claims_all_available_charge_candidates():
         if s.recommendation == Recommendations.BatteriesChargeGrid.value
     )
     # Old code: exactly 3 charge slots (fixed constant).
-    # New code: significantly more (all available minus at most 3 discharge overrides).
+    # New code: 5 charge slots (ceil(10/2)=5) before first discharge at hour 20.
     assert charge_slots_count > 3, (
         f"Expected significantly more than 3 charge slots at large headroom, "
         f"got {charge_slots_count}"
     )
-    assert charge_slots_count >= 21, (
-        f"Expected at least 21 charge slots (24 available − 3 discharge overrides), "
-        f"got {charge_slots_count}"
+    assert charge_slots_count >= 5, (
+        f"Expected at least 5 charge slots (ceil(10/2)=5), got {charge_slots_count}"
     )
 
 

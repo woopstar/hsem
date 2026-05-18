@@ -272,9 +272,11 @@ def generate_candidates(
     #     By trying multiple charge levels (0.25x, 0.50x, 0.75x, 1.00x,
     #     1.25x, fill) the selector finds the optimal charge amount instead
     #     of a single "all or nothing" decision.
+    #     Deduplicate near-identical charge_target values (Bug E fix).
+    prev_charge_target: float | None = None
     for soc_candidate_name, charge_fraction in _SOC_FRACTIONS.items():
         soc_candidate = _copy_slots(baseline_slots)
-        _apply_soc_plan(
+        charge_target = _apply_soc_plan(
             soc_candidate,
             now,
             max_charge_per_slot,
@@ -282,8 +284,24 @@ def generate_candidates(
             usable_kwh=usable_kwh,
             cycle_cost_per_kwh=inp.battery_cycle_cost_per_kwh,
             charge_fraction=charge_fraction,
+            charge_efficiency_pct=inp.battery_charge_efficiency_pct,
             discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
         )
+        # Skip near-identical candidates (Bug E fix)
+        if (
+            prev_charge_target is not None
+            and charge_target is not None
+            and abs(charge_target - prev_charge_target) < 0.05
+        ):
+            log_planner(
+                "debug",
+                "[gen] Skipping %s — charge_target %.3f ≈ previous %.3f",
+                soc_candidate_name,
+                charge_target,
+                prev_charge_target,
+            )
+            continue
+        prev_charge_target = charge_target
         candidates.append(CandidatePlan(name=soc_candidate_name, slots=soc_candidate))
 
     # 9. MILP — globally-optimal LP solution (requires scipy, falls back gracefully)
@@ -501,47 +519,27 @@ def _apply_aggressive_strategy(
         aggressive_charge_slots = 3  # safe fallback when inputs are degenerate
 
     # -----------------------------------------------------------------------
-    # Bug 5 fix: guard against ALL existing discharge windows, not just the first.
-    # Collect the start of every discharge window so that charge slots placed
-    # by the aggressive strategy are never scheduled after any window they
-    # would need to serve.
+    # Bug 5 fix: guard against ALL discharge windows — both baseline and
+    # prospective, not just the first baseline window.  We apply charge
+    # first, then discharge, then remove any charge slot that starts at or
+    # after the first discharge slot (Bug D fix).
     # -----------------------------------------------------------------------
-    discharge_starts = sorted(
-        s.start for s in future if s.recommendation in _DISCHARGE_RECS
-    )
-    # The latest safe end time for a charge slot is the start of the *first*
-    # discharge window.  Slots entirely before that boundary are eligible.
-    earliest_discharge_start = discharge_starts[0] if discharge_starts else None
+    if max_discharge_per_slot is not None and max_discharge_per_slot > 1e-9:
+        aggressive_discharge_slots = math.ceil(usable_kwh / max_discharge_per_slot)
+    else:
+        aggressive_discharge_slots = 3  # safe fallback
 
-    # Identify slots free for charging:
-    # - Not already discharging.
-    # - Must end *before* the first discharge window (if any exists).
+    # Apply force-charge to cheapest N slots (N derived dynamically above).
+    # No boundary restriction yet — just pick the cheapest available slots.
     charge_candidates = sorted(
-        (
-            s
-            for s in future
-            if s.recommendation not in _DISCHARGE_RECS
-            and (
-                earliest_discharge_start is None
-                or as_tz(s.end, now.tzinfo) <= earliest_discharge_start
-            )
-        ),
+        (s for s in future if s.recommendation not in _DISCHARGE_RECS),
         key=lambda s: (s.price.import_price, s.start),
     )
-
-    # Identify slots free for discharging (not already charging)
-    discharge_candidates = sorted(
-        (s for s in future if s.recommendation not in _CHARGE_RECS),
-        key=lambda s: (-s.price.import_price, s.start),
-    )
-
-    # Apply force-charge to cheapest N slots (N derived dynamically above)
     charged = 0
     for slot in charge_candidates:
         if charged >= aggressive_charge_slots:
             break
         if slot.recommendation in _CHARGE_RECS:
-            # Already a charge slot — leave energy as-is, just count it
             charged += 1
             continue
         slot.recommendation = Recommendations.BatteriesChargeGrid.value
@@ -549,22 +547,35 @@ def _apply_aggressive_strategy(
         charged += 1
 
     # Apply force-discharge to most-expensive M slots.
-    # Derive M dynamically from battery capacity / discharge rate so it
-    # scales with battery size (same formula as top_n in engine.py).
-    if max_discharge_per_slot is not None and max_discharge_per_slot > 1e-9:
-        aggressive_discharge_slots = math.ceil(usable_kwh / max_discharge_per_slot)
-    else:
-        aggressive_discharge_slots = 3  # safe fallback
+    discharge_candidates = sorted(
+        (s for s in future if s.recommendation not in _CHARGE_RECS),
+        key=lambda s: (-s.price.import_price, s.start),
+    )
     discharged = 0
     for slot in discharge_candidates:
         if discharged >= aggressive_discharge_slots:
             break
         if slot.recommendation in _DISCHARGE_RECS:
-            # Already a discharge slot — leave as-is, just count it
             discharged += 1
             continue
         slot.recommendation = Recommendations.BatteriesDischargeMode.value
         discharged += 1
+
+    # Post-hoc overlap cleanup (Bug D fix): remove any charge slot that
+    # starts at or after the earliest discharge slot start.  This prevents
+    # charging from being scheduled after the discharge it is meant to serve.
+    first_discharge_start = min(
+        (s.start for s in future if s.recommendation in _DISCHARGE_RECS),
+        default=None,
+    )
+    if first_discharge_start is not None:
+        for slot in slots:
+            if (
+                slot.recommendation in _CHARGE_RECS
+                and slot.start >= first_discharge_start
+            ):
+                slot.recommendation = None
+                slot.batteries_charged = 0.0
 
 
 def _apply_soc_plan(
@@ -576,8 +587,9 @@ def _apply_soc_plan(
     usable_kwh: float = 0.0,
     cycle_cost_per_kwh: float = 0.0,
     charge_fraction: float = 1.0,
+    charge_efficiency_pct: float = 97.0,
     discharge_efficiency_pct: float = 97.0,
-) -> None:
+) -> float | None:
     """BatPred-inspired SoC plan: charge only what's needed, then hold.
 
     This strategy:
@@ -600,6 +612,10 @@ def _apply_soc_plan(
     strategy charges only what's strictly needed, avoiding unnecessary
     cycle wear and conversion losses on energy that won't be used.
 
+    Returns:
+        The computed charge_target in kWh (battery-side), or None when no
+        discharge windows exist.  Used by the caller for deduplication.
+
     Args:
         slots: Mutable slot list to update in place.
         now: Timezone-aware current datetime used to filter past slots.
@@ -619,7 +635,7 @@ def _apply_soc_plan(
             if slot.recommendation == Recommendations.BatteriesChargeGrid.value:
                 slot.recommendation = None
                 slot.batteries_charged = 0.0
-        return
+        return None
 
     # Total net energy needed across all discharge windows.
     # This is the sum of positive net consumption in each discharge slot.
@@ -627,8 +643,8 @@ def _apply_soc_plan(
         max(s.estimated_net_consumption, 0.0) for s in discharge_slots
     )
 
-    # Account for discharge efficiency: to deliver total_needed_kwh to the
-    # house, the battery must release total_needed_kwh / discharge_eff.
+    # Account for charge and discharge efficiency.
+    charge_eff = max(min(charge_efficiency_pct, 100.0), 1.0) / 100.0
     discharge_eff = max(min(discharge_efficiency_pct, 100.0), 1.0) / 100.0
     battery_energy_needed = total_needed_kwh / discharge_eff
 
@@ -657,10 +673,12 @@ def _apply_soc_plan(
         charge_target = 0.0  # no grid charging needed
     else:
         # Normal charge-fraction mode: charge_fraction of what's needed.
+        # Apply charge efficiency: to store charge_target kWh in the battery,
+        # the grid must supply charge_target / charge_eff kWh (Bug G fix).
         if charge_fraction >= 1.99:
             charge_target = max(usable_kwh - current_kwh, 0.0)
         else:
-            charge_target = charge_needed * charge_fraction
+            charge_target = (charge_needed * charge_fraction) / charge_eff
             charge_target = min(charge_target, usable_kwh - current_kwh)
             charge_target = max(charge_target, 0.0)
 
@@ -701,25 +719,28 @@ def _apply_soc_plan(
         for slot in discharge_slots:
             slot.recommendation = Recommendations.BatteriesDischargeMode.value
 
-    # Step 4: Apply solar charging where PV surplus exists (free energy)
+    # Step 4: Apply solar charging where PV surplus exists (free energy).
+    # Sort by estimated_net_consumption ascending (most negative = most PV surplus)
+    # so the largest available surplus is consumed first (Bug F fix).
     charged = 0.0
     for slot in sorted(
-        (s for s in future if s.recommendation is None),
-        key=lambda x: (x.price.import_price, x.start),
+        (
+            s
+            for s in future
+            if s.recommendation is None
+            and s.estimated_net_consumption is not None
+            and s.estimated_net_consumption < 0.0
+        ),
+        key=lambda x: (x.estimated_net_consumption, x.start),
     ):
         if charged >= charge_target:
             break
-        # Solar surplus: net consumption < 0 means PV > house load
-        if (
-            slot.estimated_net_consumption is not None
-            and slot.estimated_net_consumption < 0.0
-        ):
-            available_solar = abs(slot.estimated_net_consumption)
-            energy = min(max_charge_per_slot, charge_target - charged, available_solar)
-            if energy > 0:
-                slot.recommendation = Recommendations.BatteriesChargeSolar.value
-                slot.batteries_charged = round(energy, 3)
-                charged += energy
+        available_solar = abs(slot.estimated_net_consumption)
+        energy = min(max_charge_per_slot, charge_target - charged, available_solar)
+        if energy > 0:
+            slot.recommendation = Recommendations.BatteriesChargeSolar.value
+            slot.batteries_charged = round(energy, 3)
+            charged += energy
 
     # Step 5: Charge remaining needed energy from cheapest grid slots
     # before the first discharge window, but only if the price spread
@@ -775,3 +796,5 @@ def _apply_soc_plan(
 
     # Step 6: Remaining slots stay as None — the seasonal fill pass will
     # assign BatteriesWaitMode or BatteriesDischargeMode as appropriate.
+
+    return charge_target
