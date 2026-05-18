@@ -22,6 +22,15 @@ from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.misc import next_window_start_dt
 from custom_components.hsem.utils.recommendations import Recommendations
 
+# Recommendations that represent discharging (any form) — local copy to
+# avoid circular imports from candidate_generator.
+_DISCHARGE_RECS: frozenset[str] = frozenset(
+    {
+        Recommendations.BatteriesDischargeMode.value,
+        Recommendations.ForceBatteriesDischarge.value,
+    }
+)
+
 _LOGGER = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -902,12 +911,12 @@ def concentrate_discharge_on_expensive_slots(
     """
     discharge_eff = max(min(discharge_efficiency_pct, 100.0), 1.0) / 100.0
 
-    # Collect all future BatteriesDischargeMode slots
+    # Collect all future discharge slots (both BatteriesDischargeMode and
+    # ForceBatteriesDischarge — issue #425 Bug I fix).
     discharge_slots = [
         s
         for s in slots
-        if s.recommendation == Recommendations.BatteriesDischargeMode.value
-        and as_tz(s.end, now.tzinfo) > now
+        if s.recommendation in _DISCHARGE_RECS and as_tz(s.end, now.tzinfo) > now
     ]
     if not discharge_slots:
         return

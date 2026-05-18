@@ -223,16 +223,14 @@ class PlannerInput:
     # --- seasonal / mode config ---
     months_winter: list[int] = field(default_factory=lambda: [1, 2, 3, 4, 10, 11, 12])
     house_power_includes_ev: bool = True
-    is_read_only: bool = (
-        False  # False = hardware writes enabled; set True only in dry-run/test scenarios
-    )
+    is_read_only: bool = False  # False = hardware writes enabled; set True only in dry-run/test scenarios
 
     # --- time discount for selector score ---
     #: Per-hour exponential discount factor applied to the selector score
     #: (not to total_cost).  A value of 1.0 disables the discount entirely.
     #: Default 0.995 means a saving 48 hours from now is worth ~79% of a
     #: saving right now in the selector's eyes.
-    time_discount_rate: float = 1.0
+    time_discount_rate: float = 0.995
 
     # --- EV planned load integration — primary EV (optional, disabled by default) ---
     #: When True, the primary EV planned load feature is active.

@@ -103,6 +103,15 @@ from typing import TYPE_CHECKING
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.recommendations import Recommendations
 
+# Recommendations that represent discharging (any form) — local copy to
+# avoid circular imports from candidate_generator.
+_DISCHARGE_RECS: frozenset[str] = frozenset(
+    {
+        Recommendations.BatteriesDischargeMode.value,
+        Recommendations.ForceBatteriesDischarge.value,
+    }
+)
+
 if TYPE_CHECKING:
     from custom_components.hsem.models.planner_outputs import PlannedSlot
 
@@ -458,9 +467,9 @@ def solve_milp(
             out_slots[slot_i].recommendation = Recommendations.BatteriesChargeGrid.value
             out_slots[slot_i].batteries_charged = round(ec_kwh, 3)
         elif ed_kwh > _MIN_ACTION_KWH:
-            out_slots[slot_i].recommendation = (
-                Recommendations.BatteriesDischargeMode.value
-            )
+            out_slots[
+                slot_i
+            ].recommendation = Recommendations.BatteriesDischargeMode.value
             # batteries_charged stays 0 for discharge slots
 
     _LOGGER.debug(
@@ -516,13 +525,15 @@ def _compute_replacement_price(
         Replacement price in currency/kWh, or ``None`` when no future
         discharge slot exists.
     """
-    # Collect all future discharge slots sorted by start time
+    # Collect all future discharge slots sorted by start time.
+    # Use _DISCHARGE_RECS so both BatteriesDischargeMode and
+    # ForceBatteriesDischarge are included (issue #425 Bug I fix).
     future_discharge = sorted(
         [
             slots[i]
             for i in future_idx
             if (
-                slots[i].recommendation == Recommendations.BatteriesDischargeMode.value
+                slots[i].recommendation in _DISCHARGE_RECS
                 and not math.isnan(slots[i].price.import_price)
             )
         ],
