@@ -56,6 +56,8 @@ TOP_LEVEL_MODULES = [
     "custom_components.hsem.config_flow",
     "custom_components.hsem.options_flow",
     "custom_components.hsem.const",
+    "custom_components.hsem.services",
+    "custom_components.hsem.diagnostics",
 ]
 
 
