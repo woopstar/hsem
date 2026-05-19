@@ -42,11 +42,14 @@ from homeassistant.helpers.event import (
 )
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from custom_components.hsem.custom_sensors.hourly_data_populator import (
+from custom_components.hsem.custom_sensors.hourly_data_populator import (  # noqa: F401 — kept for backward compat (patched in tests)
     async_populate_avg_house_consumption,
     async_populate_price_and_solcast,
+    populate_avg_house_consumption_from_snapshot,
+    populate_price_and_solcast_from_snapshot,
 )
-from custom_components.hsem.custom_sensors.state_collector import (
+from custom_components.hsem.custom_sensors.state_collector import (  # noqa: F401 — kept for backward compat
+    async_collect_all_states,
     async_collect_live_state,
     build_battery_schedules,
     build_sensor_config,
@@ -62,6 +65,7 @@ from custom_components.hsem.models.planner_inputs import (
 )
 from custom_components.hsem.models.planner_outputs import DataQuality, PlanExplanation
 from custom_components.hsem.models.sensor_config import SensorConfig
+from custom_components.hsem.models.state_snapshot import StateSnapshot
 from custom_components.hsem.planner import run_planner
 from custom_components.hsem.planner.ev_planner import EVChargingPlan
 from custom_components.hsem.utils.datetime_utils import as_tz
@@ -178,6 +182,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         # Per-cycle mutable state (not exposed directly; packaged into CoordinatorData).
         self._cfg: SensorConfig = build_sensor_config(config_entry)
         self._live: LiveState | None = None
+        self._snapshot: StateSnapshot | None = None
         self._hourly_recommendations: list[HourlyRecommendation] = []
         self._hourly_recommendation: HourlyRecommendation | None = None
         self._batteries_schedules: list = []
@@ -276,18 +281,22 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             self._cfg = build_sensor_config(self._config_entry)
             cfg = self._cfg
 
-            # 2. Collect live HA entity states.
+            # 2. Collect ALL HA entity states once into an immutable snapshot.
+            #    This single call replaces the three-stage read pattern:
+            #    async_collect_live_state → (populate consumption → populate price/solcast).
             (
-                self._live,
+                self._snapshot,
                 self._force_working_mode_entity,
                 new_unsubs,
-            ) = await async_collect_live_state(
+            ) = await async_collect_all_states(
                 self,
                 cfg,
                 self._force_working_mode_entity,
                 self._tracked_entities,
+                self._avg_house_consumption_entity_id_cache,
             )
             self._listener_unsubs.extend(new_unsubs)
+            self._live = self._snapshot.live
             live = self._live
 
             # 3. Reset and generate recommendation time-slots.
@@ -301,10 +310,11 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             self._batteries_schedules = build_battery_schedules(cfg)
             self._batteries_schedules.sort(key=lambda x: x.start)
 
-            # 5. Populate weighted house-consumption averages.
-            if not await async_populate_avg_house_consumption(
-                self,
+            # 5. Populate weighted house-consumption averages from snapshot
+            #    (no HA state lookups — data was pre-collected in step 2).
+            if not populate_avg_house_consumption_from_snapshot(
                 self._hourly_recommendations,
+                self._snapshot,
                 cfg,
                 self._avg_house_consumption_entity_id_cache,
             ):
@@ -334,9 +344,14 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 )
 
             else:
-                # 7. Populate electricity prices and Solcast PV estimates.
-                await async_populate_price_and_solcast(
-                    self, self._hourly_recommendations, cfg, now.tzinfo
+                # 7. Populate electricity prices and Solcast PV estimates from
+                #    snapshot (no HA state lookups — data was pre-collected in
+                #    step 2).
+                populate_price_and_solcast_from_snapshot(
+                    self._hourly_recommendations,
+                    self._snapshot,
+                    cfg,
+                    now.tzinfo,
                 )
 
                 # 8. Run the pure-Python planner engine.

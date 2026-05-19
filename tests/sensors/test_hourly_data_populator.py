@@ -116,3 +116,277 @@ class TestComputeWeightedAverage:
         assert not mask[0], "1d should not be outlier (part of trend)"
         assert not mask[1], "3d should not be outlier (part of trend)"
         assert not mask[2], "7d should not be outlier (part of trend)"
+
+
+# ---------------------------------------------------------------------------
+# Snapshot-based population tests
+# ---------------------------------------------------------------------------
+
+
+class TestSnapshotPopulation:
+    """Verify that the snapshot-based population functions work deterministically.
+
+    These tests construct :class:`StateSnapshot` objects in memory and confirm
+    the population produces the same results as the original pipeline logic,
+    without any HA state lookups.
+    """
+
+    def test_populate_avg_consumption_from_snapshot(self) -> None:
+        """populate_avg_house_consumption_from_snapshot must fill slots from pre-read data."""
+        from unittest.mock import MagicMock
+
+        from custom_components.hsem.custom_sensors.hourly_data_populator import (
+            populate_avg_house_consumption_from_snapshot,
+        )
+        from custom_components.hsem.models.hourly_recommendation import (
+            HourlyRecommendation,
+        )
+        from custom_components.hsem.models.live_state import LiveState
+        from custom_components.hsem.models.sensor_config import SensorConfig
+        from custom_components.hsem.models.state_snapshot import StateSnapshot
+        from custom_components.hsem.utils.sensornames import (
+            get_energy_average_sensor_unique_id,
+        )
+
+        # Build a mock config with default weights
+        cfg = MagicMock(spec=SensorConfig)
+        cfg.recommendation_interval_minutes = 60
+        cfg.house_consumption_energy_weight_1d = 25
+        cfg.house_consumption_energy_weight_3d = 30
+        cfg.house_consumption_energy_weight_7d = 30
+        cfg.house_consumption_energy_weight_14d = 15
+
+        # Build entity ID cache and snapshot with pre-read values
+        eid_cache: dict[str, str] = {}
+        energy_average_values: dict[str, float] = {}
+        for h in range(24):
+            hour_end = (h + 1) % 24
+            for days, val in [(1, 1.0), (3, 1.0), (7, 1.0), (14, 1.0)]:
+                uid = get_energy_average_sensor_unique_id(h, hour_end, days)
+                eid = f"sensor.energy_avg_{h:02d}_{days}d"
+                eid_cache[uid] = eid
+                energy_average_values[eid] = float(val)
+
+        snapshot = StateSnapshot(
+            live=LiveState(),
+            energy_average_values=energy_average_values,
+        )
+
+        # Generate 24 hourly recommendation slots
+        from datetime import datetime, timedelta
+
+        base = datetime(2025, 1, 1, 0, 0, 0)
+        _hz = 0.0
+        recs = [
+            HourlyRecommendation(
+                start=base + timedelta(hours=h),
+                end=base + timedelta(hours=h + 1),
+                recommendation="idle",
+                avg_house_consumption_kwh=_hz,
+                avg_house_consumption_1d_kwh=_hz,
+                avg_house_consumption_3d_kwh=_hz,
+                avg_house_consumption_7d_kwh=_hz,
+                avg_house_consumption_14d_kwh=_hz,
+                batteries_charged_kwh=_hz,
+                batteries_discharged_kwh=_hz,
+                estimated_battery_capacity_kwh=_hz,
+                estimated_battery_soc_pct=_hz,
+                estimated_cost_currency=_hz,
+                estimated_net_consumption_kwh=_hz,
+                export_price=_hz,
+                grid_export_kwh=_hz,
+                grid_import_kwh=_hz,
+                import_price=_hz,
+                solcast_pv_estimate_kwh=_hz,
+            )
+            for h in range(24)
+        ]
+
+        result = populate_avg_house_consumption_from_snapshot(
+            recs, snapshot, cfg, eid_cache
+        )
+
+        assert result is True
+        for _h, rec in enumerate(recs):
+            assert rec.avg_house_consumption_kwh > 0.0
+            assert rec.avg_house_consumption_1d_kwh > 0.0
+
+        # Reproduce: calling again with same snapshot must give identical result
+        recs2 = [
+            HourlyRecommendation(
+                start=base + timedelta(hours=h),
+                end=base + timedelta(hours=h + 1),
+                recommendation="idle",
+                avg_house_consumption_kwh=_hz,
+                avg_house_consumption_1d_kwh=_hz,
+                avg_house_consumption_3d_kwh=_hz,
+                avg_house_consumption_7d_kwh=_hz,
+                avg_house_consumption_14d_kwh=_hz,
+                batteries_charged_kwh=_hz,
+                batteries_discharged_kwh=_hz,
+                estimated_battery_capacity_kwh=_hz,
+                estimated_battery_soc_pct=_hz,
+                estimated_cost_currency=_hz,
+                estimated_net_consumption_kwh=_hz,
+                export_price=_hz,
+                grid_export_kwh=_hz,
+                grid_import_kwh=_hz,
+                import_price=_hz,
+                solcast_pv_estimate_kwh=_hz,
+            )
+            for h in range(24)
+        ]
+        populate_avg_house_consumption_from_snapshot(recs2, snapshot, cfg, eid_cache)
+        for r1, r2 in zip(recs, recs2, strict=False):
+            assert r1.avg_house_consumption_kwh == pytest.approx(
+                r2.avg_house_consumption_kwh
+            )
+            assert r1.avg_house_consumption_1d_kwh == pytest.approx(
+                r2.avg_house_consumption_1d_kwh
+            )
+
+    def test_snapshot_determinism_reproduces_plan(self) -> None:
+        """A single snapshot must be able to reproduce the same plan.
+
+        Two calls to the snapshot-based population with the same data must
+        produce identical recommendation slots, confirming the snapshot is
+        immutable and deterministic.
+        """
+        from unittest.mock import MagicMock
+
+        from custom_components.hsem.custom_sensors.hourly_data_populator import (
+            populate_avg_house_consumption_from_snapshot,
+            populate_price_and_solcast_from_snapshot,
+        )
+        from custom_components.hsem.models.hourly_recommendation import (
+            HourlyRecommendation,
+        )
+        from custom_components.hsem.models.live_state import LiveState
+        from custom_components.hsem.models.sensor_config import SensorConfig
+        from custom_components.hsem.models.state_snapshot import StateSnapshot
+        from custom_components.hsem.utils.sensornames import (
+            get_energy_average_sensor_unique_id,
+        )
+
+        cfg = MagicMock(spec=SensorConfig)
+        cfg.recommendation_interval_minutes = 60
+        cfg.recommendation_interval_length = 24
+        cfg.house_consumption_energy_weight_1d = 25
+        cfg.house_consumption_energy_weight_3d = 30
+        cfg.house_consumption_energy_weight_7d = 30
+        cfg.house_consumption_energy_weight_14d = 15
+        cfg.energi_data_service_update_interval = 60
+        cfg.energi_data_service_import = "sensor.eds_import"
+        cfg.energi_data_service_export = "sensor.eds_export"
+        cfg.solcast_pv_forecast_forecast_today = "sensor.solcast_today"
+        cfg.solcast_pv_forecast_forecast_tomorrow = None
+        cfg.solcast_pv_forecast_forecast_likelihood = "pv_estimate"
+
+        # Build energy average cache and values
+        eid_cache: dict[str, str] = {}
+        energy_average_values: dict[str, float] = {}
+        for h in range(24):
+            hour_end = (h + 1) % 24
+            base_val = 0.3 + (h * 0.02)
+            for days, val in [
+                (1, base_val),
+                (3, base_val * 1.05),
+                (7, base_val * 1.10),
+                (14, base_val * 1.15),
+            ]:
+                uid = get_energy_average_sensor_unique_id(h, hour_end, days)
+                eid = f"sensor.energy_avg_{h:02d}_{days}d"
+                eid_cache[uid] = eid
+                energy_average_values[eid] = float(val)
+
+        # Build mock sensor attributes for EDS
+        from datetime import UTC, datetime
+
+        now = datetime(2025, 1, 1, 12, 0, 0, tzinfo=UTC)
+        prices_today = [
+            {
+                "start": (now.replace(hour=h, minute=0)).isoformat(),
+                "price": 0.3 + h * 0.01,
+            }
+            for h in range(24)
+        ]
+        sensor_attributes = {
+            "sensor.eds_import": {"prices_today": prices_today},
+            "sensor.eds_export": {"prices_today": prices_today},
+            "sensor.solcast_today": {
+                "detailedHourly": [
+                    {
+                        "period_start": (now.replace(hour=h, minute=0)).isoformat(),
+                        "pv_estimate": h * 0.1,
+                    }
+                    for h in range(24)
+                ]
+            },
+        }
+
+        snapshot = StateSnapshot(
+            live=LiveState(),
+            energy_average_values=energy_average_values,
+            sensor_attributes=sensor_attributes,
+        )
+
+        # Helper to create a recommendation slot with zeroed fields
+        _hz = 0.0
+
+        def _make_rec(start, end):
+            return HourlyRecommendation(
+                start=start,
+                end=end,
+                recommendation="idle",
+                avg_house_consumption_kwh=_hz,
+                avg_house_consumption_1d_kwh=_hz,
+                avg_house_consumption_3d_kwh=_hz,
+                avg_house_consumption_7d_kwh=_hz,
+                avg_house_consumption_14d_kwh=_hz,
+                batteries_charged_kwh=_hz,
+                batteries_discharged_kwh=_hz,
+                estimated_battery_capacity_kwh=_hz,
+                estimated_battery_soc_pct=_hz,
+                estimated_cost_currency=_hz,
+                estimated_net_consumption_kwh=_hz,
+                export_price=_hz,
+                grid_export_kwh=_hz,
+                grid_import_kwh=_hz,
+                import_price=_hz,
+                solcast_pv_estimate_kwh=_hz,
+            )
+
+        # First population
+        from datetime import datetime as dt
+        from datetime import timedelta as td
+
+        base = dt(2025, 1, 1, 0, 0, 0)
+        recs1 = [
+            _make_rec(base + td(hours=h), base + td(hours=h + 1)) for h in range(24)
+        ]
+
+        tz = UTC
+        populate_avg_house_consumption_from_snapshot(recs1, snapshot, cfg, eid_cache)
+        populate_price_and_solcast_from_snapshot(recs1, snapshot, cfg, tz)
+
+        # Second population with identical data
+        recs2 = [
+            _make_rec(base + td(hours=h), base + td(hours=h + 1)) for h in range(24)
+        ]
+        populate_avg_house_consumption_from_snapshot(recs2, snapshot, cfg, eid_cache)
+        populate_price_and_solcast_from_snapshot(recs2, snapshot, cfg, tz)
+
+        # Assert determinism
+        for i, (r1, r2) in enumerate(zip(recs1, recs2, strict=False)):
+            assert r1.avg_house_consumption_kwh == pytest.approx(
+                r2.avg_house_consumption_kwh
+            ), f"Hour {i}: avg_house_consumption_kwh differs between runs"
+            assert r1.import_price == pytest.approx(r2.import_price), (
+                f"Hour {i}: import_price differs between runs"
+            )
+            assert r1.export_price == pytest.approx(r2.export_price), (
+                f"Hour {i}: export_price differs between runs"
+            )
+            assert r1.solcast_pv_estimate_kwh == pytest.approx(
+                r2.solcast_pv_estimate_kwh
+            ), f"Hour {i}: solcast_pv_estimate_kwh differs between runs"

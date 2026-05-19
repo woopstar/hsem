@@ -220,6 +220,7 @@ def make_bare_coordinator(
     coord._batteries_schedules_remaining_capacity_needed = 0.0
     coord._current_required_battery = 0.0
     coord._live = None
+    coord._snapshot = None
 
     from custom_components.hsem.models.planner_outputs import (
         DataQuality,
@@ -1677,8 +1678,10 @@ def _patch_all_ha_helpers():
     Patches applied:
     - ``async_track_state_change_event`` — state-change registration
     - ``async_resolve_entity_id_from_unique_id`` — entity registry lookup
-    - ``async_populate_avg_house_consumption`` — avg consumption data
-    - ``async_populate_price_and_solcast`` — price and Solcast data
+    - ``populate_avg_house_consumption_from_snapshot`` — snapshot-based avg
+      consumption (replaces old async_populate_avg_house_consumption)
+    - ``populate_price_and_solcast_from_snapshot`` — snapshot-based price and
+      Solcast data (replaces old async_populate_price_and_solcast)
     - ``async_set_select_option`` — inverter mode writes
     - ``async_set_number_value`` — number entity writes
     - ``async_set_tou_periods`` — TOU period writes
@@ -1686,7 +1689,7 @@ def _patch_all_ha_helpers():
     - ``async_set_grid_export_power_pct`` — grid export writes
     - ``async_track_time_interval`` — interval timer registration
 
-    All patched callables are no-ops (AsyncMocks returning truthy defaults).
+    All patched callables are no-ops (returning truthy defaults).
     """
     import contextlib
 
@@ -1706,13 +1709,12 @@ def _patch_all_ha_helpers():
             ),
             patch(
                 "custom_components.hsem.coordinator"
-                ".async_populate_avg_house_consumption",
-                new_callable=AsyncMock,
+                ".populate_avg_house_consumption_from_snapshot",
                 return_value=True,
             ),
             patch(
-                "custom_components.hsem.coordinator.async_populate_price_and_solcast",
-                new_callable=AsyncMock,
+                "custom_components.hsem.coordinator"
+                ".populate_price_and_solcast_from_snapshot",
             ),
             patch(
                 "custom_components.hsem.utils.misc.async_set_select_option",
