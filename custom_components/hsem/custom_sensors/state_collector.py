@@ -6,6 +6,11 @@ Single responsibility: read live HA entity states and return a typed
 Config-entry reading has moved to :mod:`config_reader`.
 Both :func:`build_sensor_config` and :func:`build_battery_schedules` are
 re-exported here so existing callers continue to work without changes.
+
+This module also collects ALL HA states into an immutable
+:class:`~custom_components.hsem.models.state_snapshot.StateSnapshot`
+so that downstream population functions never need additional
+``hass.states.get()`` lookups.
 """
 
 from __future__ import annotations
@@ -25,6 +30,7 @@ from custom_components.hsem.models.live_state import (
     TouPeriodsState,
 )
 from custom_components.hsem.models.sensor_config import SensorConfig
+from custom_components.hsem.models.state_snapshot import StateSnapshot
 from custom_components.hsem.utils.logger import async_logger
 from custom_components.hsem.utils.misc import (
     async_resolve_entity_id_from_unique_id,
@@ -32,7 +38,10 @@ from custom_components.hsem.utils.misc import (
     convert_to_float,
     ha_get_entity_state_and_convert,
 )
-from custom_components.hsem.utils.sensornames import get_force_working_mode_selector_key
+from custom_components.hsem.utils.sensornames import (
+    get_energy_average_sensor_unique_id,
+    get_force_working_mode_selector_key,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -578,3 +587,96 @@ async def _register_listeners(
             tracked_entities.add(entity_id)
 
     return new_unsubs
+
+
+# ---------------------------------------------------------------------------
+# Single-pass state collection (snapshot-based pipeline)
+# ---------------------------------------------------------------------------
+
+
+async def async_collect_all_states(
+    sensor,
+    cfg: SensorConfig,
+    force_working_mode_cache: str | None,
+    tracked_entities: set[str],
+    energy_average_entity_id_cache: dict[str, str] | None = None,
+) -> tuple[StateSnapshot, str | None, list]:
+    """Collect **all** HA states once into an immutable :class:`StateSnapshot`.
+
+    This is the single entry point for the snapshot-based pipeline.  It replaces
+    the three-stage read pattern (``async_collect_live_state`` → population reads)
+    with a single pass over all required entities.
+
+    Args:
+        sensor: The ``HSEMWorkingModeSensor`` instance (used for ``hass`` access,
+            ``entity_id``, and :func:`async_logger`).
+        cfg: Current sensor configuration.
+        force_working_mode_cache: Previously resolved entity_id or ``None``.
+        tracked_entities: Mutable set of entity_ids already registered for
+            state-change tracking.  Updated in-place.
+        energy_average_entity_id_cache: Optional mutable cache mapping
+            unique_id → entity_id for energy average sensors.  If ``None``,
+            a fresh cache is used.
+
+    Returns:
+        A ``(StateSnapshot, force_working_mode_entity_id, new_unsub_callbacks)``
+        tuple.
+    """
+    # 1. Collect live entity states (battery, power, EV, etc.)
+    live, fwm_entity, new_unsubs = await async_collect_live_state(
+        sensor, cfg, force_working_mode_cache, tracked_entities
+    )
+
+    # 2. Pre-read energy average sensor values (24 hours × 4 periods)
+    #    Gracefully skips unavailable sensors — the caller will detect
+    #    missing data via the population functions and set missing_entities.
+    avg_cache = energy_average_entity_id_cache or {}
+    energy_average_values: dict[str, float] = {}
+
+    for h in range(24):
+        hour_end = (h + 1) % 24
+        for days, _uid_key in [(1, "1d"), (3, "3d"), (7, "7d"), (14, "14d")]:
+            uid = get_energy_average_sensor_unique_id(h, hour_end, days)
+            if uid not in avg_cache:
+                try:
+                    eid = await async_resolve_entity_id_from_unique_id(sensor, uid)
+                except Exception:
+                    eid = None
+                if eid is not None:
+                    avg_cache[uid] = eid
+            eid = avg_cache.get(uid)
+            if eid:
+                try:
+                    val = convert_to_float(
+                        ha_get_entity_state_and_convert(sensor, eid, "float", 3)
+                    )
+                    if val is not None:
+                        energy_average_values[eid] = val
+                except Exception:
+                    # Entity unavailable — skip; downstream population will
+                    # handle the gap via missing_entities logic.
+                    pass
+
+    # 3. Pre-read EDS and Solcast sensor state objects for attribute access
+    sensor_attributes: dict[str, dict] = {}
+    for entity_id in (
+        cfg.energi_data_service_import,
+        cfg.energi_data_service_export,
+        cfg.solcast_pv_forecast_forecast_today,
+        cfg.solcast_pv_forecast_forecast_tomorrow,
+    ):
+        if entity_id is None:
+            continue
+        state_obj = sensor.hass.states.get(entity_id)
+        if state_obj:
+            # Only store attributes — the raw state value is not needed here
+            # (the populator reads from attributes).
+            sensor_attributes[entity_id] = dict(state_obj.attributes)
+
+    snapshot = StateSnapshot(
+        live=live,
+        energy_average_values=energy_average_values,
+        sensor_attributes=sensor_attributes,
+    )
+
+    return snapshot, fwm_entity, new_unsubs
