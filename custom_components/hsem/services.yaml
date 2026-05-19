@@ -8,6 +8,8 @@ force_recalculation:
     All entity states are re-read and the planner is re-run. Useful for
     testing or when you need the most up-to-date recommendation without
     waiting for the next scheduled update.
+  target:
+    entity: {}
   fields: {}
 
 set_temporary_override:
@@ -17,6 +19,8 @@ set_temporary_override:
     mode. While the override is active the planner output is bypassed and the
     chosen mode is sent directly to the inverter. Set the working mode to
     "auto" via the clear_override service to resume normal planner control.
+  target:
+    entity: {}
   fields:
     working_mode:
       required: true
@@ -37,6 +41,8 @@ clear_override:
   description: >-
     Clear any active temporary working-mode override and return to automatic
     planner control. Has no effect when no override is currently active.
+  target:
+    entity: {}
   fields: {}
 
 export_diagnostics:
@@ -46,7 +52,7 @@ export_diagnostics:
     response contains the most recent planner input, planner output, hardware
     write status, and integration version — with all entity IDs redacted for
     safe sharing. Useful for debugging and issue reports.
-  response:
-    content:
-      media_type: "application/json"
+  target:
+    entity:
+      integration: hsem
   fields: {}
