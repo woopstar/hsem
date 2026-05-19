@@ -181,7 +181,9 @@ def simulate_soc(
         # the current SoC at this point in the simulation.  Reduce if the
         # battery would exceed max_capacity_kwh or the per-slot power limit.
         headroom = max(max_capacity_kwh - cap, 0.0)
-        scheduled_charge = min(slot.batteries_charged_kwh, headroom, max_charge_per_slot)
+        scheduled_charge = min(
+            slot.batteries_charged_kwh, headroom, max_charge_per_slot
+        )
         scheduled_charge = max(scheduled_charge, 0.0)
         slot.batteries_charged_kwh = round(scheduled_charge, 3)
 

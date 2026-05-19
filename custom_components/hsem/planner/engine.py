@@ -333,7 +333,9 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
             if day_offset == 0:
                 continue  # today — no decay
             decay = _DECAY_BY_DAY.get(day_offset, 0.80)
-            slot.solcast_pv_estimate_kwh = round(slot.solcast_pv_estimate_kwh * decay, 3)
+            slot.solcast_pv_estimate_kwh = round(
+                slot.solcast_pv_estimate_kwh * decay, 3
+            )
         if horizon_days >= 2:
             warnings.append(
                 f"Multi-day horizon ({horizon_days} day(s)): confidence decay applied "
@@ -934,7 +936,9 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
 
     # Final SoC
     future_slots = [s for s in slots if as_tz(s.end, now.tzinfo) > now]
-    battery_soc_at_end = future_slots[-1].estimated_battery_soc_pct if future_slots else 0.0
+    battery_soc_at_end = (
+        future_slots[-1].estimated_battery_soc_pct if future_slots else 0.0
+    )
 
     # Derive contiguous charge/discharge windows
     charge_windows, discharge_windows = _derive_windows(slots)

@@ -373,7 +373,9 @@ class TestValidateCandidate:
 
     def test_plan_with_zero_soc_passes(self):
         """Slots with soc=0 (unset) do not trigger the floor check."""
-        slots = [_make_simple_slot(hour=h, estimated_battery_soc_pct=0.0) for h in range(3)]
+        slots = [
+            _make_simple_slot(hour=h, estimated_battery_soc_pct=0.0) for h in range(3)
+        ]
         plan = CandidatePlan(name="test", slots=slots)
         is_valid, _ = _validate_candidate(plan, end_of_discharge_soc_pct=10.0)
         assert is_valid is True
@@ -393,7 +395,9 @@ class TestValidateCandidate:
     def test_plan_at_tolerance_boundary_passes(self):
         """A plan at exactly floor - tolerance is considered valid."""
         # tolerance is 0.5 pct, floor is 10 → 9.5 should be valid
-        slots = [_make_simple_slot(hour=h, estimated_battery_soc_pct=9.6) for h in range(3)]
+        slots = [
+            _make_simple_slot(hour=h, estimated_battery_soc_pct=9.6) for h in range(3)
+        ]
         plan = CandidatePlan(name="test", slots=slots)
         is_valid, _ = _validate_candidate(plan, end_of_discharge_soc_pct=10.0)
         assert is_valid is True

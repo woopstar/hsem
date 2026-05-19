@@ -563,7 +563,9 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                     avg_1d=round(rec.avg_house_consumption_1d_kwh * slots_per_hour, 3),
                     avg_3d=round(rec.avg_house_consumption_3d_kwh * slots_per_hour, 3),
                     avg_7d=round(rec.avg_house_consumption_7d_kwh * slots_per_hour, 3),
-                    avg_14d=round(rec.avg_house_consumption_14d_kwh * slots_per_hour, 3),
+                    avg_14d=round(
+                        rec.avg_house_consumption_14d_kwh * slots_per_hour, 3
+                    ),
                     day_offset=day_offset,
                 )
             )

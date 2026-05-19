@@ -20,7 +20,6 @@ from custom_components.hsem.utils.units import (
     watthours_to_kilowatthours,
 )
 
-
 # ---------------------------------------------------------------------------
 # Power conversions (W ↔ kW)
 # ---------------------------------------------------------------------------
@@ -145,15 +144,11 @@ class TestPowerToEnergyKwh:
 
     def test_quarter_hour(self) -> None:
         """5 kW × 0.25 h → 1.25 kWh (15-min slot)."""
-        assert power_to_energy_kwh(power_kw=5.0, duration_h=0.25) == pytest.approx(
-            1.25
-        )
+        assert power_to_energy_kwh(power_kw=5.0, duration_h=0.25) == pytest.approx(1.25)
 
     def test_negative_power(self) -> None:
         """-3 kW × 1 h → -3 kWh (discharge / export)."""
-        assert power_to_energy_kwh(power_kw=-3.0, duration_h=1.0) == pytest.approx(
-            -3.0
-        )
+        assert power_to_energy_kwh(power_kw=-3.0, duration_h=1.0) == pytest.approx(-3.0)
 
 
 class TestEnergyToPowerKw:
@@ -161,9 +156,7 @@ class TestEnergyToPowerKw:
 
     def test_typical_value(self) -> None:
         """10 kWh ÷ 2 h → 5 kW."""
-        assert energy_to_power_kw(energy_kwh=10.0, duration_h=2.0) == pytest.approx(
-            5.0
-        )
+        assert energy_to_power_kw(energy_kwh=10.0, duration_h=2.0) == pytest.approx(5.0)
 
     def test_zero_energy(self) -> None:
         """0 kWh ÷ 2 h → 0 kW."""
@@ -235,21 +228,21 @@ class TestImpliedPricePerKwh:
 
     def test_negative_energy_returns_zero(self) -> None:
         """Guard against nonsensical negative energy: 5.0 ÷ -1 → 0.0."""
-        assert implied_price_per_kwh(
-            total_cost=5.0, energy_kwh=-1.0
-        ) == pytest.approx(0.0)
+        assert implied_price_per_kwh(total_cost=5.0, energy_kwh=-1.0) == pytest.approx(
+            0.0
+        )
 
     def test_zero_cost(self) -> None:
         """0.0 ÷ 10 kWh → 0.0."""
-        assert implied_price_per_kwh(
-            total_cost=0.0, energy_kwh=10.0
-        ) == pytest.approx(0.0)
+        assert implied_price_per_kwh(total_cost=0.0, energy_kwh=10.0) == pytest.approx(
+            0.0
+        )
 
     def test_negative_cost(self) -> None:
         """-5.0 ÷ 10 kWh → -0.50 (net revenue)."""
-        assert implied_price_per_kwh(
-            total_cost=-5.0, energy_kwh=10.0
-        ) == pytest.approx(-0.50)
+        assert implied_price_per_kwh(total_cost=-5.0, energy_kwh=10.0) == pytest.approx(
+            -0.50
+        )
 
 
 # ---------------------------------------------------------------------------

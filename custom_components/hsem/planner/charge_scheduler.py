@@ -119,7 +119,9 @@ def apply_discharge_schedules(
                 ):
                     # Subtract extra EV load (injected, base_load_includes_ev=False)
                     # so the battery only targets house coverage.
-                    battery_net = s.estimated_net_consumption_kwh - s.ev_planned_load_kwh
+                    battery_net = (
+                        s.estimated_net_consumption_kwh - s.ev_planned_load_kwh
+                    )
                     occ_net += battery_net
                     occ_prices.append(s.price.import_price)
 
@@ -371,7 +373,9 @@ def _apply_grid_charge(
         if tentative_charged >= needed - charged_so_far:
             break
         available_solar = (
-            abs(s.estimated_net_consumption_kwh) if s.estimated_net_consumption_kwh < 0 else 0
+            abs(s.estimated_net_consumption_kwh)
+            if s.estimated_net_consumption_kwh < 0
+            else 0
         )
         grid_needed = min(
             max_charge_per_interval - available_solar,
@@ -400,7 +404,9 @@ def _apply_grid_charge(
         if charged >= needed:
             break
         available_solar = (
-            abs(s.estimated_net_consumption_kwh) if s.estimated_net_consumption_kwh < 0 else 0
+            abs(s.estimated_net_consumption_kwh)
+            if s.estimated_net_consumption_kwh < 0
+            else 0
         )
         grid_needed = min(
             max_charge_per_interval - available_solar,

@@ -615,7 +615,9 @@ class TestPlannerEngineEVIntegration:
 
         for s in out.slots:
             expected_net = round(
-                s.avg_house_consumption_kwh + s.ev_planned_load_kwh - s.solcast_pv_estimate_kwh,
+                s.avg_house_consumption_kwh
+                + s.ev_planned_load_kwh
+                - s.solcast_pv_estimate_kwh,
                 3,
             )
             assert s.estimated_net_consumption_kwh == pytest.approx(
@@ -1305,10 +1307,14 @@ class TestEvAcLoadAndSoCPath:
 
         for s in ev_slots:
             expected_net = round(
-                s.avg_house_consumption_kwh + s.ev_planned_load_kwh - s.solcast_pv_estimate_kwh,
+                s.avg_house_consumption_kwh
+                + s.ev_planned_load_kwh
+                - s.solcast_pv_estimate_kwh,
                 3,
             )
-            assert s.estimated_net_consumption_kwh == pytest.approx(expected_net, abs=1e-6)
+            assert s.estimated_net_consumption_kwh == pytest.approx(
+                expected_net, abs=1e-6
+            )
             # With no PV and 100 % efficiency, AC load = battery-side
             # net = 0.5 + ev_ac = 0.5 + 10.0 = 10.5
             assert s.estimated_net_consumption_kwh == pytest.approx(10.5, abs=0.1), (
@@ -1848,7 +1854,9 @@ class TestEvLoadSemantics:
         # net consumption must NOT include EV load (no double-count)
         for s in out.slots:
             expected_net = round(
-                s.avg_house_consumption_kwh + s.ev_planned_load_kwh - s.solcast_pv_estimate_kwh,
+                s.avg_house_consumption_kwh
+                + s.ev_planned_load_kwh
+                - s.solcast_pv_estimate_kwh,
                 3,
             )
             assert s.estimated_net_consumption_kwh == pytest.approx(
@@ -2092,7 +2100,9 @@ class TestEvLoadSemantics:
 
         # Every slot: net = house - pv (EV not injected)
         for s in out.slots:
-            expected_net = round(s.avg_house_consumption_kwh - s.solcast_pv_estimate_kwh, 3)
+            expected_net = round(
+                s.avg_house_consumption_kwh - s.solcast_pv_estimate_kwh, 3
+            )
             assert s.estimated_net_consumption_kwh == pytest.approx(
                 expected_net, abs=1e-6
             ), (
@@ -2182,7 +2192,9 @@ class TestEvLoadSemantics:
         for s in ev_slots:
             # net = house + ev_load - pv = 5.0 + ev_load - 2.0
             expected_net = round(
-                s.avg_house_consumption_kwh + s.ev_planned_load_kwh - s.solcast_pv_estimate_kwh,
+                s.avg_house_consumption_kwh
+                + s.ev_planned_load_kwh
+                - s.solcast_pv_estimate_kwh,
                 3,
             )
             assert s.estimated_net_consumption_kwh == pytest.approx(

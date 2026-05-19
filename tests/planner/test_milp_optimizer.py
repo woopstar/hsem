@@ -337,7 +337,9 @@ def test_milp_solves_96_slot_horizon_under_100ms():
         s.avg_house_consumption_kwh = 0.15  # 0.15 kWh per 30-min slot
         s.solcast_pv_estimate_kwh = max(0.0, 0.3 * math.sin(i * math.pi / 32))
         s.ev_planned_load_kwh = 0.0
-        s.estimated_net_consumption_kwh = s.avg_house_consumption_kwh - s.solcast_pv_estimate_kwh
+        s.estimated_net_consumption_kwh = (
+            s.avg_house_consumption_kwh - s.solcast_pv_estimate_kwh
+        )
         slots_96.append(s)
 
     t_start = time_module.perf_counter()
@@ -767,7 +769,9 @@ def test_milp_holds_energy_for_expensive_slot_via_terminal_soc():
             imp = 0.30
         s = _make_slot(hour=h, import_price=imp, consumption_kwh=0.5)
         s.solcast_pv_estimate_kwh = 0.0
-        s.estimated_net_consumption_kwh = s.avg_house_consumption_kwh - s.solcast_pv_estimate_kwh
+        s.estimated_net_consumption_kwh = (
+            s.avg_house_consumption_kwh - s.solcast_pv_estimate_kwh
+        )
         slots.append(s)
 
     milp_slots = solve_milp(
@@ -850,7 +854,9 @@ def test_milp_no_simultaneous_charge_discharge_at_negative_prices():
         for h in range(4)
     ]
     for s in slots:
-        s.estimated_net_consumption_kwh = s.avg_house_consumption_kwh - s.solcast_pv_estimate_kwh
+        s.estimated_net_consumption_kwh = (
+            s.avg_house_consumption_kwh - s.solcast_pv_estimate_kwh
+        )
 
     milp_slots = solve_milp(
         slots,

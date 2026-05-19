@@ -140,7 +140,9 @@ class TestSlotValues:
         """estimated_net_consumption_kwh must equal avg_consumption - pv_estimate."""
         result = run_planner(make_summer_day_input())
         for slot in result.slots:
-            expected = round(slot.avg_house_consumption_kwh - slot.solcast_pv_estimate_kwh, 3)
+            expected = round(
+                slot.avg_house_consumption_kwh - slot.solcast_pv_estimate_kwh, 3
+            )
             assert abs(slot.estimated_net_consumption_kwh - expected) < 1e-6, (
                 f"Hour {slot.start.hour}: net={slot.estimated_net_consumption_kwh}, "
                 f"expected={expected}"

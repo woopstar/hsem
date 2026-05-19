@@ -405,7 +405,9 @@ class TestEvPlannedLoadSurvivesWinnerSelection:
                 + slot.ev_planned_load_kwh
                 - slot.solcast_pv_estimate_kwh
             )
-            assert abs(slot.estimated_net_consumption_kwh - round(expected, 3)) < 1e-6, (
+            assert (
+                abs(slot.estimated_net_consumption_kwh - round(expected, 3)) < 1e-6
+            ), (
                 f"Slot {slot.start}: estimated_net_consumption_kwh={slot.estimated_net_consumption_kwh} "
                 f"but avg_house={slot.avg_house_consumption_kwh}, ev_load={slot.ev_planned_load_kwh}, "
                 f"pv={slot.solcast_pv_estimate_kwh} → expected {round(expected, 3)}"

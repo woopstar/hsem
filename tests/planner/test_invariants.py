@@ -216,7 +216,9 @@ class TestEnergyBalance:
         assert slot.grid_export_kwh == pytest.approx(0.0, abs=1e-6)
         # Verify the balance identity explicitly
         supply = (
-            slot.grid_import_kwh + slot.batteries_discharged_kwh + slot.solcast_pv_estimate_kwh
+            slot.grid_import_kwh
+            + slot.batteries_discharged_kwh
+            + slot.solcast_pv_estimate_kwh
         )
         assert supply == pytest.approx(slot.avg_house_consumption_kwh, abs=1e-6)
 
@@ -253,7 +255,9 @@ class TestEnergyBalance:
         assert slot.grid_export_kwh == pytest.approx(0.0, abs=1e-6)
         assert slot.estimated_battery_soc_pct == pytest.approx(45.0, abs=0.1)
         supply = (
-            slot.grid_import_kwh + slot.batteries_discharged_kwh + slot.solcast_pv_estimate_kwh
+            slot.grid_import_kwh
+            + slot.batteries_discharged_kwh
+            + slot.solcast_pv_estimate_kwh
         )
         assert supply == pytest.approx(slot.avg_house_consumption_kwh, abs=1e-6)
 
@@ -1847,10 +1851,14 @@ class TestEvPlannedLoadPipelineIntegrity:
             if s.recommendation == "time_passed":
                 continue
             expected = round(
-                s.avg_house_consumption_kwh + s.ev_planned_load_kwh - s.solcast_pv_estimate_kwh,
+                s.avg_house_consumption_kwh
+                + s.ev_planned_load_kwh
+                - s.solcast_pv_estimate_kwh,
                 3,
             )
-            assert s.estimated_net_consumption_kwh == pytest.approx(expected, abs=1e-6), (
+            assert s.estimated_net_consumption_kwh == pytest.approx(
+                expected, abs=1e-6
+            ), (
                 f"Slot {s.start.isoformat()}: "
                 f"net={s.estimated_net_consumption_kwh:.4f} but "
                 f"house({s.avg_house_consumption_kwh:.4f}) + ev({s.ev_planned_load_kwh:.4f}) "

@@ -560,7 +560,9 @@ class TestEstimatedNetConsumptionIncludesEVLoad:
         avg_house_consumption_kwh = 1.5
         ev_planned_load_kwh = 3.0
         solcast_pv_estimate_kwh = 0.5
-        expected_net = avg_house_consumption_kwh + ev_planned_load_kwh - solcast_pv_estimate_kwh
+        expected_net = (
+            avg_house_consumption_kwh + ev_planned_load_kwh - solcast_pv_estimate_kwh
+        )
 
         midnight = datetime(2026, 5, 14, 0, 0, 0, tzinfo=_FIXED_LOCAL_TZ)
         h = 10
@@ -586,7 +588,9 @@ class TestEstimatedNetConsumptionIncludesEVLoad:
         coord._hourly_recommendations = [rec]
         coord._apply_planner_output(PlannerOutput(slots=[slot]))
 
-        assert rec.estimated_net_consumption_kwh == pytest.approx(expected_net, abs=1e-6), (
+        assert rec.estimated_net_consumption_kwh == pytest.approx(
+            expected_net, abs=1e-6
+        ), (
             f"Expected estimated_net_consumption_kwh={expected_net}, "
             f"got {rec.estimated_net_consumption_kwh}"
         )
@@ -620,7 +624,9 @@ class TestEstimatedNetConsumptionIncludesEVLoad:
         coord._hourly_recommendations = [rec]
         coord._apply_planner_output(PlannerOutput(slots=[slot]))
 
-        assert rec.estimated_net_consumption_kwh == pytest.approx(expected_net, abs=1e-6)
+        assert rec.estimated_net_consumption_kwh == pytest.approx(
+            expected_net, abs=1e-6
+        )
 
 
 # ===========================================================================

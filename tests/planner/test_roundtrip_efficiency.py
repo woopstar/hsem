@@ -172,7 +172,9 @@ class TestDischargeEfficiencySoC:
         )
         # Battery must remove load / discharge_eff = 3 / 0.9 ≈ 3.33 kWh
         expected_removed = load / 0.90
-        assert slot.batteries_discharged_kwh == pytest.approx(expected_removed, abs=0.01)
+        assert slot.batteries_discharged_kwh == pytest.approx(
+            expected_removed, abs=0.01
+        )
         # Grid import should be zero (battery has enough capacity)
         assert slot.grid_import_kwh == pytest.approx(0.0, abs=0.01)
 
@@ -188,7 +190,9 @@ class TestDischargeEfficiencySoC:
         )
         removed = load / 0.90  # ≈ 3.33 kWh removed from battery
         expected_cap = starting_kwh - removed
-        assert slot.estimated_battery_capacity_kwh == pytest.approx(expected_cap, abs=0.01)
+        assert slot.estimated_battery_capacity_kwh == pytest.approx(
+            expected_cap, abs=0.01
+        )
 
     def test_grid_import_covers_shortfall_at_90pct_discharge(self) -> None:
         """When battery cannot fully cover load at 90 % eff, grid fills the gap."""
@@ -241,14 +245,18 @@ class TestRoundtripEfficiency:
         )
 
         # After charging: 10 kWh stored
-        assert charge_slot.estimated_battery_capacity_kwh == pytest.approx(10.0, abs=0.01)
+        assert charge_slot.estimated_battery_capacity_kwh == pytest.approx(
+            10.0, abs=0.01
+        )
         # Grid import for the charge slot: 10 / 0.9 ≈ 11.11 kWh
         assert charge_slot.grid_import_kwh == pytest.approx(10.0 / 0.9, abs=0.02)
 
         # Discharge slot: battery removes 10 / 0.9 ≈ 11.11 kWh ... but only 10 kWh stored
         # So battery is fully emptied (cap goes to 0) and the remainder is grid-imported.
         # House gets 10 kWh × 0.9 = 9 kWh from battery; grid covers 10 - 9 = 1 kWh.
-        assert discharge_slot.estimated_battery_capacity_kwh == pytest.approx(0.0, abs=0.01)
+        assert discharge_slot.estimated_battery_capacity_kwh == pytest.approx(
+            0.0, abs=0.01
+        )
         house_from_battery = 10.0 * 0.90  # 9 kWh
         expected_grid = 10.0 - house_from_battery
         assert discharge_slot.grid_import_kwh == pytest.approx(expected_grid, abs=0.02)
@@ -273,7 +281,9 @@ class TestRoundtripEfficiency:
         # Exactly 5 kWh stored → discharge covers the 5 kWh load completely
         assert discharge_slot.grid_import_kwh == pytest.approx(0.0, abs=0.01)
         assert discharge_slot.batteries_discharged_kwh == pytest.approx(5.0, abs=0.01)
-        assert discharge_slot.estimated_battery_capacity_kwh == pytest.approx(0.0, abs=0.01)
+        assert discharge_slot.estimated_battery_capacity_kwh == pytest.approx(
+            0.0, abs=0.01
+        )
 
     def test_asymmetric_efficiency_95_charge_90_discharge(self) -> None:
         """95 % charge / 90 % discharge: verify grid import and SoC are consistent."""
@@ -295,7 +305,9 @@ class TestRoundtripEfficiency:
         assert charge_slot.grid_import_kwh == pytest.approx(stored / 0.95, abs=0.02)
         # Battery removes 4 / 0.90 ≈ 4.44 kWh to deliver 4 kWh to house
         removed = 4.0 / 0.90
-        assert discharge_slot.batteries_discharged_kwh == pytest.approx(removed, abs=0.02)
+        assert discharge_slot.batteries_discharged_kwh == pytest.approx(
+            removed, abs=0.02
+        )
         # No grid import (5 kWh stored > 4.44 kWh needed)
         assert discharge_slot.grid_import_kwh == pytest.approx(0.0, abs=0.02)
         # SoC after discharge
