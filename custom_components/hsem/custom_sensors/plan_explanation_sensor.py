@@ -42,15 +42,19 @@ from homeassistant.components.sensor import SensorEntity
 from homeassistant.const import EntityCategory
 from homeassistant.helpers.restore_state import RestoreEntity
 
-from custom_components.hsem.coordinator import (CoordinatorData,
-                                                HSEMDataUpdateCoordinator)
+from custom_components.hsem.coordinator import (
+    CoordinatorData,
+    HSEMDataUpdateCoordinator,
+)
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.models.planner_outputs import PlanExplanation
 from custom_components.hsem.utils.datetime_utils import now as hsem_now
 from custom_components.hsem.utils.degraded_mode import hardware_writes_allowed
 from custom_components.hsem.utils.sensornames import (
-    get_plan_explanation_sensor_entity_id, get_plan_explanation_sensor_name,
-    get_plan_explanation_sensor_unique_id)
+    get_plan_explanation_sensor_entity_id,
+    get_plan_explanation_sensor_name,
+    get_plan_explanation_sensor_unique_id,
+)
 
 _UNKNOWN_STRATEGY = "unknown"
 
