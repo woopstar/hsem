@@ -768,7 +768,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     for cand in candidates:
         log_planner("debug", "[candidate] name=%s", cand.name)
 
-    winner, candidate_rejected = select_best_candidate(
+    winner, candidate_rejected, hysteresis_result = select_best_candidate(
         candidates,
         now=now,
         current_kwh=current_kwh,
@@ -783,6 +783,12 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         charge_efficiency_pct=inp.battery_charge_efficiency_pct,
         discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
         replacement_price_per_kwh=replacement_price_per_kwh,
+        # Hysteresis parameters (issue #372)
+        hysteresis_enabled=inp.planner_hysteresis_enabled,
+        hysteresis_absolute=inp.planner_hysteresis_absolute,
+        hysteresis_percentage=inp.planner_hysteresis_percentage,
+        previous_winner_name=inp.previous_winner_name,
+        previous_winner_score=inp.previous_winner_score,
     )
 
     winner_score = getattr(getattr(winner, "_cost", None), "score", None)
@@ -946,6 +952,11 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     # Build human-readable plan explanation
     explanation = _build_explanation(inp, slots, battery_soc_at_end, now)
 
+    # Wire hysteresis decision into the explanation (issue #372)
+    explanation.hysteresis_active = hysteresis_result.applied
+    explanation.hysteresis_reason = hysteresis_result.reason
+    explanation.previous_plan_name = hysteresis_result.previous_plan_name
+
     # Score the final (fill-completed, re-simulated) slots.
     # The spec invariant requires: output.plan_cost == score_plan(output.slots).
     # Because we re-ran simulate_soc above, the slot fields are now fully
@@ -1005,6 +1016,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         explanation=explanation,
         plan_cost=plan_cost,
         candidates=candidates,
+        winner_name=winner.name,
         ev_charging_plan=ev_charging_plan,
         ev_second_charging_plan=ev_second_charging_plan,
     )

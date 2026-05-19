@@ -182,6 +182,15 @@ class PlanExplanation:
         rejected_plans:
             Alternative plans that were evaluated and rejected, each with a
             name, reason, and estimated cost.
+        hysteresis_active:
+            ``True`` when plan-level hysteresis was applied and the previous
+            plan was kept despite a new candidate having a slightly better score.
+        hysteresis_reason:
+            Human-readable explanation of the hysteresis decision, or ``""``
+            when hysteresis is inactive or the plan was switched.
+        previous_plan_name:
+            Name of the winning plan from the previous planner run, or
+            ``""`` on first run.
     """
 
     selected_strategy: str = "unknown"
@@ -197,6 +206,10 @@ class PlanExplanation:
     battery_soc_at_end_pct: float = 0.0
     constraints: list[str] = field(default_factory=list)
     rejected_plans: list[RejectedPlan] = field(default_factory=list)
+    # Hysteresis fields (issue #372)
+    hysteresis_active: bool = False
+    hysteresis_reason: str = ""
+    previous_plan_name: str = ""
 
     def as_dict(self) -> dict[str, Any]:
         """Serialise the explanation to a plain dict for HA attributes.
@@ -464,6 +477,10 @@ class PlannerOutput:
     ev_charging_plan: EVChargingPlan | None = field(default=None, repr=False)
     #: EV charging plan for the second EV.  ``None`` when disabled.
     ev_second_charging_plan: EVChargingPlan | None = field(default=None, repr=False)
+    #: Name of the winning candidate plan from the selector (e.g. ``"baseline"``,
+    #: ``"aggressive"``).  Used by the coordinator to persist the active plan
+    #: name across cycles for hysteresis (issue #372).
+    winner_name: str = ""
 
     # ------------------------------------------------------------------
     # Convenience helpers used by tests

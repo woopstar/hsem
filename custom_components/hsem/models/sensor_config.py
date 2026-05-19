@@ -221,6 +221,12 @@ class SensorConfig:
     months_winter: list[int] = field(default_factory=list)
     months_summer: list[int] = field(default_factory=list)
 
+    # Planner hysteresis — keep the active plan unless a new plan is
+    # materially better (anti-flapping, issue #372).
+    planner_hysteresis_enabled: bool = True
+    planner_hysteresis_absolute: float = 0.0
+    planner_hysteresis_percentage: float = 5.0
+
     # Consumption weights
     house_consumption_energy_weight_1d: int = 50
     house_consumption_energy_weight_3d: int = 20

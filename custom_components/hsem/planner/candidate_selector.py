@@ -32,6 +32,7 @@ Design constraints
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from custom_components.hsem.models.planner_outputs import RejectedPlan
@@ -52,6 +53,36 @@ from custom_components.hsem.utils.logger import log_planner
 _SOC_TOLERANCE_PCT = 0.5
 
 
+# ---------------------------------------------------------------------------
+# Hysteresis result — communicated back to the engine for explanation
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class HysteresisResult:
+    """Result of hysteresis evaluation.
+
+    Attributes:
+        applied:
+            ``True`` when hysteresis was active and the previous plan was kept.
+        reason:
+            Human-readable explanation of why hysteresis kept or allowed the
+            switch.  Empty when hysteresis is inactive.
+        previous_plan_name:
+            Name of the plan from the previous run, or ``""``.
+        previous_score:
+            Score of the previous plan re-evaluated with current data, or 0.
+        new_score:
+            Score of the best new candidate, or 0.
+    """
+
+    applied: bool = False
+    reason: str = ""
+    previous_plan_name: str = ""
+    previous_score: float = 0.0
+    new_score: float = 0.0
+
+
 def select_best_candidate(
     candidates: list[CandidatePlan],
     *,
@@ -68,12 +99,24 @@ def select_best_candidate(
     charge_efficiency_pct: float = 100.0,
     discharge_efficiency_pct: float = 100.0,
     replacement_price_per_kwh: float | None = None,
-) -> tuple[CandidatePlan, list[RejectedPlan]]:
+    # Hysteresis parameters (issue #372)
+    hysteresis_enabled: bool = False,
+    hysteresis_absolute: float = 0.0,
+    hysteresis_percentage: float = 5.0,
+    previous_winner_name: str | None = None,
+    previous_winner_score: float = 0.0,
+) -> tuple[CandidatePlan, list[RejectedPlan], HysteresisResult]:
     """Score all candidates, validate them, and return the best one.
 
     Each candidate in *candidates* has its SoC simulation run in place so
     that the cost function has access to ``grid_import_kwh``,
     ``grid_export_kwh``, and ``estimated_battery_soc`` on every slot.
+
+    Hysteresis (issue #372): when an active plan exists from the previous
+    run, the selector keeps it unless a new candidate improves the score
+    by more than the configured threshold (absolute or percentage).
+    The previous plan is identified by its name and its score is
+    re-evaluated with current data.
 
     Args:
         candidates:
@@ -111,13 +154,31 @@ def select_best_candidate(
             to evaluate the terminal-SoC opportunity cost (issue #413).
             A conservative choice is the average future import price across
             the horizon.  ``None`` disables the terminal-SoC term.
+        hysteresis_enabled:
+            When True, plan-level hysteresis is active.  The previous
+            winner's strategy is kept unless a new candidate beats the
+            threshold.
+        hysteresis_absolute:
+            Minimum absolute score improvement (currency) required to
+            switch plans.  0.0 disables the absolute threshold.
+        hysteresis_percentage:
+            Minimum percentage score improvement required to switch plans.
+            0.0 disables the percentage threshold.
+        previous_winner_name:
+            Name of the winning candidate from the previous planner run.
+            ``None`` on the first run.
+        previous_winner_score:
+            Score of the previous winner from the previous run (used for
+            percentage threshold fallback when the previous winner is not
+            found in the current candidate list).
 
     Returns:
-        A ``(winner, rejected_plans)`` tuple where *winner* is the
-        :class:`CandidatePlan` with the lowest valid selector
-        :attr:`~cost_function.PlanCostBreakdown.score` and *rejected_plans*
-        lists every non-selected candidate with an explanation of why it
-        was not chosen.
+        A ``(winner, rejected_plans, hysteresis_result)`` tuple where
+        *winner* is the :class:`CandidatePlan` with the lowest valid
+        selector :attr:`~cost_function.PlanCostBreakdown.score` (or the
+        previous plan kept by hysteresis), *rejected_plans* lists every
+        non-selected candidate, and *hysteresis_result* describes the
+        hysteresis decision.
     """
     # --- Step 1 & 2: simulate and validate each candidate ---------------
     for candidate in candidates:
@@ -235,6 +296,97 @@ def select_best_candidate(
             winner._cost.total_cost,
         )
 
+    # --- Step 4b: Plan-level hysteresis (issue #372) --------------------
+    # If hysteresis is active AND we have a previous winner name, check
+    # whether the previous plan (re-evaluated with current data) is within
+    # the hysteresis threshold of the new winner.  If so, keep the previous
+    # plan to avoid flapping.
+    hysteresis_result = HysteresisResult(
+        previous_plan_name=previous_winner_name or "",
+        previous_score=previous_winner_score,
+        new_score=getattr(getattr(winner, "_cost", None), "score", 0.0),
+    )
+
+    if (
+        hysteresis_enabled
+        and previous_winner_name is not None
+        and getattr(winner, "_cost", None) is not None
+    ):
+        # Find the previous winner's candidate in the current candidate list
+        prev_candidate = _find_by_name(candidates, previous_winner_name)
+        if prev_candidate is not None and prev_candidate is not winner:
+            prev_score = getattr(getattr(prev_candidate, "_cost", None), "score", None)
+            new_score = winner._cost.score
+            if prev_score is not None:
+                hysteresis_result.previous_score = prev_score
+                hysteresis_result.new_score = new_score
+                # Check if the new plan is enough better to justify a switch
+                improvement = prev_score - new_score  # positive = new is better
+
+                # Absolute threshold check
+                if hysteresis_absolute > 1e-9 and improvement < hysteresis_absolute:
+                    winner = prev_candidate
+                    hysteresis_result.applied = True
+                    hysteresis_result.reason = (
+                        f"Hysteresis kept previous plan '{previous_winner_name}': "
+                        f"improvement {improvement:.4f} is below absolute "
+                        f"threshold {hysteresis_absolute:.4f}."
+                    )
+                    log_planner(
+                        "debug",
+                        "[selector] HYSTERESIS kept previous plan '%s': "
+                        "improvement %.4f < absolute threshold %.4f",
+                        previous_winner_name,
+                        improvement,
+                        hysteresis_absolute,
+                    )
+                # Percentage threshold check (only if absolute didn't trigger)
+                elif (
+                    not hysteresis_result.applied
+                    and hysteresis_percentage > 1e-9
+                    and abs(prev_score) > 1e-9
+                ):
+                    improvement_pct = (improvement / abs(prev_score)) * 100.0
+                    if improvement_pct < hysteresis_percentage:
+                        winner = prev_candidate
+                        hysteresis_result.applied = True
+                        hysteresis_result.reason = (
+                            f"Hysteresis kept previous plan '{previous_winner_name}': "
+                            f"improvement {improvement_pct:.2f}% is below percentage "
+                            f"threshold {hysteresis_percentage:.2f}%."
+                        )
+                        log_planner(
+                            "debug",
+                            "[selector] HYSTERESIS kept previous plan '%s': "
+                            "improvement %.2f%% < percentage threshold %.2f%%",
+                            previous_winner_name,
+                            improvement_pct,
+                            hysteresis_percentage,
+                        )
+
+        if not hysteresis_result.applied:
+            if prev_candidate is None:
+                hysteresis_result.reason = (
+                    f"Previous plan '{previous_winner_name}' not found "
+                    f"in current candidate set; switching allowed."
+                )
+            elif prev_candidate is winner:
+                hysteresis_result.reason = (
+                    f"Previous plan '{previous_winner_name}' is still the "
+                    f"best candidate; no switch needed."
+                )
+            else:
+                hysteresis_result.reason = (
+                    f"Switching to new plan '{winner.name}': improvement "
+                    f"exceeds hysteresis threshold."
+                )
+        log_planner(
+            "debug",
+            "[selector] hysteresis: applied=%s  reason=%s",
+            hysteresis_result.applied,
+            hysteresis_result.reason,
+        )
+
     # --- Step 5: build rejected-plan entries for all non-winners ---------
     rejected: list[RejectedPlan] = []
 
@@ -288,7 +440,7 @@ def select_best_candidate(
             )
         )
 
-    return winner, rejected
+    return winner, rejected, hysteresis_result
 
 
 # ---------------------------------------------------------------------------

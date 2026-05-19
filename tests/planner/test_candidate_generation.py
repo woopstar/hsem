@@ -426,7 +426,7 @@ class TestSelectBestCandidate:
         now = datetime.fromisoformat(inp.now_iso)
         slots = _populated_slots_for_input(inp)
         candidates = generate_candidates(slots, inp, now, max_charge_per_slot=1.25)
-        winner, _ = select_best_candidate(
+        winner, _, _ = select_best_candidate(
             candidates,
             now=now,
             current_kwh=4.5,
@@ -447,7 +447,7 @@ class TestSelectBestCandidate:
         now = datetime.fromisoformat(inp.now_iso)
         slots = _populated_slots_for_input(inp)
         candidates = generate_candidates(slots, inp, now, max_charge_per_slot=1.25)
-        winner, rejected = select_best_candidate(
+        winner, rejected, _ = select_best_candidate(
             candidates,
             now=now,
             current_kwh=4.5,
@@ -471,7 +471,7 @@ class TestSelectBestCandidate:
         now = datetime.fromisoformat(inp.now_iso)
         slots = _populated_slots_for_input(inp)
         candidates = generate_candidates(slots, inp, now, max_charge_per_slot=1.25)
-        winner, _ = select_best_candidate(
+        winner, _, _ = select_best_candidate(
             candidates,
             now=now,
             current_kwh=4.5,
@@ -534,7 +534,7 @@ class TestSelectBestCandidate:
             battery_rated_capacity_kwh=10.0,
             battery_expected_cycles=6000,
         )
-        winner, rejected = select_best_candidate(
+        winner, rejected, _ = select_best_candidate(
             candidates,
             now=now,
             current_kwh=4.5,
