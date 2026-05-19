@@ -123,7 +123,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     now = _parse_now(inp.now_iso)
 
     log_planner(
-        "info",
+        "debug",
         "==== HSEM PLANNER RUN START ==== now=%s interval=%dmin horizon=%dh",
         inp.now_iso,
         inp.interval_minutes,
@@ -900,11 +900,11 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
             slot.recommendation = Recommendations.EVSmartCharging.value
 
     # Log final per-slot decisions with full energy-flow detail
-    log_planner("info", "[engine] ---- Final slot decisions (post-simulation) ----")
+    log_planner("debug", "[engine] ---- Final slot decisions (post-simulation) ----")
     for slot in slots:
         is_current = as_tz(slot.start, now.tzinfo) <= now < as_tz(slot.end, now.tzinfo)
         log_planner(
-            "info",
+            "debug",
             "[final] %s%s→%s  rec=%-30s  soc=%5.1f%%  "
             "charged=%.3f  discharged=%.3f  "
             "pv=%.3f  cons=%.3f  net=%.3f  "
