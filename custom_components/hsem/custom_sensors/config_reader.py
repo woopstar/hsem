@@ -69,6 +69,12 @@ def build_sensor_config(config_entry) -> SensorConfig:
         )
         or 0.0
     )
+    cfg.planner_window_hysteresis_minutes = (
+        convert_to_int(
+            get_config_value(config_entry, "hsem_planner_window_hysteresis_minutes")
+        )
+        or 0
+    )
     _update_interval = convert_to_int(
         get_config_value(config_entry, "hsem_update_interval")
     )

@@ -569,6 +569,55 @@ coordinator and passed as part of :class:`PlannerInput`.
 Hysteresis is enabled by default with a 5 % percentage threshold; setting
 ``planner_hysteresis_enabled = False`` disables it entirely.
 
+### Window-level hysteresis (anti-flapping, issue #315)
+
+In addition to plan-level hysteresis, HSEM applies **window-level hysteresis**
+on the **current time slot** to prevent rapid charge↔discharge toggles near
+schedule-window boundaries.  This is a separate, independent mechanism that
+operates on the slot recommendation level rather than the plan level.
+
+When the planner produces a new recommendation for the current slot that
+belongs to a different *category* than the previous recommendation, and the
+new category has been in effect for less than the configured hold time,
+the previous recommendation is kept.
+
+Two categories are defined:
+
+- **Charge-type**: ``batteries_charge_grid``, ``batteries_charge_solar``,
+  ``ev_smart_charging``
+- **Discharge-type**: ``batteries_discharge_mode``,
+  ``force_batteries_discharge``, ``force_export``
+- **Neutral**: ``batteries_wait_mode``, ``time_passed``,
+  ``missing_input_entities``, ``None``
+
+Only cross-category transitions (charge ↔ discharge) are held.  Same-category
+changes (e.g. grid-charge → solar-charge) and transitions to/from neutral
+are always allowed.
+
+The hold time is configured by ``planner_window_hysteresis_minutes``
+(default: 0, disabled).  When set to a positive integer, a charge→discharge
+or discharge→charge transition on the current slot is suppressed unless the
+new category has been active for at least this many minutes.
+
+The previous recommendation and its slot start time are persisted across
+planner runs by the coordinator so the elapsed time is measured from the
+moment the previous category was established — not from the planner cycle
+time.
+
+Window-level hysteresis is applied **after** the planner engine completes but
+**before** the current slot recommendation is resolved.  The held
+recommendation is written back into the planner output slots so it propagates
+to the ``hourly_recommendations`` list and ultimately to hardware writes.
+
+### Invariants for window-level hysteresis tests
+
+- First run (no previous state) always accepts the new recommendation.
+- Same-category transitions are never held.
+- Cross-category transitions within the hold time keep the previous recommendation.
+- Cross-category transitions after the hold time expires switch to the new one.
+- Neutral recommendations never trigger hold behaviour.
+- Feature disabled (hold minutes = 0) always allows the switch.
+
 ## No-action baseline
 
 The no-action plan means:

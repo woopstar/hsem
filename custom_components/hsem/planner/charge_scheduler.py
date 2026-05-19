@@ -19,6 +19,7 @@ from custom_components.hsem.const import (
 from custom_components.hsem.models.planner_inputs import BatteryScheduleInput
 from custom_components.hsem.models.planner_outputs import PlannedSlot
 from custom_components.hsem.utils.datetime_utils import as_tz
+from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import next_window_start_dt
 from custom_components.hsem.utils.recommendations import Recommendations
 
@@ -28,6 +29,7 @@ _DISCHARGE_RECS: frozenset[str] = frozenset(
     {
         Recommendations.BatteriesDischargeMode.value,
         Recommendations.ForceBatteriesDischarge.value,
+        Recommendations.ForceExport.value,
     }
 )
 
@@ -969,6 +971,144 @@ def concentrate_discharge_on_expensive_slots(
             # re-mark this as BatteriesDischargeMode.
             s.recommendation = Recommendations.BatteriesWaitMode.value
             s.batteries_charged_kwh = 0.0
+
+
+# ---------------------------------------------------------------------------
+# Window-level hysteresis — prevent rapid charge↔discharge toggles
+# ---------------------------------------------------------------------------
+
+
+# Recommendations that represent "charging" the battery (any form).
+_CHARGE_RECS: frozenset[str] = frozenset(
+    {
+        Recommendations.BatteriesChargeGrid.value,
+        Recommendations.BatteriesChargeSolar.value,
+        Recommendations.EVSmartCharging.value,
+    }
+)
+
+
+def apply_window_hysteresis(
+    slots: list[PlannedSlot],
+    now: datetime,
+    *,
+    window_hysteresis_minutes: int,
+    previous_current_recommendation: str | None,
+    previous_current_slot_start: datetime | None,
+) -> tuple[str | None, datetime | None]:
+    """Apply minimum hold time before allowing charge↔discharge transitions.
+
+    Prevents rapid toggling between charge and discharge behaviour near the
+    boundary of schedule windows.  If the current slot's recommendation
+    would flip between charge-type and discharge-type, and the new regime
+    has been in place for less than ``window_hysteresis_minutes``, the
+    previous recommendation is kept.
+
+    The function considers two broad categories:
+    - **Charge-type**: ``batteries_charge_grid``, ``batteries_charge_solar``,
+      ``ev_smart_charging``
+    - **Discharge-type**: ``batteries_discharge_mode``,
+      ``force_batteries_discharge``, ``force_export``
+    - **Neutral** (no change needed): ``batteries_wait_mode``,
+      ``time_passed``, ``missing_input_entities``, ``None``
+
+    Transitioning within the same category (e.g. grid-charge → solar-charge)
+    is always allowed — only cross-category flips are held.
+
+    Args:
+        slots:
+            Ordered list of planned slots (mutated in place).
+        now:
+            Timezone-aware current datetime.
+        window_hysteresis_minutes:
+            Minimum hold time in minutes.  0 disables the feature entirely.
+        previous_current_recommendation:
+            Recommendation that was active on the current slot during the
+            previous planner run.  ``None`` on first run.
+        previous_current_slot_start:
+            Start time of the slot that carried
+            ``previous_current_recommendation``.  ``None`` on first run.
+
+    Returns:
+        A ``(updated_recommendation, current_slot_start)`` tuple.
+        ``updated_recommendation`` is the (possibly held) recommendation
+        for the current slot, and ``current_slot_start`` is the start time
+        of the current slot (for persisting across cycles).
+    """
+    if window_hysteresis_minutes <= 0:
+        # Feature disabled — find and return current recommendation unchanged
+        for s in slots:
+            if as_tz(s.start, now.tzinfo) <= now < as_tz(s.end, now.tzinfo):
+                return s.recommendation, s.start
+        return None, None
+
+    # Find the current slot
+    current_slot: PlannedSlot | None = None
+    for s in slots:
+        if as_tz(s.start, now.tzinfo) <= now < as_tz(s.end, now.tzinfo):
+            current_slot = s
+            break
+
+    if current_slot is None:
+        return None, None
+
+    new_rec = current_slot.recommendation
+    new_start = current_slot.start
+
+    # No previous state — first run, no hysteresis to apply
+    if previous_current_recommendation is None or previous_current_slot_start is None:
+        return new_rec, new_start
+
+    new_category = _rec_category(new_rec)
+    prev_category = _rec_category(previous_current_recommendation)
+
+    # If the recommendation hasn't changed category, no hold needed
+    if (
+        new_category == prev_category
+        or new_category == "neutral"
+        or prev_category == "neutral"
+    ):
+        return new_rec, new_start
+
+    # Category changed — check hold time
+    elapsed_minutes = (now - previous_current_slot_start).total_seconds() / 60.0
+    if elapsed_minutes < window_hysteresis_minutes:
+        # Hold the previous recommendation
+        log_planner(
+            "debug",
+            "[window_hysteresis] Holding previous recommendation '%s' on current "
+            "slot (elapsed=%.1f min < hold=%d min). New '%s' suppressed.",
+            previous_current_recommendation,
+            elapsed_minutes,
+            window_hysteresis_minutes,
+            new_rec,
+        )
+        current_slot.recommendation = previous_current_recommendation
+        return previous_current_recommendation, previous_current_slot_start
+
+    # Enough time has passed — allow the switch
+    log_planner(
+        "debug",
+        "[window_hysteresis] Allowing transition '%s' → '%s' on current slot "
+        "(elapsed=%.1f min >= hold=%d min).",
+        previous_current_recommendation,
+        new_rec,
+        elapsed_minutes,
+        window_hysteresis_minutes,
+    )
+    return new_rec, new_start
+
+
+def _rec_category(rec: str | None) -> str:
+    """Classify a recommendation into a category.
+
+    Returns ``"charge"``, ``"discharge"``, or ``"neutral"``.
+    """
+    if rec in _CHARGE_RECS:
+        return "charge"
+    if rec in _DISCHARGE_RECS:
+        return "discharge"
+    return "neutral"
 
 
 # ---------------------------------------------------------------------------
