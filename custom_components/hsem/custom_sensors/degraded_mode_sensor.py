@@ -39,6 +39,7 @@ from custom_components.hsem.coordinator import (
     HSEMDataUpdateCoordinator,
 )
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
+from custom_components.hsem.utils.datetime_utils import now as hsem_now
 from custom_components.hsem.utils.degraded_mode import (
     DegradedMode,
     hardware_writes_allowed,
@@ -129,21 +130,55 @@ class HSEMDegradedModeSensor(
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return diagnostic attributes visible on the entity detail page."""
+        """Return diagnostic attributes visible on the entity detail page.
+
+        Includes system-health details plus planning horizon, forecast mode,
+        and current slot information for easier debugging from the HA UI.
+        """
         data: CoordinatorData | None = self.coordinator.data
         if data is None or data.live is None:
             return {
                 "missing_entities": [],
                 "hardware_writes_blocked": False,
                 "read_only_mode": False,
+                "planning_horizon_hours": None,
+                "planning_interval_minutes": None,
+                "forecast_mode": None,
+                "current_slot_recommendation": None,
             }
         live = data.live
         cfg = data.cfg
-        return {
+
+        now = hsem_now()
+        current_month = now.month
+        forecast_mode = (
+            "winter"
+            if cfg is not None and current_month in (cfg.months_winter or [])
+            else "summer"
+        )
+
+        rec = data.hourly_recommendation
+        current_slot_recommendation = (
+            str(rec.recommendation) if rec is not None else None
+        )
+
+        attrs = {
             "missing_entities": list(live.missing_entities_list),
             "hardware_writes_blocked": not hardware_writes_allowed(live.degraded_mode),
             "read_only_mode": bool(cfg.read_only) if cfg is not None else False,
+            "forecast_mode": forecast_mode,
+            "current_slot_recommendation": current_slot_recommendation,
+            "last_apply_status": (
+                data.apply_summary.overall_status.value
+                if data.apply_summary is not None
+                else None
+            ),
         }
+        if cfg is not None:
+            attrs["planning_horizon_hours"] = cfg.recommendation_interval_length
+            attrs["planning_interval_minutes"] = cfg.recommendation_interval_minutes
+
+        return attrs
 
     # ------------------------------------------------------------------
     # HA lifecycle
