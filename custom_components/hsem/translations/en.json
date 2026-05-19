@@ -723,5 +723,29 @@
         "60": "60 minutes"
       }
     }
+  },
+  "services": {
+    "force_recalculation": {
+      "name": "Force recalculation",
+      "description": "Force the HSEM coordinator to run a full recalculation cycle immediately."
+    },
+    "set_temporary_override": {
+      "name": "Set temporary override",
+      "description": "Temporarily override the automatic planner by forcing a specific working mode.",
+      "fields": {
+        "working_mode": {
+          "name": "Working mode",
+          "description": "The working mode to force. Must be one of the supported override modes."
+        }
+      }
+    },
+    "clear_override": {
+      "name": "Clear override",
+      "description": "Clear any active temporary working-mode override and return to automatic planner control."
+    },
+    "export_diagnostics": {
+      "name": "Export diagnostics",
+      "description": "Export a structured diagnostics dump for the HSEM integration with all entity IDs redacted."
+    }
   }
 }

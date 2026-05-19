@@ -4,6 +4,7 @@ import inspect
 import logging
 from importlib.metadata import PackageNotFoundError, version
 
+import homeassistant.helpers.config_validation as cv
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
@@ -11,12 +12,18 @@ from packaging.version import InvalidVersion, Version
 
 from custom_components.hsem.const import DOMAIN, MIN_HUAWEI_SOLAR_VERSION
 from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
+from custom_components.hsem.services import (
+    async_register_services,
+    async_unregister_services,
+)
 from custom_components.hsem.utils.logger import (
     async_close_hsem_logger,
     async_init_hsem_logger,
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 PLATFORMS = [Platform.SENSOR, Platform.SWITCH, Platform.TIME, Platform.SELECT]
 
@@ -116,6 +123,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
+    # Register HSEM services (force_recalculation, set_temporary_override, etc.)
+    await async_register_services(hass)
+
     # Add update listener for options
     entry.async_on_unload(entry.add_update_listener(async_update_options))
 
@@ -137,6 +147,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id, None)
+
+    # Unregister HSEM services when the last entry is removed.
+    remaining = hass.data.get(DOMAIN, {})
+    if not remaining:
+        await async_unregister_services(hass)
 
     # Close the HSEM dedicated log file handler.
     await async_close_hsem_logger()
