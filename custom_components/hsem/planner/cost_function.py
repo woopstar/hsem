@@ -607,7 +607,7 @@ def score_plan(
             cycle_cost_total_disc += cycle * discount
 
         # 5. SoC guard penalties (quadratic in the violation magnitude).
-        soc = slot.estimated_battery_soc
+        soc = slot.estimated_battery_soc_pct
         if soc < weights.min_soc_pct:
             violation = weights.min_soc_pct - soc
             pen = weights.soc_low_penalty_weight * violation**2
