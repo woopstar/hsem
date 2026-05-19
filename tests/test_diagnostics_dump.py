@@ -374,6 +374,6 @@ class TestReproducibility:
         replayed_out = run_planner(replayed_inp)
 
         # Total estimated cost must be identical after round-trip.
-        orig_total = sum(s.estimated_cost for s in original_out.slots)
-        replay_total = sum(s.estimated_cost for s in replayed_out.slots)
+        orig_total = sum(s.estimated_cost_currency for s in original_out.slots)
+        replay_total = sum(s.estimated_cost_currency for s in replayed_out.slots)
         assert replay_total == pytest.approx(orig_total, rel=1e-6)

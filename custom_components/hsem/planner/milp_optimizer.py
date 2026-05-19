@@ -242,9 +242,9 @@ def solve_milp(
     # when net_load is strongly negative and SoC limits constrain charge.
     net_load = np.array(
         [
-            slots[i].avg_house_consumption
+            slots[i].avg_house_consumption_kwh
             + slots[i].ev_planned_load_kwh
-            - slots[i].solcast_pv_estimate
+            - slots[i].solcast_pv_estimate_kwh
             for i in future_idx
         ],
         dtype=float,
@@ -424,7 +424,7 @@ def solve_milp(
     # Reset charge/discharge on all future slots; past slots keep TimePassed
     for i in future_idx:
         out_slots[i].recommendation = None
-        out_slots[i].batteries_charged = 0.0
+        out_slots[i].batteries_charged_kwh = 0.0
 
     # Write MILP-derived charge/discharge actions
     for lp_t, slot_i in enumerate(future_idx):
@@ -453,7 +453,7 @@ def solve_milp(
 
         if ec_kwh > _MIN_ACTION_KWH:
             out_slots[slot_i].recommendation = Recommendations.BatteriesChargeGrid.value
-            out_slots[slot_i].batteries_charged = round(ec_kwh, 3)
+            out_slots[slot_i].batteries_charged_kwh = round(ec_kwh, 3)
         elif ed_kwh > _MIN_ACTION_KWH:
             out_slots[
                 slot_i

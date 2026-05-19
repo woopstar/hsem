@@ -156,7 +156,7 @@ class TestArbitrageHeadlineScenario:
         result = run_planner(_make_arbitrage_input())
         slot = _slot_at_hour(result.slots, 12)
         assert slot.recommendation == _CHARGE_GRID
-        assert slot.batteries_charged > 0
+        assert slot.batteries_charged_kwh > 0
 
     def test_evening_not_charge_grid(self):
         """Expensive evening slots must remain consumption, not be re-charged."""

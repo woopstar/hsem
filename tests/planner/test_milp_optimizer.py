@@ -53,7 +53,7 @@ def _make_slot(
     pv_kwh: float = 0.0,
     consumption_kwh: float = 0.5,
     recommendation: str | None = None,
-    batteries_charged: float = 0.0,
+    batteries_charged_kwh: float = 0.0,
 ) -> PlannedSlot:
     """Build a minimal PlannedSlot for MILP unit tests."""
     start = datetime(2024, 6, 15, hour, 0, tzinfo=_TZ)
@@ -62,12 +62,12 @@ def _make_slot(
         end=start + timedelta(hours=1),
         price=SlotPrice(import_price=import_price, export_price=export_price),
         recommendation=recommendation,
-        batteries_charged=batteries_charged,
+        batteries_charged_kwh=batteries_charged_kwh,
     )
-    s.avg_house_consumption = consumption_kwh
-    s.solcast_pv_estimate = pv_kwh
+    s.avg_house_consumption_kwh = consumption_kwh
+    s.solcast_pv_estimate_kwh = pv_kwh
     s.ev_planned_load_kwh = 0.0
-    s.estimated_net_consumption = consumption_kwh - pv_kwh
+    s.estimated_net_consumption_kwh = consumption_kwh - pv_kwh
     return s
 
 
@@ -207,7 +207,7 @@ def test_milp_cheaper_than_no_action_on_arbitrage_case():
     baseline_slots = _copy_slots(slots)
     for s in baseline_slots:
         s.recommendation = None
-        s.batteries_charged = 0.0
+        s.batteries_charged_kwh = 0.0
 
     milp_score = _score(milp_slots, current_kwh=0.0)
     baseline_score = _score(baseline_slots, current_kwh=0.0)
@@ -247,10 +247,10 @@ def test_milp_respects_soc_upper_bound():
     )
 
     for slot in result:
-        if slot.estimated_battery_capacity > 0:
+        if slot.estimated_battery_capacity_kwh > 0:
             # Allow a small epsilon for floating-point rounding in simulate_soc
-            assert slot.estimated_battery_capacity <= usable_kwh + 1e-4, (
-                f"SoC capacity {slot.estimated_battery_capacity:.3f} exceeds "
+            assert slot.estimated_battery_capacity_kwh <= usable_kwh + 1e-4, (
+                f"SoC capacity {slot.estimated_battery_capacity_kwh:.3f} exceeds "
                 f"usable_kwh={usable_kwh} at {slot.start}"
             )
 
@@ -334,10 +334,10 @@ def test_milp_solves_96_slot_horizon_under_100ms():
         s.price = SlotPrice(
             import_price=round(price, 4), export_price=round(price * 0.8, 4)
         )
-        s.avg_house_consumption = 0.15  # 0.15 kWh per 30-min slot
-        s.solcast_pv_estimate = max(0.0, 0.3 * math.sin(i * math.pi / 32))
+        s.avg_house_consumption_kwh = 0.15  # 0.15 kWh per 30-min slot
+        s.solcast_pv_estimate_kwh = max(0.0, 0.3 * math.sin(i * math.pi / 32))
         s.ev_planned_load_kwh = 0.0
-        s.estimated_net_consumption = s.avg_house_consumption - s.solcast_pv_estimate
+        s.estimated_net_consumption_kwh = s.avg_house_consumption_kwh - s.solcast_pv_estimate_kwh
         slots_96.append(s)
 
     t_start = time_module.perf_counter()
@@ -530,7 +530,7 @@ def test_replacement_price_is_minimum_of_future_prices():
     # Run SoC sim: charge in all slots to increase terminal SoC above initial
     for s in slots[:4]:
         s.recommendation = Recommendations.BatteriesChargeGrid.value
-        s.batteries_charged = 1.0
+        s.batteries_charged_kwh = 1.0
 
     weights = CostWeights(min_soc_pct=10.0, max_soc_pct=100.0)
     simulate_soc(
@@ -766,8 +766,8 @@ def test_milp_holds_energy_for_expensive_slot_via_terminal_soc():
         else:
             imp = 0.30
         s = _make_slot(hour=h, import_price=imp, consumption_kwh=0.5)
-        s.solcast_pv_estimate = 0.0
-        s.estimated_net_consumption = s.avg_house_consumption - s.solcast_pv_estimate
+        s.solcast_pv_estimate_kwh = 0.0
+        s.estimated_net_consumption_kwh = s.avg_house_consumption_kwh - s.solcast_pv_estimate_kwh
         slots.append(s)
 
     milp_slots = solve_milp(
@@ -850,7 +850,7 @@ def test_milp_no_simultaneous_charge_discharge_at_negative_prices():
         for h in range(4)
     ]
     for s in slots:
-        s.estimated_net_consumption = s.avg_house_consumption - s.solcast_pv_estimate
+        s.estimated_net_consumption_kwh = s.avg_house_consumption_kwh - s.solcast_pv_estimate_kwh
 
     milp_slots = solve_milp(
         slots,
@@ -897,8 +897,8 @@ def test_milp_mutex_post_hoc_always_trivially_true():
                 consumption_kwh=0.5,
                 pv_kwh=0.0,
             )
-            s.estimated_net_consumption = (
-                s.avg_house_consumption - s.solcast_pv_estimate
+            s.estimated_net_consumption_kwh = (
+                s.avg_house_consumption_kwh - s.solcast_pv_estimate_kwh
             )
             slots.append(s)
 

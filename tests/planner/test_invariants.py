@@ -150,9 +150,9 @@ def _single_slot(
         end=now + timedelta(hours=duration_hours),
         price=SlotPrice(import_price=import_price, export_price=export_price),
     )
-    s.avg_house_consumption = load
-    s.solcast_pv_estimate = pv
-    s.batteries_charged = batteries_charged
+    s.avg_house_consumption_kwh = load
+    s.solcast_pv_estimate_kwh = pv
+    s.batteries_charged_kwh = batteries_charged
     s.recommendation = recommendation
     return s
 
@@ -211,14 +211,14 @@ class TestEnergyBalance:
             rated_kwh=10.0,
             end_of_discharge_soc_pct=10.0,
         )
-        assert slot.batteries_discharged == pytest.approx(0.0, abs=1e-6)
+        assert slot.batteries_discharged_kwh == pytest.approx(0.0, abs=1e-6)
         assert slot.grid_import_kwh == pytest.approx(1.0, abs=1e-6)
         assert slot.grid_export_kwh == pytest.approx(0.0, abs=1e-6)
         # Verify the balance identity explicitly
         supply = (
-            slot.grid_import_kwh + slot.batteries_discharged + slot.solcast_pv_estimate
+            slot.grid_import_kwh + slot.batteries_discharged_kwh + slot.solcast_pv_estimate_kwh
         )
-        assert supply == pytest.approx(slot.avg_house_consumption, abs=1e-6)
+        assert supply == pytest.approx(slot.avg_house_consumption_kwh, abs=1e-6)
 
     def test_hand_calculated_exact_balance_battery_covers_load(self):
         """Exact hand-calculated energy balance: battery covers all load, no grid.
@@ -248,14 +248,14 @@ class TestEnergyBalance:
             rated_kwh=10.0,
             end_of_discharge_soc_pct=10.0,
         )
-        assert slot.batteries_discharged == pytest.approx(0.5, abs=1e-6)
+        assert slot.batteries_discharged_kwh == pytest.approx(0.5, abs=1e-6)
         assert slot.grid_import_kwh == pytest.approx(0.0, abs=1e-6)
         assert slot.grid_export_kwh == pytest.approx(0.0, abs=1e-6)
-        assert slot.estimated_battery_soc == pytest.approx(45.0, abs=0.1)
+        assert slot.estimated_battery_soc_pct == pytest.approx(45.0, abs=0.1)
         supply = (
-            slot.grid_import_kwh + slot.batteries_discharged + slot.solcast_pv_estimate
+            slot.grid_import_kwh + slot.batteries_discharged_kwh + slot.solcast_pv_estimate_kwh
         )
-        assert supply == pytest.approx(slot.avg_house_consumption, abs=1e-6)
+        assert supply == pytest.approx(slot.avg_house_consumption_kwh, abs=1e-6)
 
     def test_hand_calculated_exact_balance_pv_surplus_exported(self):
         """Exact hand-calculated energy balance: PV surplus exported.
@@ -285,7 +285,7 @@ class TestEnergyBalance:
             rated_kwh=10.0,
             end_of_discharge_soc_pct=10.0,
         )
-        assert slot.batteries_discharged == pytest.approx(0.0, abs=1e-6)
+        assert slot.batteries_discharged_kwh == pytest.approx(0.0, abs=1e-6)
         assert slot.grid_import_kwh == pytest.approx(0.0, abs=1e-6)
         assert slot.grid_export_kwh == pytest.approx(2.5, abs=1e-3)
 
@@ -302,13 +302,13 @@ class TestEnergyBalance:
                 continue
             total_supply = (
                 slot.grid_import_kwh
-                + slot.batteries_discharged
-                + slot.solcast_pv_estimate
+                + slot.batteries_discharged_kwh
+                + slot.solcast_pv_estimate_kwh
             )
             # Supply must cover load; allow a small numerical tolerance.
-            assert total_supply >= slot.avg_house_consumption - 1e-6, (
+            assert total_supply >= slot.avg_house_consumption_kwh - 1e-6, (
                 f"Energy balance violated at {slot.start.isoformat()}: "
-                f"supply={total_supply:.4f} < load={slot.avg_house_consumption:.4f}"
+                f"supply={total_supply:.4f} < load={slot.avg_house_consumption_kwh:.4f}"
             )
 
     def test_grid_import_plus_battery_plus_pv_ge_load_with_solar(self):
@@ -320,10 +320,10 @@ class TestEnergyBalance:
                 continue
             total_supply = (
                 slot.grid_import_kwh
-                + slot.batteries_discharged
-                + slot.solcast_pv_estimate
+                + slot.batteries_discharged_kwh
+                + slot.solcast_pv_estimate_kwh
             )
-            assert total_supply >= slot.avg_house_consumption - 1e-6, (
+            assert total_supply >= slot.avg_house_consumption_kwh - 1e-6, (
                 f"Energy balance violated at {slot.start.isoformat()}"
             )
 
@@ -366,7 +366,7 @@ class TestEnergyBalance:
             s
             for s in result.slots
             if s.recommendation != Recommendations.TimePassed.value
-            and s.solcast_pv_estimate > 0
+            and s.solcast_pv_estimate_kwh > 0
         ]
         # At least some slots should have export
         assert any(s.grid_export_kwh > 0 for s in slots_with_pv), (
@@ -419,7 +419,7 @@ class TestForcedDischarge:
         # ForceBatteriesDischarge does not explicitly set batteries_discharged;
         # the simulation drives discharge to cover net_demand.
         # net_demand = 0.2 - 0.0 = 0.2 → discharge = 0.2
-        assert slot.batteries_discharged >= 0.0
+        assert slot.batteries_discharged_kwh >= 0.0
         # Grid import should be 0 because discharge covers the load
         assert slot.grid_import_kwh == pytest.approx(0.0, abs=1e-3)
 
@@ -445,7 +445,7 @@ class TestForcedDischarge:
             end_of_discharge_soc_pct=10.0,
         )
         # Initial SoC = 10 + 4.0/10.0*100 = 50%; after 0.5 kWh discharge: 45%
-        assert slot.estimated_battery_soc == pytest.approx(45.0, abs=0.1)
+        assert slot.estimated_battery_soc_pct == pytest.approx(45.0, abs=0.1)
 
     def test_forced_discharge_plan_cheaper_than_no_discharge_on_high_price(self):
         """Plan that discharges during peak price must cost less than one that imports.
@@ -458,12 +458,12 @@ class TestForcedDischarge:
         now = datetime(2024, 6, 15, 17, 0, tzinfo=_TZ)
         # Plan A: battery discharges to cover load
         slot_a = _single_slot(now=now, load=1.0, pv=0.0, import_price=0.50)
-        slot_a.batteries_discharged = 1.0
+        slot_a.batteries_discharged_kwh = 1.0
         slot_a.grid_import_kwh = 0.0
 
         # Plan B: battery idle, grid covers load
         slot_b = _single_slot(now=now, load=1.0, pv=0.0, import_price=0.50)
-        slot_b.batteries_discharged = 0.0
+        slot_b.batteries_discharged_kwh = 0.0
         slot_b.grid_import_kwh = 1.0
 
         weights = CostWeights(cycle_cost_per_kwh=0.0)
@@ -493,9 +493,9 @@ class TestForceExport:
         now = datetime(2024, 6, 15, 13, 0, tzinfo=_TZ)
         slot = _single_slot(now=now, load=0.0, pv=0.0, export_price=0.10)
         slot.grid_export_kwh = 2.0
-        slot.batteries_discharged = 2.0
+        slot.batteries_discharged_kwh = 2.0
         # Set SoC within valid bounds to avoid triggering a SoC penalty
-        slot.estimated_battery_soc = 50.0
+        slot.estimated_battery_soc_pct = 50.0
 
         # Disable SoC penalties so they don't obscure the export-revenue test
         weights = CostWeights(
@@ -543,8 +543,8 @@ class TestForceExport:
         #   remaining = 9.0 - 2.0 = 7.0 kWh above floor
         #   absolute_kwh = 7.0 + (10.0 * 10% = 1.0) = 8.0
         #   SoC = 8.0 / 10.0 * 100 = 80%
-        assert slot.estimated_battery_soc == pytest.approx(80.0, abs=0.1)
-        assert slot.batteries_discharged == pytest.approx(2.0, abs=1e-3)
+        assert slot.estimated_battery_soc_pct == pytest.approx(80.0, abs=0.1)
+        assert slot.batteries_discharged_kwh == pytest.approx(2.0, abs=1e-3)
         assert slot.grid_import_kwh == pytest.approx(0.0, abs=1e-6)
 
     def test_force_export_increases_grid_export_not_import(self):
@@ -561,10 +561,10 @@ class TestForceExport:
         # We drive discharge by setting load=2.0 (proxy for force-export).
         # Separately verify via the cost function that export revenue is earned.
         slot = _single_slot(now=now, load=0.0, pv=0.0, export_price=0.15)
-        slot.batteries_discharged = 2.0
+        slot.batteries_discharged_kwh = 2.0
         slot.grid_export_kwh = 2.0
         slot.grid_import_kwh = 0.0
-        slot.estimated_battery_soc = 80.0
+        slot.estimated_battery_soc_pct = 80.0
 
         weights = CostWeights(
             cycle_cost_per_kwh=0.0,
@@ -633,10 +633,10 @@ class TestGridChargeAccounting:
             s
             for s in result.slots
             if s.recommendation == Recommendations.BatteriesChargeGrid.value
-            and s.batteries_charged > 1e-9
+            and s.batteries_charged_kwh > 1e-9
         ]
         for slot in charge_slots:
-            stored = slot.batteries_charged
+            stored = slot.batteries_charged_kwh
             # With 20% conversion loss, grid pull must exceed stored energy
             assert slot.grid_import_kwh > stored - 1e-6, (
                 f"Grid import {slot.grid_import_kwh:.4f} should exceed "
@@ -654,7 +654,7 @@ class TestGridChargeAccounting:
         """
         now = datetime(2024, 6, 15, 1, 0, tzinfo=_TZ)
         slot = _single_slot(now=now, load=0.0, pv=0.0, import_price=0.10)
-        slot.batteries_charged = 0.8
+        slot.batteries_charged_kwh = 0.8
         slot.grid_import_kwh = 1.0  # includes conversion overhead
 
         weights = CostWeights(cycle_cost_per_kwh=0.0)
@@ -905,13 +905,13 @@ class TestNoPostSelectionMutation:
                 continue
             total_supply = (
                 slot.grid_import_kwh
-                + slot.batteries_discharged
-                + slot.solcast_pv_estimate
+                + slot.batteries_discharged_kwh
+                + slot.solcast_pv_estimate_kwh
             )
-            assert total_supply >= slot.avg_house_consumption - 1e-6, (
+            assert total_supply >= slot.avg_house_consumption_kwh - 1e-6, (
                 f"Energy balance violated in post-fill slot at "
                 f"{slot.start.isoformat()}: "
-                f"supply={total_supply:.4f} < load={slot.avg_house_consumption:.4f}"
+                f"supply={total_supply:.4f} < load={slot.avg_house_consumption_kwh:.4f}"
             )
 
 
@@ -1012,7 +1012,7 @@ class TestNoActionBaseline:
         mid_day_slots = [
             s
             for s in no_action.slots
-            if 10 <= s.start.hour <= 14 and s.solcast_pv_estimate > 1.0
+            if 10 <= s.start.hour <= 14 and s.solcast_pv_estimate_kwh > 1.0
         ]
         exports = [s.grid_export_kwh for s in mid_day_slots]
         assert any(e > 0 for e in exports), (
@@ -1045,9 +1045,9 @@ class TestTerminalSoC:
         """
         now = datetime(2024, 6, 15, 23, 0, tzinfo=_TZ)
         slot_a = _single_slot(now=now, load=0.0, pv=0.0, import_price=0.20)
-        slot_a.estimated_battery_soc = 100.0  # full battery
+        slot_a.estimated_battery_soc_pct = 100.0  # full battery
         slot_b = _single_slot(now=now, load=0.0, pv=0.0, import_price=0.20)
-        slot_b.estimated_battery_soc = 5.0  # below floor
+        slot_b.estimated_battery_soc_pct = 5.0  # below floor
 
         weights = CostWeights(
             min_soc_pct=10.0,
@@ -1083,16 +1083,16 @@ class TestTerminalSoC:
         slot_a = _single_slot(
             now=now, load=1.0, pv=0.0, import_price=0.20, export_price=0.05
         )
-        slot_a.batteries_discharged = 0.0
+        slot_a.batteries_discharged_kwh = 0.0
         slot_a.grid_import_kwh = 1.0
-        slot_a.estimated_battery_soc = 50.0  # healthy SoC — no penalty
+        slot_a.estimated_battery_soc_pct = 50.0  # healthy SoC — no penalty
 
         slot_b = _single_slot(
             now=now, load=1.0, pv=0.0, import_price=0.20, export_price=0.05
         )
-        slot_b.batteries_discharged = 1.0
+        slot_b.batteries_discharged_kwh = 1.0
         slot_b.grid_import_kwh = 0.0
-        slot_b.estimated_battery_soc = 5.0  # depleted battery (below floor)
+        slot_b.estimated_battery_soc_pct = 5.0  # depleted battery (below floor)
 
         weights = CostWeights(
             cycle_cost_per_kwh=0.10,
@@ -1103,7 +1103,7 @@ class TestTerminalSoC:
         bd_b = score_plan([slot_b], weights)
 
         # Plan A: import_cost = 1.0 × 0.20 = 0.20, no cycle cost, no soc penalty
-        # Note: slot_a.estimated_battery_soc=0 triggers the SoC floor check
+        # Note: slot_a.estimated_battery_soc_pct=0 triggers the SoC floor check
         # in score_plan (0 < min_soc=10). We assert the relationship, not exact value.
         # Plan B discharges AND has SoC=5 (below floor), so its total must be higher.
         assert bd_b.total > bd_a.total, (
@@ -1247,7 +1247,7 @@ class TestPartialSlot:
             if s.recommendation != Recommendations.TimePassed.value
         )
         # Remaining duration = 0.5 h → max consumption = 0.5 kWh
-        assert first_future_slot.avg_house_consumption <= 0.5 + 1e-6, (
+        assert first_future_slot.avg_house_consumption_kwh <= 0.5 + 1e-6, (
             "Partial slot must use remaining duration, not full duration"
         )
 
@@ -1428,7 +1428,7 @@ class TestNegativeExportPrice:
             now=now, load=0.0, pv=0.0, export_price=-0.05, import_price=0.10
         )
         slot.grid_export_kwh = 2.0
-        slot.estimated_battery_soc = 50.0
+        slot.estimated_battery_soc_pct = 50.0
 
         weights = CostWeights(
             cycle_cost_per_kwh=0.0,
@@ -1514,12 +1514,12 @@ class TestEvLoadNotDoubleCounted:
         for s_with, s_without in zip(result_with.slots, result_without.slots):
             if s_with.recommendation == Recommendations.TimePassed.value:
                 continue
-            assert s_with.avg_house_consumption == pytest.approx(
-                s_without.avg_house_consumption, abs=1e-6
+            assert s_with.avg_house_consumption_kwh == pytest.approx(
+                s_without.avg_house_consumption_kwh, abs=1e-6
             ), (
                 f"EV flag must not change avg_house_consumption "
-                f"(with={s_with.avg_house_consumption:.4f}, "
-                f"without={s_without.avg_house_consumption:.4f})"
+                f"(with={s_with.avg_house_consumption_kwh:.4f}, "
+                f"without={s_without.avg_house_consumption_kwh:.4f})"
             )
 
     def test_consumption_matches_input_not_doubled(self):
@@ -1542,8 +1542,8 @@ class TestEvLoadNotDoubleCounted:
                 continue
             # The consumption must not be significantly above 0.5 kWh.
             # We allow a small spike-aware deviation (±10%) but not 2×.
-            assert slot.avg_house_consumption <= 0.5 * 1.5, (
-                f"avg_house_consumption {slot.avg_house_consumption:.4f} "
+            assert slot.avg_house_consumption_kwh <= 0.5 * 1.5, (
+                f"avg_house_consumption {slot.avg_house_consumption_kwh:.4f} "
                 f"greatly exceeds input value 0.5 — possible double-count"
             )
 
@@ -1683,9 +1683,9 @@ class TestRequiredReserve:
         for slot in result.slots:
             if slot.recommendation == Recommendations.TimePassed.value:
                 continue
-            if slot.estimated_battery_soc > 0:  # skip unset (past) slots
-                assert slot.estimated_battery_soc >= floor - 0.5 - 1e-6, (
-                    f"SoC {slot.estimated_battery_soc:.2f}% at "
+            if slot.estimated_battery_soc_pct > 0:  # skip unset (past) slots
+                assert slot.estimated_battery_soc_pct >= floor - 0.5 - 1e-6, (
+                    f"SoC {slot.estimated_battery_soc_pct:.2f}% at "
                     f"{slot.start.isoformat()} is below configured floor {floor}%"
                 )
 
@@ -1707,9 +1707,9 @@ class TestRequiredReserve:
         for slot in result.slots:
             if slot.recommendation == Recommendations.TimePassed.value:
                 continue
-            if slot.estimated_battery_soc > 0:
-                assert slot.estimated_battery_soc >= 10.0 - 0.5 - 1e-6, (
-                    f"SoC {slot.estimated_battery_soc:.2f}% dropped below "
+            if slot.estimated_battery_soc_pct > 0:
+                assert slot.estimated_battery_soc_pct >= 10.0 - 0.5 - 1e-6, (
+                    f"SoC {slot.estimated_battery_soc_pct:.2f}% dropped below "
                     f"configured floor 10%"
                 )
 
@@ -1847,14 +1847,14 @@ class TestEvPlannedLoadPipelineIntegrity:
             if s.recommendation == "time_passed":
                 continue
             expected = round(
-                s.avg_house_consumption + s.ev_planned_load_kwh - s.solcast_pv_estimate,
+                s.avg_house_consumption_kwh + s.ev_planned_load_kwh - s.solcast_pv_estimate_kwh,
                 3,
             )
-            assert s.estimated_net_consumption == pytest.approx(expected, abs=1e-6), (
+            assert s.estimated_net_consumption_kwh == pytest.approx(expected, abs=1e-6), (
                 f"Slot {s.start.isoformat()}: "
-                f"net={s.estimated_net_consumption:.4f} but "
-                f"house({s.avg_house_consumption:.4f}) + ev({s.ev_planned_load_kwh:.4f}) "
-                f"- pv({s.solcast_pv_estimate:.4f}) = {expected:.4f}"
+                f"net={s.estimated_net_consumption_kwh:.4f} but "
+                f"house({s.avg_house_consumption_kwh:.4f}) + ev({s.ev_planned_load_kwh:.4f}) "
+                f"- pv({s.solcast_pv_estimate_kwh:.4f}) = {expected:.4f}"
             )
 
     def test_ev_smart_charging_slots_have_nonzero_ev_load(self):
@@ -1897,21 +1897,21 @@ class TestEvPlannedLoadPipelineIntegrity:
         assert ev_slots_in_output, "Must have at least one non-past EV slot"
 
         for s in ev_slots_in_output:
-            total_supply = s.batteries_discharged + s.grid_import_kwh
+            total_supply = s.batteries_discharged_kwh + s.grid_import_kwh
             total_demand = (
-                s.avg_house_consumption
+                s.avg_house_consumption_kwh
                 + s.ev_planned_load_kwh
-                + s.batteries_charged
-                - s.solcast_pv_estimate
+                + s.batteries_charged_kwh
+                - s.solcast_pv_estimate_kwh
             )
             # Clamped: supply can't be negative; small floating-point tolerance
             assert total_supply == pytest.approx(max(total_demand, 0.0), abs=0.1), (
                 f"Slot {s.start.isoformat()}: "
-                f"supply (batt_disch={s.batteries_discharged:.3f} + "
+                f"supply (batt_disch={s.batteries_discharged_kwh:.3f} + "
                 f"grid={s.grid_import_kwh:.3f}) = {total_supply:.3f} "
                 f"should ≈ demand {max(total_demand, 0.0):.3f} "
-                f"(house={s.avg_house_consumption:.3f} + ev={s.ev_planned_load_kwh:.3f} "
-                f"+ chg={s.batteries_charged:.3f} - pv={s.solcast_pv_estimate:.3f}); "
+                f"(house={s.avg_house_consumption_kwh:.3f} + ev={s.ev_planned_load_kwh:.3f} "
+                f"+ chg={s.batteries_charged_kwh:.3f} - pv={s.solcast_pv_estimate_kwh:.3f}); "
                 "EV load not in SoC simulation."
             )
 
@@ -1944,11 +1944,11 @@ class TestPastSlotSocPenaltyExclusion:
                 price=SlotPrice(import_price=0.50, export_price=0.10),
             )
             s.recommendation = Recommendations.TimePassed.value
-            s.estimated_battery_soc = 0.0  # sentinel written by simulate_soc
+            s.estimated_battery_soc_pct = 0.0  # sentinel written by simulate_soc
             s.grid_import_kwh = 0.0
             s.grid_export_kwh = 0.0
-            s.batteries_charged = 0.0
-            s.batteries_discharged = 0.0
+            s.batteries_charged_kwh = 0.0
+            s.batteries_discharged_kwh = 0.0
             slots.append(s)
         for j in range(n_future):
             s = PlannedSlot(
@@ -1957,11 +1957,11 @@ class TestPastSlotSocPenaltyExclusion:
                 price=SlotPrice(import_price=0.50, export_price=0.10),
             )
             s.recommendation = Recommendations.BatteriesWaitMode.value
-            s.estimated_battery_soc = 30.0  # above floor, no violation
+            s.estimated_battery_soc_pct = 30.0  # above floor, no violation
             s.grid_import_kwh = 0.5
             s.grid_export_kwh = 0.0
-            s.batteries_charged = 0.0
-            s.batteries_discharged = 0.0
+            s.batteries_charged_kwh = 0.0
+            s.batteries_discharged_kwh = 0.0
             slots.append(s)
         return slots
 
@@ -1992,7 +1992,7 @@ class TestPastSlotSocPenaltyExclusion:
             price=SlotPrice(import_price=0.50, export_price=0.10),
         )
         s.recommendation = Recommendations.BatteriesWaitMode.value
-        s.estimated_battery_soc = 5.0  # below floor
+        s.estimated_battery_soc_pct = 5.0  # below floor
         s.grid_import_kwh = 0.0
         s.grid_export_kwh = 0.0
         breakdown = score_plan([s], weights)
@@ -2049,7 +2049,7 @@ class TestPastSlotSocPenaltyExclusion:
             # Deliberately leave recommendation as BatteriesWaitMode so the
             # enum-fallback path does NOT trigger — only now-based skip applies.
             s.recommendation = Recommendations.BatteriesWaitMode.value
-            s.estimated_battery_soc = 0.0  # would violate min_soc=5% if scored
+            s.estimated_battery_soc_pct = 0.0  # would violate min_soc=5% if scored
             s.grid_import_kwh = 99.0  # large — must not appear in import_cost
             past_slots.append(s)
 

@@ -205,8 +205,8 @@ def select_best_candidate(
                 trail = "  ".join(
                     f"{s.start.strftime('%d %H:%M')}→{s.end.strftime('%H:%M')} "
                     f"rec={s.recommendation or '(none)'}  "
-                    f"cap={s.estimated_battery_capacity:.3f}  "
-                    f"soc={s.estimated_battery_soc:.1f}%"
+                    f"cap={s.estimated_battery_capacity_kwh:.3f}  "
+                    f"soc={s.estimated_battery_soc_pct:.1f}%"
                     for s in _future_tail
                 )
                 log_planner(
@@ -316,7 +316,7 @@ def _validate_candidate(
     """
     floor = end_of_discharge_soc_pct - _SOC_TOLERANCE_PCT
     for slot in candidate.slots:
-        soc = slot.estimated_battery_soc
+        soc = slot.estimated_battery_soc_pct
         if soc > 0 and soc < floor:
             return (
                 False,

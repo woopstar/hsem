@@ -333,7 +333,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
             if day_offset == 0:
                 continue  # today — no decay
             decay = _DECAY_BY_DAY.get(day_offset, 0.80)
-            slot.solcast_pv_estimate = round(slot.solcast_pv_estimate * decay, 3)
+            slot.solcast_pv_estimate_kwh = round(slot.solcast_pv_estimate_kwh * decay, 3)
         if horizon_days >= 2:
             warnings.append(
                 f"Multi-day horizon ({horizon_days} day(s)): confidence decay applied "
@@ -392,7 +392,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     # solar — the correct starting point for EV slot selection.
     # Using raw PV here would over-state available free energy because the
     # house has already consumed a portion of the solar output.
-    slot_net_surplus = [max(-s.estimated_net_consumption, 0.0) for s in slots]
+    slot_net_surplus = [max(-s.estimated_net_consumption_kwh, 0.0) for s in slots]
     _slot_starts = [s.start for s in slots]
     _slot_ends = [s.end for s in slots]
     _slot_prices = [s.price.import_price for s in slots]
@@ -567,10 +567,10 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
             slot.end.strftime("%H:%M"),
             slot.price.import_price,
             slot.price.export_price,
-            slot.solcast_pv_estimate,
-            slot.avg_house_consumption,
-            slot.estimated_net_consumption,
-            slot.estimated_cost,
+            slot.solcast_pv_estimate_kwh,
+            slot.avg_house_consumption_kwh,
+            slot.estimated_net_consumption_kwh,
+            slot.estimated_cost_currency,
         )
 
     # Mark past slots
@@ -692,7 +692,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
             slot.start.strftime("%d %H:%M"),
             slot.end.strftime("%H:%M"),
             slot.recommendation or "None",
-            slot.batteries_charged,
+            slot.batteries_charged_kwh,
             slot.ev_planned_load_kwh,
         )
 
@@ -912,12 +912,12 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
             slot.start.strftime("%d %H:%M"),
             slot.end.strftime("%H:%M"),
             slot.recommendation if slot.recommendation is not None else "(none!)",
-            slot.estimated_battery_soc,
-            slot.batteries_charged,
-            slot.batteries_discharged,
-            slot.solcast_pv_estimate,
-            slot.avg_house_consumption,
-            slot.estimated_net_consumption,
+            slot.estimated_battery_soc_pct,
+            slot.batteries_charged_kwh,
+            slot.batteries_discharged_kwh,
+            slot.solcast_pv_estimate_kwh,
+            slot.avg_house_consumption_kwh,
+            slot.estimated_net_consumption_kwh,
             slot.grid_import_kwh,
             slot.grid_export_kwh,
             slot.price.import_price,
@@ -934,7 +934,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
 
     # Final SoC
     future_slots = [s for s in slots if as_tz(s.end, now.tzinfo) > now]
-    battery_soc_at_end = future_slots[-1].estimated_battery_soc if future_slots else 0.0
+    battery_soc_at_end = future_slots[-1].estimated_battery_soc_pct if future_slots else 0.0
 
     # Derive contiguous charge/discharge windows
     charge_windows, discharge_windows = _derive_windows(slots)
@@ -1043,7 +1043,7 @@ def _derive_windows(
     def _flush_charge(group: list[PlannedSlot]) -> None:
         if not group:
             return
-        total_e = round(sum(s.batteries_charged for s in group), 3)
+        total_e = round(sum(s.batteries_charged_kwh for s in group), 3)
         prices = [s.price.import_price for s in group]
         avg_p = round(sum(prices) / len(prices), 4)
         charge_windows.append(
@@ -1141,17 +1141,17 @@ def _build_explanation(
     )
 
     # --- Forecast metrics ------------------------------------------------
-    forecast_pv = round(sum(s.solcast_pv_estimate for s in future_slots), 3)
-    forecast_net = round(sum(s.estimated_net_consumption for s in future_slots), 3)
+    forecast_pv = round(sum(s.solcast_pv_estimate_kwh for s in future_slots), 3)
+    forecast_net = round(sum(s.estimated_net_consumption_kwh for s in future_slots), 3)
 
     # --- Cost of the selected plan ---------------------------------------
-    selected_cost = round(sum(s.estimated_cost for s in future_slots), 4)
+    selected_cost = round(sum(s.estimated_cost_currency for s in future_slots), 4)
 
     # --- Do-nothing baseline cost (battery fully idle, pay import for all load) ---
     # Computed here so strategy detection can use it in summaries.
     do_nothing_cost = round(
         sum(
-            max(s.estimated_net_consumption, 0.0) * s.price.import_price
+            max(s.estimated_net_consumption_kwh, 0.0) * s.price.import_price
             for s in future_slots
         ),
         4,

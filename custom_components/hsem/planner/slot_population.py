@@ -175,7 +175,7 @@ def populate_solcast(
             pv_by_hour = {sc.hour: sc.pv_estimate for sc in solcast_slots}  # type: ignore[assignment]
         aligned = tsi.align_hourly_pv(pv_by_hour)
         for slot, val in zip(slots, aligned):
-            slot.solcast_pv_estimate = 0.0 if math.isnan(val) else round(val, 3)
+            slot.solcast_pv_estimate_kwh = 0.0 if math.isnan(val) else round(val, 3)
         return
 
     solcast_by_hour = index_by_hour(solcast_slots)
@@ -183,7 +183,7 @@ def populate_solcast(
 
     for slot in slots:
         sc = solcast_by_hour.get(slot.start.hour)
-        slot.solcast_pv_estimate = round(sc.pv_estimate / scale, 3) if sc else 0.0
+        slot.solcast_pv_estimate_kwh = round(sc.pv_estimate / scale, 3) if sc else 0.0
 
 
 def populate_consumption(
@@ -250,11 +250,11 @@ def populate_consumption(
             h7 = v7 / sf
             h14 = v14 / sf
             hourly_avg, _ = weighted_avg_consumption(h1, h3, h7, h14, w1, w3, w7, w14)
-            slot.avg_house_consumption = round(hourly_avg * sf, 3)
-            slot.avg_house_consumption_1d = round(v1, 3)
-            slot.avg_house_consumption_3d = round(v3, 3)
-            slot.avg_house_consumption_7d = round(v7, 3)
-            slot.avg_house_consumption_14d = round(v14, 3)
+            slot.avg_house_consumption_kwh = round(hourly_avg * sf, 3)
+            slot.avg_house_consumption_1d_kwh = round(v1, 3)
+            slot.avg_house_consumption_3d_kwh = round(v3, 3)
+            slot.avg_house_consumption_7d_kwh = round(v7, 3)
+            slot.avg_house_consumption_14d_kwh = round(v14, 3)
         return
 
     avg_by_hour = index_by_hour(averages)
@@ -270,11 +270,11 @@ def populate_consumption(
             ca.avg_1d, ca.avg_3d, ca.avg_7d, ca.avg_14d, w1, w3, w7, w14
         )
         slot_avg = round(hourly_avg / scale, 3)
-        slot.avg_house_consumption = slot_avg
-        slot.avg_house_consumption_1d = round(ca.avg_1d / scale, 3)
-        slot.avg_house_consumption_3d = round(ca.avg_3d / scale, 3)
-        slot.avg_house_consumption_7d = round(ca.avg_7d / scale, 3)
-        slot.avg_house_consumption_14d = round(ca.avg_14d / scale, 3)
+        slot.avg_house_consumption_kwh = slot_avg
+        slot.avg_house_consumption_1d_kwh = round(ca.avg_1d / scale, 3)
+        slot.avg_house_consumption_3d_kwh = round(ca.avg_3d / scale, 3)
+        slot.avg_house_consumption_7d_kwh = round(ca.avg_7d / scale, 3)
+        slot.avg_house_consumption_14d_kwh = round(ca.avg_14d / scale, 3)
 
 
 def populate_net_consumption(slots: list[PlannedSlot]) -> None:
@@ -294,10 +294,10 @@ def populate_net_consumption(slots: list[PlannedSlot]) -> None:
         slots: Mutable list of planned slots to update.
     """
     for slot in slots:
-        slot.estimated_net_consumption = round(
-            slot.avg_house_consumption
+        slot.estimated_net_consumption_kwh = round(
+            slot.avg_house_consumption_kwh
             + slot.ev_planned_load_kwh
-            - slot.solcast_pv_estimate,
+            - slot.solcast_pv_estimate_kwh,
             3,
         )
 
@@ -309,11 +309,11 @@ def populate_estimated_cost(slots: list[PlannedSlot]) -> None:
         slots: Mutable list of planned slots to update.
     """
     for slot in slots:
-        net = slot.estimated_net_consumption
+        net = slot.estimated_net_consumption_kwh
         if net >= 0:
-            slot.estimated_cost = round(net * slot.price.import_price, 4)
+            slot.estimated_cost_currency = round(net * slot.price.import_price, 4)
         else:
-            slot.estimated_cost = round(net * slot.price.export_price, 4)
+            slot.estimated_cost_currency = round(net * slot.price.export_price, 4)
 
 
 def mark_time_passed(slots: list[PlannedSlot], now: datetime) -> None:
@@ -351,28 +351,28 @@ def populate_battery_capacity(
         if slot_start <= now < slot_end:
             cap = max(
                 current_capacity
-                - slot.estimated_net_consumption
-                + slot.batteries_charged,
+                - slot.estimated_net_consumption_kwh
+                + slot.batteries_charged_kwh,
                 0.0,
             )
         elif slot_start >= now:
             cap = max(
                 previous_capacity
-                - slot.estimated_net_consumption
-                + slot.batteries_charged,
+                - slot.estimated_net_consumption_kwh
+                + slot.batteries_charged_kwh,
                 0.0,
             )
         else:
             cap = 0.0
 
         cap = min(cap, usable_capacity)
-        slot.estimated_battery_capacity = round(cap, 3)
+        slot.estimated_battery_capacity_kwh = round(cap, 3)
         previous_capacity = cap
 
     for slot in slots:
-        if slot.estimated_battery_capacity > 0 and usable_capacity > 0:
-            slot.estimated_battery_soc = round(
-                slot.estimated_battery_capacity / usable_capacity * 100, 2
+        if slot.estimated_battery_capacity_kwh > 0 and usable_capacity > 0:
+            slot.estimated_battery_soc_pct = round(
+                slot.estimated_battery_capacity_kwh / usable_capacity * 100, 2
             )
 
 

@@ -137,12 +137,12 @@ class TestSlotValues:
     """Per-slot computed values must be consistent with inputs."""
 
     def test_net_consumption_equals_load_minus_pv(self):
-        """estimated_net_consumption must equal avg_consumption - pv_estimate."""
+        """estimated_net_consumption_kwh must equal avg_consumption - pv_estimate."""
         result = run_planner(make_summer_day_input())
         for slot in result.slots:
-            expected = round(slot.avg_house_consumption - slot.solcast_pv_estimate, 3)
-            assert abs(slot.estimated_net_consumption - expected) < 1e-6, (
-                f"Hour {slot.start.hour}: net={slot.estimated_net_consumption}, "
+            expected = round(slot.avg_house_consumption_kwh - slot.solcast_pv_estimate_kwh, 3)
+            assert abs(slot.estimated_net_consumption_kwh - expected) < 1e-6, (
+                f"Hour {slot.start.hour}: net={slot.estimated_net_consumption_kwh}, "
                 f"expected={expected}"
             )
 
@@ -150,8 +150,8 @@ class TestSlotValues:
         """Battery SoC estimates must be in [0, 100]."""
         result = run_planner(make_summer_day_input())
         for slot in result.slots:
-            assert 0 <= slot.estimated_battery_soc <= 100, (
-                f"SoC out of range at {slot.start.isoformat()}: {slot.estimated_battery_soc}"
+            assert 0 <= slot.estimated_battery_soc_pct <= 100, (
+                f"SoC out of range at {slot.start.isoformat()}: {slot.estimated_battery_soc_pct}"
             )
 
     def test_battery_capacity_bounded(self):
@@ -162,16 +162,16 @@ class TestSlotValues:
         usable = 10.0 * (1 - 0.10)  # 9 kWh
         result = run_planner(inp)
         for slot in result.slots:
-            assert slot.estimated_battery_capacity <= usable + 1e-6, (
-                f"Capacity {slot.estimated_battery_capacity} exceeds usable {usable}"
+            assert slot.estimated_battery_capacity_kwh <= usable + 1e-6, (
+                f"Capacity {slot.estimated_battery_capacity_kwh} exceeds usable {usable}"
             )
 
     def test_batteries_charged_non_negative(self):
-        """batteries_charged must never be negative."""
+        """batteries_charged_kwh must never be negative."""
         result = run_planner(make_summer_day_input())
         for slot in result.slots:
-            assert slot.batteries_charged >= 0, (
-                f"Negative batteries_charged at {slot.start.isoformat()}"
+            assert slot.batteries_charged_kwh >= 0, (
+                f"Negative batteries_charged_kwh at {slot.start.isoformat()}"
             )
 
     def test_prices_populated_correctly(self):
@@ -508,7 +508,7 @@ class TestOutputHelpers:
 
     def test_total_charged_energy_matches_sum(self):
         result = run_planner(make_summer_day_input(battery_soc_pct=0.0))
-        expected = round(sum(s.batteries_charged for s in result.slots), 3)
+        expected = round(sum(s.batteries_charged_kwh for s in result.slots), 3)
         assert abs(result.total_charged_energy_kwh() - expected) < 1e-6
 
 

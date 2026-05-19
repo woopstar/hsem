@@ -119,7 +119,7 @@ def apply_discharge_schedules(
                 ):
                     # Subtract extra EV load (injected, base_load_includes_ev=False)
                     # so the battery only targets house coverage.
-                    battery_net = s.estimated_net_consumption - s.ev_planned_load_kwh
+                    battery_net = s.estimated_net_consumption_kwh - s.ev_planned_load_kwh
                     occ_net += battery_net
                     occ_prices.append(s.price.import_price)
 
@@ -282,7 +282,7 @@ def apply_charge_schedules(
                 energy = min(max_charge_per_interval, occurrence_budget - charged)
                 if energy > 0:
                     s.recommendation = Recommendations.BatteriesChargeGrid.value
-                    s.batteries_charged = round(energy, 3)
+                    s.batteries_charged_kwh = round(energy, 3)
                     charged += energy
 
             # Priority 2: solar surplus
@@ -291,18 +291,18 @@ def apply_charge_schedules(
                     (
                         e
                         for e in eligible
-                        if e.estimated_net_consumption
+                        if e.estimated_net_consumption_kwh
                         < SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH
                         and e.recommendation is None
                     ),
                     # NOTE: SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH is negative, so this
                     # selects slots where net consumption is sufficiently negative
                     # (i.e., there is a meaningful solar surplus to charge from).
-                    key=lambda x: (x.estimated_net_consumption, x.start),
+                    key=lambda x: (x.estimated_net_consumption_kwh, x.start),
                 ):
                     if charged >= occurrence_budget:
                         break
-                    available_solar = abs(s.estimated_net_consumption)
+                    available_solar = abs(s.estimated_net_consumption_kwh)
                     energy = min(
                         max_charge_per_interval,
                         occurrence_budget - charged,
@@ -310,7 +310,7 @@ def apply_charge_schedules(
                     )
                     if energy > 0:
                         s.recommendation = Recommendations.BatteriesChargeSolar.value
-                        s.batteries_charged = round(energy, 3)
+                        s.batteries_charged_kwh = round(energy, 3)
                         charged += energy
 
             # Priority 3: cheapest grid hours (depreciation threshold + cycle cost guard)
@@ -371,7 +371,7 @@ def _apply_grid_charge(
         if tentative_charged >= needed - charged_so_far:
             break
         available_solar = (
-            abs(s.estimated_net_consumption) if s.estimated_net_consumption < 0 else 0
+            abs(s.estimated_net_consumption_kwh) if s.estimated_net_consumption_kwh < 0 else 0
         )
         grid_needed = min(
             max_charge_per_interval - available_solar,
@@ -400,7 +400,7 @@ def _apply_grid_charge(
         if charged >= needed:
             break
         available_solar = (
-            abs(s.estimated_net_consumption) if s.estimated_net_consumption < 0 else 0
+            abs(s.estimated_net_consumption_kwh) if s.estimated_net_consumption_kwh < 0 else 0
         )
         grid_needed = min(
             max_charge_per_interval - available_solar,
@@ -409,7 +409,7 @@ def _apply_grid_charge(
         energy = available_solar + grid_needed
         if energy > 0:
             s.recommendation = Recommendations.BatteriesChargeGrid.value
-            s.batteries_charged = round(energy, 3)
+            s.batteries_charged_kwh = round(energy, 3)
             charged += energy
 
 
@@ -442,10 +442,10 @@ def calculate_required_battery_until_solar(
     for slot in slots:
         if as_tz(slot.start, now.tzinfo) < now:
             continue
-        if slot.estimated_net_consumption < 0:
+        if slot.estimated_net_consumption_kwh < 0:
             break
-        if slot.estimated_net_consumption > 0:
-            required += slot.estimated_net_consumption
+        if slot.estimated_net_consumption_kwh > 0:
+            required += slot.estimated_net_consumption_kwh
 
     buffer_kwh = usable_capacity * (discharge_buffer_pct / 100)
     return round(required + buffer_kwh, 3)
@@ -491,12 +491,12 @@ def apply_excess_export(
     # the battery as predominantly solar-charged and bypass the price threshold;
     # otherwise the full price-difference guard applies.
     solar_charged_kwh = sum(
-        s.batteries_charged
+        s.batteries_charged_kwh
         for s in slots
         if s.recommendation == Recommendations.BatteriesChargeSolar.value
     )
     grid_charged_kwh = sum(
-        s.batteries_charged
+        s.batteries_charged_kwh
         for s in slots
         if s.recommendation == Recommendations.BatteriesChargeGrid.value
     )
@@ -537,7 +537,7 @@ def apply_excess_export(
         # Only positive net consumption (house load > solar) draws from the battery
         # discharge budget.  Solar-surplus slots (net < 0) contribute 0 drain because
         # the surplus is handled by solar, not by the battery.
-        battery_discharge_budget_kwh -= max(s.estimated_net_consumption, 0.0)
+        battery_discharge_budget_kwh -= max(s.estimated_net_consumption_kwh, 0.0)
 
 
 # ---------------------------------------------------------------------------
@@ -611,7 +611,7 @@ def apply_opportunistic_charge(
         energy = min(max_charge_per_interval, remaining_capacity - charged)
         if energy > 0:
             s.recommendation = Recommendations.BatteriesChargeGrid.value
-            s.batteries_charged = round(energy, 3)
+            s.batteries_charged_kwh = round(energy, 3)
             charged += energy
 
     # Priority 2: below-(depreciation − cycle cost) price
@@ -636,7 +636,7 @@ def apply_opportunistic_charge(
             energy = min(max_charge_per_interval, remaining_capacity - charged)
             if energy > 0:
                 s.recommendation = Recommendations.BatteriesChargeGrid.value
-                s.batteries_charged = round(energy, 3)
+                s.batteries_charged_kwh = round(energy, 3)
                 charged += energy
 
 
@@ -746,9 +746,9 @@ def apply_arbitrage_grid_charge(
             continue
         if s.recommendation is not None:
             continue
-        if s.estimated_net_consumption <= 0:
+        if s.estimated_net_consumption_kwh <= 0:
             continue
-        expensive_slots.append((s, float(s.estimated_net_consumption)))
+        expensive_slots.append((s, float(s.estimated_net_consumption_kwh)))
 
     if not expensive_slots:
         _LOGGER.debug(
@@ -838,7 +838,7 @@ def apply_arbitrage_grid_charge(
 
         if slot_charged > 1e-9:
             cand.recommendation = Recommendations.BatteriesChargeGrid.value
-            cand.batteries_charged = round(slot_charged, 3)
+            cand.batteries_charged_kwh = round(slot_charged, 3)
             charged_total += slot_charged
             chosen_any = True
         else:
@@ -933,7 +933,7 @@ def concentrate_discharge_on_expensive_slots(
     keep_set: set[int] = set()
     for s in discharge_slots:
         # Energy the battery must release to cover net_demand
-        slot_demand = max(s.estimated_net_consumption, 0.0)
+        slot_demand = max(s.estimated_net_consumption_kwh, 0.0)
         battery_needed = slot_demand / discharge_eff if discharge_eff > 1e-9 else 0.0
         # Respect the inverter's per-slot discharge power limit — the SoC
         # simulation caps at max_discharge_per_slot, so the concentration
@@ -962,7 +962,7 @@ def concentrate_discharge_on_expensive_slots(
             # Use BatteriesWaitMode so the fill pass in engine.py does NOT
             # re-mark this as BatteriesDischargeMode.
             s.recommendation = Recommendations.BatteriesWaitMode.value
-            s.batteries_charged = 0.0
+            s.batteries_charged_kwh = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -1034,15 +1034,15 @@ def apply_optimization_strategy(
             break
         # v5.1.0 threshold: <= NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH
         # (charge even near-zero-consumption slots)
-        if rec.estimated_net_consumption <= NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH:
+        if rec.estimated_net_consumption_kwh <= NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH:
             # Per-slot energy: how much this individual slot contributes, capped at
             # what is still needed.  Store the per-slot value so that summing across
             # slots in engine.py / total_charged_energy_kwh() is not double-counted.
-            slot_solar = abs(rec.estimated_net_consumption)
+            slot_solar = abs(rec.estimated_net_consumption_kwh)
             slot_energy = min(slot_solar, batteries_needed_charge - charged)
             charged += slot_energy
             rec.recommendation = Recommendations.BatteriesChargeSolar.value
-            rec.batteries_charged = round(slot_energy, 3)
+            rec.batteries_charged_kwh = round(slot_energy, 3)
 
     # Seasonal fill for remaining unassigned slots
     for rec in slots:
@@ -1061,7 +1061,7 @@ def apply_optimization_strategy(
         if current_month in months_winter:
             rec.recommendation = Recommendations.BatteriesWaitMode.value
         elif current_month in months_summer:
-            if rec.estimated_net_consumption <= NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH:
+            if rec.estimated_net_consumption_kwh <= NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH:
                 rec.recommendation = Recommendations.BatteriesChargeSolar.value
             else:
                 rec.recommendation = Recommendations.BatteriesDischargeMode.value

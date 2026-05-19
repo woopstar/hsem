@@ -77,8 +77,8 @@ def _make_simple_slot(
     import_price: float = 0.20,
     export_price: float = 0.05,
     recommendation: str | None = None,
-    batteries_charged: float = 0.0,
-    estimated_battery_soc: float = 50.0,
+    batteries_charged_kwh: float = 0.0,
+    estimated_battery_soc_pct: float = 50.0,
 ) -> PlannedSlot:
     """Build a minimal :class:`PlannedSlot` for generator unit tests."""
     start = datetime(2024, 6, 15, hour, 0, tzinfo=_TZ)
@@ -87,8 +87,8 @@ def _make_simple_slot(
         end=start + timedelta(hours=1),
         price=SlotPrice(import_price=import_price, export_price=export_price),
         recommendation=recommendation,
-        batteries_charged=batteries_charged,
-        estimated_battery_soc=estimated_battery_soc,
+        batteries_charged_kwh=batteries_charged_kwh,
+        estimated_battery_soc_pct=estimated_battery_soc_pct,
     )
     return slot
 
@@ -175,26 +175,26 @@ class TestSlotMutationHelpers:
             assert slot.recommendation is None
 
     def test_clear_all_zeroes_batteries_charged(self):
-        """``batteries_charged`` is zeroed on cleared slots."""
+        """``batteries_charged_kwh`` is zeroed on cleared slots."""
         slot = _make_simple_slot(
             hour=0,
             recommendation=Recommendations.BatteriesChargeGrid.value,
-            batteries_charged=3.5,
+            batteries_charged_kwh=3.5,
         )
         _clear_all_charge_discharge([slot])
-        assert abs(slot.batteries_charged) < 1e-9
+        assert abs(slot.batteries_charged_kwh) < 1e-9
 
     def test_remove_solar_charge_keeps_grid_charge(self):
         """_remove_solar_charge must not touch grid-charge slots."""
         grid_slot = _make_simple_slot(
             hour=0,
             recommendation=Recommendations.BatteriesChargeGrid.value,
-            batteries_charged=2.0,
+            batteries_charged_kwh=2.0,
         )
         solar_slot = _make_simple_slot(
             hour=1,
             recommendation=Recommendations.BatteriesChargeSolar.value,
-            batteries_charged=1.0,
+            batteries_charged_kwh=1.0,
         )
         _remove_solar_charge([grid_slot, solar_slot])
         assert grid_slot.recommendation == Recommendations.BatteriesChargeGrid.value
@@ -205,12 +205,12 @@ class TestSlotMutationHelpers:
         grid_slot = _make_simple_slot(
             hour=0,
             recommendation=Recommendations.BatteriesChargeGrid.value,
-            batteries_charged=2.0,
+            batteries_charged_kwh=2.0,
         )
         solar_slot = _make_simple_slot(
             hour=1,
             recommendation=Recommendations.BatteriesChargeSolar.value,
-            batteries_charged=1.0,
+            batteries_charged_kwh=1.0,
         )
         _remove_grid_charge([grid_slot, solar_slot])
         assert solar_slot.recommendation == Recommendations.BatteriesChargeSolar.value
@@ -248,10 +248,10 @@ class TestGenerateCandidates:
             slot = _make_simple_slot(hour=h, import_price=0.10 + 0.01 * h)
             if h in (1, 2):
                 slot.recommendation = Recommendations.BatteriesChargeGrid.value
-                slot.batteries_charged = 2.0
+                slot.batteries_charged_kwh = 2.0
             elif h in (10, 11):
                 slot.recommendation = Recommendations.BatteriesChargeSolar.value
-                slot.batteries_charged = 1.0
+                slot.batteries_charged_kwh = 1.0
             elif h in (17, 18, 19):
                 slot.recommendation = Recommendations.BatteriesDischargeMode.value
             slots.append(slot)
@@ -364,7 +364,7 @@ class TestValidateCandidate:
     def test_valid_plan_passes(self):
         """A plan where all slots have SoC above the floor is valid."""
         slots = [
-            _make_simple_slot(hour=h, estimated_battery_soc=50.0) for h in range(3)
+            _make_simple_slot(hour=h, estimated_battery_soc_pct=50.0) for h in range(3)
         ]
         plan = CandidatePlan(name="test", slots=slots)
         is_valid, reason = _validate_candidate(plan, end_of_discharge_soc_pct=10.0)
@@ -373,7 +373,7 @@ class TestValidateCandidate:
 
     def test_plan_with_zero_soc_passes(self):
         """Slots with soc=0 (unset) do not trigger the floor check."""
-        slots = [_make_simple_slot(hour=h, estimated_battery_soc=0.0) for h in range(3)]
+        slots = [_make_simple_slot(hour=h, estimated_battery_soc_pct=0.0) for h in range(3)]
         plan = CandidatePlan(name="test", slots=slots)
         is_valid, _ = _validate_candidate(plan, end_of_discharge_soc_pct=10.0)
         assert is_valid is True
@@ -381,10 +381,10 @@ class TestValidateCandidate:
     def test_plan_below_floor_is_invalid(self):
         """A slot where SoC is below the floor (minus tolerance) is invalid."""
         slots = [
-            _make_simple_slot(hour=h, estimated_battery_soc=50.0) for h in range(3)
+            _make_simple_slot(hour=h, estimated_battery_soc_pct=50.0) for h in range(3)
         ]
         # Set one slot well below the floor
-        slots[1].estimated_battery_soc = 5.0
+        slots[1].estimated_battery_soc_pct = 5.0
         plan = CandidatePlan(name="test", slots=slots)
         is_valid, reason = _validate_candidate(plan, end_of_discharge_soc_pct=10.0)
         assert is_valid is False
@@ -393,7 +393,7 @@ class TestValidateCandidate:
     def test_plan_at_tolerance_boundary_passes(self):
         """A plan at exactly floor - tolerance is considered valid."""
         # tolerance is 0.5 pct, floor is 10 → 9.5 should be valid
-        slots = [_make_simple_slot(hour=h, estimated_battery_soc=9.6) for h in range(3)]
+        slots = [_make_simple_slot(hour=h, estimated_battery_soc_pct=9.6) for h in range(3)]
         plan = CandidatePlan(name="test", slots=slots)
         is_valid, _ = _validate_candidate(plan, end_of_discharge_soc_pct=10.0)
         assert is_valid is True
@@ -667,55 +667,55 @@ class TestPassiveCandidate:
         )
 
     def test_passive_charges_on_pv_surplus(self):
-        """Slots with negative estimated_net_consumption get solar charge."""
+        """Slots with negative estimated_net_consumption_kwh get solar charge."""
         tz = ZoneInfo("Europe/Copenhagen")
         now = datetime(2024, 6, 15, 12, 0, tzinfo=tz)
         slots = [
             _make_simple_slot(
                 hour=8,  # start=08:00, end=09:00 — past
                 recommendation=Recommendations.BatteriesChargeGrid.value,
-                batteries_charged=3.0,
+                batteries_charged_kwh=3.0,
             ),
             _make_simple_slot(
                 hour=13,  # start=13:00, end=14:00 — future
                 recommendation=Recommendations.BatteriesDischargeMode.value,
-                batteries_charged=0.0,
+                batteries_charged_kwh=0.0,
             ),
             _make_simple_slot(
                 hour=14,  # start=14:00, end=15:00 — future
                 recommendation=None,
-                batteries_charged=0.0,
+                batteries_charged_kwh=0.0,
             ),
             _make_simple_slot(
                 hour=15,  # start=15:00, end=16:00 — future
                 recommendation=None,
-                batteries_charged=0.0,
+                batteries_charged_kwh=0.0,
             ),
         ]
         # Set up: slot 0 (past, surplus), slot 1 (future, surplus),
         # slot 2 (future, net positive), slot 3 (future, surplus)
-        slots[0].estimated_net_consumption = -2.0  # past surplus — ignored
-        slots[1].estimated_net_consumption = -2.0  # future surplus
-        slots[2].estimated_net_consumption = 1.5  # positive — ignored
-        slots[3].estimated_net_consumption = -0.5  # future surplus
+        slots[0].estimated_net_consumption_kwh = -2.0  # past surplus — ignored
+        slots[1].estimated_net_consumption_kwh = -2.0  # future surplus
+        slots[2].estimated_net_consumption_kwh = 1.5  # positive — ignored
+        slots[3].estimated_net_consumption_kwh = -0.5  # future surplus
 
         _apply_passive_solar(slots, now)
 
         # Past slot with surplus: recommendation cleared, not re-assigned
         assert slots[0].recommendation is None
-        assert abs(slots[0].batteries_charged) < 1e-9
+        assert abs(slots[0].batteries_charged_kwh) < 1e-9
 
         # Future slot with surplus (-2.0): gets BatteriesChargeSolar, charged=2.0
         assert slots[1].recommendation == Recommendations.BatteriesChargeSolar.value
-        assert slots[1].batteries_charged == pytest.approx(2.0)
+        assert slots[1].batteries_charged_kwh == pytest.approx(2.0)
 
         # Future slot with positive net consumption: remains None
         assert slots[2].recommendation is None
-        assert abs(slots[2].batteries_charged) < 1e-9
+        assert abs(slots[2].batteries_charged_kwh) < 1e-9
 
         # Future slot with surplus (-0.5): gets BatteriesChargeSolar, charged=0.5
         assert slots[3].recommendation == Recommendations.BatteriesChargeSolar.value
-        assert slots[3].batteries_charged == pytest.approx(0.5)
+        assert slots[3].batteries_charged_kwh == pytest.approx(0.5)
 
     def test_no_action_never_wins(self):
         """run_planner on a summer day must never select no_action as winner."""
@@ -749,7 +749,7 @@ class TestPassiveCandidate:
             for h in range(24)
         ]
         for s in slots:
-            s.estimated_net_consumption = -1.0  # all surplus
+            s.estimated_net_consumption_kwh = -1.0  # all surplus
 
         _apply_passive_solar(slots, now)
 

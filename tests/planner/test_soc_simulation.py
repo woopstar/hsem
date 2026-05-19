@@ -183,9 +183,9 @@ def _make_slots_for_simulation(
         start = t0 + timedelta(hours=i)
         end = start + timedelta(hours=1)
         slot = PlannedSlot(start=start, end=end)
-        slot.avg_house_consumption = load
-        slot.solcast_pv_estimate = pv
-        slot.batteries_charged = batteries_charged
+        slot.avg_house_consumption_kwh = load
+        slot.solcast_pv_estimate_kwh = pv
+        slot.batteries_charged_kwh = batteries_charged
     return slots, t0
 
 
@@ -203,9 +203,9 @@ class TestSimulateSocUnit:
             s = PlannedSlot(
                 start=t0 + timedelta(hours=i), end=t0 + timedelta(hours=i + 1)
             )
-            s.avg_house_consumption = 0.5
-            s.solcast_pv_estimate = 0.0
-            s.batteries_charged = 0.0
+            s.avg_house_consumption_kwh = 0.5
+            s.solcast_pv_estimate_kwh = 0.0
+            s.batteries_charged_kwh = 0.0
             slots.append(s)
 
         usable_kwh = 9.0  # 10 kWh rated, 10% min SoC
@@ -213,10 +213,10 @@ class TestSimulateSocUnit:
 
         simulate_soc(slots, t0, current_kwh, usable_kwh, usable_kwh, 5.0, None)
 
-        assert slots[0].estimated_battery_capacity == pytest.approx(3.5)
-        assert slots[1].estimated_battery_capacity == pytest.approx(3.0)
-        assert slots[2].estimated_battery_capacity == pytest.approx(2.5)
-        assert slots[3].estimated_battery_capacity == pytest.approx(2.0)
+        assert slots[0].estimated_battery_capacity_kwh == pytest.approx(3.5)
+        assert slots[1].estimated_battery_capacity_kwh == pytest.approx(3.0)
+        assert slots[2].estimated_battery_capacity_kwh == pytest.approx(2.5)
+        assert slots[3].estimated_battery_capacity_kwh == pytest.approx(2.0)
 
     def test_battery_never_goes_below_zero(self):
         """Battery capacity must never go negative (min SoC floor)."""
@@ -229,18 +229,18 @@ class TestSimulateSocUnit:
             s = PlannedSlot(
                 start=t0 + timedelta(hours=i), end=t0 + timedelta(hours=i + 1)
             )
-            s.avg_house_consumption = 2.0  # heavy load
-            s.solcast_pv_estimate = 0.0
-            s.batteries_charged = 0.0
+            s.avg_house_consumption_kwh = 2.0  # heavy load
+            s.solcast_pv_estimate_kwh = 0.0
+            s.batteries_charged_kwh = 0.0
             slots.append(s)
 
         simulate_soc(slots, t0, 2.0, 9.0, 9.0, 5.0, None)
 
         for slot in slots:
-            assert slot.estimated_battery_capacity >= 0.0, (
+            assert slot.estimated_battery_capacity_kwh >= 0.0, (
                 f"Battery went negative at {slot.start}"
             )
-            assert slot.estimated_battery_soc >= 0.0
+            assert slot.estimated_battery_soc_pct >= 0.0
 
     def test_battery_never_exceeds_usable(self):
         """Battery capacity must never exceed usable_kwh (max SoC ceiling)."""
@@ -253,19 +253,19 @@ class TestSimulateSocUnit:
             s = PlannedSlot(
                 start=t0 + timedelta(hours=i), end=t0 + timedelta(hours=i + 1)
             )
-            s.avg_house_consumption = 0.0
-            s.solcast_pv_estimate = 0.0
-            s.batteries_charged = 10.0  # large charge request
+            s.avg_house_consumption_kwh = 0.0
+            s.solcast_pv_estimate_kwh = 0.0
+            s.batteries_charged_kwh = 10.0  # large charge request
             slots.append(s)
 
         usable_kwh = 9.0
         simulate_soc(slots, t0, 4.0, usable_kwh, usable_kwh, 5.0, None)
 
         for slot in slots:
-            assert slot.estimated_battery_capacity <= usable_kwh + 1e-6, (
-                f"Battery exceeded max at {slot.start}: {slot.estimated_battery_capacity}"
+            assert slot.estimated_battery_capacity_kwh <= usable_kwh + 1e-6, (
+                f"Battery exceeded max at {slot.start}: {slot.estimated_battery_capacity_kwh}"
             )
-            assert slot.estimated_battery_soc <= 100.0 + 1e-6
+            assert slot.estimated_battery_soc_pct <= 100.0 + 1e-6
 
     def test_charge_power_limit_clamped(self):
         """batteries_charged must not exceed max_charge_per_slot."""
@@ -274,15 +274,15 @@ class TestSimulateSocUnit:
         tz = ZoneInfo("Europe/Copenhagen")
         t0 = datetime.fromisoformat("2024-06-15T00:00:00+02:00").replace(tzinfo=tz)
         s = PlannedSlot(start=t0, end=t0 + timedelta(hours=1))
-        s.avg_house_consumption = 0.0
-        s.solcast_pv_estimate = 0.0
-        s.batteries_charged = 10.0  # far exceeds limit
+        s.avg_house_consumption_kwh = 0.0
+        s.solcast_pv_estimate_kwh = 0.0
+        s.batteries_charged_kwh = 10.0  # far exceeds limit
 
         simulate_soc(
             [s], t0, 0.0, 9.0, 9.0, max_charge_per_slot=2.0, max_discharge_per_slot=None
         )
 
-        assert s.batteries_charged <= 2.0 + 1e-6
+        assert s.batteries_charged_kwh <= 2.0 + 1e-6
 
     def test_discharge_power_limit_clamped(self):
         """Discharge must not exceed max_discharge_per_slot."""
@@ -291,15 +291,15 @@ class TestSimulateSocUnit:
         tz = ZoneInfo("Europe/Copenhagen")
         t0 = datetime.fromisoformat("2024-06-15T00:00:00+02:00").replace(tzinfo=tz)
         s = PlannedSlot(start=t0, end=t0 + timedelta(hours=1))
-        s.avg_house_consumption = 5.0  # large load
-        s.solcast_pv_estimate = 0.0
-        s.batteries_charged = 0.0
+        s.avg_house_consumption_kwh = 5.0  # large load
+        s.solcast_pv_estimate_kwh = 0.0
+        s.batteries_charged_kwh = 0.0
 
         simulate_soc(
             [s], t0, 9.0, 9.0, 9.0, max_charge_per_slot=5.0, max_discharge_per_slot=1.5
         )
 
-        assert s.batteries_discharged <= 1.5 + 1e-6
+        assert s.batteries_discharged_kwh <= 1.5 + 1e-6
 
     def test_pv_surplus_exported_to_grid(self):
         """When PV exceeds load and battery is full, surplus is exported."""
@@ -308,9 +308,9 @@ class TestSimulateSocUnit:
         tz = ZoneInfo("Europe/Copenhagen")
         t0 = datetime.fromisoformat("2024-06-15T12:00:00+02:00").replace(tzinfo=tz)
         s = PlannedSlot(start=t0, end=t0 + timedelta(hours=1))
-        s.avg_house_consumption = 0.5
-        s.solcast_pv_estimate = 3.0  # big surplus
-        s.batteries_charged = 0.0
+        s.avg_house_consumption_kwh = 0.5
+        s.solcast_pv_estimate_kwh = 3.0  # big surplus
+        s.batteries_charged_kwh = 0.0
 
         # Battery already full; all surplus should go to grid
         simulate_soc(
@@ -318,7 +318,7 @@ class TestSimulateSocUnit:
         )
 
         # No discharge needed; surplus beyond battery goes to grid
-        assert s.batteries_discharged == pytest.approx(0.0)
+        assert s.batteries_discharged_kwh == pytest.approx(0.0)
         assert s.grid_export_kwh > 0.0
         assert s.grid_import_kwh == pytest.approx(0.0)
 
@@ -329,15 +329,15 @@ class TestSimulateSocUnit:
         tz = ZoneInfo("Europe/Copenhagen")
         t0 = datetime.fromisoformat("2024-06-15T00:00:00+02:00").replace(tzinfo=tz)
         s = PlannedSlot(start=t0, end=t0 + timedelta(hours=1))
-        s.avg_house_consumption = 1.0
-        s.solcast_pv_estimate = 0.0
-        s.batteries_charged = 0.0
+        s.avg_house_consumption_kwh = 1.0
+        s.solcast_pv_estimate_kwh = 0.0
+        s.batteries_charged_kwh = 0.0
 
         simulate_soc(
             [s], t0, 0.0, 9.0, 9.0, max_charge_per_slot=5.0, max_discharge_per_slot=None
         )
 
-        assert s.batteries_discharged == pytest.approx(0.0)
+        assert s.batteries_discharged_kwh == pytest.approx(0.0)
         assert s.grid_import_kwh == pytest.approx(1.0)
 
     def test_past_slots_get_zero_fields(self):
@@ -350,16 +350,16 @@ class TestSimulateSocUnit:
             start=t0 - timedelta(hours=2),
             end=t0 - timedelta(hours=1),
         )
-        s.avg_house_consumption = 0.5
-        s.solcast_pv_estimate = 0.0
-        s.batteries_charged = 0.0
+        s.avg_house_consumption_kwh = 0.5
+        s.solcast_pv_estimate_kwh = 0.0
+        s.batteries_charged_kwh = 0.0
 
         simulate_soc(
             [s], t0, 4.0, 9.0, 9.0, max_charge_per_slot=5.0, max_discharge_per_slot=None
         )
 
-        assert s.estimated_battery_capacity == pytest.approx(0.0)
-        assert s.estimated_battery_soc == pytest.approx(0.0)
+        assert s.estimated_battery_capacity_kwh == pytest.approx(0.0)
+        assert s.estimated_battery_soc_pct == pytest.approx(0.0)
 
 
 # ===========================================================================
@@ -374,29 +374,29 @@ class TestSoCBoundsIntegration:
         """SoC must never go below 0 on a summer day."""
         result = run_planner(make_summer_day_input())
         for slot in result.slots:
-            assert slot.estimated_battery_soc >= 0.0, (
-                f"SoC below zero at {slot.start}: {slot.estimated_battery_soc}"
+            assert slot.estimated_battery_soc_pct >= 0.0, (
+                f"SoC below zero at {slot.start}: {slot.estimated_battery_soc_pct}"
             )
 
     def test_soc_never_above_100_summer(self):
         """SoC must never exceed 100 % on a summer day."""
         result = run_planner(make_summer_day_input())
         for slot in result.slots:
-            assert slot.estimated_battery_soc <= 100.0 + 1e-6, (
-                f"SoC above 100 at {slot.start}: {slot.estimated_battery_soc}"
+            assert slot.estimated_battery_soc_pct <= 100.0 + 1e-6, (
+                f"SoC above 100 at {slot.start}: {slot.estimated_battery_soc_pct}"
             )
 
     def test_soc_never_below_zero_winter(self):
         """SoC must never go below 0 on a winter day."""
         result = run_planner(make_winter_day_input())
         for slot in result.slots:
-            assert slot.estimated_battery_soc >= 0.0
+            assert slot.estimated_battery_soc_pct >= 0.0
 
     def test_soc_never_above_100_winter(self):
         """SoC must never exceed 100 % on a winter day."""
         result = run_planner(make_winter_day_input())
         for slot in result.slots:
-            assert slot.estimated_battery_soc <= 100.0 + 1e-6
+            assert slot.estimated_battery_soc_pct <= 100.0 + 1e-6
 
     def test_soc_never_exceeds_max_soc_pct(self):
         """Absolute SoC must never exceed battery_max_soc_pct when it is < 100 %."""
@@ -413,9 +413,9 @@ class TestSoCBoundsIntegration:
         # Allow a tiny epsilon for floating-point rounding.
         for slot in result.slots:
             if slot.recommendation != Recommendations.TimePassed.value:
-                assert slot.estimated_battery_soc <= 80.0 + 0.1, (
+                assert slot.estimated_battery_soc_pct <= 80.0 + 0.1, (
                     f"Absolute SoC exceeded max_soc_pct=80 at {slot.start}: "
-                    f"{slot.estimated_battery_soc}"
+                    f"{slot.estimated_battery_soc_pct}"
                 )
 
     def test_battery_capacity_bounded_by_usable(self):
@@ -423,7 +423,7 @@ class TestSoCBoundsIntegration:
         result = run_planner(make_summer_day_input(battery_soc_pct=10.0))
         usable, _ = usable_capacity(10.0, 10.0, 10.0, 100.0)
         for slot in result.slots:
-            assert slot.estimated_battery_capacity <= usable + 1e-6
+            assert slot.estimated_battery_capacity_kwh <= usable + 1e-6
 
 
 class TestSoCEdgeCases:
@@ -447,7 +447,7 @@ class TestSoCEdgeCases:
             first = future_slots[0]
             # First slot starts at 100 %, capacity should be ≤ usable (no overcharge).
             usable, _ = usable_capacity(10.0, 100.0, 10.0)
-            assert first.estimated_battery_capacity <= usable + 1e-6
+            assert first.estimated_battery_capacity_kwh <= usable + 1e-6
 
     def test_battery_starts_empty(self):
         """An empty battery must not go negative."""
@@ -459,8 +459,8 @@ class TestSoCEdgeCases:
             )
         )
         for slot in result.slots:
-            assert slot.estimated_battery_capacity >= 0.0
-            assert slot.estimated_battery_soc >= 0.0
+            assert slot.estimated_battery_capacity_kwh >= 0.0
+            assert slot.estimated_battery_soc_pct >= 0.0
 
     def test_battery_mid_soc(self):
         """Mid-SoC battery should discharge gradually then stop at floor."""
@@ -482,7 +482,7 @@ class TestSoCEdgeCases:
             if s.recommendation != Recommendations.TimePassed.value
         ]
         # Battery capacity should be monotonically non-increasing (no external charge)
-        caps = [s.estimated_battery_capacity for s in future_slots]
+        caps = [s.estimated_battery_capacity_kwh for s in future_slots]
         for a, b in zip(caps, caps[1:]):
             assert b <= a + 1e-6, f"Battery capacity increased unexpectedly: {a} → {b}"
 
@@ -494,8 +494,8 @@ class TestSoCEdgeCases:
             )
         )
         for slot in result.slots:
-            assert slot.estimated_battery_soc == pytest.approx(0.0)
-            assert slot.estimated_battery_capacity == pytest.approx(0.0)
+            assert slot.estimated_battery_soc_pct == pytest.approx(0.0)
+            assert slot.estimated_battery_capacity_kwh == pytest.approx(0.0)
 
 
 class TestPowerLimits:
@@ -512,8 +512,8 @@ class TestPowerLimits:
         result = run_planner(inp)
         # max_charge_per_slot = 1 kW * 1h * 1.0 (no loss) = 1.0 kWh
         for slot in result.slots:
-            assert slot.batteries_charged <= 1.0 + 1e-6, (
-                f"Charge exceeded limit at {slot.start}: {slot.batteries_charged}"
+            assert slot.batteries_charged_kwh <= 1.0 + 1e-6, (
+                f"Charge exceeded limit at {slot.start}: {slot.batteries_charged_kwh}"
             )
 
     def test_discharge_power_limit_respected_in_full_run(self):
@@ -526,8 +526,8 @@ class TestPowerLimits:
         )
         result = run_planner(inp)
         for slot in result.slots:
-            assert slot.batteries_discharged <= 1.0 + 1e-6, (
-                f"Discharge exceeded limit at {slot.start}: {slot.batteries_discharged}"
+            assert slot.batteries_discharged_kwh <= 1.0 + 1e-6, (
+                f"Discharge exceeded limit at {slot.start}: {slot.batteries_discharged_kwh}"
             )
 
     def test_no_discharge_limit_allows_high_discharge(self):
@@ -543,7 +543,7 @@ class TestPowerLimits:
         result = run_planner(inp)
         # At least one future slot should discharge more than 1 kWh
         future_discharges = [
-            s.batteries_discharged
+            s.batteries_discharged_kwh
             for s in result.slots
             if s.recommendation != Recommendations.TimePassed.value
         ]
@@ -653,7 +653,7 @@ class TestMaxSoCPct:
         for slot in result.slots:
             if slot.recommendation != Recommendations.TimePassed.value:
                 # Absolute SoC must not exceed the configured max.
-                assert slot.estimated_battery_soc <= 75.0 + 0.1, (
+                assert slot.estimated_battery_soc_pct <= 75.0 + 0.1, (
                     f"Absolute SoC exceeded max_soc_pct=75 at {slot.start}: "
-                    f"{slot.estimated_battery_soc}"
+                    f"{slot.estimated_battery_soc_pct}"
                 )

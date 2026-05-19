@@ -60,7 +60,7 @@ def _slot(
         start=start,
         end=end,
         price=SlotPrice(import_price=import_price, export_price=export_price),
-        estimated_net_consumption=net_consumption,
+        estimated_net_consumption_kwh=net_consumption,
         recommendation=recommendation,
     )
 

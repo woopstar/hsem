@@ -13,10 +13,10 @@ These tests verify:
 6. ``normalize_datetime`` converts UTC-aware datetimes to HA-local aware ones.
 7. ``now()`` returns a timezone-aware datetime with microsecond=0.
 8. ``_apply_planner_output`` copies ``ev_planned_load_kwh`` to final recommendations.
-9. ``estimated_net_consumption`` is correct when EV load is included.
+9. ``estimated_net_consumption_kwh`` is correct when EV load is included.
 10. Unmatched planner slots emit a WARNING log — silent mismatch is disallowed.
 11. The recommendation resolver does NOT erase ``ev_planned_load_kwh`` or
-    ``estimated_net_consumption`` when it changes the recommendation label.
+    ``estimated_net_consumption_kwh`` when it changes the recommendation label.
 """
 
 from __future__ import annotations
@@ -58,16 +58,16 @@ def _make_planned_slot(start: datetime, end: datetime, **kwargs):
 
     defaults = {
         "price": SlotPrice(import_price=0.20, export_price=0.05),
-        "avg_house_consumption": 1.0,
-        "solcast_pv_estimate": 0.5,
+        "avg_house_consumption_kwh": 1.0,
+        "solcast_pv_estimate_kwh": 0.5,
         "ev_planned_load_kwh": 0.0,
-        "estimated_net_consumption": 0.5,
+        "estimated_net_consumption_kwh": 0.5,
         "recommendation": "batteries_wait_mode",
-        "batteries_charged": 0.0,
-        "batteries_discharged": 0.0,
-        "estimated_battery_soc": 50.0,
-        "estimated_battery_capacity": 5.0,
-        "estimated_cost": 0.05,
+        "batteries_charged_kwh": 0.0,
+        "batteries_discharged_kwh": 0.0,
+        "estimated_battery_soc_pct": 50.0,
+        "estimated_battery_capacity_kwh": 5.0,
+        "estimated_cost_currency": 0.05,
         "grid_import_kwh": 0.0,
         "grid_export_kwh": 0.0,
     }
@@ -80,24 +80,24 @@ def _make_hourly_recommendation(start: datetime, end: datetime, **kwargs):
     from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 
     defaults = {
-        "avg_house_consumption": 1.0,
-        "avg_house_consumption_1d": 1.0,
-        "avg_house_consumption_3d": 1.0,
-        "avg_house_consumption_7d": 1.0,
-        "avg_house_consumption_14d": 1.0,
-        "batteries_charged": 0.0,
-        "batteries_discharged": 0.0,
-        "estimated_battery_capacity": 5.0,
-        "estimated_battery_soc": 50,
-        "estimated_cost": 0.0,
-        "estimated_net_consumption": 0.0,
+        "avg_house_consumption_kwh": 1.0,
+        "avg_house_consumption_1d_kwh": 1.0,
+        "avg_house_consumption_3d_kwh": 1.0,
+        "avg_house_consumption_7d_kwh": 1.0,
+        "avg_house_consumption_14d_kwh": 1.0,
+        "batteries_charged_kwh": 0.0,
+        "batteries_discharged_kwh": 0.0,
+        "estimated_battery_capacity_kwh": 5.0,
+        "estimated_battery_soc_pct": 50,
+        "estimated_cost_currency": 0.0,
+        "estimated_net_consumption_kwh": 0.0,
         "ev_planned_load_kwh": 0.0,
         "export_price": 0.05,
         "grid_export_kwh": 0.0,
         "grid_import_kwh": 0.0,
         "import_price": 0.20,
         "recommendation": None,
-        "solcast_pv_estimate": 0.5,
+        "solcast_pv_estimate_kwh": 0.5,
     }
     defaults.update(kwargs)
     return HourlyRecommendation(start=start, end=end, **defaults)
@@ -422,7 +422,7 @@ class TestEvPlannedLoadReachesRecommendation:
                     t_start,
                     t_end,
                     ev_planned_load_kwh=ev,
-                    estimated_net_consumption=round(1.0 + ev - 0.5, 3),
+                    estimated_net_consumption_kwh=round(1.0 + ev - 0.5, 3),
                 )
             )
 
@@ -496,7 +496,7 @@ class TestEvPlannedLoadReachesRecommendation:
                     t_slot_start,
                     t_slot_end,
                     ev_planned_load_kwh=ev,
-                    estimated_net_consumption=round(1.0 + ev - 0.5, 3),
+                    estimated_net_consumption_kwh=round(1.0 + ev - 0.5, 3),
                 )
             )
 
@@ -531,7 +531,7 @@ class TestEvPlannedLoadReachesRecommendation:
                     t_slot_start,
                     t_slot_end,
                     ev_planned_load_kwh=ev,
-                    estimated_net_consumption=round(1.0 + ev - 0.5, 3),
+                    estimated_net_consumption_kwh=round(1.0 + ev - 0.5, 3),
                 )
             )
 
@@ -546,21 +546,21 @@ class TestEvPlannedLoadReachesRecommendation:
 
 
 # ===========================================================================
-# Test 6: estimated_net_consumption includes EV load
+# Test 6: estimated_net_consumption_kwh includes EV load
 # ===========================================================================
 
 
 class TestEstimatedNetConsumptionIncludesEVLoad:
-    """estimated_net_consumption must equal avg_house_consumption + ev_load - pv."""
+    """estimated_net_consumption_kwh must equal avg_house_consumption_kwh + ev_load - pv."""
 
     def test_formula_correct(self):
         """1.5 + 3.0 - 0.5 = 4.0 as per issue spec."""
         from custom_components.hsem.models.planner_outputs import PlannerOutput
 
-        avg_house_consumption = 1.5
+        avg_house_consumption_kwh = 1.5
         ev_planned_load_kwh = 3.0
-        solcast_pv_estimate = 0.5
-        expected_net = avg_house_consumption + ev_planned_load_kwh - solcast_pv_estimate
+        solcast_pv_estimate_kwh = 0.5
+        expected_net = avg_house_consumption_kwh + ev_planned_load_kwh - solcast_pv_estimate_kwh
 
         midnight = datetime(2026, 5, 14, 0, 0, 0, tzinfo=_FIXED_LOCAL_TZ)
         h = 10
@@ -570,25 +570,25 @@ class TestEstimatedNetConsumptionIncludesEVLoad:
         rec = _make_hourly_recommendation(
             t_start,
             t_end,
-            avg_house_consumption=avg_house_consumption,
-            solcast_pv_estimate=solcast_pv_estimate,
+            avg_house_consumption_kwh=avg_house_consumption_kwh,
+            solcast_pv_estimate_kwh=solcast_pv_estimate_kwh,
         )
         slot = _make_planned_slot(
             t_start,
             t_end,
-            avg_house_consumption=avg_house_consumption,
-            solcast_pv_estimate=solcast_pv_estimate,
+            avg_house_consumption_kwh=avg_house_consumption_kwh,
+            solcast_pv_estimate_kwh=solcast_pv_estimate_kwh,
             ev_planned_load_kwh=ev_planned_load_kwh,
-            estimated_net_consumption=round(expected_net, 3),
+            estimated_net_consumption_kwh=round(expected_net, 3),
         )
 
         coord = _make_bare_coordinator()
         coord._hourly_recommendations = [rec]
         coord._apply_planner_output(PlannerOutput(slots=[slot]))
 
-        assert rec.estimated_net_consumption == pytest.approx(expected_net, abs=1e-6), (
-            f"Expected estimated_net_consumption={expected_net}, "
-            f"got {rec.estimated_net_consumption}"
+        assert rec.estimated_net_consumption_kwh == pytest.approx(expected_net, abs=1e-6), (
+            f"Expected estimated_net_consumption_kwh={expected_net}, "
+            f"got {rec.estimated_net_consumption_kwh}"
         )
         assert rec.ev_planned_load_kwh == pytest.approx(ev_planned_load_kwh, abs=1e-9)
 
@@ -596,31 +596,31 @@ class TestEstimatedNetConsumptionIncludesEVLoad:
         """Without EV load: net = house - pv."""
         from custom_components.hsem.models.planner_outputs import PlannerOutput
 
-        avg_house_consumption = 1.2
-        solcast_pv_estimate = 0.8
-        expected_net = avg_house_consumption - solcast_pv_estimate
+        avg_house_consumption_kwh = 1.2
+        solcast_pv_estimate_kwh = 0.8
+        expected_net = avg_house_consumption_kwh - solcast_pv_estimate_kwh
 
         midnight = datetime(2026, 5, 14, 0, 0, 0, tzinfo=_FIXED_LOCAL_TZ)
         t_start = midnight + timedelta(hours=12)
         t_end = t_start + timedelta(hours=1)
 
         rec = _make_hourly_recommendation(
-            t_start, t_end, avg_house_consumption=avg_house_consumption
+            t_start, t_end, avg_house_consumption_kwh=avg_house_consumption_kwh
         )
         slot = _make_planned_slot(
             t_start,
             t_end,
-            avg_house_consumption=avg_house_consumption,
-            solcast_pv_estimate=solcast_pv_estimate,
+            avg_house_consumption_kwh=avg_house_consumption_kwh,
+            solcast_pv_estimate_kwh=solcast_pv_estimate_kwh,
             ev_planned_load_kwh=0.0,
-            estimated_net_consumption=round(expected_net, 3),
+            estimated_net_consumption_kwh=round(expected_net, 3),
         )
 
         coord = _make_bare_coordinator()
         coord._hourly_recommendations = [rec]
         coord._apply_planner_output(PlannerOutput(slots=[slot]))
 
-        assert rec.estimated_net_consumption == pytest.approx(expected_net, abs=1e-6)
+        assert rec.estimated_net_consumption_kwh == pytest.approx(expected_net, abs=1e-6)
 
 
 # ===========================================================================
@@ -683,7 +683,7 @@ class TestUnmatchedSlotLogsWarning:
             midnight + timedelta(hours=23),
             midnight + timedelta(hours=24),
             ev_planned_load_kwh=0.0,
-            estimated_net_consumption=0.0,
+            estimated_net_consumption_kwh=0.0,
         )
 
         # Planner has slots for 0-22 only; slot at 23 does not exist
@@ -711,7 +711,7 @@ class TestUnmatchedSlotLogsWarning:
 
 class TestResolverDoesNotEraseEVFields:
     """The recommendation resolver must not overwrite ev_planned_load_kwh or
-    estimated_net_consumption when it changes the recommendation label."""
+    estimated_net_consumption_kwh when it changes the recommendation label."""
 
     def _make_live_state(self, **kwargs):
         """Build a minimal LiveState-like mock."""
@@ -744,7 +744,7 @@ class TestResolverDoesNotEraseEVFields:
             t_start,
             t_end,
             ev_planned_load_kwh=3.5,
-            estimated_net_consumption=4.0,
+            estimated_net_consumption_kwh=4.0,
             recommendation="batteries_wait_mode",
         )
 
@@ -760,8 +760,8 @@ class TestResolverDoesNotEraseEVFields:
         assert rec.ev_planned_load_kwh == pytest.approx(3.5, abs=1e-9), (
             f"ev_planned_load_kwh was erased by resolver: {rec.ev_planned_load_kwh}"
         )
-        assert rec.estimated_net_consumption == pytest.approx(4.0, abs=1e-9), (
-            f"estimated_net_consumption was erased by resolver: {rec.estimated_net_consumption}"
+        assert rec.estimated_net_consumption_kwh == pytest.approx(4.0, abs=1e-9), (
+            f"estimated_net_consumption_kwh was erased by resolver: {rec.estimated_net_consumption_kwh}"
         )
 
     def test_resolver_preserves_ev_load_on_negative_price_override(self):
@@ -778,7 +778,7 @@ class TestResolverDoesNotEraseEVFields:
             t_start,
             t_end,
             ev_planned_load_kwh=2.1,
-            estimated_net_consumption=2.8,
+            estimated_net_consumption_kwh=2.8,
             recommendation="batteries_charge_solar",
         )
 
@@ -794,7 +794,7 @@ class TestResolverDoesNotEraseEVFields:
 
         assert rec.recommendation == "force_export"
         assert rec.ev_planned_load_kwh == pytest.approx(2.1, abs=1e-9)
-        assert rec.estimated_net_consumption == pytest.approx(2.8, abs=1e-9)
+        assert rec.estimated_net_consumption_kwh == pytest.approx(2.8, abs=1e-9)
 
     def test_resolver_preserves_ev_load_on_discharge_override(self):
         """BatteriesDischargeMode override must not clear ev_planned_load_kwh."""
@@ -810,7 +810,7 @@ class TestResolverDoesNotEraseEVFields:
             t_start,
             t_end,
             ev_planned_load_kwh=1.5,
-            estimated_net_consumption=2.0,
+            estimated_net_consumption_kwh=2.0,
             recommendation="batteries_wait_mode",
         )
 
@@ -828,7 +828,7 @@ class TestResolverDoesNotEraseEVFields:
 
         assert rec.recommendation == "batteries_discharge_mode"
         assert rec.ev_planned_load_kwh == pytest.approx(1.5, abs=1e-9)
-        assert rec.estimated_net_consumption == pytest.approx(2.0, abs=1e-9)
+        assert rec.estimated_net_consumption_kwh == pytest.approx(2.0, abs=1e-9)
 
 
 # ===========================================================================

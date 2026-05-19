@@ -560,10 +560,10 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             consumption_averages.append(
                 HourlyConsumptionAverage(
                     hour=h,
-                    avg_1d=round(rec.avg_house_consumption_1d * slots_per_hour, 3),
-                    avg_3d=round(rec.avg_house_consumption_3d * slots_per_hour, 3),
-                    avg_7d=round(rec.avg_house_consumption_7d * slots_per_hour, 3),
-                    avg_14d=round(rec.avg_house_consumption_14d * slots_per_hour, 3),
+                    avg_1d=round(rec.avg_house_consumption_1d_kwh * slots_per_hour, 3),
+                    avg_3d=round(rec.avg_house_consumption_3d_kwh * slots_per_hour, 3),
+                    avg_7d=round(rec.avg_house_consumption_7d_kwh * slots_per_hour, 3),
+                    avg_14d=round(rec.avg_house_consumption_14d_kwh * slots_per_hour, 3),
                     day_offset=day_offset,
                 )
             )
@@ -580,7 +580,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             solcast_slots.append(
                 SolcastSlot(
                     hour=h,
-                    pv_estimate=round(rec.solcast_pv_estimate * slots_per_hour, 3),
+                    pv_estimate=round(rec.solcast_pv_estimate_kwh * slots_per_hour, 3),
                     day_offset=day_offset,
                 )
             )
@@ -790,15 +790,15 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 unmatched.append(rec.start.isoformat())
                 continue
             rec.recommendation = slot.recommendation
-            rec.batteries_charged = slot.batteries_charged
-            rec.batteries_discharged = slot.batteries_discharged
-            rec.estimated_net_consumption = slot.estimated_net_consumption
+            rec.batteries_charged_kwh = slot.batteries_charged_kwh
+            rec.batteries_discharged_kwh = slot.batteries_discharged_kwh
+            rec.estimated_net_consumption_kwh = slot.estimated_net_consumption_kwh
             rec.ev_planned_load_kwh = slot.ev_planned_load_kwh
             rec.ev_accounted_load_kwh = slot.ev_accounted_load_kwh
             rec.ev_total_planned_load_kwh = slot.ev_total_planned_load_kwh
-            rec.estimated_cost = slot.estimated_cost
-            rec.estimated_battery_capacity = slot.estimated_battery_capacity
-            rec.estimated_battery_soc = slot.estimated_battery_soc
+            rec.estimated_cost_currency = slot.estimated_cost_currency
+            rec.estimated_battery_capacity_kwh = slot.estimated_battery_capacity_kwh
+            rec.estimated_battery_soc_pct = slot.estimated_battery_soc_pct
             rec.grid_import_kwh = slot.grid_import_kwh
             rec.grid_export_kwh = slot.grid_export_kwh
             # Copy the planner's PV estimate so that solcast_pv_estimate,
@@ -806,7 +806,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             # internally consistent in the final HourlyRecommendation output.
             # The planner may have applied confidence decay or other transforms
             # that differ from the raw value stored by the data populator.
-            rec.solcast_pv_estimate = slot.solcast_pv_estimate
+            rec.solcast_pv_estimate_kwh = slot.solcast_pv_estimate_kwh
 
         if unmatched:
             _LOGGER.warning(
@@ -853,25 +853,25 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             t_end = t_start + timedelta(minutes=interval_minutes)
             intervals.append(
                 HourlyRecommendation(
-                    avg_house_consumption=0.0,
-                    avg_house_consumption_1d=0.0,
-                    avg_house_consumption_3d=0.0,
-                    avg_house_consumption_7d=0.0,
-                    avg_house_consumption_14d=0.0,
-                    batteries_charged=0.0,
-                    batteries_discharged=0.0,
+                    avg_house_consumption_kwh=0.0,
+                    avg_house_consumption_1d_kwh=0.0,
+                    avg_house_consumption_3d_kwh=0.0,
+                    avg_house_consumption_7d_kwh=0.0,
+                    avg_house_consumption_14d_kwh=0.0,
+                    batteries_charged_kwh=0.0,
+                    batteries_discharged_kwh=0.0,
                     end=t_end,
-                    estimated_battery_capacity=0.0,
-                    estimated_battery_soc=0,
-                    estimated_cost=0.0,
-                    estimated_net_consumption=0.0,
+                    estimated_battery_capacity_kwh=0.0,
+                    estimated_battery_soc_pct=0,
+                    estimated_cost_currency=0.0,
+                    estimated_net_consumption_kwh=0.0,
                     ev_planned_load_kwh=0.0,
                     export_price=0.0,
                     grid_export_kwh=0.0,
                     grid_import_kwh=0.0,
                     import_price=0.0,
                     recommendation=None,
-                    solcast_pv_estimate=0.0,
+                    solcast_pv_estimate_kwh=0.0,
                     start=t_start,
                 )
             )

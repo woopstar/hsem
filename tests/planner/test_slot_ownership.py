@@ -7,10 +7,10 @@ Verifies the ownership model end-to-end:
   ``PlannedSlot`` because all its fields are immutable scalars or NamedTuples).
 - Final output is built from the **winner's** slots, not from stale base slots.
 - ``ev_planned_load_kwh`` survives candidate generation and winner selection.
-- ``estimated_net_consumption`` in the final output includes EV load.
+- ``estimated_net_consumption_kwh`` in the final output includes EV load.
 - Post-output recommendation resolver only changes ``recommendation`` labels —
   it never zeros or overwrites energy fields (``ev_planned_load_kwh``,
-  ``estimated_net_consumption``, ``batteries_charged``, etc.).
+  ``estimated_net_consumption_kwh``, ``batteries_charged_kwh``, etc.).
 
 All tests are pure-Python; no Home Assistant runtime is required.
 
@@ -148,10 +148,10 @@ def _make_slot(
     hour: int = 0,
     ev_kwh: float = 0.0,
     recommendation: str | None = None,
-    batteries_charged: float = 0.0,
-    avg_house_consumption: float = 1.0,
-    solcast_pv_estimate: float = 0.0,
-    estimated_net_consumption: float = 1.0,
+    batteries_charged_kwh: float = 0.0,
+    avg_house_consumption_kwh: float = 1.0,
+    solcast_pv_estimate_kwh: float = 0.0,
+    estimated_net_consumption_kwh: float = 1.0,
 ) -> PlannedSlot:
     """Build a minimal :class:`PlannedSlot` for unit tests."""
     start = _dt(hour)
@@ -160,42 +160,42 @@ def _make_slot(
         end=start + timedelta(hours=1),
         price=SlotPrice(import_price=0.20, export_price=0.05),
         recommendation=recommendation,
-        batteries_charged=batteries_charged,
-        avg_house_consumption=avg_house_consumption,
-        solcast_pv_estimate=solcast_pv_estimate,
-        estimated_net_consumption=estimated_net_consumption,
+        batteries_charged_kwh=batteries_charged_kwh,
+        avg_house_consumption_kwh=avg_house_consumption_kwh,
+        solcast_pv_estimate_kwh=solcast_pv_estimate_kwh,
+        estimated_net_consumption_kwh=estimated_net_consumption_kwh,
         ev_planned_load_kwh=ev_kwh,
     )
 
 
 def _make_hrec(
     ev_kwh: float = 0.0,
-    estimated_net_consumption: float = 1.0,
-    batteries_charged: float = 0.5,
+    estimated_net_consumption_kwh: float = 1.0,
+    batteries_charged_kwh: float = 0.5,
     recommendation: str | None = Recommendations.BatteriesWaitMode.value,
 ) -> HourlyRecommendation:
     """Return a minimal :class:`HourlyRecommendation` for resolver tests."""
     now = datetime.now(tz=_UTC)
     return HourlyRecommendation(
-        avg_house_consumption=1.0,
-        avg_house_consumption_1d=1.0,
-        avg_house_consumption_3d=1.0,
-        avg_house_consumption_7d=1.0,
-        avg_house_consumption_14d=1.0,
-        batteries_charged=batteries_charged,
-        batteries_discharged=0.0,
+        avg_house_consumption_kwh=1.0,
+        avg_house_consumption_1d_kwh=1.0,
+        avg_house_consumption_3d_kwh=1.0,
+        avg_house_consumption_7d_kwh=1.0,
+        avg_house_consumption_14d_kwh=1.0,
+        batteries_charged_kwh=batteries_charged_kwh,
+        batteries_discharged_kwh=0.0,
         end=now + timedelta(hours=1),
-        estimated_battery_capacity=5.0,
-        estimated_battery_soc=50.0,
-        estimated_cost=0.1,
-        estimated_net_consumption=estimated_net_consumption,
+        estimated_battery_capacity_kwh=5.0,
+        estimated_battery_soc_pct=50.0,
+        estimated_cost_currency=0.1,
+        estimated_net_consumption_kwh=estimated_net_consumption_kwh,
         ev_planned_load_kwh=ev_kwh,
         export_price=0.05,
         grid_export_kwh=0.0,
         grid_import_kwh=0.0,
         import_price=0.20,
         recommendation=recommendation,
-        solcast_pv_estimate=0.5,
+        solcast_pv_estimate_kwh=0.5,
         start=now,
     )
 
@@ -226,7 +226,7 @@ class TestShallowCopySafety:
     ``PlannedSlot`` has only scalar and immutable NamedTuple fields, so
     ``copy.copy`` is semantically equivalent to a deep copy for that class.
     These tests verify the invariant holds for every field that candidates
-    are allowed to mutate (``recommendation``, ``batteries_charged``,
+    are allowed to mutate (``recommendation``, ``batteries_charged_kwh``,
     ``ev_planned_load_kwh``).
     """
 
@@ -238,11 +238,11 @@ class TestShallowCopySafety:
         assert original[0].recommendation is None
 
     def test_batteries_charged_mutation_is_isolated(self):
-        """Mutating ``batteries_charged`` on a copy must not affect the original."""
-        original = [_make_slot(hour=0, batteries_charged=0.0)]
+        """Mutating ``batteries_charged_kwh`` on a copy must not affect the original."""
+        original = [_make_slot(hour=0, batteries_charged_kwh=0.0)]
         copies = _copy_slots(original)
-        copies[0].batteries_charged = 99.9
-        assert abs(original[0].batteries_charged) < 1e-9
+        copies[0].batteries_charged_kwh = 99.9
+        assert abs(original[0].batteries_charged_kwh) < 1e-9
 
     def test_ev_planned_load_mutation_is_isolated(self):
         """Mutating ``ev_planned_load_kwh`` on a copy must not affect the original."""
@@ -252,11 +252,11 @@ class TestShallowCopySafety:
         assert abs(original[0].ev_planned_load_kwh - 2.5) < 1e-9
 
     def test_estimated_net_consumption_mutation_is_isolated(self):
-        """Mutating ``estimated_net_consumption`` on a copy is isolated."""
-        original = [_make_slot(hour=0, estimated_net_consumption=1.5)]
+        """Mutating ``estimated_net_consumption_kwh`` on a copy is isolated."""
+        original = [_make_slot(hour=0, estimated_net_consumption_kwh=1.5)]
         copies = _copy_slots(original)
-        copies[0].estimated_net_consumption = 0.0
-        assert abs(original[0].estimated_net_consumption - 1.5) < 1e-9
+        copies[0].estimated_net_consumption_kwh = 0.0
+        assert abs(original[0].estimated_net_consumption_kwh - 1.5) < 1e-9
 
     def test_copy_count_equals_original(self):
         """``_copy_slots`` returns the same number of slots as the input."""
@@ -392,7 +392,7 @@ class TestEvPlannedLoadSurvivesWinnerSelection:
         assert total >= 0.0, f"Total EV planned load must be ≥ 0, got {total}"
 
     def test_ev_load_consistent_with_net_consumption(self):
-        """Each output slot: estimated_net_consumption ≈ avg_house + ev_load - pv.
+        """Each output slot: estimated_net_consumption_kwh ≈ avg_house + ev_load - pv.
 
         This verifies that ``populate_net_consumption`` was applied AFTER
         ``ev_planned_load_kwh`` was written (correct) and not before (stale).
@@ -401,14 +401,14 @@ class TestEvPlannedLoadSurvivesWinnerSelection:
         output = run_planner(inp)
         for slot in output.slots:
             expected = (
-                slot.avg_house_consumption
+                slot.avg_house_consumption_kwh
                 + slot.ev_planned_load_kwh
-                - slot.solcast_pv_estimate
+                - slot.solcast_pv_estimate_kwh
             )
-            assert abs(slot.estimated_net_consumption - round(expected, 3)) < 1e-6, (
-                f"Slot {slot.start}: estimated_net_consumption={slot.estimated_net_consumption} "
-                f"but avg_house={slot.avg_house_consumption}, ev_load={slot.ev_planned_load_kwh}, "
-                f"pv={slot.solcast_pv_estimate} → expected {round(expected, 3)}"
+            assert abs(slot.estimated_net_consumption_kwh - round(expected, 3)) < 1e-6, (
+                f"Slot {slot.start}: estimated_net_consumption_kwh={slot.estimated_net_consumption_kwh} "
+                f"but avg_house={slot.avg_house_consumption_kwh}, ev_load={slot.ev_planned_load_kwh}, "
+                f"pv={slot.solcast_pv_estimate_kwh} → expected {round(expected, 3)}"
             )
 
 
@@ -419,7 +419,7 @@ class TestEvPlannedLoadSurvivesWinnerSelection:
 
 class TestFinalRecommendationIncludesEvLoad:
     """The mapping from ``PlannedSlot`` → ``HourlyRecommendation`` must carry
-    ``ev_planned_load_kwh`` and ``estimated_net_consumption``.
+    ``ev_planned_load_kwh`` and ``estimated_net_consumption_kwh``.
 
     This test validates the coordinator's ``_apply_planner_output`` field-copy
     contract by verifying that the output ``PlannedSlot`` fields are exactly
@@ -436,7 +436,7 @@ class TestFinalRecommendationIncludesEvLoad:
             assert isinstance(slot.ev_planned_load_kwh, float)
 
     def test_output_slot_net_consumption_includes_ev(self):
-        """``estimated_net_consumption`` on output slots includes EV load."""
+        """``estimated_net_consumption_kwh`` on output slots includes EV load."""
         inp = _make_ev_input()
         output = run_planner(inp)
         # For any slot with EV load, net consumption must be >= avg_house - pv
@@ -445,10 +445,10 @@ class TestFinalRecommendationIncludesEvLoad:
             if abs(slot.ev_planned_load_kwh) < 1e-9:
                 continue
             # net consumption without EV would be: avg_house - pv
-            no_ev_net = slot.avg_house_consumption - slot.solcast_pv_estimate
+            no_ev_net = slot.avg_house_consumption_kwh - slot.solcast_pv_estimate_kwh
             # With EV it must be higher (more demand)
-            assert slot.estimated_net_consumption > no_ev_net - 1e-6, (
-                f"Slot {slot.start}: net_consumption={slot.estimated_net_consumption} "
+            assert slot.estimated_net_consumption_kwh > no_ev_net - 1e-6, (
+                f"Slot {slot.start}: net_consumption={slot.estimated_net_consumption_kwh} "
                 f"should be > no-EV baseline {no_ev_net} when ev_load={slot.ev_planned_load_kwh}"
             )
 
@@ -459,15 +459,15 @@ class TestFinalRecommendationIncludesEvLoad:
             start=_dt(10),
             end=_dt(11),
             price=SlotPrice(import_price=0.20, export_price=0.05),
-            avg_house_consumption=1.0,
-            solcast_pv_estimate=3.5,
+            avg_house_consumption_kwh=1.0,
+            solcast_pv_estimate_kwh=3.5,
             ev_planned_load_kwh=2.5,
-            estimated_net_consumption=round(1.0 + 2.5 - 3.5, 3),  # 0.0
-            estimated_cost=0.0,
-            estimated_battery_soc=55.0,
-            estimated_battery_capacity=4.5,
-            batteries_charged=0.0,
-            batteries_discharged=0.5,
+            estimated_net_consumption_kwh=round(1.0 + 2.5 - 3.5, 3),  # 0.0
+            estimated_cost_currency=0.0,
+            estimated_battery_soc_pct=55.0,
+            estimated_battery_capacity_kwh=4.5,
+            batteries_charged_kwh=0.0,
+            batteries_discharged_kwh=0.5,
             grid_import_kwh=0.0,
             grid_export_kwh=0.5,
             recommendation=Recommendations.EVSmartCharging.value,
@@ -475,44 +475,44 @@ class TestFinalRecommendationIncludesEvLoad:
 
         # Simulate the coordinator's _apply_planner_output field copy.
         hrec = HourlyRecommendation(
-            avg_house_consumption=0.0,
-            avg_house_consumption_1d=0.0,
-            avg_house_consumption_3d=0.0,
-            avg_house_consumption_7d=0.0,
-            avg_house_consumption_14d=0.0,
-            batteries_charged=0.0,
-            batteries_discharged=0.0,
+            avg_house_consumption_kwh=0.0,
+            avg_house_consumption_1d_kwh=0.0,
+            avg_house_consumption_3d_kwh=0.0,
+            avg_house_consumption_7d_kwh=0.0,
+            avg_house_consumption_14d_kwh=0.0,
+            batteries_charged_kwh=0.0,
+            batteries_discharged_kwh=0.0,
             end=_dt(11),
-            estimated_battery_capacity=0.0,
-            estimated_battery_soc=0.0,
-            estimated_cost=0.0,
-            estimated_net_consumption=0.0,
+            estimated_battery_capacity_kwh=0.0,
+            estimated_battery_soc_pct=0.0,
+            estimated_cost_currency=0.0,
+            estimated_net_consumption_kwh=0.0,
             ev_planned_load_kwh=0.0,
             export_price=0.0,
             grid_export_kwh=0.0,
             grid_import_kwh=0.0,
             import_price=0.0,
             recommendation=None,
-            solcast_pv_estimate=0.0,
+            solcast_pv_estimate_kwh=0.0,
             start=_dt(10),
         )
         # Apply the same copies the coordinator performs in _apply_planner_output.
         hrec.recommendation = slot.recommendation
-        hrec.batteries_charged = slot.batteries_charged
-        hrec.batteries_discharged = slot.batteries_discharged
-        hrec.estimated_net_consumption = slot.estimated_net_consumption
+        hrec.batteries_charged_kwh = slot.batteries_charged_kwh
+        hrec.batteries_discharged_kwh = slot.batteries_discharged_kwh
+        hrec.estimated_net_consumption_kwh = slot.estimated_net_consumption_kwh
         hrec.ev_planned_load_kwh = slot.ev_planned_load_kwh
-        hrec.estimated_cost = slot.estimated_cost
-        hrec.estimated_battery_capacity = slot.estimated_battery_capacity
-        hrec.estimated_battery_soc = slot.estimated_battery_soc
+        hrec.estimated_cost_currency = slot.estimated_cost_currency
+        hrec.estimated_battery_capacity_kwh = slot.estimated_battery_capacity_kwh
+        hrec.estimated_battery_soc_pct = slot.estimated_battery_soc_pct
         hrec.grid_import_kwh = slot.grid_import_kwh
         hrec.grid_export_kwh = slot.grid_export_kwh
-        hrec.solcast_pv_estimate = slot.solcast_pv_estimate
+        hrec.solcast_pv_estimate_kwh = slot.solcast_pv_estimate_kwh
 
         assert hrec.recommendation == Recommendations.EVSmartCharging.value
         assert abs(hrec.ev_planned_load_kwh - 2.5) < 1e-9
-        assert abs(hrec.estimated_net_consumption - 0.0) < 1e-9
-        assert abs(hrec.solcast_pv_estimate - 3.5) < 1e-9
+        assert abs(hrec.estimated_net_consumption_kwh - 0.0) < 1e-9
+        assert abs(hrec.solcast_pv_estimate_kwh - 3.5) < 1e-9
 
 
 # ===========================================================================
@@ -572,12 +572,12 @@ class TestCandidateIsolation:
     def test_batteries_charged_mutation_of_candidate_a_does_not_affect_candidate_b(
         self,
     ):
-        """Mutating ``batteries_charged`` on candidate A must not affect candidate B."""
+        """Mutating ``batteries_charged_kwh`` on candidate A must not affect candidate B."""
         candidates = self._make_candidates()
         c_a = candidates[0]
         c_b = candidates[1]
-        c_a.slots[2].batteries_charged = 99.9
-        assert abs(c_b.slots[2].batteries_charged - 0.0) < 1e-9
+        c_a.slots[2].batteries_charged_kwh = 99.9
+        assert abs(c_b.slots[2].batteries_charged_kwh - 0.0) < 1e-9
 
 
 # ===========================================================================
@@ -588,21 +588,21 @@ class TestCandidateIsolation:
 class TestResolverPreservesEnergyFields:
     """``resolve_current_recommendation`` must only change the recommendation label.
 
-    Energy fields (``ev_planned_load_kwh``, ``estimated_net_consumption``,
-    ``batteries_charged``, ``grid_import_kwh``, ``grid_export_kwh``,
-    ``batteries_discharged``) must be identical before and after the call
+    Energy fields (``ev_planned_load_kwh``, ``estimated_net_consumption_kwh``,
+    ``batteries_charged_kwh``, ``grid_import_kwh``, ``grid_export_kwh``,
+    ``batteries_discharged_kwh``) must be identical before and after the call
     for all four resolver branches.
     """
 
     _ENERGY_FIELDS = (
         "ev_planned_load_kwh",
-        "estimated_net_consumption",
-        "batteries_charged",
-        "batteries_discharged",
+        "estimated_net_consumption_kwh",
+        "batteries_charged_kwh",
+        "batteries_discharged_kwh",
         "grid_import_kwh",
         "grid_export_kwh",
-        "solcast_pv_estimate",
-        "avg_house_consumption",
+        "solcast_pv_estimate_kwh",
+        "avg_house_consumption_kwh",
     )
 
     def _snapshot_energy(self, rec: HourlyRecommendation) -> dict[str, float]:
@@ -611,7 +611,7 @@ class TestResolverPreservesEnergyFields:
     def test_negative_price_branch_preserves_energy_fields(self):
         """ForceExport override must not modify energy fields."""
         rec = _make_hrec(
-            ev_kwh=2.5, estimated_net_consumption=0.5, batteries_charged=1.0
+            ev_kwh=2.5, estimated_net_consumption_kwh=0.5, batteries_charged_kwh=1.0
         )
         before = self._snapshot_energy(rec)
         resolve_current_recommendation(rec, _make_live(import_price=-0.05), 0.0)
@@ -621,7 +621,7 @@ class TestResolverPreservesEnergyFields:
     def test_ev_charging_branch_preserves_energy_fields(self):
         """EVSmartCharging override must not modify energy fields."""
         rec = _make_hrec(
-            ev_kwh=3.0, estimated_net_consumption=1.5, batteries_charged=0.5
+            ev_kwh=3.0, estimated_net_consumption_kwh=1.5, batteries_charged_kwh=0.5
         )
         before = self._snapshot_energy(rec)
         resolve_current_recommendation(rec, _make_live(ev_charging=True), 0.0)
@@ -631,7 +631,7 @@ class TestResolverPreservesEnergyFields:
     def test_discharge_mode_branch_preserves_energy_fields(self):
         """BatteriesDischargeMode override must not modify energy fields."""
         rec = _make_hrec(
-            ev_kwh=1.0, estimated_net_consumption=0.8, batteries_charged=0.0
+            ev_kwh=1.0, estimated_net_consumption_kwh=0.8, batteries_charged_kwh=0.0
         )
         before = self._snapshot_energy(rec)
         resolve_current_recommendation(
@@ -646,7 +646,7 @@ class TestResolverPreservesEnergyFields:
         """When recommendation is BatteriesChargeGrid, no fields change."""
         rec = _make_hrec(
             ev_kwh=2.0,
-            batteries_charged=3.5,
+            batteries_charged_kwh=3.5,
             recommendation=Recommendations.BatteriesChargeGrid.value,
         )
         before_rec = rec.recommendation
@@ -659,7 +659,7 @@ class TestResolverPreservesEnergyFields:
         """When no override condition is met, nothing changes."""
         rec = _make_hrec(
             ev_kwh=0.0,
-            batteries_charged=1.5,
+            batteries_charged_kwh=1.5,
             recommendation=Recommendations.BatteriesWaitMode.value,
         )
         before_rec = rec.recommendation
@@ -694,13 +694,13 @@ class TestResolverPreservesEnergyFields:
 
 
 # ===========================================================================
-# 7. End-to-end: estimated_net_consumption in final output includes EV load
+# 7. End-to-end: estimated_net_consumption_kwh in final output includes EV load
 # ===========================================================================
 
 
 class TestNetConsumptionIncludesEvLoadEndToEnd:
-    """Full engine run: every non-past output slot's ``estimated_net_consumption``
-    must equal ``avg_house_consumption + ev_planned_load_kwh - solcast_pv_estimate``
+    """Full engine run: every non-past output slot's ``estimated_net_consumption_kwh``
+    must equal ``avg_house_consumption_kwh + ev_planned_load_kwh - solcast_pv_estimate_kwh``
     to within floating-point rounding.
 
     This is the spec invariant from ``populate_net_consumption``:
@@ -713,16 +713,16 @@ class TestNetConsumptionIncludesEvLoadEndToEnd:
         output = run_planner(inp)
         for slot in output.slots:
             expected = round(
-                slot.avg_house_consumption
+                slot.avg_house_consumption_kwh
                 + slot.ev_planned_load_kwh
-                - slot.solcast_pv_estimate,
+                - slot.solcast_pv_estimate_kwh,
                 3,
             )
-            assert abs(slot.estimated_net_consumption - expected) < 1e-6, (
+            assert abs(slot.estimated_net_consumption_kwh - expected) < 1e-6, (
                 f"Slot {slot.start.isoformat()}: "
-                f"estimated_net_consumption={slot.estimated_net_consumption} "
-                f"!= {expected} (house={slot.avg_house_consumption}, "
-                f"ev={slot.ev_planned_load_kwh}, pv={slot.solcast_pv_estimate})"
+                f"estimated_net_consumption_kwh={slot.estimated_net_consumption_kwh} "
+                f"!= {expected} (house={slot.avg_house_consumption_kwh}, "
+                f"ev={slot.ev_planned_load_kwh}, pv={slot.solcast_pv_estimate_kwh})"
             )
 
     def test_ev_slots_have_higher_net_consumption_than_no_ev_run(self):
@@ -745,11 +745,11 @@ class TestNetConsumptionIncludesEvLoadEndToEnd:
             if abs(slot_ev.ev_planned_load_kwh) > 1e-9:
                 # Slot with EV load must have strictly higher net consumption
                 assert (
-                    slot_ev.estimated_net_consumption
-                    > slot_no_ev.estimated_net_consumption - 1e-6
+                    slot_ev.estimated_net_consumption_kwh
+                    > slot_no_ev.estimated_net_consumption_kwh - 1e-6
                 ), (
-                    f"Slot {start}: EV net={slot_ev.estimated_net_consumption} "
-                    f"should exceed no-EV net={slot_no_ev.estimated_net_consumption}"
+                    f"Slot {start}: EV net={slot_ev.estimated_net_consumption_kwh} "
+                    f"should exceed no-EV net={slot_no_ev.estimated_net_consumption_kwh}"
                 )
                 elevated += 1
 

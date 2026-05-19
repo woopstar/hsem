@@ -50,9 +50,9 @@ def _make_slot(
     export_price: float = 0.05,
     grid_import_kwh: float = 0.0,
     grid_export_kwh: float = 0.0,
-    batteries_charged: float = 0.0,
-    batteries_discharged: float = 0.0,
-    estimated_battery_soc: float = 50.0,
+    batteries_charged_kwh: float = 0.0,
+    batteries_discharged_kwh: float = 0.0,
+    estimated_battery_soc_pct: float = 50.0,
     recommendation: str | None = None,
 ) -> PlannedSlot:
     """Build a single :class:`PlannedSlot` for unit tests."""
@@ -63,9 +63,9 @@ def _make_slot(
         price=SlotPrice(import_price=import_price, export_price=export_price),
         grid_import_kwh=grid_import_kwh,
         grid_export_kwh=grid_export_kwh,
-        batteries_charged=batteries_charged,
-        batteries_discharged=batteries_discharged,
-        estimated_battery_soc=estimated_battery_soc,
+        batteries_charged_kwh=batteries_charged_kwh,
+        batteries_discharged_kwh=batteries_discharged_kwh,
+        estimated_battery_soc_pct=estimated_battery_soc_pct,
         recommendation=recommendation,
     )
 
@@ -76,9 +76,9 @@ def _make_day_of_slots(
     export_price: float = 0.05,
     grid_import_kwh: float = 0.5,
     grid_export_kwh: float = 0.0,
-    batteries_charged: float = 0.0,
-    batteries_discharged: float = 0.0,
-    estimated_battery_soc: float = 50.0,
+    batteries_charged_kwh: float = 0.0,
+    batteries_discharged_kwh: float = 0.0,
+    estimated_battery_soc_pct: float = 50.0,
 ) -> list[PlannedSlot]:
     """Build 24 identical slots spanning a full day."""
     return [
@@ -88,9 +88,9 @@ def _make_day_of_slots(
             export_price=export_price,
             grid_import_kwh=grid_import_kwh,
             grid_export_kwh=grid_export_kwh,
-            batteries_charged=batteries_charged,
-            batteries_discharged=batteries_discharged,
-            estimated_battery_soc=estimated_battery_soc,
+            batteries_charged_kwh=batteries_charged_kwh,
+            batteries_discharged_kwh=batteries_discharged_kwh,
+            estimated_battery_soc_pct=estimated_battery_soc_pct,
         )
         for h in range(24)
     ]
@@ -125,8 +125,8 @@ class TestReturnTypeContract:
         slots = _make_day_of_slots(
             grid_import_kwh=1.0,
             grid_export_kwh=0.5,
-            batteries_charged=0.2,
-            batteries_discharged=0.2,
+            batteries_charged_kwh=0.2,
+            batteries_discharged_kwh=0.2,
         )
         weights = CostWeights(
             battery_purchase_price=10_000.0,
@@ -236,8 +236,8 @@ class TestConversionLoss:
         slot = _make_slot(
             import_price=0.20,
             export_price=0.05,
-            batteries_charged=0.0,
-            batteries_discharged=0.0,
+            batteries_charged_kwh=0.0,
+            batteries_discharged_kwh=0.0,
         )
         bd = score_plan([slot], CostWeights())
         assert bd.conversion_loss_cost == pytest.approx(0.0)
@@ -247,8 +247,8 @@ class TestConversionLoss:
         slot = _make_slot(
             import_price=0.20,
             export_price=0.05,
-            batteries_charged=1.0,
-            batteries_discharged=0.0,
+            batteries_charged_kwh=1.0,
+            batteries_discharged_kwh=0.0,
         )
         bd = score_plan(
             [slot],
@@ -264,8 +264,8 @@ class TestConversionLoss:
         slot = _make_slot(
             import_price=0.20,
             export_price=0.05,
-            batteries_charged=0.0,
-            batteries_discharged=1.0,
+            batteries_charged_kwh=0.0,
+            batteries_discharged_kwh=1.0,
         )
         bd = score_plan(
             [slot],
@@ -281,8 +281,8 @@ class TestConversionLoss:
         slot = _make_slot(
             import_price=0.20,
             export_price=0.05,
-            batteries_charged=5.0,
-            batteries_discharged=5.0,
+            batteries_charged_kwh=5.0,
+            batteries_discharged_kwh=5.0,
         )
         bd = score_plan(
             [slot],
@@ -301,7 +301,7 @@ class TestCycleCost:
 
     def test_explicit_cycle_cost_per_kwh(self):
         """Explicit cycle_cost_per_kwh of 0.05 → max(1,1)=1 kWh cycled = 0.05."""
-        slot = _make_slot(batteries_charged=1.0, batteries_discharged=1.0)
+        slot = _make_slot(batteries_charged_kwh=1.0, batteries_discharged_kwh=1.0)
         bd = score_plan([slot], CostWeights(cycle_cost_per_kwh=0.05))
         assert bd.cycle_cost == pytest.approx(0.05, rel=1e-5)
 
@@ -315,7 +315,7 @@ class TestCycleCost:
         expected_per_kwh = 10_000.0 / (
             2.0 * 10.0 * 6000
         )  # 2× for throughput double-count
-        slot = _make_slot(batteries_charged=1.0, batteries_discharged=0.0)
+        slot = _make_slot(batteries_charged_kwh=1.0, batteries_discharged_kwh=0.0)
         bd = score_plan(
             [slot],
             CostWeights(
@@ -331,7 +331,7 @@ class TestCycleCost:
 
     def test_zero_purchase_price_disables_cycle_cost(self):
         """Zero battery price → cycle cost is 0."""
-        slot = _make_slot(batteries_charged=3.0, batteries_discharged=3.0)
+        slot = _make_slot(batteries_charged_kwh=3.0, batteries_discharged_kwh=3.0)
         bd = score_plan(
             [slot],
             CostWeights(
@@ -345,7 +345,7 @@ class TestCycleCost:
 
     def test_zero_cycle_cost_weight_disables_term(self):
         """cycle_cost_per_kwh=0.0 disables the term entirely."""
-        slot = _make_slot(batteries_charged=5.0, batteries_discharged=5.0)
+        slot = _make_slot(batteries_charged_kwh=5.0, batteries_discharged_kwh=5.0)
         bd = score_plan([slot], CostWeights(cycle_cost_per_kwh=0.0))
         assert bd.cycle_cost == pytest.approx(0.0)
 
@@ -360,7 +360,7 @@ class TestSocPenalty:
 
     def test_soc_within_bounds_no_penalty(self):
         """SoC in [min, max] → soc_penalty = 0."""
-        slot = _make_slot(estimated_battery_soc=50.0)
+        slot = _make_slot(estimated_battery_soc_pct=50.0)
         bd = score_plan(
             [slot],
             CostWeights(min_soc_pct=10.0, max_soc_pct=100.0),
@@ -373,7 +373,7 @@ class TestSocPenalty:
             min_soc_pct=10.0,
             soc_low_penalty_weight=0.01,
         )
-        slot = _make_slot(estimated_battery_soc=5.0)
+        slot = _make_slot(estimated_battery_soc_pct=5.0)
         bd = score_plan([slot], weights)
         # violation = 10 - 5 = 5 pct → 0.01 × 5² = 0.25
         assert bd.soc_penalty == pytest.approx(0.25, rel=1e-5)
@@ -384,7 +384,7 @@ class TestSocPenalty:
             max_soc_pct=95.0,
             soc_high_penalty_weight=0.01,
         )
-        slot = _make_slot(estimated_battery_soc=100.0)
+        slot = _make_slot(estimated_battery_soc_pct=100.0)
         bd = score_plan([slot], weights)
         # violation = 100 - 95 = 5 pct → 0.01 × 5² = 0.25
         assert bd.soc_penalty == pytest.approx(0.25, rel=1e-5)
@@ -395,7 +395,7 @@ class TestSocPenalty:
             min_soc_pct=50.0,
             soc_low_penalty_weight=0.0,
         )
-        slot = _make_slot(estimated_battery_soc=1.0)  # far below min
+        slot = _make_slot(estimated_battery_soc_pct=1.0)  # far below min
         bd = score_plan([slot], weights)
         assert bd.soc_penalty == pytest.approx(0.0)
 
@@ -406,8 +406,8 @@ class TestSocPenalty:
             soc_low_penalty_weight=0.01,
             soc_high_penalty_weight=0.0,
         )
-        slot_5pct = _make_slot(estimated_battery_soc=15.0)  # violation = 5
-        slot_10pct = _make_slot(estimated_battery_soc=10.0)  # violation = 10
+        slot_5pct = _make_slot(estimated_battery_soc_pct=15.0)  # violation = 5
+        slot_10pct = _make_slot(estimated_battery_soc_pct=10.0)  # violation = 10
         bd5 = score_plan([slot_5pct], weights)
         bd10 = score_plan([slot_10pct], weights)
         assert bd10.soc_penalty == pytest.approx(bd5.soc_penalty * 4, rel=1e-5)
@@ -602,8 +602,8 @@ class TestComparePlansKnownWinner:
             _make_slot(
                 grid_import_kwh=1.0,
                 import_price=0.20,
-                batteries_charged=3.0,
-                batteries_discharged=3.0,
+                batteries_charged_kwh=3.0,
+                batteries_discharged_kwh=3.0,
             )
         ]
         bd_a, bd_b, winner = compare_plans(plan_a, plan_b, weights)
@@ -620,8 +620,8 @@ class TestComparePlansKnownWinner:
             min_soc_pct=10.0,
             soc_low_penalty_weight=0.05,
         )
-        plan_a = [_make_slot(estimated_battery_soc=50.0)]
-        plan_b = [_make_slot(estimated_battery_soc=5.0)]
+        plan_a = [_make_slot(estimated_battery_soc_pct=50.0)]
+        plan_b = [_make_slot(estimated_battery_soc_pct=5.0)]
         bd_a, bd_b, winner = compare_plans(plan_a, plan_b, weights)
         assert winner == "plan_a"
         assert bd_b.soc_penalty > 0.0
@@ -682,9 +682,9 @@ class TestComparePlansKnownWinner:
                 export_price=0.06,
                 grid_import_kwh=5.0,
                 grid_export_kwh=4.0,
-                batteries_charged=5.0,
-                batteries_discharged=5.0,
-                estimated_battery_soc=50.0,
+                batteries_charged_kwh=5.0,
+                batteries_discharged_kwh=5.0,
+                estimated_battery_soc_pct=50.0,
             )
         ]
         plan_b = [
@@ -693,9 +693,9 @@ class TestComparePlansKnownWinner:
                 export_price=0.06,
                 grid_import_kwh=5.0,
                 grid_export_kwh=0.0,
-                batteries_charged=0.0,
-                batteries_discharged=0.0,
-                estimated_battery_soc=50.0,
+                batteries_charged_kwh=0.0,
+                batteries_discharged_kwh=0.0,
+                estimated_battery_soc_pct=50.0,
             )
         ]
         bd_a, bd_b, winner = compare_plans(plan_a, plan_b, weights)
@@ -722,31 +722,31 @@ class TestComparePlansKnownWinner:
             hour=0,
             import_price=0.22,
             export_price=0.05,
-            batteries_charged=9.0,
-            batteries_discharged=0.0,
+            batteries_charged_kwh=9.0,
+            batteries_discharged_kwh=0.0,
             grid_import_kwh=9.0 / 0.95,  # charge_stored / charge_eff
             grid_export_kwh=0.0,
-            estimated_battery_soc=50.0,
+            estimated_battery_soc_pct=50.0,
         )
         discharge_slot = _make_slot(
             hour=1,
             import_price=1.68,
             export_price=0.05,
-            batteries_charged=0.0,
-            batteries_discharged=9.0,
+            batteries_charged_kwh=0.0,
+            batteries_discharged_kwh=9.0,
             grid_import_kwh=0.0,
             grid_export_kwh=0.0,
-            estimated_battery_soc=50.0,
+            estimated_battery_soc_pct=50.0,
         )
         no_action_slot = _make_slot(
             hour=0,
             import_price=1.68,
             export_price=0.05,
-            batteries_charged=0.0,
-            batteries_discharged=0.0,
+            batteries_charged_kwh=0.0,
+            batteries_discharged_kwh=0.0,
             grid_import_kwh=9.0,
             grid_export_kwh=0.0,
-            estimated_battery_soc=50.0,
+            estimated_battery_soc_pct=50.0,
         )
 
         weights = CostWeights(

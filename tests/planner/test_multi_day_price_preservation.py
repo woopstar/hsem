@@ -341,10 +341,10 @@ class TestPlannerMultiDayPriceIsolation:
 
         day0_date = result.slots[0].start.date()
         day0_pv = [
-            s.solcast_pv_estimate for s in result.slots if s.start.date() == day0_date
+            s.solcast_pv_estimate_kwh for s in result.slots if s.start.date() == day0_date
         ]
         day1_pv = [
-            s.solcast_pv_estimate for s in result.slots if s.start.date() != day0_date
+            s.solcast_pv_estimate_kwh for s in result.slots if s.start.date() != day0_date
         ]
 
         avg_day0 = sum(day0_pv) / len(day0_pv)

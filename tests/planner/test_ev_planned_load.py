@@ -600,8 +600,8 @@ class TestPlannerEngineEVIntegration:
         """With EV charging, net consumption increases by ev_planned_load_kwh.
 
         For slots where EV load is injected:
-          estimated_net_consumption
-              == avg_house_consumption + ev_planned_load_kwh - solcast_pv_estimate
+          estimated_net_consumption_kwh
+              == avg_house_consumption_kwh + ev_planned_load_kwh - solcast_pv_estimate_kwh
         """
         inp = _make_planner_input(
             now_iso="2024-06-15T06:00:00+00:00",
@@ -615,15 +615,15 @@ class TestPlannerEngineEVIntegration:
 
         for s in out.slots:
             expected_net = round(
-                s.avg_house_consumption + s.ev_planned_load_kwh - s.solcast_pv_estimate,
+                s.avg_house_consumption_kwh + s.ev_planned_load_kwh - s.solcast_pv_estimate_kwh,
                 3,
             )
-            assert s.estimated_net_consumption == pytest.approx(
+            assert s.estimated_net_consumption_kwh == pytest.approx(
                 expected_net, abs=1e-6
             ), (
                 f"Slot {s.start.hour}:00 net mismatch: "
-                f"house={s.avg_house_consumption}, ev={s.ev_planned_load_kwh}, "
-                f"pv={s.solcast_pv_estimate}"
+                f"house={s.avg_house_consumption_kwh}, ev={s.ev_planned_load_kwh}, "
+                f"pv={s.solcast_pv_estimate_kwh}"
             )
 
     def test_solar_consumed_by_ev_no_battery_solar_charge(self):
@@ -657,20 +657,20 @@ class TestPlannerEngineEVIntegration:
         )
         out = run_planner(inp)
 
-        # Find slots where EV planned load > 0 AND solcast_pv_estimate > 0
+        # Find slots where EV planned load > 0 AND solcast_pv_estimate_kwh > 0
         ev_solar_slots = [
             s
             for s in out.slots
-            if s.ev_planned_load_kwh > 1e-9 and s.solcast_pv_estimate > 1e-9
+            if s.ev_planned_load_kwh > 1e-9 and s.solcast_pv_estimate_kwh > 1e-9
         ]
         for s in ev_solar_slots:
             # Net consumption should be ≥ 0 in these slots (EV consumed the surplus)
             # → battery solar-charge recommendation should not appear
-            if s.estimated_net_consumption >= 0:
+            if s.estimated_net_consumption_kwh >= 0:
                 assert s.recommendation != "batteries_charge_solar", (
                     f"Slot {s.start.hour}: EV consumed solar but battery solar-charge still recommended. "
-                    f"ev_load={s.ev_planned_load_kwh}, pv={s.solcast_pv_estimate}, "
-                    f"net={s.estimated_net_consumption}"
+                    f"ev_load={s.ev_planned_load_kwh}, pv={s.solcast_pv_estimate_kwh}, "
+                    f"net={s.estimated_net_consumption_kwh}"
                 )
 
     def test_cheap_grid_can_still_charge_battery_while_ev_charging(self):
@@ -789,7 +789,7 @@ class TestPlannerEngineEVIntegration:
 # Regression: EV slot selection must use net surplus (after house consumption),
 # not raw PV.  The house uses solar first; only leftover surplus is free for EV.
 # The engine now runs populate_net_consumption before EV planning and derives:
-#   slot_net_surplus = max(-estimated_net_consumption, 0)
+#   slot_net_surplus = max(-estimated_net_consumption_kwh, 0)
 # ---------------------------------------------------------------------------
 
 
@@ -799,8 +799,8 @@ class TestEvSolarSurplusRegression:
     The engine runs ``populate_net_consumption`` *before* EV planning so that
     the net surplus signal is:
 
-        slot_net_surplus[i] = max(-estimated_net_consumption[i], 0.0)
-                            = max(pv_estimate - avg_house_consumption, 0.0)
+        slot_net_surplus[i] = max(-estimated_net_consumption_kwh[i], 0.0)
+                            = max(pv_estimate - avg_house_consumption_kwh, 0.0)
 
     This correctly models that the house consumes solar first; only the
     leftover net surplus is available to the EV charger at no extra grid cost.
@@ -913,24 +913,24 @@ class TestEvSolarSurplusRegression:
             f"Planner slot 10 ev_planned_load_kwh should be 2.5, got {planner_slot_10.ev_planned_load_kwh}"
         )
         # effective_net = house(1.0) + ev(2.5) - pv(3.5) = 0.0
-        assert planner_slot_10.estimated_net_consumption == pytest.approx(
+        assert planner_slot_10.estimated_net_consumption_kwh == pytest.approx(
             0.0, abs=0.01
         ), (
-            f"effective_net at hour 10 should be 0.0, got {planner_slot_10.estimated_net_consumption}"
+            f"effective_net at hour 10 should be 0.0, got {planner_slot_10.estimated_net_consumption_kwh}"
         )
 
         # --- Assert battery does NOT charge energy from consumed surplus ---
         # The recommendation label may still be 'batteries_charge_solar' because
-        # estimated_net_consumption = 0.0 falls within the NEAR_ZERO threshold.
-        # The energy-correctness invariant is: batteries_charged must be 0.0
+        # estimated_net_consumption_kwh = 0.0 falls within the NEAR_ZERO threshold.
+        # The energy-correctness invariant is: batteries_charged_kwh must be 0.0
         # (the charge scheduler derives slot_solar = abs(0.0) = 0.0, so no
         # energy flows into the battery even if the label says charge_solar).
-        assert planner_slot_10.batteries_charged == pytest.approx(0.0, abs=0.01), (
+        assert planner_slot_10.batteries_charged_kwh == pytest.approx(0.0, abs=0.01), (
             "Battery should NOT charge energy at hour 10: "
             "all solar surplus is consumed by EV. "
-            f"batteries_charged={planner_slot_10.batteries_charged}, "
+            f"batteries_charged_kwh={planner_slot_10.batteries_charged_kwh}, "
             f"ev_load={planner_slot_10.ev_planned_load_kwh}, "
-            f"net={planner_slot_10.estimated_net_consumption}"
+            f"net={planner_slot_10.estimated_net_consumption_kwh}"
         )
 
     def test_ev_solar_surplus_zero_when_no_pv(self):
@@ -1143,7 +1143,7 @@ class TestEvSmartChargingRecommendationLabel:
 #
 #   1. ac_load_kwh = estimated_charged_kwh / charger_efficiency
 #   2. ev_planned_load_kwh injected = ac_load_kwh (not battery-side)
-#   3. estimated_net_consumption = house + ev_ac_load - pv
+#   3. estimated_net_consumption_kwh = house + ev_ac_load - pv
 #   4. grid_import_kwh includes EV AC draw
 #   5. plan_cost includes EV grid import cost
 #   6. SoC simulation uses the combined load
@@ -1271,11 +1271,11 @@ class TestEvAcLoadAndSoCPath:
         )
 
     # ------------------------------------------------------------------
-    # estimated_net_consumption includes AC EV draw
+    # estimated_net_consumption_kwh includes AC EV draw
     # ------------------------------------------------------------------
 
     def test_estimated_net_consumption_includes_ev_ac_load(self):
-        """estimated_net_consumption must use the AC-side EV load, not battery-side.
+        """estimated_net_consumption_kwh must use the AC-side EV load, not battery-side.
 
         Hand calculation (100 % efficiency, so AC = battery-side):
           house_load       = 0.5 kWh/h
@@ -1305,14 +1305,14 @@ class TestEvAcLoadAndSoCPath:
 
         for s in ev_slots:
             expected_net = round(
-                s.avg_house_consumption + s.ev_planned_load_kwh - s.solcast_pv_estimate,
+                s.avg_house_consumption_kwh + s.ev_planned_load_kwh - s.solcast_pv_estimate_kwh,
                 3,
             )
-            assert s.estimated_net_consumption == pytest.approx(expected_net, abs=1e-6)
+            assert s.estimated_net_consumption_kwh == pytest.approx(expected_net, abs=1e-6)
             # With no PV and 100 % efficiency, AC load = battery-side
             # net = 0.5 + ev_ac = 0.5 + 10.0 = 10.5
-            assert s.estimated_net_consumption == pytest.approx(10.5, abs=0.1), (
-                f"Slot {s.start.hour}: expected net=10.5, got {s.estimated_net_consumption}"
+            assert s.estimated_net_consumption_kwh == pytest.approx(10.5, abs=0.1), (
+                f"Slot {s.start.hour}: expected net=10.5, got {s.estimated_net_consumption_kwh}"
             )
 
     # ------------------------------------------------------------------
@@ -1350,7 +1350,7 @@ class TestEvAcLoadAndSoCPath:
         for s in ev_slots:
             # With battery at floor and no PV, all demand comes from grid.
             # grid_import = house + ev_ac = 0.5 + 10.0 = 10.5 kWh
-            expected_import = s.avg_house_consumption + s.ev_planned_load_kwh
+            expected_import = s.avg_house_consumption_kwh + s.ev_planned_load_kwh
             assert s.grid_import_kwh == pytest.approx(expected_import, abs=0.05), (
                 f"Slot {s.start.hour}: expected grid_import={expected_import:.2f}, "
                 f"got {s.grid_import_kwh}"
@@ -1401,7 +1401,7 @@ class TestEvAcLoadAndSoCPath:
             f"ev_planned_load_kwh should be AC-side 10.0, got {s.ev_planned_load_kwh}"
         )
         # net = house + ev_ac - pv = 0.5 + 10.0 - 0.0 = 10.5
-        assert s.estimated_net_consumption == pytest.approx(10.5, abs=0.05)
+        assert s.estimated_net_consumption_kwh == pytest.approx(10.5, abs=0.05)
         # grid_import = 10.5 (all from grid, battery at floor)
         assert s.grid_import_kwh == pytest.approx(10.5, abs=0.1)
 
@@ -1451,10 +1451,10 @@ class TestEvAcLoadAndSoCPath:
             s for s in out.slots if s.grid_import_kwh > 0 or s.ev_planned_load_kwh > 0
         ]
 
-        house_future = sum(s.avg_house_consumption for s in future_slots)
+        house_future = sum(s.avg_house_consumption_kwh for s in future_slots)
         ev_future = sum(s.ev_planned_load_kwh for s in future_slots)
-        battery_discharge_future = sum(s.batteries_discharged for s in future_slots)
-        battery_charge_future = sum(s.batteries_charged for s in future_slots)
+        battery_discharge_future = sum(s.batteries_discharged_kwh for s in future_slots)
+        battery_charge_future = sum(s.batteries_charged_kwh for s in future_slots)
         gi_future = sum(s.grid_import_kwh for s in future_slots)
 
         # Energy balance per slot: gi = house + ev_ac + battery_charge - battery_discharge
@@ -1472,17 +1472,17 @@ class TestEvAcLoadAndSoCPath:
         # The specific EV slot: grid import must include the full EV AC draw
         ev_slot = next(s for s in out.slots if abs(s.ev_planned_load_kwh) > 1e-9)
         expected_slot_gi = (
-            ev_slot.avg_house_consumption
+            ev_slot.avg_house_consumption_kwh
             + ev_slot.ev_planned_load_kwh
-            + ev_slot.batteries_charged
-            - ev_slot.batteries_discharged
+            + ev_slot.batteries_charged_kwh
+            - ev_slot.batteries_discharged_kwh
         )
         assert ev_slot.grid_import_kwh == pytest.approx(expected_slot_gi, abs=0.1), (
             f"EV slot grid_import ({ev_slot.grid_import_kwh:.3f}) should equal "
-            f"house ({ev_slot.avg_house_consumption:.3f}) + ev_ac "
+            f"house ({ev_slot.avg_house_consumption_kwh:.3f}) + ev_ac "
             f"({ev_slot.ev_planned_load_kwh:.3f}) + batt_chg "
-            f"({ev_slot.batteries_charged:.3f}) - batt_disch "
-            f"({ev_slot.batteries_discharged:.3f}) = {expected_slot_gi:.3f}"
+            f"({ev_slot.batteries_charged_kwh:.3f}) - batt_disch "
+            f"({ev_slot.batteries_discharged_kwh:.3f}) = {expected_slot_gi:.3f}"
         )
 
     # ------------------------------------------------------------------
@@ -1494,7 +1494,7 @@ class TestEvAcLoadAndSoCPath:
 
         The EV charger and house loads share the same AC bus.  When the EV is
         charging, battery discharge is suppressed to avoid DC→AC→DC conversion
-        losses.  Therefore `batteries_discharged` is 0 during EV slots, and
+        losses.  Therefore `batteries_discharged_kwh` is 0 during EV slots, and
         `grid_import_kwh` absorbs BOTH house and EV demand.
 
         Setup (battery has charge, no schedule forcing discharge):
@@ -1505,9 +1505,9 @@ class TestEvAcLoadAndSoCPath:
           import_price     = flat 0.5
 
         Expected energy balance per EV slot:
-          batteries_discharged ≈ 0.0 kWh  (suppressed — EV is charging)
+          batteries_discharged_kwh ≈ 0.0 kWh  (suppressed — EV is charging)
           grid_import ≈ house + ev = 5.5 kWh  (everything from grid)
-          total supply = batteries_discharged + grid_import ≈ 5.5 kWh
+          total supply = batteries_discharged_kwh + grid_import ≈ 5.5 kWh
 
         The energy balance must still hold: supply ≈ demand — but the battery
         does not discharge when the EV is active on the shared AC bus.
@@ -1555,9 +1555,9 @@ class TestEvAcLoadAndSoCPath:
         assert ev_slots, "Expected at least one EV-loaded slot"
 
         for s in ev_slots:
-            # total supply = batteries_discharged + grid_import_kwh
-            total_supply = s.batteries_discharged + s.grid_import_kwh
-            total_demand = s.avg_house_consumption + s.ev_planned_load_kwh
+            # total supply = batteries_discharged_kwh + grid_import_kwh
+            total_supply = s.batteries_discharged_kwh + s.grid_import_kwh
+            total_demand = s.avg_house_consumption_kwh + s.ev_planned_load_kwh
             # Energy balance: supply must cover demand (within floating-point tolerance)
             assert total_supply == pytest.approx(total_demand, abs=0.1), (
                 f"Slot {s.start.hour}: supply ({total_supply:.3f}) != demand "
@@ -1662,8 +1662,8 @@ class TestEvLoadSemantics:
           ev_accounted_load_kwh    = 0.0  (nothing pre-included)
           ev_total_planned_load_kwh = 7.0
         """
-        avg_house_consumption = 1.0
-        solcast_pv_estimate = 2.0
+        avg_house_consumption_kwh = 1.0
+        solcast_pv_estimate_kwh = 2.0
         now_iso = "2024-06-15T06:00:00+00:00"
         from datetime import datetime as _dt2
 
@@ -1674,14 +1674,14 @@ class TestEvLoadSemantics:
             PricePoint(hour=h, import_price=0.20, export_price=0.05) for h in range(24)
         ]
         pv = [SolcastSlot(hour=h, pv_estimate=0.0) for h in range(24)]
-        pv[9] = SolcastSlot(hour=9, pv_estimate=solcast_pv_estimate)
+        pv[9] = SolcastSlot(hour=9, pv_estimate=solcast_pv_estimate_kwh)
         avgs = [
             HourlyConsumptionAverage(
                 hour=h,
-                avg_1d=avg_house_consumption,
-                avg_3d=avg_house_consumption,
-                avg_7d=avg_house_consumption,
-                avg_14d=avg_house_consumption,
+                avg_1d=avg_house_consumption_kwh,
+                avg_3d=avg_house_consumption_kwh,
+                avg_7d=avg_house_consumption_kwh,
+                avg_14d=avg_house_consumption_kwh,
             )
             for h in range(24)
         ]
@@ -1759,7 +1759,7 @@ class TestEvLoadSemantics:
           ev_planned_load_kwh       = 0.0  (not injected — already in base load)
           ev_accounted_load_kwh     = 7.0  (pre-included in house consumption)
           ev_total_planned_load_kwh = 7.0
-          estimated_net_consumption = avg_house - pv  (no extra EV added)
+          estimated_net_consumption_kwh = avg_house - pv  (no extra EV added)
         """
         avg_house = 2.0
         pv_kwh = 0.5
@@ -1848,14 +1848,14 @@ class TestEvLoadSemantics:
         # net consumption must NOT include EV load (no double-count)
         for s in out.slots:
             expected_net = round(
-                s.avg_house_consumption + s.ev_planned_load_kwh - s.solcast_pv_estimate,
+                s.avg_house_consumption_kwh + s.ev_planned_load_kwh - s.solcast_pv_estimate_kwh,
                 3,
             )
-            assert s.estimated_net_consumption == pytest.approx(
+            assert s.estimated_net_consumption_kwh == pytest.approx(
                 expected_net, abs=1e-6
             ), (
                 f"Slot {s.start.hour}: net consumption should be house - pv "
-                f"(ev not injected), got {s.estimated_net_consumption}"
+                f"(ev not injected), got {s.estimated_net_consumption_kwh}"
             )
 
     # ------------------------------------------------------------------
@@ -2027,12 +2027,12 @@ class TestEvLoadSemantics:
         """When base_load_includes_ev=True, EV is NOT added to net consumption.
 
         Given:
-          avg_house_consumption = 5.0 kWh/h  (includes EV load)
-          solcast_pv_estimate   = 2.0 kWh/h
+          avg_house_consumption_kwh = 5.0 kWh/h  (includes EV load)
+          solcast_pv_estimate_kwh   = 2.0 kWh/h
           ev_total              = 4.0 kWh     (planned but already in base)
 
         Expected:
-          estimated_net_consumption = 5.0 - 2.0 = 3.0 kWh
+          estimated_net_consumption_kwh = 5.0 - 2.0 = 3.0 kWh
           (not 5.0 + 4.0 - 2.0 = 7.0 kWh which would double-count the EV)
         """
         avg_house = 5.0
@@ -2092,13 +2092,13 @@ class TestEvLoadSemantics:
 
         # Every slot: net = house - pv (EV not injected)
         for s in out.slots:
-            expected_net = round(s.avg_house_consumption - s.solcast_pv_estimate, 3)
-            assert s.estimated_net_consumption == pytest.approx(
+            expected_net = round(s.avg_house_consumption_kwh - s.solcast_pv_estimate_kwh, 3)
+            assert s.estimated_net_consumption_kwh == pytest.approx(
                 expected_net, abs=1e-6
             ), (
                 f"Slot {s.start.hour}: expected net {expected_net:.3f} "
-                f"(avg_house={s.avg_house_consumption:.1f}, pv={s.solcast_pv_estimate:.1f}), "
-                f"got {s.estimated_net_consumption:.3f} — EV may be double-counted"
+                f"(avg_house={s.avg_house_consumption_kwh:.1f}, pv={s.solcast_pv_estimate_kwh:.1f}), "
+                f"got {s.estimated_net_consumption_kwh:.3f} — EV may be double-counted"
             )
             # ev_planned_load_kwh must be 0 (not injected)
             assert s.ev_planned_load_kwh == pytest.approx(0.0), (
@@ -2114,12 +2114,12 @@ class TestEvLoadSemantics:
         """When base_load_includes_ev=False, EV IS added to net consumption.
 
         Given:
-          avg_house_consumption = 5.0 kWh/h
-          solcast_pv_estimate   = 2.0 kWh/h
+          avg_house_consumption_kwh = 5.0 kWh/h
+          solcast_pv_estimate_kwh   = 2.0 kWh/h
           ev_total              = 4.0 kWh (planned, not in base load)
 
         Expected for slot with EV load:
-          estimated_net_consumption = 5.0 + 4.0 - 2.0 = 7.0 kWh
+          estimated_net_consumption_kwh = 5.0 + 4.0 - 2.0 = 7.0 kWh
         """
         avg_house = 5.0
         pv_kwh = 2.0
@@ -2182,14 +2182,14 @@ class TestEvLoadSemantics:
         for s in ev_slots:
             # net = house + ev_load - pv = 5.0 + ev_load - 2.0
             expected_net = round(
-                s.avg_house_consumption + s.ev_planned_load_kwh - s.solcast_pv_estimate,
+                s.avg_house_consumption_kwh + s.ev_planned_load_kwh - s.solcast_pv_estimate_kwh,
                 3,
             )
-            assert s.estimated_net_consumption == pytest.approx(
+            assert s.estimated_net_consumption_kwh == pytest.approx(
                 expected_net, abs=1e-6
             ), (
                 f"Slot {s.start.hour}: net should include EV load; "
-                f"expected {expected_net:.3f}, got {s.estimated_net_consumption:.3f}"
+                f"expected {expected_net:.3f}, got {s.estimated_net_consumption_kwh:.3f}"
             )
 
     # ------------------------------------------------------------------
@@ -2413,7 +2413,7 @@ class TestEvLoadSemantics:
 # ---------------------------------------------------------------------------
 # TestEvLoadDoesNotInflateChargeNeeded (issue #404 / charge scheduler fix)
 # Regression: when base_load_includes_ev=False the charge scheduler was using
-# estimated_net_consumption (which includes ev_planned_load_kwh) to compute
+# estimated_net_consumption_kwh (which includes ev_planned_load_kwh) to compute
 # occ_needed for each discharge window occurrence.  This inflated the target,
 # raised the average charge price over more slots, and caused the price-spread
 # guard to reject otherwise profitable grid-charge slots.
@@ -2586,12 +2586,12 @@ class TestEvLoadDoesNotInflateChargeNeeded:
         # load in discharge window.  Both outputs should have identical
         # discharge-window net consumption.
         discharge_net_no_ev = sum(
-            s.avg_house_consumption - s.solcast_pv_estimate
+            s.avg_house_consumption_kwh - s.solcast_pv_estimate_kwh
             for s in out_no_ev.slots
             if 16 <= s.start.hour < 22
         )
         discharge_net_ev = sum(
-            s.avg_house_consumption - s.solcast_pv_estimate
+            s.avg_house_consumption_kwh - s.solcast_pv_estimate_kwh
             for s in out_ev.slots
             if 16 <= s.start.hour < 22
         )
