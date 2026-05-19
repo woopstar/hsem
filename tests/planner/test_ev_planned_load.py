@@ -408,7 +408,7 @@ class TestBuildEvChargingPlanSlotSelection:
         assert slot.estimated_charged_kwh == pytest.approx(4.0, abs=0.01)
         assert slot.solar_surplus_kwh == pytest.approx(2.5, abs=0.01)
         assert slot.import_needed_kwh == pytest.approx(1.5, abs=0.01)
-        assert slot.estimated_cost_currency == pytest.approx(1.5 * 0.10, abs=0.001)
+        assert slot.estimated_cost == pytest.approx(1.5 * 0.10, abs=0.001)
 
     def test_partial_current_slot_scaling(self):
         """Current slot is scaled by remaining minutes.
@@ -600,8 +600,8 @@ class TestPlannerEngineEVIntegration:
         """With EV charging, net consumption increases by ev_planned_load_kwh.
 
         For slots where EV load is injected:
-          estimated_net_consumption
-              == avg_house_consumption + ev_planned_load_kwh - solcast_pv_estimate
+          estimated_net_consumption_kwh
+              == avg_house_consumption_kwh + ev_planned_load_kwh - solcast_pv_estimate_kwh
         """
         inp = _make_planner_input(
             now_iso="2024-06-15T06:00:00+00:00",
@@ -657,7 +657,7 @@ class TestPlannerEngineEVIntegration:
         )
         out = run_planner(inp)
 
-        # Find slots where EV planned load > 0 AND solcast_pv_estimate > 0
+        # Find slots where EV planned load > 0 AND solcast_pv_estimate_kwh > 0
         ev_solar_slots = [
             s
             for s in out.slots
@@ -789,7 +789,7 @@ class TestPlannerEngineEVIntegration:
 # Regression: EV slot selection must use net surplus (after house consumption),
 # not raw PV.  The house uses solar first; only leftover surplus is free for EV.
 # The engine now runs populate_net_consumption before EV planning and derives:
-#   slot_net_surplus = max(-estimated_net_consumption, 0)
+#   slot_net_surplus = max(-estimated_net_consumption_kwh, 0)
 # ---------------------------------------------------------------------------
 
 
@@ -799,8 +799,8 @@ class TestEvSolarSurplusRegression:
     The engine runs ``populate_net_consumption`` *before* EV planning so that
     the net surplus signal is:
 
-        slot_net_surplus[i] = max(-estimated_net_consumption[i], 0.0)
-                            = max(pv_estimate - avg_house_consumption, 0.0)
+        slot_net_surplus[i] = max(-estimated_net_consumption_kwh[i], 0.0)
+                            = max(pv_estimate - avg_house_consumption_kwh, 0.0)
 
     This correctly models that the house consumes solar first; only the
     leftover net surplus is available to the EV charger at no extra grid cost.
@@ -921,14 +921,14 @@ class TestEvSolarSurplusRegression:
 
         # --- Assert battery does NOT charge energy from consumed surplus ---
         # The recommendation label may still be 'batteries_charge_solar' because
-        # estimated_net_consumption = 0.0 falls within the NEAR_ZERO threshold.
-        # The energy-correctness invariant is: batteries_charged must be 0.0
+        # estimated_net_consumption_kwh = 0.0 falls within the NEAR_ZERO threshold.
+        # The energy-correctness invariant is: batteries_charged_kwh must be 0.0
         # (the charge scheduler derives slot_solar = abs(0.0) = 0.0, so no
         # energy flows into the battery even if the label says charge_solar).
         assert planner_slot_10.batteries_charged_kwh == pytest.approx(0.0, abs=0.01), (
             "Battery should NOT charge energy at hour 10: "
             "all solar surplus is consumed by EV. "
-            f"batteries_charged={planner_slot_10.batteries_charged_kwh}, "
+            f"batteries_charged_kwh={planner_slot_10.batteries_charged_kwh}, "
             f"ev_load={planner_slot_10.ev_planned_load_kwh}, "
             f"net={planner_slot_10.estimated_net_consumption_kwh}"
         )
@@ -1143,7 +1143,7 @@ class TestEvSmartChargingRecommendationLabel:
 #
 #   1. ac_load_kwh = estimated_charged_kwh / charger_efficiency
 #   2. ev_planned_load_kwh injected = ac_load_kwh (not battery-side)
-#   3. estimated_net_consumption = house + ev_ac_load - pv
+#   3. estimated_net_consumption_kwh = house + ev_ac_load - pv
 #   4. grid_import_kwh includes EV AC draw
 #   5. plan_cost includes EV grid import cost
 #   6. SoC simulation uses the combined load
@@ -1271,11 +1271,11 @@ class TestEvAcLoadAndSoCPath:
         )
 
     # ------------------------------------------------------------------
-    # estimated_net_consumption includes AC EV draw
+    # estimated_net_consumption_kwh includes AC EV draw
     # ------------------------------------------------------------------
 
     def test_estimated_net_consumption_includes_ev_ac_load(self):
-        """estimated_net_consumption must use the AC-side EV load, not battery-side.
+        """estimated_net_consumption_kwh must use the AC-side EV load, not battery-side.
 
         Hand calculation (100 % efficiency, so AC = battery-side):
           house_load       = 0.5 kWh/h
@@ -1494,7 +1494,7 @@ class TestEvAcLoadAndSoCPath:
 
         The EV charger and house loads share the same AC bus.  When the EV is
         charging, battery discharge is suppressed to avoid DC→AC→DC conversion
-        losses.  Therefore `batteries_discharged` is 0 during EV slots, and
+        losses.  Therefore `batteries_discharged_kwh` is 0 during EV slots, and
         `grid_import_kwh` absorbs BOTH house and EV demand.
 
         Setup (battery has charge, no schedule forcing discharge):
@@ -1505,9 +1505,9 @@ class TestEvAcLoadAndSoCPath:
           import_price     = flat 0.5
 
         Expected energy balance per EV slot:
-          batteries_discharged ≈ 0.0 kWh  (suppressed — EV is charging)
+          batteries_discharged_kwh ≈ 0.0 kWh  (suppressed — EV is charging)
           grid_import ≈ house + ev = 5.5 kWh  (everything from grid)
-          total supply = batteries_discharged + grid_import ≈ 5.5 kWh
+          total supply = batteries_discharged_kwh + grid_import ≈ 5.5 kWh
 
         The energy balance must still hold: supply ≈ demand — but the battery
         does not discharge when the EV is active on the shared AC bus.
@@ -1555,7 +1555,7 @@ class TestEvAcLoadAndSoCPath:
         assert ev_slots, "Expected at least one EV-loaded slot"
 
         for s in ev_slots:
-            # total supply = batteries_discharged + grid_import_kwh
+            # total supply = batteries_discharged_kwh + grid_import_kwh
             total_supply = s.batteries_discharged_kwh + s.grid_import_kwh
             total_demand = s.avg_house_consumption_kwh + s.ev_planned_load_kwh
             # Energy balance: supply must cover demand (within floating-point tolerance)
@@ -1662,8 +1662,8 @@ class TestEvLoadSemantics:
           ev_accounted_load_kwh    = 0.0  (nothing pre-included)
           ev_total_planned_load_kwh = 7.0
         """
-        avg_house_consumption = 1.0
-        solcast_pv_estimate = 2.0
+        avg_house_consumption_kwh = 1.0
+        solcast_pv_estimate_kwh = 2.0
         now_iso = "2024-06-15T06:00:00+00:00"
         from datetime import datetime as _dt2
 
@@ -1674,14 +1674,14 @@ class TestEvLoadSemantics:
             PricePoint(hour=h, import_price=0.20, export_price=0.05) for h in range(24)
         ]
         pv = [SolcastSlot(hour=h, pv_estimate=0.0) for h in range(24)]
-        pv[9] = SolcastSlot(hour=9, pv_estimate=solcast_pv_estimate)
+        pv[9] = SolcastSlot(hour=9, pv_estimate=solcast_pv_estimate_kwh)
         avgs = [
             HourlyConsumptionAverage(
                 hour=h,
-                avg_1d=avg_house_consumption,
-                avg_3d=avg_house_consumption,
-                avg_7d=avg_house_consumption,
-                avg_14d=avg_house_consumption,
+                avg_1d=avg_house_consumption_kwh,
+                avg_3d=avg_house_consumption_kwh,
+                avg_7d=avg_house_consumption_kwh,
+                avg_14d=avg_house_consumption_kwh,
             )
             for h in range(24)
         ]
@@ -1759,7 +1759,7 @@ class TestEvLoadSemantics:
           ev_planned_load_kwh       = 0.0  (not injected — already in base load)
           ev_accounted_load_kwh     = 7.0  (pre-included in house consumption)
           ev_total_planned_load_kwh = 7.0
-          estimated_net_consumption = avg_house - pv  (no extra EV added)
+          estimated_net_consumption_kwh = avg_house - pv  (no extra EV added)
         """
         avg_house = 2.0
         pv_kwh = 0.5
@@ -2027,12 +2027,12 @@ class TestEvLoadSemantics:
         """When base_load_includes_ev=True, EV is NOT added to net consumption.
 
         Given:
-          avg_house_consumption = 5.0 kWh/h  (includes EV load)
-          solcast_pv_estimate   = 2.0 kWh/h
+          avg_house_consumption_kwh = 5.0 kWh/h  (includes EV load)
+          solcast_pv_estimate_kwh   = 2.0 kWh/h
           ev_total              = 4.0 kWh     (planned but already in base)
 
         Expected:
-          estimated_net_consumption = 5.0 - 2.0 = 3.0 kWh
+          estimated_net_consumption_kwh = 5.0 - 2.0 = 3.0 kWh
           (not 5.0 + 4.0 - 2.0 = 7.0 kWh which would double-count the EV)
         """
         avg_house = 5.0
@@ -2114,12 +2114,12 @@ class TestEvLoadSemantics:
         """When base_load_includes_ev=False, EV IS added to net consumption.
 
         Given:
-          avg_house_consumption = 5.0 kWh/h
-          solcast_pv_estimate   = 2.0 kWh/h
+          avg_house_consumption_kwh = 5.0 kWh/h
+          solcast_pv_estimate_kwh   = 2.0 kWh/h
           ev_total              = 4.0 kWh (planned, not in base load)
 
         Expected for slot with EV load:
-          estimated_net_consumption = 5.0 + 4.0 - 2.0 = 7.0 kWh
+          estimated_net_consumption_kwh = 5.0 + 4.0 - 2.0 = 7.0 kWh
         """
         avg_house = 5.0
         pv_kwh = 2.0
@@ -2413,7 +2413,7 @@ class TestEvLoadSemantics:
 # ---------------------------------------------------------------------------
 # TestEvLoadDoesNotInflateChargeNeeded (issue #404 / charge scheduler fix)
 # Regression: when base_load_includes_ev=False the charge scheduler was using
-# estimated_net_consumption (which includes ev_planned_load_kwh) to compute
+# estimated_net_consumption_kwh (which includes ev_planned_load_kwh) to compute
 # occ_needed for each discharge window occurrence.  This inflated the target,
 # raised the average charge price over more slots, and caused the price-spread
 # guard to reject otherwise profitable grid-charge slots.

@@ -4,7 +4,7 @@
 battery holds *beyond* what is needed to cover future house load.  The budget
 represents stored battery energy only; solar is a separate flow.
 
-Budget drain rule: ``battery_discharge_budget_kwh -= max(estimated_net_consumption, 0.0)``
+Budget drain rule: ``battery_discharge_budget_kwh -= max(estimated_net_consumption_kwh, 0.0)``
 
 - **Positive** net consumption (house > solar): battery covers the shortfall →
   budget decreases.
@@ -34,7 +34,7 @@ def _make_slot(
     offset_hours: int,
     export_price: float = 0.50,
     import_price: float = 0.20,
-    estimated_net_consumption: float = 0.5,
+    estimated_net_consumption_kwh: float = 0.5,
     recommendation: str | None = None,
 ) -> PlannedSlot:
     """Build a minimal PlannedSlot anchored at *now + offset_hours*."""
@@ -44,9 +44,9 @@ def _make_slot(
         start=start,
         end=start + timedelta(hours=1),
         price=SlotPrice(import_price=import_price, export_price=export_price),
-        solcast_pv_estimate=0.0,
-        avg_house_consumption=0.5,
-        estimated_net_consumption=estimated_net_consumption,
+        solcast_pv_estimate_kwh=0.0,
+        avg_house_consumption_kwh=0.5,
+        estimated_net_consumption_kwh=estimated_net_consumption_kwh,
         recommendation=recommendation,
     )
 
@@ -68,7 +68,7 @@ class TestPositiveConsumptionDrainsBudget:
 
         budget = 1.0 kWh; slot net = 0.5 → budget after = 0.5 (still positive, no more candidates).
         """
-        slot = _make_slot(1, estimated_net_consumption=0.5, export_price=0.60)
+        slot = _make_slot(1, estimated_net_consumption_kwh=0.5, export_price=0.60)
         warnings: list[str] = []
 
         apply_excess_export(
@@ -89,9 +89,9 @@ class TestPositiveConsumptionDrainsBudget:
         budget = 1.0; slot_a net = 0.6 → budget = 0.4; slot_b net = 0.6 → budget = -0.2 ≤ 0
         → loop breaks before slot_c.
         """
-        slot_a = _make_slot(1, estimated_net_consumption=0.6, export_price=0.60)
-        slot_b = _make_slot(2, estimated_net_consumption=0.6, export_price=0.55)
-        slot_c = _make_slot(3, estimated_net_consumption=0.6, export_price=0.50)
+        slot_a = _make_slot(1, estimated_net_consumption_kwh=0.6, export_price=0.60)
+        slot_b = _make_slot(2, estimated_net_consumption_kwh=0.6, export_price=0.55)
+        slot_c = _make_slot(3, estimated_net_consumption_kwh=0.6, export_price=0.50)
         warnings: list[str] = []
 
         apply_excess_export(
@@ -109,7 +109,7 @@ class TestPositiveConsumptionDrainsBudget:
 
     def test_zero_budget_skips_all_slots(self) -> None:
         """When current_capacity == required_capacity the budget is zero → early return."""
-        slot = _make_slot(1, estimated_net_consumption=0.5)
+        slot = _make_slot(1, estimated_net_consumption_kwh=0.5)
         warnings: list[str] = []
 
         apply_excess_export(
@@ -144,7 +144,7 @@ class TestSolarSurplusDoesNotDrainBudget:
         budget = 0.5; slot net = -1.5 → max(-1.5, 0) = 0 → budget stays 0.5.
         Only one candidate: slot gets assigned.
         """
-        slot = _make_slot(1, estimated_net_consumption=-1.5, export_price=0.60)
+        slot = _make_slot(1, estimated_net_consumption_kwh=-1.5, export_price=0.60)
         warnings: list[str] = []
 
         apply_excess_export(
@@ -165,8 +165,8 @@ class TestSolarSurplusDoesNotDrainBudget:
         slot_b net = -2.0 → drain = 0 → budget = 0.5.
         Both assigned (budget never hits zero), loop ends naturally.
         """
-        slot_a = _make_slot(1, estimated_net_consumption=-2.0, export_price=0.60)
-        slot_b = _make_slot(2, estimated_net_consumption=-2.0, export_price=0.55)
+        slot_a = _make_slot(1, estimated_net_consumption_kwh=-2.0, export_price=0.60)
+        slot_b = _make_slot(2, estimated_net_consumption_kwh=-2.0, export_price=0.55)
         warnings: list[str] = []
 
         apply_excess_export(
@@ -184,7 +184,7 @@ class TestSolarSurplusDoesNotDrainBudget:
 
     def test_surplus_cannot_start_loop_when_budget_zero(self) -> None:
         """A zero initial budget triggers the early return; surplus slots are ignored."""
-        slot = _make_slot(1, estimated_net_consumption=-2.0, export_price=0.60)
+        slot = _make_slot(1, estimated_net_consumption_kwh=-2.0, export_price=0.60)
         warnings: list[str] = []
 
         apply_excess_export(
@@ -206,10 +206,10 @@ class TestSolarSurplusDoesNotDrainBudget:
         slot_b: net = 0.5  → drain = 0.5 → budget = 0.3.
         slot_c: net = 0.4  → drain = 0.4 → budget = -0.1 ≤ 0 → slot_d skipped.
         """
-        slot_a = _make_slot(1, estimated_net_consumption=-1.0, export_price=0.70)
-        slot_b = _make_slot(2, estimated_net_consumption=0.5, export_price=0.65)
-        slot_c = _make_slot(3, estimated_net_consumption=0.4, export_price=0.60)
-        slot_d = _make_slot(4, estimated_net_consumption=0.4, export_price=0.55)
+        slot_a = _make_slot(1, estimated_net_consumption_kwh=-1.0, export_price=0.70)
+        slot_b = _make_slot(2, estimated_net_consumption_kwh=0.5, export_price=0.65)
+        slot_c = _make_slot(3, estimated_net_consumption_kwh=0.4, export_price=0.60)
+        slot_d = _make_slot(4, estimated_net_consumption_kwh=0.4, export_price=0.55)
         warnings: list[str] = []
 
         apply_excess_export(

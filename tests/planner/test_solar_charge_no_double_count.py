@@ -1,7 +1,7 @@
 """Tests that solar charge energy is not double-counted across multiple slots.
 
 Regression suite for the bug where ``apply_optimization_strategy`` stored the
-running cumulative ``charged`` total in each slot's ``batteries_charged`` field
+running cumulative ``charged`` total in each slot's ``batteries_charged_kwh`` field
 instead of the per-slot energy delta.  Summing those values in
 ``total_charged_energy_kwh()`` or ``engine._derive_windows()`` therefore
 over-reported how much energy was charged.
@@ -10,7 +10,7 @@ Acceptance criteria
 -------------------
 1. Each BatteriesChargeSolar slot stores only the energy charged *in that slot*,
    not the running cumulative total.
-2. Summing ``batteries_charged`` across all BatteriesChargeSolar slots equals
+2. Summing ``batteries_charged_kwh`` across all BatteriesChargeSolar slots equals
    ``total_charged_energy_kwh()`` (no duplication).
 3. The sum never exceeds the battery's usable remaining capacity.
 4. ``total_charged_energy_kwh()`` matches a manual slot-by-slot sum.
@@ -123,7 +123,7 @@ def _make_solar_only_input(
 
 
 class TestSolarChargePerSlotSemantics:
-    """batteries_charged on each slot must store per-slot energy, not cumulative."""
+    """batteries_charged_kwh on each slot must store per-slot energy, not cumulative."""
 
     def test_per_slot_value_does_not_exceed_slot_solar_surplus(self):
         """Each solar-charge slot must not charge more than its own solar surplus."""
@@ -144,7 +144,7 @@ class TestSolarChargePerSlotSemantics:
             )
 
     def test_sum_matches_total_charged_energy_kwh(self):
-        """Summing batteries_charged across all slots must equal total_charged_energy_kwh."""
+        """Summing batteries_charged_kwh across all slots must equal total_charged_energy_kwh."""
         inp = _make_solar_only_input(battery_soc_pct=0.0, solar_per_hour=3.0)
         result = run_planner(inp)
 
@@ -178,7 +178,7 @@ class TestSolarChargePerSlotSemantics:
         )
 
     def test_no_single_slot_holds_entire_cumulative_sum(self):
-        """No individual slot may carry a batteries_charged value larger than its surplus.
+        """No individual slot may carry a batteries_charged_kwh value larger than its surplus.
 
         Before the fix, the last solar slot would receive the running total instead
         of its own per-slot contribution.

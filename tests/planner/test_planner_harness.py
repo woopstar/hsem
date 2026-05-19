@@ -137,7 +137,7 @@ class TestSlotValues:
     """Per-slot computed values must be consistent with inputs."""
 
     def test_net_consumption_equals_load_minus_pv(self):
-        """estimated_net_consumption must equal avg_consumption - pv_estimate."""
+        """estimated_net_consumption_kwh must equal avg_consumption - pv_estimate."""
         result = run_planner(make_summer_day_input())
         for slot in result.slots:
             expected = round(slot.avg_house_consumption_kwh - slot.solcast_pv_estimate_kwh, 3)
@@ -167,11 +167,11 @@ class TestSlotValues:
             )
 
     def test_batteries_charged_non_negative(self):
-        """batteries_charged must never be negative."""
+        """batteries_charged_kwh must never be negative."""
         result = run_planner(make_summer_day_input())
         for slot in result.slots:
             assert slot.batteries_charged_kwh >= 0, (
-                f"Negative batteries_charged at {slot.start.isoformat()}"
+                f"Negative batteries_charged_kwh at {slot.start.isoformat()}"
             )
 
     def test_prices_populated_correctly(self):

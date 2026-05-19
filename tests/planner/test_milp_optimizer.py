@@ -53,7 +53,7 @@ def _make_slot(
     pv_kwh: float = 0.0,
     consumption_kwh: float = 0.5,
     recommendation: str | None = None,
-    batteries_charged: float = 0.0,
+    batteries_charged_kwh: float = 0.0,
 ) -> PlannedSlot:
     """Build a minimal PlannedSlot for MILP unit tests."""
     start = datetime(2024, 6, 15, hour, 0, tzinfo=_TZ)
@@ -62,7 +62,7 @@ def _make_slot(
         end=start + timedelta(hours=1),
         price=SlotPrice(import_price=import_price, export_price=export_price),
         recommendation=recommendation,
-        batteries_charged=batteries_charged,
+        batteries_charged_kwh=batteries_charged_kwh,
     )
     s.avg_house_consumption_kwh = consumption_kwh
     s.solcast_pv_estimate_kwh = pv_kwh

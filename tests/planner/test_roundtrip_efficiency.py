@@ -33,7 +33,7 @@ _T0 = datetime(2024, 6, 15, 0, 0, tzinfo=_TZ)
 def _make_slot(
     offset_hours: int,
     *,
-    batteries_charged: float = 0.0,
+    batteries_charged_kwh: float = 0.0,
     pv: float = 0.0,
     load: float = 0.0,
     import_price: float = 0.20,
@@ -47,7 +47,7 @@ def _make_slot(
         end=end,
         price=SlotPrice(import_price=import_price, export_price=export_price),
     )
-    slot.batteries_charged_kwh = batteries_charged
+    slot.batteries_charged_kwh = batteries_charged_kwh
     slot.solcast_pv_estimate_kwh = pv
     slot.avg_house_consumption_kwh = load
     return slot
@@ -93,40 +93,40 @@ class TestChargeEfficiencySoC:
 
     def test_100pct_efficiency_stores_all_commanded_energy(self) -> None:
         """At 100 % efficiency, scheduled_charge == energy stored."""
-        slot = _make_slot(1, batteries_charged=4.0)
+        slot = _make_slot(1, batteries_charged_kwh=4.0)
         _run_simulation([slot], current_kwh=0.0, charge_efficiency_pct=100.0)
         # cap should be 0 + 4.0 = 4.0
         assert slot.estimated_battery_capacity_kwh == pytest.approx(4.0, abs=0.01)
 
     def test_90pct_efficiency_stores_less(self) -> None:
-        """At 90 % charge efficiency, batteries_charged is unchanged (it already
+        """At 90 % charge efficiency, batteries_charged_kwh is unchanged (it already
         represents battery-side stored kWh), but the SoC still advances correctly.
 
         The distinction is that the GRID has to supply charge/charge_eff = more,
-        but the battery SoC advances by exactly batteries_charged.
+        but the battery SoC advances by exactly batteries_charged_kwh.
         """
-        # batteries_charged = 4 kWh  →  battery stores 4 kWh, grid supplied 4/0.9 ≈ 4.44 kWh
-        slot = _make_slot(1, batteries_charged=4.0, load=0.0, pv=0.0)
+        # batteries_charged_kwh = 4 kWh  →  battery stores 4 kWh, grid supplied 4/0.9 ≈ 4.44 kWh
+        slot = _make_slot(1, batteries_charged_kwh=4.0, load=0.0, pv=0.0)
         _run_simulation([slot], current_kwh=0.0, charge_efficiency_pct=90.0)
-        # SoC still advances by batteries_charged (battery-side)
+        # SoC still advances by batteries_charged_kwh (battery-side)
         assert slot.estimated_battery_capacity_kwh == pytest.approx(4.0, abs=0.01)
 
     def test_90pct_efficiency_increases_grid_import_for_charging(self) -> None:
-        """Grid import for charging must be batteries_charged / charge_eff."""
-        slot = _make_slot(1, batteries_charged=4.0, load=0.0, pv=0.0)
+        """Grid import for charging must be batteries_charged_kwh / charge_eff."""
+        slot = _make_slot(1, batteries_charged_kwh=4.0, load=0.0, pv=0.0)
         _run_simulation([slot], current_kwh=0.0, charge_efficiency_pct=90.0)
         # grid_import ≈ 4.0 / 0.9 ≈ 4.444 (no load, no PV)
         assert slot.grid_import_kwh == pytest.approx(4.0 / 0.90, abs=0.01)
 
     def test_100pct_efficiency_grid_import_equals_charge(self) -> None:
-        """At 100 % efficiency, grid import for charging equals batteries_charged."""
-        slot = _make_slot(1, batteries_charged=4.0, load=0.0, pv=0.0)
+        """At 100 % efficiency, grid import for charging equals batteries_charged_kwh."""
+        slot = _make_slot(1, batteries_charged_kwh=4.0, load=0.0, pv=0.0)
         _run_simulation([slot], current_kwh=0.0, charge_efficiency_pct=100.0)
         assert slot.grid_import_kwh == pytest.approx(4.0, abs=0.01)
 
     def test_charge_10kwh_at_90pct_requires_111kwh_from_grid(self) -> None:
         """Issue #291 acceptance: charging 10 kWh at 90 % needs ~11.11 kWh from grid."""
-        slot = _make_slot(1, batteries_charged=10.0, load=0.0, pv=0.0)
+        slot = _make_slot(1, batteries_charged_kwh=10.0, load=0.0, pv=0.0)
         _run_simulation(
             [slot],
             current_kwh=0.0,
@@ -225,7 +225,7 @@ class TestRoundtripEfficiency:
           - Round-trip yield = 9 / 11.11 ≈ 81 %.
         """
         # Slot 0: charge 10 kWh into battery
-        charge_slot = _make_slot(1, batteries_charged=10.0, load=0.0, pv=0.0)
+        charge_slot = _make_slot(1, batteries_charged_kwh=10.0, load=0.0, pv=0.0)
         # Slot 1: discharge — need 10 kWh of load (battery has 10 kWh stored)
         discharge_slot = _make_slot(2, load=10.0, pv=0.0)
 
@@ -255,7 +255,7 @@ class TestRoundtripEfficiency:
 
     def test_100pct_efficiency_is_lossless(self) -> None:
         """At 100 % / 100 % efficiency the round-trip is perfectly lossless."""
-        charge_slot = _make_slot(1, batteries_charged=5.0, load=0.0, pv=0.0)
+        charge_slot = _make_slot(1, batteries_charged_kwh=5.0, load=0.0, pv=0.0)
         discharge_slot = _make_slot(2, load=5.0, pv=0.0)
 
         slots = [charge_slot, discharge_slot]
@@ -278,7 +278,7 @@ class TestRoundtripEfficiency:
     def test_asymmetric_efficiency_95_charge_90_discharge(self) -> None:
         """95 % charge / 90 % discharge: verify grid import and SoC are consistent."""
         stored = 5.0  # kWh
-        charge_slot = _make_slot(1, batteries_charged=stored, load=0.0, pv=0.0)
+        charge_slot = _make_slot(1, batteries_charged_kwh=stored, load=0.0, pv=0.0)
         discharge_slot = _make_slot(2, load=4.0, pv=0.0)
 
         _run_simulation(
@@ -316,8 +316,8 @@ class TestCostFunctionEfficiency:
     def _make_cost_slot(
         self,
         *,
-        batteries_charged: float = 0.0,
-        batteries_discharged: float = 0.0,
+        batteries_charged_kwh: float = 0.0,
+        batteries_discharged_kwh: float = 0.0,
         grid_import_kwh: float = 0.0,
         grid_export_kwh: float = 0.0,
         import_price: float = 0.20,
@@ -330,8 +330,8 @@ class TestCostFunctionEfficiency:
             end=end,
             price=SlotPrice(import_price=import_price, export_price=export_price),
         )
-        slot.batteries_charged_kwh = batteries_charged
-        slot.batteries_discharged_kwh = batteries_discharged
+        slot.batteries_charged_kwh = batteries_charged_kwh
+        slot.batteries_discharged_kwh = batteries_discharged_kwh
         slot.grid_import_kwh = grid_import_kwh
         slot.grid_export_kwh = grid_export_kwh
         slot.estimated_battery_soc_pct = 50.0
@@ -349,7 +349,7 @@ class TestCostFunctionEfficiency:
     def test_100pct_efficiency_uses_legacy_conversion_loss_pct(self) -> None:
         """When both efficiencies are 100 %, the legacy conversion_loss_pct drives the term."""
         slot = self._make_cost_slot(
-            batteries_charged=4.0, batteries_discharged=4.0, grid_import_kwh=4.0
+            batteries_charged_kwh=4.0, batteries_discharged_kwh=4.0, grid_import_kwh=4.0
         )
         weights = CostWeights(
             charge_efficiency_pct=100.0,
@@ -364,7 +364,7 @@ class TestCostFunctionEfficiency:
     def test_90_90_efficiency_roundtrip_loss_fraction(self) -> None:
         """90 % charge × 90 % discharge → per-side loss fractions = 0.10 each."""
         slot = self._make_cost_slot(
-            batteries_charged=5.0, batteries_discharged=5.0, grid_import_kwh=5.0
+            batteries_charged_kwh=5.0, batteries_discharged_kwh=5.0, grid_import_kwh=5.0
         )
         weights = CostWeights(
             charge_efficiency_pct=90.0,
@@ -381,7 +381,7 @@ class TestCostFunctionEfficiency:
     def test_95_95_efficiency_lower_loss_than_90_90(self) -> None:
         """95 % / 95 % efficiency produces lower conversion_loss_cost than 90 % / 90 %."""
         slot = self._make_cost_slot(
-            batteries_charged=5.0, batteries_discharged=5.0, grid_import_kwh=5.0
+            batteries_charged_kwh=5.0, batteries_discharged_kwh=5.0, grid_import_kwh=5.0
         )
         bd_95 = score_plan(
             [slot],
@@ -396,7 +396,7 @@ class TestCostFunctionEfficiency:
     def test_conversion_loss_overridden_by_explicit_efficiencies(self) -> None:
         """When explicit efficiencies are set, conversion_loss_pct is overridden."""
         slot = self._make_cost_slot(
-            batteries_charged=5.0, batteries_discharged=5.0, grid_import_kwh=5.0
+            batteries_charged_kwh=5.0, batteries_discharged_kwh=5.0, grid_import_kwh=5.0
         )
         # explicit 90/90 overrides conversion_loss_pct=50 (which would be absurdly high)
         weights = CostWeights(
@@ -418,7 +418,7 @@ class TestCostFunctionEfficiency:
         # Simulate: 4 kWh stored, charge_eff=90 % → grid drew 4/0.9 ≈ 4.44 kWh
         grid_drew = 4.0 / 0.90
         slot = self._make_cost_slot(
-            batteries_charged=4.0,
+            batteries_charged_kwh=4.0,
             grid_import_kwh=grid_drew,
             import_price=0.25,
         )
@@ -458,7 +458,7 @@ class TestPlannerInputEfficiencyFields:
         assert not math.isnan(output.plan_cost.total)
 
     def test_100pct_efficiency_no_extra_grid_import_for_charging(self) -> None:
-        """At 100 % efficiency, grid import for a charge-only slot == batteries_charged."""
+        """At 100 % efficiency, grid import for a charge-only slot == batteries_charged_kwh."""
         from custom_components.hsem.planner import run_planner
         from tests.planner.fixtures import make_summer_day_input
 
@@ -469,20 +469,20 @@ class TestPlannerInputEfficiencyFields:
         inp.battery_discharge_efficiency_pct = 100.0
         output = run_planner(inp)
 
-        # Find a grid-charge slot and verify grid_import == batteries_charged
+        # Find a grid-charge slot and verify grid_import == batteries_charged_kwh
         for slot in output.slots:
             if slot.batteries_charged_kwh > 0.1 and slot.solcast_pv_estimate_kwh < 0.01:
-                # Pure grid charge slot — grid import must equal batteries_charged
+                # Pure grid charge slot — grid import must equal batteries_charged_kwh
                 assert slot.grid_import_kwh == pytest.approx(
                     slot.batteries_charged_kwh, rel=0.01
                 ), (
                     f"At 100 % efficiency, grid_import ({slot.grid_import_kwh:.3f}) "
-                    f"should equal batteries_charged ({slot.batteries_charged_kwh:.3f})"
+                    f"should equal batteries_charged_kwh ({slot.batteries_charged_kwh:.3f})"
                 )
                 break  # one confirmation is sufficient
 
     def test_90pct_charge_efficiency_raises_grid_import(self) -> None:
-        """At 90 % charge efficiency, grid import > batteries_charged for charge slots."""
+        """At 90 % charge efficiency, grid import > batteries_charged_kwh for charge slots."""
         from custom_components.hsem.planner import run_planner
         from tests.planner.fixtures import make_summer_day_input
 
@@ -501,7 +501,7 @@ class TestPlannerInputEfficiencyFields:
         ]
         if charge_slots:
             slot = charge_slots[0]
-            # grid_import must be > batteries_charged (loss on the way in)
+            # grid_import must be > batteries_charged_kwh (loss on the way in)
             assert slot.grid_import_kwh > slot.batteries_charged_kwh - 1e-6
 
 
@@ -515,15 +515,15 @@ class TestEfficiencyEdgeCases:
 
     def test_efficiency_of_1pct_clamped_not_zero(self) -> None:
         """Extremely low efficiency is clamped to 1 % rather than 0 to avoid div/0."""
-        slot = _make_slot(1, batteries_charged=2.0, load=0.0, pv=0.0)
+        slot = _make_slot(1, batteries_charged_kwh=2.0, load=0.0, pv=0.0)
         # Should not raise
         _run_simulation([slot], current_kwh=0.0, charge_efficiency_pct=0.0)
 
     def test_efficiency_above_100_clamped_to_100(self) -> None:
         """Efficiency > 100 % is clamped to 100 % (cannot store more than supplied)."""
-        slot = _make_slot(1, batteries_charged=2.0, load=0.0, pv=0.0)
+        slot = _make_slot(1, batteries_charged_kwh=2.0, load=0.0, pv=0.0)
         _run_simulation([slot], current_kwh=0.0, charge_efficiency_pct=200.0)
-        # Should behave like 100 %: grid_import == batteries_charged
+        # Should behave like 100 %: grid_import == batteries_charged_kwh
         assert slot.grid_import_kwh == pytest.approx(2.0, abs=0.01)
 
     def test_no_battery_activity_efficiency_irrelevant(self) -> None:

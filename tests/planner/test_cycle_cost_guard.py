@@ -447,9 +447,9 @@ class TestKnownWinnerWithCycleCost:
                 end=start + timedelta(hours=1),
                 price=SlotPrice(import_price=0.10, export_price=0.0),
                 grid_import_kwh=1.0,
-                batteries_charged=1.0,
-                batteries_discharged=0.0,
-                estimated_battery_soc=50.0,
+                batteries_charged_kwh=1.0,
+                batteries_discharged_kwh=0.0,
+                estimated_battery_soc_pct=50.0,
             )
         ]
         plan_b = [
@@ -458,9 +458,9 @@ class TestKnownWinnerWithCycleCost:
                 end=start + timedelta(hours=1),
                 price=SlotPrice(import_price=0.10, export_price=0.0),
                 grid_import_kwh=1.0,
-                batteries_charged=3.0,
-                batteries_discharged=3.0,
-                estimated_battery_soc=50.0,
+                batteries_charged_kwh=3.0,
+                batteries_discharged_kwh=3.0,
+                estimated_battery_soc_pct=50.0,
             )
         ]
 
@@ -494,9 +494,9 @@ class TestKnownWinnerWithCycleCost:
                 price=SlotPrice(import_price=0.05, export_price=0.30),
                 grid_import_kwh=1.0,
                 grid_export_kwh=1.0,
-                batteries_charged=1.0,
-                batteries_discharged=1.0,
-                estimated_battery_soc=50.0,
+                batteries_charged_kwh=1.0,
+                batteries_discharged_kwh=1.0,
+                estimated_battery_soc_pct=50.0,
             )
         ]
         plan_b = [
@@ -506,9 +506,9 @@ class TestKnownWinnerWithCycleCost:
                 price=SlotPrice(import_price=0.30, export_price=0.0),
                 grid_import_kwh=1.0,
                 grid_export_kwh=0.0,
-                batteries_charged=0.0,
-                batteries_discharged=0.0,
-                estimated_battery_soc=50.0,
+                batteries_charged_kwh=0.0,
+                batteries_discharged_kwh=0.0,
+                estimated_battery_soc_pct=50.0,
             )
         ]
 

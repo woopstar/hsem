@@ -747,7 +747,7 @@ class TestP008MagicThresholds:
             start=datetime(2024, 6, 15, 12, 0, tzinfo=UTC),
             end=datetime(2024, 6, 15, 13, 0, tzinfo=UTC),
             price=SlotPrice(import_price=0.20, export_price=0.05),
-            estimated_net_consumption=NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH,
+            estimated_net_consumption_kwh=NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH,
             recommendation=None,
         )
         apply_optimization_strategy(

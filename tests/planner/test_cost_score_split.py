@@ -57,10 +57,10 @@ def _make_slot(
     export_price: float = 0.05,
     grid_import_kwh: float = 0.0,
     grid_export_kwh: float = 0.0,
-    batteries_charged: float = 0.0,
-    batteries_discharged: float = 0.0,
-    estimated_battery_soc: float = 50.0,
-    estimated_battery_capacity: float = 5.0,
+    batteries_charged_kwh: float = 0.0,
+    batteries_discharged_kwh: float = 0.0,
+    estimated_battery_soc_pct: float = 50.0,
+    estimated_battery_capacity_kwh: float = 5.0,
     recommendation: str | None = None,
 ) -> PlannedSlot:
     """Build a single :class:`PlannedSlot` for these tests."""
@@ -71,10 +71,10 @@ def _make_slot(
         price=SlotPrice(import_price=import_price, export_price=export_price),
         grid_import_kwh=grid_import_kwh,
         grid_export_kwh=grid_export_kwh,
-        batteries_charged=batteries_charged,
-        batteries_discharged=batteries_discharged,
-        estimated_battery_soc=estimated_battery_soc,
-        estimated_battery_capacity=estimated_battery_capacity,
+        batteries_charged_kwh=batteries_charged_kwh,
+        batteries_discharged_kwh=batteries_discharged_kwh,
+        estimated_battery_soc_pct=estimated_battery_soc_pct,
+        estimated_battery_capacity_kwh=estimated_battery_capacity_kwh,
         recommendation=recommendation,
     )
 
@@ -92,7 +92,7 @@ class TestTotalCostExcludesPenalties:
         # 1 kWh imported at 0.20 → import_cost = 0.20.
         # SoC sits at 5 % which is below the default min_soc_pct=10 %
         # giving a quadratic SoC penalty: 0.01 × (10 − 5)² = 0.25.
-        slot = _make_slot(grid_import_kwh=1.0, estimated_battery_soc=5.0)
+        slot = _make_slot(grid_import_kwh=1.0, estimated_battery_soc_pct=5.0)
         bd = score_plan([slot])
 
         assert bd.import_cost == pytest.approx(0.20)
@@ -109,7 +109,7 @@ class TestTotalCostExcludesPenalties:
         # 10 kWh imported in a 1-hour slot at 0.20 = 2.00 import_cost.
         # Default grid limit penalty: with grid_limit_kw=5, excess = 5 kW for
         # 1 hour → 5 kWh × 0.5 = 2.50 penalty.
-        slot = _make_slot(grid_import_kwh=10.0, estimated_battery_soc=50.0)
+        slot = _make_slot(grid_import_kwh=10.0, estimated_battery_soc_pct=50.0)
         weights = CostWeights(grid_limit_kw=5.0)
         bd = score_plan([slot], weights)
 
@@ -128,7 +128,7 @@ class TestScoreEqualsTotalCostWhenClean:
         slot = _make_slot(
             grid_import_kwh=2.0,
             grid_export_kwh=0.5,
-            estimated_battery_soc=50.0,
+            estimated_battery_soc_pct=50.0,
         )
         bd = score_plan([slot])
 
@@ -150,13 +150,13 @@ class TestTerminalSoCCredit:
 
     def test_credit_when_battery_grows(self) -> None:
         """Final capacity > initial → terminal_soc_value < 0 → reduces score."""
-        # Two slots; the second is "future" with estimated_battery_capacity=8.
+        # Two slots; the second is "future" with estimated_battery_capacity_kwh=8.
         # Initial energy above floor = 3 kWh; final = 8 kWh.
         # delta = 3 − 8 = −5; with replacement 0.30 DKK/kWh → −1.50.
         slot = _make_slot(
             grid_import_kwh=1.0,
-            estimated_battery_capacity=8.0,
-            estimated_battery_soc=80.0,
+            estimated_battery_capacity_kwh=8.0,
+            estimated_battery_soc_pct=80.0,
         )
         bd = score_plan(
             [slot],
@@ -179,9 +179,9 @@ class TestTerminalSoCPenalty:
         # Initial 8 kWh; final 1 kWh → delta = 7; price 0.40 → penalty = 2.80.
         slot = _make_slot(
             grid_import_kwh=0.0,
-            batteries_discharged=7.0,
-            estimated_battery_capacity=1.0,
-            estimated_battery_soc=15.0,
+            batteries_discharged_kwh=7.0,
+            estimated_battery_capacity_kwh=1.0,
+            estimated_battery_soc_pct=15.0,
         )
         bd = score_plan(
             [slot],
@@ -208,8 +208,8 @@ class TestTerminalSoCDisabledByDefault:
     def test_disabled_when_kwargs_omitted(self) -> None:
         slot = _make_slot(
             grid_import_kwh=1.0,
-            estimated_battery_capacity=9.99,
-            estimated_battery_soc=99.0,
+            estimated_battery_capacity_kwh=9.99,
+            estimated_battery_soc_pct=99.0,
         )
         bd = score_plan([slot])
         assert bd.terminal_soc_value == pytest.approx(0.0)
@@ -217,8 +217,8 @@ class TestTerminalSoCDisabledByDefault:
     def test_disabled_when_only_one_input_provided(self) -> None:
         slot = _make_slot(
             grid_import_kwh=1.0,
-            estimated_battery_capacity=9.99,
-            estimated_battery_soc=99.0,
+            estimated_battery_capacity_kwh=9.99,
+            estimated_battery_soc_pct=99.0,
         )
         # Only initial_battery_kwh provided — term must stay disabled.
         bd_initial_only = score_plan([slot], initial_battery_kwh=2.0)
@@ -231,8 +231,8 @@ class TestTerminalSoCDisabledByDefault:
         """A zero replacement price disables the term (no opportunity cost)."""
         slot = _make_slot(
             grid_import_kwh=1.0,
-            estimated_battery_capacity=9.99,
-            estimated_battery_soc=99.0,
+            estimated_battery_capacity_kwh=9.99,
+            estimated_battery_soc_pct=99.0,
         )
         bd = score_plan(
             [slot],
@@ -266,18 +266,18 @@ class TestComparePlansUsesScore:
         to zero so the test isolates the terminal-SoC behaviour.
         """
         # Both plans: same import cost; same SoC %.  Difference: final
-        # estimated_battery_capacity.
+        # estimated_battery_capacity_kwh.
         discharge_only_last_slot = _make_slot(
             hour=23,
             grid_import_kwh=76.5,
-            estimated_battery_capacity=0.5,  # nearly empty
-            estimated_battery_soc=15.0,
+            estimated_battery_capacity_kwh=0.5,  # nearly empty
+            estimated_battery_soc_pct=15.0,
         )
         solar_only_last_slot = _make_slot(
             hour=23,
             grid_import_kwh=76.5,
-            estimated_battery_capacity=9.0,  # ends nearly full
-            estimated_battery_soc=95.0,
+            estimated_battery_capacity_kwh=9.0,  # ends nearly full
+            estimated_battery_soc_pct=95.0,
         )
 
         # Disable cycle and conversion-loss terms; isolate terminal-SoC.
@@ -312,8 +312,8 @@ class TestComparePlansUsesScore:
 
     def test_score_strictly_lower_when_battery_preserved(self) -> None:
         """A plan that preserves more battery energy must score strictly lower."""
-        slot_a = _make_slot(grid_import_kwh=1.0, estimated_battery_capacity=4.0)
-        slot_b = _make_slot(grid_import_kwh=1.0, estimated_battery_capacity=1.0)
+        slot_a = _make_slot(grid_import_kwh=1.0, estimated_battery_capacity_kwh=4.0)
+        slot_b = _make_slot(grid_import_kwh=1.0, estimated_battery_capacity_kwh=1.0)
         bd_a, bd_b, winner = compare_plans(
             [slot_a],
             [slot_b],
@@ -335,12 +335,12 @@ class TestTotalAlias:
     """``.total`` is a deprecated alias for ``.score``."""
 
     def test_total_alias_equals_score_no_penalties(self) -> None:
-        slot = _make_slot(grid_import_kwh=1.0, estimated_battery_soc=50.0)
+        slot = _make_slot(grid_import_kwh=1.0, estimated_battery_soc_pct=50.0)
         bd = score_plan([slot])
         assert bd.total == pytest.approx(bd.score, abs=1e-9)
 
     def test_total_alias_equals_score_with_penalties(self) -> None:
-        slot = _make_slot(grid_import_kwh=1.0, estimated_battery_soc=5.0)
+        slot = _make_slot(grid_import_kwh=1.0, estimated_battery_soc_pct=5.0)
         bd = score_plan([slot])
         assert bd.soc_penalty > 0.0
         assert bd.total == pytest.approx(bd.score, abs=1e-9)
@@ -348,8 +348,8 @@ class TestTotalAlias:
     def test_total_alias_includes_terminal_soc(self) -> None:
         slot = _make_slot(
             grid_import_kwh=1.0,
-            estimated_battery_capacity=8.0,
-            estimated_battery_soc=80.0,
+            estimated_battery_capacity_kwh=8.0,
+            estimated_battery_soc_pct=80.0,
         )
         bd = score_plan(
             [slot],
