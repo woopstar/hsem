@@ -790,13 +790,13 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 unmatched.append(rec.start.isoformat())
                 continue
             rec.recommendation = slot.recommendation
-            rec.batteries_charged_kwh = slot.batteries_charged
-            rec.batteries_discharged_kwh = slot.batteries_discharged
+            rec.batteries_charged_kwh = slot.batteries_charged_kwh
+            rec.batteries_discharged_kwh = slot.batteries_discharged_kwh
             rec.estimated_net_consumption_kwh = slot.estimated_net_consumption_kwh
             rec.ev_planned_load_kwh = slot.ev_planned_load_kwh
             rec.ev_accounted_load_kwh = slot.ev_accounted_load_kwh
             rec.ev_total_planned_load_kwh = slot.ev_total_planned_load_kwh
-            rec.estimated_cost_currency = slot.estimated_cost
+            rec.estimated_cost_currency = slot.estimated_cost_currency
             rec.estimated_battery_capacity_kwh = slot.estimated_battery_capacity_kwh
             rec.estimated_battery_soc_pct = slot.estimated_battery_soc_pct
             rec.grid_import_kwh = slot.grid_import_kwh

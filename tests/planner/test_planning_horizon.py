@@ -379,7 +379,7 @@ class TestConfidenceDecay:
         )
         for slot in result.slots:
             if slot.start.date() == target_date and slot.start.hour == 12:
-                return slot.solcast_pv_estimate
+                return slot.solcast_pv_estimate_kwh
         return 0.0
 
     def test_48h_day1_pv_less_than_day0_same_input(self):
