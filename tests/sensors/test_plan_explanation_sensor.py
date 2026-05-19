@@ -13,6 +13,7 @@ Acceptance criteria
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
 import pytest
@@ -22,7 +23,20 @@ from custom_components.hsem.coordinator import CoordinatorData
 from custom_components.hsem.custom_sensors.plan_explanation_sensor import (
     HSEMPlanExplanationSensor,
 )
-from custom_components.hsem.models.planner_outputs import PlanExplanation, RejectedPlan
+from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
+from custom_components.hsem.models.live_state import LiveState
+from custom_components.hsem.models.planner_outputs import (
+    DataQuality,
+    PlanExplanation,
+    RejectedPlan,
+)
+from custom_components.hsem.models.sensor_config import SensorConfig
+from custom_components.hsem.utils.degraded_mode import DegradedMode
+from custom_components.hsem.utils.inverter_verify import (
+    ApplyResult,
+    ApplyStatus,
+    CycleApplySummary,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -42,6 +56,19 @@ _EXPECTED_ATTR_KEYS = {
     "battery_soc_at_end_pct",
     "constraints",
     "rejected_plans",
+}
+
+# Context keys added when the coordinator snapshot is fully populated.
+_CONTEXT_ATTR_KEYS = {
+    "planning_horizon_hours",
+    "planning_interval_minutes",
+    "forecast_mode",
+    "current_slot_start",
+    "current_slot_end",
+    "current_slot_recommendation",
+    "last_apply_status",
+    "hardware_writes_blocked",
+    "data_quality_complete",
 }
 
 
@@ -68,9 +95,64 @@ def _make_explanation(**kwargs) -> PlanExplanation:
 
 def _make_coordinator_data(
     explanation: PlanExplanation | None = None,
+    *,
+    has_context: bool = False,
 ) -> CoordinatorData:
-    """Return a minimal CoordinatorData carrying a plan explanation."""
-    return CoordinatorData(plan_explanation=explanation or _make_explanation())
+    """Return a minimal CoordinatorData carrying a plan explanation.
+
+    When *has_context* is True, also populates ``cfg``, ``live``,
+    ``hourly_recommendation``, ``apply_summary``, and ``data_quality``
+    so that the enriched attributes are returned.
+    """
+    data = CoordinatorData(plan_explanation=explanation or _make_explanation())
+    if has_context:
+        cfg = SensorConfig()
+        cfg.recommendation_interval_length = 48
+        cfg.recommendation_interval_minutes = 15
+        cfg.months_winter = [1, 2, 3, 4, 10, 11, 12]
+        data.cfg = cfg
+
+        live = LiveState()
+        live._degraded_mode = DegradedMode.OK
+        data.live = live
+
+        now = datetime.now(UTC)
+        slot = HourlyRecommendation(
+            start=now,
+            end=now + timedelta(hours=1),
+            recommendation="batteries_wait_mode",
+            avg_house_consumption_kwh=0.0,
+            avg_house_consumption_1d_kwh=0.0,
+            avg_house_consumption_3d_kwh=0.0,
+            avg_house_consumption_7d_kwh=0.0,
+            avg_house_consumption_14d_kwh=0.0,
+            batteries_charged_kwh=0.0,
+            batteries_discharged_kwh=0.0,
+            estimated_battery_capacity_kwh=0.0,
+            estimated_battery_soc_pct=50.0,
+            estimated_cost_currency=0.0,
+            estimated_net_consumption_kwh=0.0,
+            export_price=0.0,
+            grid_export_kwh=0.0,
+            grid_import_kwh=0.0,
+            import_price=0.0,
+            solcast_pv_estimate_kwh=0.0,
+        )
+        data.hourly_recommendation = slot
+
+        data.apply_summary = CycleApplySummary(
+            results=[
+                ApplyResult(
+                    entity_id="number.batteries_end_of_charge_soc",
+                    desired=95,
+                    actual=95,
+                    status=ApplyStatus.OK,
+                    attempts=1,
+                )
+            ]
+        )
+        data.data_quality = DataQuality()
+    return data
 
 
 def _make_sensor(data: CoordinatorData | None = None) -> HSEMPlanExplanationSensor:
@@ -247,3 +329,78 @@ class TestSensorAttributes:
         """forecast_pv_kwh attribute must be non-negative."""
         sensor = _make_sensor(_make_coordinator_data())
         assert sensor.extra_state_attributes["forecast_pv_kwh"] >= 0.0
+
+
+# ===========================================================================
+# 5. Context attributes (planner horizon, forecast mode, current slot, safety)
+# ===========================================================================
+
+
+class TestSensorContextAttributes:
+    """extra_state_attributes includes diagnostic context when coordinator
+    snapshot is fully populated."""
+
+    def test_context_keys_present_when_data_has_context(self):
+        """All context keys must be present when cfg/live/slot/apply are set."""
+        sensor = _make_sensor(_make_coordinator_data(has_context=True))
+        keys = set(sensor.extra_state_attributes.keys())
+        assert _CONTEXT_ATTR_KEYS.issubset(
+            keys
+        ), f"Missing context keys: {_CONTEXT_ATTR_KEYS - keys}"
+
+    def test_context_keys_absent_when_no_coordinator_data(self):
+        """Context keys must NOT be present when coordinator.data is None."""
+        sensor = _make_sensor(data=None)
+        keys = set(sensor.extra_state_attributes.keys())
+        assert keys == _EXPECTED_ATTR_KEYS
+
+    def test_context_keys_absent_when_data_has_no_context(self):
+        """Context keys must NOT be present when cfg/live are not populated."""
+        sensor = _make_sensor(_make_coordinator_data(has_context=False))
+        keys = set(sensor.extra_state_attributes.keys())
+        assert keys == _EXPECTED_ATTR_KEYS
+
+    def test_planning_horizon_hours(self):
+        """planning_horizon_hours must match cfg.recommendation_interval_length."""
+        sensor = _make_sensor(_make_coordinator_data(has_context=True))
+        assert sensor.extra_state_attributes["planning_horizon_hours"] == 48
+
+    def test_planning_interval_minutes(self):
+        """planning_interval_minutes must match cfg.recommendation_interval_minutes."""
+        sensor = _make_sensor(_make_coordinator_data(has_context=True))
+        assert sensor.extra_state_attributes["planning_interval_minutes"] == 15
+
+    def test_forecast_mode_winter(self):
+        """forecast_mode must be 'winter' when current month is in months_winter."""
+        sensor = _make_sensor(_make_coordinator_data(has_context=True))
+        mode = sensor.extra_state_attributes["forecast_mode"]
+        assert mode in ("winter", "summer")
+
+    def test_current_slot_recommendation(self):
+        """current_slot_recommendation must match the hourly_recommendation."""
+        sensor = _make_sensor(_make_coordinator_data(has_context=True))
+        assert (
+            sensor.extra_state_attributes["current_slot_recommendation"]
+            == "batteries_wait_mode"
+        )
+
+    def test_current_slot_start_and_end(self):
+        """current_slot_start and current_slot_end must be ISO-format strings."""
+        sensor = _make_sensor(_make_coordinator_data(has_context=True))
+        assert isinstance(sensor.extra_state_attributes["current_slot_start"], str)
+        assert isinstance(sensor.extra_state_attributes["current_slot_end"], str)
+
+    def test_last_apply_status(self):
+        """last_apply_status must reflect the apply_summary overall_status."""
+        sensor = _make_sensor(_make_coordinator_data(has_context=True))
+        assert sensor.extra_state_attributes["last_apply_status"] == "ok"
+
+    def test_hardware_writes_blocked(self):
+        """hardware_writes_blocked must be False when degraded mode is OK."""
+        sensor = _make_sensor(_make_coordinator_data(has_context=True))
+        assert sensor.extra_state_attributes["hardware_writes_blocked"] is False
+
+    def test_data_quality_complete(self):
+        """data_quality_complete must be True for a default DataQuality."""
+        sensor = _make_sensor(_make_coordinator_data(has_context=True))
+        assert sensor.extra_state_attributes["data_quality_complete"] is True

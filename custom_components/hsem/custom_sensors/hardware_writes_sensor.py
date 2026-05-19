@@ -121,21 +121,31 @@ class HSEMHardwareWritesSensor(
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return details about why writes are blocked (if applicable)."""
+        """Return details about why writes are blocked (if applicable).
+
+        Includes the degraded-mode reason, missing entity list, read-only
+        toggle status, and the current planning horizon.
+        """
         data: CoordinatorData | None = self.coordinator.data
         if data is None or data.live is None:
             return {
                 "degraded_mode": None,
                 "missing_entities_list": [],
                 "read_only_active": False,
+                "planning_horizon_hours": None,
+                "planning_interval_minutes": None,
             }
         live = data.live
         cfg = data.cfg
-        return {
+        attrs = {
             "degraded_mode": live.degraded_mode.value,
             "missing_entities_list": list(live.missing_entities_list),
             "read_only_active": bool(cfg.read_only) if cfg is not None else False,
         }
+        if cfg is not None:
+            attrs["planning_horizon_hours"] = cfg.recommendation_interval_length
+            attrs["planning_interval_minutes"] = cfg.recommendation_interval_minutes
+        return attrs
 
     # ------------------------------------------------------------------
     # HA lifecycle
