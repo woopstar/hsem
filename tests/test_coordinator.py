@@ -268,8 +268,8 @@ class TestGenerateRecommendationIntervals:
         slot = slots[0]
         assert slot.import_price == pytest.approx(0.0)
         assert slot.export_price == pytest.approx(0.0)
-        assert slot.solcast_pv_estimate == pytest.approx(0.0)
-        assert slot.avg_house_consumption == pytest.approx(0.0)
+        assert slot.solcast_pv_estimate_kwh == pytest.approx(0.0)
+        assert slot.avg_house_consumption_kwh == pytest.approx(0.0)
 
 
 # ---------------------------------------------------------------------------

@@ -182,7 +182,7 @@ class TestSlotMutationHelpers:
             batteries_charged=3.5,
         )
         _clear_all_charge_discharge([slot])
-        assert abs(slot.batteries_charged) < 1e-9
+        assert abs(slot.batteries_charged_kwh) < 1e-9
 
     def test_remove_solar_charge_keeps_grid_charge(self):
         """_remove_solar_charge must not touch grid-charge slots."""
@@ -248,10 +248,10 @@ class TestGenerateCandidates:
             slot = _make_simple_slot(hour=h, import_price=0.10 + 0.01 * h)
             if h in (1, 2):
                 slot.recommendation = Recommendations.BatteriesChargeGrid.value
-                slot.batteries_charged = 2.0
+                slot.batteries_charged_kwh = 2.0
             elif h in (10, 11):
                 slot.recommendation = Recommendations.BatteriesChargeSolar.value
-                slot.batteries_charged = 1.0
+                slot.batteries_charged_kwh = 1.0
             elif h in (17, 18, 19):
                 slot.recommendation = Recommendations.BatteriesDischargeMode.value
             slots.append(slot)
@@ -384,7 +384,7 @@ class TestValidateCandidate:
             _make_simple_slot(hour=h, estimated_battery_soc=50.0) for h in range(3)
         ]
         # Set one slot well below the floor
-        slots[1].estimated_battery_soc = 5.0
+        slots[1].estimated_battery_soc_pct = 5.0
         plan = CandidatePlan(name="test", slots=slots)
         is_valid, reason = _validate_candidate(plan, end_of_discharge_soc_pct=10.0)
         assert is_valid is False
@@ -694,28 +694,28 @@ class TestPassiveCandidate:
         ]
         # Set up: slot 0 (past, surplus), slot 1 (future, surplus),
         # slot 2 (future, net positive), slot 3 (future, surplus)
-        slots[0].estimated_net_consumption = -2.0  # past surplus — ignored
-        slots[1].estimated_net_consumption = -2.0  # future surplus
-        slots[2].estimated_net_consumption = 1.5  # positive — ignored
-        slots[3].estimated_net_consumption = -0.5  # future surplus
+        slots[0].estimated_net_consumption_kwh = -2.0  # past surplus — ignored
+        slots[1].estimated_net_consumption_kwh = -2.0  # future surplus
+        slots[2].estimated_net_consumption_kwh = 1.5  # positive — ignored
+        slots[3].estimated_net_consumption_kwh = -0.5  # future surplus
 
         _apply_passive_solar(slots, now)
 
         # Past slot with surplus: recommendation cleared, not re-assigned
         assert slots[0].recommendation is None
-        assert abs(slots[0].batteries_charged) < 1e-9
+        assert abs(slots[0].batteries_charged_kwh) < 1e-9
 
         # Future slot with surplus (-2.0): gets BatteriesChargeSolar, charged=2.0
         assert slots[1].recommendation == Recommendations.BatteriesChargeSolar.value
-        assert slots[1].batteries_charged == pytest.approx(2.0)
+        assert slots[1].batteries_charged_kwh == pytest.approx(2.0)
 
         # Future slot with positive net consumption: remains None
         assert slots[2].recommendation is None
-        assert abs(slots[2].batteries_charged) < 1e-9
+        assert abs(slots[2].batteries_charged_kwh) < 1e-9
 
         # Future slot with surplus (-0.5): gets BatteriesChargeSolar, charged=0.5
         assert slots[3].recommendation == Recommendations.BatteriesChargeSolar.value
-        assert slots[3].batteries_charged == pytest.approx(0.5)
+        assert slots[3].batteries_charged_kwh == pytest.approx(0.5)
 
     def test_no_action_never_wins(self):
         """run_planner on a summer day must never select no_action as winner."""
@@ -749,7 +749,7 @@ class TestPassiveCandidate:
             for h in range(24)
         ]
         for s in slots:
-            s.estimated_net_consumption = -1.0  # all surplus
+            s.estimated_net_consumption_kwh = -1.0  # all surplus
 
         _apply_passive_solar(slots, now)
 

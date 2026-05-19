@@ -137,9 +137,9 @@ class TestSolarChargePerSlotSemantics:
 
         for slot in solar_slots:
             # Per-slot surplus: PV production - consumption (negative net consumption)
-            surplus = abs(slot.estimated_net_consumption)
-            assert slot.batteries_charged <= surplus + 1e-6, (
-                f"Slot {slot.start.isoformat()}: batteries_charged={slot.batteries_charged} "
+            surplus = abs(slot.estimated_net_consumption_kwh)
+            assert slot.batteries_charged_kwh <= surplus + 1e-6, (
+                f"Slot {slot.start.isoformat()}: batteries_charged={slot.batteries_charged_kwh} "
                 f"exceeds available solar surplus={surplus}"
             )
 
@@ -148,7 +148,7 @@ class TestSolarChargePerSlotSemantics:
         inp = _make_solar_only_input(battery_soc_pct=0.0, solar_per_hour=3.0)
         result = run_planner(inp)
 
-        manual_sum = round(sum(s.batteries_charged for s in result.slots), 3)
+        manual_sum = round(sum(s.batteries_charged_kwh for s in result.slots), 3)
         reported = result.total_charged_energy_kwh()
 
         assert abs(manual_sum - reported) < 1e-6, (
@@ -198,9 +198,9 @@ class TestSolarChargePerSlotSemantics:
         )
 
         for slot in solar_slots:
-            per_slot_max = abs(slot.estimated_net_consumption)
-            assert slot.batteries_charged <= per_slot_max + 1e-6, (
-                f"Slot {slot.start.isoformat()}: batteries_charged={slot.batteries_charged} "
+            per_slot_max = abs(slot.estimated_net_consumption_kwh)
+            assert slot.batteries_charged_kwh <= per_slot_max + 1e-6, (
+                f"Slot {slot.start.isoformat()}: batteries_charged={slot.batteries_charged_kwh} "
                 f"is larger than per-slot surplus={per_slot_max}. "
                 "Likely the cumulative total was stored in this slot (double-count bug)."
             )
@@ -219,15 +219,15 @@ class TestSolarChargePerSlotSemantics:
             s for s in result.slots if s.recommendation == _SOLAR_CHARGE_VALUE
         ]
         # Total across slots must equal reported total (no double-count)
-        manual_sum = round(sum(s.batteries_charged for s in solar_slots), 3)
+        manual_sum = round(sum(s.batteries_charged_kwh for s in solar_slots), 3)
         reported = result.total_charged_energy_kwh()
         assert abs(manual_sum - reported) < 1e-6
 
         # Each individual slot must not exceed its per-slot surplus
         for slot in solar_slots:
-            surplus = abs(slot.estimated_net_consumption)
-            assert slot.batteries_charged <= surplus + 1e-6, (
-                f"Slot {slot.start.isoformat()}: per_slot={slot.batteries_charged} "
+            surplus = abs(slot.estimated_net_consumption_kwh)
+            assert slot.batteries_charged_kwh <= surplus + 1e-6, (
+                f"Slot {slot.start.isoformat()}: per_slot={slot.batteries_charged_kwh} "
                 f"> surplus={surplus}"
             )
 
@@ -260,9 +260,9 @@ class TestSolarChargePerSlotSemantics:
         # Each individual solar slot must store a per-slot value ≤ its own surplus
         for slot in result.slots:
             if slot.recommendation == _SOLAR_CHARGE_VALUE:
-                surplus = abs(slot.estimated_net_consumption)
-                assert slot.batteries_charged <= surplus + 1e-6, (
-                    f"Slot {slot.start.isoformat()}: batteries_charged={slot.batteries_charged} "
+                surplus = abs(slot.estimated_net_consumption_kwh)
+                assert slot.batteries_charged_kwh <= surplus + 1e-6, (
+                    f"Slot {slot.start.isoformat()}: batteries_charged={slot.batteries_charged_kwh} "
                     f"> slot surplus={surplus} (cumulative bug?)"
                 )
 

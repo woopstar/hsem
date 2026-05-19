@@ -1885,12 +1885,12 @@ class TestApplyPlannerOutputEvLoad:
         rec_10 = next(r for r in coord._hourly_recommendations if r.start.hour == 10)
         assert rec_10.recommendation == "batteries_wait_mode"
         assert abs(rec_10.ev_planned_load_kwh - 2.5) < 1e-9
-        assert abs(rec_10.estimated_net_consumption - round(1.0 + 2.5 - 0.5, 3)) < 1e-6
-        assert abs(rec_10.solcast_pv_estimate - 0.5) < 1e-9
-        assert abs(rec_10.batteries_discharged - 0.2) < 1e-9
-        assert abs(rec_10.estimated_battery_soc - 55.0) < 1e-9
-        assert abs(rec_10.estimated_battery_capacity - 4.5) < 1e-9
-        assert abs(rec_10.estimated_cost - 0.08) < 1e-9
+        assert abs(rec_10.estimated_net_consumption_kwh - round(1.0 + 2.5 - 0.5, 3)) < 1e-6
+        assert abs(rec_10.solcast_pv_estimate_kwh - 0.5) < 1e-9
+        assert abs(rec_10.batteries_discharged_kwh - 0.2) < 1e-9
+        assert abs(rec_10.estimated_battery_soc_pct - 55.0) < 1e-9
+        assert abs(rec_10.estimated_battery_capacity_kwh - 4.5) < 1e-9
+        assert abs(rec_10.estimated_cost_currency - 0.08) < 1e-9
         assert abs(rec_10.grid_import_kwh - 0.1) < 1e-9
         assert abs(rec_10.grid_export_kwh - 0.0) < 1e-9
 

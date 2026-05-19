@@ -357,7 +357,7 @@ def generate_candidates(
             for s in cand.slots
             if s.recommendation in _DISCHARGE_RECS
         ]
-        total_charge = sum(s.batteries_charged for s in cand.slots)
+        total_charge = sum(s.batteries_charged_kwh for s in cand.slots)
         log_planner(
             "debug",
             "[gen] %s: charge_slots=%d (%s)  discharge_slots=%d (%s)  "
@@ -410,7 +410,7 @@ def _clear_all_charge_discharge(slots: list[PlannedSlot]) -> None:
     for slot in slots:
         if slot.recommendation in _CHARGE_RECS | _DISCHARGE_RECS:
             slot.recommendation = None
-            slot.batteries_charged = 0.0
+            slot.batteries_charged_kwh = 0.0
 
 
 def _apply_passive_solar(slots: list[PlannedSlot], now: datetime) -> None:
@@ -427,17 +427,17 @@ def _apply_passive_solar(slots: list[PlannedSlot], now: datetime) -> None:
         # Clear all active scheduling first
         if slot.recommendation in _CHARGE_RECS | _DISCHARGE_RECS:
             slot.recommendation = None
-            slot.batteries_charged = 0.0
+            slot.batteries_charged_kwh = 0.0
 
         # Passively absorb surplus into battery for future slots only
         # NaN < 0.0 is False in Python so no explicit NaN guard is needed
         if (
             as_tz(slot.end, now.tzinfo) > now
-            and slot.estimated_net_consumption is not None
-            and slot.estimated_net_consumption < 0.0
+            and slot.estimated_net_consumption_kwh is not None
+            and slot.estimated_net_consumption_kwh < 0.0
         ):
             slot.recommendation = Recommendations.BatteriesChargeSolar.value
-            slot.batteries_charged = round(-slot.estimated_net_consumption, 3)
+            slot.batteries_charged_kwh = round(-slot.estimated_net_consumption_kwh, 3)
 
 
 def _remove_solar_charge(slots: list[PlannedSlot]) -> None:
@@ -445,7 +445,7 @@ def _remove_solar_charge(slots: list[PlannedSlot]) -> None:
     for slot in slots:
         if slot.recommendation == Recommendations.BatteriesChargeSolar.value:
             slot.recommendation = None
-            slot.batteries_charged = 0.0
+            slot.batteries_charged_kwh = 0.0
 
 
 def _remove_grid_charge(slots: list[PlannedSlot]) -> None:
@@ -453,7 +453,7 @@ def _remove_grid_charge(slots: list[PlannedSlot]) -> None:
     for slot in slots:
         if slot.recommendation == Recommendations.BatteriesChargeGrid.value:
             slot.recommendation = None
-            slot.batteries_charged = 0.0
+            slot.batteries_charged_kwh = 0.0
 
 
 def _remove_all_charge(slots: list[PlannedSlot]) -> None:
@@ -461,7 +461,7 @@ def _remove_all_charge(slots: list[PlannedSlot]) -> None:
     for slot in slots:
         if slot.recommendation in _CHARGE_RECS:
             slot.recommendation = None
-            slot.batteries_charged = 0.0
+            slot.batteries_charged_kwh = 0.0
 
 
 def _apply_aggressive_strategy(
@@ -550,7 +550,7 @@ def _apply_aggressive_strategy(
             charged += 1
             continue
         slot.recommendation = Recommendations.BatteriesChargeGrid.value
-        slot.batteries_charged = round(max_charge_per_slot, 3)
+        slot.batteries_charged_kwh = round(max_charge_per_slot, 3)
         charged += 1
 
     # Apply force-discharge to most-expensive M slots.
@@ -582,7 +582,7 @@ def _apply_aggressive_strategy(
                 and slot.start >= first_discharge_start
             ):
                 slot.recommendation = None
-                slot.batteries_charged = 0.0
+                slot.batteries_charged_kwh = 0.0
 
 
 def _apply_soc_plan(
@@ -641,13 +641,13 @@ def _apply_soc_plan(
         for slot in slots:
             if slot.recommendation == Recommendations.BatteriesChargeGrid.value:
                 slot.recommendation = None
-                slot.batteries_charged = 0.0
+                slot.batteries_charged_kwh = 0.0
         return None
 
     # Total net energy needed across all discharge windows.
     # This is the sum of positive net consumption in each discharge slot.
     total_needed_kwh = sum(
-        max(s.estimated_net_consumption, 0.0) for s in discharge_slots
+        max(s.estimated_net_consumption_kwh, 0.0) for s in discharge_slots
     )
 
     # Account for charge and discharge efficiency.
@@ -693,7 +693,7 @@ def _apply_soc_plan(
     for slot in slots:
         if slot.recommendation in _CHARGE_RECS | _DISCHARGE_RECS:
             slot.recommendation = None
-            slot.batteries_charged = 0.0
+            slot.batteries_charged_kwh = 0.0
 
     # Step 3: Re-apply discharge window labels — but in discharge-fraction
     # mode, only apply to the most expensive slots within the discharge_target.
@@ -706,7 +706,7 @@ def _apply_soc_plan(
         remaining = discharge_target
         kept_discharge: list = []
         for s in sorted_discharge:
-            slot_demand = max(s.estimated_net_consumption, 0.0)
+            slot_demand = max(s.estimated_net_consumption_kwh, 0.0)
             battery_needed = (
                 slot_demand / discharge_eff if discharge_eff > 1e-9 else 0.0
             )
@@ -735,18 +735,18 @@ def _apply_soc_plan(
             s
             for s in future
             if s.recommendation is None
-            and s.estimated_net_consumption is not None
-            and s.estimated_net_consumption < 0.0
+            and s.estimated_net_consumption_kwh is not None
+            and s.estimated_net_consumption_kwh < 0.0
         ),
-        key=lambda x: (x.estimated_net_consumption, x.start),
+        key=lambda x: (x.estimated_net_consumption_kwh, x.start),
     ):
         if charged >= charge_target:
             break
-        available_solar = abs(slot.estimated_net_consumption)
+        available_solar = abs(slot.estimated_net_consumption_kwh)
         energy = min(max_charge_per_slot, charge_target - charged, available_solar)
         if energy > 0:
             slot.recommendation = Recommendations.BatteriesChargeSolar.value
-            slot.batteries_charged = round(energy, 3)
+            slot.batteries_charged_kwh = round(energy, 3)
             charged += energy
 
     # Step 5: Charge remaining needed energy from cheapest grid slots
@@ -798,7 +798,7 @@ def _apply_soc_plan(
             energy = min(max_charge_per_slot, charge_target - charged)
             if energy > 0:
                 slot.recommendation = Recommendations.BatteriesChargeGrid.value
-                slot.batteries_charged = round(energy, 3)
+                slot.batteries_charged_kwh = round(energy, 3)
                 charged += energy
 
     # Step 6: Remaining slots stay as None — the seasonal fill pass will

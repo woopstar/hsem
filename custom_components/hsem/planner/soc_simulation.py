@@ -134,9 +134,9 @@ def simulate_soc(
 
         # Past slots: zero out SoC fields and move on.
         if slot_end <= now:
-            slot.estimated_battery_capacity = 0.0
-            slot.estimated_battery_soc = 0.0
-            slot.batteries_discharged = 0.0
+            slot.estimated_battery_capacity_kwh = 0.0
+            slot.estimated_battery_soc_pct = 0.0
+            slot.batteries_discharged_kwh = 0.0
             slot.grid_import_kwh = 0.0
             slot.grid_export_kwh = 0.0
             continue
@@ -146,7 +146,7 @@ def simulate_soc(
         if slot_start <= now < slot_end:
             cap = current_kwh
 
-        pv = slot.solcast_pv_estimate  # kWh produced by PV this slot
+        pv = slot.solcast_pv_estimate_kwh  # kWh produced by PV this slot
 
         # ev_planned_load_kwh  — extra EV AC load NOT yet in avg_house_consumption
         #                        (base_load_includes_ev=False case)
@@ -174,16 +174,16 @@ def simulate_soc(
             slot.ev_planned_load_kwh
         )  # extra, not yet in avg_house_consumption
         ev_load = ev_injected + ev_accounted  # total AC EV draw → grid/PV only
-        house_load = slot.avg_house_consumption - ev_accounted  # pure house load
+        house_load = slot.avg_house_consumption_kwh - ev_accounted  # pure house load
 
         # --- Enforce charge ceiling on pre-scheduled charge ---
         # The charge scheduler may have set batteries_charged without knowing
         # the current SoC at this point in the simulation.  Reduce if the
         # battery would exceed max_capacity_kwh or the per-slot power limit.
         headroom = max(max_capacity_kwh - cap, 0.0)
-        scheduled_charge = min(slot.batteries_charged, headroom, max_charge_per_slot)
+        scheduled_charge = min(slot.batteries_charged_kwh, headroom, max_charge_per_slot)
         scheduled_charge = max(scheduled_charge, 0.0)
-        slot.batteries_charged = round(scheduled_charge, 3)
+        slot.batteries_charged_kwh = round(scheduled_charge, 3)
 
         # --- Net demand on the shared AC bus ---
         # The battery, house loads, and EV charger all share one AC bus.
@@ -322,17 +322,17 @@ def simulate_soc(
         cap = min(max(cap, 0.0), usable_kwh)
 
         # --- Write slot fields ---
-        slot.estimated_battery_capacity = round(cap, 3)
+        slot.estimated_battery_capacity_kwh = round(cap, 3)
         if rated_kwh > 1e-9:
             # Absolute SoC: convert kWh-above-floor back to percentage of rated
             # capacity so it matches what the physical inverter reports.
             absolute_kwh = cap + rated_kwh * end_of_discharge_soc_pct / 100
-            slot.estimated_battery_soc = round(absolute_kwh / rated_kwh * 100, 2)
+            slot.estimated_battery_soc_pct = round(absolute_kwh / rated_kwh * 100, 2)
         elif usable_kwh > 1e-9:
-            slot.estimated_battery_soc = round(cap / usable_kwh * 100, 2)
+            slot.estimated_battery_soc_pct = round(cap / usable_kwh * 100, 2)
         else:
-            slot.estimated_battery_soc = 0.0
-        slot.batteries_discharged = round(discharge, 3)
+            slot.estimated_battery_soc_pct = 0.0
+        slot.batteries_discharged_kwh = round(discharge, 3)
         slot.grid_import_kwh = round(grid_import, 3)
         slot.grid_export_kwh = round(grid_export, 3)
 
@@ -356,5 +356,5 @@ def simulate_soc(
             grid_import,
             grid_export,
             cap,
-            slot.estimated_battery_soc,
+            slot.estimated_battery_soc_pct,
         )

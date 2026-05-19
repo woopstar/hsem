@@ -586,9 +586,9 @@ class TestEstimatedNetConsumptionIncludesEVLoad:
         coord._hourly_recommendations = [rec]
         coord._apply_planner_output(PlannerOutput(slots=[slot]))
 
-        assert rec.estimated_net_consumption == pytest.approx(expected_net, abs=1e-6), (
+        assert rec.estimated_net_consumption_kwh == pytest.approx(expected_net, abs=1e-6), (
             f"Expected estimated_net_consumption={expected_net}, "
-            f"got {rec.estimated_net_consumption}"
+            f"got {rec.estimated_net_consumption_kwh}"
         )
         assert rec.ev_planned_load_kwh == pytest.approx(ev_planned_load_kwh, abs=1e-9)
 
@@ -620,7 +620,7 @@ class TestEstimatedNetConsumptionIncludesEVLoad:
         coord._hourly_recommendations = [rec]
         coord._apply_planner_output(PlannerOutput(slots=[slot]))
 
-        assert rec.estimated_net_consumption == pytest.approx(expected_net, abs=1e-6)
+        assert rec.estimated_net_consumption_kwh == pytest.approx(expected_net, abs=1e-6)
 
 
 # ===========================================================================
@@ -760,8 +760,8 @@ class TestResolverDoesNotEraseEVFields:
         assert rec.ev_planned_load_kwh == pytest.approx(3.5, abs=1e-9), (
             f"ev_planned_load_kwh was erased by resolver: {rec.ev_planned_load_kwh}"
         )
-        assert rec.estimated_net_consumption == pytest.approx(4.0, abs=1e-9), (
-            f"estimated_net_consumption was erased by resolver: {rec.estimated_net_consumption}"
+        assert rec.estimated_net_consumption_kwh == pytest.approx(4.0, abs=1e-9), (
+            f"estimated_net_consumption was erased by resolver: {rec.estimated_net_consumption_kwh}"
         )
 
     def test_resolver_preserves_ev_load_on_negative_price_override(self):
@@ -794,7 +794,7 @@ class TestResolverDoesNotEraseEVFields:
 
         assert rec.recommendation == "force_export"
         assert rec.ev_planned_load_kwh == pytest.approx(2.1, abs=1e-9)
-        assert rec.estimated_net_consumption == pytest.approx(2.8, abs=1e-9)
+        assert rec.estimated_net_consumption_kwh == pytest.approx(2.8, abs=1e-9)
 
     def test_resolver_preserves_ev_load_on_discharge_override(self):
         """BatteriesDischargeMode override must not clear ev_planned_load_kwh."""
@@ -828,7 +828,7 @@ class TestResolverDoesNotEraseEVFields:
 
         assert rec.recommendation == "batteries_discharge_mode"
         assert rec.ev_planned_load_kwh == pytest.approx(1.5, abs=1e-9)
-        assert rec.estimated_net_consumption == pytest.approx(2.0, abs=1e-9)
+        assert rec.estimated_net_consumption_kwh == pytest.approx(2.0, abs=1e-9)
 
 
 # ===========================================================================

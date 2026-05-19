@@ -249,34 +249,34 @@ class PlannedSlot:
         price:
             Import and export prices for this slot as a :class:`SlotPrice`.
             Both values are in local currency/kWh and may be negative.
-        solcast_pv_estimate:
+        solcast_pv_estimate_kwh:
             Forecast PV production in kWh for this slot.
-        avg_house_consumption:
+        avg_house_consumption_kwh:
             Weighted (spike-aware) average house consumption in kWh.
-        avg_house_consumption_1d:
+        avg_house_consumption_1d_kwh:
             Raw 1-day average contribution in kWh.
-        avg_house_consumption_3d:
+        avg_house_consumption_3d_kwh:
             Raw 3-day average contribution in kWh.
-        avg_house_consumption_7d:
+        avg_house_consumption_7d_kwh:
             Raw 7-day average contribution in kWh.
-        avg_house_consumption_14d:
+        avg_house_consumption_14d_kwh:
             Raw 14-day average contribution in kWh.
-        estimated_net_consumption:
-            ``avg_house_consumption - solcast_pv_estimate`` in kWh.
+        estimated_net_consumption_kwh:
+            ``avg_house_consumption_kwh - solcast_pv_estimate_kwh`` in kWh.
             Negative means solar surplus.
-        estimated_cost:
+        estimated_cost_currency:
             Estimated grid cost (positive = import cost, negative = export
             revenue) in local currency for this slot.
-        estimated_battery_soc:
+        estimated_battery_soc_pct:
             Estimated battery state-of-charge (%) at the *end* of the slot.
-        estimated_battery_capacity:
+        estimated_battery_capacity_kwh:
             Estimated remaining usable battery capacity (kWh) at the *end*
             of the slot.
-        batteries_charged:
+        batteries_charged_kwh:
             Energy scheduled to be charged into the battery during this slot
             (kWh, ≥ 0).  This is the energy *stored* after conversion losses
             are applied.
-        batteries_discharged:
+        batteries_discharged_kwh:
             Energy discharged from the battery during this slot (kWh, ≥ 0).
             Populated by the SoC simulation and clamped to the discharge
             power limit and available capacity.
@@ -297,9 +297,9 @@ class PlannedSlot:
             EV is scheduled to charge in this slot.  Used in the net
             consumption formula::
 
-                estimated_net_consumption
-                    = avg_house_consumption + ev_planned_load_kwh
-                      - solcast_pv_estimate
+                estimated_net_consumption_kwh
+                    = avg_house_consumption_kwh + ev_planned_load_kwh
+                      - solcast_pv_estimate_kwh
 
         ev_accounted_load_kwh:
             EV AC load that is planned for the slot but is **already
@@ -323,21 +323,21 @@ class PlannedSlot:
     start: datetime
     end: datetime
     price: SlotPrice = field(default_factory=lambda: SlotPrice(0.0, 0.0))
-    solcast_pv_estimate: float = 0.0
-    avg_house_consumption: float = 0.0
-    avg_house_consumption_1d: float = 0.0
-    avg_house_consumption_3d: float = 0.0
-    avg_house_consumption_7d: float = 0.0
-    avg_house_consumption_14d: float = 0.0
+    solcast_pv_estimate_kwh: float = 0.0
+    avg_house_consumption_kwh: float = 0.0
+    avg_house_consumption_1d_kwh: float = 0.0
+    avg_house_consumption_3d_kwh: float = 0.0
+    avg_house_consumption_7d_kwh: float = 0.0
+    avg_house_consumption_14d_kwh: float = 0.0
     ev_planned_load_kwh: float = 0.0
     ev_accounted_load_kwh: float = 0.0
     ev_total_planned_load_kwh: float = 0.0
-    estimated_net_consumption: float = 0.0
-    estimated_cost: float = 0.0
-    estimated_battery_soc: float = 0.0
-    estimated_battery_capacity: float = 0.0
-    batteries_charged: float = 0.0
-    batteries_discharged: float = 0.0
+    estimated_net_consumption_kwh: float = 0.0
+    estimated_cost_currency: float = 0.0
+    estimated_battery_soc_pct: float = 0.0
+    estimated_battery_capacity_kwh: float = 0.0
+    batteries_charged_kwh: float = 0.0
+    batteries_discharged_kwh: float = 0.0
     grid_import_kwh: float = 0.0
     grid_export_kwh: float = 0.0
     recommendation: str | None = None
@@ -485,4 +485,4 @@ class PlannerOutput:
 
     def total_charged_energy_kwh(self) -> float:
         """Sum of ``batteries_charged`` across all slots."""
-        return round(sum(s.batteries_charged for s in self.slots), 3)
+        return round(sum(s.batteries_charged_kwh for s in self.slots), 3)

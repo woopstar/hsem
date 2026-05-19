@@ -376,7 +376,7 @@ def _final_battery_kwh(
                 continue
         elif slot.recommendation == _time_passed_value:
             continue
-        return slot.estimated_battery_capacity
+        return slot.estimated_battery_capacity_kwh
     return 0.0
 
 
@@ -588,19 +588,19 @@ def score_plan(
         #    lost.
         charge_loss_fraction = 1.0 - charge_eff
         discharge_loss_fraction = 1.0 - discharge_eff
-        if slot.batteries_charged > 1e-9 and charge_loss_fraction > 1e-9:
-            lost_kwh_charge = slot.batteries_charged * charge_loss_fraction
+        if slot.batteries_charged_kwh > 1e-9 and charge_loss_fraction > 1e-9:
+            lost_kwh_charge = slot.batteries_charged_kwh * charge_loss_fraction
             conv = lost_kwh_charge * imp_price
             conversion_loss_cost += conv
             conversion_loss_cost_disc += conv * discount
-        if slot.batteries_discharged > 1e-9 and discharge_loss_fraction > 1e-9:
-            lost_kwh_discharge = slot.batteries_discharged * discharge_loss_fraction
+        if slot.batteries_discharged_kwh > 1e-9 and discharge_loss_fraction > 1e-9:
+            lost_kwh_discharge = slot.batteries_discharged_kwh * discharge_loss_fraction
             conv = lost_kwh_discharge * imp_price
             conversion_loss_cost += conv
             conversion_loss_cost_disc += conv * discount
 
         # 4. Battery cycle depreciation
-        throughput_kwh = max(slot.batteries_charged, slot.batteries_discharged)
+        throughput_kwh = max(slot.batteries_charged_kwh, slot.batteries_discharged_kwh)
         if throughput_kwh > 1e-9 and cycle_cost_kwh > 1e-9:
             cycle = throughput_kwh * cycle_cost_kwh
             cycle_cost_total += cycle

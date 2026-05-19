@@ -236,11 +236,11 @@ async def async_populate_avg_house_consumption(
 
         for obj in recommendations:
             if int(obj.start.hour) == int(h):
-                obj.avg_house_consumption = round(avg / scale_to_interval, 3)
-                obj.avg_house_consumption_1d = round(v1 / scale_to_interval, 3)
-                obj.avg_house_consumption_3d = round(v3 / scale_to_interval, 3)
-                obj.avg_house_consumption_7d = round(v7 / scale_to_interval, 3)
-                obj.avg_house_consumption_14d = round(v14 / scale_to_interval, 3)
+                obj.avg_house_consumption_kwh = round(avg / scale_to_interval, 3)
+                obj.avg_house_consumption_1d_kwh = round(v1 / scale_to_interval, 3)
+                obj.avg_house_consumption_3d_kwh = round(v3 / scale_to_interval, 3)
+                obj.avg_house_consumption_7d_kwh = round(v7 / scale_to_interval, 3)
+                obj.avg_house_consumption_14d_kwh = round(v14 / scale_to_interval, 3)
 
     return True
 

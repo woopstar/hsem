@@ -47,9 +47,9 @@ def _make_slot(
         end=end,
         price=SlotPrice(import_price=import_price, export_price=export_price),
     )
-    slot.batteries_charged = batteries_charged
-    slot.solcast_pv_estimate = pv
-    slot.avg_house_consumption = load
+    slot.batteries_charged_kwh = batteries_charged
+    slot.solcast_pv_estimate_kwh = pv
+    slot.avg_house_consumption_kwh = load
     return slot
 
 
@@ -96,7 +96,7 @@ class TestChargeEfficiencySoC:
         slot = _make_slot(1, batteries_charged=4.0)
         _run_simulation([slot], current_kwh=0.0, charge_efficiency_pct=100.0)
         # cap should be 0 + 4.0 = 4.0
-        assert slot.estimated_battery_capacity == pytest.approx(4.0, abs=0.01)
+        assert slot.estimated_battery_capacity_kwh == pytest.approx(4.0, abs=0.01)
 
     def test_90pct_efficiency_stores_less(self) -> None:
         """At 90 % charge efficiency, batteries_charged is unchanged (it already
@@ -109,7 +109,7 @@ class TestChargeEfficiencySoC:
         slot = _make_slot(1, batteries_charged=4.0, load=0.0, pv=0.0)
         _run_simulation([slot], current_kwh=0.0, charge_efficiency_pct=90.0)
         # SoC still advances by batteries_charged (battery-side)
-        assert slot.estimated_battery_capacity == pytest.approx(4.0, abs=0.01)
+        assert slot.estimated_battery_capacity_kwh == pytest.approx(4.0, abs=0.01)
 
     def test_90pct_efficiency_increases_grid_import_for_charging(self) -> None:
         """Grid import for charging must be batteries_charged / charge_eff."""
@@ -138,7 +138,7 @@ class TestChargeEfficiencySoC:
         # Grid must supply 10 / 0.9 ≈ 11.11 kWh
         assert slot.grid_import_kwh == pytest.approx(10.0 / 0.9, abs=0.01)
         # Battery stores 10 kWh (battery-side)
-        assert slot.estimated_battery_capacity == pytest.approx(10.0, abs=0.01)
+        assert slot.estimated_battery_capacity_kwh == pytest.approx(10.0, abs=0.01)
 
 
 # ===========================================================================
@@ -158,7 +158,7 @@ class TestDischargeEfficiencySoC:
             discharge_efficiency_pct=100.0,
         )
         # discharge == 3 kWh; no grid import needed
-        assert slot.batteries_discharged == pytest.approx(3.0, abs=0.01)
+        assert slot.batteries_discharged_kwh == pytest.approx(3.0, abs=0.01)
         assert slot.grid_import_kwh == pytest.approx(0.0, abs=0.01)
 
     def test_90pct_efficiency_battery_removes_more_for_same_load(self) -> None:
@@ -172,7 +172,7 @@ class TestDischargeEfficiencySoC:
         )
         # Battery must remove load / discharge_eff = 3 / 0.9 ≈ 3.33 kWh
         expected_removed = load / 0.90
-        assert slot.batteries_discharged == pytest.approx(expected_removed, abs=0.01)
+        assert slot.batteries_discharged_kwh == pytest.approx(expected_removed, abs=0.01)
         # Grid import should be zero (battery has enough capacity)
         assert slot.grid_import_kwh == pytest.approx(0.0, abs=0.01)
 
@@ -188,7 +188,7 @@ class TestDischargeEfficiencySoC:
         )
         removed = load / 0.90  # ≈ 3.33 kWh removed from battery
         expected_cap = starting_kwh - removed
-        assert slot.estimated_battery_capacity == pytest.approx(expected_cap, abs=0.01)
+        assert slot.estimated_battery_capacity_kwh == pytest.approx(expected_cap, abs=0.01)
 
     def test_grid_import_covers_shortfall_at_90pct_discharge(self) -> None:
         """When battery cannot fully cover load at 90 % eff, grid fills the gap."""
@@ -205,7 +205,7 @@ class TestDischargeEfficiencySoC:
         expected_grid = load - max_house_from_battery
         assert slot.grid_import_kwh == pytest.approx(expected_grid, abs=0.02)
         # Battery is fully discharged
-        assert slot.estimated_battery_capacity == pytest.approx(0.0, abs=0.01)
+        assert slot.estimated_battery_capacity_kwh == pytest.approx(0.0, abs=0.01)
 
 
 # ===========================================================================
@@ -241,14 +241,14 @@ class TestRoundtripEfficiency:
         )
 
         # After charging: 10 kWh stored
-        assert charge_slot.estimated_battery_capacity == pytest.approx(10.0, abs=0.01)
+        assert charge_slot.estimated_battery_capacity_kwh == pytest.approx(10.0, abs=0.01)
         # Grid import for the charge slot: 10 / 0.9 ≈ 11.11 kWh
         assert charge_slot.grid_import_kwh == pytest.approx(10.0 / 0.9, abs=0.02)
 
         # Discharge slot: battery removes 10 / 0.9 ≈ 11.11 kWh ... but only 10 kWh stored
         # So battery is fully emptied (cap goes to 0) and the remainder is grid-imported.
         # House gets 10 kWh × 0.9 = 9 kWh from battery; grid covers 10 - 9 = 1 kWh.
-        assert discharge_slot.estimated_battery_capacity == pytest.approx(0.0, abs=0.01)
+        assert discharge_slot.estimated_battery_capacity_kwh == pytest.approx(0.0, abs=0.01)
         house_from_battery = 10.0 * 0.90  # 9 kWh
         expected_grid = 10.0 - house_from_battery
         assert discharge_slot.grid_import_kwh == pytest.approx(expected_grid, abs=0.02)
@@ -272,8 +272,8 @@ class TestRoundtripEfficiency:
         assert charge_slot.grid_import_kwh == pytest.approx(5.0, abs=0.01)
         # Exactly 5 kWh stored → discharge covers the 5 kWh load completely
         assert discharge_slot.grid_import_kwh == pytest.approx(0.0, abs=0.01)
-        assert discharge_slot.batteries_discharged == pytest.approx(5.0, abs=0.01)
-        assert discharge_slot.estimated_battery_capacity == pytest.approx(0.0, abs=0.01)
+        assert discharge_slot.batteries_discharged_kwh == pytest.approx(5.0, abs=0.01)
+        assert discharge_slot.estimated_battery_capacity_kwh == pytest.approx(0.0, abs=0.01)
 
     def test_asymmetric_efficiency_95_charge_90_discharge(self) -> None:
         """95 % charge / 90 % discharge: verify grid import and SoC are consistent."""
@@ -295,12 +295,12 @@ class TestRoundtripEfficiency:
         assert charge_slot.grid_import_kwh == pytest.approx(stored / 0.95, abs=0.02)
         # Battery removes 4 / 0.90 ≈ 4.44 kWh to deliver 4 kWh to house
         removed = 4.0 / 0.90
-        assert discharge_slot.batteries_discharged == pytest.approx(removed, abs=0.02)
+        assert discharge_slot.batteries_discharged_kwh == pytest.approx(removed, abs=0.02)
         # No grid import (5 kWh stored > 4.44 kWh needed)
         assert discharge_slot.grid_import_kwh == pytest.approx(0.0, abs=0.02)
         # SoC after discharge
         expected_cap_after = stored - removed
-        assert discharge_slot.estimated_battery_capacity == pytest.approx(
+        assert discharge_slot.estimated_battery_capacity_kwh == pytest.approx(
             expected_cap_after, abs=0.02
         )
 
@@ -330,11 +330,11 @@ class TestCostFunctionEfficiency:
             end=end,
             price=SlotPrice(import_price=import_price, export_price=export_price),
         )
-        slot.batteries_charged = batteries_charged
-        slot.batteries_discharged = batteries_discharged
+        slot.batteries_charged_kwh = batteries_charged
+        slot.batteries_discharged_kwh = batteries_discharged
         slot.grid_import_kwh = grid_import_kwh
         slot.grid_export_kwh = grid_export_kwh
-        slot.estimated_battery_soc = 50.0
+        slot.estimated_battery_soc_pct = 50.0
         return slot
 
     def test_zero_battery_activity_no_conversion_loss(self) -> None:
@@ -471,13 +471,13 @@ class TestPlannerInputEfficiencyFields:
 
         # Find a grid-charge slot and verify grid_import == batteries_charged
         for slot in output.slots:
-            if slot.batteries_charged > 0.1 and slot.solcast_pv_estimate < 0.01:
+            if slot.batteries_charged_kwh > 0.1 and slot.solcast_pv_estimate_kwh < 0.01:
                 # Pure grid charge slot — grid import must equal batteries_charged
                 assert slot.grid_import_kwh == pytest.approx(
-                    slot.batteries_charged, rel=0.01
+                    slot.batteries_charged_kwh, rel=0.01
                 ), (
                     f"At 100 % efficiency, grid_import ({slot.grid_import_kwh:.3f}) "
-                    f"should equal batteries_charged ({slot.batteries_charged:.3f})"
+                    f"should equal batteries_charged ({slot.batteries_charged_kwh:.3f})"
                 )
                 break  # one confirmation is sufficient
 
@@ -497,12 +497,12 @@ class TestPlannerInputEfficiencyFields:
         charge_slots = [
             s
             for s in output.slots
-            if s.batteries_charged > 0.1 and s.solcast_pv_estimate < 0.01
+            if s.batteries_charged_kwh > 0.1 and s.solcast_pv_estimate_kwh < 0.01
         ]
         if charge_slots:
             slot = charge_slots[0]
             # grid_import must be > batteries_charged (loss on the way in)
-            assert slot.grid_import_kwh > slot.batteries_charged - 1e-6
+            assert slot.grid_import_kwh > slot.batteries_charged_kwh - 1e-6
 
 
 # ===========================================================================
@@ -550,8 +550,8 @@ class TestEfficiencyEdgeCases:
         assert slot_eff.grid_export_kwh == pytest.approx(
             slot_neff.grid_export_kwh, abs=0.01
         )
-        assert slot_eff.batteries_discharged == pytest.approx(
-            slot_neff.batteries_discharged, abs=0.01
+        assert slot_eff.batteries_discharged_kwh == pytest.approx(
+            slot_neff.batteries_discharged_kwh, abs=0.01
         )
 
     def test_discharge_efficiency_cannot_exceed_100pct(self) -> None:
@@ -559,7 +559,7 @@ class TestEfficiencyEdgeCases:
         slot = _make_slot(1, load=3.0, pv=0.0)
         _run_simulation([slot], current_kwh=5.0, discharge_efficiency_pct=150.0)
         # Clamped to 100 %: battery removes exactly 3 kWh, no grid import
-        assert slot.batteries_discharged == pytest.approx(3.0, abs=0.01)
+        assert slot.batteries_discharged_kwh == pytest.approx(3.0, abs=0.01)
         assert slot.grid_import_kwh == pytest.approx(0.0, abs=0.01)
 
     def test_cost_weights_default_charge_discharge_100pct(self) -> None:
