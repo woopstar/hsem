@@ -103,7 +103,7 @@ async def async_setup(hass: HomeAssistant, _config: dict) -> bool:
         )
         return False
 
-    _LOGGER.info("HSEM integration successfully initialized.")
+    _LOGGER.debug("HSEM integration successfully initialized.")
     hass.data.setdefault(DOMAIN, {})
 
     return True
@@ -129,13 +129,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Add update listener for options
     entry.async_on_unload(entry.add_update_listener(async_update_options))
 
-    _LOGGER.info("HSEM integration successfully set up.")
+    _LOGGER.debug("HSEM integration successfully set up.")
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    _LOGGER.info(f"Unloading HSEM integration for {entry.entry_id}")
+    _LOGGER.debug("Unloading HSEM integration for %s", entry.entry_id)
 
     # Tear down the coordinator's timers before unloading platforms.
     domain_data = hass.data.get(DOMAIN, {}).get(entry.entry_id, {})

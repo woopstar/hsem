@@ -228,7 +228,7 @@ def select_best_candidate(
         )
         winner = eligible_sorted[0]
         log_planner(
-            "info",
+            "debug",
             "[selector] SELECTED candidate=%-20s  score=%.4f  total_cost=%.4f",
             winner.name,
             winner._cost.score,
