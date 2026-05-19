@@ -258,5 +258,26 @@ class PlannerInput:
     ev_second_planned_load_deadline: datetime | None = None
     ev_second_planned_load_base_load_includes_ev: bool = False
 
+    # --- planner hysteresis — keep the active plan unless the new plan
+    # is materially better (anti-flapping, issue #372). ---
+    #: When True, hysteresis is active.  The previous winner's strategy
+    #: is kept unless a new candidate improves score by more than the
+    #: configured threshold.
+    planner_hysteresis_enabled: bool = True
+    #: Absolute hysteresis threshold in local currency.  The previous plan
+    #: is kept unless the new winner's score is lower (better) by at least
+    #: this amount.  0.0 disables the absolute threshold.
+    planner_hysteresis_absolute: float = 0.0
+    #: Percentage hysteresis threshold.  The previous plan is kept unless
+    #: the new winner's score is at least this percentage lower (better).
+    #: 0.0 disables the percentage threshold.
+    planner_hysteresis_percentage: float = 5.0
+    #: Name of the winning candidate from the previous planner run.
+    #: ``None`` on the first run (no active plan to preserve).
+    previous_winner_name: str | None = None
+    #: Score of the winning candidate from the previous planner run.
+    #: 0.0 when there is no previous run.
+    previous_winner_score: float = 0.0
+
     # --- optional extra context that tests may inspect ---
     extra: dict[str, Any] = field(default_factory=dict)

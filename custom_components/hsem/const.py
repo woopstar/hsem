@@ -89,6 +89,11 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_ev_soc_target": vol.UNDEFINED,
     "hsem_ev_soc": vol.UNDEFINED,
     "hsem_extended_attributes": False,
+    # Planner hysteresis — keep the active plan unless a new plan is
+    # materially better (anti-flapping, issue #372).
+    "hsem_planner_hysteresis_enabled": True,
+    "hsem_planner_hysteresis_absolute": 0.0,
+    "hsem_planner_hysteresis_percentage": 5.0,
     "hsem_house_consumption_energy_weight_14d": 15,
     "hsem_house_consumption_energy_weight_1d": 25,
     "hsem_house_consumption_energy_weight_3d": 30,

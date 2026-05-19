@@ -54,6 +54,21 @@ def build_sensor_config(config_entry) -> SensorConfig:
     cfg.extended_attributes = convert_to_boolean(
         get_config_value(config_entry, "hsem_extended_attributes")
     )
+    cfg.planner_hysteresis_enabled = convert_to_boolean(
+        get_config_value(config_entry, "hsem_planner_hysteresis_enabled")
+    )
+    cfg.planner_hysteresis_absolute = (
+        convert_to_float(
+            get_config_value(config_entry, "hsem_planner_hysteresis_absolute")
+        )
+        or 0.0
+    )
+    cfg.planner_hysteresis_percentage = (
+        convert_to_float(
+            get_config_value(config_entry, "hsem_planner_hysteresis_percentage")
+        )
+        or 0.0
+    )
     _update_interval = convert_to_int(
         get_config_value(config_entry, "hsem_update_interval")
     )

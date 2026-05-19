@@ -207,6 +207,11 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         # Most recent planner input/output retained for diagnostics dumps.
         self._last_planner_input: PlannerInput | None = None
         self._last_planner_output = None
+        # Previous planner winner name and score for hysteresis (issue #372).
+        # Persisted across cycles so the planner can compare against the
+        # previously active plan.
+        self._previous_planner_winner_name: str | None = None
+        self._previous_planner_winner_score: float = 0.0
 
     # ------------------------------------------------------------------
     # HA lifecycle
@@ -758,6 +763,16 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 cfg.ev_second_planned_load_base_load_includes_ev
             ),
             time_discount_rate=0.995,
+            # Planner hysteresis (issue #372)
+            planner_hysteresis_enabled=bool(cfg.planner_hysteresis_enabled),
+            planner_hysteresis_absolute=(
+                convert_to_float(cfg.planner_hysteresis_absolute) or 0.0
+            ),
+            planner_hysteresis_percentage=(
+                convert_to_float(cfg.planner_hysteresis_percentage) or 0.0
+            ),
+            previous_winner_name=self._previous_planner_winner_name,
+            previous_winner_score=self._previous_planner_winner_score,
         )
 
     @staticmethod
@@ -842,6 +857,21 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         # Preserve the plan explanation and data quality for the next CoordinatorData snapshot.
         self._plan_explanation = output.explanation
         self._data_quality = output.data_quality
+
+        # Persist the winning candidate name and score for hysteresis (issue #372).
+        # The next planner run will compare against these values.
+        if output.winner_name and output.candidates:
+            winner_score = 0.0
+            for c in output.candidates:
+                if (
+                    c.name == output.winner_name
+                    and hasattr(c, "_cost")
+                    and c._cost is not None
+                ):
+                    winner_score = c._cost.score
+                    break
+            self._previous_planner_winner_name = output.winner_name
+            self._previous_planner_winner_score = winner_score
 
     # ------------------------------------------------------------------
     # Internal helpers

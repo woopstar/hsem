@@ -538,6 +538,37 @@ output.slots == selected_candidate.slots
 
 No post-selection pass may mutate slots unless the plan is re-simulated and re-scored.
 
+### Plan-level hysteresis (anti-flapping, issue #372)
+
+The selector may optionally apply **plan-level hysteresis** to avoid switching
+strategies for tiny cost improvements.  When hysteresis is active, the
+previously active plan (identified by candidate name) is re-evaluated with
+current data.  If its score improvement over the best new candidate is below
+both configured thresholds, the previous plan is kept.
+
+Two thresholds are supported, evaluated in order:
+
+1. **Absolute threshold** (currency): the new plan's score must be lower
+   (better) by at least this amount.  ``0.0`` disables the check.
+2. **Percentage threshold** (relative): the new plan's score must be lower
+   by at least this percentage of the previous plan's score.  ``0.0`` disables
+   the check.
+
+If the previous plan's candidate is not found in the current candidate set
+(e.g. because the underlying strategy no longer applies), hysteresis falls
+back to normal selection.
+
+The hysteresis decision is surfaced in
+:attr:`PlanExplanation.hysteresis_active`,
+:attr:`PlanExplanation.hysteresis_reason`, and
+:attr:`PlanExplanation.previous_plan_name`.
+
+The previous winner's name and score are persisted across planner runs by the
+coordinator and passed as part of :class:`PlannerInput`.
+
+Hysteresis is enabled by default with a 5 % percentage threshold; setting
+``planner_hysteresis_enabled = False`` disables it entirely.
+
 ## No-action baseline
 
 The no-action plan means:
@@ -589,6 +620,14 @@ Add tests for these invariants:
 - Current partial slot uses remaining duration only.
 - Missing price/PV data does not become real zero silently.
 - Read-only/degraded/dry-run gates block writes.
+- Hysteresis keeps the previous plan when improvement is below absolute threshold.
+- Hysteresis keeps the previous plan when improvement is below percentage threshold.
+- Hysteresis switches to the new plan when improvement exceeds both thresholds.
+- Hysteresis is inactive on the first planner run (no previous plan).
+- Hysteresis falls back to normal selection when the previous plan name is not found.
+- Hysteresis is inactive when the feature is disabled.
+- `PlanExplanation.hysteresis_active` reflects the hysteresis decision.
+- `PlanExplanation.hysteresis_reason` describes why hysteresis kept or released the plan.
 
 ## Multi-day planning horizon
 
