@@ -19,7 +19,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from custom_components.hsem.planner.engine import _parse_now
+from custom_components.hsem.planner.engine_core import _parse_now
 from custom_components.hsem.planner.slot_population import build_slots
 from custom_components.hsem.utils.misc import (
     interval_ends_before_window_start,

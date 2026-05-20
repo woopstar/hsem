@@ -1,0 +1,555 @@
+"""Core planning flow for the HSEM planner.
+
+Orchestrates the planning pipeline and returns a :class:`PlannerOutput`.
+
+**No Home Assistant types are imported here.**  Makes the engine
+directly testable with plain ``pytest`` without a running HA instance.
+"""
+
+from __future__ import annotations
+from datetime import datetime
+from custom_components.hsem.models.planner_inputs import PlannerInput
+from custom_components.hsem.models.planner_outputs import DataQuality, PlannerOutput
+from custom_components.hsem.planner.candidate_generator import generate_candidates
+from custom_components.hsem.planner.candidate_selector import (
+    replacement_price_from_next_discharge,
+    select_best_candidate,
+)
+from custom_components.hsem.planner.charge_scheduler import (
+    apply_arbitrage_grid_charge,
+    apply_charge_schedules,
+    apply_discharge_schedules,
+    apply_excess_export,
+    apply_opportunistic_charge,
+    apply_optimization_strategy,
+    calculate_required_battery_until_solar,
+    concentrate_discharge_on_expensive_slots,
+)
+from custom_components.hsem.planner.cost_function import CostWeights, score_plan
+from custom_components.hsem.planner.engine_explanation import (
+    _build_explanation,
+    _derive_windows,
+)
+from custom_components.hsem.planner.ev_planner import (
+    EVChargingPlan,
+    EVPlannerInput,
+    apply_ev_planned_load_to_slots,
+    build_ev_charging_plan,
+)
+from custom_components.hsem.planner.slot_population import (
+    build_slots,
+    build_time_series_index,
+    mark_time_passed,
+    populate_battery_capacity,
+    populate_consumption,
+    populate_estimated_cost,
+    populate_net_consumption,
+    populate_prices,
+    populate_solcast,
+    usable_capacity,
+)
+from custom_components.hsem.planner.soc_simulation import simulate_soc
+from custom_components.hsem.utils.datetime_utils import as_tz
+from custom_components.hsem.utils.logger import log_planner
+from custom_components.hsem.utils.misc import calculate_recommended_threshold
+from custom_components.hsem.utils.recommendations import Recommendations
+
+
+def _parse_now(now_iso: str) -> datetime:
+    """Parse a timezone-aware ISO-8601 string."""
+    dt = datetime.fromisoformat(now_iso)
+    if dt.tzinfo is None:
+        raise ValueError(f"now_iso must be timezone-aware, got: {now_iso!r}")
+    return dt
+
+
+def _populate_slots(
+    slots: list, inp: PlannerInput, tsi, warnings: list[str], missing_inputs: list[str]
+) -> tuple[DataQuality, list[str], list[str]]:
+    """Populate price/PV/consumption data, data-quality diagnostics, confidence decay."""
+    populate_prices(slots, inp.price_points, tsi)
+    populate_solcast(slots, inp.solcast_slots, inp.interval_minutes, tsi)
+    populate_consumption(
+        slots,
+        inp.consumption_averages,
+        inp.weight_1d,
+        inp.weight_3d,
+        inp.weight_7d,
+        inp.weight_14d,
+        inp.interval_minutes,
+        tsi,
+    )
+    for hour in sorted(tsi.missing_hours()):
+        missing_inputs.append(f"hour_{hour:02d}")
+    horizon_has_tomorrow = tsi.has_tomorrow_slots()
+    horizon_days = tsi.horizon_days
+    dq = DataQuality(
+        tomorrow_price_missing_hours=sorted(tsi.missing_future_day_price_hours(1)),
+        tomorrow_pv_missing_hours=sorted(tsi.missing_future_day_pv_hours(1)),
+        day2_price_missing_hours=sorted(tsi.missing_future_day_price_hours(2)),
+        day2_pv_missing_hours=sorted(tsi.missing_future_day_pv_hours(2)),
+        today_price_missing_hours=sorted(
+            {
+                m.hour
+                for k in tsi.missing_price_slots
+                if k.day_offset == 0
+                for m in tsi.slots
+                if m.key == k
+            }
+        ),
+        today_pv_missing_hours=sorted(
+            {
+                m.hour
+                for k in tsi.missing_pv_slots
+                if k.day_offset == 0
+                for m in tsi.slots
+                if m.key == k
+            }
+        ),
+        horizon_has_tomorrow=horizon_has_tomorrow,
+        horizon_days=horizon_days,
+    )
+    for tm_label, tm_list in [
+        ("tomorrow_price_missing_hours", dq.tomorrow_price_missing_hours),
+        ("tomorrow_pv_missing_hours", dq.tomorrow_pv_missing_hours),
+        ("day2_price_missing_hours", dq.day2_price_missing_hours),
+        ("day2_pv_missing_hours", dq.day2_pv_missing_hours),
+    ]:
+        if tm_list:
+            hs = ",".join(f"{h:02d}" for h in tm_list)
+            missing_inputs.append(f"{tm_label}:{hs}")
+            labels = {
+                "tomorrow_price_missing_hours": "price",
+                "tomorrow_pv_missing_hours": "PV",
+                "day2_price_missing_hours": "price",
+                "day2_pv_missing_hours": "PV",
+            }
+            warnings.append(
+                f"{'Day+2' if tm_label.startswith('day2') else 'Tomorrow'} {labels[tm_label]} data missing for {len(tm_list)} hour(s): {hs}."
+            )
+    _DECAY_BY_DAY: dict[int, float] = {0: 1.00, 1: 0.90, 2: 0.80}
+    if horizon_days > 1:
+        for slot in slots:
+            si = tsi.slot_index_for(slot.start)
+            if si is None:
+                continue
+            do = tsi.slots[si].key.day_offset
+            if do > 0:
+                slot.solcast_pv_estimate_kwh = round(
+                    slot.solcast_pv_estimate_kwh * _DECAY_BY_DAY.get(do, 0.80), 3
+                )
+        if horizon_days >= 2:
+            warnings.append(
+                f"Multi-day horizon ({horizon_days} day(s)): confidence decay applied to PV estimates."
+            )
+    return dq, warnings, missing_inputs
+
+
+def _schedule_slots(
+    slots: list,
+    inp: PlannerInput,
+    now: datetime,
+    current_kwh: float,
+    usable_kwh: float,
+    rt: float,
+    warnings: list[str],
+) -> tuple[float, float | None, float, float, list[str]]:
+    """All charge/discharge scheduling passes."""
+    mark_time_passed(slots, now)
+    apply_discharge_schedules(slots, inp.battery_schedules, now)
+    cd = inp.battery_charge_efficiency_pct / 100.0
+    dd = inp.battery_discharge_efficiency_pct / 100.0
+    rlp = (1.0 - cd * dd) * 100.0
+    mcphi = (inp.battery_max_charge_power_w / 1000 * cd) / (60 / inp.interval_minutes)
+    apply_charge_schedules(
+        slots,
+        inp.battery_schedules,
+        now,
+        mcphi,
+        current_kwh=current_kwh,
+        usable_kwh=usable_kwh,
+        cycle_cost_per_kwh=inp.battery_cycle_cost_per_kwh,
+        recommended_threshold=rt,
+    )
+    apply_opportunistic_charge(
+        slots,
+        now,
+        current_kwh,
+        usable_kwh,
+        mcphi,
+        rt,
+        cycle_cost_per_kwh=inp.battery_cycle_cost_per_kwh,
+    )
+    apply_arbitrage_grid_charge(
+        slots,
+        inp.battery_schedules,
+        now,
+        current_kwh,
+        usable_kwh,
+        mcphi,
+        conversion_loss_pct=rlp,
+        cycle_cost_per_kwh=inp.battery_cycle_cost_per_kwh,
+        recommended_threshold=rt,
+    )
+    mcps = (inp.battery_max_charge_power_w / 1000 * cd) / (60 / inp.interval_minutes)
+    mdps: float | None = None
+    if inp.battery_max_discharge_power_w is not None:
+        mdps = (inp.battery_max_discharge_power_w / 1000) / (60 / inp.interval_minutes)
+    max_soc_kwh = usable_kwh
+    populate_battery_capacity(slots, now, current_kwh, usable_kwh)
+    rc = calculate_required_battery_until_solar(
+        slots, now, usable_kwh, inp.excess_export_discharge_buffer_pct
+    )
+    if inp.excess_export_enabled:
+        apply_excess_export(
+            slots, now, current_kwh, rc, inp.excess_export_price_threshold, warnings
+        )
+    apply_optimization_strategy(
+        slots,
+        now,
+        current_kwh,
+        usable_kwh,
+        rc,
+        inp.months_winter,
+        warnings,
+        export_min_price=inp.export_min_price,
+    )
+    return mcps, mdps, max_soc_kwh, rc, warnings
+
+
+def _build_and_inject_for_ev(
+    enabled: bool,
+    connected: bool,
+    smart: bool,
+    soc: float,
+    target: float,
+    cap_kwh: float,
+    pwr_kw: float,
+    eff: float,
+    deadline,
+    base_includes: bool,
+    label: str,
+    now: datetime,
+    slots: list,
+    slot_starts: list,
+    slot_ends: list,
+    slot_prices: list,
+    slot_net_surplus: list[float],
+    combined_ev_raw_load: list[float],
+    combined_ev_injected_load: list[float],
+    warnings: list[str],
+) -> EVChargingPlan | None:
+    """Build an EV charging plan and accumulate its loads."""
+    if not enabled:
+        return None
+    ev_inp = EVPlannerInput(
+        enabled=enabled,
+        ev_connected=connected,
+        smart_charging_enabled=smart,
+        current_soc_pct=soc,
+        target_soc_pct=target,
+        battery_capacity_kwh=cap_kwh,
+        charger_power_kw=pwr_kw,
+        charger_efficiency_pct=eff,
+        deadline=deadline,
+        base_load_includes_ev=base_includes,
+        now=now,
+    )
+    plan = build_ev_charging_plan(
+        ev_inp,
+        slots_start=slot_starts,
+        slots_end=slot_ends,
+        slot_net_surplus_kwh=slot_net_surplus,
+        slot_import_price=slot_prices,
+    )
+    raw = [0.0] * len(slots)
+    apply_ev_planned_load_to_slots(
+        slot_starts=slot_starts,
+        slot_ev_planned_load_kwh=raw,
+        ev_plan=plan,
+        base_load_includes_ev=False,
+    )
+    for i in range(len(slots)):
+        combined_ev_raw_load[i] += raw[i]
+    inj = [0.0] * len(slots)
+    apply_ev_planned_load_to_slots(
+        slot_starts=slot_starts,
+        slot_ev_planned_load_kwh=inj,
+        ev_plan=plan,
+        base_load_includes_ev=base_includes,
+    )
+    for i in range(len(slots)):
+        combined_ev_injected_load[i] += inj[i]
+    if plan.state not in ("not_connected", "smart_charging_disabled", "fully_charged"):
+        warnings.append(
+            f"EV planned load ({label}): state={plan.state}, total_kwh_needed={plan.total_kwh_needed:.2f}, charging_slots={len(plan.charging_slots)}, base_load_includes_ev={base_includes}."
+        )
+    return plan
+
+
+def _select_candidate(
+    slots: list,
+    inp: PlannerInput,
+    now: datetime,
+    current_kwh: float,
+    usable_kwh: float,
+    mcps: float,
+    mdps: float | None,
+    max_soc_kwh: float,
+    rppk: float | None,
+    cw: CostWeights,
+    sdh: float,
+) -> tuple:
+    """Generate and select best candidate plan."""
+    candidates = generate_candidates(
+        slots,
+        inp,
+        now,
+        mcps,
+        current_kwh=current_kwh,
+        usable_kwh=usable_kwh,
+        max_discharge_per_slot=mdps,
+        replacement_price_per_kwh=rppk,
+    )
+    winner, rejected, hyst = select_best_candidate(
+        candidates,
+        now=now,
+        current_kwh=current_kwh,
+        usable_kwh=usable_kwh,
+        max_soc_capacity_kwh=max_soc_kwh,
+        max_charge_per_slot=mcps,
+        max_discharge_per_slot=mdps,
+        rated_kwh=inp.battery_rated_capacity_kwh,
+        end_of_discharge_soc_pct=inp.battery_end_of_discharge_soc_pct,
+        cost_weights=cw,
+        slot_duration_hours=sdh,
+        charge_efficiency_pct=inp.battery_charge_efficiency_pct,
+        discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
+        replacement_price_per_kwh=rppk,
+        hysteresis_enabled=inp.planner_hysteresis_enabled,
+        hysteresis_absolute=inp.planner_hysteresis_absolute,
+        hysteresis_percentage=inp.planner_hysteresis_percentage,
+        previous_winner_name=inp.previous_winner_name,
+        previous_winner_score=inp.previous_winner_score,
+    )
+    return candidates, winner, rejected, hyst
+
+
+def run_planner(inp: PlannerInput) -> PlannerOutput:
+    """Execute the HSEM planner and return a :class:`PlannerOutput`."""
+    warnings: list[str] = []
+    missing_inputs: list[str] = []
+    now = _parse_now(inp.now_iso)
+    log_planner(
+        "debug",
+        "==== HSEM PLANNER RUN START ==== now=%s interval=%dmin horizon=%dh",
+        inp.now_iso,
+        inp.interval_minutes,
+        inp.interval_length_hours,
+    )
+    usable_kwh, current_kwh = usable_capacity(
+        inp.battery_rated_capacity_kwh,
+        inp.battery_soc_pct,
+        inp.battery_end_of_discharge_soc_pct,
+        inp.battery_max_soc_pct,
+    )
+    if inp.battery_rated_capacity_kwh <= 0:
+        warnings.append(
+            "battery_rated_capacity_kwh is zero or negative; battery simulation disabled."
+        )
+        usable_kwh = 0.0
+        current_kwh = 0.0
+    ws = inp.weight_1d + inp.weight_3d + inp.weight_7d + inp.weight_14d
+    if ws != 100:
+        warnings.append(
+            f"Consumption weights sum to {ws}, not 100. Results may not be meaningful."
+        )
+    tsi = build_time_series_index(inp, now)
+    slots = build_slots(inp, now)
+    if not slots:
+        warnings.append(
+            "No slots generated; check interval_minutes and interval_length_hours."
+        )
+        return PlannerOutput(missing_inputs=missing_inputs, warnings=warnings)
+    # Step 1 — populate time-series data
+    data_quality, warnings, missing_inputs = _populate_slots(
+        slots, inp, tsi, warnings, missing_inputs
+    )
+    # Step 2 — EV planned load injection
+    ev_cp: EVChargingPlan | None = None
+    ev2_cp: EVChargingPlan | None = None
+    combined_ev_raw = [0.0] * len(slots)
+    combined_ev_inj = [0.0] * len(slots)
+    populate_net_consumption(slots)
+    sns = [max(-s.estimated_net_consumption_kwh, 0.0) for s in slots]
+    ss = [s.start for s in slots]
+    se = [s.end for s in slots]
+    sp = [s.price.import_price for s in slots]
+    common_kw = dict(
+        now=now,
+        slots=slots,
+        slot_starts=ss,
+        slot_ends=se,
+        slot_prices=sp,
+        slot_net_surplus=sns,
+        combined_ev_raw_load=combined_ev_raw,
+        combined_ev_injected_load=combined_ev_inj,
+        warnings=warnings,
+    )
+    if inp.ev_planned_load_enabled:
+        ev_cp = _build_and_inject_for_ev(
+            enabled=True,
+            connected=inp.ev_planned_load_connected,
+            smart=inp.ev_planned_load_smart_charging_enabled,
+            soc=inp.ev_planned_load_current_soc_pct,
+            target=inp.ev_planned_load_target_soc_pct,
+            cap_kwh=inp.ev_planned_load_battery_capacity_kwh,
+            pwr_kw=inp.ev_planned_load_charger_power_kw,
+            eff=inp.ev_planned_load_charger_efficiency_pct,
+            deadline=inp.ev_planned_load_deadline,
+            base_includes=inp.ev_planned_load_base_load_includes_ev,
+            label="primary",
+            **common_kw,
+        )
+    if inp.ev_second_planned_load_enabled:
+        ev2_cp = _build_and_inject_for_ev(
+            enabled=True,
+            connected=inp.ev_second_planned_load_connected,
+            smart=inp.ev_second_planned_load_smart_charging_enabled,
+            soc=inp.ev_second_planned_load_current_soc_pct,
+            target=inp.ev_second_planned_load_target_soc_pct,
+            cap_kwh=inp.ev_second_planned_load_battery_capacity_kwh,
+            pwr_kw=inp.ev_second_planned_load_charger_power_kw,
+            eff=inp.ev_second_planned_load_charger_efficiency_pct,
+            deadline=inp.ev_second_planned_load_deadline,
+            base_includes=inp.ev_second_planned_load_base_load_includes_ev,
+            label="second",
+            **common_kw,
+        )
+    for i, s in enumerate(slots):
+        s.ev_planned_load_kwh = combined_ev_inj[i]
+        s.ev_accounted_load_kwh = round(combined_ev_raw[i] - combined_ev_inj[i], 3)
+        s.ev_total_planned_load_kwh = round(combined_ev_raw[i], 3)
+    populate_net_consumption(slots)
+    populate_estimated_cost(slots)
+    rt = calculate_recommended_threshold(
+        purchase_price=inp.battery_purchase_price,
+        expected_cycles=inp.battery_expected_cycles,
+        usable_capacity=usable_kwh,
+    )
+    if rt > 0:
+        warnings.append(
+            f"Recommended price threshold: {rt:.4f} (depreciation + conversion loss)."
+        )
+    # Step 3 — charge/discharge scheduling
+    mcps, mdps, max_soc_kwh, rc, warnings = _schedule_slots(
+        slots, inp, now, current_kwh, usable_kwh, rt, warnings
+    )
+    # Step 4 — candidate plan generation and selection
+    cw = CostWeights(
+        min_soc_pct=inp.battery_end_of_discharge_soc_pct,
+        max_soc_pct=inp.battery_max_soc_pct,
+        battery_purchase_price=inp.battery_purchase_price,
+        battery_rated_capacity_kwh=inp.battery_rated_capacity_kwh,
+        battery_expected_cycles=inp.battery_expected_cycles,
+        charge_efficiency_pct=inp.battery_charge_efficiency_pct,
+        discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
+        time_discount_rate=inp.time_discount_rate,
+    )
+    sdh = inp.interval_minutes / 60.0
+    import math
+
+    top_n = 4
+    if mdps is not None and mdps > 1e-9:
+        top_n = math.ceil(usable_kwh / mdps)
+    rppk = replacement_price_from_next_discharge(
+        slots, now, top_n=top_n, interval_minutes=inp.interval_minutes
+    )
+    concentrate_discharge_on_expensive_slots(
+        slots,
+        now,
+        current_kwh,
+        usable_kwh,
+        mdps,
+        discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
+    )
+    candidates, winner, candidate_rejected, hysteresis_result = _select_candidate(
+        slots, inp, now, current_kwh, usable_kwh, mcps, mdps, max_soc_kwh, rppk, cw, sdh
+    )
+    # Step 5 — finalize plan from winner
+    slots = winner.slots
+    apply_optimization_strategy(
+        slots,
+        now,
+        current_kwh,
+        usable_kwh,
+        rc,
+        inp.months_winter,
+        warnings=[],
+        export_min_price=inp.export_min_price,
+    )
+    simulate_soc(
+        slots,
+        now,
+        current_kwh,
+        usable_kwh,
+        max_soc_kwh,
+        mcps,
+        mdps,
+        rated_kwh=inp.battery_rated_capacity_kwh,
+        end_of_discharge_soc_pct=inp.battery_end_of_discharge_soc_pct,
+        charge_efficiency_pct=inp.battery_charge_efficiency_pct,
+        discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
+    )
+    _EV_KEEP = frozenset(
+        {
+            Recommendations.BatteriesChargeGrid.value,
+            Recommendations.ForceBatteriesDischarge.value,
+            Recommendations.ForceExport.value,
+            Recommendations.TimePassed.value,
+            Recommendations.MissingInputEntities.value,
+        }
+    )
+    for s in slots:
+        if abs(s.ev_total_planned_load_kwh) > 1e-9 and s.recommendation not in _EV_KEEP:
+            s.recommendation = Recommendations.EVSmartCharging.value
+    cur_rec: str | None = None
+    for s in slots:
+        if as_tz(s.start, now.tzinfo) <= now < as_tz(s.end, now.tzinfo):
+            cur_rec = s.recommendation
+            break
+    fut = [s for s in slots if as_tz(s.end, now.tzinfo) > now]
+    bsoc_end = fut[-1].estimated_battery_soc_pct if fut else 0.0
+    cw_out, dw_out = _derive_windows(slots)
+    expl = _build_explanation(inp, slots, bsoc_end, now)
+    expl.hysteresis_active = hysteresis_result.applied
+    expl.hysteresis_reason = hysteresis_result.reason
+    expl.previous_plan_name = hysteresis_result.previous_plan_name
+    pc = score_plan(
+        slots,
+        cw,
+        slot_duration_hours=sdh,
+        now=now,
+        initial_battery_kwh=current_kwh,
+        replacement_price_per_kwh=rppk,
+    )
+    for rp in candidate_rejected:
+        expl.rejected_plans.append(rp)
+    return PlannerOutput(
+        slots=slots,
+        charge_windows=cw_out,
+        discharge_windows=dw_out,
+        current_recommendation=cur_rec,
+        battery_soc_at_end=bsoc_end,
+        required_capacity_kwh=rc,
+        missing_inputs=missing_inputs,
+        warnings=warnings,
+        time_series_index=tsi,
+        data_quality=data_quality,
+        explanation=expl,
+        plan_cost=pc,
+        candidates=candidates,
+        winner_name=winner.name,
+        ev_charging_plan=ev_cp,
+        ev_second_charging_plan=ev2_cp,
+    )
