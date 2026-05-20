@@ -1332,10 +1332,13 @@ class TestEvAcLoadAndSoCPath:
           house_load = 0.5 kWh/h
           EV AC load = 10.0 kWh/h  (10 kWh needed, allocated in one slot)
           pv         = 0.0 kWh
-          battery    = at floor, cannot discharge
+          battery    = at floor (current_kwh = 0.0) but usable_kwh = 8.5
 
-          total_load = 0.5 + 10.0 = 10.5 kWh
-          grid_import = total_load = 10.5 kWh
+          With the #446 fix (continue instead of break), the planner
+          correctly keeps more discharge slots, triggering pre-charge:
+            battery_charged      = 5.0 kWh
+            house + ev_ac        = 0.5 + 10.0 = 10.5 kWh
+            grid_import          = 10.5 + 5.0 = 15.5 kWh
         """
         inp = self._make_no_battery_input(
             ev_soc=10.0,
@@ -1354,9 +1357,13 @@ class TestEvAcLoadAndSoCPath:
         assert ev_slots, "At least one slot should have EV planned load"
 
         for s in ev_slots:
-            # With battery at floor and no PV, all demand comes from grid.
-            # grid_import = house + ev_ac = 0.5 + 10.0 = 10.5 kWh
-            expected_import = s.avg_house_consumption_kwh + s.ev_planned_load_kwh
+            # grid_import = house + ev_ac + battery_charge - battery_discharge
+            expected_import = (
+                s.avg_house_consumption_kwh
+                + s.ev_planned_load_kwh
+                + s.batteries_charged_kwh
+                - s.batteries_discharged_kwh
+            )
             assert s.grid_import_kwh == pytest.approx(expected_import, abs=0.05), (
                 f"Slot {s.start.hour}: expected grid_import={expected_import:.2f}, "
                 f"got {s.grid_import_kwh}"
@@ -1376,8 +1383,10 @@ class TestEvAcLoadAndSoCPath:
           ac_load_kwh = 9.0 / 0.90 = 10.0 kWh
 
           house_load = 0.5 kWh, pv = 0.0, battery at floor
-          grid_import = 0.5 + 10.0 = 10.5 kWh
-          estimated_net = 0.5 + 10.0 - 0.0 = 10.5 kWh
+          With the #446 fix (continue instead of break), the planner
+          correctly pre-charges the battery for discharge slots:
+            battery_charged = 5.0 kWh
+            grid_import     = 0.5 + 10.0 + 5.0 = 15.5 kWh
         """
         inp = self._make_no_battery_input(
             ev_soc=10.0,
@@ -1408,8 +1417,8 @@ class TestEvAcLoadAndSoCPath:
         )
         # net = house + ev_ac - pv = 0.5 + 10.0 - 0.0 = 10.5
         assert s.estimated_net_consumption_kwh == pytest.approx(10.5, abs=0.05)
-        # grid_import = 10.5 (all from grid, battery at floor)
-        assert s.grid_import_kwh == pytest.approx(10.5, abs=0.1)
+        # grid_import = house + ev_ac + battery_charge = 0.5 + 10.0 + 5.0 = 15.5
+        assert s.grid_import_kwh == pytest.approx(15.5, abs=0.1)
 
     # ------------------------------------------------------------------
     # plan_cost includes EV grid import cost
