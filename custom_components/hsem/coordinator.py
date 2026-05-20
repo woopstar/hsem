@@ -32,7 +32,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -67,6 +67,7 @@ from custom_components.hsem.models.planner_outputs import DataQuality, PlanExpla
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.models.state_snapshot import StateSnapshot
 from custom_components.hsem.planner import run_planner
+from custom_components.hsem.planner.charge_scheduler import apply_window_hysteresis
 from custom_components.hsem.planner.ev_planner import EVChargingPlan
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.datetime_utils import now as hsem_now
@@ -212,6 +213,12 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         # previously active plan.
         self._previous_planner_winner_name: str | None = None
         self._previous_planner_winner_score: float = 0.0
+
+        # Window-level hysteresis state (issue #315).
+        # Persisted across cycles so the hold-time check can compare against
+        # the previously active current-slot recommendation.
+        self._window_hys_previous_rec: str | None = None
+        self._window_hys_previous_slot_start: datetime | None = None
 
     # ------------------------------------------------------------------
     # HA lifecycle
@@ -374,7 +381,6 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 for warning in planner_output.warnings:
                     await async_logger(self, f"[planner] {warning}")
 
-                self._apply_planner_output(planner_output)
                 self._current_required_battery = planner_output.required_capacity_kwh
                 self._data_quality = planner_output.data_quality
                 self._ev_charging_plan = planner_output.ev_charging_plan
@@ -400,6 +406,39 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                             "set but the plan produced zero accounted load. "
                             "Check EV plan state and slot attributes.",
                         )
+
+                # -----------------------------------------------------------------------
+                # Window-level hysteresis — prevent rapid charge↔discharge toggles
+                # near schedule-window boundaries (issue #315).
+                # -----------------------------------------------------------------------
+                # Apply to planner output slots BEFORE _apply_planner_output so that
+                # the held recommendation propagates to hourly_recommendations.
+                window_hys_minutes = cfg.planner_window_hysteresis_minutes
+                if window_hys_minutes > 0:
+                    held_rec, held_start = apply_window_hysteresis(
+                        planner_output.slots,
+                        now,
+                        window_hysteresis_minutes=window_hys_minutes,
+                        previous_current_recommendation=(self._window_hys_previous_rec),
+                        previous_current_slot_start=(
+                            self._window_hys_previous_slot_start
+                        ),
+                    )
+                    self._window_hys_previous_rec = held_rec
+                    self._window_hys_previous_slot_start = held_start
+                else:
+                    # Feature disabled — still persist the current recommendation
+                    # so that re-enabling picks up the right state.
+                    for s in planner_output.slots:
+                        if as_tz(s.start, now.tzinfo) <= now < as_tz(s.end, now.tzinfo):
+                            self._window_hys_previous_rec = s.recommendation
+                            self._window_hys_previous_slot_start = s.start
+                            break
+
+                # Apply planner output (with hysteresis-applied slots) to
+                # hourly_recommendations so the current slot resolution in
+                # step 9 sees the held recommendation.
+                self._apply_planner_output(planner_output)
 
                 # 9. Find the current time-slot recommendation.
                 self._hourly_recommendations.sort(key=lambda x: x.start)

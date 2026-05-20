@@ -272,6 +272,10 @@ class PlannerInput:
     #: the new winner's score is at least this percentage lower (better).
     #: 0.0 disables the percentage threshold.
     planner_hysteresis_percentage: float = 5.0
+    #: Window-level hysteresis — minimum hold time (minutes) before
+    #: allowing a charge↔discharge transition on adjacent slots.
+    #: 0 disables the feature.
+    planner_window_hysteresis_minutes: int = 0
     #: Name of the winning candidate from the previous planner run.
     #: ``None`` on the first run (no active plan to preserve).
     previous_winner_name: str | None = None

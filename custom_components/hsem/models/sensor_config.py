@@ -226,6 +226,9 @@ class SensorConfig:
     planner_hysteresis_enabled: bool = True
     planner_hysteresis_absolute: float = 0.0
     planner_hysteresis_percentage: float = 5.0
+    # Window-level hysteresis — minimum hold time (minutes) before allowing
+    # a charge↔discharge transition.  0 disables the feature.
+    planner_window_hysteresis_minutes: int = 0
 
     # Consumption weights
     house_consumption_energy_weight_1d: int = 50
