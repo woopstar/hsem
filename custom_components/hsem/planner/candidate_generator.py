@@ -52,6 +52,7 @@ from custom_components.hsem.planner.milp_optimizer import (
 )
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import log_planner
+from custom_components.hsem.utils.misc import clamp_efficiency
 from custom_components.hsem.utils.recommendations import CHARGE_RECS as _CHARGE_RECS
 from custom_components.hsem.utils.recommendations import (
     DISCHARGE_RECS as _DISCHARGE_RECS,
@@ -639,8 +640,8 @@ def _apply_soc_plan(
     )
 
     # Account for charge and discharge efficiency.
-    charge_eff = max(min(charge_efficiency_pct, 100.0), 1.0) / 100.0
-    discharge_eff = max(min(discharge_efficiency_pct, 100.0), 1.0) / 100.0
+    charge_eff = clamp_efficiency(charge_efficiency_pct)
+    discharge_eff = clamp_efficiency(discharge_efficiency_pct)
     battery_energy_needed = total_needed_kwh / discharge_eff
 
     # Subtract what's already in the battery

@@ -100,6 +100,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from custom_components.hsem.utils.datetime_utils import as_tz
+from custom_components.hsem.utils.misc import clamp_efficiency
 from custom_components.hsem.utils.recommendations import Recommendations
 
 if TYPE_CHECKING:
@@ -269,8 +270,8 @@ def solve_milp(
     # The MILP must account for real-world conversion losses so its solution
     # matches the cost function's total_cost (which includes conversion loss
     # via the conversion_loss_cost term).
-    charge_eff = max(min(charge_efficiency_pct, 100.0), 1.0) / 100.0
-    discharge_eff = max(min(discharge_efficiency_pct, 100.0), 1.0) / 100.0
+    charge_eff = clamp_efficiency(charge_efficiency_pct)
+    discharge_eff = clamp_efficiency(discharge_efficiency_pct)
     charge_loss = 1.0 - charge_eff
     discharge_loss = 1.0 - discharge_eff
 
