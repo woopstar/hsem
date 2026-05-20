@@ -947,8 +947,9 @@ def concentrate_discharge_on_expensive_slots(
             total_battery_kwh -= battery_needed
             keep_set.add(id(s))
         else:
-            # Not enough battery — this and all cheaper slots get cleared
-            break
+            # Not enough battery — skip this slot, but keep checking
+            # cheaper slots that may have small enough demand to fit.
+            continue
 
     for s in discharge_slots:
         if id(s) not in keep_set:
