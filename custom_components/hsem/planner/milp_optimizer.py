@@ -13,7 +13,7 @@ are relaxed to continuous values in [0, 1] because the mutual-exclusion
 constraint together with the per-slot energy caps already prevents
 simultaneous charge + discharge in the optimal solution.
 
-Decision variables (flattened into a single vector ``x`` of length 5*n)
+Decision variables (flattened into a single vector ``x`` of length 6*n)
 -----------------------------------------------------------------------
 For each slot ``t ∈ 0…n-1``:
 
@@ -22,19 +22,21 @@ For each slot ``t ∈ 0…n-1``:
 - ``gi[t]``  — total grid import this slot (kWh)
 - ``ge[t]``  — total grid export this slot (kWh)
 - ``pv[t]``  — PV energy available after house consumption (kWh, fixed)
+- ``m[t]``   — auxiliary variable = max(ec[t], ed[t]) for cycle cost (kWh)
 
 ``soc[t]`` is derived from ``ec`` and ``ed`` via the forward recurrence and
 does not need to be an explicit variable.
 
 Objective (minimise)
 --------------------
-``Σ_t [ p_imp[t] * gi[t] - p_exp[t] * ge[t] + α * (ec[t] + ed[t])
+``Σ_t [ p_imp[t] * gi[t] - p_exp[t] * ge[t] + α * m[t]
        + γ * (ed[t] - ec[t]) ]``
 
 where ``α`` = battery cycle cost per kWh and ``γ`` = terminal-SoC
 replacement price (opportunity cost of ending the horizon with less stored
-energy).  The cycle cost is counted once per slot (matching
-``cost_function.py``'s ``max(charge, discharge)`` counting), and
+energy).  The cycle cost uses the auxiliary variable ``m[t]`` which is
+constrained to satisfy ``m[t] ≥ max(ec[t], ed[t])``, matching
+``cost_function.py``'s ``max(charge, discharge)`` counting.  The
 ``cycle_cost_per_kwh`` already includes the 2× throughput factor in its
 denominator (``purchase_price / (2 × usable_kwh × expected_cycles)``),
 so one full round-trip (charge + discharge) correctly costs
@@ -256,15 +258,16 @@ def solve_milp(
 
     # ------------------------------------------------------------------
     # Variable layout: x = [ec(0..m-1), ed(0..m-1), gi(0..m-1), ge(0..m-1),
-    #                       pv(0..m-1)]
-    # Offsets: ec_off=0, ed_off=m, gi_off=2m, ge_off=3m, pv_off=4m
+    #                       pv(0..m-1), m(0..m-1)]
+    # Offsets: ec_off=0, ed_off=m, gi_off=2m, ge_off=3m, pv_off=4m, m_off=5m
     # pv[t] is a FIXED variable bounded to [pv_avail[t], pv_avail[t]] — the
     # solar energy available after house consumption.  Making it explicit in
     # the LP (rather than netting it into b_eq) prevents infeasibility when
     # net_load is strongly negative and SoC constraints limit charge/export.
+    # m[t] is the auxiliary variable for cycle cost: m[t] = max(ec[t], ed[t]).
     # ------------------------------------------------------------------
-    ec_off, ed_off, gi_off, ge_off, pv_off = 0, m, 2 * m, 3 * m, 4 * m
-    n_vars = 5 * m
+    ec_off, ed_off, gi_off, ge_off, pv_off, m_off = 0, m, 2 * m, 3 * m, 4 * m, 5 * m
+    n_vars = 6 * m
 
     # Resolve charge/discharge efficiencies for the energy balance equation.
     # The MILP must account for real-world conversion losses so its solution
@@ -305,10 +308,12 @@ def solve_milp(
             hours_ahead = max((slot_mid - now).total_seconds() / 3600.0, 0.0)
             discount = time_discount_rate**hours_ahead
 
-        # Charge-side: cycle cost + energy lost during charge, priced at import price
-        c_obj[ec_off + t] = (cycle_cost_per_kwh + charge_loss * p_imp[t]) * discount
-        # Discharge-side: cycle cost + energy lost during discharge, priced at import price
-        c_obj[ed_off + t] = (cycle_cost_per_kwh + discharge_loss * p_imp[t]) * discount
+        # Charge-side: energy lost during charge, priced at import price
+        c_obj[ec_off + t] = (charge_loss * p_imp[t]) * discount
+        # Discharge-side: energy lost during discharge, priced at import price
+        c_obj[ed_off + t] = (discharge_loss * p_imp[t]) * discount
+        # Cycle cost through auxiliary variable m[t] (= max(ec, ed))
+        c_obj[m_off + t] = cycle_cost_per_kwh * discount
         c_obj[gi_off + t] = p_imp[t] * discount  # grid import cost
         c_obj[ge_off + t] = -p_exp[t] * discount  # export revenue (negative = gain)
         # pv[t] has zero objective cost
@@ -358,8 +363,11 @@ def solve_milp(
     soc_rows = 2 * m
     # Mutual exclusion rows: ec[t]/max_charge + ed[t]/max_dis <= 1
     mutex_rows = m
-    A_ub = np.zeros((soc_rows + mutex_rows, n_vars))
-    b_ub = np.zeros(soc_rows + mutex_rows)
+    # Cycle cost auxiliary rows: m[t] >= ec[t] and m[t] >= ed[t]
+    #   → -m[t] + ec[t] <= 0  and  -m[t] + ed[t] <= 0
+    cycle_rows = 2 * m
+    A_ub = np.zeros((soc_rows + mutex_rows + cycle_rows, n_vars))
+    b_ub = np.zeros(soc_rows + mutex_rows + cycle_rows)
 
     for t in range(m):
         for k in range(t + 1):
@@ -377,6 +385,17 @@ def solve_milp(
         A_ub[2 * m + t, ed_off + t] = 1.0 / max_dis
         b_ub[2 * m + t] = 1.0
 
+    # Cycle cost auxiliary: m[t] >= ec[t]  →  -m[t] + ec[t] <= 0
+    #                     m[t] >= ed[t]  →  -m[t] + ed[t] <= 0
+    cycle_row_start = soc_rows + mutex_rows  # = 3m
+    for t in range(m):
+        A_ub[cycle_row_start + t, ec_off + t] = 1.0
+        A_ub[cycle_row_start + t, m_off + t] = -1.0
+        b_ub[cycle_row_start + t] = 0.0
+        A_ub[cycle_row_start + m + t, ed_off + t] = 1.0
+        A_ub[cycle_row_start + m + t, m_off + t] = -1.0
+        b_ub[cycle_row_start + m + t] = 0.0
+
     # ------------------------------------------------------------------
     # Variable bounds: all ≥ 0, charge/discharge capped by power limits
     # ------------------------------------------------------------------
@@ -388,6 +407,7 @@ def solve_milp(
         + [
             (pv_avail[t], pv_avail[t]) for t in range(m)
         ]  # pv[t] fixed to actual surplus
+        + [(0.0, None)] * m  # m[t] (auxiliary, unbounded above, ≥ 0)
     )
 
     # ------------------------------------------------------------------
