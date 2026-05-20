@@ -163,7 +163,7 @@ Always check `docs/huawei_entities.md` before looking elsewhere.
 |---|---|---|
 | #444 | MILP cycle cost `ec+ed` vs `max(ec,ed)` | Open |
 | #445 | `_apply_soc_plan` uses `0.30` proxy threshold | Open |
-| #446 | `concentrate_discharge` greedy `break` skips viable slots | Open |
+| #446 | `concentrate_discharge` greedy `break` skips viable slots | Fixed in #452 |
 | #447 | Partial-SoC fractions collapse to floor at low SoC | Open |
 
 ---
