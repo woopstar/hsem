@@ -37,7 +37,6 @@ from datetime import datetime, timedelta
 
 from custom_components.hsem.models.planner_outputs import RejectedPlan
 from custom_components.hsem.planner.candidate_generator import (
-    _DISCHARGE_RECS,
     CANDIDATE_BASELINE,
     CANDIDATE_NO_ACTION,
     CandidatePlan,
@@ -46,6 +45,9 @@ from custom_components.hsem.planner.cost_function import CostWeights, score_plan
 from custom_components.hsem.planner.soc_simulation import simulate_soc
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import log_planner
+from custom_components.hsem.utils.recommendations import (
+    DISCHARGE_RECS as _DISCHARGE_RECS,
+)
 
 # SoC floor tolerance — plans are accepted even if they dip this many
 # percentage points below end_of_discharge_soc_pct (rounding / simulation

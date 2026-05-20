@@ -21,17 +21,11 @@ from custom_components.hsem.models.planner_outputs import PlannedSlot
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import next_window_start_dt
-from custom_components.hsem.utils.recommendations import Recommendations
-
-# Recommendations that represent discharging (any form) — local copy to
-# avoid circular imports from candidate_generator.
-_DISCHARGE_RECS: frozenset[str] = frozenset(
-    {
-        Recommendations.BatteriesDischargeMode.value,
-        Recommendations.ForceBatteriesDischarge.value,
-        Recommendations.ForceExport.value,
-    }
+from custom_components.hsem.utils.recommendations import CHARGE_RECS as _CHARGE_RECS
+from custom_components.hsem.utils.recommendations import (
+    DISCHARGE_RECS as _DISCHARGE_RECS,
 )
+from custom_components.hsem.utils.recommendations import Recommendations
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -976,16 +970,6 @@ def concentrate_discharge_on_expensive_slots(
 # ---------------------------------------------------------------------------
 # Window-level hysteresis — prevent rapid charge↔discharge toggles
 # ---------------------------------------------------------------------------
-
-
-# Recommendations that represent "charging" the battery (any form).
-_CHARGE_RECS: frozenset[str] = frozenset(
-    {
-        Recommendations.BatteriesChargeGrid.value,
-        Recommendations.BatteriesChargeSolar.value,
-        Recommendations.EVSmartCharging.value,
-    }
-)
 
 
 def apply_window_hysteresis(

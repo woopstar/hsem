@@ -19,3 +19,24 @@ class Recommendations(Enum):
     ForceBatteriesDischarge = "force_batteries_discharge"
     ForceExport = "force_export"
     MissingInputEntities = "missing_input_entities"
+
+
+# Canonical set of all discharge-type recommendations.
+# Import these instead of re-defining locally.
+DISCHARGE_RECS: frozenset[str] = frozenset(
+    {
+        Recommendations.BatteriesDischargeMode.value,
+        Recommendations.ForceBatteriesDischarge.value,
+        Recommendations.ForceExport.value,
+    }
+)
+
+# Canonical set of all charge-type recommendations.
+# Import these instead of re-defining locally.
+CHARGE_RECS: frozenset[str] = frozenset(
+    {
+        Recommendations.BatteriesChargeGrid.value,
+        Recommendations.BatteriesChargeSolar.value,
+        Recommendations.EVSmartCharging.value,
+    }
+)
