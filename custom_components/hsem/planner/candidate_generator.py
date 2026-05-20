@@ -676,6 +676,9 @@ def _apply_soc_plan(
             discharge_target = max(discharge_target, 0.5)
 
         charge_target = 0.0  # no grid charging needed
+        # Return discharge_target so the caller's dedup loop can distinguish
+        # different fractions — charge_target is always 0.0 in this mode.
+        _dedup_target = discharge_target
     else:
         # Normal charge-fraction mode: charge_fraction of what's needed.
         # Apply charge efficiency: to store charge_target kWh in the battery,
@@ -686,6 +689,8 @@ def _apply_soc_plan(
             charge_target = (charge_needed * charge_fraction) / charge_eff
             charge_target = min(charge_target, usable_kwh - current_kwh)
             charge_target = max(charge_target, 0.0)
+
+        _dedup_target = charge_target
 
     # Step 2: Clear all existing charge/discharge recommendations
     for slot in slots:
@@ -803,4 +808,4 @@ def _apply_soc_plan(
     # Step 6: Remaining slots stay as None — the seasonal fill pass will
     # assign BatteriesWaitMode or BatteriesDischargeMode as appropriate.
 
-    return charge_target
+    return _dedup_target
