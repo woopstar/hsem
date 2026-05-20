@@ -52,6 +52,10 @@ from custom_components.hsem.planner.milp_optimizer import (
 )
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import log_planner
+from custom_components.hsem.utils.recommendations import CHARGE_RECS as _CHARGE_RECS
+from custom_components.hsem.utils.recommendations import (
+    DISCHARGE_RECS as _DISCHARGE_RECS,
+)
 from custom_components.hsem.utils.recommendations import Recommendations
 
 # ---------------------------------------------------------------------------
@@ -110,22 +114,6 @@ __all__ = [
     "CandidatePlan",
     "generate_candidates",
 ]
-
-# Recommendations that represent charging (any source)
-_CHARGE_RECS: frozenset[str] = frozenset(
-    {
-        Recommendations.BatteriesChargeGrid.value,
-        Recommendations.BatteriesChargeSolar.value,
-    }
-)
-
-# Recommendations that represent discharging (any form)
-_DISCHARGE_RECS: frozenset[str] = frozenset(
-    {
-        Recommendations.BatteriesDischargeMode.value,
-        Recommendations.ForceBatteriesDischarge.value,
-    }
-)
 
 # The charge and discharge slot counts are derived dynamically from battery
 # capacity (see _apply_aggressive_strategy).
