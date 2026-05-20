@@ -269,6 +269,21 @@ def convert_to_boolean(state) -> bool:
     return False
 
 
+def clamp_efficiency(pct: float) -> float:
+    """Convert an efficiency percentage (0-100) to a fraction (0.01-1.0).
+
+    Clamps input to [1.0, 100.0] before dividing by 100 so downstream
+    code never divides by zero or exceeds 100% efficiency.
+
+    Args:
+        pct: Efficiency as a percentage, e.g. 97.0 for 97%.
+
+    Returns:
+        Efficiency as a fraction in [0.01, 1.0].
+    """
+    return max(min(pct, 100.0), 1.0) / 100.0
+
+
 async def async_resolve_entity_id_from_unique_id(
     self, unique_entity_id, domain="sensor"
 ) -> str | None:

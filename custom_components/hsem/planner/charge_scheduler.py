@@ -20,7 +20,7 @@ from custom_components.hsem.models.planner_inputs import BatteryScheduleInput
 from custom_components.hsem.models.planner_outputs import PlannedSlot
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import log_planner
-from custom_components.hsem.utils.misc import next_window_start_dt
+from custom_components.hsem.utils.misc import clamp_efficiency, next_window_start_dt
 from custom_components.hsem.utils.recommendations import CHARGE_RECS as _CHARGE_RECS
 from custom_components.hsem.utils.recommendations import (
     DISCHARGE_RECS as _DISCHARGE_RECS,
@@ -911,7 +911,7 @@ def concentrate_discharge_on_expensive_slots(
             ``None`` means unlimited (inverter default).
         discharge_efficiency_pct: Discharge-side efficiency (0-100 %).
     """
-    discharge_eff = max(min(discharge_efficiency_pct, 100.0), 1.0) / 100.0
+    discharge_eff = clamp_efficiency(discharge_efficiency_pct)
 
     # Collect all future discharge slots (both BatteriesDischargeMode and
     # ForceBatteriesDischarge — issue #425 Bug I fix).

@@ -529,3 +529,50 @@ class TestFlowExpectedCyclesNullSafety:
         )
         # (48000 * 0.30) / (2 * 6000 * 10) = 14400 / 120000 = 0.12
         assert result == pytest.approx(0.12, abs=1e-3)
+
+
+# ---------------------------------------------------------------------------
+# clamp_efficiency — validates the shared helper
+# ---------------------------------------------------------------------------
+
+
+class TestClampEfficiency:
+    """Verify that clamp_efficiency correctly clamps and converts percentages."""
+
+    @staticmethod
+    def _clamp(pct: float) -> float:
+        from custom_components.hsem.utils.misc import clamp_efficiency
+
+        return clamp_efficiency(pct)
+
+    def test_normal_efficiency(self) -> None:
+        """97 % → 0.97."""
+        assert self._clamp(97.0) == pytest.approx(0.97)
+
+    def test_zero_input_floor(self) -> None:
+        """0 % is below the 1.0 floor → 0.01."""
+        assert self._clamp(0.0) == pytest.approx(0.01)
+
+    def test_below_one_floor(self) -> None:
+        """0.5 % is below the 1.0 floor → 0.01."""
+        assert self._clamp(0.5) == pytest.approx(0.01)
+
+    def test_above_one_hundred_cap(self) -> None:
+        """101 % is above the 100.0 cap → 1.0."""
+        assert self._clamp(101.0) == pytest.approx(1.0)
+
+    def test_negative_input(self) -> None:
+        """-5 % is below the 1.0 floor → 0.01."""
+        assert self._clamp(-5.0) == pytest.approx(0.01)
+
+    def test_exactly_one(self) -> None:
+        """1.0 % → 0.01."""
+        assert self._clamp(1.0) == pytest.approx(0.01)
+
+    def test_exactly_one_hundred(self) -> None:
+        """100.0 % → 1.0."""
+        assert self._clamp(100.0) == pytest.approx(1.0)
+
+    def test_fifty_percent(self) -> None:
+        """50.0 % → 0.5."""
+        assert self._clamp(50.0) == pytest.approx(0.5)

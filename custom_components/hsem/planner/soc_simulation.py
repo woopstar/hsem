@@ -34,6 +34,7 @@ from datetime import datetime
 from custom_components.hsem.models.planner_outputs import PlannedSlot
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import log_planner
+from custom_components.hsem.utils.misc import clamp_efficiency
 from custom_components.hsem.utils.recommendations import Recommendations
 
 
@@ -110,8 +111,8 @@ def simulate_soc(
             Defaults to 100 % (no discharge-side loss) for backward compatibility.
     """
     # Clamp efficiencies to a valid range to avoid division by zero or nonsense.
-    charge_eff = max(min(charge_efficiency_pct, 100.0), 1.0) / 100.0
-    discharge_eff = max(min(discharge_efficiency_pct, 100.0), 1.0) / 100.0
+    charge_eff = clamp_efficiency(charge_efficiency_pct)
+    discharge_eff = clamp_efficiency(discharge_efficiency_pct)
     cap = current_kwh  # working state — kWh above discharge floor
 
     log_planner(

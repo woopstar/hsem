@@ -74,6 +74,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from custom_components.hsem.models.planner_outputs import PlannedSlot
+from custom_components.hsem.utils.misc import clamp_efficiency
 from custom_components.hsem.utils.recommendations import Recommendations
 
 # ---------------------------------------------------------------------------
@@ -508,8 +509,8 @@ def score_plan(
     # we compute the roundtrip loss from them:
     #   roundtrip_loss = 1 - (charge_eff × discharge_eff)
     # Compute roundtrip loss from charge/discharge efficiencies.
-    charge_eff = max(min(weights.charge_efficiency_pct, 100.0), 1.0) / 100.0
-    discharge_eff = max(min(weights.discharge_efficiency_pct, 100.0), 1.0) / 100.0
+    charge_eff = clamp_efficiency(weights.charge_efficiency_pct)
+    discharge_eff = clamp_efficiency(weights.discharge_efficiency_pct)
 
     import_cost = 0.0
     export_revenue = 0.0
