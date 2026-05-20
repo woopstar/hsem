@@ -366,6 +366,179 @@ class TestApplySocPlanThreshold:
 
 
 # ===========================================================================
+# 3b. _apply_soc_plan — discharge-fraction deduplication (issue #447)
+# ===========================================================================
+
+
+class TestApplySocPlanDischargeDedup:
+    """_apply_soc_plan must return distinct targets for different discharge
+    fractions so the caller's dedup loop (in generate_candidates) can
+    distinguish them.  When current_kwh is low, multiple fraction targets
+    collapse to the same floor value (0.5 kWh); the dedup must remove
+    those duplicates."""
+
+    @staticmethod
+    def _ensure_discharge_fraction_mode(
+        slots: list[PlannedSlot],
+        now: datetime,
+    ) -> None:
+        """Apply a discharge-fraction forcing setup to a slot list.
+        This is separate from the main test assertion because we need to
+        isolate the return-value behaviour."""
+        # No-op: the slots are already set up for discharge-fraction mode
+        # by the caller (small discharge demand, large current_kwh).
+
+    def test_low_soc_discharge_targets_collapse_and_dedup(self):
+        """With current_kwh=1.01, fraction 0.25 produces 0.5 (floor clamp)
+        and fraction 0.50 produces 0.505 — within 0.05 kWh, so they are
+        deduplicated.  Only 4 unique targets should remain."""
+        # Arrange: create slots with small discharge demand and
+        # current_kwh > 1.0 so _apply_soc_plan enters discharge-fraction mode.
+        slots: list[PlannedSlot] = []
+        for h in range(24):
+            slot = _make_simple_slot(
+                hour=h,
+                import_price=0.40 if h >= 17 else 0.10,
+                export_price=0.05,
+            )
+            if h in (17, 18):
+                # Small discharge window — total_needed = 0.2 + 0.2 = 0.4
+                slot.recommendation = Recommendations.BatteriesDischargeMode.value
+                slot.estimated_net_consumption_kwh = 0.2
+            slots.append(slot)
+
+        now = datetime(2024, 6, 15, 0, 0, tzinfo=_TZ)
+
+        # Act: call _apply_soc_plan with different charge fractions.
+        # With current_kwh=1.01 and small discharge need, the function
+        # enters discharge-fraction mode. 0.25*1.01=0.2525 → clamped to 0.5,
+        # 0.50*1.01=0.505 (above floor, different by just 0.005).
+        # 1.25*1.01=1.2625 < usable_kwh, so no cap.
+        fractions = [0.25, 0.50, 0.75, 1.0, 1.25]
+        seen_targets: list[float] = []
+        for fraction in fractions:
+            slot_copy = _copy_slots(slots)
+            target = _apply_soc_plan(
+                slot_copy,
+                now,
+                max_charge_per_slot=1.25,
+                current_kwh=1.01,
+                usable_kwh=9.0,
+                cycle_cost_per_kwh=0.01,
+                charge_fraction=fraction,
+                charge_efficiency_pct=97.0,
+                discharge_efficiency_pct=97.0,
+            )
+            assert target is not None, (
+                f"_apply_soc_plan returned None for fraction {fraction}"
+            )
+            # Dedup using the same threshold as the caller
+            DUPLICATE_THRESHOLD_KWH = 0.05
+            if not seen_targets or target - seen_targets[-1] >= DUPLICATE_THRESHOLD_KWH:
+                seen_targets.append(target)
+
+        # Assert: fractions 0.25 and 0.50 are within 0.05 kWh of each other,
+        # so they are deduplicated. With 5 fractions we get 4 unique targets.
+        assert len(seen_targets) == 4, (
+            f"Expected 4 unique targets but got {len(seen_targets)}: {seen_targets}"
+        )
+        # Verify first target is the floor value (0.5)
+        assert seen_targets[0] == pytest.approx(0.5, abs=0.01)
+
+    def test_high_soc_all_fractions_distinct(self):
+        """With current_kwh=10.0, all 5 fractions produce distinct targets
+        (no floor collision).  usable_kwh is set high enough that the 1.25
+        fraction does not cap."""
+        # Arrange: create slots with small discharge demand and high
+        # current_kwh so _apply_soc_plan enters discharge-fraction mode.
+        slots: list[PlannedSlot] = []
+        for h in range(24):
+            slot = _make_simple_slot(
+                hour=h,
+                import_price=0.40 if h >= 17 else 0.10,
+                export_price=0.05,
+            )
+            if h in (17, 18):
+                slot.recommendation = Recommendations.BatteriesDischargeMode.value
+                slot.estimated_net_consumption_kwh = 0.2
+            slots.append(slot)
+
+        now = datetime(2024, 6, 15, 0, 0, tzinfo=_TZ)
+
+        # Act: call _apply_soc_plan with different charge fractions.
+        # usable_kwh is 50.0 so 1.25×10.0=12.5 does not cap.
+        fractions = [0.25, 0.50, 0.75, 1.0, 1.25]
+        seen_targets: list[float] = []
+        for fraction in fractions:
+            slot_copy = _copy_slots(slots)
+            target = _apply_soc_plan(
+                slot_copy,
+                now,
+                max_charge_per_slot=1.25,
+                current_kwh=10.0,
+                usable_kwh=50.0,
+                cycle_cost_per_kwh=0.01,
+                charge_fraction=fraction,
+                charge_efficiency_pct=97.0,
+                discharge_efficiency_pct=97.0,
+            )
+            assert target is not None, (
+                f"_apply_soc_plan returned None for fraction {fraction}"
+            )
+            # Dedup using the same threshold as the caller
+            DUPLICATE_THRESHOLD_KWH = 0.05
+            if not seen_targets or target - seen_targets[-1] >= DUPLICATE_THRESHOLD_KWH:
+                seen_targets.append(target)
+
+        # Assert: all 5 fractions produce distinct targets
+        assert len(seen_targets) == 5, (
+            f"Expected 5 unique targets but got {len(seen_targets)}: {seen_targets}"
+        )
+
+    def test_high_soc_all_fractions_distinct_normal_mode(self):
+        """With current_kwh=0.0 and large discharge demand, the function
+        enters normal charge-fraction mode and all 5 fractions produce
+        distinct charge_target values.  usable_kwh is set large enough
+        so the 1.25 fraction does not cap."""
+        slots: list[PlannedSlot] = []
+        for h in range(24):
+            slot = _make_simple_slot(
+                hour=h,
+                import_price=0.40 if h >= 17 else 0.10,
+                export_price=0.05,
+            )
+            if h in (17, 18, 19, 20):
+                # Large discharge windows — total_needed = 4*3.0 = 12.0
+                slot.recommendation = Recommendations.BatteriesDischargeMode.value
+                slot.estimated_net_consumption_kwh = 3.0
+            slots.append(slot)
+
+        now = datetime(2024, 6, 15, 0, 0, tzinfo=_TZ)
+
+        fractions = [0.25, 0.50, 0.75, 1.0, 1.25]
+        seen_targets: list[float] = []
+        for fraction in fractions:
+            slot_copy = _copy_slots(slots)
+            target = _apply_soc_plan(
+                slot_copy,
+                now,
+                max_charge_per_slot=1.25,
+                current_kwh=0.0,
+                usable_kwh=50.0,
+                cycle_cost_per_kwh=0.01,
+                charge_fraction=fraction,
+            )
+            assert target is not None
+            DUPLICATE_THRESHOLD_KWH = 0.05
+            if not seen_targets or target - seen_targets[-1] >= DUPLICATE_THRESHOLD_KWH:
+                seen_targets.append(target)
+
+        assert len(seen_targets) == 5, (
+            f"Expected 5 unique targets but got {len(seen_targets)}: {seen_targets}"
+        )
+
+
+# ===========================================================================
 # 4. generate_candidates — structural contract
 # ===========================================================================
 
