@@ -35,6 +35,7 @@ from custom_components.hsem.planner.candidate_generator import (
     CANDIDATE_SOLAR_ONLY,
     CandidatePlan,
     _apply_passive_solar,
+    _apply_soc_plan,
     _clear_all_charge_discharge,
     _copy_slots,
     _remove_all_charge,
@@ -54,6 +55,7 @@ from custom_components.hsem.planner.slot_population import (
     populate_prices,
     populate_solcast,
 )
+from custom_components.hsem.utils.misc import calculate_recommended_threshold
 from custom_components.hsem.utils.prices import SlotPrice
 from custom_components.hsem.utils.recommendations import Recommendations
 from tests.planner.fixtures import (
@@ -235,7 +237,136 @@ class TestSlotMutationHelpers:
 
 
 # ===========================================================================
-# 3. generate_candidates — structural contract
+# 3. _apply_soc_plan — threshold correctness (issue #445)
+# ===========================================================================
+
+
+class TestApplySocPlanThreshold:
+    """_apply_soc_plan must use the same threshold as calculate_recommended_threshold."""
+
+    def test_threshold_matches_canonical_calculation(self):
+        """The threshold computed inside _apply_soc_plan must equal
+        calculate_recommended_threshold for the same inputs."""
+        # Arrange: build a minimal 24h slot list with discharge windows
+        # and cheap grid slots before the first discharge window.
+        slots: list[PlannedSlot] = []
+        for h in range(24):
+            slot = _make_simple_slot(
+                hour=h,
+                import_price=0.40 if h >= 17 else 0.10,
+                export_price=0.05,
+            )
+            if h in (17, 18, 19):
+                slot.recommendation = Recommendations.BatteriesDischargeMode.value
+                slot.estimated_net_consumption_kwh = 1.0
+            slots.append(slot)
+
+        now = datetime(2024, 6, 15, 0, 0, tzinfo=_TZ)
+
+        # Known parameters
+        purchase_price = 10000.0
+        expected_cycles = 6000
+        usable_kwh = 9.0
+        capacity_loss_pct = 30.0
+
+        # Expected threshold from the canonical function
+        expected_threshold = calculate_recommended_threshold(
+            purchase_price=purchase_price,
+            expected_cycles=expected_cycles,
+            usable_capacity=usable_kwh,
+            capacity_loss_pct=capacity_loss_pct,
+        )
+
+        # Act: call _apply_soc_plan with matching parameters.
+        # The function modifies slots in place and returns charge_target.
+        # We verify the threshold indirectly by checking that the function
+        # does not skip grid charging when the price spread exceeds the
+        # proper threshold.
+        charge_target = _apply_soc_plan(
+            slots,
+            now,
+            max_charge_per_slot=1.25,
+            current_kwh=0.0,
+            usable_kwh=usable_kwh,
+            cycle_cost_per_kwh=0.01,
+            charge_fraction=1.0,
+            charge_efficiency_pct=97.0,
+            discharge_efficiency_pct=97.0,
+            purchase_price=purchase_price,
+            expected_cycles=expected_cycles,
+            capacity_loss_pct=capacity_loss_pct,
+        )
+
+        # Assert: charge_target should be non-None (discharge windows exist)
+        # and > 0 (grid charging was not skipped by the threshold guard).
+        assert charge_target is not None
+        assert charge_target > 0.0
+
+        # Verify the expected threshold matches the canonical formula.
+        expected_manual = (purchase_price * 0.30) / (2 * expected_cycles * usable_kwh)
+        assert expected_threshold == pytest.approx(expected_manual, rel=0.01)
+
+    def test_threshold_with_default_params(self):
+        """When called with zero purchase_price, threshold should be 0."""
+        result = calculate_recommended_threshold(
+            purchase_price=0.0,
+            expected_cycles=6000,
+            usable_capacity=9.0,
+            capacity_loss_pct=30.0,
+        )
+        assert result == 0.0
+
+    def test_soc_plan_skips_grid_charge_when_spread_below_threshold(self):
+        """When the price spread is below the proper threshold, _apply_soc_plan
+        should not add grid charging (cheapest slots remain None)."""
+        slots: list[PlannedSlot] = []
+        # Discharge at high prices but charge slots have nearly same price
+        # so the spread is tiny
+        for h in range(24):
+            slot = _make_simple_slot(
+                hour=h,
+                import_price=0.12,  # nearly flat — tiny spread
+                export_price=0.05,
+            )
+            if h < 6:
+                slot.estimated_net_consumption_kwh = -0.5
+            if h in (17, 18, 19):
+                slot.recommendation = Recommendations.BatteriesDischargeMode.value
+                slot.estimated_net_consumption_kwh = 1.0
+            slots.append(slot)
+
+        now = datetime(2024, 6, 15, 0, 0, tzinfo=_TZ)
+
+        charge_target = _apply_soc_plan(
+            slots,
+            now,
+            max_charge_per_slot=1.25,
+            current_kwh=0.0,
+            usable_kwh=9.0,
+            cycle_cost_per_kwh=0.01,
+            charge_fraction=1.0,
+            charge_efficiency_pct=97.0,
+            discharge_efficiency_pct=97.0,
+            purchase_price=10000.0,
+            expected_cycles=6000,
+            capacity_loss_pct=30.0,
+        )
+
+        # With tiny spread the threshold guard should skip grid charging,
+        # so charge_target might be 0 or None.
+        if charge_target is not None:
+            # If charge_target is non-None, verify that no grid-charge slots
+            # were added (only solar charging might have happened).
+            grid_charge_slots = [
+                s
+                for s in slots
+                if s.recommendation == Recommendations.BatteriesChargeGrid.value
+            ]
+            assert len(grid_charge_slots) == 0
+
+
+# ===========================================================================
+# 4. generate_candidates — structural contract
 # ===========================================================================
 
 

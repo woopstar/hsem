@@ -52,7 +52,10 @@ from custom_components.hsem.planner.milp_optimizer import (
 )
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import log_planner
-from custom_components.hsem.utils.misc import clamp_efficiency
+from custom_components.hsem.utils.misc import (
+    calculate_recommended_threshold,
+    clamp_efficiency,
+)
 from custom_components.hsem.utils.recommendations import CHARGE_RECS as _CHARGE_RECS
 from custom_components.hsem.utils.recommendations import (
     DISCHARGE_RECS as _DISCHARGE_RECS,
@@ -281,6 +284,9 @@ def generate_candidates(
             charge_fraction=charge_fraction,
             charge_efficiency_pct=inp.battery_charge_efficiency_pct,
             discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
+            purchase_price=inp.battery_purchase_price,
+            expected_cycles=inp.battery_expected_cycles,
+            capacity_loss_pct=30.0,
         )
         # Skip near-identical candidates (Bug E fix)
         if (
@@ -585,6 +591,9 @@ def _apply_soc_plan(
     charge_fraction: float = 1.0,
     charge_efficiency_pct: float = 97.0,
     discharge_efficiency_pct: float = 97.0,
+    purchase_price: float = 0.0,
+    expected_cycles: int = 6000,
+    capacity_loss_pct: float = 30.0,
 ) -> float | None:
     """BatPred-inspired SoC plan: charge only what's needed, then hold.
 
@@ -767,14 +776,15 @@ def _apply_soc_plan(
     # This mirrors the guard in _apply_grid_charge which uses:
     #   min_diff = recommended_threshold + cycle_cost_per_kwh
     # where recommended_threshold is the depreciation-derived price floor.
-    # Since soc_plan doesn't have recommended_threshold, we approximate it
-    # from cycle_cost_per_kwh * capacity_loss_pct (default 30%).
     cheapest_price = grid_candidates[0].price.import_price if grid_candidates else 0.0
     price_spread = avg_discharge_price - cheapest_price
-    # Approximate recommended_threshold from cycle_cost_per_kwh.
-    # cycle_cost_per_kwh already includes the 2x throughput factor.
-    # recommended_threshold ≈ cycle_cost_per_kwh * 0.30 (capacity_loss_pct).
-    approx_threshold = cycle_cost_per_kwh * 0.30
+    # Use the canonical calculation instead of a hardcoded proxy.
+    approx_threshold = calculate_recommended_threshold(
+        purchase_price=purchase_price,
+        expected_cycles=expected_cycles,
+        usable_capacity=usable_kwh,
+        capacity_loss_pct=capacity_loss_pct,
+    )
     min_profitable_spread = approx_threshold + cycle_cost_per_kwh
 
     if price_spread < min_profitable_spread - 1e-9:
