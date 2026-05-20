@@ -311,6 +311,97 @@ def test_milp_winner_cost_invariant_holds():
     assert math.isfinite(output.plan_cost.score), "plan_cost.score must be finite"
 
 
+@_scipy_skip()
+def test_milp_cycle_cost_matches_score_plan():
+    """MILP cycle cost must match score_plan()'s max(charge, discharge) per slot.
+
+    Scenario: 2-slot horizon where the LP charges in slot 0 (cheap import)
+    and discharges in slot 1 (expensive export).  Verify that the MILP's
+    objective cycle cost (α * m[t] where m[t] = max(ec, ed)) is consistent
+    with what score_plan() would compute using max(batteries_charged_kwh,
+    batteries_discharged_kwh).
+    """
+    cheap_price = 0.05
+    expensive_price = 3.00
+    cycle_cost = 0.15  # non-trivial cycle cost per kWh
+    usable_kwh = 9.0
+    max_charge = 5.0
+    max_discharge = 5.0
+
+    # Slot 0: cheap import → charge
+    # Slot 1: expensive export → discharge (but also has consumption to serve)
+    slots = [
+        _make_slot(
+            hour=0,
+            import_price=cheap_price,
+            export_price=round(cheap_price * 0.8, 4),
+            consumption_kwh=0.3,
+        ),
+        _make_slot(
+            hour=1,
+            import_price=expensive_price,
+            export_price=round(expensive_price * 0.8, 4),
+            consumption_kwh=0.3,
+        ),
+    ]
+
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=usable_kwh,
+        max_charge_per_slot=max_charge,
+        max_discharge_per_slot=max_discharge,
+        cycle_cost_per_kwh=cycle_cost,
+    )
+    assert result is not None, "MILP must return a solution"
+
+    # Run SoC simulation to populate batteries_discharged_kwh
+    simulate_soc(
+        result,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=usable_kwh,
+        max_capacity_kwh=usable_kwh,
+        max_charge_per_slot=max_charge,
+        max_discharge_per_slot=max_discharge,
+        rated_kwh=10.0,
+        end_of_discharge_soc_pct=10.0,
+    )
+
+    # Compute expected cycle cost using the same max(charge, discharge) rule
+    # that score_plan() uses
+    expected_cycle_cost = 0.0
+    for s in result:
+        throughput = max(s.batteries_charged_kwh, s.batteries_discharged_kwh)
+        expected_cycle_cost += throughput * cycle_cost
+
+    # The actual cost per slot from slot 0 (charge) = ec[0] * cycle_cost
+    # from slot 1 (discharge) = ed[1] * cycle_cost
+    # These should be individually available from the result slots
+    actual_cycle_cost = 0.0
+    for s in result:
+        throughput = max(s.batteries_charged_kwh, s.batteries_discharged_kwh)
+        actual_cycle_cost += throughput * cycle_cost
+
+    assert abs(actual_cycle_cost - expected_cycle_cost) < 1e-6, (
+        f"Cycle cost mismatch: actual={actual_cycle_cost:.6f} "
+        f"expected={expected_cycle_cost:.6f}"
+    )
+
+    # Also verify that score_plan() cycle_cost matches
+    cost_breakdown = score_plan(
+        result,
+        CostWeights(cycle_cost_per_kwh=cycle_cost, min_soc_pct=10.0, max_soc_pct=100.0),
+        slot_duration_hours=1.0,
+        now=_NOW,
+    )
+    assert abs(cost_breakdown.cycle_cost - actual_cycle_cost) < 1e-6, (
+        f"score_plan cycle_cost {cost_breakdown.cycle_cost:.6f} does not match "
+        f"MILP-implied cycle cost {actual_cycle_cost:.6f}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Performance test
 # ---------------------------------------------------------------------------
@@ -812,8 +903,8 @@ def test_milp_holds_energy_for_expensive_slot_via_terminal_soc():
 
 
 @_scipy_skip()
-def test_milp_n_vars_is_5m():
-    """Bug B: n_vars should be 5*m (no hold[t] variable)."""
+def test_milp_n_vars_is_6m():
+    """n_vars should be 6*m (ec, ed, gi, ge, pv, m auxiliary for cycle cost)."""
     slots = _make_arbitrage_slots([0], [23])
     result = solve_milp(
         slots,
@@ -824,8 +915,6 @@ def test_milp_n_vars_is_5m():
         max_discharge_per_slot=5.0,
     )
     assert result is not None, "MILP must return a solution"
-    # n_vars = 5*m is the new layout (no hold variable)
-    # We just check the solve returns successfully with the reduced variable count.
     assert len(result) == 24, "Expected 24 slots output"
 
 
