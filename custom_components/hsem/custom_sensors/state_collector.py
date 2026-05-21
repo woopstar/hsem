@@ -39,7 +39,6 @@ from custom_components.hsem.utils.misc import (
     ha_get_entity_state_and_convert,
 )
 from custom_components.hsem.utils.sensornames import (
-    get_energy_average_sensor_entity_id,
     get_energy_average_sensor_unique_id,
     get_force_working_mode_selector_key,
 )
@@ -652,13 +651,6 @@ async def async_collect_all_states(
                     eid = await async_resolve_entity_id_from_unique_id(sensor, uid)
                 except Exception:
                     eid = None
-                if eid is None:
-                    # Registry lookup can fail on the very first coordinator
-                    # cycle if the sensor hasn't been registered yet.  Fall
-                    # back to constructing the entity_id deterministically.
-                    # Cache the result even if the sensor has no state yet —
-                    # the populator handles None values gracefully.
-                    eid = get_energy_average_sensor_entity_id(h, hour_end, days)
                 if eid is not None:
                     avg_cache[uid] = eid
             eid = avg_cache.get(uid)
@@ -671,7 +663,7 @@ async def async_collect_all_states(
                         energy_average_values[eid] = val
                 except Exception:
                     # Entity unavailable — skip; downstream population will
-                    # handle the gap via missing_entities logic.
+                    # handle the gap by returning False (transient).
                     pass
 
     # 3. Pre-read EDS and Solcast sensor state objects for attribute access

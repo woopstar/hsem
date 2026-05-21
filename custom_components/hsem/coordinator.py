@@ -322,14 +322,16 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
 
             # 5. Populate weighted house-consumption averages from snapshot
             #    (no HA state lookups — data was pre-collected in step 2).
-            pop_errors = populate_avg_house_consumption_from_snapshot(
+            #    The energy average sensors are HSEM's own entities.  When
+            #    they are not yet ready (first cycle, transient) the function
+            #    returns False — this is NOT a missing_entities condition.
+            if not populate_avg_house_consumption_from_snapshot(
                 self._hourly_recommendations,
                 self._snapshot,
                 cfg,
                 self._avg_house_consumption_entity_id_cache,
-            )
-            for err in pop_errors:
-                live.add_missing_entity(err)
+            ):
+                pass  # Transient — retry next cycle.
 
             # Adjust timer based on missing-entities status.
             if live.missing_entities:
