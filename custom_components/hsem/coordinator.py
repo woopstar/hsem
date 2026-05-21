@@ -332,6 +332,12 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 cfg,
                 self._avg_house_consumption_entity_id_cache,
             )
+            await async_logger(
+                self,
+                f"[avg] populate_avg_house_consumption_from_snapshot returned {consumption_ok}, "
+                f"cache has {len(self._avg_house_consumption_entity_id_cache)} entries, "
+                f"snapshot has {len(self._snapshot.energy_average_values)} energy_avg values",
+            )
 
             # Adjust timer based on missing-entities or pending-consumption status.
             if live.missing_entities or not consumption_ok:
@@ -371,7 +377,11 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 now.tzinfo,
             )
 
-            if live.force_working_mode_state == "auto" and not live.missing_entities and consumption_ok:
+            if (
+                live.force_working_mode_state == "auto"
+                and not live.missing_entities
+                and consumption_ok
+            ):
                 # 8. Run the pure-Python planner engine — only when all data
                 #    is ready.  Skip when consumption averages are still
                 #    pending (first cycle, sensor restore not done).

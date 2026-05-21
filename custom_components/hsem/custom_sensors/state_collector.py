@@ -25,7 +25,6 @@ from custom_components.hsem.custom_sensors.config_reader import (  # noqa: F401
     build_battery_schedules,
     build_sensor_config,
 )
-
 from custom_components.hsem.models.live_state import (
     EVLiveState,
     LiveState,
@@ -667,6 +666,12 @@ async def async_collect_all_states(
             except Exception:
                 val = None
 
+            await async_logger(
+                sensor,
+                f"[avg] Read {uid} (entity_id={eid}) → "
+                f"{'None' if val is None else val}",
+            )
+
             # Store 0.0 when the sensor returns None (e.g. 'unknown'
             # state for a new dynamic child sensor with no data yet).
             # energy_average_values is rebuilt from scratch every
@@ -713,6 +718,7 @@ async def _resolve_cached(
     """
     if unique_id not in cache:
         entity_id = await async_resolve_entity_id_from_unique_id(sensor, unique_id)
+        source = "registry"
 
         if entity_id is None:
             # Registry miss — construct entity_id deterministically.
@@ -723,13 +729,21 @@ async def _resolve_cached(
                     h_start = int(parts[-3])
                     h_end = int(parts[-2])
                     d = int(parts[-1][:-1])
-                    entity_id = get_energy_average_sensor_entity_id(
-                        h_start, h_end, d
-                    )
+                    entity_id = get_energy_average_sensor_entity_id(h_start, h_end, d)
+                    source = "construct"
                 except (ValueError, IndexError):
-                    return None
+                    pass
 
         if entity_id is not None:
             cache[unique_id] = entity_id
+            await async_logger(
+                sensor,
+                f"[avg] Resolved {unique_id} → {entity_id} ({source})",
+            )
+        else:
+            await async_logger(
+                sensor,
+                f"[avg] Failed to resolve {unique_id} (registry+construct both returned None)",
+            )
 
     return cache.get(unique_id)
