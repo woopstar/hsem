@@ -670,14 +670,10 @@ async def async_collect_all_states(
                     val = convert_to_float(
                         ha_get_entity_state_and_convert(sensor, eid, "float", 3)
                     )
+                    if val is not None:
+                        energy_average_values[eid] = val
                 except Exception:
-                    val = None
-                # Store 0.0 when the sensor is "unknown"/"unavailable"
-                # (new dynamic child sensor, no utility-meter data yet).
-                # The weighted average succeeds immediately with zero
-                # consumption instead of returning False and blocking
-                # the planner.  As data accumulates, values become real.
-                energy_average_values[eid] = val or 0.0
+                    pass
 
     # 3. Pre-read EDS and Solcast sensor state objects for attribute access
     sensor_attributes: dict[str, dict] = {}
