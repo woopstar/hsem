@@ -705,28 +705,32 @@ class TestP008MagicThresholds:
 
         assert pytest.approx(0.1) == NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH
 
-    def test_charge_scheduler_imports_constants_not_literals(self) -> None:
-        """charge_scheduler.py must import and reference the named constants."""
+    def test_scheduler_modules_import_constants_not_literals(self) -> None:
+        """charge_scheduler.py and discharge_scheduler.py must import and reference
+        the named constants instead of bare literals."""
         import ast
         import pathlib
 
-        source = pathlib.Path(
-            "custom_components/hsem/planner/charge_scheduler.py"
-        ).read_text(encoding="utf-8")
-        tree = ast.parse(source)
+        for mod_name in ("charge_scheduler.py", "discharge_scheduler.py"):
+            source = pathlib.Path(
+                f"custom_components/hsem/planner/{mod_name}"
+            ).read_text(encoding="utf-8")
+            tree = ast.parse(source)
 
-        imported_names: set[str] = set()
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom):
-                for alias in node.names:
-                    imported_names.add(alias.asname or alias.name)
+            imported_names: set[str] = set()
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom):
+                    for alias in node.names:
+                        imported_names.add(alias.asname or alias.name)
 
-        assert "SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH" in imported_names, (
-            "charge_scheduler.py must import SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH"
-        )
-        assert "NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH" in imported_names, (
-            "charge_scheduler.py must import NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH"
-        )
+            if mod_name == "charge_scheduler.py":
+                assert "SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH" in imported_names, (
+                    f"{mod_name} must import SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH"
+                )
+            elif mod_name == "discharge_scheduler.py":
+                assert "NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH" in imported_names, (
+                    f"{mod_name} must import NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH"
+                )
 
     def test_near_zero_threshold_used_in_optimization_strategy(self) -> None:
         """A slot at exactly NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH gets BatteriesChargeSolar
@@ -736,7 +740,7 @@ class TestP008MagicThresholds:
 
         from custom_components.hsem.const import NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH
         from custom_components.hsem.models.planner_outputs import PlannedSlot
-        from custom_components.hsem.planner.charge_scheduler import (
+        from custom_components.hsem.planner.discharge_scheduler import (
             apply_optimization_strategy,
         )
         from custom_components.hsem.utils.prices import SlotPrice

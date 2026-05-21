@@ -21,7 +21,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from custom_components.hsem.models.planner_outputs import PlannedSlot
-from custom_components.hsem.planner.charge_scheduler import apply_excess_export
+from custom_components.hsem.planner.discharge_scheduler import apply_excess_export
 from custom_components.hsem.utils.prices import SlotPrice
 from custom_components.hsem.utils.recommendations import Recommendations
 
