@@ -1020,3 +1020,68 @@ def test_milp_mutex_post_hoc_always_trivially_true():
                 f"Bug C: Simultaneous charge+discharge at hour {s.start.hour} "
                 f"with prices {prices}"
             )
+
+
+@_scipy_skip()
+def test_milp_soc_rises_after_cheap_charge_slot():
+    """MILP charge must be picked up by SoC simulation, causing a measurable rise.
+
+    Run solve_milp on a 4-slot horizon with 1 very cheap import slot that
+    makes charging clearly profitable.  After passing the result through
+    simulate_soc, the SoC after the cheap slot must be above the initial
+    current_kwh — proving that soc_simulation reads the MILP-written
+    batteries_charged_kwh field.
+    """
+    slots = [
+        _make_slot(
+            hour=h,
+            import_price=(0.01 if h == 0 else 0.50),
+            export_price=0.01,
+            consumption_kwh=0.3,
+        )
+        for h in range(4)
+    ]
+    for s in slots:
+        s.solcast_pv_estimate_kwh = 0.0
+        s.estimated_net_consumption_kwh = (
+            s.avg_house_consumption_kwh - s.solcast_pv_estimate_kwh
+        )
+
+    usable_kwh = 9.0
+    initial_kwh = 0.0
+    max_charge = 5.0
+
+    milp_slots = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=initial_kwh,
+        usable_kwh=usable_kwh,
+        max_charge_per_slot=max_charge,
+        max_discharge_per_slot=None,
+        cycle_cost_per_kwh=0.0,
+        charge_efficiency_pct=100.0,
+        discharge_efficiency_pct=100.0,
+    )
+    assert milp_slots is not None, "MILP must solve the 4-slot problem"
+
+    simulate_soc(
+        milp_slots,
+        _NOW,
+        current_kwh=initial_kwh,
+        usable_kwh=usable_kwh,
+        max_capacity_kwh=usable_kwh,
+        max_charge_per_slot=max_charge,
+        max_discharge_per_slot=None,
+        rated_kwh=10.0,
+        end_of_discharge_soc_pct=10.0,
+    )
+
+    # The SoC after hour 0 (end of cheap slot) must be higher than initial_kwh
+    hour_0_slots = [s for s in milp_slots if s.start.hour == 0]
+    assert len(hour_0_slots) == 1
+    soc_after_cheap = hour_0_slots[0].estimated_battery_capacity_kwh
+    assert soc_after_cheap > initial_kwh, (
+        f"SoC after cheap charge slot is {soc_after_cheap:.3f} kWh, "
+        f"expected > {initial_kwh} — MILP charge may not be propagated "
+        "through soc_simulation"
+    )
