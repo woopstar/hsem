@@ -575,7 +575,7 @@ def populate_avg_house_consumption_from_snapshot(
         v14 = snapshot.energy_average_values.get(eid_14d)
 
         if None in (v1, v3, v7, v14):
-            return False
+            continue
 
         # At this point all values are float
         if w_total_config == 0:
