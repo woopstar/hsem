@@ -567,7 +567,7 @@ def populate_avg_house_consumption_from_snapshot(
         eid_14d = energy_average_entity_id_cache.get(uid_14d)
 
         if None in (eid_1d, eid_3d, eid_7d, eid_14d):
-            return False
+            continue
 
         v1 = snapshot.energy_average_values.get(eid_1d)
         v3 = snapshot.energy_average_values.get(eid_3d)

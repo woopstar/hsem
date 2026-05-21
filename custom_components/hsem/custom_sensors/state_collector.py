@@ -664,11 +664,15 @@ async def async_collect_all_states(
                 val = convert_to_float(
                     ha_get_entity_state_and_convert(sensor, eid, "float", 3)
                 )
-
-                if val is not None:
-                    energy_average_values[eid] = val
             except Exception:
-                continue
+                val = None
+
+            # Store 0.0 when the sensor returns None (e.g. 'unknown'
+            # state for a new dynamic child sensor with no data yet).
+            # energy_average_values is rebuilt from scratch every
+            # cycle, so this 0.0 is NOT permanent — as soon as the
+            # sensor accumulates real data, the next read replaces it.
+            energy_average_values[eid] = val or 0.0
 
     # 3. Pre-read EDS and Solcast sensor state objects for attribute access
     sensor_attributes: dict[str, dict] = {}
@@ -705,27 +709,27 @@ async def _resolve_cached(
     The energy average sensors are dynamic child entities that may not be
     registered in the HA entity registry on the first coordinator cycle.
     When the registry lookup fails, construct the entity_id deterministically
-    from the unique_id pattern and cache it — the entity_id is always
-    predictable.
+    from the unique_id pattern — it is always predictable.
     """
     if unique_id not in cache:
-        entity_id = await async_resolve_entity_id_from_unique_id(
-            sensor, unique_id
-        )
+        entity_id = await async_resolve_entity_id_from_unique_id(sensor, unique_id)
+
         if entity_id is None:
-            # Parse unique_id pattern: hsem_house_consumption_energy_avg_{hh}_{hh}_{d}d
-            # The entity_id is deterministically derived from these components.
-            parts = unique_id.rsplit("_", 3)  # e.g. ["hsem", ..., "avg", "00", "01", "1d"]
+            # Registry miss — construct entity_id deterministically.
+            # unique_id format: hsem_house_consumption_energy_avg_{hh}_{hh}_{d}d
+            parts = unique_id.rsplit("_", 3)
             if len(parts) == 5 and parts[-1].endswith("d"):
                 try:
                     h_start = int(parts[-3])
                     h_end = int(parts[-2])
-                    d = int(parts[-1][:-1])  # strip trailing "d"
+                    d = int(parts[-1][:-1])
                     entity_id = get_energy_average_sensor_entity_id(
                         h_start, h_end, d
                     )
                 except (ValueError, IndexError):
-                    pass
+                    return None
+
         if entity_id is not None:
             cache[unique_id] = entity_id
+
     return cache.get(unique_id)
