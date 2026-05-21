@@ -8,17 +8,9 @@ from custom_components.hsem.flows.batteries_excess_export import (
     get_batteries_excess_export_step_schema,
     validate_batteries_excess_export_input,
 )
-from custom_components.hsem.flows.batteries_schedule_1 import (
-    get_batteries_schedule_1_step_schema,
-    validate_batteries_schedule_1_input,
-)
-from custom_components.hsem.flows.batteries_schedule_2 import (
-    get_batteries_schedule_2_step_schema,
-    validate_batteries_schedule_2_input,
-)
-from custom_components.hsem.flows.batteries_schedule_3 import (
-    get_batteries_schedule_3_step_schema,
-    validate_batteries_schedule_3_input,
+from custom_components.hsem.flows.batteries_schedules import (
+    get_batteries_schedules_step_schema,
+    validate_batteries_schedules_input,
 )
 from custom_components.hsem.flows.energidataservice import (
     get_energidataservice_step_schema,
@@ -270,7 +262,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
                 self._user_input.update(user_input)
                 if bool(self._user_input.get("hsem_ev_second_enabled")):
                     return await self.async_step_ev_second_planned_load()
-                return await self.async_step_batteries_schedule_1()
+                return await self.async_step_batteries_schedules()
 
         data_schema = await get_ev_planned_load_step_schema(None)
 
@@ -288,7 +280,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
             errors = await validate_ev_second_planned_load_input(self.hass, user_input)
             if not errors:
                 self._user_input.update(user_input)
-                return await self.async_step_batteries_schedule_1()
+                return await self.async_step_batteries_schedules()
 
         data_schema = await get_ev_second_planned_load_step_schema(None)
 
@@ -299,61 +291,21 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
             last_step=False,
         )
 
-    async def async_step_batteries_schedule_1(self, user_input=None):
+    async def async_step_batteries_schedules(self, user_input=None):
         errors = {}
 
         if user_input is not None:
-            errors = await validate_batteries_schedule_1_input(user_input)
-            if not errors:
-                self._user_input.update(user_input)
-                return await self.async_step_batteries_schedule_2()
-
-        data_schema = await get_batteries_schedule_1_step_schema(
-            None, hass=self.hass, user_input=self._user_input
-        )
-
-        return self.async_show_form(
-            step_id="batteries_schedule_1",
-            data_schema=data_schema,
-            errors=errors,
-            last_step=False,
-        )
-
-    async def async_step_batteries_schedule_2(self, user_input=None):
-        errors = {}
-
-        if user_input is not None:
-            errors = await validate_batteries_schedule_2_input(user_input)
-            if not errors:
-                self._user_input.update(user_input)
-                return await self.async_step_batteries_schedule_3()
-
-        data_schema = await get_batteries_schedule_2_step_schema(
-            None, hass=self.hass, user_input=self._user_input
-        )
-
-        return self.async_show_form(
-            step_id="batteries_schedule_2",
-            data_schema=data_schema,
-            errors=errors,
-            last_step=False,
-        )
-
-    async def async_step_batteries_schedule_3(self, user_input=None):
-        errors = {}
-
-        if user_input is not None:
-            errors = await validate_batteries_schedule_3_input(user_input)
+            errors = await validate_batteries_schedules_input(user_input)
             if not errors:
                 self._user_input.update(user_input)
                 return await self.async_step_batteries_excess_export()
 
-        data_schema = await get_batteries_schedule_3_step_schema(
+        data_schema = await get_batteries_schedules_step_schema(
             None, hass=self.hass, user_input=self._user_input
         )
 
         return self.async_show_form(
-            step_id="batteries_schedule_3",
+            step_id="batteries_schedules",
             data_schema=data_schema,
             errors=errors,
             last_step=False,
