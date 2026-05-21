@@ -29,8 +29,8 @@ from custom_components.hsem.models.planner_inputs import (
 )
 from custom_components.hsem.models.planner_outputs import PlannedSlot
 from custom_components.hsem.planner import run_planner
-from custom_components.hsem.planner.charge_scheduler import (
-    apply_charge_schedules,
+from custom_components.hsem.planner.charge_scheduler import apply_charge_schedules
+from custom_components.hsem.planner.discharge_scheduler import (
     apply_optimization_strategy,
 )
 from custom_components.hsem.utils.prices import SlotPrice
@@ -393,31 +393,33 @@ class TestPlannerThresholdEndToEnd:
         )
 
     def test_planner_uses_named_constants_not_literals(self):
-        """charge_scheduler.py must not contain unexplained 0.1 or 0.2 kW
-        literals — they must reference the named constants instead."""
+        """charge_scheduler.py and discharge_scheduler.py must not contain
+        unexplained 0.1 or 0.2 kW literals — they must reference the named
+        constants instead."""
         import ast
         from pathlib import Path
 
-        scheduler_path = (
-            Path(__file__).parents[1]
-            / "custom_components"
-            / "hsem"
-            / "planner"
-            / "charge_scheduler.py"
-        )
-        source = scheduler_path.read_text(encoding="utf-8")
-        tree = ast.parse(source)
+        for mod_name in ("charge_scheduler.py", "discharge_scheduler.py"):
+            scheduler_path = (
+                Path(__file__).parents[1]
+                / "custom_components"
+                / "hsem"
+                / "planner"
+                / mod_name
+            )
+            source = scheduler_path.read_text(encoding="utf-8")
+            tree = ast.parse(source)
 
-        suspicious: list[tuple[int, float]] = []
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Constant) and isinstance(node.value, float):
-                # Flag bare 0.1 and 0.2 — the only legitimate use of these
-                # values is now via named constants imported from const.py
-                if node.value in (0.1, 0.2, -0.1, -0.2):
-                    suspicious.append((node.lineno, node.value))
+            suspicious: list[tuple[int, float]] = []
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Constant) and isinstance(node.value, float):
+                    # Flag bare 0.1 and 0.2 — the only legitimate use of these
+                    # values is now via named constants imported from const.py
+                    if node.value in (0.1, 0.2, -0.1, -0.2):
+                        suspicious.append((node.lineno, node.value))
 
-        assert not suspicious, (
-            f"charge_scheduler.py still contains bare power threshold literals "
-            f"at lines {suspicious}. Use SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH or "
-            f"NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH instead."
-        )
+            assert not suspicious, (
+                f"{mod_name} still contains bare power threshold literals "
+                f"at lines {suspicious}. Use SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH or "
+                f"NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH instead."
+            )

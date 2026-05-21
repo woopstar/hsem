@@ -1,4 +1,4 @@
-"""Tests for concentrate_discharge_on_expensive_slots() in charge_scheduler.py.
+"""Tests for concentrate_discharge_on_expensive_slots() in discharge_scheduler.py.
 
 Regression test for #446: the original code used ``break`` when a slot
 could not be fully served, causing all subsequent (cheaper) slots to be
@@ -12,7 +12,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from custom_components.hsem.models.planner_outputs import PlannedSlot
-from custom_components.hsem.planner.charge_scheduler import (
+from custom_components.hsem.planner.discharge_scheduler import (
     concentrate_discharge_on_expensive_slots,
 )
 from custom_components.hsem.utils.prices import SlotPrice

@@ -7,7 +7,9 @@ directly testable with plain ``pytest`` without a running HA instance.
 """
 
 from __future__ import annotations
+
 from datetime import datetime
+
 from custom_components.hsem.models.planner_inputs import PlannerInput
 from custom_components.hsem.models.planner_outputs import DataQuality, PlannerOutput
 from custom_components.hsem.planner.candidate_generator import generate_candidates
@@ -18,14 +20,16 @@ from custom_components.hsem.planner.candidate_selector import (
 from custom_components.hsem.planner.charge_scheduler import (
     apply_arbitrage_grid_charge,
     apply_charge_schedules,
+    apply_opportunistic_charge,
+)
+from custom_components.hsem.planner.cost_function import CostWeights, score_plan
+from custom_components.hsem.planner.discharge_scheduler import (
     apply_discharge_schedules,
     apply_excess_export,
-    apply_opportunistic_charge,
     apply_optimization_strategy,
     calculate_required_battery_until_solar,
     concentrate_discharge_on_expensive_slots,
 )
-from custom_components.hsem.planner.cost_function import CostWeights, score_plan
 from custom_components.hsem.planner.engine_explanation import (
     _build_explanation,
     _derive_windows,
