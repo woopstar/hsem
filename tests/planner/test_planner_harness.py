@@ -61,7 +61,7 @@ class TestPlannerContract:
         # Verify we can import the engine without homeassistant being fully loaded
         # (it may already be on sys.modules from conftest; what matters is that
         # the engine itself does NOT import homeassistant at top-level).
-        import custom_components.hsem.planner.engine as engine_mod
+        import custom_components.hsem.planner.engine_core as engine_mod
 
         engine_source = engine_mod.__file__
         with open(engine_source, encoding="utf-8") as fh:
