@@ -322,19 +322,19 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
 
             # 5. Populate weighted house-consumption averages from snapshot
             #    (no HA state lookups — data was pre-collected in step 2).
-            #    The energy average sensors are HSEM's own entities.  When
-            #    they are not yet ready (first cycle, transient) the function
-            #    returns False — this is NOT a missing_entities condition.
-            if not populate_avg_house_consumption_from_snapshot(
+            #    The energy average sensors are HSEM's own RestoreEntity sensors.
+            #    On the very first cycle they may report "unknown" before the
+            #    restore completes.  When the populator fails, skip the planner
+            #    and retry on the next cycle with a shorter interval.
+            consumption_ok = populate_avg_house_consumption_from_snapshot(
                 self._hourly_recommendations,
                 self._snapshot,
                 cfg,
                 self._avg_house_consumption_entity_id_cache,
-            ):
-                pass  # Transient — retry next cycle.
+            )
 
-            # Adjust timer based on missing-entities status.
-            if live.missing_entities:
+            # Adjust timer based on missing-entities or pending-consumption status.
+            if live.missing_entities or not consumption_ok:
                 await self._set_update_interval(1)
             else:
                 await self._set_update_interval()
@@ -346,6 +346,16 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 state = Recommendations.MissingInputEntities.value
                 await async_logger(
                     self, "Missing input entities, skipping calculations."
+                )
+
+            elif not consumption_ok and live.force_working_mode_state == "auto":
+                # Energy average sensors not yet ready (first cycle, restore
+                # pending).  Retry on next cycle — don't run planner with
+                # zeroed data.
+                state = Recommendations.BatteriesWaitMode.value
+                await async_logger(
+                    self,
+                    "Energy average sensors not ready yet, retrying on next cycle.",
                 )
 
             elif live.force_working_mode_state != "auto":

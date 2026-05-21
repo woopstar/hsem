@@ -18,12 +18,14 @@ from __future__ import annotations
 import logging
 
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers.event import async_track_state_change_event
 
+# Re-export from config_reader so existing callers continue to work.
 from custom_components.hsem.custom_sensors.config_reader import (  # noqa: F401
     build_battery_schedules,
     build_sensor_config,
 )
+from homeassistant.helpers.event import async_track_state_change_event
+
 from custom_components.hsem.models.live_state import (
     EVLiveState,
     LiveState,
@@ -652,6 +654,7 @@ async def async_collect_all_states(
                     eid = await async_resolve_entity_id_from_unique_id(sensor, uid)
                 except Exception:
                     eid = None
+
                 if eid is None:
                     # Registry lookup can fail on the first coordinator cycle
                     # if the sensor hasn't been registered yet.  The entity_id
@@ -660,6 +663,7 @@ async def async_collect_all_states(
                     eid = get_energy_average_sensor_entity_id(h, hour_end, days)
                 if eid is not None:
                     avg_cache[uid] = eid
+
             eid = avg_cache.get(uid)
             if eid:
                 try:
@@ -669,9 +673,10 @@ async def async_collect_all_states(
                     if val is not None:
                         energy_average_values[eid] = val
                 except Exception:
-                    # Entity unavailable — skip; downstream population will
-                    # handle the gap by returning False (transient).
-                    pass
+                    # Entity not yet available (dynamic child sensor may not
+                    # have been created yet).  Remove from cache so the next
+                    # cycle retries the registry lookup.
+                    avg_cache.pop(uid, None)
 
     # 3. Pre-read EDS and Solcast sensor state objects for attribute access
     sensor_attributes: dict[str, dict] = {}
