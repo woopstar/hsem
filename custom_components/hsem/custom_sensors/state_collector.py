@@ -673,11 +673,6 @@ async def async_collect_all_states(
                     if val is not None:
                         energy_average_values[eid] = val
                 except Exception:
-                    # Entity exists but state is "unknown" / "unavailable"
-                    # (new dynamic child sensor, no data yet).  Don't pop
-                    # from cache — the entity_id is valid.  Just skip;
-                    # next cycle will retry with the same entity_id once
-                    # the sensor has real data.
                     pass
 
     # 3. Pre-read EDS and Solcast sensor state objects for attribute access

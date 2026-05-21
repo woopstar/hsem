@@ -793,12 +793,9 @@ class TestP009ExceptionHandling:
 
         assert issubclass(EntityNotFoundError, HomeAssistantError)
 
-    def test_unknown_state_raises_entity_not_found(self) -> None:
-        """'unknown' entity state must raise ``EntityNotFoundError`` (not return 0)."""
-        from custom_components.hsem.utils.misc import (
-            EntityNotFoundError,
-            ha_get_entity_state_and_convert,
-        )
+    def test_unknown_state_returns_none(self) -> None:
+        """'unknown' entity state must return None for float reads."""
+        from custom_components.hsem.utils.misc import ha_get_entity_state_and_convert
 
         hass = MagicMock()
         state_mock = MagicMock()
@@ -809,15 +806,12 @@ class TestP009ExceptionHandling:
         sensor.hass = hass
         sensor.entity_id = "sensor.hsem_test"
 
-        with pytest.raises(EntityNotFoundError):
-            ha_get_entity_state_and_convert(sensor, "sensor.battery_soc", "float")
+        result = ha_get_entity_state_and_convert(sensor, "sensor.battery_soc", "float")
+        assert result is None
 
-    def test_unavailable_state_raises_entity_not_found(self) -> None:
-        """'unavailable' entity state must raise ``EntityNotFoundError``."""
-        from custom_components.hsem.utils.misc import (
-            EntityNotFoundError,
-            ha_get_entity_state_and_convert,
-        )
+    def test_unavailable_state_returns_none(self) -> None:
+        """'unavailable' entity state must return None for float reads."""
+        from custom_components.hsem.utils.misc import ha_get_entity_state_and_convert
 
         hass = MagicMock()
         state_mock = MagicMock()
@@ -828,8 +822,8 @@ class TestP009ExceptionHandling:
         sensor.hass = hass
         sensor.entity_id = "sensor.hsem_test"
 
-        with pytest.raises(EntityNotFoundError):
-            ha_get_entity_state_and_convert(sensor, "sensor.battery_soc", "float")
+        result = ha_get_entity_state_and_convert(sensor, "sensor.battery_soc", "float")
+        assert result is None
 
     def test_missing_entity_raises_entity_not_found(self) -> None:
         """A completely absent entity must raise ``EntityNotFoundError``."""
