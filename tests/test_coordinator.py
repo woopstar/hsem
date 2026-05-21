@@ -37,6 +37,7 @@ from custom_components.hsem.coordinator import (
     CoordinatorData,
     HSEMDataUpdateCoordinator,
 )
+from custom_components.hsem.coordinator_builder import generate_recommendation_intervals
 
 # ---------------------------------------------------------------------------
 # Helper: build a bare coordinator instance without calling __init__
@@ -236,35 +237,30 @@ class TestGenerateRecommendationIntervals:
 
     def test_generates_correct_count_for_60min_24h(self) -> None:
         """60-minute slots over 24 hours must produce 24 slots."""
-        coordinator = _make_bare_coordinator()
-        slots = coordinator._generate_recommendation_intervals(60, 24)
+        slots = generate_recommendation_intervals(60, 24)
         assert len(slots) == 24
 
     def test_generates_correct_count_for_15min_48h(self) -> None:
         """15-minute slots over 48 hours must produce 192 slots."""
-        coordinator = _make_bare_coordinator()
-        slots = coordinator._generate_recommendation_intervals(15, 48)
+        slots = generate_recommendation_intervals(15, 48)
         assert len(slots) == 192
 
     def test_slots_start_at_midnight(self) -> None:
         """The first slot must start at midnight of the current day."""
-        coordinator = _make_bare_coordinator()
-        slots = coordinator._generate_recommendation_intervals(60, 24)
+        slots = generate_recommendation_intervals(60, 24)
         first = slots[0]
         assert first.start.hour == 0
         assert first.start.minute == 0
 
     def test_consecutive_slots_are_contiguous(self) -> None:
         """Each slot's end must equal the next slot's start."""
-        coordinator = _make_bare_coordinator()
-        slots = coordinator._generate_recommendation_intervals(15, 2)
+        slots = generate_recommendation_intervals(15, 2)
         for i in range(len(slots) - 1):
             assert slots[i].end == slots[i + 1].start
 
     def test_slots_have_zero_defaults(self) -> None:
         """All numeric fields on a freshly generated slot must be 0.0."""
-        coordinator = _make_bare_coordinator()
-        slots = coordinator._generate_recommendation_intervals(60, 1)
+        slots = generate_recommendation_intervals(60, 1)
         slot = slots[0]
         assert slot.import_price == pytest.approx(0.0)
         assert slot.export_price == pytest.approx(0.0)

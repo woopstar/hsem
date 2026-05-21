@@ -45,6 +45,10 @@ from custom_components.hsem.coordinator import (
     CoordinatorData,
     HSEMDataUpdateCoordinator,
 )
+from custom_components.hsem.coordinator_builder import (
+    generate_recommendation_intervals,
+    utc_key,
+)
 from custom_components.hsem.custom_sensors.battery_soc_sensor import (
     HSEMBatterySoCSensor,
 )
@@ -1782,7 +1786,7 @@ class TestApplyPlannerOutputEvLoad:
         """Return a bare coordinator whose _hourly_recommendations are pre-generated."""
         coord = make_bare_coordinator()
         coord._batteries_schedules = []
-        coord._hourly_recommendations = coord._generate_recommendation_intervals(
+        coord._hourly_recommendations = generate_recommendation_intervals(
             interval_minutes, total_hours
         )
         return coord
@@ -1903,13 +1907,13 @@ class TestApplyPlannerOutputEvLoad:
         coord = self._make_coord_with_recs()
         output = self._make_output_from_recs(coord._hourly_recommendations, {12: 1.5})
 
-        # Verify via _utc_key
-        utc_key = coord._utc_key
-        slot_by_utc = {utc_key(s.start): s for s in output.slots}
+        # Verify via utc_key
+        utc_key_func = utc_key
+        slot_by_utc = {utc_key_func(s.start): s for s in output.slots}
         matched = sum(
             1
             for rec in coord._hourly_recommendations
-            if slot_by_utc.get(utc_key(rec.start)) is not None
+            if slot_by_utc.get(utc_key_func(rec.start)) is not None
         )
         assert matched == 24, f"Only {matched}/24 recs matched after UTC normalisation"
 
@@ -2261,8 +2265,7 @@ class TestApplyPlannerOutputEvLoad:
         t1 = datetime(2024, 6, 15, 14, 0, 0, microsecond=0, tzinfo=UTC)
         t2 = datetime(2024, 6, 15, 14, 0, 0, microsecond=999999, tzinfo=UTC)
 
-        coord = make_bare_coordinator()
-        assert coord._utc_key(t1) == coord._utc_key(t2)
+        assert utc_key(t1) == utc_key(t2)
 
     def test_utc_key_normalises_across_timezone_types(self):
         """_utc_key must return equal keys for ZoneInfo and fixed-offset at the same instant."""
@@ -2275,8 +2278,7 @@ class TestApplyPlannerOutputEvLoad:
         t_zone = datetime(2024, 6, 15, 14, 0, 0, tzinfo=tz_zone)
         t_fixed = datetime(2024, 6, 15, 14, 0, 0, tzinfo=tz_fixed)
 
-        coord = make_bare_coordinator()
-        assert coord._utc_key(t_zone) == coord._utc_key(t_fixed)
+        assert utc_key(t_zone) == utc_key(t_fixed)
 
     # ------------------------------------------------------------------
     # base_load_includes_ev=True: ev_accounted and ev_total must be copied
@@ -2687,7 +2689,6 @@ class TestEvSlotKeyNormalisation:
             "Test setup error: these should produce different isoformat strings"
         )
         # But they should be equal as UTC-normalised datetimes (using coordinator._utc_key)
-        coord = make_bare_coordinator()
-        assert coord._utc_key(utc_dt) == coord._utc_key(fixed_dt), (
-            "_utc_key must normalise timezone-representation mismatches"
+        assert utc_key(utc_dt) == utc_key(fixed_dt), (
+            "utc_key must normalise timezone-representation mismatches"
         )
