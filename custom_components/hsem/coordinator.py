@@ -349,14 +349,10 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 )
 
             elif not consumption_ok and live.force_working_mode_state == "auto":
-                # Energy average sensors not yet ready (first cycle, restore
-                # pending).  Retry on next cycle — don't run planner with
-                # zeroed data.
-                state = Recommendations.BatteriesWaitMode.value
-                await async_logger(
-                    self,
-                    "Energy average sensors not ready yet, retrying on next cycle.",
-                )
+                # Energy average sensors not yet ready.  Still populate prices
+                # and solcast below, but skip the planner (zeroed consumption
+                # data would produce wrong results).
+                pass  # handled below after price/solcast population
 
             elif live.force_working_mode_state != "auto":
                 state = str(live.force_working_mode_state)
@@ -366,18 +362,19 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                     f"{live.force_working_mode_state}",
                 )
 
-            else:
-                # 7. Populate electricity prices and Solcast PV estimates from
-                #    snapshot (no HA state lookups — data was pre-collected in
-                #    step 2).
-                populate_price_and_solcast_from_snapshot(
-                    self._hourly_recommendations,
-                    self._snapshot,
-                    cfg,
-                    now.tzinfo,
-                )
+            # 7. Populate electricity prices and Solcast PV estimates — always
+            #    run, independent of consumption data.
+            populate_price_and_solcast_from_snapshot(
+                self._hourly_recommendations,
+                self._snapshot,
+                cfg,
+                now.tzinfo,
+            )
 
-                # 8. Run the pure-Python planner engine.
+            if live.force_working_mode_state == "auto" and not live.missing_entities and consumption_ok:
+                # 8. Run the pure-Python planner engine — only when all data
+                #    is ready.  Skip when consumption averages are still
+                #    pending (first cycle, sensor restore not done).
                 planner_input = build_planner_input(
                     cfg=cfg,
                     live=self._live,
