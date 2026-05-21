@@ -328,7 +328,10 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 cfg,
                 self._avg_house_consumption_entity_id_cache,
             ):
-                live.missing_entities = True
+                live.add_missing_entity(
+                    "House consumption snapshot — one or more consumption entities "
+                    "returned unparseable or zero values"
+                )
 
             # Adjust timer based on missing-entities status.
             if live.missing_entities:
