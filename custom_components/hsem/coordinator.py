@@ -326,6 +326,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             #    On the very first cycle they may report "unknown" before the
             #    restore completes.  When the populator fails, skip the planner
             #    and retry on the next cycle with a shorter interval.
+            set_planner_verbose(cfg.verbose_logging)
             consumption_ok = populate_avg_house_consumption_from_snapshot(
                 self._hourly_recommendations,
                 self._snapshot,

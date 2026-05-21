@@ -21,7 +21,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_track_state_change_event
 
 # Re-export from config_reader so existing callers continue to work.
-from custom_components.hsem.custom_sensors.config_reader import (  # noqa: F401
+from custom_components.hsem.custom_sensors.config_reader import (  # noqa: F401 — re-exported for backward compat in coordinator.py
     build_battery_schedules,
     build_sensor_config,
 )
@@ -40,7 +40,6 @@ from custom_components.hsem.utils.misc import (
     ha_get_entity_state_and_convert,
 )
 from custom_components.hsem.utils.sensornames import (
-    get_energy_average_sensor_entity_id,
     get_energy_average_sensor_unique_id,
     get_force_working_mode_selector_key,
 )
@@ -641,7 +640,11 @@ async def async_collect_all_states(
     # 2. Pre-read energy average sensor values (24 hours × 4 periods)
     #    Gracefully skips unavailable sensors — the caller will detect
     #    missing data via the population functions and set missing_entities.
-    avg_cache = energy_average_entity_id_cache or {}
+    avg_cache = (
+        energy_average_entity_id_cache
+        if energy_average_entity_id_cache is not None
+        else {}
+    )
     energy_average_values: dict[str, float] = {}
 
     for h in range(24):
@@ -718,27 +721,12 @@ async def _resolve_cached(
     """
     if unique_id not in cache:
         entity_id = await async_resolve_entity_id_from_unique_id(sensor, unique_id)
-        source = "registry"
-
-        if entity_id is None:
-            # Registry miss — construct entity_id deterministically.
-            # unique_id format: hsem_house_consumption_energy_avg_{hh}_{hh}_{d}d
-            parts = unique_id.rsplit("_", 3)
-            if len(parts) == 5 and parts[-1].endswith("d"):
-                try:
-                    h_start = int(parts[-3])
-                    h_end = int(parts[-2])
-                    d = int(parts[-1][:-1])
-                    entity_id = get_energy_average_sensor_entity_id(h_start, h_end, d)
-                    source = "construct"
-                except (ValueError, IndexError):
-                    pass
 
         if entity_id is not None:
             cache[unique_id] = entity_id
             await async_logger(
                 sensor,
-                f"[avg] Resolved {unique_id} → {entity_id} ({source})",
+                f"[avg] Resolved {unique_id} → {entity_id}",
             )
         else:
             await async_logger(

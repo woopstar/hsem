@@ -27,7 +27,7 @@ from custom_components.hsem.models.state_snapshot import StateSnapshot
 # in planner.slot_population so the logic lives in exactly one place.
 from custom_components.hsem.planner.slot_population import weighted_avg_consumption
 from custom_components.hsem.utils.datetime_utils import normalize_datetime
-from custom_components.hsem.utils.logger import async_logger
+from custom_components.hsem.utils.logger import async_logger, log_planner
 from custom_components.hsem.utils.misc import (
     async_resolve_entity_id_from_unique_id,
     convert_to_float,
@@ -548,6 +548,11 @@ def populate_avg_house_consumption_from_snapshot(
 
     for weight, _name in [(w1, "1d"), (w3, "3d"), (w7, "7d"), (w14, "14d")]:
         if weight is None:
+            log_planner(
+                "warning",
+                "[avg] snapshot populator: weight %s is None, returning False",
+                _name,
+            )
             return False
 
     scale_to_interval = 60.0 / cfg.recommendation_interval_minutes
@@ -561,25 +566,85 @@ def populate_avg_house_consumption_from_snapshot(
         uid_7d = get_energy_average_sensor_unique_id(h, hour_end, 7)
         uid_14d = get_energy_average_sensor_unique_id(h, hour_end, 14)
 
+        log_planner(
+            "debug",
+            "[avg] snapshot populator: processing hour %d with UIDs "
+            "1d=%s, 3d=%s, 7d=%s, 14d=%s",
+            h,
+            uid_1d,
+            uid_3d,
+            uid_7d,
+            uid_14d,
+        )
+
         eid_1d = energy_average_entity_id_cache.get(uid_1d)
         eid_3d = energy_average_entity_id_cache.get(uid_3d)
         eid_7d = energy_average_entity_id_cache.get(uid_7d)
         eid_14d = energy_average_entity_id_cache.get(uid_14d)
 
+        log_planner(
+            "debug",
+            "[avg] hour %d: resolved entity IDs from cache "
+            "(1d=%s, 3d=%s, 7d=%s, 14d=%s)",
+            h,
+            eid_1d,
+            eid_3d,
+            eid_7d,
+            eid_14d,
+        )
+
         if None in (eid_1d, eid_3d, eid_7d, eid_14d):
-            continue
+            log_planner(
+                "debug",
+                "[avg] hour %d: missing entity IDs in cache (1d=%s, 3d=%s, 7d=%s, 14d=%s), returning False",
+                h,
+                eid_1d,
+                eid_3d,
+                eid_7d,
+                eid_14d,
+            )
+            return False
 
         v1 = snapshot.energy_average_values.get(eid_1d)
         v3 = snapshot.energy_average_values.get(eid_3d)
         v7 = snapshot.energy_average_values.get(eid_7d)
         v14 = snapshot.energy_average_values.get(eid_14d)
 
+        log_planner(
+            "debug",
+            "[avg] hour %d: fetched energy average values from snapshot. values are (1d=%s, 3d=%s, 7d=%s, 14d=%s)",
+            h,
+            v1,
+            v3,
+            v7,
+            v14,
+        )
+
         if None in (v1, v3, v7, v14):
-            continue
+            log_planner(
+                "debug",
+                "[avg] hour %d: values missing in snapshot for eids "
+                "(1d=%s=%s, 3d=%s=%s, 7d=%s=%s, 14d=%s=%s), returning False",
+                h,
+                eid_1d,
+                v1,
+                eid_3d,
+                v3,
+                eid_7d,
+                v7,
+                eid_14d,
+                v14,
+            )
+            return False
 
         # At this point all values are float
         if w_total_config == 0:
-            continue
+            log_planner(
+                "debug",
+                "[avg] hour %d: all weights sum to 0, returning False",
+                h,
+            )
+            return False
 
         avg, _ = weighted_avg_consumption(
             v1,
@@ -592,6 +657,14 @@ def populate_avg_house_consumption_from_snapshot(
             int(w14),
         )
 
+        log_planner(
+            "debug",
+            "[avg] hour %d: calculated weighted average consumption %s kWh (scaled to interval: %s kWh)",
+            h,
+            round(avg, 3),
+            round(avg / scale_to_interval, 3),
+        )
+
         for obj in recommendations:
             if int(obj.start.hour) == int(h):
                 obj.avg_house_consumption_kwh = round(avg / scale_to_interval, 3)
@@ -600,6 +673,10 @@ def populate_avg_house_consumption_from_snapshot(
                 obj.avg_house_consumption_7d_kwh = round(v7 / scale_to_interval, 3)
                 obj.avg_house_consumption_14d_kwh = round(v14 / scale_to_interval, 3)
 
+    log_planner(
+        "debug",
+        "[avg] snapshot populator: returning True after processing 24 hours",
+    )
     return True
 
 
