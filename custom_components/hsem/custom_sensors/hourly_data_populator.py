@@ -517,7 +517,7 @@ def populate_avg_house_consumption_from_snapshot(
     snapshot: StateSnapshot,
     cfg: SensorConfig,
     energy_average_entity_id_cache: dict[str, str],
-) -> bool:
+) -> list[str]:
     """Populate per-slot house consumption averages from a pre-collected snapshot.
 
     Synchronous — uses :attr:`StateSnapshot.energy_average_values` which was
@@ -531,17 +531,25 @@ def populate_avg_house_consumption_from_snapshot(
             populated during snapshot collection.
 
     Returns:
-        ``True`` on success, ``False`` when one or more required sensors are
-        missing (caller should flag ``missing_input_entities``).
+        Empty list on success.  A list of human-readable error messages when
+        one or more required sensors are missing — the caller should add these
+        to ``missing_entities_list`` via :meth:`~models.live_state.LiveState.add_missing_entity`.
     """
+    errors: list[str] = []
+
     w1 = cfg.house_consumption_energy_weight_1d
     w3 = cfg.house_consumption_energy_weight_3d
     w7 = cfg.house_consumption_energy_weight_7d
     w14 = cfg.house_consumption_energy_weight_14d
 
-    for weight, _name in [(w1, "1d"), (w3, "3d"), (w7, "7d"), (w14, "14d")]:
+    for weight, name in [(w1, "1d"), (w3, "3d"), (w7, "7d"), (w14, "14d")]:
         if weight is None:
-            return False
+            errors.append(
+                f"House consumption weight '{name}' is not configured (value is None)"
+            )
+
+    if errors:
+        return errors
 
     scale_to_interval = 60.0 / cfg.recommendation_interval_minutes
     w_total_config = int(w1) + int(w3) + int(w7) + int(w14)
@@ -560,7 +568,14 @@ def populate_avg_house_consumption_from_snapshot(
         eid_14d = energy_average_entity_id_cache.get(uid_14d)
 
         if None in (eid_1d, eid_3d, eid_7d, eid_14d):
-            return False
+            missing = []
+            for uid, name in [(uid_1d, "1d"), (uid_3d, "3d"), (uid_7d, "7d"), (uid_14d, "14d")]:
+                if energy_average_entity_id_cache.get(uid) is None:
+                    missing.append(f"{name} (unique_id={uid})")
+            errors.append(
+                f"Energy average sensor(s) not found in cache for hour {h}: {', '.join(missing)}"
+            )
+            continue
 
         v1 = snapshot.energy_average_values.get(eid_1d)
         v3 = snapshot.energy_average_values.get(eid_3d)
@@ -568,11 +583,16 @@ def populate_avg_house_consumption_from_snapshot(
         v14 = snapshot.energy_average_values.get(eid_14d)
 
         if None in (v1, v3, v7, v14):
-            return False
+            missing = []
+            for eid, name in [(eid_1d, "1d"), (eid_3d, "3d"), (eid_7d, "7d"), (eid_14d, "14d")]:
+                if snapshot.energy_average_values.get(eid) is None:
+                    missing.append(f"{name} (entity_id={eid})")
+            errors.append(
+                f"Energy average value(s) missing for hour {h}: {', '.join(missing)}"
+            )
+            continue
 
         # At this point all values are float
-        assert v1 is not None and v3 is not None and v7 is not None and v14 is not None
-
         if w_total_config == 0:
             continue
 
@@ -595,7 +615,7 @@ def populate_avg_house_consumption_from_snapshot(
                 obj.avg_house_consumption_7d_kwh = round(v7 / scale_to_interval, 3)
                 obj.avg_house_consumption_14d_kwh = round(v14 / scale_to_interval, 3)
 
-    return True
+    return errors
 
 
 # _compute_weighted_average has been removed. The canonical implementation lives

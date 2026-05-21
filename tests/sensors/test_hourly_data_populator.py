@@ -206,7 +206,7 @@ class TestSnapshotPopulation:
             recs, snapshot, cfg, eid_cache
         )
 
-        assert result is True
+        assert result == []
         for _h, rec in enumerate(recs):
             assert rec.avg_house_consumption_kwh > 0.0
             assert rec.avg_house_consumption_1d_kwh > 0.0

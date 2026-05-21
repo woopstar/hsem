@@ -1714,7 +1714,7 @@ def _patch_all_ha_helpers():
             patch(
                 "custom_components.hsem.coordinator"
                 ".populate_avg_house_consumption_from_snapshot",
-                return_value=True,
+                return_value=[],
             ),
             patch(
                 "custom_components.hsem.coordinator"
