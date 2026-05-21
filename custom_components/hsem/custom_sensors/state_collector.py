@@ -18,13 +18,13 @@ from __future__ import annotations
 import logging
 
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.event import async_track_state_change_event
 
 # Re-export from config_reader so existing callers continue to work.
 from custom_components.hsem.custom_sensors.config_reader import (  # noqa: F401
     build_battery_schedules,
     build_sensor_config,
 )
-from homeassistant.helpers.event import async_track_state_change_event
 
 from custom_components.hsem.models.live_state import (
     EVLiveState,
@@ -649,31 +649,26 @@ async def async_collect_all_states(
         hour_end = (h + 1) % 24
         for days, _uid_key in [(1, "1d"), (3, "3d"), (7, "7d"), (14, "14d")]:
             uid = get_energy_average_sensor_unique_id(h, hour_end, days)
-            if uid not in avg_cache:
-                try:
-                    eid = await async_resolve_entity_id_from_unique_id(sensor, uid)
-                except Exception:
-                    eid = None
 
-                if eid is None:
-                    # Registry lookup can fail on the first coordinator cycle
-                    # if the sensor hasn't been registered yet.  The entity_id
-                    # is deterministic from the unique_id — construct it
-                    # directly so we can start collecting data immediately.
-                    eid = get_energy_average_sensor_entity_id(h, hour_end, days)
-                if eid is not None:
-                    avg_cache[uid] = eid
+            eid = await _resolve_cached(sensor, avg_cache, uid)
 
-            eid = avg_cache.get(uid)
-            if eid:
-                try:
-                    val = convert_to_float(
-                        ha_get_entity_state_and_convert(sensor, eid, "float", 3)
-                    )
-                    if val is not None:
-                        energy_average_values[eid] = val
-                except Exception:
-                    pass
+            if eid is None:
+                await async_logger(
+                    sensor,
+                    "One of the required sensors for average house consumptions load is "
+                    "not ready/found. Waiting for next update.",
+                )
+                continue
+
+            try:
+                val = convert_to_float(
+                    ha_get_entity_state_and_convert(sensor, eid, "float", 3)
+                )
+
+                if val is not None:
+                    energy_average_values[eid] = val
+            except Exception:
+                continue
 
     # 3. Pre-read EDS and Solcast sensor state objects for attribute access
     sensor_attributes: dict[str, dict] = {}
@@ -698,3 +693,39 @@ async def async_collect_all_states(
     )
 
     return snapshot, fwm_entity, new_unsubs
+
+
+async def _resolve_cached(
+    sensor,
+    cache: dict[str, str],
+    unique_id: str,
+) -> str | None:
+    """Return the entity_id for ``unique_id``, resolving and caching if needed.
+
+    The energy average sensors are dynamic child entities that may not be
+    registered in the HA entity registry on the first coordinator cycle.
+    When the registry lookup fails, construct the entity_id deterministically
+    from the unique_id pattern and cache it — the entity_id is always
+    predictable.
+    """
+    if unique_id not in cache:
+        entity_id = await async_resolve_entity_id_from_unique_id(
+            sensor, unique_id
+        )
+        if entity_id is None:
+            # Parse unique_id pattern: hsem_house_consumption_energy_avg_{hh}_{hh}_{d}d
+            # The entity_id is deterministically derived from these components.
+            parts = unique_id.rsplit("_", 3)  # e.g. ["hsem", ..., "avg", "00", "01", "1d"]
+            if len(parts) == 5 and parts[-1].endswith("d"):
+                try:
+                    h_start = int(parts[-3])
+                    h_end = int(parts[-2])
+                    d = int(parts[-1][:-1])  # strip trailing "d"
+                    entity_id = get_energy_average_sensor_entity_id(
+                        h_start, h_end, d
+                    )
+                except (ValueError, IndexError):
+                    pass
+        if entity_id is not None:
+            cache[unique_id] = entity_id
+    return cache.get(unique_id)
