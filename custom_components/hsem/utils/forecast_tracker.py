@@ -103,6 +103,52 @@ class ForecastSlotRecord:
         self.bias_load = self.forecast_load_kwh - self.actual_load_kwh
         self.finalised = True
 
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize the record to a JSON-safe dictionary.
+
+        Returns:
+            A dictionary with ISO-format timestamps and plain numeric values.
+        """
+        return {
+            "start": self.start.isoformat(),
+            "end": self.end.isoformat(),
+            "forecast_pv_kwh": self.forecast_pv_kwh,
+            "forecast_load_kwh": self.forecast_load_kwh,
+            "actual_pv_kwh": self.actual_pv_kwh,
+            "actual_load_kwh": self.actual_load_kwh,
+            "finalised": self.finalised,
+            "mae_pv": self.mae_pv,
+            "mae_load": self.mae_load,
+            "bias_pv": self.bias_pv,
+            "bias_load": self.bias_load,
+        }
+
+    @staticmethod
+    def from_dict(data: dict[str, Any]) -> ForecastSlotRecord:
+        """Deserialize a record from a dictionary produced by :meth:`to_dict`.
+
+        Args:
+            data: A dictionary previously produced by :meth:`to_dict`.
+
+        Returns:
+            A reconstructed :class:`ForecastSlotRecord`.
+        """
+        from datetime import datetime as dt
+
+        return ForecastSlotRecord(
+            start=dt.fromisoformat(data["start"]),
+            end=dt.fromisoformat(data["end"]),
+            forecast_pv_kwh=data.get("forecast_pv_kwh", 0.0),
+            forecast_load_kwh=data.get("forecast_load_kwh", 0.0),
+            actual_pv_kwh=data.get("actual_pv_kwh", 0.0),
+            actual_load_kwh=data.get("actual_load_kwh", 0.0),
+            finalised=data.get("finalised", False),
+            mae_pv=data.get("mae_pv"),
+            mae_load=data.get("mae_load"),
+            bias_pv=data.get("bias_pv"),
+            bias_load=data.get("bias_load"),
+        )
+
 
 # ---------------------------------------------------------------------------
 # Aggregated error summary
@@ -373,6 +419,34 @@ class ForecastTracker:
         """Remove the oldest records when the buffer exceeds the max size."""
         while len(self._records) > self._max_slots:
             self._records.pop(0)
+
+    # ------------------------------------------------------------------
+    # Serialization (reboot persistence)
+    # ------------------------------------------------------------------
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize all tracker records to a JSON-safe dictionary.
+
+        Returns:
+            A dictionary with the full record list suitable for storage
+            in a Home Assistant sensor's ``extra_state_attributes``.
+        """
+        return {
+            "records": [r.to_dict() for r in self._records],
+        }
+
+    def load_from_dict(self, data: dict[str, Any]) -> None:
+        """Restore tracker records from a dictionary previously produced
+        by :meth:`to_dict`.
+
+        This replaces the current record list.  Call once on startup
+        after deserializing from HA storage.
+
+        Args:
+            data: A dictionary previously produced by :meth:`to_dict`.
+        """
+        raw_records = data.get("records", [])
+        self._records = [ForecastSlotRecord.from_dict(r) for r in raw_records]
 
 
 # ---------------------------------------------------------------------------

@@ -3,7 +3,7 @@
 State
 -----
 The sensor state is the overall PV MAE in kWh (rounded to 3 decimal places),
-or ``"unavailable"`` when no slots have been finalised yet.
+or ``None`` (unavailable) when no slots have been finalised yet.
 
 Attributes
 ----------
@@ -16,6 +16,8 @@ are exposed as flat state attributes, plus:
 - ``latest_load_actual_kwh`` — most recent finalised slot load actual.
 - ``latest_bias_pv_kwh`` — bias for the most recent finalised slot.
 - ``latest_bias_load_kwh`` — bias for the most recent finalised slot.
+- ``_forecast_tracker_data`` — serialised tracker record list (not displayed
+  in UI; used internally to restore state across HA restarts).
 
 The sensor is a *diagnostic* entity (``EntityCategory.DIAGNOSTIC``).
 """
@@ -33,6 +35,7 @@ from custom_components.hsem.coordinator import (
     HSEMDataUpdateCoordinator,
 )
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
+from custom_components.hsem.utils.forecast_tracker import ForecastTracker
 from custom_components.hsem.utils.sensornames import (
     get_forecast_accuracy_sensor_entity_id,
     get_forecast_accuracy_sensor_name,
@@ -93,7 +96,12 @@ class HSEMForecastAccuracySensor(
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
-        """Return diagnostic attributes for the sensor."""
+        """Return diagnostic attributes for the sensor.
+
+        Includes the serialised tracker record list under
+        ``_forecast_tracker_data`` so that the Home Assistant recorder
+        persists it and it can be restored on restart.
+        """
         data: CoordinatorData | None = self.coordinator.data
         if data is None:
             return None
@@ -119,9 +127,33 @@ class HSEMForecastAccuracySensor(
                 round(latest.bias_load, 4) if latest.bias_load is not None else None
             )
 
+        # Include serialized tracker data for reboot persistence
+        attrs["_forecast_tracker_data"] = tracker.to_dict()
+
         return attrs
 
     @property
     def native_unit_of_measurement(self) -> str | None:
         """Return the unit of measurement."""
         return "kWh"
+
+    # ------------------------------------------------------------------
+    # HA lifecycle — reboot persistence
+    # ------------------------------------------------------------------
+
+    async def async_added_to_hass(self) -> None:
+        """Restore forecast tracker data from the previous HA session."""
+        await super().async_added_to_hass()
+        restored = await self.async_get_last_state()
+        if restored is None:
+            return
+
+        tracker_data = restored.attributes.get("_forecast_tracker_data")
+        if tracker_data is None:
+            return
+
+        tracker: ForecastTracker | None = getattr(
+            self.coordinator, "_forecast_tracker", None
+        )
+        if tracker is not None:
+            tracker.load_from_dict(tracker_data)

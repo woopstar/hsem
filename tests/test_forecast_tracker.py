@@ -12,7 +12,7 @@ Covers:
 
 from __future__ import annotations
 
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
 import pytest
 
@@ -491,3 +491,114 @@ class TestForecastTrackerIntegration:
         # After finalise: summary has 2 entries
         assert tracker.summary.finalised_count == 2
         assert tracker.summary.mae_pv_kwh == pytest.approx(0.0)
+
+
+# ---------------------------------------------------------------------------
+# Serialization (reboot persistence)
+# ---------------------------------------------------------------------------
+
+
+class TestForecastTrackerSerialization:
+    """Tests for to_dict / from_dict / load_from_dict."""
+
+    def test_forecast_slot_record_to_dict_empty(self) -> None:
+        """An empty record serializes and deserializes correctly."""
+        rec = ForecastSlotRecord(start=_slot_start(10), end=_slot_start(11))
+        d = rec.to_dict()
+        assert d["start"] == _slot_start(10).isoformat()
+        assert d["end"] == _slot_start(11).isoformat()
+        assert d["forecast_pv_kwh"] == 0.0
+        assert d["actual_pv_kwh"] == 0.0
+        assert d["finalised"] is False
+        assert d["mae_pv"] is None
+
+        restored = ForecastSlotRecord.from_dict(d)
+        assert restored.start == rec.start
+        assert restored.end == rec.end
+        assert restored.forecast_pv_kwh == pytest.approx(0.0)
+        assert restored.finalised is False
+        assert restored.mae_pv is None
+
+    def test_forecast_slot_record_to_dict_finalised(self) -> None:
+        """A finalised record serializes and deserializes correctly."""
+        rec = ForecastSlotRecord(
+            start=_slot_start(10),
+            end=_slot_start(11),
+            forecast_pv_kwh=5.0,
+            forecast_load_kwh=2.0,
+            actual_pv_kwh=4.0,
+            actual_load_kwh=2.5,
+        )
+        rec.finalise()
+        d = rec.to_dict()
+        assert d["finalised"] is True
+        assert d["mae_pv"] == pytest.approx(1.0)  # |5-4|
+        assert d["bias_pv"] == pytest.approx(1.0)  # 5-4
+
+        restored = ForecastSlotRecord.from_dict(d)
+        assert restored.finalised is True
+        assert restored.mae_pv == pytest.approx(1.0)
+        assert restored.bias_pv == pytest.approx(1.0)
+
+    def test_tracker_to_dict_empty(self) -> None:
+        """An empty tracker serializes to an empty record list."""
+        tracker = ForecastTracker()
+        d = tracker.to_dict()
+        assert d == {"records": []}
+
+    def test_tracker_to_dict_round_trip(self) -> None:
+        """Full round-trip: populate, serialize, deserialize, verify summary."""
+        original = ForecastTracker()
+
+        # Add two finalised records
+        for hour, fpv, fl, apv, al in [
+            (10, 5.0, 2.0, 4.0, 2.0),
+            (11, 3.0, 2.0, 4.0, 2.5),
+        ]:
+            original.get_or_create_record(_slot_start(hour), _slot_start(hour + 1))
+            original.set_forecasts(_slot_start(hour), fpv, fl)
+            rec = original.find_record(_slot_start(hour))
+            assert rec is not None
+            rec.accumulate_pv(apv)
+            rec.accumulate_load(al)
+            original.finalise_record(_slot_start(hour))
+
+        original_summary = original.summary
+
+        # Serialize
+        data = original.to_dict()
+        assert len(data["records"]) == 2
+
+        # Deserialize into a fresh tracker
+        restored = ForecastTracker()
+        restored.load_from_dict(data)
+        assert len(restored.records) == 2
+
+        restored_summary = restored.summary
+        assert restored_summary.finalised_count == original_summary.finalised_count
+        assert restored_summary.mae_pv_kwh == pytest.approx(original_summary.mae_pv_kwh)
+        assert restored_summary.bias_pv_kwh == pytest.approx(
+            original_summary.bias_pv_kwh
+        )
+        assert restored_summary.mape_pv_pct == pytest.approx(
+            original_summary.mape_pv_pct
+        )
+
+    def test_tracker_to_dict_unfinalised_records(self) -> None:
+        """Unfinalised serialized records restore correctly (with zero bias)."""
+        tracker = ForecastTracker()
+        tracker.get_or_create_record(_slot_start(10), _slot_start(11))
+        tracker.set_forecasts(_slot_start(10), 4.0, 2.0)
+        # Accumulate but do NOT finalise
+
+        data = tracker.to_dict()
+        assert len(data["records"]) == 1
+        assert data["records"][0]["finalised"] is False
+        assert data["records"][0]["actual_pv_kwh"] == 0.0
+
+        restored = ForecastTracker()
+        restored.load_from_dict(data)
+        rec = restored.find_record(_slot_start(10))
+        assert rec is not None
+        assert rec.finalised is False
+        assert rec.forecast_pv_kwh == pytest.approx(4.0)
