@@ -47,8 +47,8 @@ from custom_components.hsem.coordinator import (
 )
 from custom_components.hsem.coordinator_builder import (
     generate_recommendation_intervals,
-    utc_key,
 )
+from custom_components.hsem.utils.datetime_utils import utc_key
 from custom_components.hsem.custom_sensors.battery_soc_sensor import (
     HSEMBatterySoCSensor,
 )
