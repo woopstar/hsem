@@ -71,6 +71,10 @@ def apply_charge_schedules(
             ``_apply_grid_charge`` to guard profitability.
     """
     if max_charge_per_interval <= 0:
+        log_planner(
+            "debug",
+            "[chg] apply_charge_schedules  skipped — max_charge_per_interval <= 0",
+        )
         return
 
     # Cross-occurrence capacity cap: only enforce when usable_kwh is
@@ -78,6 +82,16 @@ def apply_charge_schedules(
     # (backward-compatible default), no cap is applied.
     remaining_capacity = (
         max(usable_kwh - current_kwh, 0.0) if usable_kwh > 0 else float("inf")
+    )
+    log_planner(
+        "debug",
+        "[chg] apply_charge_schedules  schedules=%d  remaining_cap=%.3f  "
+        "max_charge/slot=%.3f  current=%.3f  usable=%.3f",
+        len(battery_schedules),
+        remaining_capacity,
+        max_charge_per_interval,
+        current_kwh,
+        usable_kwh,
     )
     total_charged = 0.0
 
@@ -323,6 +337,15 @@ def apply_opportunistic_charge(
             ``max(depreciation_threshold - cycle_cost_per_kwh, 0)`` are eligible.
             Defaults to 0.0 (backwards compatible).
     """
+    log_planner(
+        "debug",
+        "[chg] apply_opportunistic_charge  current=%.3f  usable=%.3f  "
+        "depr_threshold=%.4f  cycle_cost=%.4f",
+        current_capacity,
+        usable_capacity,
+        depreciation_threshold,
+        cycle_cost_per_kwh,
+    )
     if max_charge_per_interval <= 0:
         return
 
@@ -446,6 +469,17 @@ def apply_arbitrage_grid_charge(
             schedule has supplied a non-zero ``min_price_difference``.
             Defaults to 0.0.
     """
+    log_planner(
+        "debug",
+        "[chg] apply_arbitrage_grid_charge  current=%.3f  usable=%.3f  "
+        "max_charge/slot=%.3f  conv_loss_pct=%.2f  cycle_cost=%.4f  threshold=%.4f",
+        current_capacity,
+        usable_capacity,
+        max_charge_per_interval,
+        conversion_loss_pct,
+        cycle_cost_per_kwh,
+        recommended_threshold,
+    )
     if max_charge_per_interval <= 0:
         _LOGGER.debug("arbitrage: max_charge_per_interval <= 0, skipping")
         return

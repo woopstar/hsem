@@ -102,6 +102,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from custom_components.hsem.utils.datetime_utils import as_tz
+from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import clamp_efficiency
 from custom_components.hsem.utils.recommendations import Recommendations
 
@@ -193,6 +194,27 @@ def solve_milp(
         or ``None`` if the solver fails or the problem is infeasible.
     """
     import copy
+
+    log_planner(
+        "debug",
+        "[milp] solve_milp  slots=%d  current=%.3f  usable=%.3f  "
+        "max_chg=%.3f  max_dis=%s  cycle_cost=%.6f  "
+        "chg_eff=%.2f  dis_eff=%.2f  discount=%.4f  repl_price=%s",
+        len(slots),
+        current_kwh,
+        usable_kwh,
+        max_charge_per_slot,
+        f"{max_discharge_per_slot:.3f}" if max_discharge_per_slot is not None else "∞",
+        cycle_cost_per_kwh,
+        charge_efficiency_pct,
+        discharge_efficiency_pct,
+        time_discount_rate,
+        (
+            f"{replacement_price_per_kwh:.6f}"
+            if replacement_price_per_kwh is not None
+            else "None"
+        ),
+    )
 
     try:
         import numpy as np

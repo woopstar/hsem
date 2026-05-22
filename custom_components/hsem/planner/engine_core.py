@@ -71,6 +71,13 @@ def _populate_slots(
     slots: list, inp: PlannerInput, tsi, warnings: list[str], missing_inputs: list[str]
 ) -> tuple[DataQuality, list[str], list[str]]:
     """Populate price/PV/consumption data, data-quality diagnostics, confidence decay."""
+    log_planner(
+        "debug",
+        "[core] _populate_slots  slots=%d  interval=%dmin  horizon=%dh",
+        len(slots),
+        inp.interval_minutes,
+        inp.interval_length_hours,
+    )
     populate_prices(slots, inp.price_points, tsi)
     populate_solcast(slots, inp.solcast_slots, inp.interval_minutes, tsi)
     populate_consumption(
@@ -146,6 +153,16 @@ def _populate_slots(
             warnings.append(
                 f"Multi-day horizon ({horizon_days} day(s)): confidence decay applied to PV estimates."
             )
+    log_planner(
+        "debug",
+        "[core] _populate_slots DONE  warnings=%d  missing=%d  horizon_days=%d  "
+        "has_tomorrow=%s",
+        len(warnings),
+        len(missing_inputs),
+        horizon_days,
+        horizon_has_tomorrow,
+    )
+
     return dq, warnings, missing_inputs
 
 
@@ -161,6 +178,11 @@ def _schedule_slots(
     """All charge/discharge scheduling passes."""
     mark_time_passed(slots, now)
     apply_discharge_schedules(slots, inp.battery_schedules, now)
+    log_planner(
+        "debug",
+        "[core] _schedule_slots  pass=discharge_schedules  slots=%d",
+        len(slots),
+    )
     cd = inp.battery_charge_efficiency_pct / 100.0
     dd = inp.battery_discharge_efficiency_pct / 100.0
     rlp = (1.0 - cd * dd) * 100.0
@@ -204,9 +226,22 @@ def _schedule_slots(
     rc = calculate_required_battery_until_solar(
         slots, now, usable_kwh, inp.excess_export_discharge_buffer_pct
     )
+    log_planner(
+        "debug",
+        "[core] _schedule_slots  pass=after_scheduling  mcps=%.3f  mdps=%s  "
+        "max_soc=%.3f  rc=%.3f",
+        mcps,
+        f"{mdps:.3f}" if mdps is not None else "∞",
+        max_soc_kwh,
+        rc,
+    )
     if inp.excess_export_enabled:
         apply_excess_export(
             slots, now, current_kwh, rc, inp.excess_export_price_threshold, warnings
+        )
+        log_planner(
+            "debug",
+            "[core] _schedule_slots  pass=excess_export  enabled=True",
         )
     apply_optimization_strategy(
         slots,
@@ -217,6 +252,16 @@ def _schedule_slots(
         inp.months_winter,
         warnings,
         export_min_price=inp.export_min_price,
+    )
+    log_planner(
+        "debug",
+        "[core] _schedule_slots DONE  mcps=%.3f  mdps=%s  max_soc=%.3f  rc=%.3f  "
+        "warnings=%d",
+        mcps,
+        f"{mdps:.3f}" if mdps is not None else "∞",
+        max_soc_kwh,
+        rc,
+        len(warnings),
     )
     return mcps, mdps, max_soc_kwh, rc, warnings
 
@@ -246,6 +291,19 @@ def _build_and_inject_for_ev(
     """Build an EV charging plan and accumulate its loads."""
     if not enabled:
         return None
+    log_planner(
+        "debug",
+        "[core] _build_and_inject_for_ev  label=%s  connected=%s  smart=%s  "
+        "soc=%.1f%%  target=%.1f%%  cap=%.2f  pwr=%.2f  eff=%.1f%%",
+        label,
+        connected,
+        smart,
+        soc,
+        target,
+        cap_kwh,
+        pwr_kw,
+        eff,
+    )
     ev_inp = EVPlannerInput(
         enabled=enabled,
         ev_connected=connected,
@@ -288,6 +346,15 @@ def _build_and_inject_for_ev(
         warnings.append(
             f"EV planned load ({label}): state={plan.state}, total_kwh_needed={plan.total_kwh_needed:.2f}, charging_slots={len(plan.charging_slots)}, base_load_includes_ev={base_includes}."
         )
+    log_planner(
+        "debug",
+        "[core] _build_and_inject_for_ev DONE  label=%s  state=%s  slots=%d  "
+        "total_kwh=%.3f",
+        label,
+        plan.state,
+        len(plan.charging_slots),
+        plan.total_kwh_needed,
+    )
     return plan
 
 
@@ -336,6 +403,14 @@ def _select_candidate(
         previous_winner_name=inp.previous_winner_name,
         previous_winner_score=inp.previous_winner_score,
     )
+    log_planner(
+        "debug",
+        "[core] _select_candidate DONE  candidates=%d  winner=%s  rejected=%d  hyst=%s",
+        len(candidates),
+        winner.name,
+        len(rejected),
+        f"applied={hyst.applied}" if hyst.applied else "inactive",
+    )
     return candidates, winner, rejected, hyst
 
 
@@ -371,6 +446,10 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     tsi = build_time_series_index(inp, now)
     slots = build_slots(inp, now)
     if not slots:
+        log_planner(
+            "warning",
+            "[core] run_planner ABORTED — no slots generated",
+        )
         warnings.append(
             "No slots generated; check interval_minutes and interval_length_hours."
         )
@@ -378,6 +457,16 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     # Step 1 — populate time-series data
     data_quality, warnings, missing_inputs = _populate_slots(
         slots, inp, tsi, warnings, missing_inputs
+    )
+    log_planner(
+        "debug",
+        "[core] run_planner  step=1_populate_slots COMPLETE  "
+        "data_quality=horizon_has_tomorrow=%s,horizon_days=%d  "
+        "warnings=%d  missing=%d",
+        data_quality.horizon_has_tomorrow,
+        data_quality.horizon_days,
+        len(warnings),
+        len(missing_inputs),
     )
     # Step 2 — EV planned load injection
     ev_cp: EVChargingPlan | None = None
@@ -446,8 +535,20 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
             f"Recommended price threshold: {rt:.4f} (depreciation + conversion loss)."
         )
     # Step 3 — charge/discharge scheduling
+    log_planner(
+        "debug",
+        "[core] run_planner  step=3_schedule_slots START  "
+        "current=%.3f  usable=%.3f  rt=%.4f",
+        current_kwh,
+        usable_kwh,
+        rt,
+    )
     mcps, mdps, max_soc_kwh, rc, warnings = _schedule_slots(
         slots, inp, now, current_kwh, usable_kwh, rt, warnings
+    )
+    log_planner(
+        "debug",
+        "[core] run_planner  step=3_schedule_slots COMPLETE",
     )
     # Step 4 — candidate plan generation and selection
     cw = CostWeights(
@@ -468,6 +569,12 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         top_n = math.ceil(usable_kwh / mdps)
     rppk = replacement_price_from_next_discharge(
         slots, now, top_n=top_n, interval_minutes=inp.interval_minutes
+    )
+    log_planner(
+        "debug",
+        "[core] run_planner  step=4_candidate_selection START  top_n=%d  rppk=%s",
+        top_n,
+        f"{rppk:.6f}" if rppk is not None else "None",
     )
     concentrate_discharge_on_expensive_slots(
         slots,
@@ -539,6 +646,23 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     )
     for rp in candidate_rejected:
         expl.rejected_plans.append(rp)
+
+    log_planner(
+        "debug",
+        "[core] run_planner DONE  winner=%s  cost=%.4f  score=%.4f  "
+        "cur_rec=%s  bsoc_end=%.1f%%  rc=%.3f  warnings=%d  missing=%d  "
+        "cw=%d  dw=%d",
+        winner.name,
+        pc.total_cost,
+        pc.score,
+        cur_rec if cur_rec is not None else "(none)",
+        bsoc_end,
+        rc,
+        len(warnings),
+        len(missing_inputs),
+        len(cw_out),
+        len(dw_out),
+    )
     return PlannerOutput(
         slots=slots,
         charge_windows=cw_out,

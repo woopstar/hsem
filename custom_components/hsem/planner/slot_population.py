@@ -37,6 +37,7 @@ from custom_components.hsem.models.planner_inputs import (
 from custom_components.hsem.models.planner_outputs import PlannedSlot
 from custom_components.hsem.models.time_series import TimeSeriesIndex
 from custom_components.hsem.utils.datetime_utils import as_tz
+from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.prices import SlotPrice
 from custom_components.hsem.utils.recommendations import Recommendations
 
@@ -59,6 +60,13 @@ def build_time_series_index(inp: PlannerInput, now: datetime) -> TimeSeriesIndex
     Returns:
         A fully constructed :class:`TimeSeriesIndex`.
     """
+    log_planner(
+        "debug",
+        "[pop] build_time_series_index  now=%s  interval=%dmin  horizon=%dh",
+        now.isoformat(),
+        inp.interval_minutes,
+        inp.interval_length_hours,
+    )
     return TimeSeriesIndex.from_now(
         now,
         interval_minutes=inp.interval_minutes,
@@ -80,7 +88,15 @@ def build_slots(inp: PlannerInput, now: datetime) -> list[PlannedSlot]:
         List of empty :class:`PlannedSlot` objects.
     """
     tsi = build_time_series_index(inp, now)
-    return [PlannedSlot(start=meta.start, end=meta.end) for meta in tsi]
+    slots = [PlannedSlot(start=meta.start, end=meta.end) for meta in tsi]
+    log_planner(
+        "debug",
+        "[pop] build_slots  count=%d  horizon_start=%s  horizon_end=%s",
+        len(slots),
+        slots[0].start.isoformat() if slots else "N/A",
+        slots[-1].end.isoformat() if slots else "N/A",
+    )
+    return slots
 
 
 def index_by_hour(items: list, hour_attr: str = "hour") -> dict[int, Any]:
@@ -112,6 +128,12 @@ def populate_prices(
             delegated to :meth:`TimeSeriesIndex.align_hourly_prices` so that
             missing slots are tracked centrally.
     """
+    log_planner(
+        "debug",
+        "[pop] populate_prices  price_points=%d  tsi_provided=%s",
+        len(price_points),
+        tsi is not None,
+    )
     if tsi is not None:
         # Use (day_offset, hour) keys when any entry carries a non-zero
         # day_offset so that tomorrow's prices are not overwritten by today's.
@@ -164,6 +186,13 @@ def populate_solcast(
         interval_minutes: Slot width in minutes.
         tsi: Optional shared time-series index.
     """
+    log_planner(
+        "debug",
+        "[pop] populate_solcast  solcast_slots=%d  interval=%dmin  tsi_provided=%s",
+        len(solcast_slots),
+        interval_minutes,
+        tsi is not None,
+    )
     if tsi is not None:
         # Use (day_offset, hour) keys when any entry carries a non-zero
         # day_offset so that tomorrow's PV forecast is not shadowed by today's.
@@ -209,6 +238,18 @@ def populate_consumption(
         interval_minutes: Slot width in minutes.
         tsi: Optional shared time-series index.
     """
+    log_planner(
+        "debug",
+        "[pop] populate_consumption  averages=%d  weights=%d/%d/%d/%d  "
+        "interval=%dmin  tsi_provided=%s",
+        len(averages),
+        w1,
+        w3,
+        w7,
+        w14,
+        interval_minutes,
+        tsi is not None,
+    )
     if tsi is not None:
         # Use (day_offset, hour) keys when any entry carries a non-zero
         # day_offset so that tomorrow's consumption forecast is not overwritten
@@ -293,6 +334,11 @@ def populate_net_consumption(slots: list[PlannedSlot]) -> None:
     Args:
         slots: Mutable list of planned slots to update.
     """
+    log_planner(
+        "debug",
+        "[pop] populate_net_consumption  slots=%d",
+        len(slots),
+    )
     for slot in slots:
         slot.estimated_net_consumption_kwh = round(
             slot.avg_house_consumption_kwh
@@ -308,6 +354,11 @@ def populate_estimated_cost(slots: list[PlannedSlot]) -> None:
     Args:
         slots: Mutable list of planned slots to update.
     """
+    log_planner(
+        "debug",
+        "[pop] populate_estimated_cost  slots=%d",
+        len(slots),
+    )
     for slot in slots:
         net = slot.estimated_net_consumption_kwh
         if net >= 0:
@@ -323,9 +374,18 @@ def mark_time_passed(slots: list[PlannedSlot], now: datetime) -> None:
         slots: Mutable list of planned slots to update.
         now: Timezone-aware current datetime.
     """
+    past_count = 0
     for slot in slots:
         if as_tz(slot.end, now.tzinfo) < now:
             slot.recommendation = Recommendations.TimePassed.value
+            past_count += 1
+    log_planner(
+        "debug",
+        "[pop] mark_time_passed  total=%d  past=%d  now=%s",
+        len(slots),
+        past_count,
+        now.isoformat(),
+    )
 
 
 def populate_battery_capacity(
@@ -342,6 +402,13 @@ def populate_battery_capacity(
         current_capacity: Currently available battery energy in kWh.
         usable_capacity: Maximum usable battery energy in kWh.
     """
+    log_planner(
+        "debug",
+        "[pop] populate_battery_capacity  current=%.3f kWh  usable=%.3f kWh  slots=%d",
+        current_capacity,
+        usable_capacity,
+        len(slots),
+    )
     previous_capacity = 0.0
 
     for slot in slots:
@@ -402,7 +469,16 @@ def usable_capacity(
     effective_max_soc = min(max(max_soc_pct, end_of_discharge_soc_pct), 100.0)
     usable = rated_kwh * (effective_max_soc - end_of_discharge_soc_pct) / 100
     current = rated_kwh * (soc_pct / 100) - rated_kwh * end_of_discharge_soc_pct / 100
-    return max(usable, 0.0), min(max(current, 0.0), max(usable, 0.0))
+    result = max(usable, 0.0), min(max(current, 0.0), max(usable, 0.0))
+    log_planner(
+        "debug",
+        "[pop] usable_capacity  rated=%.2f  soc=%.1f%%  usable=%.3f  current=%.3f",
+        rated_kwh,
+        soc_pct,
+        result[0],
+        result[1],
+    )
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -501,6 +577,18 @@ def weighted_avg_consumption(
         final weighted average in kWh/hour and *outlier_mask* is a list of 4
         booleans ``[is_1d_outlier, is_3d_outlier, is_7d_outlier, is_14d_outlier]``.
     """
+    log_planner(
+        "debug",
+        "[pop] weighted_avg_consumption  vals=%.3f/%.3f/%.3f/%.3f  weights=%d/%d/%d/%d",
+        value_1d,
+        value_3d,
+        value_7d,
+        value_14d,
+        w1,
+        w3,
+        w7,
+        w14,
+    )
     w_total_config = w1 + w3 + w7 + w14
     if w_total_config == 0:
         return 0.0, [False, False, False, False]
