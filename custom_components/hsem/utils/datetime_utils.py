@@ -31,7 +31,7 @@ so that all timezone normalisation is routed through this module.
 
 from __future__ import annotations
 
-from datetime import datetime, tzinfo
+from datetime import UTC, datetime, tzinfo
 
 import homeassistant.util.dt as dt_util
 
@@ -160,3 +160,24 @@ def utc_now_iso() -> str:
         ISO-8601 string of the current HA-local time without microseconds.
     """
     return now().isoformat()
+
+
+def utc_key(dt: datetime) -> datetime:
+    """Normalise a timezone-aware datetime to a UTC key for slot matching.
+
+    Two datetimes that represent the **same instant** but carry different
+    ``tzinfo`` objects (e.g. ``ZoneInfo('Europe/Copenhagen')`` vs a fixed
+    ``+02:00`` offset) hash and compare as equal in Python.  However,
+    sub-second fields can differ when the recommendation slot was created
+    from one path while the planner slot was built from ``timedelta``
+    arithmetic anchored at midnight.  Stripping microseconds on both sides
+    guarantees a deterministic match regardless of when each was created.
+
+    Args:
+        dt: A timezone-aware :class:`datetime.datetime`.
+
+    Returns:
+        A ``datetime`` normalised to UTC with ``microsecond=0`` that can be
+        used as a dictionary key for slot matching.
+    """
+    return dt.astimezone(UTC).replace(microsecond=0)

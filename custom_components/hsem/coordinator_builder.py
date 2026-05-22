@@ -16,7 +16,7 @@ directly.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.live_state import LiveState
@@ -349,26 +349,3 @@ def generate_recommendation_intervals(
             )
         )
     return intervals
-
-
-def utc_key(dt: datetime) -> datetime:
-    """Normalise a timezone-aware datetime to a UTC key for slot matching.
-
-    Two datetimes that represent the **same instant** but carry different
-    ``tzinfo`` objects (e.g. ``ZoneInfo('Europe/Copenhagen')`` vs a fixed
-    ``+02:00`` offset) hash and compare as equal in Python.  However,
-    sub-second fields can differ when the recommendation slot was created
-    from ``hsem_now()`` (which already strips microseconds) while the
-    planner slot was built from ``timedelta`` arithmetic anchored at
-    midnight (microseconds always zero).  Stripping microseconds on both
-    sides guarantees a deterministic match regardless of when each was
-    created.
-
-    Args:
-        dt: A timezone-aware :class:`datetime.datetime`.
-
-    Returns:
-        A ``datetime`` normalised to UTC with ``microsecond=0`` that can be
-        used as a dictionary key for slot matching.
-    """
-    return dt.astimezone(UTC).replace(microsecond=0)

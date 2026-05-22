@@ -45,17 +45,13 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from custom_components.hsem.coordinator_builder import (
     build_planner_input,
     generate_recommendation_intervals,
-    utc_key,
 )
 from custom_components.hsem.custom_sensors.hourly_data_populator import (  # noqa: F401 — kept for backward compat (patched in tests)
-    async_populate_avg_house_consumption,
-    async_populate_price_and_solcast,
     populate_avg_house_consumption_from_snapshot,
     populate_price_and_solcast_from_snapshot,
 )
 from custom_components.hsem.custom_sensors.state_collector import (  # noqa: F401 — kept for backward compat
     async_collect_all_states,
-    async_collect_live_state,
     build_battery_schedules,
     build_sensor_config,
 )
@@ -70,7 +66,7 @@ from custom_components.hsem.planner.charge_scheduler import apply_window_hystere
 from custom_components.hsem.planner.ev_planner import EVChargingPlan
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.datetime_utils import now as hsem_now
-from custom_components.hsem.utils.datetime_utils import utc_now_iso
+from custom_components.hsem.utils.datetime_utils import utc_key, utc_now_iso
 from custom_components.hsem.utils.inverter_verify import CycleApplySummary
 from custom_components.hsem.utils.logger import async_logger, set_planner_verbose
 from custom_components.hsem.utils.recommendations import Recommendations
@@ -470,9 +466,9 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 self._hourly_recommendations.sort(key=lambda x: x.start)
                 # now.tzinfo is guaranteed non-None because hsem_now() returns
                 # a timezone-aware datetime; assert so pyright narrows the type.
-                assert now.tzinfo is not None, (
-                    "hsem_now() must return tz-aware datetime"
-                )
+                assert (
+                    now.tzinfo is not None
+                ), "hsem_now() must return tz-aware datetime"
                 hourly_rec = next(
                     (
                         r
