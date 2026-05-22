@@ -80,26 +80,26 @@ class TestSensorReadFailures:
         with pytest.raises(EntityNotFoundError, match="not found"):
             ha_get_entity_state_and_convert(sensor, "sensor.missing", "float")
 
-    def test_unknown_state_raises_entity_not_found(self):
-        """An entity in 'unknown' state raises ``EntityNotFoundError`` for float."""
+    def test_unknown_state_returns_none(self):
+        """An entity in 'unknown' state returns None for float."""
         sensor = _make_sensor("sensor.bad", "unknown")
 
-        with pytest.raises(EntityNotFoundError, match="unknown"):
-            ha_get_entity_state_and_convert(sensor, "sensor.bad", "float")
+        result = ha_get_entity_state_and_convert(sensor, "sensor.bad", "float")
+        assert result is None
 
-    def test_unavailable_state_raises_entity_not_found(self):
-        """An entity in 'unavailable' state raises ``EntityNotFoundError``."""
+    def test_unavailable_state_returns_none(self):
+        """An entity in 'unavailable' state returns None for float."""
         sensor = _make_sensor("sensor.offline", "unavailable")
 
-        with pytest.raises(EntityNotFoundError, match="unavailable"):
-            ha_get_entity_state_and_convert(sensor, "sensor.offline", "float")
+        result = ha_get_entity_state_and_convert(sensor, "sensor.offline", "float")
+        assert result is None
 
-    def test_non_numeric_float_raises_entity_not_found(self):
-        """A non-numeric string for a float entity raises ``EntityNotFoundError``."""
+    def test_non_numeric_float_returns_none(self):
+        """A non-numeric string for a float entity returns None."""
         sensor = _make_sensor("sensor.weird", "not-a-number")
 
-        with pytest.raises(EntityNotFoundError, match="cannot be converted to float"):
-            ha_get_entity_state_and_convert(sensor, "sensor.weird", "float")
+        result = ha_get_entity_state_and_convert(sensor, "sensor.weird", "float")
+        assert result is None
 
     def test_valid_float_returns_value(self):
         """A numeric entity state converts cleanly to a rounded float."""

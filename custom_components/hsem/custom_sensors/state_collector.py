@@ -20,7 +20,8 @@ import logging
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_track_state_change_event
 
-from custom_components.hsem.custom_sensors.config_reader import (  # noqa: F401
+# Re-export from config_reader so existing callers continue to work.
+from custom_components.hsem.custom_sensors.config_reader import (  # noqa: F401 — re-exported for backward compat in coordinator.py
     build_battery_schedules,
     build_sensor_config,
 )
@@ -445,10 +446,19 @@ def _read_ev_planned_load_state(
         is_second: When ``True``, read second-EV fields; otherwise read primary fields.
     """
     p = "ev_second_planned_load" if is_second else "ev_planned_load"
+    ev_cfg = cfg.ev_second if is_second else cfg.ev
 
-    connected_sensor = getattr(cfg, f"{p}_connected_sensor", None)
-    soc_sensor = getattr(cfg, f"{p}_soc_sensor", None)
-    target_soc_entity = getattr(cfg, f"{p}_target_soc_entity", None)
+    # connected_sensor, soc_sensor, and target_soc_entity were removed from
+    # the planned-load schema because they duplicate the basic EV charger
+    # sensors (hsem_ev_connected, hsem_ev_soc, hsem_ev_soc_target).  The
+    # state collector falls back to those here.
+    connected_sensor = (
+        getattr(cfg, f"{p}_connected_sensor", None) or ev_cfg.connected_entity
+    )
+    soc_sensor = getattr(cfg, f"{p}_soc_sensor", None) or ev_cfg.soc_entity
+    target_soc_entity = (
+        getattr(cfg, f"{p}_target_soc_entity", None) or ev_cfg.soc_target_entity
+    )
     target_soc_fixed = getattr(cfg, f"{p}_target_soc_fixed", 80.0)
     smart_entity = getattr(cfg, f"{p}_smart_charging_entity", None)
     deadline_entity = getattr(cfg, f"{p}_deadline_entity", None)
@@ -630,32 +640,47 @@ async def async_collect_all_states(
     # 2. Pre-read energy average sensor values (24 hours × 4 periods)
     #    Gracefully skips unavailable sensors — the caller will detect
     #    missing data via the population functions and set missing_entities.
-    avg_cache = energy_average_entity_id_cache or {}
+    avg_cache = (
+        energy_average_entity_id_cache
+        if energy_average_entity_id_cache is not None
+        else {}
+    )
     energy_average_values: dict[str, float] = {}
 
     for h in range(24):
         hour_end = (h + 1) % 24
         for days, _uid_key in [(1, "1d"), (3, "3d"), (7, "7d"), (14, "14d")]:
             uid = get_energy_average_sensor_unique_id(h, hour_end, days)
-            if uid not in avg_cache:
-                try:
-                    eid = await async_resolve_entity_id_from_unique_id(sensor, uid)
-                except Exception:
-                    eid = None
-                if eid is not None:
-                    avg_cache[uid] = eid
-            eid = avg_cache.get(uid)
-            if eid:
-                try:
-                    val = convert_to_float(
-                        ha_get_entity_state_and_convert(sensor, eid, "float", 3)
-                    )
-                    if val is not None:
-                        energy_average_values[eid] = val
-                except Exception:
-                    # Entity unavailable — skip; downstream population will
-                    # handle the gap via missing_entities logic.
-                    pass
+
+            eid = await _resolve_cached(sensor, avg_cache, uid)
+
+            if eid is None:
+                await async_logger(
+                    sensor,
+                    "One of the required sensors for average house consumptions load is "
+                    "not ready/found. Waiting for next update.",
+                )
+                continue
+
+            try:
+                val = convert_to_float(
+                    ha_get_entity_state_and_convert(sensor, eid, "float", 3)
+                )
+            except Exception:
+                val = None
+
+            await async_logger(
+                sensor,
+                f"[avg] Read {uid} (entity_id={eid}) → "
+                f"{'None' if val is None else val}",
+            )
+
+            # Store 0.0 when the sensor returns None (e.g. 'unknown'
+            # state for a new dynamic child sensor with no data yet).
+            # energy_average_values is rebuilt from scratch every
+            # cycle, so this 0.0 is NOT permanent — as soon as the
+            # sensor accumulates real data, the next read replaces it.
+            energy_average_values[eid] = val or 0.0
 
     # 3. Pre-read EDS and Solcast sensor state objects for attribute access
     sensor_attributes: dict[str, dict] = {}
@@ -680,3 +705,33 @@ async def async_collect_all_states(
     )
 
     return snapshot, fwm_entity, new_unsubs
+
+
+async def _resolve_cached(
+    sensor,
+    cache: dict[str, str],
+    unique_id: str,
+) -> str | None:
+    """Return the entity_id for ``unique_id``, resolving and caching if needed.
+
+    The energy average sensors are dynamic child entities that may not be
+    registered in the HA entity registry on the first coordinator cycle.
+    When the registry lookup fails, construct the entity_id deterministically
+    from the unique_id pattern — it is always predictable.
+    """
+    if unique_id not in cache:
+        entity_id = await async_resolve_entity_id_from_unique_id(sensor, unique_id)
+
+        if entity_id is not None:
+            cache[unique_id] = entity_id
+            await async_logger(
+                sensor,
+                f"[avg] Resolved {unique_id} → {entity_id}",
+            )
+        else:
+            await async_logger(
+                sensor,
+                f"[avg] Failed to resolve {unique_id} (registry+construct both returned None)",
+            )
+
+    return cache.get(unique_id)

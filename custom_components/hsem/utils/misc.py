@@ -415,14 +415,10 @@ def ha_get_entity_state_and_convert(
 
         if output_type.lower() == "float":
             if state.state in ("unknown", "unavailable"):
-                raise EntityNotFoundError(
-                    f"Entity '{entity_id}' state is '{state.state}'."
-                )
+                return None
             value = convert_to_float(state.state)
             if value is None:
-                raise EntityNotFoundError(
-                    f"Entity '{entity_id}' state '{state.state}' cannot be converted to float."
-                )
+                return None
             return round(value, float_precision)
 
         if output_type.lower() == "int":

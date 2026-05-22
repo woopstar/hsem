@@ -322,16 +322,26 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
 
             # 5. Populate weighted house-consumption averages from snapshot
             #    (no HA state lookups — data was pre-collected in step 2).
-            if not populate_avg_house_consumption_from_snapshot(
+            #    The energy average sensors are HSEM's own RestoreEntity sensors.
+            #    On the very first cycle they may report "unknown" before the
+            #    restore completes.  When the populator fails, skip the planner
+            #    and retry on the next cycle with a shorter interval.
+            set_planner_verbose(cfg.verbose_logging)
+            consumption_ok = populate_avg_house_consumption_from_snapshot(
                 self._hourly_recommendations,
                 self._snapshot,
                 cfg,
                 self._avg_house_consumption_entity_id_cache,
-            ):
-                live.missing_entities = True
+            )
+            await async_logger(
+                self,
+                f"[avg] populate_avg_house_consumption_from_snapshot returned {consumption_ok}, "
+                f"cache has {len(self._avg_house_consumption_entity_id_cache)} entries, "
+                f"snapshot has {len(self._snapshot.energy_average_values)} energy_avg values",
+            )
 
-            # Adjust timer based on missing-entities status.
-            if live.missing_entities:
+            # Adjust timer based on missing-entities or pending-consumption status.
+            if live.missing_entities or not consumption_ok:
                 await self._set_update_interval(1)
             else:
                 await self._set_update_interval()
@@ -345,6 +355,12 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                     self, "Missing input entities, skipping calculations."
                 )
 
+            elif not consumption_ok and live.force_working_mode_state == "auto":
+                # Energy average sensors not yet ready.  Still populate prices
+                # and solcast below, but skip the planner (zeroed consumption
+                # data would produce wrong results).
+                pass  # handled below after price/solcast population
+
             elif live.force_working_mode_state != "auto":
                 state = str(live.force_working_mode_state)
                 await async_logger(
@@ -353,18 +369,23 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                     f"{live.force_working_mode_state}",
                 )
 
-            else:
-                # 7. Populate electricity prices and Solcast PV estimates from
-                #    snapshot (no HA state lookups — data was pre-collected in
-                #    step 2).
-                populate_price_and_solcast_from_snapshot(
-                    self._hourly_recommendations,
-                    self._snapshot,
-                    cfg,
-                    now.tzinfo,
-                )
+            # 7. Populate electricity prices and Solcast PV estimates — always
+            #    run, independent of consumption data.
+            populate_price_and_solcast_from_snapshot(
+                self._hourly_recommendations,
+                self._snapshot,
+                cfg,
+                now.tzinfo,
+            )
 
-                # 8. Run the pure-Python planner engine.
+            if (
+                live.force_working_mode_state == "auto"
+                and not live.missing_entities
+                and consumption_ok
+            ):
+                # 8. Run the pure-Python planner engine — only when all data
+                #    is ready.  Skip when consumption averages are still
+                #    pending (first cycle, sensor restore not done).
                 planner_input = build_planner_input(
                     cfg=cfg,
                     live=self._live,

@@ -84,10 +84,12 @@ _SOC_SELECTOR = selector(
 )
 
 # Optional entity field names relative to a prefix (suffix only, without trailing _)
+# NOTE: connected_sensor, soc_sensor, and target_soc_entity are omitted because
+# they duplicate the basic EV charger sensors configured in the `ev` flow step
+# (hsem_ev_connected, hsem_ev_soc, hsem_ev_soc_target).  The state collector
+# reads those from the EV charger config and falls back to them for planned
+# load state when the planned-load-specific fields are absent.
 _OPTIONAL_ENTITY_SUFFIXES = [
-    "connected_sensor",
-    "soc_sensor",
-    "target_soc_entity",
     "deadline_entity",
     "smart_charging_entity",
     "actual_power_sensor",
@@ -118,18 +120,6 @@ async def build_ev_planned_load_schema(config_entry, prefix: str) -> vol.Schema:
                 _k("enabled"),
                 default=_v("enabled"),
             ): selector({"boolean": {}}),
-            vol.Optional(
-                _k("connected_sensor"),
-                default=_v("connected_sensor"),
-            ): selector({"entity": {"domain": _BOOL_DOMAINS}}),
-            vol.Optional(
-                _k("soc_sensor"),
-                default=_v("soc_sensor"),
-            ): selector({"entity": {"domain": _SENSOR_DOMAINS}}),
-            vol.Optional(
-                _k("target_soc_entity"),
-                default=_v("target_soc_entity"),
-            ): selector({"entity": {"domain": _SENSOR_DOMAINS}}),
             vol.Required(
                 _k("target_soc_fixed"),
                 default=_v("target_soc_fixed"),
