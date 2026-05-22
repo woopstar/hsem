@@ -23,6 +23,9 @@ from custom_components.hsem.custom_sensors.ev_second_optimal_charging_plan_senso
     HSEMEVSecondOptimalChargingPlanSensor,
 )
 from custom_components.hsem.custom_sensors.force_mode_sensor import HSEMForceModeSensor
+from custom_components.hsem.custom_sensors.forecast_accuracy_sensor import (
+    HSEMForecastAccuracySensor,
+)
 from custom_components.hsem.custom_sensors.hardware_writes_sensor import (
     HSEMHardwareWritesSensor,
 )
@@ -90,6 +93,9 @@ async def async_setup_entry(
         config_entry, coordinator
     )
 
+    # Forecast accuracy sensor — exposes predicted-vs-actual metrics.
+    forecast_accuracy_sensor = HSEMForecastAccuracySensor(config_entry, coordinator)
+
     # Working-mode sensor — subscribes to coordinator updates and owns hardware writes.
     working_mode_sensor = HSEMWorkingModeSensor(config_entry, coordinator)
 
@@ -117,6 +123,7 @@ async def async_setup_entry(
             ev_second_optimal_charging_plan_sensor,
             applier_status_sensor,
             plan_explanation_sensor,
+            forecast_accuracy_sensor,
             working_mode_sensor,
         ]
     )

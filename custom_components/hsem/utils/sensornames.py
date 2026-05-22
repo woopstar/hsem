@@ -532,6 +532,22 @@ def get_applier_status_sensor_entity_id() -> str:
     return sensor.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_applier_status_sensor"))
 
 
+# Forecast Accuracy Sensor
+def get_forecast_accuracy_sensor_name() -> str:
+    """Return the display name for the forecast accuracy diagnostic sensor."""
+    return "Forecast Accuracy"
+
+
+def get_forecast_accuracy_sensor_unique_id() -> str:
+    """Return a unique ID for the forecast accuracy sensor."""
+    return f"{DOMAIN}_forecast_accuracy_sensor"
+
+
+def get_forecast_accuracy_sensor_entity_id() -> str:
+    """Return the entity_id for the forecast accuracy sensor."""
+    return sensor.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_forecast_accuracy_sensor"))
+
+
 # ---------------------------------------------------------------------------
 # Switch entities
 # ---------------------------------------------------------------------------
