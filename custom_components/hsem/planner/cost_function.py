@@ -74,6 +74,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from custom_components.hsem.models.planner_outputs import PlannedSlot
+from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import clamp_efficiency
 from custom_components.hsem.utils.recommendations import Recommendations
 
@@ -323,7 +324,13 @@ def _resolve_cycle_cost(weights: CostWeights) -> float:
         Depreciation cost in local currency per kWh.
     """
     if weights.cycle_cost_per_kwh is not None:
-        return weights.cycle_cost_per_kwh
+        result = weights.cycle_cost_per_kwh
+        log_planner(
+            "debug",
+            "[cost] _resolve_cycle_cost  explicit=%.6f",
+            result,
+        )
+        return result
 
     if (
         weights.battery_purchase_price > 1e-9
@@ -334,10 +341,21 @@ def _resolve_cycle_cost(weights: CostWeights) -> float:
         usable_kwh = weights.battery_rated_capacity_kwh * dod_fraction
         if usable_kwh < 1e-9:
             usable_kwh = weights.battery_rated_capacity_kwh  # fallback: full rated
-        return weights.battery_purchase_price / (
+        result = weights.battery_purchase_price / (
             2 * usable_kwh * weights.battery_expected_cycles
         )
+        log_planner(
+            "debug",
+            "[cost] _resolve_cycle_cost  purchase=%.2f  usable=%.3f  cycles=%d  "
+            "cycle_cost=%.6f",
+            weights.battery_purchase_price,
+            usable_kwh,
+            weights.battery_expected_cycles,
+            result,
+        )
+        return result
 
+    log_planner("debug", "[cost] _resolve_cycle_cost  return 0 (insufficient data)")
     return 0.0
 
 
@@ -377,7 +395,15 @@ def _final_battery_kwh(
                 continue
         elif slot.recommendation == _time_passed_value:
             continue
-        return slot.estimated_battery_capacity_kwh
+        result = slot.estimated_battery_capacity_kwh
+        log_planner(
+            "debug",
+            "[cost] _final_battery_kwh  result=%.3f  slot=%s",
+            result,
+            slot.start.isoformat(),
+        )
+        return result
+    log_planner("debug", "[cost] _final_battery_kwh  return 0.0 (no future slot)")
     return 0.0
 
 
@@ -496,6 +522,18 @@ def score_plan(
     """
     if weights is None:
         weights = CostWeights()
+
+    log_planner(
+        "debug",
+        "[cost] score_plan  slots=%d  initial_battery=%s  repl_price=%s",
+        len(slots),
+        f"{initial_battery_kwh:.3f}" if initial_battery_kwh is not None else "None",
+        (
+            f"{replacement_price_per_kwh:.6f}"
+            if replacement_price_per_kwh is not None
+            else "None"
+        ),
+    )
 
     # Resolve grid limit (keyword arg takes precedence)
     effective_grid_limit_kw: float | None = (
@@ -679,7 +717,7 @@ def score_plan(
 
     score_rounded = round(score, 6)
 
-    return PlanCostBreakdown(
+    result = PlanCostBreakdown(
         import_cost=round(import_cost, 6),
         export_revenue=round(export_revenue, 6),
         conversion_loss_cost=round(conversion_loss_cost, 6),
@@ -693,6 +731,25 @@ def score_plan(
         # ``total`` is a deprecated alias for ``score`` (issue #413).
         total=score_rounded,
     )
+
+    log_planner(
+        "debug",
+        "[cost] score_plan DONE  total_cost=%.6f  score=%.6f  "
+        "import=%.6f  export_rev=%.6f  conv_loss=%.6f  "
+        "cycle=%.6f  soc_pen=%.6f  grid=%.6f  override=%.6f  term_soc=%.6f",
+        result.total_cost,
+        result.score,
+        result.import_cost,
+        result.export_revenue,
+        result.conversion_loss_cost,
+        result.cycle_cost,
+        result.soc_penalty,
+        result.grid_limit_penalty,
+        result.override_penalty,
+        result.terminal_soc_value,
+    )
+
+    return result
 
 
 def compare_plans(
@@ -757,5 +814,14 @@ def compare_plans(
         winner = "plan_a"
     else:
         winner = "plan_b"
+
+    log_planner(
+        "debug",
+        "[cost] compare_plans  a_score=%.6f  b_score=%.6f  diff=%.6f  winner=%s",
+        bd_a.score,
+        bd_b.score,
+        diff,
+        winner,
+    )
 
     return bd_a, bd_b, winner

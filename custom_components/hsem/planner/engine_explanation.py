@@ -20,6 +20,7 @@ from custom_components.hsem.models.planner_outputs import (
     RejectedPlan,
 )
 from custom_components.hsem.utils.datetime_utils import as_tz
+from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import calculate_recommended_threshold
 from custom_components.hsem.utils.recommendations import Recommendations
 
@@ -50,6 +51,11 @@ def _derive_windows(
     Returns:
         Tuple of ``(charge_windows, discharge_windows)``.
     """
+    log_planner(
+        "debug",
+        "[expl] _derive_windows  slots=%d",
+        len(slots),
+    )
     charge_windows: list[ChargeWindow] = []
     discharge_windows: list[DischargeWindow] = []
 
@@ -111,6 +117,13 @@ def _derive_windows(
     if current_discharge_group:
         _flush_discharge(current_discharge_group)
 
+    log_planner(
+        "debug",
+        "[expl] _derive_windows DONE  charge=%d  discharge=%d",
+        len(charge_windows),
+        len(discharge_windows),
+    )
+
     return charge_windows, discharge_windows
 
 
@@ -135,6 +148,13 @@ def _build_explanation(
     Returns:
         A populated :class:`PlanExplanation` instance.
     """
+    log_planner(
+        "debug",
+        "[expl] _build_explanation  slots=%d  soc_end=%.1f%%  now=%s",
+        len(slots),
+        battery_soc_at_end,
+        now.isoformat(),
+    )
     future_slots = [s for s in slots if as_tz(s.end, now.tzinfo) > now]
 
     # --- Price metrics ---------------------------------------------------

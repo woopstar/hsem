@@ -16,6 +16,7 @@ from custom_components.hsem.const import NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH
 from custom_components.hsem.models.planner_inputs import BatteryScheduleInput
 from custom_components.hsem.models.planner_outputs import PlannedSlot
 from custom_components.hsem.utils.datetime_utils import as_tz
+from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import clamp_efficiency, next_window_start_dt
 from custom_components.hsem.utils.recommendations import (
     DISCHARGE_RECS as _DISCHARGE_RECS,
@@ -45,6 +46,12 @@ def apply_discharge_schedules(
         battery_schedules: Schedule configurations to evaluate.
         now: Timezone-aware current datetime.
     """
+    log_planner(
+        "debug",
+        "[disch] apply_discharge_schedules  schedules=%d  now=%s",
+        len(battery_schedules),
+        now.isoformat(),
+    )
     for sched in battery_schedules:
         if not sched.enabled:
             continue
@@ -177,7 +184,15 @@ def calculate_required_battery_until_solar(
             required += slot.estimated_net_consumption_kwh
 
     buffer_kwh = usable_capacity * (discharge_buffer_pct / 100)
-    return round(required + buffer_kwh, 3)
+    result = round(required + buffer_kwh, 3)
+    log_planner(
+        "debug",
+        "[disch] calculate_required_battery_until_solar  required=%.3f  buffer=%.3f  result=%.3f",
+        required,
+        buffer_kwh,
+        result,
+    )
+    return result
 
 
 def apply_excess_export(
@@ -209,7 +224,20 @@ def apply_excess_export(
     # in estimated_net_consumption.  Only positive net consumption (house load > solar)
     # draws down the battery, so we drain the budget by max(net, 0) per slot.
     battery_discharge_budget_kwh = current_capacity - required_capacity
+    log_planner(
+        "debug",
+        "[disch] apply_excess_export  budget=%.3f  current=%.3f  required=%.3f  "
+        "price_threshold=%.4f",
+        battery_discharge_budget_kwh,
+        current_capacity,
+        required_capacity,
+        export_price_threshold,
+    )
     if battery_discharge_budget_kwh <= 0:
+        log_planner(
+            "debug",
+            "[disch] apply_excess_export  skipped — budget <= 0",
+        )
         return
 
     # D16 fix: track actual solar vs grid fractions rather than a coarse flag.
@@ -308,6 +336,14 @@ def concentrate_discharge_on_expensive_slots(
             ``None`` means unlimited (inverter default).
         discharge_efficiency_pct: Discharge-side efficiency (0-100 %).
     """
+    log_planner(
+        "debug",
+        "[disch] concentrate_discharge_on_expensive_slots  usable=%.3f  current=%.3f  "
+        "max_discharge=%s",
+        usable_kwh,
+        current_kwh,
+        f"{max_discharge_per_slot:.3f}" if max_discharge_per_slot is not None else "∞",
+    )
     discharge_eff = clamp_efficiency(discharge_efficiency_pct)
 
     # Collect all future discharge slots (both BatteriesDischargeMode and
@@ -404,6 +440,15 @@ def apply_optimization_strategy(
             threshold are not marked for export even if export > import.
             Defaults to ``0.0`` (any positive export price qualifies).
     """
+    log_planner(
+        "debug",
+        "[disch] apply_optimization_strategy  current=%.3f  usable=%.3f  "
+        "required=%.3f  export_min_price=%.4f",
+        current_capacity,
+        usable_capacity,
+        required_capacity,
+        export_min_price,
+    )
     current_month = now.month
     months_summer = [m for m in range(1, 13) if m not in months_winter]
 
