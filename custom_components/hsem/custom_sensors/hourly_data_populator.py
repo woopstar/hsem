@@ -637,6 +637,10 @@ def populate_avg_house_consumption_from_snapshot(
             )
             return False
 
+        # Narrow types for pyright: the None check above guarantees all
+        # values are float at this point.
+        assert v1 is not None and v3 is not None and v7 is not None and v14 is not None
+
         # At this point all values are float
         if w_total_config == 0:
             log_planner(
