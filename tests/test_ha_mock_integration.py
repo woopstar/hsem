@@ -238,6 +238,12 @@ def make_bare_coordinator(
 
     coord._cfg = build_sensor_config(config_entry)
 
+    # Forecast-vs-actual tracking (issue #373)
+    from custom_components.hsem.utils.forecast_tracker import ForecastTracker
+
+    coord._forecast_tracker = ForecastTracker(max_slots=192)
+    coord._last_accumulation_ts = None
+
     # CoordinatorEntity support — some entity methods call this
     coord.async_set_updated_data = MagicMock()
 
