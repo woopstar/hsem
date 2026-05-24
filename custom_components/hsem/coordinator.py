@@ -67,6 +67,10 @@ from custom_components.hsem.planner.ev_planner import EVChargingPlan
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.datetime_utils import now as hsem_now
 from custom_components.hsem.utils.datetime_utils import utc_key, utc_now_iso
+from custom_components.hsem.utils.forecast_tracker import (
+    ForecastTracker,
+    compute_accumulated_energy,
+)
 from custom_components.hsem.utils.inverter_verify import CycleApplySummary
 from custom_components.hsem.utils.logger import async_logger, set_planner_verbose
 from custom_components.hsem.utils.recommendations import Recommendations
@@ -213,6 +217,11 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         # the previously active current-slot recommendation.
         self._window_hys_previous_rec: str | None = None
         self._window_hys_previous_slot_start: datetime | None = None
+
+        # Forecast-vs-actual tracker (predicted-vs-actual tracking, issue #373).
+        self._forecast_tracker: ForecastTracker = ForecastTracker(max_slots=192)
+        # Timestamp of the last actual-energy accumulation cycle.
+        self._last_accumulation_ts: datetime | None = None
 
     # ------------------------------------------------------------------
     # HA lifecycle
@@ -374,6 +383,13 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 now.tzinfo,
             )
 
+            # -----------------------------------------------------------------------
+            # Forecast-vs-actual accumulation (issue #373)
+            # -----------------------------------------------------------------------
+            # Every cycle, accumulate actual PV and load energy into the current
+            # slot based on instantaneous power readings and elapsed time.
+            self._accumulate_forecast_actuals(now, live)
+
             if (
                 live.force_working_mode_state == "auto"
                 and not live.missing_entities
@@ -481,6 +497,11 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 if hourly_rec is not None:
                     self._hourly_recommendation = hourly_rec
                     state = hourly_rec.recommendation
+
+                # -----------------------------------------------------------------------
+                # Register forecasts in the forecast tracker from the planner output.
+                # -----------------------------------------------------------------------
+                self._register_forecasts_from_planner(planner_output)
 
         except Exception as exc:
             raise UpdateFailed(f"HSEM update cycle failed: {exc}") from exc
@@ -640,3 +661,81 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                     break
             self._previous_planner_winner_name = output.winner_name
             self._previous_planner_winner_score = winner_score
+
+    # ------------------------------------------------------------------
+    # Forecast-vs-actual tracking (issue #373)
+    # ------------------------------------------------------------------
+
+    def _accumulate_forecast_actuals(self, now: datetime, live: LiveState) -> None:
+        """Accumulate actual PV and load energy into the current slot.
+
+        Called every coordinator cycle to accumulate energy from instantaneous
+        power readings.  Uses the elapsed time since the last accumulation to
+        convert power (W) to energy (kWh).
+
+        Args:
+            now: Current time (timezone-aware).
+            live: The live HA entity state snapshot.
+        """
+        # Compute elapsed seconds since last accumulation.
+        if self._last_accumulation_ts is not None:
+            elapsed = (now - self._last_accumulation_ts).total_seconds()
+        else:
+            elapsed = 0.0
+
+        self._last_accumulation_ts = now
+
+        if elapsed <= 0:
+            return
+
+        # Find the current slot's record.
+        if not self._hourly_recommendations:
+            return
+
+        # Find the slot whose time range contains 'now'.
+        current_slot = None
+        for rec in self._hourly_recommendations:
+            if as_tz(rec.start, now.tzinfo) <= now < as_tz(rec.end, now.tzinfo):
+                current_slot = rec
+                break
+
+        if current_slot is None:
+            return
+
+        # Get or create the tracker record for this slot.
+        tracker_rec = self._forecast_tracker.get_or_create_record(
+            current_slot.start, current_slot.end
+        )
+
+        # Accumulate PV energy.
+        pv_power_w = live.solar_production_power_w
+        pv_energy = compute_accumulated_energy(pv_power_w, elapsed)
+        tracker_rec.accumulate_pv(pv_energy)
+
+        # Accumulate load energy.
+        load_power_w = live.house_consumption_power_w
+        load_energy = compute_accumulated_energy(load_power_w, elapsed)
+        tracker_rec.accumulate_load(load_energy)
+
+        # Finalise any slots whose end time has passed.
+        self._forecast_tracker.finalise_past_records(now)
+
+    def _register_forecasts_from_planner(self, output) -> None:
+        """Register PV and load forecasts from planner output into the tracker.
+
+        This is called after the planner runs successfully.  Forecast values
+        are only set if the tracker record exists and is not yet finalised.
+
+        Args:
+            output: The :class:`~planner.engine.PlannerOutput` returned by the
+                planner engine.
+        """
+        for slot in output.slots:
+            pv_forecast = getattr(slot, "solcast_pv_estimate_kwh", 0.0)
+            load_forecast = getattr(slot, "avg_house_consumption_kwh", 0.0)
+
+            self._forecast_tracker.set_forecasts(
+                start=slot.start,
+                pv_kwh=pv_forecast,
+                load_kwh=load_forecast,
+            )
