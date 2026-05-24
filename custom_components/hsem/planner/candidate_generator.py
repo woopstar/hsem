@@ -532,21 +532,22 @@ def _apply_aggressive_strategy(
         aggressive_discharge_slots = 3  # safe fallback
 
     # Apply force-charge to cheapest N slots (N derived dynamically above).
-    # No boundary restriction yet — just pick the cheapest available slots.
-    charge_candidates = sorted(
-        (s for s in future if s.recommendation not in _DISCHARGE_RECS),
-        key=lambda s: (s.price.import_price, s.start),
+    # Two-pass approach: (a) collect the N cheapest slots (prefer later slots
+    # among equal prices), (b) among those, assign latest-first so unforecast
+    # PV has a chance to cover the need before grid charging actually runs.
+    charge_candidates = [s for s in future if s.recommendation not in _DISCHARGE_RECS]
+    # Phase 1: sort by price only, take the N cheapest
+    price_sorted = sorted(
+        charge_candidates,
+        key=lambda s: s.price.import_price,
     )
-    charged = 0
-    for slot in charge_candidates:
-        if charged >= aggressive_charge_slots:
-            break
+    selected = price_sorted[:aggressive_charge_slots]
+    # Phase 2: within selected, assign latest-first
+    for slot in sorted(selected, key=lambda s: s.start, reverse=True):
         if slot.recommendation in _CHARGE_RECS:
-            charged += 1
             continue
         slot.recommendation = Recommendations.BatteriesChargeGrid.value
         slot.batteries_charged_kwh = round(max_charge_per_slot, 3)
-        charged += 1
 
     # Apply force-discharge to most-expensive M slots.
     discharge_candidates = sorted(
@@ -774,7 +775,7 @@ def _apply_soc_plan(
             if s.recommendation is None
             and as_tz(s.end, now.tzinfo) <= first_discharge_start
         ),
-        key=lambda x: (x.price.import_price, x.start),
+        key=lambda x: (x.price.import_price, -x.start.timestamp()),
     )
 
     # Only charge when the price spread covers the depreciation + cycle cost.

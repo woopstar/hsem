@@ -189,7 +189,7 @@ def apply_charge_schedules(
 
             # Priority 3: cheapest grid hours (depreciation threshold + cycle cost guard)
             if charged < occurrence_budget:
-                _apply_grid_charge(
+                grid_charged = _apply_grid_charge(
                     eligible,
                     sched,
                     occurrence_budget,
@@ -199,6 +199,7 @@ def apply_charge_schedules(
                     cycle_cost_per_kwh=cycle_cost_per_kwh,
                     recommended_threshold=recommended_threshold,
                 )
+                charged += grid_charged
 
             total_charged += charged
 
@@ -212,7 +213,7 @@ def _apply_grid_charge(
     avg_discharge_price: float,
     cycle_cost_per_kwh: float = 0.0,
     recommended_threshold: float = 0.0,
-) -> None:
+) -> float:
     """Apply cheapest-grid-hour charging with depreciation + cycle-cost guard.
 
     The combined profitability condition is:
@@ -231,6 +232,9 @@ def _apply_grid_charge(
         cycle_cost_per_kwh: Per-kWh battery wear cost added to the guard.
             Defaults to 0.0 (backwards compatible).
         recommended_threshold: Depreciation + loss derived price floor.
+
+    Returns:
+        The total energy (kWh) assigned to grid charging by this call.
     """
     grid_candidates = sorted(
         (e for e in eligible if e.recommendation is None),
@@ -268,10 +272,11 @@ def _apply_grid_charge(
     min_diff = recommended_threshold + cycle_cost_per_kwh
 
     if abs(min_diff) > 1e-9 and price_diff < min_diff:
-        return  # Price spread does not cover loss + cycle wear cost
+        return 0.0  # Price spread does not cover loss + cycle wear cost
 
     # Second pass: actually assign recommendations
     charged = charged_so_far
+    grid_assigned = 0.0
     for s in grid_candidates:
         if charged >= needed:
             break
@@ -289,6 +294,9 @@ def _apply_grid_charge(
             s.recommendation = Recommendations.BatteriesChargeGrid.value
             s.batteries_charged_kwh = round(energy, 3)
             charged += energy
+            grid_assigned += energy
+
+    return grid_assigned
 
 
 # ---------------------------------------------------------------------------
