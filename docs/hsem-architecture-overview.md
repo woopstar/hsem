@@ -296,4 +296,4 @@ homeassistant/
 
 All planner modules (`planner/`, `models/`, `utils/recommendations.py`,
 `utils/datetime_utils.py`, `utils/prices.py`) are **pure Python** with
-zero HA imports. They depend only on the Python standard library. 
+zero HA imports. They depend only on the Python standard library.
