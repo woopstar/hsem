@@ -202,9 +202,11 @@ class PlanCostBreakdown:
         import_cost:
             Total cost of grid imports across all slots (≥ 0).
         export_revenue:
-            Total revenue from grid exports across all slots (≥ 0).
-            This is a *positive* value representing earned money; it is
-            *subtracted* from :attr:`total_cost`.
+            Total revenue from grid exports across all slots.
+            Positive when export prices are positive (money earned);
+            negative when export prices are negative (curtailment penalty,
+            exporting costs money).  This value is *subtracted* from
+            :attr:`total_cost`, so a negative value increases total cost.
         conversion_loss_cost:
             Opportunity cost of energy lost in round-trip battery cycles.
         cycle_cost:
