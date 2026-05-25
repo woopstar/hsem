@@ -351,6 +351,12 @@ Export revenue is:
 grid_export_kwh * export_price_per_kwh
 ```
 
+When the export price is negative (curtailment penalty), ``export_revenue``
+is negative — exporting costs money rather than earning it.  The
+``total_cost`` formula ``import_cost − export_revenue`` correctly handles
+this: subtracting a negative adds the cost.
+```
+
 ### Battery cycle cost
 
 Cycle cost should count physical battery throughput.

@@ -222,10 +222,16 @@ class TestExportRevenue:
         # import_cost = 0.30, export_revenue = 0.10 → net = 0.20
         assert bd.total == pytest.approx(0.20, abs=1e-6)
 
+    def test_negative_export_price_makes_export_revenue_negative(self):
+        """Negative export price → export_revenue is negative, increasing total cost.
 
-# ===========================================================================
-# 4. Battery conversion loss component
-# ===========================================================================
+        2 kWh exported at -0.05 → export_revenue = -0.10, total_cost = 0.10.
+        """
+        slot = _make_slot(export_price=-0.05, grid_export_kwh=2.0)
+        bd = score_plan([slot], CostWeights())
+        assert bd.export_revenue == pytest.approx(-0.10)
+        assert bd.total_cost == pytest.approx(0.10)
+        assert bd.score == pytest.approx(0.10)
 
 
 class TestConversionLoss:
@@ -812,7 +818,8 @@ class TestRunPlannerIntegration:
         assert result.plan_cost is not None
         bd = result.plan_cost
         assert bd.import_cost >= 0.0
-        assert bd.export_revenue >= 0.0  # stored as positive; subtracted in total
+        # export_revenue may be negative when export prices are negative
+        # (curtailment penalty) — that's correct, not a bug.
         assert bd.conversion_loss_cost >= 0.0
         assert bd.cycle_cost >= 0.0
         assert bd.soc_penalty >= 0.0
