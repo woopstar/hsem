@@ -189,7 +189,7 @@ def apply_charge_schedules(
 
             # Priority 3: cheapest grid hours (depreciation threshold + cycle cost guard)
             if charged < occurrence_budget:
-                _apply_grid_charge(
+                grid_charged = _apply_grid_charge(
                     eligible,
                     sched,
                     occurrence_budget,
@@ -199,6 +199,7 @@ def apply_charge_schedules(
                     cycle_cost_per_kwh=cycle_cost_per_kwh,
                     recommended_threshold=recommended_threshold,
                 )
+                charged += grid_charged
 
             total_charged += charged
 
@@ -212,7 +213,7 @@ def _apply_grid_charge(
     avg_discharge_price: float,
     cycle_cost_per_kwh: float = 0.0,
     recommended_threshold: float = 0.0,
-) -> None:
+) -> float:
     """Apply cheapest-grid-hour charging with depreciation + cycle-cost guard.
 
     The combined profitability condition is:
@@ -231,6 +232,9 @@ def _apply_grid_charge(
         cycle_cost_per_kwh: Per-kWh battery wear cost added to the guard.
             Defaults to 0.0 (backwards compatible).
         recommended_threshold: Depreciation + loss derived price floor.
+
+    Returns:
+        The total energy (kWh) assigned to grid charging by this call.
     """
     grid_candidates = sorted(
         (e for e in eligible if e.recommendation is None),
@@ -268,10 +272,11 @@ def _apply_grid_charge(
     min_diff = recommended_threshold + cycle_cost_per_kwh
 
     if abs(min_diff) > 1e-9 and price_diff < min_diff:
-        return  # Price spread does not cover loss + cycle wear cost
+        return 0.0  # Price spread does not cover loss + cycle wear cost
 
     # Second pass: actually assign recommendations
     charged = charged_so_far
+    grid_assigned = 0.0
     for s in grid_candidates:
         if charged >= needed:
             break
@@ -289,6 +294,32 @@ def _apply_grid_charge(
             s.recommendation = Recommendations.BatteriesChargeGrid.value
             s.batteries_charged_kwh = round(energy, 3)
             charged += energy
+            grid_assigned += energy
+
+    return grid_assigned
+
+
+# ---------------------------------------------------------------------------
+# Helper: sum of already-planned charge energy
+# ---------------------------------------------------------------------------
+
+
+def _already_planned_charge_kwh(slots: list[PlannedSlot]) -> float:
+    """Return the sum of ``batteries_charged_kwh`` across all charge-type slots.
+
+    Used by downstream charge passes (opportunistic, arbitrage) to avoid
+    exceeding the battery's remaining capacity when ``apply_charge_schedules``
+    has already assigned energy.
+
+    Args:
+        slots: The mutable slot list to scan.
+
+    Returns:
+        Total kWh of charge energy already planned.
+    """
+    return sum(
+        s.batteries_charged_kwh for s in slots if s.recommendation in _CHARGE_RECS
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -349,8 +380,15 @@ def apply_opportunistic_charge(
     if max_charge_per_interval <= 0:
         return
 
-    remaining_capacity = max(usable_capacity - current_capacity, 0.0)
+    already_planned = _already_planned_charge_kwh(slots)
+    remaining_capacity = max(usable_capacity - current_capacity - already_planned, 0.0)
     if remaining_capacity <= 0:
+        log_planner(
+            "debug",
+            "[chg] apply_opportunistic_charge  skipped — no remaining capacity "
+            "(already_planned=%.3f)",
+            already_planned,
+        )
         return
 
     charged = 0.0
@@ -490,10 +528,13 @@ def apply_arbitrage_grid_charge(
         return
 
     remaining_capacity = max(usable_capacity - current_capacity, 0.0)
+    already_planned = _already_planned_charge_kwh(slots)
+    remaining_capacity = max(remaining_capacity - already_planned, 0.0)
     if remaining_capacity <= 1e-9:
         _LOGGER.debug(
-            "arbitrage: battery effectively full (remaining=%.3f kWh)",
+            "arbitrage: battery effectively full (remaining=%.3f, already_planned=%.3f)",
             remaining_capacity,
+            already_planned,
         )
         return
 
