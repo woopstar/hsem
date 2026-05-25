@@ -300,6 +300,29 @@ def _apply_grid_charge(
 
 
 # ---------------------------------------------------------------------------
+# Helper: sum of already-planned charge energy
+# ---------------------------------------------------------------------------
+
+
+def _already_planned_charge_kwh(slots: list[PlannedSlot]) -> float:
+    """Return the sum of ``batteries_charged_kwh`` across all charge-type slots.
+
+    Used by downstream charge passes (opportunistic, arbitrage) to avoid
+    exceeding the battery's remaining capacity when ``apply_charge_schedules``
+    has already assigned energy.
+
+    Args:
+        slots: The mutable slot list to scan.
+
+    Returns:
+        Total kWh of charge energy already planned.
+    """
+    return sum(
+        s.batteries_charged_kwh for s in slots if s.recommendation in _CHARGE_RECS
+    )
+
+
+# ---------------------------------------------------------------------------
 # Opportunistic grid charging (A2/H28/H29)
 # ---------------------------------------------------------------------------
 
@@ -357,8 +380,15 @@ def apply_opportunistic_charge(
     if max_charge_per_interval <= 0:
         return
 
-    remaining_capacity = max(usable_capacity - current_capacity, 0.0)
+    already_planned = _already_planned_charge_kwh(slots)
+    remaining_capacity = max(usable_capacity - current_capacity - already_planned, 0.0)
     if remaining_capacity <= 0:
+        log_planner(
+            "debug",
+            "[chg] apply_opportunistic_charge  skipped — no remaining capacity "
+            "(already_planned=%.3f)",
+            already_planned,
+        )
         return
 
     charged = 0.0
@@ -498,10 +528,13 @@ def apply_arbitrage_grid_charge(
         return
 
     remaining_capacity = max(usable_capacity - current_capacity, 0.0)
+    already_planned = _already_planned_charge_kwh(slots)
+    remaining_capacity = max(remaining_capacity - already_planned, 0.0)
     if remaining_capacity <= 1e-9:
         _LOGGER.debug(
-            "arbitrage: battery effectively full (remaining=%.3f kWh)",
+            "arbitrage: battery effectively full (remaining=%.3f, already_planned=%.3f)",
             remaining_capacity,
+            already_planned,
         )
         return
 
