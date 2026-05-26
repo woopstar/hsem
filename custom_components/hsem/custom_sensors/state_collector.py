@@ -692,7 +692,7 @@ async def async_collect_all_states(
         cfg.solcast_pv_forecast_forecast_today,
         cfg.solcast_pv_forecast_forecast_tomorrow,
     ):
-        if entity_id is None:
+        if entity_id is None or not isinstance(entity_id, str):
             continue
         state_obj = sensor.hass.states.get(entity_id)
         if state_obj:

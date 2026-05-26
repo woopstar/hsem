@@ -191,11 +191,11 @@ def build_sensor_config(config_entry) -> SensorConfig:
     cfg.export_electricity_price_sensor = get_config_value(
         config_entry, "hsem_export_electricity_price_sensor"
     )
-    cfg.import_electricity_price_forecast_sensor = get_config_value(
-        config_entry, "hsem_import_electricity_price_forecast_sensor"
+    cfg.import_electricity_price_forecast_sensor = _optional_entity(
+        get_config_value(config_entry, "hsem_import_electricity_price_forecast_sensor")
     )
-    cfg.export_electricity_price_forecast_sensor = get_config_value(
-        config_entry, "hsem_export_electricity_price_forecast_sensor"
+    cfg.export_electricity_price_forecast_sensor = _optional_entity(
+        get_config_value(config_entry, "hsem_export_electricity_price_forecast_sensor")
     )
     cfg.export_electricity_min_price = (
         convert_to_float(
