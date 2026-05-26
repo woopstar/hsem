@@ -91,11 +91,11 @@ def build_sensor_config(config_entry) -> SensorConfig:
     cfg.recommendation_interval_length = (
         _rec_interval_len if _rec_interval_len is not None else 48
     )
-    _eds_update_interval = convert_to_int(
-        get_config_value(config_entry, "hsem_energi_data_service_update_interval")
+    _price_update_interval = convert_to_int(
+        get_config_value(config_entry, "hsem_electricity_price_update_interval")
     )
-    cfg.energi_data_service_update_interval = (
-        _eds_update_interval if _eds_update_interval is not None else 15
+    cfg.electricity_price_update_interval = (
+        _price_update_interval if _price_update_interval is not None else 15
     )
 
     # Seasonal months
@@ -184,16 +184,22 @@ def build_sensor_config(config_entry) -> SensorConfig:
         or "pv_estimate"
     )
 
-    # Energi Data Service
-    cfg.energi_data_service_import = get_config_value(
-        config_entry, "hsem_energi_data_service_import"
+    # Electricity prices (generic — Energi Data Service, Nordpool, Amber Electric, …)
+    cfg.import_electricity_price_sensor = get_config_value(
+        config_entry, "hsem_import_electricity_price_sensor"
     )
-    cfg.energi_data_service_export = get_config_value(
-        config_entry, "hsem_energi_data_service_export"
+    cfg.export_electricity_price_sensor = get_config_value(
+        config_entry, "hsem_export_electricity_price_sensor"
     )
-    cfg.energi_data_service_export_min_price = (
+    cfg.import_electricity_price_forecast_sensor = get_config_value(
+        config_entry, "hsem_import_electricity_price_forecast_sensor"
+    )
+    cfg.export_electricity_price_forecast_sensor = get_config_value(
+        config_entry, "hsem_export_electricity_price_forecast_sensor"
+    )
+    cfg.export_electricity_min_price = (
         convert_to_float(
-            get_config_value(config_entry, "hsem_energi_data_service_export_min_price")
+            get_config_value(config_entry, "hsem_export_electricity_min_price")
         )
         or 0.0
     )

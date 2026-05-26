@@ -170,8 +170,8 @@ class HSEMWorkingModeSensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
         extended = {}
         if cfg.extended_attributes:
             extended = {
-                "energi_data_service_export_entity": cfg.energi_data_service_export,
-                "energi_data_service_import_entity": cfg.energi_data_service_import,
+                "import_electricity_price_sensor_entity": cfg.import_electricity_price_sensor,
+                "export_electricity_price_sensor_entity": cfg.export_electricity_price_sensor,
                 "ev_charger_power_entity": cfg.ev.power_entity,
                 "ev_charger_status_entity": cfg.ev.status_entity,
                 "ev_soc_entity": cfg.ev.soc_entity,
@@ -215,10 +215,10 @@ class HSEMWorkingModeSensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
                 expected_cycles=cfg.batteries_expected_cycles,
                 usable_capacity=live.battery_usable_capacity_kwh,
             ),
-            "energi_data_service_export_state": live.energi_data_service_export_price,
-            "energi_data_service_import_state": live.energi_data_service_import_price,
-            "energi_data_service_export_min_price": cfg.energi_data_service_export_min_price,
-            "energi_data_service_update_interval": cfg.energi_data_service_update_interval,
+            "export_electricity_price_state": live.export_electricity_price,
+            "import_electricity_price_state": live.import_electricity_price,
+            "export_electricity_min_price": cfg.export_electricity_min_price,
+            "electricity_price_update_interval": cfg.electricity_price_update_interval,
             "ev_charger_power_state": live.ev.power_w,
             "ev_charger_status_state": live.ev.is_charging,
             "ev_soc_state": live.ev.soc_pct,

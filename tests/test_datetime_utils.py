@@ -724,7 +724,7 @@ class TestResolverDoesNotEraseEVFields:
         from custom_components.hsem.models.live_state import LiveState
 
         defaults = {
-            "energi_data_service_import_price": "0.25",
+            "import_electricity_price": "0.25",
             "ev": MagicMock(is_charging=False),
             "ev_second": MagicMock(is_charging=False),
             "battery_current_capacity_kwh": 5.0,
@@ -790,7 +790,7 @@ class TestResolverDoesNotEraseEVFields:
 
         # Negative import price → ForceExport
         live = self._make_live_state(
-            energi_data_service_import_price="-0.05",
+            import_electricity_price="-0.05",
             ev=MagicMock(is_charging=False),
         )
 
@@ -822,7 +822,7 @@ class TestResolverDoesNotEraseEVFields:
 
         # Battery above schedule need → discharge override
         live = self._make_live_state(
-            energi_data_service_import_price="0.30",
+            import_electricity_price="0.30",
             ev=MagicMock(is_charging=False),
             ev_second=MagicMock(is_charging=False),
             battery_current_capacity_kwh=8.0,

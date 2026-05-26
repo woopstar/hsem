@@ -92,8 +92,8 @@ class LiveState:
 
         tou_periods: TOU period entity state.
 
-        energi_data_service_import_price: Current spot import price (currency/kWh).
-        energi_data_service_export_price: Current spot export price (currency/kWh).
+        import_electricity_price: Current spot import price (currency/kWh).
+        export_electricity_price: Current spot export price (currency/kWh).
 
         # Derived battery capacities (computed by state_collector)
         battery_usable_capacity_kwh: Usable kWh (rated minus reserve).
@@ -138,9 +138,9 @@ class LiveState:
     # TOU periods
     tou_periods: TouPeriodsState = field(default_factory=TouPeriodsState)
 
-    # Energy prices
-    energi_data_service_import_price: float = 0.0
-    energi_data_service_export_price: float = 0.0
+    # Electricity prices
+    import_electricity_price: float = 0.0
+    export_electricity_price: float = 0.0
 
     # Derived battery capacities (set by state_collector after computing them)
     battery_usable_capacity_kwh: float = 0.0

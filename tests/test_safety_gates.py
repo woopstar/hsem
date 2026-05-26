@@ -66,7 +66,7 @@ def _make_cfg(*, read_only: bool = False) -> SensorConfig:
     """Return a minimal :class:`SensorConfig` with the given read_only flag."""
     cfg = SensorConfig()
     cfg.read_only = read_only
-    cfg.energi_data_service_export_min_price = 0.0
+    cfg.export_electricity_min_price = 0.0
     return cfg
 
 
@@ -76,7 +76,7 @@ def _make_live(*, degraded_mode: DegradedMode = DegradedMode.OK) -> LiveState:
     # Override the lazily-computed cached value directly so no entities need
     # to be set up just to drive the mode.
     live._degraded_mode = degraded_mode
-    live.energi_data_service_export_price = 1.0
+    live.export_electricity_price = 1.0
     return live
 
 
@@ -139,7 +139,7 @@ class TestInverterPowerControlSafetyGate:
         # Degraded: price entity missing, but battery data present.
         live = _make_live(degraded_mode=DegradedMode.Degraded)
         # Set a numeric export price so the function can compute export_pct.
-        live.energi_data_service_export_price = 0.5
+        live.export_electricity_price = 0.5
         # Set current inverter state to force a write (100 → 0 would write).
         live.huawei_inverter_active_power_control = "Unlimited"
 
@@ -148,7 +148,7 @@ class TestInverterPowerControlSafetyGate:
         cfg.huawei_solar_inverter_active_power_control = (
             "sensor.inverter_active_power_control"
         )
-        cfg.energi_data_service_export_min_price = 1.0
+        cfg.export_electricity_min_price = 1.0
 
         # Make the HA state read return an entity indicating "Unlimited" (100 %).
         mock_state = MagicMock()
@@ -185,10 +185,10 @@ class TestInverterPowerControlSafetyGate:
         cfg.huawei_solar_inverter_active_power_control = (
             "sensor.inverter_active_power_control"
         )
-        cfg.energi_data_service_export_min_price = 1.0
+        cfg.export_electricity_min_price = 1.0
 
         live = _make_live(degraded_mode=DegradedMode.OK)
-        live.energi_data_service_export_price = 0.5
+        live.export_electricity_price = 0.5
         live.huawei_inverter_active_power_control = "Unlimited"
 
         mock_state = MagicMock()

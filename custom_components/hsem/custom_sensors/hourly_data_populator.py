@@ -57,55 +57,78 @@ async def async_populate_price_and_solcast(
     # ---------------------------------------------------------------------------
     # Price interval semantics
     # ---------------------------------------------------------------------------
-    # EDS prices are a *rate* (currency/kWh), not an energy quantity, so they
-    # must NOT be summed across slots.  However, the EDS sensor publishes one
-    # value per update interval (either 15 min or 60 min) while HSEM may plan
-    # at a finer resolution (e.g. 15-min slots inside a 60-min EDS interval).
+    # Prices are a *rate* (currency/kWh), not an energy quantity, so they
+    # must NOT be summed across slots.  However, the price sensor publishes
+    # one value per update interval (15, 30, or 60 min) while HSEM may plan
+    # at a finer resolution (e.g. 15-min slots inside a 60-min interval).
     #
-    # `eds_share` converts between the two resolutions:
+    # `price_share` converts between the two resolutions:
     #
-    #   eds_share = energi_data_service_update_interval / recommendation_interval_minutes
+    #   price_share = electricity_price_update_interval / recommendation_interval_minutes
     #
-    # In `_async_update_hourly_field` (below) each raw EDS value is divided by
-    # `eds_share` before writing to the per-slot recommendation object.  This
-    # stores the price *scaled to one recommendation slot's share* of the EDS
+    # In `_async_update_hourly_field` (below) each raw price value is divided by
+    # `price_share` before writing to the per-slot recommendation object.  This
+    # stores the price *scaled to one recommendation slot's share* of the price
     # update interval.
     #
-    # The inverse multiply (`rec.import_price * eds_share`) is applied later in
-    # `coordinator._build_planner_input` to recover the original price rate
+    # The inverse multiply (`rec.import_price * price_share`) is applied later in
+    # `coordinator_builder.build_planner_input` to recover the original price rate
     # before passing it to the planner engine.
     #
-    # Common configurations and their eds_share values:
-    #   EDS 60 min  / slots 15 min  →  eds_share = 4.0
-    #   EDS 15 min  / slots 15 min  →  eds_share = 1.0  (no scaling)
-    #   EDS 60 min  / slots 60 min  →  eds_share = 1.0  (no scaling)
-    eds_share = (
-        cfg.energi_data_service_update_interval / cfg.recommendation_interval_minutes
+    # Common configurations and their price_share values:
+    #   Price 60 min  / slots 15 min  →  price_share = 4.0
+    #   Price 30 min  / slots 15 min  →  price_share = 2.0
+    #   Price 15 min  / slots 15 min  →  price_share = 1.0  (no scaling)
+    #   Price 60 min  / slots 60 min  →  price_share = 1.0  (no scaling)
+    price_share = (
+        cfg.electricity_price_update_interval / cfg.recommendation_interval_minutes
     )
     # Solcast forecasts are always given as hourly totals (Wh/h), so the share
-    # factor is always relative to 60 minutes regardless of EDS configuration.
+    # factor is always relative to 60 minutes regardless of price configuration.
     solcast_share = 60.0 / cfg.recommendation_interval_minutes
 
-    # Import price
+    # Import price — read from primary sensor (may embed forecast attributes)
     await _async_update_hourly_field(
         sensor,
         recommendations,
-        cfg.energi_data_service_import,
+        cfg.import_electricity_price_sensor,
         "import_price",
-        eds_share,
+        price_share,
         cfg.solcast_pv_forecast_forecast_likelihood,
         tz,
     )
-    # Export price
+    # Import price — fallback to dedicated forecast sensor if configured
+    if cfg.import_electricity_price_forecast_sensor:
+        await _async_update_hourly_field(
+            sensor,
+            recommendations,
+            cfg.import_electricity_price_forecast_sensor,
+            "import_price",
+            price_share,
+            cfg.solcast_pv_forecast_forecast_likelihood,
+            tz,
+        )
+    # Export price — read from primary sensor
     await _async_update_hourly_field(
         sensor,
         recommendations,
-        cfg.energi_data_service_export,
+        cfg.export_electricity_price_sensor,
         "export_price",
-        eds_share,
+        price_share,
         cfg.solcast_pv_forecast_forecast_likelihood,
         tz,
     )
+    # Export price — fallback to dedicated forecast sensor if configured
+    if cfg.export_electricity_price_forecast_sensor:
+        await _async_update_hourly_field(
+            sensor,
+            recommendations,
+            cfg.export_electricity_price_forecast_sensor,
+            "export_price",
+            price_share,
+            cfg.solcast_pv_forecast_forecast_likelihood,
+            tz,
+        )
     # Solcast today
     await _async_update_hourly_field(
         sensor,
@@ -313,6 +336,8 @@ async def _async_update_hourly_field(
         "detailedHourly": [{"k": "period_start", "v": solcast_likelihood_key}],
         "detailedForecast": [{"k": "period_start", "v": solcast_likelihood_key}],
         "data": [{"k": "start_time", "v": "price_per_kwh"}],
+        # Amber Electric forecast sensor format: forecasts array on the forecast sensor
+        "forecasts": [{"k": "start_time", "v": "per_kwh"}],
     }
 
     for attr, kv_list in data_sources.items():
@@ -347,16 +372,16 @@ async def _async_update_hourly_field(
                 # Scale raw value down to one recommendation-slot's share of the
                 # source update interval.
                 #
-                # For EDS prices:   share = eds_share (EDS interval / slot interval)
-                #   EDS 60 min / slot 15 min → share=4 → store price/4 per slot
-                #   EDS 15 min / slot 15 min → share=1 → store price unchanged
+                # For prices:   share = price_share (price interval / slot interval)
+                #   Price 60 min / slot 15 min → share=4 → store price/4 per slot
+                #   Price 15 min / slot 15 min → share=1 → store price unchanged
                 #
                 # For Solcast PV:   share = solcast_share (60 / slot interval)
                 #   60-min hourly forecast / slot 15 min → share=4 → store Wh/4 per slot
                 #   60-min hourly forecast / slot 60 min → share=1 → store Wh unchanged
                 #
-                # The coordinator's `_build_planner_input` applies the inverse multiply
-                # (×eds_share) before handing prices/PV to the planner engine, so the
+                # The coordinator's `build_planner_input` applies the inverse multiply
+                # (×price_share) before handing prices/PV to the planner engine, so the
                 # divide here and the multiply there cancel exactly and the planner always
                 # receives the original hourly-equivalent rate or energy quantity.
                 value = value / share
@@ -389,27 +414,49 @@ def populate_price_and_solcast_from_snapshot(
         cfg: Current sensor configuration.
         tz: Timezone for datetime normalization.
     """
-    eds_share = (
-        cfg.energi_data_service_update_interval / cfg.recommendation_interval_minutes
+    price_share = (
+        cfg.electricity_price_update_interval / cfg.recommendation_interval_minutes
     )
     solcast_share = 60.0 / cfg.recommendation_interval_minutes
 
     _update_hourly_field_from_attrs(
         recommendations,
-        snapshot.sensor_attributes.get(cfg.energi_data_service_import),
+        snapshot.sensor_attributes.get(cfg.import_electricity_price_sensor),
         "import_price",
-        eds_share,
+        price_share,
         cfg.solcast_pv_forecast_forecast_likelihood,
         tz,
     )
+    if cfg.import_electricity_price_forecast_sensor:
+        _update_hourly_field_from_attrs(
+            recommendations,
+            snapshot.sensor_attributes.get(
+                cfg.import_electricity_price_forecast_sensor
+            ),
+            "import_price",
+            price_share,
+            cfg.solcast_pv_forecast_forecast_likelihood,
+            tz,
+        )
     _update_hourly_field_from_attrs(
         recommendations,
-        snapshot.sensor_attributes.get(cfg.energi_data_service_export),
+        snapshot.sensor_attributes.get(cfg.export_electricity_price_sensor),
         "export_price",
-        eds_share,
+        price_share,
         cfg.solcast_pv_forecast_forecast_likelihood,
         tz,
     )
+    if cfg.export_electricity_price_forecast_sensor:
+        _update_hourly_field_from_attrs(
+            recommendations,
+            snapshot.sensor_attributes.get(
+                cfg.export_electricity_price_forecast_sensor
+            ),
+            "export_price",
+            price_share,
+            cfg.solcast_pv_forecast_forecast_likelihood,
+            tz,
+        )
     _update_hourly_field_from_attrs(
         recommendations,
         snapshot.sensor_attributes.get(cfg.solcast_pv_forecast_forecast_today),
@@ -469,6 +516,8 @@ def _update_hourly_field_from_attrs(
         "detailedHourly": [{"k": "period_start", "v": solcast_likelihood_key}],
         "detailedForecast": [{"k": "period_start", "v": solcast_likelihood_key}],
         "data": [{"k": "start_time", "v": "price_per_kwh"}],
+        # Amber Electric forecast sensor format: forecasts array on the forecast sensor
+        "forecasts": [{"k": "start_time", "v": "per_kwh"}],
     }
 
     for attr, kv_list in data_sources.items():

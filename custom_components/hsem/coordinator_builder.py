@@ -78,12 +78,12 @@ def build_planner_input(
     # ------------------------------------------------------------------
     # Price interval semantics — see also hourly_data_populator.py
     # ------------------------------------------------------------------
-    # `eds_share` is the ratio of the EDS update interval to the slot width:
+    # `price_share` is the ratio of the price update interval to the slot width:
     #
-    #   eds_share = energi_data_service_update_interval / recommendation_interval_minutes
+    #   price_share = electricity_price_update_interval / recommendation_interval_minutes
     #
-    # In `hourly_data_populator._async_update_hourly_field`, each EDS price was
-    # divided by `eds_share` before storing into the per-slot recommendation
+    # In `hourly_data_populator._async_update_hourly_field`, each price was
+    # divided by `price_share` before storing into the per-slot recommendation
     # object.  Here we multiply it back to recover the original price rate
     # (currency/kWh) before handing it to the planner.
     #
@@ -93,11 +93,12 @@ def build_planner_input(
     # the planner's cost function.
     #
     # Common configurations:
-    #   EDS 60 min / slots 15 min  →  eds_share = 4.0
-    #   EDS 15 min / slots 15 min  →  eds_share = 1.0  (no-op)
-    #   EDS 60 min / slots 60 min  →  eds_share = 1.0  (no-op)
-    eds_share = (
-        cfg.energi_data_service_update_interval / cfg.recommendation_interval_minutes
+    #   Price 60 min / slots 15 min  →  price_share = 4.0
+    #   Price 30 min / slots 15 min  →  price_share = 2.0
+    #   Price 15 min / slots 15 min  →  price_share = 1.0  (no-op)
+    #   Price 60 min / slots 60 min  →  price_share = 1.0  (no-op)
+    price_share = (
+        cfg.electricity_price_update_interval / cfg.recommendation_interval_minutes
     )
 
     # Midnight of the planning day — used to compute per-slot day_offset.
@@ -125,13 +126,13 @@ def build_planner_input(
                 day_offset=day_offset,
             )
         )
-        # Multiply by eds_share to reverse the per-slot divide applied during
+        # Multiply by price_share to reverse the per-slot divide applied during
         # population; the planner receives the original currency/kWh rate.
         price_points.append(
             PricePoint(
                 hour=h,
-                import_price=round(rec.import_price * eds_share, 5),
-                export_price=round(rec.export_price * eds_share, 5),
+                import_price=round(rec.import_price * price_share, 5),
+                export_price=round(rec.export_price * price_share, 5),
                 day_offset=day_offset,
             )
         )
@@ -224,8 +225,7 @@ def build_planner_input(
             cfg.batteries_excess_export_price_threshold
         )
         or 0.10,
-        export_min_price=convert_to_float(cfg.energi_data_service_export_min_price)
-        or 0.0,
+        export_min_price=convert_to_float(cfg.export_electricity_min_price) or 0.0,
         months_winter=list(cfg.months_winter or []),
         house_power_includes_ev=bool(cfg.house_power_includes_ev_charger_power),
         is_read_only=bool(cfg.read_only),

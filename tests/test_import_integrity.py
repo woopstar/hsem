@@ -33,7 +33,7 @@ FLOW_MODULES = [
     "custom_components.hsem.flows.batteries_schedule_1",
     "custom_components.hsem.flows.batteries_schedule_2",
     "custom_components.hsem.flows.batteries_schedule_3",
-    "custom_components.hsem.flows.energidataservice",
+    "custom_components.hsem.flows.prices",
     "custom_components.hsem.flows.ev",
     "custom_components.hsem.flows.ev_second",
     "custom_components.hsem.flows.huawei_solar",
@@ -82,8 +82,8 @@ class TestFlowModulesImportCleanly:
     def test_batteries_schedule_3_importable(self):
         self._assert_importable("custom_components.hsem.flows.batteries_schedule_3")
 
-    def test_energidataservice_importable(self):
-        self._assert_importable("custom_components.hsem.flows.energidataservice")
+    def test_prices_importable(self):
+        self._assert_importable("custom_components.hsem.flows.prices")
 
     def test_ev_importable(self):
         self._assert_importable("custom_components.hsem.flows.ev")

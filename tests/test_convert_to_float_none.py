@@ -210,7 +210,7 @@ class TestRecommendationResolverNullSafety:
 
         rec = self._make_rec()
         live = LiveState()
-        live.energi_data_service_import_price = 0.0  # explicitly zero — not negative
+        live.import_electricity_price = 0.0  # explicitly zero — not negative
 
         resolve_current_recommendation(rec, live, 0.0)
         # Should NOT override to ForceExport with a zero (non-negative) price
@@ -226,7 +226,7 @@ class TestRecommendationResolverNullSafety:
 
         rec = self._make_rec()
         live = LiveState()
-        live.energi_data_service_import_price = -0.05
+        live.import_electricity_price = -0.05
 
         resolve_current_recommendation(rec, live, 0.0)
         assert rec.recommendation == Recommendations.ForceExport.value
