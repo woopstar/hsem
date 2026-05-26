@@ -11,6 +11,7 @@ from typing import Any
 
 from homeassistant.components.switch import SwitchEntity, SwitchEntityDescription
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 
 from custom_components.hsem.entity import HSEMEntity
@@ -95,6 +96,7 @@ class HSEMSwitch(SwitchEntity, HSEMEntity):
 
     _attr_icon = "mdi:toggle-switch"
     _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.CONFIG
     entity_description: HSEMSwitchEntityDescription
 
     def __init__(

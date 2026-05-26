@@ -12,6 +12,7 @@ from typing import Any
 
 from homeassistant.components.time import TimeEntity, TimeEntityDescription
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 
 from custom_components.hsem.entity import HSEMEntity
@@ -91,6 +92,7 @@ class HSEMTimeEntity(TimeEntity, HSEMEntity):
 
     _attr_icon = "mdi:clock"
     _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.CONFIG
     entity_description: HSEMTimeEntityDescription
 
     def __init__(

@@ -7,6 +7,7 @@ specific working mode or leave it on ``"auto"``.
 
 from homeassistant.components.select import SelectEntity, SelectEntityDescription
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 
 from custom_components.hsem.entity import HSEMEntity
@@ -26,6 +27,7 @@ class HSEMWorkingModeSelector(SelectEntity, HSEMEntity):
 
     _attr_icon = "mdi:chart-timeline-variant"
     _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(
         self,
