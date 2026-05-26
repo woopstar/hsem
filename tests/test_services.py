@@ -316,6 +316,122 @@ class TestSetTemporaryOverride:
         with pytest.raises(HomeAssistantError, match="select failed"):
             await async_handle_set_temporary_override(hass, call)
 
+    # ------------------------------------------------------------------
+    # Duration / expiry tests (issue #317)
+    # ------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_duration_minutes_sets_override_expiry_on_coordinator(self):
+        """Must store override_expiry on the coordinator when duration_minutes is provided."""
+        coordinator = _make_coordinator()
+        # Coordinator needs _override_expiry attribute.
+        coordinator._override_expiry = None  # noqa: SLF001
+        hass = _make_hass(coordinator)
+
+        call = MagicMock()
+        call.data = {
+            "working_mode": "force_batteries_discharge",
+            "duration_minutes": 30,
+        }
+
+        await async_handle_set_temporary_override(hass, call)
+
+        # The expiry should be set to some future datetime.
+        assert coordinator._override_expiry is not None  # noqa: SLF001
+
+    @pytest.mark.asyncio
+    async def test_duration_minutes_none_clears_expiry(self):
+        """Must clear override_expiry when duration_minutes is not provided."""
+        coordinator = _make_coordinator()
+        coordinator._override_expiry = "some_old_value"  # noqa: SLF001
+        hass = _make_hass(coordinator)
+
+        call = MagicMock()
+        call.data = {"working_mode": "batteries_charge_grid"}
+
+        await async_handle_set_temporary_override(hass, call)
+
+        # The expiry should be None when no duration is given.
+        assert coordinator._override_expiry is None  # noqa: SLF001
+
+    @pytest.mark.asyncio
+    async def test_duration_minutes_triggers_update_after_setting_expiry(self):
+        """Must trigger a coordinator update after setting the override with duration."""
+        coordinator = _make_coordinator()
+        coordinator._override_expiry = None  # noqa: SLF001
+        hass = _make_hass(coordinator)
+
+        call = MagicMock()
+        call.data = {"working_mode": "batteries_wait_mode", "duration_minutes": 60}
+
+        await async_handle_set_temporary_override(hass, call)
+
+        coordinator._async_handle_update.assert_awaited_once_with(None)
+
+    @pytest.mark.asyncio
+    async def test_clear_override_clears_expiry(self):
+        """Must clear override_expiry when clear_override is called."""
+        coordinator = _make_coordinator()
+        coordinator._override_expiry = "some_expiry_value"  # noqa: SLF001
+        hass = _make_hass(coordinator)
+
+        call = MagicMock()
+        call.data = {}
+
+        await async_handle_clear_override(hass, call)
+
+        assert coordinator._override_expiry is None  # noqa: SLF001
+
+
+class TestSchemaSetTemporaryOverrideDuration:
+    """Voluptuous schema for set_temporary_override with duration_minutes."""
+
+    def test_duration_minutes_accepted_valid_range(self):
+        """Schema must accept a valid duration_minutes within 1-1440."""
+        for minutes in [1, 30, 60, 120, 1440]:
+            result = SCHEMA_SET_TEMPORARY_OVERRIDE(
+                {"working_mode": "batteries_charge_grid", "duration_minutes": minutes}
+            )
+            assert result["working_mode"] == "batteries_charge_grid"
+            assert result["duration_minutes"] == minutes
+
+    def test_duration_minutes_below_min_rejected(self):
+        """Schema must reject duration_minutes less than 1."""
+        with pytest.raises(vol.Invalid):
+            SCHEMA_SET_TEMPORARY_OVERRIDE(
+                {"working_mode": "batteries_charge_grid", "duration_minutes": 0}
+            )
+
+    def test_duration_minutes_above_max_rejected(self):
+        """Schema must reject duration_minutes greater than 1440."""
+        with pytest.raises(vol.Invalid):
+            SCHEMA_SET_TEMPORARY_OVERRIDE(
+                {"working_mode": "batteries_charge_grid", "duration_minutes": 1441}
+            )
+
+    def test_duration_minutes_negative_rejected(self):
+        """Schema must reject negative duration_minutes."""
+        with pytest.raises(vol.Invalid):
+            SCHEMA_SET_TEMPORARY_OVERRIDE(
+                {"working_mode": "batteries_charge_grid", "duration_minutes": -5}
+            )
+
+    def test_duration_minutes_optional(self):
+        """Schema must accept working_mode without duration_minutes."""
+        result = SCHEMA_SET_TEMPORARY_OVERRIDE(
+            {"working_mode": "batteries_discharge_mode"}
+        )
+        assert "duration_minutes" not in result
+        assert result["working_mode"] == "batteries_discharge_mode"
+
+    def test_duration_minutes_string_parsed_as_int(self):
+        """Schema must coerce a numeric string to int."""
+        result = SCHEMA_SET_TEMPORARY_OVERRIDE(
+            {"working_mode": "batteries_charge_grid", "duration_minutes": "45"}
+        )
+        assert result["duration_minutes"] == 45
+        assert isinstance(result["duration_minutes"], int)
+
 
 class TestClearOverride:
     """Tests for async_handle_clear_override."""

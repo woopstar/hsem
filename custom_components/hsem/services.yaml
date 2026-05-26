@@ -35,6 +35,19 @@ set_temporary_override:
             - "force_batteries_discharge"
             - "force_export"
       description: "The working mode to force. Must be one of the supported override modes."
+    duration_minutes:
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 1440
+          unit_of_measurement: "minutes"
+          mode: box
+      description: >-
+        Optional duration in minutes after which the override automatically
+        expires and the planner resumes control. When omitted, the override
+        persists until explicitly cleared via the clear_override service.
+        Maximum is 1440 minutes (24 hours).
 
 clear_override:
   name: Clear override

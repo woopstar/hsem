@@ -243,6 +243,7 @@ def make_bare_coordinator(
 
     coord._forecast_tracker = ForecastTracker(max_slots=192)
     coord._last_accumulation_ts = None
+    coord._override_expiry = None
 
     # CoordinatorEntity support — some entity methods call this
     coord.async_set_updated_data = MagicMock()
