@@ -760,6 +760,13 @@
         "5": "5 minutes",
         "60": "60 minutes"
       }
+    },
+    "pv_estimate_likelihood": {
+      "options": {
+        "pv_estimate": "50 % likelihood",
+        "pv_estimate10": "10 % likelihood",
+        "pv_estimate90": "90 % likelihood"
+      }
     }
   },
   "services": {

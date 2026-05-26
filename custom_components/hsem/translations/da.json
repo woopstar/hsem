@@ -431,6 +431,13 @@
         "5": "5 minutter",
         "60": "60 minutter"
       }
+    },
+    "pv_estimate_likelihood": {
+      "options": {
+        "pv_estimate": "50 % sandsynlighed",
+        "pv_estimate10": "10 % sandsynlighed",
+        "pv_estimate90": "90 % sandsynlighed"
+      }
     }
   },
   "services": {

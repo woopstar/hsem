@@ -30,7 +30,9 @@ async def get_solcast_step_schema(config_entry) -> vol.Schema:
             ): selector(
                 {
                     "select": {
-                        "options": ["pv_estimate", "pv_estimate10", "pv_estimate90"]
+                        "options": ["pv_estimate", "pv_estimate10", "pv_estimate90"],
+                        "translation_key": "pv_estimate_likelihood",
+                        "mode": "list",
                     }
                 }
             ),
