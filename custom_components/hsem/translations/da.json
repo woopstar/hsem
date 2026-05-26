@@ -134,21 +134,25 @@
         "description": "Konfigurer op til tre batteri-afladningstidsplaner, hver med til/fra-knap, starttid og sluttid. Tidsplaner definerer, hvornår batteriet må aflade for at dække spidsbelastning eller eksportere til nettet.",
         "title": "Batteri-afladningstidsplaner"
       },
-      "energidataservice": {
+      "prices": {
         "data": {
-          "hsem_energi_data_service_export": "Energi Data Service eksportpris-sensor",
-          "hsem_energi_data_service_export_min_price": "Minimum eksportpris påkrævet",
-          "hsem_energi_data_service_update_interval": "Energi Data Service eksportpris opdateringsinterval (minutter)",
-          "hsem_energi_data_service_import": "Energi Data Service importpris-sensor"
+          "hsem_import_electricity_price_sensor": "Import-elprissensor",
+          "hsem_export_electricity_price_sensor": "Eksport-elprissensor",
+          "hsem_import_electricity_price_forecast_sensor": "Import-elprisprognose-sensor (valgfri)",
+          "hsem_export_electricity_price_forecast_sensor": "Eksport-elprisprognose-sensor (valgfri)",
+          "hsem_export_electricity_min_price": "Minimum eksportpris påkrævet",
+          "hsem_electricity_price_update_interval": "Elpris opdateringsinterval (minutter)"
         },
         "data_description": {
-          "hsem_energi_data_service_export": "Vælg den sensor, der leverer eksportpriser fra din Energy Data Service-integration.",
-          "hsem_energi_data_service_export_min_price": "Indstil minimumsprisen for eksport fra din Energy Data Service-integration.",
-          "hsem_energi_data_service_update_interval": "Indstil opdateringsintervallet i minutter for din Energy Data Service-integration.",
-          "hsem_energi_data_service_import": "Vælg den sensor, der leverer importpriser fra din Energy Data Service-integration."
+          "hsem_import_electricity_price_sensor": "Vælg den sensor, der leverer import-elpriser (f.eks. Energi Data Service, Nordpool, Amber Electric).",
+          "hsem_export_electricity_price_sensor": "Vælg den sensor, der leverer eksport-elpriser.",
+          "hsem_import_electricity_price_forecast_sensor": "Valgfrit: vælg en separat sensor til importprisprognoser (bruges af Amber Electric og lignende integrationer).",
+          "hsem_export_electricity_price_forecast_sensor": "Valgfrit: vælg en separat sensor til eksportprisprognoser.",
+          "hsem_export_electricity_min_price": "Indstil minimumsprisen for eksport. Eksport under denne pris blokeres.",
+          "hsem_electricity_price_update_interval": "Hvor ofte din prissensor giver nye data (15, 30 eller 60 minutter)."
         },
-        "description": "Vælg energidata-tjenester til HSEM.",
-        "title": "Energi Data Service-sensorer"
+        "description": "Konfigurer dine elprissensorer til import- og eksportpriser.",
+        "title": "Elpriser"
       },
       "ev": {
         "data": {
@@ -399,7 +403,7 @@
       "batteries_schedules": {},
       "ev_planned_load": {},
       "ev_second_planned_load": {},
-      "energidataservice": {},
+      "prices": {},
       "ev": {},
       "ev_second": {},
       "huawei_solar": {},

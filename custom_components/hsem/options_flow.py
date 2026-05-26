@@ -11,10 +11,6 @@ from custom_components.hsem.flows.batteries_schedules import (
     get_batteries_schedules_step_schema,
     validate_batteries_schedules_input,
 )
-from custom_components.hsem.flows.energidataservice import (
-    get_energidataservice_step_schema,
-    validate_energidataservice_input,
-)
 from custom_components.hsem.flows.ev import get_ev_step_schema, validate_ev_step_input
 from custom_components.hsem.flows.ev_planned_load import (
     get_ev_planned_load_step_schema,
@@ -40,6 +36,10 @@ from custom_components.hsem.flows.months import get_months_schema, validate_mont
 from custom_components.hsem.flows.power import (
     get_power_step_schema,
     validate_power_step_input,
+)
+from custom_components.hsem.flows.prices import (
+    get_prices_step_schema,
+    validate_prices_input,
 )
 from custom_components.hsem.flows.solcast import (
     get_solcast_step_schema,
@@ -73,7 +73,7 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
             errors = await validate_init_step_input(user_input)
             if not errors:
                 self._user_input.update(user_input)
-                return await self.async_step_energidataservice()
+                return await self.async_step_prices()
 
         data_schema = await get_init_step_schema(self._config_entry)
 
@@ -84,19 +84,19 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
             last_step=False,
         )
 
-    async def async_step_energidataservice(self, user_input=None):
+    async def async_step_prices(self, user_input=None):
         errors = {}
 
         if user_input is not None:
-            errors = await validate_energidataservice_input(self.hass, user_input)
+            errors = await validate_prices_input(self.hass, user_input)
             if not errors:
                 self._user_input.update(user_input)
                 return await self.async_step_months()
 
-        data_schema = await get_energidataservice_step_schema(self._config_entry)
+        data_schema = await get_prices_step_schema(self._config_entry)
 
         return self.async_show_form(
-            step_id="energidataservice",
+            step_id="prices",
             data_schema=data_schema,
             errors=errors,
             last_step=False,

@@ -54,7 +54,7 @@ class SensorConfig:
         update_interval: Polling interval in minutes.
         recommendation_interval_minutes: Slot width in minutes (15 or 60).
         recommendation_interval_length: Planning horizon in hours.
-        energi_data_service_update_interval: EDS price update cadence in minutes.
+        electricity_price_update_interval: Price sensor update cadence in minutes (15, 30, or 60).
 
         huawei_solar_device_id_inverter_1: Device ID for inverter 1.
         huawei_solar_device_id_inverter_2: Device ID for inverter 2 (optional).
@@ -79,9 +79,11 @@ class SensorConfig:
         solcast_pv_forecast_forecast_tomorrow: Entity ID for tomorrow's Solcast forecast.
         solcast_pv_forecast_forecast_likelihood: Attribute key for Solcast estimate field.
 
-        energi_data_service_import: Entity ID for the import price sensor.
-        energi_data_service_export: Entity ID for the export price sensor.
-        energi_data_service_export_min_price: Minimum export price to allow grid export.
+        import_electricity_price_sensor: Entity ID for the import price sensor.
+        export_electricity_price_sensor: Entity ID for the export price sensor.
+        import_electricity_price_forecast_sensor: Optional entity ID for a separate import forecast sensor (e.g. Amber Electric).
+        export_electricity_price_forecast_sensor: Optional entity ID for a separate export forecast sensor.
+        export_electricity_min_price: Minimum export price to allow grid export.
 
         ev: First EV charger configuration.
         ev_second_enabled: Whether the second EV charger is active.
@@ -122,7 +124,7 @@ class SensorConfig:
     update_interval: int = 1
     recommendation_interval_minutes: int = 15
     recommendation_interval_length: int = 48
-    energi_data_service_update_interval: int = 15
+    electricity_price_update_interval: int = 15
 
     # Huawei Solar device IDs
     huawei_solar_device_id_inverter_1: str | None = None
@@ -152,10 +154,12 @@ class SensorConfig:
     solcast_pv_forecast_forecast_tomorrow: str | None = None
     solcast_pv_forecast_forecast_likelihood: str = "pv_estimate"
 
-    # Energi Data Service
-    energi_data_service_import: str | None = None
-    energi_data_service_export: str | None = None
-    energi_data_service_export_min_price: float = 0.0
+    # Electricity prices (generic — supports Energi Data Service, Nordpool, Amber Electric, …)
+    import_electricity_price_sensor: str | None = None
+    export_electricity_price_sensor: str | None = None
+    import_electricity_price_forecast_sensor: str | None = None
+    export_electricity_price_forecast_sensor: str | None = None
+    export_electricity_min_price: float = 0.0
 
     # EV chargers
     ev: EVChargerConfig = field(default_factory=EVChargerConfig)

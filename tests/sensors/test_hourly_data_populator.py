@@ -275,9 +275,9 @@ class TestSnapshotPopulation:
         cfg.house_consumption_energy_weight_3d = 30
         cfg.house_consumption_energy_weight_7d = 30
         cfg.house_consumption_energy_weight_14d = 15
-        cfg.energi_data_service_update_interval = 60
-        cfg.energi_data_service_import = "sensor.eds_import"
-        cfg.energi_data_service_export = "sensor.eds_export"
+        cfg.electricity_price_update_interval = 60
+        cfg.import_electricity_price_sensor = "sensor.eds_import"
+        cfg.export_electricity_price_sensor = "sensor.eds_export"
         cfg.solcast_pv_forecast_forecast_today = "sensor.solcast_today"
         cfg.solcast_pv_forecast_forecast_tomorrow = None
         cfg.solcast_pv_forecast_forecast_likelihood = "pv_estimate"

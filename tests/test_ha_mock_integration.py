@@ -634,8 +634,8 @@ class TestMockServiceCalls:
         live.huawei_batteries_max_charge_power_w = 5000.0
         live.huawei_batteries_max_discharge_power_w = 5000.0
         live.house_consumption_power_w = 1200.0
-        live.energi_data_service_import_price = 0.25
-        live.energi_data_service_export_price = 0.15
+        live.import_electricity_price = 0.25
+        live.export_electricity_price = 0.15
 
         cfg = SensorConfig()
         cfg.read_only = True
@@ -871,8 +871,8 @@ class TestEntityStateAfterCoordinatorPush:
         live.huawei_batteries_max_charge_power_w = 5000.0
         live.huawei_batteries_max_discharge_power_w = 5000.0
         live.house_consumption_power_w = 1500.0
-        live.energi_data_service_import_price = 0.30
-        live.energi_data_service_export_price = 0.20
+        live.import_electricity_price = 0.30
+        live.export_electricity_price = 0.20
 
         cfg = SensorConfig()
         cfg.read_only = read_only
@@ -882,8 +882,8 @@ class TestEntityStateAfterCoordinatorPush:
         cfg.batteries_purchase_price = 0.0
         cfg.batteries_expected_cycles = 6000
         cfg.batteries_conversion_loss = 10
-        cfg.energi_data_service_export_min_price = 0.0
-        cfg.energi_data_service_update_interval = 15
+        cfg.export_electricity_min_price = 0.0
+        cfg.electricity_price_update_interval = 15
 
         return CoordinatorData(
             cfg=cfg,
@@ -1220,7 +1220,7 @@ class TestAdditionalDiagnosticSensors:
         coord = make_bare_coordinator(config_entry=config_entry)
         coord.data = self._make_data(
             missing=[
-                "Missing entity: energi_data_service_import",
+                "Missing entity: import_electricity_price_sensor",
                 "Missing entity: solcast_pv_forecast_forecast_today",
             ]
         )
@@ -1229,7 +1229,7 @@ class TestAdditionalDiagnosticSensors:
 
     def test_missing_entities_attrs_contain_list(self) -> None:
         """MissingEntitiesSensor extra_state_attributes must include the label list."""
-        label = "Missing entity: energi_data_service_import"
+        label = "Missing entity: import_electricity_price_sensor"
         config_entry = make_fake_config_entry()
         coord = make_bare_coordinator(config_entry=config_entry)
         coord.data = self._make_data(missing=[label])
@@ -1272,7 +1272,7 @@ class TestAdditionalDiagnosticSensors:
         config_entry = make_fake_config_entry()
         coord = make_bare_coordinator(config_entry=config_entry)
         coord.data = self._make_data(
-            missing=["Missing entity: energi_data_service_import"]
+            missing=["Missing entity: import_electricity_price_sensor"]
         )
         s = HSEMHardwareWritesSensor(config_entry, coord)
         assert s.state == "allowed"

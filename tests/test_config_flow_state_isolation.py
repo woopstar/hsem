@@ -295,10 +295,8 @@ class TestAsyncStepUserPerInstanceState:
                 ),
                 mock.patch.object(
                     flow,
-                    "async_step_energidataservice",
-                    new=AsyncMock(
-                        return_value={"type": "form", "step_id": "energidataservice"}
-                    ),
+                    "async_step_prices",
+                    new=AsyncMock(return_value={"type": "form", "step_id": "prices"}),
                 ),
             ):
                 await flow.async_step_user(user_input=fake_input)
@@ -329,11 +327,11 @@ class TestAsyncStepUserPerInstanceState:
             ),
         ):
             # Patch the next-step on each instance independently.
-            flow_a.async_step_energidataservice = AsyncMock(
-                return_value={"type": "form", "step_id": "energidataservice"}
+            flow_a.async_step_prices = AsyncMock(
+                return_value={"type": "form", "step_id": "prices"}
             )
-            flow_b.async_step_energidataservice = AsyncMock(
-                return_value={"type": "form", "step_id": "energidataservice"}
+            flow_b.async_step_prices = AsyncMock(
+                return_value={"type": "form", "step_id": "prices"}
             )
 
             await flow_a.async_step_user(user_input=input_a)

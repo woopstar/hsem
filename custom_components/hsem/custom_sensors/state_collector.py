@@ -300,16 +300,16 @@ async def async_collect_live_state(
         str(_raw_apc) if _raw_apc is not None else None
     )
 
-    # --- EDS prices ---
-    state.energi_data_service_import_price = (
+    # --- Electricity prices ---
+    state.import_electricity_price = (
         convert_to_float(
-            _read(cfg.energi_data_service_import, "float", 3, label="eds_import")
+            _read(cfg.import_electricity_price_sensor, "float", 3, label="import_price")
         )
         or 0.0
     )
-    state.energi_data_service_export_price = (
+    state.export_electricity_price = (
         convert_to_float(
-            _read(cfg.energi_data_service_export, "float", 3, label="eds_export")
+            _read(cfg.export_electricity_price_sensor, "float", 3, label="export_price")
         )
         or 0.0
     )
@@ -682,15 +682,17 @@ async def async_collect_all_states(
             # sensor accumulates real data, the next read replaces it.
             energy_average_values[eid] = val or 0.0
 
-    # 3. Pre-read EDS and Solcast sensor state objects for attribute access
+    # 3. Pre-read electricity price and Solcast sensor state objects for attribute access
     sensor_attributes: dict[str, dict] = {}
     for entity_id in (
-        cfg.energi_data_service_import,
-        cfg.energi_data_service_export,
+        cfg.import_electricity_price_sensor,
+        cfg.export_electricity_price_sensor,
+        cfg.import_electricity_price_forecast_sensor,
+        cfg.export_electricity_price_forecast_sensor,
         cfg.solcast_pv_forecast_forecast_today,
         cfg.solcast_pv_forecast_forecast_tomorrow,
     ):
-        if entity_id is None:
+        if entity_id is None or not isinstance(entity_id, str):
             continue
         state_obj = sensor.hass.states.get(entity_id)
         if state_obj:

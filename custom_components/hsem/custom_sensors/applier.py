@@ -115,8 +115,8 @@ async def async_apply_inverter_power_control(
         )
         return summary
 
-    export_price = live.energi_data_service_export_price
-    min_price = cfg.energi_data_service_export_min_price
+    export_price = live.export_electricity_price
+    min_price = cfg.export_electricity_min_price
 
     if not isinstance(export_price, (int, float)):
         return summary

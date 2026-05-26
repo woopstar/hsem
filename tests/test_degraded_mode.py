@@ -63,7 +63,7 @@ class TestClassifyDegradedMode:
     @pytest.mark.parametrize(
         "label",
         [
-            "energi_data_service_import",
+            "import_electricity_price_sensor",
             "Missing entity: solcast_pv_forecast",
             "ev_charger_power",
             "Missing entity: ev_second_soc",
@@ -85,7 +85,7 @@ class TestClassifyDegradedMode:
     def test_multiple_non_critical_stays_degraded(self) -> None:
         """Multiple non-critical missing entities still yield Degraded."""
         labels = [
-            "Missing entity: energi_data_service_import",
+            "Missing entity: import_electricity_price_sensor",
             "Missing entity: ev_charger_power",
         ]
         assert classify_degraded_mode(True, labels) is DegradedMode.Degraded
@@ -134,7 +134,7 @@ class TestLiveStateDegradedMode:
     def test_add_non_critical_entity_gives_degraded(self) -> None:
         """Adding a non-critical entity label transitions to Degraded."""
         live = LiveState()
-        live.add_missing_entity("Missing entity: energi_data_service_import")
+        live.add_missing_entity("Missing entity: import_electricity_price_sensor")
         assert live.degraded_mode is DegradedMode.Degraded
 
     def test_add_critical_entity_gives_error(self) -> None:
@@ -151,7 +151,7 @@ class TestLiveStateDegradedMode:
         # First access — OK
         assert live.degraded_mode is DegradedMode.OK
         # Add a non-critical entity
-        live.add_missing_entity("Missing entity: energi_data_service_import")
+        live.add_missing_entity("Missing entity: import_electricity_price_sensor")
         # Cache invalidated → re-evaluated as Degraded
         assert live.degraded_mode is DegradedMode.Degraded
         # Add a critical entity
@@ -185,13 +185,13 @@ class TestPriceMissingTriggersDegraded:
 
     def test_missing_import_price_entity_is_degraded(self) -> None:
         live = LiveState()
-        live.add_missing_entity("Missing entity: energi_data_service_import")
+        live.add_missing_entity("Missing entity: import_electricity_price_sensor")
         assert live.degraded_mode is DegradedMode.Degraded
         assert hardware_writes_allowed(live.degraded_mode) is True
 
     def test_missing_export_price_entity_is_degraded(self) -> None:
         live = LiveState()
-        live.add_missing_entity("Missing entity: energi_data_service_export")
+        live.add_missing_entity("Missing entity: export_electricity_price_sensor")
         assert live.degraded_mode is DegradedMode.Degraded
         assert hardware_writes_allowed(live.degraded_mode) is True
 

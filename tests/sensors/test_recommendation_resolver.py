@@ -55,7 +55,7 @@ def _make_live(
     battery_kwh: float = 5.0,
 ) -> LiveState:
     live = LiveState()
-    live.energi_data_service_import_price = import_price
+    live.import_electricity_price = import_price
     live.ev = EVLiveState(is_charging=ev_charging)
     live.ev_second = EVLiveState(is_charging=ev2_charging)
     live.battery_current_capacity_kwh = battery_kwh

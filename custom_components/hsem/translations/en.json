@@ -150,21 +150,25 @@
         "description": "Configure battery discharge schedules 3, including it's activation time and optional minimum price differences for activation.",
         "title": "Battery Discharge Schedule 3"
       },
-      "energidataservice": {
+      "prices": {
         "data": {
-          "hsem_energi_data_service_export": "Energy Data Service Export Price Sensor",
-          "hsem_energi_data_service_export_min_price": "Export Minimum Price Required",
-          "hsem_energi_data_service_update_interval": "Energy Data Service Export Price Update Interval (minutes)",
-          "hsem_energi_data_service_import": "Energy Data Service Import Price Sensor"
+          "hsem_import_electricity_price_sensor": "Import Electricity Price Sensor",
+          "hsem_export_electricity_price_sensor": "Export Electricity Price Sensor",
+          "hsem_import_electricity_price_forecast_sensor": "Import Electricity Price Forecast Sensor (optional)",
+          "hsem_export_electricity_price_forecast_sensor": "Export Electricity Price Forecast Sensor (optional)",
+          "hsem_export_electricity_min_price": "Export Minimum Price Required",
+          "hsem_electricity_price_update_interval": "Electricity Price Update Interval (minutes)"
         },
         "data_description": {
-          "hsem_energi_data_service_export": "Select the sensor that provides export prices from your Energy Data Service integration.",
-          "hsem_energi_data_service_export_min_price": "Set the minimum price for export from your Energy Data Service integration.",
-          "hsem_energi_data_service_update_interval": "Set the update interval in minutes from your Energy Data Service integration.",
-          "hsem_energi_data_service_import": "Select the sensor that provides import prices from your Energy Data Service integration."
+          "hsem_import_electricity_price_sensor": "Select the sensor that provides import electricity prices (e.g. Energi Data Service, Nordpool, Amber Electric).",
+          "hsem_export_electricity_price_sensor": "Select the sensor that provides export electricity prices.",
+          "hsem_import_electricity_price_forecast_sensor": "Optional: select a separate sensor for import price forecasts (used by Amber Electric and similar integrations).",
+          "hsem_export_electricity_price_forecast_sensor": "Optional: select a separate sensor for export price forecasts.",
+          "hsem_export_electricity_min_price": "Set the minimum export price. Exports below this price will be blocked.",
+          "hsem_electricity_price_update_interval": "How often your price sensor provides new data (15, 30, or 60 minutes)."
         },
-        "description": "Select energy data services for HSEM.",
-        "title": "Energy Data Service Sensors"
+        "description": "Configure your electricity price sensors for import and export pricing.",
+        "title": "Electricity Prices"
       },
       "ev": {
         "data": {
@@ -529,21 +533,25 @@
         "description": "Configure battery discharge schedules 3, including it's activation time and optional minimum price differences for activation.",
         "title": "Battery Discharge Schedule 3"
       },
-      "energidataservice": {
+      "prices": {
         "data": {
-          "hsem_energi_data_service_export": "Energy Data Service Export Price Sensor",
-          "hsem_energi_data_service_export_min_price": "Export Minimum Price Required",
-          "hsem_energi_data_service_update_interval": "Energy Data Service Export Price Update Interval (minutes)",
-          "hsem_energi_data_service_import": "Energy Data Service Import Price Sensor"
+          "hsem_import_electricity_price_sensor": "Import Electricity Price Sensor",
+          "hsem_export_electricity_price_sensor": "Export Electricity Price Sensor",
+          "hsem_import_electricity_price_forecast_sensor": "Import Electricity Price Forecast Sensor (optional)",
+          "hsem_export_electricity_price_forecast_sensor": "Export Electricity Price Forecast Sensor (optional)",
+          "hsem_export_electricity_min_price": "Export Minimum Price Required",
+          "hsem_electricity_price_update_interval": "Electricity Price Update Interval (minutes)"
         },
         "data_description": {
-          "hsem_energi_data_service_export": "Select the sensor that provides export prices from your Energy Data Service integration.",
-          "hsem_energi_data_service_export_min_price": "Set the minimum price for export from your Energy Data Service integration.",
-          "hsem_energi_data_service_update_interval": "Set the update interval in minutes from your Energy Data Service integration.",
-          "hsem_energi_data_service_import": "Select the sensor that provides import prices from your Energy Data Service integration."
+          "hsem_import_electricity_price_sensor": "Select the sensor that provides import electricity prices (e.g. Energi Data Service, Nordpool, Amber Electric).",
+          "hsem_export_electricity_price_sensor": "Select the sensor that provides export electricity prices.",
+          "hsem_import_electricity_price_forecast_sensor": "Optional: select a separate sensor for import price forecasts (used by Amber Electric and similar integrations).",
+          "hsem_export_electricity_price_forecast_sensor": "Optional: select a separate sensor for export price forecasts.",
+          "hsem_export_electricity_min_price": "Set the minimum export price. Exports below this price will be blocked.",
+          "hsem_electricity_price_update_interval": "How often your price sensor provides new data (15, 30, or 60 minutes)."
         },
-        "description": "Select energy data services for HSEM.",
-        "title": "Energy Data Service Sensors"
+        "description": "Configure your electricity price sensors for import and export pricing.",
+        "title": "Electricity Prices"
       },
       "ev": {
         "data": {

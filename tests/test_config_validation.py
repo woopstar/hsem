@@ -784,41 +784,34 @@ class TestFlowValidatorsUseConfigValidator:
         assert errors == {}
 
     @pytest.mark.asyncio
-    async def test_validate_energidataservice_invalid_price(self):
-        from custom_components.hsem.flows.energidataservice import (
-            validate_energidataservice_input,
-        )
+    async def test_validate_prices_invalid_price(self):
+        from custom_components.hsem.flows.prices import validate_prices_input
 
         hass = _hass_with_states("sensor.import", "sensor.export")
         # Price outside [-2, 2] range
-        errors = await validate_energidataservice_input(
+        errors = await validate_prices_input(
             hass,
             {
-                "hsem_energi_data_service_import": "sensor.import",
-                "hsem_energi_data_service_export": "sensor.export",
-                "hsem_energi_data_service_export_min_price": 99.9,
-                "hsem_energi_data_service_update_interval": "15",
+                "hsem_import_electricity_price_sensor": "sensor.import",
+                "hsem_export_electricity_price_sensor": "sensor.export",
+                "hsem_export_electricity_min_price": 99.9,
+                "hsem_electricity_price_update_interval": "15",
             },
         )
-        assert (
-            errors.get("hsem_energi_data_service_export_min_price")
-            == "price_out_of_range"
-        )
+        assert errors.get("hsem_export_electricity_min_price") == "price_out_of_range"
 
     @pytest.mark.asyncio
-    async def test_validate_energidataservice_valid(self):
-        from custom_components.hsem.flows.energidataservice import (
-            validate_energidataservice_input,
-        )
+    async def test_validate_prices_valid(self):
+        from custom_components.hsem.flows.prices import validate_prices_input
 
         hass = _hass_with_states("sensor.import", "sensor.export")
-        errors = await validate_energidataservice_input(
+        errors = await validate_prices_input(
             hass,
             {
-                "hsem_energi_data_service_import": "sensor.import",
-                "hsem_energi_data_service_export": "sensor.export",
-                "hsem_energi_data_service_export_min_price": -0.05,
-                "hsem_energi_data_service_update_interval": "15",
+                "hsem_import_electricity_price_sensor": "sensor.import",
+                "hsem_export_electricity_price_sensor": "sensor.export",
+                "hsem_export_electricity_min_price": -0.05,
+                "hsem_electricity_price_update_interval": "15",
             },
         )
         assert errors == {}
