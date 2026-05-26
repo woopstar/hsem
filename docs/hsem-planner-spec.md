@@ -68,7 +68,7 @@ in the same layer must not change it.
 **Opportunistic grid charge** (outside any schedule):
 
 1. Import price < 0 → `batteries_charge_grid`
-2. Import price ≤ depreciation threshold − cycle cost → `batteries_charge_grid`
+2. Import price ≤ depreciation + conversion loss threshold − cycle cost → `batteries_charge_grid`
 
 **Excess export** (only when enabled):
 
