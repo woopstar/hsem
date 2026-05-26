@@ -119,26 +119,29 @@ All other fields have sensible defaults (target SoC 80 %, deadline 07:00, effici
 
 ## Double-counting
 
-The `base_load_includes_ev` flag controls whether the planner adds the EV's planned load
-on top of the house consumption sensor reading.
+The planner's `base_load_includes_ev` flag is automatically derived from the
+`hsem_house_power_includes_ev_charger_power` setting in the EV charger config step.
+You do **not** need to set it separately.
 
-**What CT clamp position determines this setting:**
+**How your CT clamp position determines the setting in the EV step:**
 
 ```
 Scenario A — CT clamp UPSTREAM of the EVSE (includes EV power):
   house_consumption_sensor = lights + appliances + EV charger
-  → base_load_includes_ev = True
+  → Set hsem_house_power_includes_ev_charger_power = True
+  → base_load_includes_ev is auto-derived as True
   → HSEM does NOT add ev_planned_load_kwh again
 
 Scenario B — CT clamp DOWNSTREAM of the EVSE (excludes EV power):
   house_consumption_sensor = lights + appliances only
-  → base_load_includes_ev = False  (default)
+  → Set hsem_house_power_includes_ev_charger_power = False
+  → base_load_includes_ev is auto-derived as False
   → HSEM adds ev_planned_load_kwh to net consumption
 ```
 
 If you are unsure, plug the EV in and watch the house consumption sensor. If it rises
-by the charger power when charging starts, set this to `True`. If it stays flat,
-set it to `False`.
+by the charger power when charging starts, set `hsem_house_power_includes_ev_charger_power`
+to `True` in the EV charger step. If it stays flat, set it to `False`.
 
 ---
 

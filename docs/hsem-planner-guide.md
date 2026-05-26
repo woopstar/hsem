@@ -209,7 +209,7 @@ All fields are prefixed `ev_planned_load_`.
 | `ev_planned_load_charger_power_kw` | `0.0` | Charger AC output power (kW) |
 | `ev_planned_load_charger_efficiency_pct` | `100.0` | Charger efficiency (%) — energy delivered to EV / AC draw |
 | `ev_planned_load_deadline` | `None` | Timezone-aware datetime by which charging must be complete |
-| `ev_planned_load_base_load_includes_ev` | `False` | Set `True` when the house consumption sensor already includes EV power (prevents double-counting) |
+| `ev_planned_load_base_load_includes_ev` | Auto (derived) | Automatically derived from the `hsem_house_power_includes_ev_charger_power` setting in the EV charger config step. When that is `True`, this is `True` (EV load already in the house consumption data). |
 
 ### EV planned load — second EV
 
@@ -227,7 +227,7 @@ primary EV fields above:
 | `ev_second_planned_load_charger_power_kw` | `0.0` | Charger AC output power (kW) |
 | `ev_second_planned_load_charger_efficiency_pct` | `100.0` | Charger efficiency (%) |
 | `ev_second_planned_load_deadline` | `None` | Timezone-aware charging deadline |
-| `ev_second_planned_load_base_load_includes_ev` | `False` | Prevent double-counting when house load includes second EV |
+| `ev_second_planned_load_base_load_includes_ev` | Auto (derived) | Automatically derived from the global `hsem_house_power_includes_ev_charger_power` setting — same value as the primary EV. |
 
 ---
 

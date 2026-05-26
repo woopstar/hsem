@@ -266,7 +266,7 @@ def build_planner_input(
         or 100.0,
         ev_planned_load_deadline=live.ev_planned_load_deadline,
         ev_planned_load_base_load_includes_ev=bool(
-            cfg.ev_planned_load_base_load_includes_ev
+            cfg.house_power_includes_ev_charger_power
         ),
         # Second EV planned load
         ev_second_planned_load_enabled=bool(cfg.ev_second_planned_load_enabled),
@@ -296,7 +296,7 @@ def build_planner_input(
         or 100.0,
         ev_second_planned_load_deadline=live.ev_second_planned_load_deadline,
         ev_second_planned_load_base_load_includes_ev=bool(
-            cfg.ev_second_planned_load_base_load_includes_ev
+            cfg.house_power_includes_ev_charger_power
         ),
         time_discount_rate=0.995,
         # Planner hysteresis (issue #372)

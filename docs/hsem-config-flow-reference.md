@@ -115,7 +115,7 @@ Primary EV planned load integration (optional, default disabled).
 | Battery capacity | `hsem_ev_planned_load_battery_capacity_kwh` | 0.0 | EV battery nameplate capacity (kWh) |
 | Charger power | `hsem_ev_planned_load_charger_power_kw` | 0.0 | Charger AC output (kW) |
 | Charger efficiency | `hsem_ev_planned_load_charger_efficiency` | 100 % | Charger efficiency |
-| Base includes EV | `hsem_ev_planned_load_base_load_includes_ev` | `False` | Prevent double-counting |
+
 
 ### Step: `batteries_schedule_1/2/3`
 

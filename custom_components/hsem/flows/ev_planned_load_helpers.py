@@ -146,10 +146,6 @@ async def build_ev_planned_load_schema(config_entry, prefix: str) -> vol.Schema:
                 _k("charger_efficiency"),
                 default=_v("charger_efficiency"),
             ): _EFFICIENCY_SELECTOR,
-            vol.Required(
-                _k("base_load_includes_ev"),
-                default=_v("base_load_includes_ev"),
-            ): selector({"boolean": {}}),
         }
     )
 

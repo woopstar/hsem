@@ -82,12 +82,16 @@ in the same layer must not change it.
 4. Winter month → `batteries_wait_mode`
 5. Summer month, solar surplus → `batteries_charge_solar`; else → `batteries_discharge_mode`
 
-#### Layer 2 — EV planned load labelling (post-simulation)
+### Layer 2 — EV planned load labelling (post-simulation)
 
 After the final SoC simulation, slots with `ev_total_planned_load_kwh > 0` are relabelled.
 `ev_total_planned_load_kwh` is used (not `ev_planned_load_kwh`) so that EV-scheduled
 slots are correctly labelled even when `base_load_includes_ev = True`, where
 `ev_planned_load_kwh` is `0.0` but EV charging is still planned.
+
+`base_load_includes_ev` is automatically derived from the
+`hsem_house_power_includes_ev_charger_power` setting in the EV charger config step.
+There is no separate user input for it.
 
 - `batteries_charge_solar` → `ev_smart_charging`
 - `batteries_wait_mode` → `ev_smart_charging`
@@ -765,6 +769,12 @@ carry the day+2 gap lists for 72-hour horizon runs.
 - `DataQuality.is_complete` is ``False`` when any future-day data is missing.
 
 ## EV planned load integration
+
+`base_load_includes_ev` is automatically derived from the
+`hsem_house_power_includes_ev_charger_power` setting in the EV charger config step.
+When the house consumption sensor includes EV charger power, `base_load_includes_ev`
+is `True` (EV load is already in the base consumption averages). Otherwise it is `False`.
+There is no separate user-facing configuration for this field.
 
 ### EV load field semantics
 
