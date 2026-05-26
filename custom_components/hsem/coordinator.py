@@ -127,6 +127,9 @@ class CoordinatorData:
     ev_charging_plan: EVChargingPlan | None = None
     #: EV optimal charging plan for the second EV (None when disabled).
     ev_second_charging_plan: EVChargingPlan | None = None
+    #: ISO-format timestamp of the override expiry, or None when no timed
+    #: override is active (issue #317).
+    override_expiry: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -222,6 +225,11 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         self._forecast_tracker: ForecastTracker = ForecastTracker(max_slots=192)
         # Timestamp of the last actual-energy accumulation cycle.
         self._last_accumulation_ts: datetime | None = None
+        # Override expiry timestamp for timed manual overrides (issue #317).
+        # Set by set_temporary_override when duration_minutes is provided.
+        # Checked on every update cycle; when expired, the override is cleared
+        # automatically and the planner resumes control.
+        self._override_expiry: datetime | None = None
 
     # ------------------------------------------------------------------
     # HA lifecycle
@@ -313,6 +321,41 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             self._listener_unsubs.extend(new_unsubs)
             self._live = self._snapshot.live
             live = self._live
+
+            # -----------------------------------------------------------------------
+            # Override expiry check (issue #317)
+            # -----------------------------------------------------------------------
+            # When a timed override was set via set_temporary_override with
+            # duration_minutes, check if it has expired.  If so, auto-clear the
+            # select entity back to "auto" so the planner resumes control.
+            #
+            # Also handle the case where the user manually cleared the override
+            # before the expiry — clean up the stored expiry in that case too.
+            if self._override_expiry is not None:
+                if now >= self._override_expiry:
+                    await async_logger(
+                        self,
+                        "Timed override EXPIRED — clearing select entity to 'auto'.",
+                    )
+                    # Fire-and-forget: set the select entity back to "auto".
+                    await self.hass.services.async_call(
+                        "select",
+                        "select_option",
+                        {
+                            "entity_id": live.force_working_mode,
+                            "option": "auto",
+                        },
+                        blocking=True,
+                    )
+                    live.force_working_mode_state = "auto"
+                    self._override_expiry = None
+                elif live.force_working_mode_state == "auto":
+                    # User manually cleared before expiry — remove the tracking.
+                    await async_logger(
+                        self,
+                        "Override manually cleared before expiry — removing expiry tracking.",
+                    )
+                    self._override_expiry = None
 
             # 3. Reset and generate recommendation time-slots.
             self._hourly_recommendation = None
@@ -527,6 +570,11 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             data_quality=self._data_quality,
             ev_charging_plan=self._ev_charging_plan,
             ev_second_charging_plan=self._ev_second_charging_plan,
+            override_expiry=(
+                self._override_expiry.isoformat()
+                if self._override_expiry is not None
+                else None
+            ),
         )
 
         # Notify all subscriber entities atomically.

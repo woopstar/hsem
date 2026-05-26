@@ -114,17 +114,19 @@ class HSEMForceModeSensor(
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return whether the override is active and the resolved entity ID."""
+        """Return the override state, expiry, and resolved entity ID."""
         data: CoordinatorData | None = self.coordinator.data
         if data is None or data.live is None:
             return {
                 "override_active": False,
                 "force_mode_entity_id": None,
+                "override_expiry": None,
             }
         live = data.live
         return {
             "override_active": live.is_forced_mode,
             "force_mode_entity_id": live.force_working_mode,
+            "override_expiry": data.override_expiry,
         }
 
     # ------------------------------------------------------------------

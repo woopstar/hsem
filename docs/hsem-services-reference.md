@@ -48,6 +48,8 @@ ignored.
 | Field | Required | Type | Description |
 |---|---|---|---|
 | `working_mode` | Yes | Select | One of the supported override modes |
+| `duration_minutes` | No | Integer (1–1440) | Minutes until override auto-expires; planner resumes after expiry |
+
 
 **Supported override modes:**
 
@@ -64,14 +66,30 @@ ignored.
 **Implementation notes:**
 - Writes the mode to the `select.hsem_force_working_mode` entity
 - Triggers an immediate recalculation after setting
-- The override persists until `hsem.clear_override` is called or the select is manually set to `"auto"`
+- When `duration_minutes` is omitted, the override persists until `hsem.clear_override` is called or the select is manually set to `"auto"`
+- When `duration_minutes` is provided, the override auto-expires after the specified duration and the planner resumes control automatically
 
-**Example:**
+
+**Examples:**
 ```yaml
+# Override without expiry — persists until cleared
 service: hsem.set_temporary_override
 data:
   working_mode: batteries_discharge_mode
+
+# Timed override — auto-expires after 30 minutes
+service: hsem.set_temporary_override
+data:
+  working_mode: batteries_charge_grid
+  duration_minutes: 30
+
+# One-hour idle override
+service: hsem.set_temporary_override
+data:
+  working_mode: batteries_wait_mode
+  duration_minutes: 60
 ```
+
 
 ---
 
@@ -121,7 +139,7 @@ response_variable: diagnostics_result
 
 ## Automation examples
 
-### Disable battery discharging during expensive evening hours
+### Disable battery discharging during expensive evening hours (with auto-expiry)
 
 ```yaml
 alias: "HSEM: Prevent discharge during peak"
@@ -132,6 +150,21 @@ action:
   - service: hsem.set_temporary_override
     data:
       working_mode: batteries_wait_mode
+      duration_minutes: 480  # auto-resume at midnight
+```
+
+### Force charge for the next hour ahead of a known price spike
+
+```yaml
+alias: "HSEM: Pre-charge before price spike"
+trigger:
+  - platform: time
+    at: "06:00:00"
+action:
+  - service: hsem.set_temporary_override
+    data:
+      working_mode: batteries_charge_grid
+      duration_minutes: 60
 ```
 
 ### Return to automatic control at midnight

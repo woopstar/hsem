@@ -62,6 +62,10 @@ SCHEMA_FORCE_RECALCULATION = vol.Schema({})
 SCHEMA_SET_TEMPORARY_OVERRIDE = vol.Schema(
     {
         vol.Required("working_mode"): vol.In(SUPPORTED_OVERRIDE_MODES),
+        vol.Optional("duration_minutes"): vol.All(
+            vol.Coerce(int),
+            vol.Range(min=1, max=1440),
+        ),
     }
 )
 
@@ -133,13 +137,15 @@ async def async_handle_set_temporary_override(
 
     Args:
         hass: The Home Assistant instance.
-        call: The service call with ``working_mode`` key in ``data``.
+        call: The service call with ``working_mode`` key in ``data``
+            and optional ``duration_minutes`` key.
 
     Raises:
         HomeAssistantError: When the select entity cannot be found or the
             service call fails.
     """
     working_mode: str = call.data["working_mode"]
+    duration_minutes: int | None = call.data.get("duration_minutes")
     entity_id = get_force_working_mode_selector_entity_id()
 
     # Verify the entity exists before making the service call.
@@ -162,9 +168,25 @@ async def async_handle_set_temporary_override(
         blocking=True,
     )
 
-    # Trigger a recalculation so the override takes effect immediately.
+    # Store the override expiry on the coordinator if a duration was provided.
     coordinator = _get_coordinator(hass)
     if coordinator is not None:
+        if duration_minutes is not None:
+            from datetime import timedelta
+
+            from custom_components.hsem.utils.datetime_utils import now as hsem_now
+
+            coordinator._override_expiry = hsem_now() + timedelta(
+                minutes=duration_minutes
+            )
+            _LOGGER.info(
+                "HSEM service: set_temporary_override — mode='%s' will expire at %s.",
+                working_mode,
+                coordinator._override_expiry.isoformat(),
+            )
+        else:
+            coordinator._override_expiry = None
+
         await coordinator._async_handle_update(None)  # noqa: SLF001
 
     _LOGGER.info(
@@ -205,9 +227,10 @@ async def async_handle_clear_override(
         blocking=True,
     )
 
-    # Trigger a recalculation so the planner takes over again immediately.
+    # Clear any stored override expiry so the override does not linger.
     coordinator = _get_coordinator(hass)
     if coordinator is not None:
+        coordinator._override_expiry = None  # noqa: SLF001
         await coordinator._async_handle_update(None)  # noqa: SLF001
 
     _LOGGER.info("HSEM service: clear_override completed.")
