@@ -35,14 +35,6 @@ class TestExcessExportDefaults:
         )
         assert value == 10
 
-    def test_price_threshold_is_numeric(self):
-        """Price threshold default must be a non-False float (0.10 EUR/kWh)."""
-        value = DEFAULT_CONFIG_VALUES["hsem_batteries_excess_export_price_threshold"]
-        assert isinstance(value, (int, float)), (
-            "Default price threshold must be numeric, not a boolean False."
-        )
-        assert value == pytest.approx(0.10)
-
     def test_purchase_price_default(self):
         """Battery purchase price must default to 0.0 (not configured yet)."""
         assert DEFAULT_CONFIG_VALUES["hsem_batteries_purchase_price"] == pytest.approx(
@@ -156,7 +148,12 @@ class TestCalculateRecommendedThreshold:
 
 
 class TestValidateBatteriesExcessExportInput:
-    """Unit tests for the config-flow input validator."""
+    """Unit tests for the config-flow input validator.
+
+    The price threshold is no longer a manual input — it is auto-calculated
+    at runtime from battery depreciation parameters.  Only the discharge
+    buffer field is validated here.
+    """
 
     @pytest.mark.asyncio
     async def test_valid_input_produces_no_errors(self):
@@ -164,7 +161,6 @@ class TestValidateBatteriesExcessExportInput:
         user_input = {
             "hsem_batteries_enable_excess_export": True,
             "hsem_batteries_excess_export_discharge_buffer": 10,
-            "hsem_batteries_excess_export_price_threshold": 0.10,
         }
         errors = await validate_batteries_excess_export_input(user_input)
         assert errors == {}
@@ -175,7 +171,6 @@ class TestValidateBatteriesExcessExportInput:
         user_input = {
             "hsem_batteries_enable_excess_export": False,
             "hsem_batteries_excess_export_discharge_buffer": 0,
-            "hsem_batteries_excess_export_price_threshold": 0.0,
         }
         errors = await validate_batteries_excess_export_input(user_input)
         assert errors == {}
@@ -186,7 +181,6 @@ class TestValidateBatteriesExcessExportInput:
         user_input = {
             "hsem_batteries_enable_excess_export": False,
             "hsem_batteries_excess_export_discharge_buffer": 50,
-            "hsem_batteries_excess_export_price_threshold": 0.0,
         }
         errors = await validate_batteries_excess_export_input(user_input)
         assert errors == {}
@@ -197,7 +191,6 @@ class TestValidateBatteriesExcessExportInput:
         user_input = {
             "hsem_batteries_enable_excess_export": True,
             "hsem_batteries_excess_export_discharge_buffer": 51,
-            "hsem_batteries_excess_export_price_threshold": 0.10,
         }
         errors = await validate_batteries_excess_export_input(user_input)
         assert "hsem_batteries_excess_export_discharge_buffer" in errors
@@ -208,32 +201,9 @@ class TestValidateBatteriesExcessExportInput:
         user_input = {
             "hsem_batteries_enable_excess_export": True,
             "hsem_batteries_excess_export_discharge_buffer": -1,
-            "hsem_batteries_excess_export_price_threshold": 0.10,
         }
         errors = await validate_batteries_excess_export_input(user_input)
         assert "hsem_batteries_excess_export_discharge_buffer" in errors
-
-    @pytest.mark.asyncio
-    async def test_price_threshold_at_zero_is_valid(self):
-        """Price threshold of 0.0 (export any positive price) must be valid."""
-        user_input = {
-            "hsem_batteries_enable_excess_export": True,
-            "hsem_batteries_excess_export_discharge_buffer": 10,
-            "hsem_batteries_excess_export_price_threshold": 0.0,
-        }
-        errors = await validate_batteries_excess_export_input(user_input)
-        assert errors == {}
-
-    @pytest.mark.asyncio
-    async def test_price_threshold_negative_is_invalid(self):
-        """Negative price threshold must be rejected."""
-        user_input = {
-            "hsem_batteries_enable_excess_export": True,
-            "hsem_batteries_excess_export_discharge_buffer": 10,
-            "hsem_batteries_excess_export_price_threshold": -0.01,
-        }
-        errors = await validate_batteries_excess_export_input(user_input)
-        assert "hsem_batteries_excess_export_price_threshold" in errors
 
     @pytest.mark.asyncio
     async def test_float_buffer_is_accepted(self):
@@ -241,7 +211,6 @@ class TestValidateBatteriesExcessExportInput:
         user_input = {
             "hsem_batteries_enable_excess_export": True,
             "hsem_batteries_excess_export_discharge_buffer": 10.5,
-            "hsem_batteries_excess_export_price_threshold": 0.10,
         }
         errors = await validate_batteries_excess_export_input(user_input)
         assert errors == {}

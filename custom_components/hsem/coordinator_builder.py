@@ -29,7 +29,11 @@ from custom_components.hsem.models.planner_inputs import (
 )
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.utils.datetime_utils import now as hsem_now
-from custom_components.hsem.utils.misc import convert_to_float, convert_to_int
+from custom_components.hsem.utils.misc import (
+    calculate_recommended_threshold,
+    convert_to_float,
+    convert_to_int,
+)
 
 # ---------------------------------------------------------------------------
 # Public API
@@ -221,10 +225,15 @@ def build_planner_input(
             cfg.batteries_excess_export_discharge_buffer
         )
         or 10.0,
-        excess_export_price_threshold=convert_to_float(
-            cfg.batteries_excess_export_price_threshold
-        )
-        or 0.10,
+        excess_export_price_threshold=calculate_recommended_threshold(
+            purchase_price=convert_to_float(cfg.batteries_purchase_price) or 0.0,
+            expected_cycles=(
+                v
+                if (v := convert_to_int(cfg.batteries_expected_cycles)) is not None
+                else 6000
+            ),
+            usable_capacity=live.battery_usable_capacity_kwh,
+        ),
         export_min_price=convert_to_float(cfg.export_electricity_min_price) or 0.0,
         months_winter=list(cfg.months_winter or []),
         house_power_includes_ev=bool(cfg.house_power_includes_ev_charger_power),

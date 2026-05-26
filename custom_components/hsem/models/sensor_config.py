@@ -106,7 +106,6 @@ class SensorConfig:
 
         batteries_enable_excess_export: Enable opportunistic forced-discharge export.
         batteries_excess_export_discharge_buffer: Safety buffer percentage to keep.
-        batteries_excess_export_price_threshold: Minimum price delta to trigger export.
 
         months_winter: List of month integers (1-12) treated as winter.
         months_summer: List of month integers (1-12) treated as summer.
@@ -190,7 +189,6 @@ class SensorConfig:
     # Excess export
     batteries_enable_excess_export: bool = False
     batteries_excess_export_discharge_buffer: float = 10.0
-    batteries_excess_export_price_threshold: float = 0.10
 
     # EV planned load integration — primary EV (optional, disabled by default)
     ev_planned_load_enabled: bool = False

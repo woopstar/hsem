@@ -184,7 +184,7 @@ The pre-charge window ends at `schedule.start` and is sized to fill the battery 
 |---|---|---|
 | `excess_export_enabled` | `False` | Enable forced battery → grid export during high-price slots |
 | `excess_export_discharge_buffer_pct` | `10.0` | Safety SoC buffer kept before forced export |
-| `excess_export_price_threshold` | `0.10` | Minimum export price to trigger forced export (local currency/kWh) |
+| `excess_export_price_threshold` | Auto-calculated | Computed at runtime from battery depreciation settings (purchase price, expected cycles, usable capacity) via `calculate_recommended_threshold()`. |
 | `export_min_price` | `0.0` | Below this export price the inverter throttles export to zero |
 
 ### Seasonal configuration

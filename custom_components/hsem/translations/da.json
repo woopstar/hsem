@@ -29,13 +29,11 @@
       "batteries_excess_export": {
         "data": {
           "hsem_batteries_enable_excess_export": "Aktiver overskuds-eksport",
-          "hsem_batteries_excess_export_discharge_buffer": "Afladningsbuffer (%)",
-          "hsem_batteries_excess_export_price_threshold": "Pristskel (EUR/kWh)"
+          "hsem_batteries_excess_export_discharge_buffer": "Afladningsbuffer (%)"
         },
         "data_description": {
           "hsem_batteries_enable_excess_export": "Aktiver eller deaktiver eksport af overskydende batterikapacitet til nettet, når det er økonomisk fordelagtigt.",
-          "hsem_batteries_excess_export_discharge_buffer": "Indstil sikkerhedsbufferprocenten for at opretholde minimum batterireserver (0-50%). Standard er 10% for at sikre tilstrækkelig kapacitet til uventet efterspørgsel.",
-          "hsem_batteries_excess_export_price_threshold": "Indstil den mindste prisforskel (i EUR/kWh), der kræves for eksport af netopladet batterienergi. Solopladet batteri eksporteres til enhver positiv pris."
+          "hsem_batteries_excess_export_discharge_buffer": "Indstil sikkerhedsbufferprocenten for at opretholde minimum batterireserver (0-50%). Standard er 10% for at sikre tilstrækkelig kapacitet til uventet efterspørgsel."
         },
         "description": "Konfigurer indstillinger for eksport af overskydende batterikapacitet til nettet, når det er økonomisk fordelagtigt.",
         "title": "Overskuds-eksport"

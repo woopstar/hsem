@@ -26,7 +26,6 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_batteries_discharge_efficiency": 95,
     "hsem_batteries_enable_excess_export": False,
     "hsem_batteries_excess_export_discharge_buffer": 10,
-    "hsem_batteries_excess_export_price_threshold": 0.10,
     "hsem_batteries_purchase_price": 0.0,
     "hsem_batteries_expected_cycles": 6000,
     "hsem_batteries_cycle_cost": 0.0,

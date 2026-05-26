@@ -138,7 +138,8 @@ Excess battery export configuration.
 |---|---|---|---|
 | Enable excess export | `hsem_batteries_enable_excess_export` | `False` | Master switch |
 | Discharge buffer | `hsem_batteries_excess_export_discharge_buffer` | 10 % | Safety SoC buffer before forced export |
-| Price threshold | `hsem_batteries_excess_export_price_threshold` | 0.10 | Minimum export price to trigger |
+| Price threshold | — | Auto-calculated | Computed from battery depreciation settings at runtime |
+
 
 ### Step: `weighted_values`
 

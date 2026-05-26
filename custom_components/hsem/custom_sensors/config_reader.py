@@ -353,14 +353,6 @@ def build_sensor_config(config_entry) -> SensorConfig:
         )
         or 10.0
     )
-    cfg.batteries_excess_export_price_threshold = (
-        convert_to_float(
-            get_config_value(
-                config_entry, "hsem_batteries_excess_export_price_threshold"
-            )
-        )
-        or 0.10
-    )
 
     # EV planned load integration
     cfg.ev_planned_load_enabled = convert_to_boolean(
