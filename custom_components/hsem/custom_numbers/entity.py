@@ -17,9 +17,8 @@ from __future__ import annotations
 
 from homeassistant.components.number import NumberEntity, NumberEntityDescription
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfPercent
+from homeassistant.const import PERCENTAGE, EntityCategory
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import EntityCategory
 
 from custom_components.hsem.entity import HSEMEntity
 from custom_components.hsem.utils.misc import convert_to_float, get_config_value
@@ -37,7 +36,7 @@ class HSEMBatteryEfficiencyNumber(NumberEntity, HSEMEntity):
     _attr_native_min_value = 50.0
     _attr_native_max_value = 100.0
     _attr_native_step = 1.0
-    _attr_native_unit_of_measurement = UnitOfPercent
+    _attr_native_unit_of_measurement = PERCENTAGE
     _attr_entity_category = EntityCategory.CONFIG
     _attr_icon = "mdi:battery-high"
 
