@@ -269,13 +269,13 @@ def build_sensor_config(config_entry) -> SensorConfig:
         convert_to_float(
             get_config_value(config_entry, "hsem_batteries_charge_efficiency")
         )
-        or 95.0
+        or 98.0
     )
     cfg.batteries_discharge_efficiency = (
         convert_to_float(
             get_config_value(config_entry, "hsem_batteries_discharge_efficiency")
         )
-        or 95.0
+        or 98.0
     )
     cfg.batteries_purchase_price = (
         convert_to_float(

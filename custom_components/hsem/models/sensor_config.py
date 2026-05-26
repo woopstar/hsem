@@ -166,8 +166,8 @@ class SensorConfig:
     ev_second: EVChargerConfig = field(default_factory=EVChargerConfig)
 
     # Battery economics
-    batteries_charge_efficiency: float = 97.0
-    batteries_discharge_efficiency: float = 97.0
+    batteries_charge_efficiency: float = 98.0
+    batteries_discharge_efficiency: float = 98.0
     batteries_purchase_price: float = 0.0
     batteries_expected_cycles: int = 6000
     #: User-configured per-kWh cycle cost. When > 0 it is added directly to

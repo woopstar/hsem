@@ -187,6 +187,12 @@ def _schedule_slots(
     dd = inp.battery_discharge_efficiency_pct / 100.0
     rlp = (1.0 - cd * dd) * 100.0
     mcphi = (inp.battery_max_charge_power_w / 1000 * cd) / (60 / inp.interval_minutes)
+    # `rt` already includes conversion loss from calculate_recommended_threshold().
+    # For `apply_arbitrage_grid_charge` we need the depreciation-only portion
+    # because that pass adds its own price-proportional conversion loss via
+    # `conversion_loss_pct`.  Recompute the fixed add-on to subtract it.
+    conv_loss_addon = 1.0 / (cd * dd) - 1.0 if cd > 0 and dd > 0 else 0.0
+    rt_depr = max(rt - conv_loss_addon, 0.0)
     apply_charge_schedules(
         slots,
         inp.battery_schedules,
@@ -215,7 +221,7 @@ def _schedule_slots(
         mcphi,
         conversion_loss_pct=rlp,
         cycle_cost_per_kwh=inp.battery_cycle_cost_per_kwh,
-        recommended_threshold=rt,
+        recommended_threshold=rt_depr,
     )
     mcps = (inp.battery_max_charge_power_w / 1000 * cd) / (60 / inp.interval_minutes)
     mdps: float | None = None
@@ -529,6 +535,8 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         purchase_price=inp.battery_purchase_price,
         expected_cycles=inp.battery_expected_cycles,
         usable_capacity=usable_kwh,
+        charge_efficiency_pct=inp.battery_charge_efficiency_pct,
+        discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
     )
     if rt > 0:
         warnings.append(

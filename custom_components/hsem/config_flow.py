@@ -12,6 +12,10 @@ from custom_components.hsem.flows.batteries_schedules import (
     get_batteries_schedules_step_schema,
     validate_batteries_schedules_input,
 )
+from custom_components.hsem.flows.battery_economics import (
+    get_battery_economics_step_schema,
+    validate_battery_economics_input,
+)
 from custom_components.hsem.flows.ev import get_ev_step_schema, validate_ev_step_input
 from custom_components.hsem.flows.ev_planned_load import (
     get_ev_planned_load_step_schema,
@@ -184,12 +188,30 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
                     "hsem_ev_charger_power", None
                 )
 
-                return await self.async_step_power()
+                return await self.async_step_battery_economics()
 
         data_schema = await get_huawei_solar_step_schema(None)
 
         return self.async_show_form(
             step_id="huawei_solar",
+            data_schema=data_schema,
+            errors=errors,
+            last_step=False,
+        )
+
+    async def async_step_battery_economics(self, user_input=None):
+        errors = {}
+
+        if user_input is not None:
+            errors = await validate_battery_economics_input(user_input)
+            if not errors:
+                self._user_input.update(user_input)
+                return await self.async_step_power()
+
+        data_schema = await get_battery_economics_step_schema(None)
+
+        return self.async_show_form(
+            step_id="battery_economics",
             data_schema=data_schema,
             errors=errors,
             last_step=False,
