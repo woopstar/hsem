@@ -551,10 +551,10 @@ class TestTimePlatformSetupExtended:
 
 
 class TestSelectPlatformSetup:
-    """async_setup_entry must register exactly one selector entity."""
+    """async_setup_entry must register exactly two selector entities."""
 
     @pytest.mark.asyncio
-    async def test_setup_creates_one_selector(self) -> None:
+    async def test_setup_creates_two_selectors(self) -> None:
         from custom_components.hsem.select import (
             SELECTOR_DESCRIPTIONS,
             async_setup_entry,
@@ -562,7 +562,7 @@ class TestSelectPlatformSetup:
 
         hass = _mock_hass()
         config_entry = _mock_config_entry()
-        added: list[HSEMWorkingModeSelector] = []
+        added: list = []
 
         def add_entities(entities: list, _update_before_add: bool = False) -> None:
             added.extend(entities)
@@ -570,7 +570,7 @@ class TestSelectPlatformSetup:
         await async_setup_entry(hass, config_entry, add_entities)
 
         assert len(added) == len(SELECTOR_DESCRIPTIONS)
-        assert len(added) == 1
+        assert len(added) == 2
 
     @pytest.mark.asyncio
     async def test_setup_entity_is_select_entity(self) -> None:
@@ -586,7 +586,6 @@ class TestSelectPlatformSetup:
         await async_setup_entry(hass, config_entry, add_entities)
 
         for entity in added:
-            assert isinstance(entity, HSEMWorkingModeSelector)
             assert isinstance(entity, SelectEntity)
 
     @pytest.mark.asyncio
@@ -595,13 +594,14 @@ class TestSelectPlatformSetup:
 
         hass = _mock_hass()
         config_entry = _mock_config_entry()
-        added: list[HSEMWorkingModeSelector] = []
+        added: list = []
 
         def add_entities(entities: list, _update_before_add: bool = False) -> None:
             added.extend(entities)
 
         await async_setup_entry(hass, config_entry, add_entities)
 
+        # First selector is the working-mode selector (default = "auto").
         assert added[0].current_option == "auto"
 
     @pytest.mark.asyncio
@@ -610,13 +610,14 @@ class TestSelectPlatformSetup:
 
         hass = _mock_hass()
         config_entry = _mock_config_entry()
-        added: list[HSEMWorkingModeSelector] = []
+        added: list = []
 
         def add_entities(entities: list, _update_before_add: bool = False) -> None:
             added.extend(entities)
 
         await async_setup_entry(hass, config_entry, add_entities)
 
+        # First selector is the working-mode selector (includes "auto").
         assert "auto" in added[0].options
 
 
