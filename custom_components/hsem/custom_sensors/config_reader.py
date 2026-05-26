@@ -353,14 +353,6 @@ def build_sensor_config(config_entry) -> SensorConfig:
         )
         or 10.0
     )
-    cfg.batteries_excess_export_price_threshold = (
-        convert_to_float(
-            get_config_value(
-                config_entry, "hsem_batteries_excess_export_price_threshold"
-            )
-        )
-        or 0.10
-    )
 
     # EV planned load integration
     cfg.ev_planned_load_enabled = convert_to_boolean(
@@ -406,12 +398,6 @@ def build_sensor_config(config_entry) -> SensorConfig:
     )
     cfg.ev_planned_load_charger_efficiency_pct = (
         _chg_eff if _chg_eff is not None else 100.0
-    )
-    cfg.ev_planned_load_base_load_includes_ev = convert_to_boolean(
-        get_config_value(config_entry, "hsem_ev_planned_load_base_load_includes_ev")
-    )
-    cfg.ev_planned_load_actual_power_sensor = _optional_entity(
-        get_config_value(config_entry, "hsem_ev_planned_load_actual_power_sensor")
     )
 
     # Second EV planned load integration
@@ -464,16 +450,6 @@ def build_sensor_config(config_entry) -> SensorConfig:
     )
     cfg.ev_second_planned_load_charger_efficiency_pct = (
         _s2_eff if _s2_eff is not None else 100.0
-    )
-    cfg.ev_second_planned_load_base_load_includes_ev = convert_to_boolean(
-        get_config_value(
-            config_entry, "hsem_ev_second_planned_load_base_load_includes_ev"
-        )
-    )
-    cfg.ev_second_planned_load_actual_power_sensor = _optional_entity(
-        get_config_value(
-            config_entry, "hsem_ev_second_planned_load_actual_power_sensor"
-        )
     )
 
     # Consumption weights

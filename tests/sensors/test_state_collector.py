@@ -92,7 +92,6 @@ def _make_config_entry(**overrides) -> MagicMock:
         "hsem_batteries_enable_batteries_schedule_3_min_price_difference": 0.0,
         "hsem_batteries_enable_excess_export": False,
         "hsem_batteries_excess_export_discharge_buffer": 10.0,
-        "hsem_batteries_excess_export_price_threshold": 0.10,
         "hsem_house_consumption_energy_weight_1d": 50,
         "hsem_house_consumption_energy_weight_3d": 20,
         "hsem_house_consumption_energy_weight_7d": 15,
@@ -172,12 +171,10 @@ class TestBuildSensorConfig:
             _make_config_entry(
                 hsem_batteries_enable_excess_export=True,
                 hsem_batteries_excess_export_discharge_buffer=15.0,
-                hsem_batteries_excess_export_price_threshold=0.20,
             )
         )
         assert cfg.batteries_enable_excess_export is True
         assert cfg.batteries_excess_export_discharge_buffer == pytest.approx(15.0)
-        assert cfg.batteries_excess_export_price_threshold == pytest.approx(0.20)
 
 
 # ---------------------------------------------------------------------------

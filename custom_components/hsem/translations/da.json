@@ -29,13 +29,11 @@
       "batteries_excess_export": {
         "data": {
           "hsem_batteries_enable_excess_export": "Aktiver overskuds-eksport",
-          "hsem_batteries_excess_export_discharge_buffer": "Afladningsbuffer (%)",
-          "hsem_batteries_excess_export_price_threshold": "Pristskel (EUR/kWh)"
+          "hsem_batteries_excess_export_discharge_buffer": "Afladningsbuffer (%)"
         },
         "data_description": {
           "hsem_batteries_enable_excess_export": "Aktiver eller deaktiver eksport af overskydende batterikapacitet til nettet, når det er økonomisk fordelagtigt.",
-          "hsem_batteries_excess_export_discharge_buffer": "Indstil sikkerhedsbufferprocenten for at opretholde minimum batterireserver (0-50%). Standard er 10% for at sikre tilstrækkelig kapacitet til uventet efterspørgsel.",
-          "hsem_batteries_excess_export_price_threshold": "Indstil den mindste prisforskel (i EUR/kWh), der kræves for eksport af netopladet batterienergi. Solopladet batteri eksporteres til enhver positiv pris."
+          "hsem_batteries_excess_export_discharge_buffer": "Indstil sikkerhedsbufferprocenten for at opretholde minimum batterireserver (0-50%). Standard er 10% for at sikre tilstrækkelig kapacitet til uventet efterspørgsel."
         },
         "description": "Konfigurer indstillinger for eksport af overskydende batterikapacitet til nettet, når det er økonomisk fordelagtigt.",
         "title": "Overskuds-eksport"
@@ -52,9 +50,7 @@
           "hsem_ev_planned_load_smart_charging_entity": "EV smart opladning aktiveret enhed (valgfri)",
           "hsem_ev_planned_load_battery_capacity_kwh": "EV batterikapacitet (kWh)",
           "hsem_ev_planned_load_charger_power_kw": "EV lader-effekt (kW)",
-          "hsem_ev_planned_load_charger_efficiency": "EV lader-efficiens",
-          "hsem_ev_planned_load_base_load_includes_ev": "Husets basisbelastning inkluderer allerede EV",
-          "hsem_ev_planned_load_actual_power_sensor": "EV faktisk ladeeffekt-sensor (valgfri)"
+          "hsem_ev_planned_load_charger_efficiency": "EV lader-efficiens"
         },
         "data_description": {
           "hsem_ev_planned_load_enabled": "Aktiver eller deaktiver planlagt EV-opladningsbelastningsintegration.",
@@ -67,9 +63,7 @@
           "hsem_ev_planned_load_smart_charging_entity": "Valgfri boolsk enhed, der aktiverer eller deaktiverer smart EV-opladning.",
           "hsem_ev_planned_load_battery_capacity_kwh": "EV-batteriets nominelle kapacitet i kWh.",
           "hsem_ev_planned_load_charger_power_kw": "AC-udgangseffekt for EV-laderen i kW.",
-          "hsem_ev_planned_load_charger_efficiency": "Laderefficiens i procent (1-100). Standard: 100.",
-          "hsem_ev_planned_load_base_load_includes_ev": "Aktiver, når husets forbrugssensor allerede inkluderer EV-belastning. Forhindrer dobbelttælling.",
-          "hsem_ev_planned_load_actual_power_sensor": "Valgfri sensor, der måler faktisk EV-ladeeffekt til diagnosticering."
+          "hsem_ev_planned_load_charger_efficiency": "Laderefficiens i procent (1-100). Standard: 100."
         },
         "description": "Konfigurer valgfri planlagt EV-opladningsbelastningsintegration. Når aktiveret, tager HSEM højde for kommende EV-opladningsbehov pr. planslot.",
         "title": "EV-planlagt belastningsintegration"
@@ -86,9 +80,7 @@
           "hsem_ev_second_planned_load_smart_charging_entity": "EV 2 smart opladning aktiveret enhed (valgfri)",
           "hsem_ev_second_planned_load_battery_capacity_kwh": "EV 2 batterikapacitet (kWh)",
           "hsem_ev_second_planned_load_charger_power_kw": "EV 2 lader-effekt (kW)",
-          "hsem_ev_second_planned_load_charger_efficiency": "EV 2 lader-efficiens",
-          "hsem_ev_second_planned_load_base_load_includes_ev": "Husets basisbelastning inkluderer allerede EV 2",
-          "hsem_ev_second_planned_load_actual_power_sensor": "EV 2 faktisk ladeeffekt-sensor (valgfri)"
+          "hsem_ev_second_planned_load_charger_efficiency": "EV 2 lader-efficiens"
         },
         "data_description": {
           "hsem_ev_second_planned_load_enabled": "Aktiver eller deaktiver planlagt opladningsbelastningsintegration for den anden EV.",
@@ -101,9 +93,7 @@
           "hsem_ev_second_planned_load_smart_charging_entity": "Valgfri boolsk enhed, der aktiverer eller deaktiverer smart opladning for den anden EV.",
           "hsem_ev_second_planned_load_battery_capacity_kwh": "Nominel batterikapacitet for den anden EV i kWh.",
           "hsem_ev_second_planned_load_charger_power_kw": "AC-udgangseffekt for den anden EV-lader i kW.",
-          "hsem_ev_second_planned_load_charger_efficiency": "Anden EV-lader-efficiens i procent (1-100). Standard: 100.",
-          "hsem_ev_second_planned_load_base_load_includes_ev": "Aktiver, når husets forbrugssensor allerede inkluderer anden EV-belastning. Forhindrer dobbelttælling.",
-          "hsem_ev_second_planned_load_actual_power_sensor": "Valgfri sensor, der måler faktisk anden EV-ladeeffekt til diagnosticering."
+          "hsem_ev_second_planned_load_charger_efficiency": "Anden EV-lader-efficiens i procent (1-100). Standard: 100."
         },
         "description": "Konfigurer valgfri planlagt opladningsbelastningsintegration for den anden EV. Vises kun, når en anden EV-lader er aktiveret.",
         "title": "EV 2-planlagt belastningsintegration"
@@ -440,6 +430,13 @@
         "45": "45 minutter",
         "5": "5 minutter",
         "60": "60 minutter"
+      }
+    },
+    "pv_estimate_likelihood": {
+      "options": {
+        "pv_estimate": "50 % sandsynlighed",
+        "pv_estimate10": "10 % sandsynlighed",
+        "pv_estimate90": "90 % sandsynlighed"
       }
     }
   },

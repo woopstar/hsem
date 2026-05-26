@@ -831,24 +831,6 @@ class TestFlowValidatorsUseConfigValidator:
         assert errors["hsem_solcast_pv_forecast_forecast_today"] == "entity_not_found"
 
     @pytest.mark.asyncio
-    async def test_validate_excess_export_negative_threshold(self):
-        from custom_components.hsem.flows.batteries_excess_export import (
-            validate_batteries_excess_export_input,
-        )
-
-        errors = await validate_batteries_excess_export_input(
-            {
-                "hsem_batteries_enable_excess_export": True,
-                "hsem_batteries_excess_export_discharge_buffer": 10,
-                "hsem_batteries_excess_export_price_threshold": -0.5,
-            }
-        )
-        assert (
-            errors.get("hsem_batteries_excess_export_price_threshold")
-            == "price_out_of_range"
-        )
-
-    @pytest.mark.asyncio
     async def test_validate_excess_export_buffer_too_high(self):
         from custom_components.hsem.flows.batteries_excess_export import (
             validate_batteries_excess_export_input,
@@ -858,7 +840,6 @@ class TestFlowValidatorsUseConfigValidator:
             {
                 "hsem_batteries_enable_excess_export": True,
                 "hsem_batteries_excess_export_discharge_buffer": 51,
-                "hsem_batteries_excess_export_price_threshold": 0.1,
             }
         )
         assert (
@@ -876,7 +857,6 @@ class TestFlowValidatorsUseConfigValidator:
             {
                 "hsem_batteries_enable_excess_export": True,
                 "hsem_batteries_excess_export_discharge_buffer": 10,
-                "hsem_batteries_excess_export_price_threshold": 0.10,
             }
         )
         assert errors == {}

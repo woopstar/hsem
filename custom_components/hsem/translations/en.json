@@ -29,13 +29,11 @@
       "batteries_excess_export": {
         "data": {
           "hsem_batteries_enable_excess_export": "Enable Excess Battery Export",
-          "hsem_batteries_excess_export_discharge_buffer": "Discharge Buffer (%)",
-          "hsem_batteries_excess_export_price_threshold": "Price Threshold (EUR/kWh)"
+          "hsem_batteries_excess_export_discharge_buffer": "Discharge Buffer (%)"
         },
         "data_description": {
           "hsem_batteries_enable_excess_export": "Enable or disable the excess battery export feature, which automatically exports excess battery capacity to the grid when economically beneficial.",
-          "hsem_batteries_excess_export_discharge_buffer": "Set the safety buffer percentage to maintain minimum battery reserves (0-50%). Default is 10% to ensure adequate capacity for unexpected demand.",
-          "hsem_batteries_excess_export_price_threshold": "Set the minimum price difference (in EUR/kWh) required for exporting grid-charged battery energy. Solar-charged battery is exported at any positive price. The recommended threshold is calculated based on battery depreciation costs."
+          "hsem_batteries_excess_export_discharge_buffer": "Set the safety buffer percentage to maintain minimum battery reserves (0-50%). Default is 10% to ensure adequate capacity for unexpected demand."
         },
         "description": "Configure excess battery export settings to automatically sell excess energy to the grid when economically beneficial.",
         "title": "Excess Battery Export"
@@ -49,9 +47,7 @@
           "hsem_ev_planned_load_smart_charging_entity": "EV Smart Charging Enabled Entity (optional)",
           "hsem_ev_planned_load_battery_capacity_kwh": "EV Battery Capacity (kWh)",
           "hsem_ev_planned_load_charger_power_kw": "EV Charger Power (kW)",
-          "hsem_ev_planned_load_charger_efficiency": "EV Charger Efficiency",
-          "hsem_ev_planned_load_base_load_includes_ev": "Base House Load Already Includes EV",
-          "hsem_ev_planned_load_actual_power_sensor": "EV Actual Charging Power Sensor (optional)"
+          "hsem_ev_planned_load_charger_efficiency": "EV Charger Efficiency"
         },
         "data_description": {
           "hsem_ev_planned_load_enabled": "Enable or disable planned EV charging load integration.",
@@ -61,9 +57,7 @@
           "hsem_ev_planned_load_smart_charging_entity": "Optional boolean entity that enables or disables smart EV charging.",
           "hsem_ev_planned_load_battery_capacity_kwh": "Nameplate battery capacity of the EV in kWh.",
           "hsem_ev_planned_load_charger_power_kw": "AC output power of the EV charger in kW.",
-          "hsem_ev_planned_load_charger_efficiency": "Charger efficiency as a percentage (1-100). Default: 100.",
-          "hsem_ev_planned_load_base_load_includes_ev": "Enable when the house consumption sensor already includes EV load. Prevents double-counting.",
-          "hsem_ev_planned_load_actual_power_sensor": "Optional sensor measuring actual EV charging power for diagnostics."
+          "hsem_ev_planned_load_charger_efficiency": "Charger efficiency as a percentage (1-100). Default: 100."
         },
         "description": "Configure optional planned EV charging load integration. When enabled, HSEM accounts for upcoming EV charging demand per planner slot.",
         "title": "EV Planned Load Integration"
@@ -80,9 +74,7 @@
           "hsem_ev_second_planned_load_smart_charging_entity": "EV 2 Smart Charging Enabled Entity (optional)",
           "hsem_ev_second_planned_load_battery_capacity_kwh": "EV 2 Battery Capacity (kWh)",
           "hsem_ev_second_planned_load_charger_power_kw": "EV 2 Charger Power (kW)",
-          "hsem_ev_second_planned_load_charger_efficiency": "EV 2 Charger Efficiency",
-          "hsem_ev_second_planned_load_base_load_includes_ev": "Base House Load Already Includes EV 2",
-          "hsem_ev_second_planned_load_actual_power_sensor": "EV 2 Actual Charging Power Sensor (optional)"
+          "hsem_ev_second_planned_load_charger_efficiency": "EV 2 Charger Efficiency"
         },
         "data_description": {
           "hsem_ev_second_planned_load_enabled": "Enable or disable planned charging load integration for the second EV.",
@@ -95,9 +87,7 @@
           "hsem_ev_second_planned_load_smart_charging_entity": "Optional boolean entity that enables or disables smart charging for the second EV.",
           "hsem_ev_second_planned_load_battery_capacity_kwh": "Nameplate battery capacity of the second EV in kWh.",
           "hsem_ev_second_planned_load_charger_power_kw": "AC output power of the second EV charger in kW.",
-          "hsem_ev_second_planned_load_charger_efficiency": "Second EV charger efficiency as a percentage (1-100). Default: 100.",
-          "hsem_ev_second_planned_load_base_load_includes_ev": "Enable when the house consumption sensor already includes second EV load. Prevents double-counting.",
-          "hsem_ev_second_planned_load_actual_power_sensor": "Optional sensor measuring actual second EV charging power for diagnostics."
+          "hsem_ev_second_planned_load_charger_efficiency": "Second EV charger efficiency as a percentage (1-100). Default: 100."
         },
         "description": "Configure optional planned charging load integration for the second EV. Only shown when a second EV charger is enabled.",
         "title": "EV 2 Planned Load Integration"
@@ -418,13 +408,11 @@
       "batteries_excess_export": {
         "data": {
           "hsem_batteries_enable_excess_export": "Enable Excess Battery Export",
-          "hsem_batteries_excess_export_discharge_buffer": "Discharge Buffer (%)",
-          "hsem_batteries_excess_export_price_threshold": "Price Threshold (EUR/kWh)"
+          "hsem_batteries_excess_export_discharge_buffer": "Discharge Buffer (%)"
         },
         "data_description": {
           "hsem_batteries_enable_excess_export": "Enable or disable the excess battery export feature, which automatically exports excess battery capacity to the grid when economically beneficial.",
-          "hsem_batteries_excess_export_discharge_buffer": "Set the safety buffer percentage to maintain minimum battery reserves (0-50%). Default is 10% to ensure adequate capacity for unexpected demand.",
-          "hsem_batteries_excess_export_price_threshold": "Set the minimum price difference (in EUR/kWh) required for exporting grid-charged battery energy. Solar-charged battery is exported at any positive price. The recommended threshold is calculated based on battery depreciation costs."
+          "hsem_batteries_excess_export_discharge_buffer": "Set the safety buffer percentage to maintain minimum battery reserves (0-50%). Default is 10% to ensure adequate capacity for unexpected demand."
         },
         "description": "Configure excess battery export settings to automatically sell excess energy to the grid when economically beneficial.",
         "title": "Excess Battery Export"
@@ -438,9 +426,7 @@
           "hsem_ev_planned_load_smart_charging_entity": "EV Smart Charging Enabled Entity (optional)",
           "hsem_ev_planned_load_battery_capacity_kwh": "EV Battery Capacity (kWh)",
           "hsem_ev_planned_load_charger_power_kw": "EV Charger Power (kW)",
-          "hsem_ev_planned_load_charger_efficiency": "EV Charger Efficiency",
-          "hsem_ev_planned_load_base_load_includes_ev": "Base House Load Already Includes EV",
-          "hsem_ev_planned_load_actual_power_sensor": "EV Actual Charging Power Sensor (optional)"
+          "hsem_ev_planned_load_charger_efficiency": "EV Charger Efficiency"
         },
         "data_description": {
           "hsem_ev_planned_load_enabled": "Enable or disable planned EV charging load integration.",
@@ -450,9 +436,7 @@
           "hsem_ev_planned_load_smart_charging_entity": "Optional boolean entity that enables or disables smart EV charging.",
           "hsem_ev_planned_load_battery_capacity_kwh": "Nameplate battery capacity of the EV in kWh.",
           "hsem_ev_planned_load_charger_power_kw": "AC output power of the EV charger in kW.",
-          "hsem_ev_planned_load_charger_efficiency": "Charger efficiency as a percentage (1-100). Default: 100.",
-          "hsem_ev_planned_load_base_load_includes_ev": "Enable when the house consumption sensor already includes EV load. Prevents double-counting.",
-          "hsem_ev_planned_load_actual_power_sensor": "Optional sensor measuring actual EV charging power for diagnostics."
+          "hsem_ev_planned_load_charger_efficiency": "Charger efficiency as a percentage (1-100). Default: 100."
         },
         "description": "Configure optional planned EV charging load integration. When enabled, HSEM accounts for upcoming EV charging demand per planner slot.",
         "title": "EV Planned Load Integration"
@@ -466,9 +450,7 @@
           "hsem_ev_second_planned_load_smart_charging_entity": "EV 2 Smart Charging Enabled Entity (optional)",
           "hsem_ev_second_planned_load_battery_capacity_kwh": "EV 2 Battery Capacity (kWh)",
           "hsem_ev_second_planned_load_charger_power_kw": "EV 2 Charger Power (kW)",
-          "hsem_ev_second_planned_load_charger_efficiency": "EV 2 Charger Efficiency",
-          "hsem_ev_second_planned_load_base_load_includes_ev": "Base House Load Already Includes EV 2",
-          "hsem_ev_second_planned_load_actual_power_sensor": "EV 2 Actual Charging Power Sensor (optional)"
+          "hsem_ev_second_planned_load_charger_efficiency": "EV 2 Charger Efficiency"
         },
         "data_description": {
           "hsem_ev_second_planned_load_enabled": "Enable or disable planned charging load integration for the second EV.",
@@ -478,9 +460,7 @@
           "hsem_ev_second_planned_load_smart_charging_entity": "Optional boolean entity that enables or disables smart charging for the second EV.",
           "hsem_ev_second_planned_load_battery_capacity_kwh": "Nameplate battery capacity of the second EV in kWh.",
           "hsem_ev_second_planned_load_charger_power_kw": "AC output power of the second EV charger in kW.",
-          "hsem_ev_second_planned_load_charger_efficiency": "Second EV charger efficiency as a percentage (1-100). Default: 100.",
-          "hsem_ev_second_planned_load_base_load_includes_ev": "Enable when the house consumption sensor already includes second EV load. Prevents double-counting.",
-          "hsem_ev_second_planned_load_actual_power_sensor": "Optional sensor measuring actual second EV charging power for diagnostics."
+          "hsem_ev_second_planned_load_charger_efficiency": "Second EV charger efficiency as a percentage (1-100). Default: 100."
         },
         "description": "Configure optional planned charging load integration for the second EV. Only shown when a second EV charger is enabled.",
         "title": "EV 2 Planned Load Integration"
@@ -779,6 +759,13 @@
         "45": "45 minutes",
         "5": "5 minutes",
         "60": "60 minutes"
+      }
+    },
+    "pv_estimate_likelihood": {
+      "options": {
+        "pv_estimate": "50 % likelihood",
+        "pv_estimate10": "10 % likelihood",
+        "pv_estimate90": "90 % likelihood"
       }
     }
   },
