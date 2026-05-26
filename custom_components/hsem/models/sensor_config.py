@@ -203,7 +203,6 @@ class SensorConfig:
     ev_planned_load_charger_power_kw: float = 0.0
     ev_planned_load_charger_efficiency_pct: float = 100.0
     ev_planned_load_base_load_includes_ev: bool = False
-    ev_planned_load_actual_power_sensor: str | None = None
     # EV planned load integration — second EV (optional, disabled by default)
     ev_second_planned_load_enabled: bool = False
     ev_second_planned_load_connected_sensor: str | None = None
@@ -217,7 +216,6 @@ class SensorConfig:
     ev_second_planned_load_charger_power_kw: float = 0.0
     ev_second_planned_load_charger_efficiency_pct: float = 100.0
     ev_second_planned_load_base_load_includes_ev: bool = False
-    ev_second_planned_load_actual_power_sensor: str | None = None
 
     # Seasonal configuration
     months_winter: list[int] = field(default_factory=list)

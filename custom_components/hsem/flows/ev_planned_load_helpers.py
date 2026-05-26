@@ -29,8 +29,6 @@ from custom_components.hsem.utils.misc import get_config_value
 
 # Entity domains accepted for EV connected binary sensor and smart charging flag.
 _BOOL_DOMAINS = ["binary_sensor", "input_boolean", "sensor", "switch"]
-# Entity domains accepted for SoC, target SoC.
-_SENSOR_DOMAINS = ["sensor", "input_number", "number"]
 # Entity domains accepted for deadline entity.
 _TIME_DOMAINS = ["input_datetime", "sensor", "input_text"]
 
@@ -84,15 +82,15 @@ _SOC_SELECTOR = selector(
 )
 
 # Optional entity field names relative to a prefix (suffix only, without trailing _)
-# NOTE: connected_sensor, soc_sensor, and target_soc_entity are omitted because
-# they duplicate the basic EV charger sensors configured in the `ev` flow step
-# (hsem_ev_connected, hsem_ev_soc, hsem_ev_soc_target).  The state collector
-# reads those from the EV charger config and falls back to them for planned
-# load state when the planned-load-specific fields are absent.
+# NOTE: connected_sensor, soc_sensor, target_soc_entity, and actual_power_sensor
+# are omitted because they duplicate the basic EV charger sensors configured in
+# the `ev` flow step (hsem_ev_connected, hsem_ev_soc, hsem_ev_soc_target,
+# hsem_ev_charger_power).  The state collector reads those from the EV charger
+# config and falls back to them for planned load state when the planned-load-
+# specific fields are absent.
 _OPTIONAL_ENTITY_SUFFIXES = [
     "deadline_entity",
     "smart_charging_entity",
-    "actual_power_sensor",
 ]
 
 
@@ -152,10 +150,6 @@ async def build_ev_planned_load_schema(config_entry, prefix: str) -> vol.Schema:
                 _k("base_load_includes_ev"),
                 default=_v("base_load_includes_ev"),
             ): selector({"boolean": {}}),
-            vol.Optional(
-                _k("actual_power_sensor"),
-                default=_v("actual_power_sensor"),
-            ): selector({"entity": {"domain": _SENSOR_DOMAINS}}),
         }
     )
 

@@ -116,7 +116,6 @@ Primary EV planned load integration (optional, default disabled).
 | Charger power | `hsem_ev_planned_load_charger_power_kw` | 0.0 | Charger AC output (kW) |
 | Charger efficiency | `hsem_ev_planned_load_charger_efficiency` | 100 % | Charger efficiency |
 | Base includes EV | `hsem_ev_planned_load_base_load_includes_ev` | `False` | Prevent double-counting |
-| Actual power sensor | `hsem_ev_planned_load_actual_power_sensor` | — | Real-time EV charge power (diagnostics) |
 
 ### Step: `batteries_schedule_1/2/3`
 

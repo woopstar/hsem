@@ -48,8 +48,7 @@
           "hsem_ev_planned_load_battery_capacity_kwh": "EV Battery Capacity (kWh)",
           "hsem_ev_planned_load_charger_power_kw": "EV Charger Power (kW)",
           "hsem_ev_planned_load_charger_efficiency": "EV Charger Efficiency",
-          "hsem_ev_planned_load_base_load_includes_ev": "Base House Load Already Includes EV",
-          "hsem_ev_planned_load_actual_power_sensor": "EV Actual Charging Power Sensor (optional)"
+          "hsem_ev_planned_load_base_load_includes_ev": "Base House Load Already Includes EV"
         },
         "data_description": {
           "hsem_ev_planned_load_enabled": "Enable or disable planned EV charging load integration.",
@@ -60,8 +59,7 @@
           "hsem_ev_planned_load_battery_capacity_kwh": "Nameplate battery capacity of the EV in kWh.",
           "hsem_ev_planned_load_charger_power_kw": "AC output power of the EV charger in kW.",
           "hsem_ev_planned_load_charger_efficiency": "Charger efficiency as a percentage (1-100). Default: 100.",
-          "hsem_ev_planned_load_base_load_includes_ev": "Enable when the house consumption sensor already includes EV load. Prevents double-counting.",
-          "hsem_ev_planned_load_actual_power_sensor": "Optional sensor measuring actual EV charging power for diagnostics."
+          "hsem_ev_planned_load_base_load_includes_ev": "Enable when the house consumption sensor already includes EV load. Prevents double-counting."
         },
         "description": "Configure optional planned EV charging load integration. When enabled, HSEM accounts for upcoming EV charging demand per planner slot.",
         "title": "EV Planned Load Integration"
@@ -79,8 +77,7 @@
           "hsem_ev_second_planned_load_battery_capacity_kwh": "EV 2 Battery Capacity (kWh)",
           "hsem_ev_second_planned_load_charger_power_kw": "EV 2 Charger Power (kW)",
           "hsem_ev_second_planned_load_charger_efficiency": "EV 2 Charger Efficiency",
-          "hsem_ev_second_planned_load_base_load_includes_ev": "Base House Load Already Includes EV 2",
-          "hsem_ev_second_planned_load_actual_power_sensor": "EV 2 Actual Charging Power Sensor (optional)"
+          "hsem_ev_second_planned_load_base_load_includes_ev": "Base House Load Already Includes EV 2"
         },
         "data_description": {
           "hsem_ev_second_planned_load_enabled": "Enable or disable planned charging load integration for the second EV.",
@@ -94,8 +91,7 @@
           "hsem_ev_second_planned_load_battery_capacity_kwh": "Nameplate battery capacity of the second EV in kWh.",
           "hsem_ev_second_planned_load_charger_power_kw": "AC output power of the second EV charger in kW.",
           "hsem_ev_second_planned_load_charger_efficiency": "Second EV charger efficiency as a percentage (1-100). Default: 100.",
-          "hsem_ev_second_planned_load_base_load_includes_ev": "Enable when the house consumption sensor already includes second EV load. Prevents double-counting.",
-          "hsem_ev_second_planned_load_actual_power_sensor": "Optional sensor measuring actual second EV charging power for diagnostics."
+          "hsem_ev_second_planned_load_base_load_includes_ev": "Enable when the house consumption sensor already includes second EV load. Prevents double-counting."
         },
         "description": "Configure optional planned charging load integration for the second EV. Only shown when a second EV charger is enabled.",
         "title": "EV 2 Planned Load Integration"
@@ -435,8 +431,7 @@
           "hsem_ev_planned_load_battery_capacity_kwh": "EV Battery Capacity (kWh)",
           "hsem_ev_planned_load_charger_power_kw": "EV Charger Power (kW)",
           "hsem_ev_planned_load_charger_efficiency": "EV Charger Efficiency",
-          "hsem_ev_planned_load_base_load_includes_ev": "Base House Load Already Includes EV",
-          "hsem_ev_planned_load_actual_power_sensor": "EV Actual Charging Power Sensor (optional)"
+          "hsem_ev_planned_load_base_load_includes_ev": "Base House Load Already Includes EV"
         },
         "data_description": {
           "hsem_ev_planned_load_enabled": "Enable or disable planned EV charging load integration.",
@@ -447,8 +442,7 @@
           "hsem_ev_planned_load_battery_capacity_kwh": "Nameplate battery capacity of the EV in kWh.",
           "hsem_ev_planned_load_charger_power_kw": "AC output power of the EV charger in kW.",
           "hsem_ev_planned_load_charger_efficiency": "Charger efficiency as a percentage (1-100). Default: 100.",
-          "hsem_ev_planned_load_base_load_includes_ev": "Enable when the house consumption sensor already includes EV load. Prevents double-counting.",
-          "hsem_ev_planned_load_actual_power_sensor": "Optional sensor measuring actual EV charging power for diagnostics."
+          "hsem_ev_planned_load_base_load_includes_ev": "Enable when the house consumption sensor already includes EV load. Prevents double-counting."
         },
         "description": "Configure optional planned EV charging load integration. When enabled, HSEM accounts for upcoming EV charging demand per planner slot.",
         "title": "EV Planned Load Integration"
@@ -463,8 +457,7 @@
           "hsem_ev_second_planned_load_battery_capacity_kwh": "EV 2 Battery Capacity (kWh)",
           "hsem_ev_second_planned_load_charger_power_kw": "EV 2 Charger Power (kW)",
           "hsem_ev_second_planned_load_charger_efficiency": "EV 2 Charger Efficiency",
-          "hsem_ev_second_planned_load_base_load_includes_ev": "Base House Load Already Includes EV 2",
-          "hsem_ev_second_planned_load_actual_power_sensor": "EV 2 Actual Charging Power Sensor (optional)"
+          "hsem_ev_second_planned_load_base_load_includes_ev": "Base House Load Already Includes EV 2"
         },
         "data_description": {
           "hsem_ev_second_planned_load_enabled": "Enable or disable planned charging load integration for the second EV.",
@@ -475,8 +468,7 @@
           "hsem_ev_second_planned_load_battery_capacity_kwh": "Nameplate battery capacity of the second EV in kWh.",
           "hsem_ev_second_planned_load_charger_power_kw": "AC output power of the second EV charger in kW.",
           "hsem_ev_second_planned_load_charger_efficiency": "Second EV charger efficiency as a percentage (1-100). Default: 100.",
-          "hsem_ev_second_planned_load_base_load_includes_ev": "Enable when the house consumption sensor already includes second EV load. Prevents double-counting.",
-          "hsem_ev_second_planned_load_actual_power_sensor": "Optional sensor measuring actual second EV charging power for diagnostics."
+          "hsem_ev_second_planned_load_base_load_includes_ev": "Enable when the house consumption sensor already includes second EV load. Prevents double-counting."
         },
         "description": "Configure optional planned charging load integration for the second EV. Only shown when a second EV charger is enabled.",
         "title": "EV 2 Planned Load Integration"
