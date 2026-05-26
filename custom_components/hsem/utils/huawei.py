@@ -6,6 +6,9 @@ Functions:
     async_set_grid_export_power_pct(self, device_id, power_percentage):
         Asynchronously sets the maximum grid export power percentage for a specified device.
 
+    async_set_grid_export_power_watt(self, device_id, power_watt):
+        Asynchronously sets the maximum grid export power in watts for a specified device.
+
     async_set_tou_periods(self, batteries_id, tou_modes):
         Asynchronously sets the Time-of-Use (TOU) periods for specified batteries.
 
@@ -85,6 +88,66 @@ async def async_set_grid_export_power_pct(self, device_id, power_percentage) -> 
             "(device_id=%s, power_percentage=%s)",
             device_id,
             power_percentage,
+        )
+        raise
+
+
+async def async_set_grid_export_power_watt(self, device_id, power_watt) -> None:
+    """Set the maximum grid export power in watts and handle errors.
+
+    Uses the ``huawei_solar.set_maximum_feed_grid_power`` service to set an
+    absolute power limit in watts (instead of a percentage).  This is used
+    as a soft floor (e.g. 100 W) when the system wants to block exports but
+    the inverter does not handle a 0 % percentage limit well.
+
+    Raises:
+        ServiceNotFound: When the huawei_solar service is not registered in HA.
+        HomeAssistantError: On any other HA-level write failure.
+    """
+
+    # Raise explicitly so callers (write-and-verify) can record the failure.
+    if not self.hass.services.has_service(
+        "huawei_solar", "set_maximum_feed_grid_power"
+    ):
+        raise ServiceNotFound("huawei_solar", "set_maximum_feed_grid_power")
+
+    try:
+        # Send the service call to set the maximum grid export power in watts.
+        # blocking=True propagates service exceptions back to the caller so that
+        # write-and-verify can record the failure and retry.
+        await self.hass.services.async_call(
+            "huawei_solar",
+            "set_maximum_feed_grid_power",
+            {
+                "device_id": device_id,
+                "power": power_watt,
+            },
+            blocking=True,
+        )
+
+        # Log success message
+        _LOGGER.debug(
+            "Updated export power to %s W for device_id %s",
+            power_watt,
+            device_id,
+        )
+
+    except vol.Invalid as err:
+        # Handle validation errors (e.g., invalid device_id or power_watt)
+        _LOGGER.exception(
+            "Invalid input for set_maximum_feed_grid_power "
+            "(device_id=%s, power_watt=%s)",
+            device_id,
+            power_watt,
+        )
+        raise HomeAssistantError(f"Invalid input data: {err}") from err
+
+    except (ServiceNotFound, ServiceValidationError, HomeAssistantError):
+        # Service missing or HA rejected the call
+        _LOGGER.exception(
+            "HA error during set_maximum_feed_grid_power (device_id=%s, power_watt=%s)",
+            device_id,
+            power_watt,
         )
         raise
 

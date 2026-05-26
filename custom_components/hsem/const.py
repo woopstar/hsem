@@ -195,6 +195,15 @@ RELIABILITY_EPS = 0.05  # kWh; prevents division by zero and over-sensitivity
 RELIABILITY_SCALE_STRENGTH = 1.00  # 1.0 = full effect; lower to soften
 
 # ---------------------------------------------------------------------------
+# Grid export power limit (watts)
+# ---------------------------------------------------------------------------
+
+# Grid export limit in watts when export should be blocked (instead of 0%).
+# Setting 0% export via the percentage-based service is not well handled by
+# the inverter; a 100 W floor is used instead.
+GRID_EXPORT_LIMIT_WATT = 100
+
+# ---------------------------------------------------------------------------
 # Planner power thresholds (kWh per slot)
 # ---------------------------------------------------------------------------
 

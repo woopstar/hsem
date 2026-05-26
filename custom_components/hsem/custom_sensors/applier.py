@@ -37,6 +37,7 @@ from custom_components.hsem.const import (
     DEFAULT_HSEM_BATTERIES_WAIT_MODE,
     DEFAULT_HSEM_EV_CHARGER_TOU_MODES,
     DEFAULT_HSEM_TOU_MODES_FORCE_CHARGE,
+    GRID_EXPORT_LIMIT_WATT,
 )
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.live_state import LiveState
@@ -45,6 +46,7 @@ from custom_components.hsem.utils.degraded_mode import hardware_writes_allowed
 from custom_components.hsem.utils.huawei import (
     async_set_forcible_discharge,
     async_set_grid_export_power_pct,
+    async_set_grid_export_power_watt,
     async_set_tou_periods,
 )
 from custom_components.hsem.utils.inverter_verify import (
@@ -165,15 +167,44 @@ async def async_apply_inverter_power_control(
     )
 
     current_pct = _parse_power_control_pct(live.huawei_inverter_active_power_control)
-    if current_pct is not None and current_pct != export_pct:
-        for inv_id in [
-            cfg.huawei_solar_device_id_inverter_1,
-            cfg.huawei_solar_device_id_inverter_2,
-        ]:
-            if inv_id is None:
-                continue
+    current_is_watt = _is_watt_limit(live.huawei_inverter_active_power_control)
 
-            inv_entity = cfg.huawei_solar_inverter_active_power_control
+    for inv_id in [
+        cfg.huawei_solar_device_id_inverter_1,
+        cfg.huawei_solar_device_id_inverter_2,
+    ]:
+        if inv_id is None:
+            continue
+
+        inv_entity = cfg.huawei_solar_inverter_active_power_control
+        reader_fn = lambda: _parse_power_control_pct(
+            sensor.hass.states.get(inv_entity).state
+            if inv_entity and sensor.hass.states.get(inv_entity) is not None
+            else None
+        )
+
+        if export_pct == 0:
+            # Block export → set a soft floor at GRID_EXPORT_LIMIT_WATT.
+            desired = GRID_EXPORT_LIMIT_WATT
+            if current_pct is not None and current_is_watt and current_pct == desired:
+                continue  # already at the watt limit
+
+            result = await async_write_and_verify(
+                entity_id=inv_entity or f"inverter:{inv_id}",
+                desired=desired,
+                writer=lambda _id=inv_id, _w=desired: async_set_grid_export_power_watt(
+                    sensor, _id, _w
+                ),
+                reader=reader_fn,
+            )
+        else:
+            # export_pct == 100 — Allow full export.
+            if (
+                current_pct is not None
+                and not current_is_watt
+                and current_pct == export_pct
+            ):
+                continue  # already at unlimited / 100 %
 
             result = await async_write_and_verify(
                 entity_id=inv_entity or f"inverter:{inv_id}",
@@ -181,22 +212,20 @@ async def async_apply_inverter_power_control(
                 writer=lambda _id=inv_id, _pct=export_pct: (
                     async_set_grid_export_power_pct(sensor, _id, _pct)
                 ),
-                reader=lambda: _parse_power_control_pct(
-                    sensor.hass.states.get(inv_entity).state
-                    if inv_entity and sensor.hass.states.get(inv_entity) is not None
-                    else None
-                ),
+                reader=reader_fn,
             )
-            summary.results.append(result)
 
-            if result.status == ApplyStatus.FAILED:
-                await async_logger(
-                    sensor,
-                    f"Export power % write FAILED for inverter {inv_id} after all retries. "
-                    f"Blocking further writes this cycle.",
-                    "error",
-                )
-                return summary
+        summary.results.append(result)
+
+        if result.status == ApplyStatus.FAILED:
+            mode = "W" if export_pct == 0 else "%"
+            await async_logger(
+                sensor,
+                f"Export power {mode} write FAILED for inverter {inv_id} after all retries. "
+                f"Blocking further writes this cycle.",
+                "error",
+            )
+            return summary
 
     return summary
 
@@ -536,14 +565,18 @@ def _read_select_state(sensor, entity_id: str | None) -> str | None:
 
 
 def _parse_power_control_pct(state: str | None) -> int | None:
-    """Parse the inverter active power control state string into a percentage.
+    """Parse the inverter active power control state string into a numeric value.
+
+    Handles both percentage (``"Limited to 80%"`` → 80) and watt-based
+    (``"Limited to 100W"`` → 100) formats.  ``"Unlimited"`` returns 100.
 
     Args:
-        state: Raw string from the inverter entity (e.g. ``"Unlimited"`` or
-               ``"Limited to 80%"``).
+        state: Raw string from the inverter entity (e.g. ``"Unlimited"``,
+               ``"Limited to 80%"``, or ``"Limited to 100W"``).
 
     Returns:
-        Integer percentage, or ``None`` if the string cannot be parsed.
+        Integer value (percentage or watts), or ``None`` if the string
+        cannot be parsed.
     """
     if not isinstance(state, str):
         return None
@@ -559,18 +592,45 @@ def _parse_power_control_pct(state: str | None) -> int | None:
         "không giới hạn",
     ):
         return 100
-    # Extract numeric percentage regardless of surrounding translated text.
-    # Strategy: strip everything that is not a digit, dot, or minus sign,
-    # then parse the remaining number.  This handles patterns like:
-    #   "Limited to 80%"  →  80
+    # Extract the numeric value regardless of surrounding translated text or
+    # unit suffix (% or W).  This handles patterns like:
+    #   "Limited to 80%"   →  80
+    #   "Limited to 100W"  →  100
     #   "Begrenzt auf 80 %"  →  80
     #   "Beperkt tot 80%"  →  80
-    if "%" in normalized:
-        # Extract the numeric value regardless of surrounding translated text
-        match = re.search(r"(-?\d+(?:\.\d+)?)", normalized)
-        if match:
-            try:
-                return int(round(float(match.group(1))))
-            except (ValueError, TypeError):
-                pass
+    match = re.search(r"(-?\d+(?:\.\d+)?)", normalized)
+    if match:
+        try:
+            return int(round(float(match.group(1))))
+        except (ValueError, TypeError):
+            pass
     return None
+
+
+def _is_watt_limit(state: str | None) -> bool:
+    """Check if the power control state represents a watt-based limit.
+
+    Args:
+        state: Raw string from the inverter entity (e.g. ``"Limited to 100W"``
+               or ``"Limited to 80%"``).
+
+    Returns:
+        ``True`` if the state is a watt-based limit, ``False`` otherwise
+        (percentage-based or unlimited).
+    """
+    if not isinstance(state, str):
+        return False
+    normalized = state.strip().lower()
+    # Unlimited / percentage-based states never contain a watt indicator
+    if normalized in (
+        "unlimited",
+        "ikke begrænset",
+        "onbeperkt",
+        "unbegrenzt",
+        "illimitato",
+        "sin límite",
+        "không giới hạn",
+    ):
+        return False
+    # Look for a number immediately followed (with optional whitespace) by "w"
+    return bool(re.search(r"\d+\s*w", normalized))
