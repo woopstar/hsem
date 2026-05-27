@@ -307,6 +307,21 @@ def generate_candidates(
 
     # 9. MILP — globally-optimal LP solution (requires scipy, falls back gracefully)
     if is_scipy_available():
+        # Compute the auto-derived cycle cost the same way as the cost
+        # function's _resolve_cycle_cost(), so the MILP optimises against
+        # the same cycle-wear cost as the selector.
+        # cycle_cost = purchase_price / (2 * usable_kwh * expected_cycles)
+        auto_cycle_cost = (
+            inp.battery_purchase_price / (2 * usable_kwh * inp.battery_expected_cycles)
+            if inp.battery_purchase_price > 1e-9
+            and usable_kwh > 1e-9
+            and inp.battery_expected_cycles > 0
+            else 0.0
+        )
+        # Use the higher of the auto-derived cycle cost and any
+        # user-configured extra margin.
+        effective_cycle_cost = max(auto_cycle_cost, inp.battery_cycle_cost_per_kwh)
+
         milp_slots = solve_milp(
             baseline_slots,
             now,
@@ -314,11 +329,20 @@ def generate_candidates(
             usable_kwh=usable_kwh,
             max_charge_per_slot=max_charge_per_slot,
             max_discharge_per_slot=max_discharge_per_slot,
-            cycle_cost_per_kwh=inp.battery_cycle_cost_per_kwh,
+            cycle_cost_per_kwh=effective_cycle_cost,
             charge_efficiency_pct=inp.battery_charge_efficiency_pct,
             discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
             time_discount_rate=inp.time_discount_rate,
             replacement_price_per_kwh=replacement_price_per_kwh,
+            export_min_price=inp.export_min_price,
+            recommended_threshold=calculate_recommended_threshold(
+                purchase_price=inp.battery_purchase_price,
+                expected_cycles=inp.battery_expected_cycles,
+                usable_capacity=usable_kwh,
+                capacity_loss_pct=inp.battery_capacity_loss_pct,
+                charge_efficiency_pct=inp.battery_charge_efficiency_pct,
+                discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
+            ),
         )
         if milp_slots is not None:
             candidates.append(CandidatePlan(name=CANDIDATE_MILP, slots=milp_slots))

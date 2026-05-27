@@ -181,8 +181,15 @@ def calculate_required_battery_until_solar(
         if slot.estimated_net_consumption_kwh > 0:
             required += slot.estimated_net_consumption_kwh
 
+    # Cap at usable_capacity — the battery can't hold more than this
+    # anyway.  Without this cap, a multi-hour gap until the next solar
+    # surplus (e.g. overnight) would make required exceed usable_capacity
+    # and block excess export entirely.
     buffer_kwh = usable_capacity * (discharge_buffer_pct / 100)
-    result = round(required + buffer_kwh, 3)
+    if required >= usable_capacity - 1e-9:
+        result = usable_capacity
+    else:
+        result = round(min(required + buffer_kwh, usable_capacity), 3)
     log_planner(
         "debug",
         "[disch] calculate_required_battery_until_solar  required=%.3f  buffer=%.3f  result=%.3f",
@@ -234,7 +241,8 @@ def apply_excess_export(
     # add to this budget: solar is a separate energy flow and is already accounted for
     # in estimated_net_consumption.  Only positive net consumption (house load > solar)
     # draws down the battery, so we drain the budget by max(net, 0) per slot.
-    battery_discharge_budget_kwh = current_capacity - required_capacity
+    #
+    battery_discharge_budget_kwh = float("inf")  # let concentrate + SoC handle limits
     log_planner(
         "debug",
         "[disch] apply_excess_export  budget=%.3f  current=%.3f  required=%.3f  "
@@ -244,10 +252,10 @@ def apply_excess_export(
         required_capacity,
         export_price_threshold,
     )
-    if battery_discharge_budget_kwh <= 0:
+    if battery_discharge_budget_kwh < 0:
         log_planner(
             "debug",
-            "[disch] apply_excess_export  skipped — budget <= 0",
+            "[disch] apply_excess_export  skipped — budget < 0",
         )
         return
 
@@ -276,40 +284,47 @@ def apply_excess_export(
         or solar_charged_kwh / total_planned_charge_kwh > 0.5
     )
 
-    # Minimum export price floor: the higher of the user-configured minimum
-    # and the battery cycle-wear cost (depreciation + conversion loss).
-    # Exporting below this floor loses money on battery wear.
-    min_export = max(export_min_price, recommended_threshold)
-
+    # Force discharge profitability per slot:
+    #   profit = export × battery - house × import - charge - cycle
+    # where battery ≈ min(max_discharge, net_demand) and house ≈ net_demand.
+    # Conservative: require export ≥ import + cycle_wear when house > 0,
+    # or export ≥ cycle_wear when PV covers house (net < 0).
     candidates = sorted(
         (
             s
             for s in slots
             if as_tz(s.start, now.tzinfo) >= now
-            and s.recommendation is None
+            and s.recommendation
+            in (
+                None,
+                Recommendations.BatteriesDischargeMode.value,
+            )
             and (
-                battery_is_solar_charged
+                # Solar surplus: house already covered by PV, pure export profit
+                (
+                    s.estimated_net_consumption_kwh is not None
+                    and s.estimated_net_consumption_kwh < 0
+                )
                 or (
-                    s.price.export_price - s.price.import_price
-                    >= export_price_threshold
+                    # No PV surplus: must cover house import cost
+                    s.estimated_net_consumption_kwh is not None
+                    and s.price.export_price
+                    >= s.price.import_price + recommended_threshold
                 )
             )
-            and s.price.export_price >= min_export
+            and s.price.export_price >= max(export_min_price, recommended_threshold)
         ),
         key=lambda x: x.price.export_price,
         reverse=True,
     )
 
     for s in candidates:
-        if battery_discharge_budget_kwh <= 0:
+        if battery_discharge_budget_kwh < 0:
             break
         s.recommendation = Recommendations.ForceBatteriesDischarge.value
         warnings.append(
             f"ForceBatteriesDischarge at {s.start.isoformat()}: export={s.price.export_price}"
         )
-        # Only positive net consumption (house load > solar) draws from the battery
-        # discharge budget.  Solar-surplus slots (net < 0) contribute 0 drain because
-        # the surplus is handled by solar, not by the battery.
         battery_discharge_budget_kwh -= max(s.estimated_net_consumption_kwh, 0.0)
 
 
@@ -403,79 +418,59 @@ def concentrate_discharge_on_expensive_slots(
         usable_kwh,
     )
 
+    # Sort ALL discharge slots by import price across all days (descending).
+    # Each day gets its own independent usable_kwh budget because the
+    # battery is recharged by solar between days — day N's discharge
+    # does not reduce day N+1's capacity.
+    discharge_slots.sort(key=lambda s: s.price.import_price, reverse=True)
+
+    total_kept = 0
+    total_cleared = 0
+    keep_set: set[int] = set()
+    per_day_used: dict[date, float] = defaultdict(float)
+
+    for s in discharge_slots:
+        slot_day = as_tz(s.start, now.tzinfo).date()
+        slot_demand = max(s.estimated_net_consumption_kwh, 0.0)
+        battery_needed = slot_demand / discharge_eff if discharge_eff > 1e-9 else 0.0
+        if max_discharge_per_slot is not None:
+            battery_needed = min(battery_needed, max_discharge_per_slot)
+
+        day_remaining = usable_kwh - per_day_used[slot_day]
+        if battery_needed <= day_remaining:
+            per_day_used[slot_day] += battery_needed
+            keep_set.add(id(s))
+        else:
+            continue
+
     total_kept = 0
     total_cleared = 0
 
-    for day, day_slots in by_day.items():
-        # Sort by import price descending — most expensive first
-        day_slots.sort(key=lambda s: s.price.import_price, reverse=True)
-
-        # Per-day budget: the battery can be fully charged (by solar or
-        # cheap grid hours) before each day's discharge windows begin.
-        day_budget = usable_kwh
-        keep_set: set[int] = set()
-        for s in day_slots:
-            # Energy the battery must release to cover net_demand
-            slot_demand = max(s.estimated_net_consumption_kwh, 0.0)
-            battery_needed = (
-                slot_demand / discharge_eff if discharge_eff > 1e-9 else 0.0
+    for s in discharge_slots:
+        if id(s) in keep_set:
+            total_kept += 1
+        else:
+            total_cleared += 1
+            log_planner(
+                "debug",
+                "concentrate: clearing discharge at %s→%s  price=%.4f  day=%s",
+                s.start.strftime("%d %H:%M"),
+                s.end.strftime("%H:%M"),
+                s.price.import_price,
+                as_tz(s.start, now.tzinfo).strftime("%Y-%m-%d"),
             )
-            # Respect the inverter's per-slot discharge power limit — the
-            # SoC simulation caps at max_discharge_per_slot, so the
-            # concentration estimate must match to avoid over-counting.
-            if max_discharge_per_slot is not None:
-                battery_needed = min(battery_needed, max_discharge_per_slot)
-
-            if battery_needed <= day_budget:
-                day_budget -= battery_needed
-                keep_set.add(id(s))
-            else:
-                # Not enough battery for this slot — skip it, but keep
-                # checking cheaper slots that may have small enough demand
-                # to fit (issue #446 regression guard).
-                continue
-
-        day_kept = 0
-        day_cleared = 0
-        for s in day_slots:
-            if id(s) in keep_set:
-                total_kept += 1
-                day_kept += 1
-            else:
-                total_cleared += 1
-                day_cleared += 1
-                log_planner(
-                    "debug",
-                    "concentrate: clearing discharge at %s→%s  price=%.4f  day=%s",
-                    s.start.strftime("%d %H:%M"),
-                    s.end.strftime("%H:%M"),
-                    s.price.import_price,
-                    day.strftime("%Y-%m-%d"),
-                )
-                # Use BatteriesWaitMode so the fill pass in engine.py does NOT
-                # re-mark this as BatteriesDischargeMode.
-                s.recommendation = Recommendations.BatteriesWaitMode.value
-                s.batteries_charged_kwh = 0.0
-
-        log_planner(
-            "debug",
-            "[disch] concentrate: day=%s  budget=%.3f  kept=%d  cleared=%d  "
-            "remaining_budget=%.3f",
-            day.strftime("%Y-%m-%d"),
-            usable_kwh,
-            day_kept,
-            day_cleared,
-            day_budget,
-        )
+            s.recommendation = Recommendations.BatteriesWaitMode.value
+            s.batteries_charged_kwh = 0.0
 
     log_planner(
         "debug",
         "[disch] concentrate_discharge_on_expensive_slots DONE  "
-        "days=%d  kept=%d  cleared=%d  usable_per_day=%.3f",
+        "days=%d  kept=%d  cleared=%d  usable_per_day=%.3f  total_budget=%.3f",
         len(by_day),
         total_kept,
         total_cleared,
         usable_kwh,
+        usable_kwh * len(by_day),
     )
 
 
@@ -539,33 +534,27 @@ def apply_optimization_strategy(
         ):
             rec.recommendation = Recommendations.ForceExport.value
 
-    # Solar charging until battery full — across the full planning horizon
-    # (not limited to today; a 48-hour window should charge from solar on
-    # both day 1 and day 2).
-    batteries_needed_charge = max(usable_capacity - current_capacity, 0.0)
-    charged = 0.0
+    # Solar charging per calendar day — each day gets its own
+    # usable_capacity budget so tomorrow's solar charging isn't
+    # blocked by today's full battery.
+    # Group unassigned future slots by calendar day.
+    by_day: dict[date, list[PlannedSlot]] = defaultdict(list)
+    for s in slots:
+        if s.recommendation is None and as_tz(s.start, now.tzinfo) >= now:
+            by_day[as_tz(s.start, now.tzinfo).date()].append(s)
 
-    for rec in sorted(
-        (
-            s
-            for s in slots
-            if s.recommendation is None and as_tz(s.start, now.tzinfo) >= now
-        ),
-        key=lambda x: x.price.export_price,
-    ):
-        if charged >= batteries_needed_charge:
-            break
-        # v5.1.0 threshold: <= NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH
-        # (charge even near-zero-consumption slots)
-        if rec.estimated_net_consumption_kwh <= NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH:
-            # Per-slot energy: how much this individual slot contributes, capped at
-            # what is still needed.  Store the per-slot value so that summing across
-            # slots in engine.py / total_charged_energy_kwh() is not double-counted.
-            slot_solar = abs(rec.estimated_net_consumption_kwh)
-            slot_energy = min(slot_solar, batteries_needed_charge - charged)
-            charged += slot_energy
-            rec.recommendation = Recommendations.BatteriesChargeSolar.value
-            rec.batteries_charged_kwh = round(slot_energy, 3)
+    for day_slots in by_day.values():
+        day_budget = usable_capacity
+        day_charged = 0.0
+        for rec in sorted(day_slots, key=lambda x: x.price.export_price):
+            if day_charged >= day_budget:
+                break
+            if rec.estimated_net_consumption_kwh <= NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH:
+                slot_solar = abs(rec.estimated_net_consumption_kwh)
+                slot_energy = min(slot_solar, day_budget - day_charged)
+                day_charged += slot_energy
+                rec.recommendation = Recommendations.BatteriesChargeSolar.value
+                rec.batteries_charged_kwh = round(slot_energy, 3)
 
     # Seasonal fill for remaining unassigned slots
     for rec in slots:
