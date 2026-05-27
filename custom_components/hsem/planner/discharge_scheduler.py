@@ -370,6 +370,21 @@ def concentrate_discharge_on_expensive_slots(
     for s in discharge_slots:
         by_day[as_tz(s.start, now.tzinfo).date()].append(s)
 
+    # Log the per-day grouping so the operator can verify that each day
+    # gets its own independent battery budget.
+    day_summaries: list[str] = []
+    for day in sorted(by_day):
+        day_summaries.append(f"{day}({len(by_day[day])} slots)")
+    log_planner(
+        "debug",
+        "[disch] concentrate: %d discharge slots grouped into %d day(s): %s  "
+        "usable_per_day=%.3f",
+        len(discharge_slots),
+        len(by_day),
+        ", ".join(day_summaries),
+        usable_kwh,
+    )
+
     total_kept = 0
     total_cleared = 0
 
@@ -402,11 +417,15 @@ def concentrate_discharge_on_expensive_slots(
                 # to fit (issue #446 regression guard).
                 continue
 
+        day_kept = 0
+        day_cleared = 0
         for s in day_slots:
             if id(s) in keep_set:
                 total_kept += 1
+                day_kept += 1
             else:
                 total_cleared += 1
+                day_cleared += 1
                 log_planner(
                     "debug",
                     "concentrate: clearing discharge at %s→%s  price=%.4f  day=%s",
@@ -419,6 +438,17 @@ def concentrate_discharge_on_expensive_slots(
                 # re-mark this as BatteriesDischargeMode.
                 s.recommendation = Recommendations.BatteriesWaitMode.value
                 s.batteries_charged_kwh = 0.0
+
+        log_planner(
+            "debug",
+            "[disch] concentrate: day=%s  budget=%.3f  kept=%d  cleared=%d  "
+            "remaining_budget=%.3f",
+            day.strftime("%Y-%m-%d"),
+            usable_kwh,
+            day_kept,
+            day_cleared,
+            day_budget,
+        )
 
     log_planner(
         "debug",
