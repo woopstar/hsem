@@ -142,6 +142,7 @@ class SensorConfig:
     huawei_solar_batteries_maximum_discharging_power: str | None = None
     huawei_solar_batteries_tou_charging_and_discharging_periods: str | None = None
     huawei_solar_batteries_excess_pv_energy_use_in_tou: str | None = None
+    huawei_solar_batteries_forcible_charge: str | None = None
     huawei_solar_inverter_active_power_control: str | None = None
     huawei_solar_batteries_rated_capacity: str | None = None
 
