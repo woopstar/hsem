@@ -94,22 +94,26 @@ max_charge_per_slot_kwh = battery_max_charge_power_w / 1000 * (interval_minutes 
 | `battery_purchase_price` | `float` | Purchase price of the battery (local currency) |
 | `battery_expected_cycles` | `int` | Expected total lifetime cycles |
 | `battery_cycle_cost_per_kwh` | `float` | Explicit depreciation cost per kWh cycled |
+| `battery_capacity_loss_pct` | `float` | Expected capacity loss at end-of-life (%), default 30 |
 | `battery_charge_efficiency_pct` | `float` | Charge-side efficiency (%), e.g. 98 |
 | `battery_discharge_efficiency_pct` | `float` | Discharge-side efficiency (%), e.g. 98 |
 
 When `battery_cycle_cost_per_kwh` is `0.0`, the planner auto-derives cycle cost from
-purchase price, rated capacity, expected cycles, and round-trip conversion loss:
+purchase price, rated capacity, expected cycles, capacity loss at EOL, and round-trip
+conversion loss:
 
 ```text
-depreciation      = purchase_price / (rated_capacity_kwh × expected_cycles)
+depreciation      = (purchase_price × capacity_loss_pct / 100)
+                   / (2 × usable_capacity_kwh × expected_cycles)
 conversion_loss   = 1 / (charge_eff × discharge_eff) − 1
 threshold         = depreciation + conversion_loss
 ```
 
-The depreciation term recovers the battery's purchase cost over its lifetime throughput.
-The conversion-loss term accounts for energy lost to heat during a full round-trip
-(charge then discharge). At 98 % efficiency on each side the loss is ~0.042 per kWh
-cycled — significant enough to include in the profitability guard.
+The ``2×`` factor in the depreciation term accounts for one full cycle
+(charge + discharge).  The ``capacity_loss_pct`` (default 30 %) accounts for the
+fraction of the battery's value that is consumed over its lifetime — typically
+20 % physical capacity loss at 6000 LiFePO4 cycles plus ~10 % margin for
+calendar ageing.
 
 The `excess_export_price_threshold` and the schedule profitability guard both use this
 combined threshold.  Users who want extra margin can set `battery_cycle_cost_per_kwh`
