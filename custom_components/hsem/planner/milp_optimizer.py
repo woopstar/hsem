@@ -511,7 +511,16 @@ def solve_milp(
                 ed_kwh = 0.0
 
         if ec_kwh > _MIN_ACTION_KWH:
-            out_slots[slot_i].recommendation = Recommendations.BatteriesChargeGrid.value
+            # Use BatteriesChargeSolar when PV surplus is available,
+            # BatteriesChargeGrid otherwise.
+            if pv_avail[lp_t] > _MIN_ACTION_KWH:
+                out_slots[
+                    slot_i
+                ].recommendation = Recommendations.BatteriesChargeSolar.value
+            else:
+                out_slots[
+                    slot_i
+                ].recommendation = Recommendations.BatteriesChargeGrid.value
             out_slots[slot_i].batteries_charged_kwh = round(ec_kwh, 3)
         elif ed_kwh > _MIN_ACTION_KWH:
             # If the LP is exporting (ge > 0) in this slot, use
@@ -535,7 +544,11 @@ def solve_milp(
         sum(
             1
             for i in future_idx
-            if out_slots[i].recommendation == Recommendations.BatteriesChargeGrid.value
+            if out_slots[i].recommendation
+            in (
+                Recommendations.BatteriesChargeGrid.value,
+                Recommendations.BatteriesChargeSolar.value,
+            )
         ),
         sum(
             1
