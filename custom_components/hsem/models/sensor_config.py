@@ -15,6 +15,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import time
 
+from custom_components.hsem.const import DEFAULT_CONFIG_VALUES
+
 
 @dataclass
 class EVChargerConfig:
@@ -178,7 +180,11 @@ class SensorConfig:
     #: Expected battery capacity loss at end-of-life as a percentage (0-100).
     #: LiFePO4 EOL is typically 20 % (80 % retained).  Default 30 % includes
     #: margin for calendar ageing.
-    batteries_capacity_loss_pct: float = 30.0
+    batteries_capacity_loss_pct: float = field(
+        default_factory=lambda: DEFAULT_CONFIG_VALUES[
+            "hsem_batteries_capacity_loss_pct"
+        ]
+    )
 
     # Battery discharge schedules
     batteries_schedule_1: BatteryScheduleConfig = field(
