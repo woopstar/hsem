@@ -84,6 +84,9 @@ def apply_charge_schedules(
     # window), not by a global pool shared across all days.
     occurrence_count = 0
     total_charged_all = 0.0
+    today = as_tz(now, now.tzinfo).date()
+    used_today_current_kwh = False
+
     log_planner(
         "debug",
         "[chg] apply_charge_schedules  schedules=%d  max_charge/slot=%.3f  "
@@ -132,7 +135,23 @@ def apply_charge_schedules(
             # is smaller.  Do NOT share a global pool across days — the
             # battery is discharged between windows, making room for new
             # charging.
-            occurrence_budget = min(needed, usable_kwh) if usable_kwh > 0 else needed
+            #
+            # For windows on today's calendar date, account for the
+            # battery's current charge (current_kwh) so we don't plan
+            # unnecessary charging when the battery is already full.
+            # Windows on future days get the full usable_kwh budget.
+            window_date = as_tz(window_start_abs, now.tzinfo).date()
+            if window_date == today and not used_today_current_kwh:
+                occurrence_budget = (
+                    min(needed, max(needed - current_kwh, 0.0), usable_kwh)
+                    if usable_kwh > 0
+                    else needed
+                )
+                used_today_current_kwh = True
+            else:
+                occurrence_budget = (
+                    min(needed, usable_kwh) if usable_kwh > 0 else needed
+                )
 
             # Eligible charge slots: future, unassigned, and ending before
             # this specific occurrence's window start.
@@ -545,7 +564,12 @@ def apply_arbitrage_grid_charge(
         _LOGGER.debug("arbitrage: no enabled battery schedule — grid charge disabled")
         return
 
-    remaining_capacity = max(usable_capacity - current_capacity, 0.0)
+    # Use usable_capacity as the budget rather than usable_capacity -
+    # current_capacity, so arbitrage charging is evaluated even when the
+    # battery starts full.  The battery will discharge between now and
+    # the expensive consumption slots tomorrow, making room for charging.
+    # The SoC simulation handles per-slot physical clamping.
+    remaining_capacity = usable_capacity
     already_planned = _already_planned_charge_kwh(slots)
     remaining_capacity = max(remaining_capacity - already_planned, 0.0)
     if remaining_capacity <= 1e-9:
@@ -681,6 +705,23 @@ def apply_arbitrage_grid_charge(
             )
 
     if chosen_any:
+        # Mark matched expensive slots for discharge so the battery
+        # actually covers them during the SoC simulation instead of
+        # importing from grid.
+        discharged_count = 0
+        for es, original_demand in expensive_slots:
+            matched_kwh = original_demand - remaining_demand.get(
+                id(es), original_demand
+            )
+            if matched_kwh > 1e-9:
+                es.recommendation = Recommendations.ForceBatteriesDischarge.value
+                discharged_count += 1
+        if discharged_count > 0:
+            _LOGGER.debug(
+                "arbitrage: marked %d expensive slot(s) for force discharge",
+                discharged_count,
+            )
+
         _LOGGER.debug(
             "arbitrage: total %.3f kWh of grid charging scheduled "
             "(remaining_capacity=%.3f, sched_min_diff=%.4f, "

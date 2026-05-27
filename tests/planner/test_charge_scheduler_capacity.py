@@ -233,8 +233,9 @@ class TestOpportunisticChargeCapacityCap:
         )
 
         charged_before = sum(s.batteries_charged_kwh for s in slots)
-        # Single occurrence, budget = min(needed=8, usable_kwh=10) = 8
-        per_occ_budget = min(8.0, 10.0)
+        # Single occurrence on today's date, budget accounts for current_kwh:
+        # min(needed=8, max(8-2, 0)=6, usable_kwh=10) = 6
+        per_occ_budget = min(8.0, max(8.0 - 2.0, 0.0), 10.0)
         assert charged_before - 1e-9 < per_occ_budget + 1e-9, (
             f"Schedule charge ({charged_before:.3f}) must not exceed "
             f"per-occurrence budget ({per_occ_budget:.3f})"
@@ -252,15 +253,11 @@ class TestOpportunisticChargeCapacityCap:
         )
 
         charged_after = sum(s.batteries_charged_kwh for s in slots)
-        # Opportunistic must not add charge when already_planned fills battery
+        # Schedule charging: min(8, max(8-2,0)=6, 10) = 6 kWh
+        # Remaining headroom: 10 - 2 - 6 = 2 kWh
+        # Opportunistic may fill this with cheap 0.05 slots
         headroom = 10.0 - 2.0
         assert charged_after - 1e-9 < headroom + 1e-9, (
             f"Total charged ({charged_after:.3f}) must not exceed "
             f"headroom ({headroom:.3f})"
-        )
-        # The opportunistic pass should not have added any new charge
-        # after schedule charging already planned up to the budget
-        assert abs(charged_after - charged_before) < 1e-9, (
-            f"Opportunistic charge added {charged_after - charged_before:.3f} kWh "
-            f"when battery was already at capacity"
         )

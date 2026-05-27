@@ -35,6 +35,7 @@ from custom_components.hsem.models.planner_outputs import PlannedSlot
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import clamp_efficiency
+from custom_components.hsem.utils.recommendations import CHARGE_RECS as _CHARGE_RECS
 from custom_components.hsem.utils.recommendations import Recommendations
 
 
@@ -188,6 +189,14 @@ def simulate_soc(
         scheduled_charge = max(scheduled_charge, 0.0)
         slot.batteries_charged_kwh = round(scheduled_charge, 3)
 
+        # If the scheduled charge was clamped to zero because the battery
+        # is already full (no headroom), clear the charge recommendation
+        # so the label doesn't claim "charge" when nothing is charged.
+        if scheduled_charge <= 1e-9 and slot.recommendation in _CHARGE_RECS:
+            if headroom <= 1e-9:
+                slot.recommendation = Recommendations.BatteriesWaitMode.value
+                slot.batteries_charged_kwh = 0.0
+
         # --- Net demand on the shared AC bus ---
         # The battery, house loads, and EV charger all share one AC bus.
         # When the battery discharges, the AC power flows to everything on
@@ -338,6 +347,24 @@ def simulate_soc(
         slot.batteries_discharged_kwh = round(discharge, 3)
         slot.grid_import_kwh = round(grid_import, 3)
         slot.grid_export_kwh = round(grid_export, 3)
+
+        # If the slot has a FORCE discharge/export recommendation but
+        # no discharge actually happened (battery empty or PV surplus),
+        # clear it to wait_mode.  Schedule discharge windows
+        # (BatteriesDischargeMode) stay as-is — they represent the
+        # user's configured windows, not a forced action.
+        if discharge <= 1e-9 and slot.recommendation in (
+            Recommendations.ForceBatteriesDischarge.value,
+            Recommendations.ForceExport.value,
+        ):
+            log_planner(
+                "debug",
+                "[soc_sim] cleared discharge rec to wait_mode "
+                "(cap=%.3f discharge=%.3f)",
+                cap,
+                discharge,
+            )
+            slot.recommendation = Recommendations.BatteriesWaitMode.value
 
         log_planner(
             "debug",

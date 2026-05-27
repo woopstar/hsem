@@ -136,6 +136,9 @@ def solve_milp(
     discharge_efficiency_pct: float = 97.0,
     time_discount_rate: float = 1.0,
     replacement_price_per_kwh: float | None = None,
+    *,
+    export_min_price: float = 0.0,
+    recommended_threshold: float = 0.0,
 ) -> list[PlannedSlot] | None:
     """Solve the LP and return a deep-copy slot list with MILP recommendations.
 
@@ -258,6 +261,21 @@ def solve_milp(
     # Replace NaN prices with 0 to prevent solver numerical issues
     p_imp = np.nan_to_num(p_imp, nan=0.0)
     p_exp = np.nan_to_num(p_exp, nan=0.0)
+
+    # Clamp export prices to >= 0 so the LP never pays to export.
+    # (The MILP cannot curtail PV surplus — it must export when the
+    # battery is full.  Flooring at 0 ensures it does so without penalty
+    # rather than actively seeking negative-price exports.)
+    neg_mask = p_exp < 0.0
+    n_neg = int(np.sum(neg_mask))
+    if n_neg > 0:
+        log_planner(
+            "debug",
+            "[milp] Clamping %d negative export prices to 0 (min=%.4f)",
+            n_neg,
+            float(np.min(p_exp)),
+        )
+    p_exp = np.maximum(p_exp, 0.0)
 
     # Net load = house consumption + EV extra load − PV estimate.
     # A positive value means the battery/grid must supply extra energy.
