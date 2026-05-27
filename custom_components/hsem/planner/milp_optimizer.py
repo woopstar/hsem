@@ -1,9 +1,8 @@
-"""MILP-based optimal battery charge/discharge scheduler (issue #416).
+"""MILP-based optimal battery charge/discharge scheduler.
 
 This module implements a **Mixed Integer Linear Program** that finds the
 globally cost-optimal charge/discharge schedule for the planning horizon.
-It complements (and can eventually replace) the rule-based 6-candidate
-heuristic by guaranteeing a near-optimal solution for every input.
+It is the PRIMARY planner — heuristic candidates are disabled.
 
 Algorithm overview
 ------------------
