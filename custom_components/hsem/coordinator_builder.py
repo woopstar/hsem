@@ -195,6 +195,7 @@ def build_planner_input(
             else 6000
         ),
         battery_cycle_cost_per_kwh=convert_to_float(cfg.batteries_cycle_cost) or 0.0,
+        battery_capacity_loss_pct=cfg.batteries_capacity_loss_pct,
         weight_1d=(
             v
             if (v := convert_to_int(cfg.house_consumption_energy_weight_1d)) is not None

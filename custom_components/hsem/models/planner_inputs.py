@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, time
 from typing import Any
 
+from custom_components.hsem.const import DEFAULT_CONFIG_VALUES
+
 
 @dataclass
 class HourlyConsumptionAverage:
@@ -197,6 +199,15 @@ class PlannerInput:
     #: from the grid when the price spread covers loss **and** wear.
     #: 0.0 means no extra guard beyond the depreciation threshold.
     battery_cycle_cost_per_kwh: float = 0.0
+
+    #: Expected battery capacity loss at end-of-life as a percentage (0-100).
+    #: LiFePO4 EOL is typically 20 % (80 % retained).  Default 30 % includes
+    #: margin for calendar ageing.
+    battery_capacity_loss_pct: float = field(
+        default_factory=lambda: DEFAULT_CONFIG_VALUES[
+            "hsem_batteries_capacity_loss_pct"
+        ]
+    )
 
     # --- consumption weights (must sum to 100) ---
     weight_1d: int = 25

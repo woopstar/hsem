@@ -29,6 +29,7 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_batteries_purchase_price": 0.0,
     "hsem_batteries_expected_cycles": 6000,
     "hsem_batteries_cycle_cost": 0.0,
+    "hsem_batteries_capacity_loss_pct": 30,
     "hsem_batteries_enable_batteries_schedule_1_end": "09:00:00",
     "hsem_batteries_enable_batteries_schedule_1_start": "07:00:00",
     "hsem_batteries_enable_batteries_schedule_1": True,

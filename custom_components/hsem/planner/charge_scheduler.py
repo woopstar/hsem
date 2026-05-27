@@ -50,12 +50,12 @@ def apply_charge_schedules(
     2. Solar surplus (``estimated_net_consumption < SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH``)
     3. Cheapest remaining grid hours (guarded by depreciation threshold + cycle cost)
 
-    A cross-occurrence battery capacity limit is enforced: once the total
-    planned charge across all discharge-window occurrences reaches the
-    battery's remaining capacity (``usable_kwh - current_kwh``), no further
-    charge slots are assigned.  This prevents the scheduler from marking
-    dozens of slots as ``batteries_charge_grid`` when the battery can only
-    hold 14 kWh.
+    Each discharge-window occurrence (calendar day) receives its own
+    independent charge budget capped at ``min(needed, usable_kwh)``.
+    This correctly accounts for the fact that the battery is discharged
+    during the previous window, making room for new charging.  The battery
+    never holds more than ``usable_kwh`` at any one time, but it can be
+    charged again after being discharged.
 
     Args:
         slots: Mutable list of planned slots.
@@ -77,23 +77,22 @@ def apply_charge_schedules(
         )
         return
 
-    # Cross-occurrence capacity cap: only enforce when usable_kwh is
-    # provided (> 0).  When both current_kwh and usable_kwh are 0.0
-    # (backward-compatible default), no cap is applied.
-    remaining_capacity = (
-        max(usable_kwh - current_kwh, 0.0) if usable_kwh > 0 else float("inf")
-    )
+    # Each discharge-window occurrence (calendar day) gets its own
+    # independent charge budget because the battery is discharged during
+    # the previous window, making room for new charging.  The per-occurrence
+    # budget is capped at usable_kwh (or the energy actually needed for that
+    # window), not by a global pool shared across all days.
+    occurrence_count = 0
+    total_charged_all = 0.0
     log_planner(
         "debug",
-        "[chg] apply_charge_schedules  schedules=%d  remaining_cap=%.3f  "
-        "max_charge/slot=%.3f  current=%.3f  usable=%.3f",
+        "[chg] apply_charge_schedules  schedules=%d  max_charge/slot=%.3f  "
+        "current=%.3f  usable=%.3f",
         len(battery_schedules),
-        remaining_capacity,
         max_charge_per_interval,
         current_kwh,
         usable_kwh,
     )
-    total_charged = 0.0
 
     for sched in battery_schedules:
         if not sched.enabled:
@@ -128,11 +127,12 @@ def apply_charge_schedules(
             if needed <= 0:
                 continue
 
-            # Cross-occurrence capacity cap: don't charge more than the
-            # battery can hold across all discharge-window occurrences.
-            if total_charged >= remaining_capacity - 1e-9:
-                break
-            occurrence_budget = min(needed, remaining_capacity - total_charged)
+            # Per-occurrence budget: cap at what's needed for this window
+            # or at usable_kwh (the battery's physical capacity), whichever
+            # is smaller.  Do NOT share a global pool across days — the
+            # battery is discharged between windows, making room for new
+            # charging.
+            occurrence_budget = min(needed, usable_kwh) if usable_kwh > 0 else needed
 
             # Eligible charge slots: future, unassigned, and ending before
             # this specific occurrence's window start.
@@ -144,6 +144,7 @@ def apply_charge_schedules(
                 and s.recommendation is None
             ]
 
+            occurrence_count += 1
             charged = 0.0
 
             # Priority 1: negative import price
@@ -201,7 +202,24 @@ def apply_charge_schedules(
                 )
                 charged += grid_charged
 
-            total_charged += charged
+            total_charged_all += charged
+            log_planner(
+                "debug",
+                "[chg] apply_charge_schedules  occurrence=%d  budget=%.3f  "
+                "needed=%.3f  charged=%.3f  window=%s",
+                occurrence_count,
+                occurrence_budget,
+                needed,
+                charged,
+                window_start_abs.strftime("%Y-%m-%d %H:%M"),
+            )
+
+    log_planner(
+        "debug",
+        "[chg] apply_charge_schedules DONE  occurrences=%d  total_charged=%.3f",
+        occurrence_count,
+        total_charged_all,
+    )
 
 
 def _apply_grid_charge(

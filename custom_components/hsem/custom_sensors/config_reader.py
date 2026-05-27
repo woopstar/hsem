@@ -293,6 +293,12 @@ def build_sensor_config(config_entry) -> SensorConfig:
         convert_to_float(get_config_value(config_entry, "hsem_batteries_cycle_cost"))
         or 0.0
     )
+    cfg.batteries_capacity_loss_pct = (
+        convert_to_float(
+            get_config_value(config_entry, "hsem_batteries_capacity_loss_pct")
+        )
+        or 30.0
+    )
 
     # Battery schedules
     cfg.batteries_schedule_1 = BatteryScheduleConfig(

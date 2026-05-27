@@ -286,7 +286,7 @@ def generate_candidates(
             discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
             purchase_price=inp.battery_purchase_price,
             expected_cycles=inp.battery_expected_cycles,
-            capacity_loss_pct=30.0,
+            capacity_loss_pct=inp.battery_capacity_loss_pct,
         )
         # Skip near-identical candidates (Bug E fix)
         if (

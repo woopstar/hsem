@@ -754,6 +754,25 @@ silently treat absent data as real zero without surfacing a diagnostic.
 `DataQuality.day2_price_missing_hours` and `DataQuality.day2_pv_missing_hours`
 carry the day+2 gap lists for 72-hour horizon runs.
 
+### Discharge concentration across days
+
+``concentrate_discharge_on_expensive_slots`` clears the cheapest
+discharge slots when the battery cannot cover all of them.  This
+pre-processing step runs before the SoC simulation and ensures the
+battery is reserved for the most expensive slots.
+
+The function groups discharge slots by **calendar day** and gives each
+day its own independent ``usable_kwh`` budget.  This correctly accounts
+for the fact that the battery is recharged by solar (or cheap grid
+hours) between discharge windows on different days.  Without per-day
+budgets, slots on day N+1 would compete with slots on day N for the
+same capacity pool — even though the battery is fully recharged in
+between.
+
+Within each day the estimate is conservative: it assumes the battery
+starts at full capacity and there is no incoming charge between
+discharge slots on the same day.
+
 ### Invariants for multi-day horizon tests
 
 - A 24-hour horizon produces exactly `(24 * 60) // interval_minutes` slots.

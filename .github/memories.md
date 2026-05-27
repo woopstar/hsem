@@ -16,7 +16,7 @@ for the HSEM (Home Smart Energy Management) project. Read this before making any
 | `candidate_generator.py` | Generates charge/discharge plan candidates (partial-SoC, MILP, solar) |
 | `candidate_selector.py` | Picks the best candidate using time-discounted score |
 | `charge_scheduler.py` | Assigns charge recommendations to slots |
-| `discharge_scheduler.py` | Assigns discharge recommendations to slots (if split from charge_scheduler) |
+| `discharge_scheduler.py` | Assigns discharge recommendations to slots; `concentrate_discharge_on_expensive_slots` uses **per-calendar-day** budget pools |
 | `milp_optimizer.py` | Solves the MILP LP problem — variable vector is `6*n` (ec, ed, gi, ge, pv, m) |
 | `cost_function.py` | Scores a candidate plan — source of truth for cost math |
 | `soc_simulation.py` | Simulates battery SoC forward through a slot plan |
@@ -107,10 +107,13 @@ The `m[t]` constraints are: `m[t] >= ec[t]` and `m[t] >= ed[t]`.
 ## Cycle Cost Formula
 
 ```
-cycle_cost_per_kwh = purchase_price / (2 * usable_kwh * expected_cycles)
+cycle_cost_per_kwh = (purchase_price × capacity_loss_pct / 100)
+                   / (2 × usable_kwh × expected_cycles)
 ```
 
-The `2x` denominator accounts for one full round-trip (charge + discharge = 2 * usable_kwh throughput per cycle).
+The `2x` denominator accounts for one full round-trip (charge + discharge = 2 × usable_kwh throughput per cycle).
+`capacity_loss_pct` (configurable via `hsem_batteries_capacity_loss_pct`, default 30 %) accounts for the
+fraction of battery value consumed over its lifetime.
 Do **not** remove or change this factor without updating `docs/hsem-planner-spec.md`.
 
 ---
@@ -126,6 +129,21 @@ filtered = [targets[0]]
 for t in sorted(targets)[1:]:
     if t - filtered[-1] >= DUPLICATE_THRESHOLD_KWH:
         filtered.append(t)
+```
+
+---
+
+## Discharge Concentration — Per-Day Budget Pools
+
+`concentrate_discharge_on_expensive_slots` groups discharge slots by calendar day
+and gives each day its own independent `usable_kwh` budget. Do NOT revert to
+a single global pool — the battery is recharged by solar between discharge
+windows on different days, so day N+1 must not compete with day N.
+
+```python
+by_day: dict[date, list[PlannedSlot]] = defaultdict(list)
+for s in discharge_slots:
+    by_day[as_tz(s.start, now.tzinfo).date()].append(s)
 ```
 
 ---
