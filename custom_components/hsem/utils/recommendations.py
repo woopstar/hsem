@@ -73,20 +73,21 @@ class Recommendations(Enum):
     """
 
     ForceBatteriesDischarge = "force_batteries_discharge"
-    """Force battery discharge — cover house load AND export excess to grid.
-
-    Battery:   discharge at max rate (up to max_discharge_per_slot)
-    House:     covered by battery first
-    Grid:      EXPORT any battery energy beyond house load;
-               import only if battery cannot fully cover house
-    """
-
-    ForceExport = "force_export"
-    """Force battery discharge directly to grid — house imports separately.
+    """Force battery discharge to grid — house imports separately.
 
     Battery:   discharge at max rate → ALL energy to grid
     House:     imported from grid (battery does NOT cover house)
     Grid:      EXPORT battery energy; import for house load
+
+    Huawei hardware: battery exports everything to grid;
+    house consumption must be imported at import_price.
+    Total cost = house × import_price − battery × export_price.
+    """
+
+    ForceExport = "force_export"
+    """Force battery discharge to grid — identical to ForceBatteriesDischarge.
+
+    Same behavior as ForceBatteriesDischarge on Huawei hardware.
     """
 
     # ------------------------------------------------------------------
