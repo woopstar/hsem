@@ -9,7 +9,8 @@ All functions are pure — no I/O, no Home Assistant imports.  They mutate the
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from collections import defaultdict
+from datetime import date, datetime, timedelta
 
 from custom_components.hsem.const import NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH
 from custom_components.hsem.models.planner_inputs import BatteryScheduleInput
@@ -307,7 +308,7 @@ def concentrate_discharge_on_expensive_slots(
     max_discharge_per_slot: float | None,
     discharge_efficiency_pct: float = 100.0,
 ) -> None:
-    """Clear cheap discharge slots the battery cannot fully serve.
+    """Clear cheap discharge slots the battery cannot fully serve, per calendar day.
 
     ``apply_discharge_schedules`` and ``apply_optimization_strategy`` mark
     *every* slot in a discharge window as ``BatteriesDischargeMode``, but
@@ -321,14 +322,23 @@ def concentrate_discharge_on_expensive_slots(
     slots (marked ``BatteriesWaitMode``).  The most expensive slots keep
     their discharge recommendation.
 
-    The estimate is conservative: it assumes the battery starts at full
-    and there is no incoming charge between discharge slots.
+    **Per-day budget pools:** slots are grouped by calendar day and each day
+    receives its own independent ``usable_kwh`` budget.  This avoids overly
+    conservative behaviour where slots on day N+1 compete with slots on day N
+    for the same capacity pool — the battery is recharged by solar between
+    discharge windows on different days.
+
+    The estimate within each day is conservative: it assumes the battery
+    starts at full capacity and there is no incoming charge between discharge
+    slots on the same day.
 
     Args:
         slots: Mutable list of planned slots.
         now: Timezone-aware current datetime.
         current_kwh: Energy currently stored above the discharge floor (kWh).
         usable_kwh: Maximum usable energy above the discharge floor (kWh).
+            Applied as a **per-day** budget for each calendar day that has
+            discharge slots.
         max_discharge_per_slot: Maximum energy dischargeable per slot (kWh).
             ``None`` means unlimited (inverter default).
         discharge_efficiency_pct: Discharge-side efficiency (0-100 %).
@@ -353,50 +363,72 @@ def concentrate_discharge_on_expensive_slots(
     if not discharge_slots:
         return
 
-    # Sort by import price descending — most expensive first
-    discharge_slots.sort(key=lambda s: s.price.import_price, reverse=True)
-
-    # Calculate cumulative battery energy needed for each slot (most expensive first)
-    # and keep only as many as the battery can serve.
-    # Use usable_kwh because the battery will be charged by the scheduler
-    # before the discharge window starts — current_kwh is only the starting
-    # state and does not reflect the available capacity at discharge time.
-    total_battery_kwh = usable_kwh
-    keep_set: set[int] = set()
+    # Group slots by calendar day — each day gets its own independent budget
+    # because the battery is recharged by solar between discharge windows on
+    # different days.
+    by_day: dict[date, list[PlannedSlot]] = defaultdict(list)
     for s in discharge_slots:
-        # Energy the battery must release to cover net_demand
-        slot_demand = max(s.estimated_net_consumption_kwh, 0.0)
-        battery_needed = slot_demand / discharge_eff if discharge_eff > 1e-9 else 0.0
-        # Respect the inverter's per-slot discharge power limit — the SoC
-        # simulation caps at max_discharge_per_slot, so the concentration
-        # estimate must match to avoid over-counting how many slots fit.
-        if max_discharge_per_slot is not None:
-            battery_needed = min(battery_needed, max_discharge_per_slot)
+        by_day[as_tz(s.start, now.tzinfo).date()].append(s)
 
-        if battery_needed <= total_battery_kwh:
-            total_battery_kwh -= battery_needed
-            keep_set.add(id(s))
-        else:
-            # Not enough battery — skip this slot, but keep checking
-            # cheaper slots that may have small enough demand to fit.
-            continue
+    total_kept = 0
+    total_cleared = 0
 
-    for s in discharge_slots:
-        if id(s) not in keep_set:
-            log_planner(
-                "debug",
-                "concentrate: clearing discharge at %s\u2192%s  price=%.4f  "
-                "(battery can only cover %d of %d slots)",
-                s.start.strftime("%d %H:%M"),
-                s.end.strftime("%H:%M"),
-                s.price.import_price,
-                len(keep_set),
-                len(discharge_slots),
+    for day, day_slots in by_day.items():
+        # Sort by import price descending — most expensive first
+        day_slots.sort(key=lambda s: s.price.import_price, reverse=True)
+
+        # Per-day budget: the battery can be fully charged (by solar or
+        # cheap grid hours) before each day's discharge windows begin.
+        day_budget = usable_kwh
+        keep_set: set[int] = set()
+        for s in day_slots:
+            # Energy the battery must release to cover net_demand
+            slot_demand = max(s.estimated_net_consumption_kwh, 0.0)
+            battery_needed = (
+                slot_demand / discharge_eff if discharge_eff > 1e-9 else 0.0
             )
-            # Use BatteriesWaitMode so the fill pass in engine.py does NOT
-            # re-mark this as BatteriesDischargeMode.
-            s.recommendation = Recommendations.BatteriesWaitMode.value
-            s.batteries_charged_kwh = 0.0
+            # Respect the inverter's per-slot discharge power limit — the
+            # SoC simulation caps at max_discharge_per_slot, so the
+            # concentration estimate must match to avoid over-counting.
+            if max_discharge_per_slot is not None:
+                battery_needed = min(battery_needed, max_discharge_per_slot)
+
+            if battery_needed <= day_budget:
+                day_budget -= battery_needed
+                keep_set.add(id(s))
+            else:
+                # Not enough battery for this slot — skip it, but keep
+                # checking cheaper slots that may have small enough demand
+                # to fit (issue #446 regression guard).
+                continue
+
+        for s in day_slots:
+            if id(s) in keep_set:
+                total_kept += 1
+            else:
+                total_cleared += 1
+                log_planner(
+                    "debug",
+                    "concentrate: clearing discharge at %s→%s  price=%.4f  day=%s",
+                    s.start.strftime("%d %H:%M"),
+                    s.end.strftime("%H:%M"),
+                    s.price.import_price,
+                    day.strftime("%Y-%m-%d"),
+                )
+                # Use BatteriesWaitMode so the fill pass in engine.py does NOT
+                # re-mark this as BatteriesDischargeMode.
+                s.recommendation = Recommendations.BatteriesWaitMode.value
+                s.batteries_charged_kwh = 0.0
+
+    log_planner(
+        "debug",
+        "[disch] concentrate_discharge_on_expensive_slots DONE  "
+        "days=%d  kept=%d  cleared=%d  usable_per_day=%.3f",
+        len(by_day),
+        total_kept,
+        total_cleared,
+        usable_kwh,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -418,12 +450,12 @@ def apply_optimization_strategy(
 
     Decision priority per unassigned slot:
 
-    1. Export price > import price **and** export price \u2265 ``export_min_price``
-       \u2192 ``ForceExport``
-    2. Solar surplus \u2192 ``BatteriesChargeSolar`` (until battery full)
-    3. Future forced export pending and battery above required \u2192 ``BatteriesWaitMode``
-    4. Winter month \u2192 ``BatteriesWaitMode``
-    5. Summer month with solar \u2192 ``BatteriesChargeSolar``; else ``BatteriesDischargeMode``
+    1. Export price > import price **and** export price ≥ ``export_min_price``
+       → ``ForceExport``
+    2. Solar surplus → ``BatteriesChargeSolar`` (until battery full)
+    3. Future forced export pending and battery above required → ``BatteriesWaitMode``
+    4. Winter month → ``BatteriesWaitMode``
+    5. Summer month with solar → ``BatteriesChargeSolar``; else ``BatteriesDischargeMode``
 
     Args:
         slots: Mutable list of planned slots.

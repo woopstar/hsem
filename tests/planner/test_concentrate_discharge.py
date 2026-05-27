@@ -3,6 +3,10 @@
 Regression test for #446: the original code used ``break`` when a slot
 could not be fully served, causing all subsequent (cheaper) slots to be
 skipped even if they had small enough demand to fit.
+
+Per-day budget pool tests verify that multi-day horizons receive independent
+``usable_kwh`` budgets per calendar day (fix for the over-conservative
+single-pool behaviour that did not account for solar recharging between days).
 """
 
 from __future__ import annotations
@@ -48,8 +52,35 @@ def _count_discharge_slots(slots: list[PlannedSlot]) -> int:
     return sum(1 for s in slots if s.recommendation in DISCHARGE_RECS)
 
 
+def _make_slot_on_day(
+    day_offset: int,
+    demand_kwh: float,
+    price: float,
+    hour: int = 12,
+    recommendation: str | None = Recommendations.BatteriesDischargeMode.value,
+) -> PlannedSlot:
+    """Create a discharge-mode PlannedSlot on a specific calendar day.
+
+    Args:
+        day_offset: Days after ``_NOW`` (0 = same day).
+        demand_kwh: Estimated net consumption for the slot.
+        price: Import price in local currency per kWh.
+        hour: Hour of the day (0-23) for the slot start.
+        recommendation: Recommendation value for the slot.
+    """
+    start = _NOW.replace(hour=0, minute=0) + timedelta(days=day_offset, hours=hour)
+    end = start + timedelta(hours=1)
+    return PlannedSlot(
+        start=start,
+        end=end,
+        price=SlotPrice(import_price=price, export_price=0.0),
+        recommendation=recommendation,
+        estimated_net_consumption_kwh=demand_kwh,
+    )
+
+
 # ---------------------------------------------------------------------------
-# Tests
+# Tests — intra-day behaviour (unchanged from original)
 # ---------------------------------------------------------------------------
 
 
@@ -205,10 +236,6 @@ class TestConcentrateDischargeExpensiveSlots:
         # total_battery_kwh stays 5.0, then 1.0/0.8 = 1.25, 1.25 <= 5.0 → keep slot B
         assert _count_discharge_slots(slots) == 1
         assert slots[1].recommendation in DISCHARGE_RECS
-        # With 80% eff, 5.0/0.8 = 6.25 > 5.0 → skip slot A
-        # total_battery_kwh stays 5.0, then 1.0/0.8 = 1.25, 1.25 <= 5.0 → keep slot B
-        assert _count_discharge_slots(slots) == 1
-        assert slots[1].recommendation in DISCHARGE_RECS
 
     def test_per_slot_power_limit_clamps_demand(self) -> None:
         """max_discharge_per_slot caps the battery consumption estimate."""
@@ -227,3 +254,124 @@ class TestConcentrateDischargeExpensiveSlots:
         # Slot A: 1.0 <= 1.5 → keep, remaining = 0.5
         # Slot B: 1.0 > 0.5 → skip (continue), but no more slots to check
         assert _count_discharge_slots(slots) == 1
+
+
+# ---------------------------------------------------------------------------
+# Tests — per-calendar-day budget pools
+# ---------------------------------------------------------------------------
+
+
+class TestConcentrateDischargePerDay:
+    """Tests for per-calendar-day budget pools in multi-day horizons."""
+
+    def test_two_days_independent_budgets(self) -> None:
+        """Day 1 and Day 2 each get their own usable_kwh budget.
+
+        Day 1: 2 expensive slots (demand 6 kWh each, price 2.50, 2.00)
+        Day 2: 2 slots (demand 6 kWh each, price 1.50, 1.00)
+        usable_kwh = 10.0 per day
+
+        Day 1 budget (10 kWh): keeps 6 kWh slot → 4 left, 6 kWh doesn't fit → cleared
+        Day 2 budget (10 kWh): keeps 6 kWh slot → 4 left, 6 kWh doesn't fit → cleared
+
+        Result: 2 kept (one per day), 2 cleared (one per day)
+        """
+        slots = [
+            _make_slot_on_day(day_offset=0, demand_kwh=6.0, price=2.50),
+            _make_slot_on_day(day_offset=0, demand_kwh=6.0, price=2.00),
+            _make_slot_on_day(day_offset=1, demand_kwh=6.0, price=1.50),
+            _make_slot_on_day(day_offset=1, demand_kwh=6.0, price=1.00),
+        ]
+        concentrate_discharge_on_expensive_slots(
+            slots,
+            _NOW,
+            current_kwh=0.0,
+            usable_kwh=10.0,
+            max_discharge_per_slot=None,
+        )
+
+        kept = [s for s in slots if s.recommendation in DISCHARGE_RECS]
+        cleared = [
+            s
+            for s in slots
+            if s.recommendation == Recommendations.BatteriesWaitMode.value
+        ]
+
+        assert len(kept) == 2, f"Expected 2 kept, got {len(kept)}"
+        assert len(cleared) == 2, f"Expected 2 cleared, got {len(cleared)}"
+
+        # The most expensive slot on each day should be kept
+        kept_prices = sorted([s.price.import_price for s in kept])
+        assert kept_prices == pytest.approx([1.50, 2.50])
+
+        # The cheaper slot on each day should be cleared
+        cleared_prices = sorted([s.price.import_price for s in cleared])
+        assert cleared_prices == pytest.approx([1.00, 2.00])
+
+    def test_per_day_budget_resets_each_day(self) -> None:
+        """Day 2's budget is independent of Day 1's usage.
+
+        Day 1: 3 slots fully consume 10 kWh budget (5+5=10, third at 1 kWh doesn't fit)
+        Day 2: 1 slot at 5 kWh should still be kept (fresh 10 kWh budget)
+        """
+        slots = [
+            # Day 1: two expensive slots fully consume budget
+            _make_slot_on_day(day_offset=0, demand_kwh=5.0, price=3.00),
+            _make_slot_on_day(day_offset=0, demand_kwh=5.0, price=2.00),
+            _make_slot_on_day(day_offset=0, demand_kwh=1.0, price=1.00),
+            # Day 2: one moderate slot
+            _make_slot_on_day(day_offset=1, demand_kwh=5.0, price=1.50),
+        ]
+        concentrate_discharge_on_expensive_slots(
+            slots,
+            _NOW,
+            current_kwh=0.0,
+            usable_kwh=10.0,
+            max_discharge_per_slot=None,
+        )
+
+        kept = [s for s in slots if s.recommendation in DISCHARGE_RECS]
+        cleared = [
+            s
+            for s in slots
+            if s.recommendation == Recommendations.BatteriesWaitMode.value
+        ]
+
+        # Day 1: 2 kept (3.00, 2.00), 1 cleared (1.00)
+        # Day 2: 1 kept (1.50), 0 cleared
+        assert len(kept) == 3, f"Expected 3 kept, got {len(kept)}"
+        assert len(cleared) == 1, f"Expected 1 cleared, got {len(cleared)}"
+
+        kept_prices = sorted([s.price.import_price for s in kept])
+        assert kept_prices == pytest.approx([1.50, 2.00, 3.00])
+
+    def test_single_day_unchanged_from_original(self) -> None:
+        """Single-day behaviour is unchanged — #446 regression guard passes."""
+        slots = [
+            _make_slot_on_day(day_offset=0, demand_kwh=4.8, price=2.50),
+            _make_slot_on_day(day_offset=0, demand_kwh=0.3, price=2.40),
+            _make_slot_on_day(day_offset=0, demand_kwh=0.15, price=2.10),
+        ]
+        concentrate_discharge_on_expensive_slots(
+            slots,
+            _NOW,
+            current_kwh=0.0,
+            usable_kwh=5.0,
+            max_discharge_per_slot=None,
+        )
+
+        kept = [s for s in slots if s.recommendation in DISCHARGE_RECS]
+        cleared = [
+            s
+            for s in slots
+            if s.recommendation == Recommendations.BatteriesWaitMode.value
+        ]
+
+        # Slot A (2.50) and Slot C (2.10) must be kept
+        assert len(kept) == 2, f"Expected 2 kept, got {len(kept)}"
+        kept_prices = sorted([s.price.import_price for s in kept])
+        assert kept_prices == pytest.approx([2.10, 2.50])
+
+        # Slot B (2.40) must be cleared
+        assert len(cleared) == 1, f"Expected 1 cleared, got {len(cleared)}"
+        assert cleared[0].price.import_price == pytest.approx(2.40)
