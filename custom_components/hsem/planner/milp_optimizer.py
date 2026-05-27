@@ -491,6 +491,7 @@ def solve_milp(
     for lp_t, slot_i in enumerate(future_idx):
         ec_kwh = float(ec_sol[lp_t])
         ed_kwh = float(ed_sol[lp_t])
+        ge_kwh = float(result.x[ge_off + lp_t])  # grid export from LP
 
         if ec_kwh > _MIN_ACTION_KWH and ed_kwh > _MIN_ACTION_KWH:
             # Mutual exclusion is guaranteed by the LP constraint
@@ -505,10 +506,8 @@ def solve_milp(
                 - 2.0 * cycle_cost_per_kwh
             )
             if net_charge_profit > 0:
-                # Charging is net profitable — keep charge, drop discharge
                 ed_kwh = 0.0
             else:
-                # Round trip is not profitable — drop both (idle)
                 ec_kwh = 0.0
                 ed_kwh = 0.0
 
@@ -516,10 +515,19 @@ def solve_milp(
             out_slots[slot_i].recommendation = Recommendations.BatteriesChargeGrid.value
             out_slots[slot_i].batteries_charged_kwh = round(ec_kwh, 3)
         elif ed_kwh > _MIN_ACTION_KWH:
-            out_slots[
-                slot_i
-            ].recommendation = Recommendations.BatteriesDischargeMode.value
-            # batteries_charged stays 0 for discharge slots
+            # If the LP is exporting (ge > 0) in this slot, use
+            # ForceBatteriesDischarge to signal that the battery should
+            # cover house load AND export excess to grid.
+            if ge_kwh > _MIN_ACTION_KWH and p_exp[lp_t] >= max(
+                export_min_price, recommended_threshold
+            ):
+                out_slots[
+                    slot_i
+                ].recommendation = Recommendations.ForceBatteriesDischarge.value
+            else:
+                out_slots[
+                    slot_i
+                ].recommendation = Recommendations.BatteriesDischargeMode.value
 
     _LOGGER.debug(
         "[milp] LP solved: objective=%.4f  charge_slots=%d  discharge_slots=%d"
