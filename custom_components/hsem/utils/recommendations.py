@@ -73,15 +73,16 @@ class Recommendations(Enum):
     """
 
     ForceBatteriesDischarge = "force_batteries_discharge"
-    """Force battery discharge to grid — house imports separately.
+    """Force battery discharge — cover house AND export excess to grid.
 
-    Battery:   discharge at max rate → ALL energy to grid
-    House:     imported from grid (battery does NOT cover house)
-    Grid:      EXPORT battery energy; import for house load
+    Battery:   discharge at max rate (up to max_discharge_per_slot)
+    House:     covered by battery first (AC bus)
+    Grid:      EXPORT any battery energy beyond house load;
+               import only if battery cannot fully cover house
 
-    Huawei hardware: battery exports everything to grid;
-    house consumption must be imported at import_price.
-    Total cost = house × import_price − battery × export_price.
+    Per Huawei wiki: \"forces the inverter to inject more power to the
+    AC-side than your home electricity usage, which will consequently
+    be pushed onto the grid.\"
     """
 
     ForceExport = "force_export"

@@ -252,49 +252,31 @@ def simulate_soc(
                 )
                 grid_export = 0.0
             else:
-                # Determine if this is a force-export slot where the battery
-                # discharges to grid and the house imports separately.
+                max_discharge_cap = cap
+                if max_discharge_per_slot is not None:
+                    max_discharge_cap = min(max_discharge_cap, max_discharge_per_slot)
+
+                # Force discharge: pump battery at max rate to AC bus.
+                # House takes what it needs, excess goes to grid.
+                # Regular discharge: only cover house load.
                 force_export = slot.recommendation in (
                     Recommendations.ForceBatteriesDischarge.value,
                     Recommendations.ForceExport.value,
                 )
-
                 if force_export:
-                    # Force export: discharge at max rate to grid.
-                    # House imports separately from grid.
-                    max_discharge_cap = cap
-                    if max_discharge_per_slot is not None:
-                        max_discharge_cap = min(
-                            max_discharge_cap, max_discharge_per_slot
-                        )
                     discharge = max_discharge_cap
-                    discharge = max(discharge, 0.0)
-                    # All battery energy exported to grid
-                    grid_export = discharge * discharge_eff
-                    # House imports everything from grid
-                    house_grid_import = net_demand
-                    grid_import = (
-                        house_grid_import + scheduled_charge / charge_eff + ev_load
-                    )
                 else:
-                    # Regular discharge: cover house load only
-                    max_discharge_cap = cap  # can't discharge beyond available capacity
-                    if max_discharge_per_slot is not None:
-                        max_discharge_cap = min(
-                            max_discharge_cap, max_discharge_per_slot
-                        )
                     discharge_needed = net_demand / discharge_eff
                     discharge = min(discharge_needed, max_discharge_cap)
                 discharge = max(discharge, 0.0)
 
-                if not force_export:
-                    # Regular discharge: house receives battery energy
-                    house_from_battery = discharge * discharge_eff
-                    house_grid_import = max(net_demand - house_from_battery, 0.0)
-                    grid_import = (
-                        house_grid_import + scheduled_charge / charge_eff + ev_load
-                    )
-                    grid_export = 0.0
+                house_from_battery = discharge * discharge_eff
+                house_grid_import = max(net_demand - house_from_battery, 0.0)
+                # Export = battery power not consumed by house
+                grid_export = max(house_from_battery - net_demand, 0.0)
+                grid_import = (
+                    house_grid_import + scheduled_charge / charge_eff + ev_load
+                )
         else:
             # PV surplus (or balanced: net_demand == 0) beyond house load.
             # The pre-scheduled charge (batteries_charged) is expressed as battery-side
