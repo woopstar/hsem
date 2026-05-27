@@ -212,98 +212,55 @@ def generate_candidates(
     """
     candidates: list[CandidatePlan] = []
 
-    # 1. Baseline — current scheduling pipeline output (no copy needed for slots
-    #    themselves since each candidate works on its own copy below; we do copy
-    #    here so all candidates start from identical state).
-    candidates.append(
-        CandidatePlan(
-            name=CANDIDATE_BASELINE,
-            slots=_copy_slots(baseline_slots),
-        )
-    )
+    # MILP-only mode: only MILP + diagnostic baselines.
+    # The MILP finds the globally optimal solution; heuristics are disabled.
 
-    # 2. No-action — battery completely idle (diagnostic floor only, never
-    #    eligible to win selection).
+    # 1. No-action — battery completely idle (diagnostic floor).
     no_action = _copy_slots(baseline_slots)
     _clear_all_charge_discharge(no_action)
     candidates.append(CandidatePlan(name=CANDIDATE_NO_ACTION, slots=no_action))
 
-    # 3. Passive — solar charging only where PV surplus exists; no grid charge,
-    #    no forced discharge. Models the inverter default behaviour.
+    # 2. Passive — solar charging only, no grid charge/discharge.
     passive = _copy_slots(baseline_slots)
     _apply_passive_solar(passive, now)
     candidates.append(CandidatePlan(name=CANDIDATE_PASSIVE, slots=passive))
 
-    # 4. Grid-charge only — keep discharge windows; drop solar-only charge slots
-    grid_charge = _copy_slots(baseline_slots)
-    _remove_solar_charge(grid_charge)
-    candidates.append(CandidatePlan(name=CANDIDATE_GRID_CHARGE, slots=grid_charge))
-
-    # 5. Solar-only — keep solar charge + discharge windows; drop grid-charge slots
-    solar_only = _copy_slots(baseline_slots)
-    _remove_grid_charge(solar_only)
-    candidates.append(CandidatePlan(name=CANDIDATE_SOLAR_ONLY, slots=solar_only))
-
-    # 6. Discharge-only — keep discharge slots; drop ALL charge slots
-    discharge_only = _copy_slots(baseline_slots)
-    _remove_all_charge(discharge_only)
-    candidates.append(
-        CandidatePlan(name=CANDIDATE_DISCHARGE_ONLY, slots=discharge_only)
-    )
-
-    # 7. Aggressive — force-charge during N cheapest future slots,
-    #    force-discharge during M most-expensive future slots.
-    #    N is derived from remaining battery headroom (Bug 2 fix, issue #416).
-    aggressive = _copy_slots(baseline_slots)
-    _apply_aggressive_strategy(
-        aggressive,
-        now,
-        max_charge_per_slot,
-        current_kwh=current_kwh,
-        usable_kwh=usable_kwh,
-        max_discharge_per_slot=max_discharge_per_slot,
-    )
-    candidates.append(CandidatePlan(name=CANDIDATE_AGGRESSIVE, slots=aggressive))
-
-    # 8-13. Partial-SoC plans — BatPred-inspired: charge different fractions
-    #     of what's needed for the upcoming discharge windows, then hold.
-    #     By trying multiple charge levels (0.25x, 0.50x, 0.75x, 1.00x,
-    #     1.25x, fill) the selector finds the optimal charge amount instead
-    #     of a single "all or nothing" decision.
-    #     Deduplicate near-identical charge_target values (Bug E fix).
-    prev_charge_target: float | None = None
-    for soc_candidate_name, charge_fraction in _SOC_FRACTIONS.items():
-        soc_candidate = _copy_slots(baseline_slots)
-        charge_target = _apply_soc_plan(
-            soc_candidate,
-            now,
-            max_charge_per_slot,
-            current_kwh=current_kwh,
-            usable_kwh=usable_kwh,
-            cycle_cost_per_kwh=inp.battery_cycle_cost_per_kwh,
-            charge_fraction=charge_fraction,
-            charge_efficiency_pct=inp.battery_charge_efficiency_pct,
-            discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
-            purchase_price=inp.battery_purchase_price,
-            expected_cycles=inp.battery_expected_cycles,
-            capacity_loss_pct=inp.battery_capacity_loss_pct,
-        )
-        # Skip near-identical candidates (Bug E fix)
-        if (
-            prev_charge_target is not None
-            and charge_target is not None
-            and abs(charge_target - prev_charge_target) < 0.05
-        ):
-            log_planner(
-                "debug",
-                "[gen] Skipping %s — charge_target %.3f ≈ previous %.3f",
-                soc_candidate_name,
-                charge_target,
-                prev_charge_target,
-            )
-            continue
-        prev_charge_target = charge_target
-        candidates.append(CandidatePlan(name=soc_candidate_name, slots=soc_candidate))
+    # # 3. Baseline — current scheduling pipeline output
+    # candidates.append(
+    #     CandidatePlan(
+    #         name=CANDIDATE_BASELINE,
+    #         slots=_copy_slots(baseline_slots),
+    #     )
+    # )
+    #
+    # # 4. Grid-charge only
+    # grid_charge = _copy_slots(baseline_slots)
+    # _remove_solar_charge(grid_charge)
+    # candidates.append(CandidatePlan(name=CANDIDATE_GRID_CHARGE, slots=grid_charge))
+    #
+    # # 5. Solar-only
+    # solar_only = _copy_slots(baseline_slots)
+    # _remove_grid_charge(solar_only)
+    # candidates.append(CandidatePlan(name=CANDIDATE_SOLAR_ONLY, slots=solar_only))
+    #
+    # # 6. Discharge-only
+    # discharge_only = _copy_slots(baseline_slots)
+    # _remove_all_charge(discharge_only)
+    # candidates.append(
+    #     CandidatePlan(name=CANDIDATE_DISCHARGE_ONLY, slots=discharge_only)
+    # )
+    #
+    # # 7. Aggressive
+    # aggressive = _copy_slots(baseline_slots)
+    # _apply_aggressive_strategy(aggressive, now, max_charge_per_slot,
+    #     current_kwh=current_kwh, usable_kwh=usable_kwh,
+    #     max_discharge_per_slot=max_discharge_per_slot)
+    # candidates.append(CandidatePlan(name=CANDIDATE_AGGRESSIVE, slots=aggressive))
+    #
+    # # 8-13. Partial-SoC plans
+    # prev_charge_target: float | None = None
+    # for soc_candidate_name, charge_fraction in _SOC_FRACTIONS.items():
+    #     ...
 
     # 9. MILP — globally-optimal LP solution (requires scipy, falls back gracefully)
     if is_scipy_available():
