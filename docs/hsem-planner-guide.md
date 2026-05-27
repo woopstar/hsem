@@ -94,13 +94,26 @@ max_charge_per_slot_kwh = battery_max_charge_power_w / 1000 * (interval_minutes 
 | `battery_purchase_price` | `float` | Purchase price of the battery (local currency) |
 | `battery_expected_cycles` | `int` | Expected total lifetime cycles |
 | `battery_cycle_cost_per_kwh` | `float` | Explicit depreciation cost per kWh cycled |
+| `battery_charge_efficiency_pct` | `float` | Charge-side efficiency (%), e.g. 98 |
+| `battery_discharge_efficiency_pct` | `float` | Discharge-side efficiency (%), e.g. 98 |
 
 When `battery_cycle_cost_per_kwh` is `0.0`, the planner auto-derives cycle cost from
-purchase price, rated capacity, and expected cycles:
+purchase price, rated capacity, expected cycles, and round-trip conversion loss:
 
 ```text
-cycle_cost_per_kwh = purchase_price / (rated_capacity_kwh × expected_cycles)
+depreciation      = purchase_price / (rated_capacity_kwh × expected_cycles)
+conversion_loss   = 1 / (charge_eff × discharge_eff) − 1
+threshold         = depreciation + conversion_loss
 ```
+
+The depreciation term recovers the battery's purchase cost over its lifetime throughput.
+The conversion-loss term accounts for energy lost to heat during a full round-trip
+(charge then discharge). At 98 % efficiency on each side the loss is ~0.042 per kWh
+cycled — significant enough to include in the profitability guard.
+
+The `excess_export_price_threshold` and the schedule profitability guard both use this
+combined threshold.  Users who want extra margin can set `battery_cycle_cost_per_kwh`
+to a positive value, which is added on top.
 
 ### Consumption prediction
 
@@ -680,8 +693,18 @@ Auto-derived cycle cost (when not explicitly configured):
 cycle_cost_per_kwh = purchase_price / (rated_capacity_kwh × expected_cycles)
 ```
 
-**Example:** A 10 kWh battery bought for 30 000 DKK with 6 000 expected cycles costs
-`30000 / (10 × 6000) = 0.50 DKK/kWh` of throughput.
+The price threshold used by the profitability guard adds round-trip conversion
+loss on top of depreciation:
+
+```text
+price_threshold = cycle_cost_per_kwh + conversion_loss
+conversion_loss = 1 / (charge_eff × discharge_eff) − 1
+```
+
+**Depreciation example:** A 10 kWh battery bought for 30 000 DKK with 6 000 expected
+cycles costs `30000 / (10 × 6000) = 0.50 DKK/kWh` of throughput.
+**With 98 % efficiency:** conversion loss adds ~0.042 DKK/kWh, giving a combined
+threshold of ~0.542 DKK/kWh.
 
 ### SoC penalties
 

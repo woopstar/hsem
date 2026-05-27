@@ -9,7 +9,6 @@ All functions are pure — no I/O, no Home Assistant imports.  They mutate the
 
 from __future__ import annotations
 
-import logging
 from datetime import datetime, timedelta
 
 from custom_components.hsem.const import NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH
@@ -22,8 +21,6 @@ from custom_components.hsem.utils.recommendations import (
     DISCHARGE_RECS as _DISCHARGE_RECS,
 )
 from custom_components.hsem.utils.recommendations import Recommendations
-
-_LOGGER = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Discharge schedule detection
@@ -386,7 +383,8 @@ def concentrate_discharge_on_expensive_slots(
 
     for s in discharge_slots:
         if id(s) not in keep_set:
-            _LOGGER.debug(
+            log_planner(
+                "debug",
                 "concentrate: clearing discharge at %s\u2192%s  price=%.4f  "
                 "(battery can only cover %d of %d slots)",
                 s.start.strftime("%d %H:%M"),

@@ -214,6 +214,8 @@ class HSEMWorkingModeSensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
                 purchase_price=cfg.batteries_purchase_price,
                 expected_cycles=cfg.batteries_expected_cycles,
                 usable_capacity=live.battery_usable_capacity_kwh,
+                charge_efficiency_pct=cfg.batteries_charge_efficiency,
+                discharge_efficiency_pct=cfg.batteries_discharge_efficiency,
             ),
             "export_electricity_price_state": live.export_electricity_price,
             "import_electricity_price_state": live.import_electricity_price,

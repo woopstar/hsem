@@ -506,28 +506,31 @@ def calculate_recommended_threshold(
     expected_cycles: int,
     usable_capacity: float,
     capacity_loss_pct: float = 30.0,
+    charge_efficiency_pct: float | None = None,
+    discharge_efficiency_pct: float | None = None,
 ) -> float:
-    """Calculate the recommended price threshold based on battery depreciation.
+    """Calculate the recommended price threshold based on battery depreciation
+    and (optionally) round-trip conversion loss.
 
-    This threshold represents the minimum import price spread required for
-    grid charging to be economically rational (depreciation-only, excluding
-    conversion loss — that is added by callers when relevant).
+    The threshold represents the minimum import price spread required for
+    grid charging to be economically rational.
 
-    The ``2×`` factor in the denominator accounts for the fact that one full
-    battery cycle involves energy flow in *both* directions:
+    **Depreciation term** (always included)::
 
-        throughput_per_cycle = 2 × usable_capacity
-                              (charge once + discharge once)
+        depreciation = (purchase_price × capacity_loss_pct)
+                       / (2 × usable_capacity × expected_cycles)
 
-    Since ``purchase_price / expected_cycles`` is the cost *per full cycle*
-    and the cycle cost is expressed *per kWh of throughput*, the cost must
-    be spread over the total lifetime throughput:
+    The ``2×`` factor accounts for one full cycle (charge + discharge).
 
-        threshold = (purchase_price * capacity_loss_pct)
-                    / (2 × usable_capacity × expected_cycles)
+    **Conversion-loss term** (included when both ``charge_efficiency_pct`` and
+    ``discharge_efficiency_pct`` are provided)::
 
-    This is the same formula as ``_resolve_cycle_cost`` in ``cost_function.py``,
-    which also uses ``2 × usable_kwh × expected_cycles`` in the denominator.
+        conversion_loss = 1 / (charge_eff × discharge_eff) - 1
+
+    This is a fixed per-kWh add-on representing the cost of energy lost to
+    heat during a full round-trip.  At the default 98 % efficiency the term
+    is approximately 0.042 EUR/kWh — too large to ignore in the profitability
+    guard.
 
     Args:
         purchase_price: Total battery system cost in local currency.
@@ -537,6 +540,12 @@ def calculate_recommended_threshold(
             of original capacity (0-100).  LiFePO4 EOL is typically defined at
             80% retained capacity = 20% loss.  Defaults to 30% to account for
             both EOL degradation and calendar ageing.
+        charge_efficiency_pct: Charge-side efficiency (0-100).  When provided
+            together with ``discharge_efficiency_pct`` the round-trip conversion
+            loss is added to the threshold.
+        discharge_efficiency_pct: Discharge-side efficiency (0-100).  When
+            provided together with ``charge_efficiency_pct`` the round-trip
+            conversion loss is added to the threshold.
     """
     if purchase_price <= 0 or expected_cycles <= 0 or usable_capacity <= 0:
         return 0.0
@@ -545,7 +554,21 @@ def calculate_recommended_threshold(
     # The 2× factor accounts for charge + discharge per full cycle.
     # Capacity loss accounts for residual value at end-of-life.
     capacity_loss_dec = max(min(capacity_loss_pct, 100.0), 0.0) / 100.0
-    return round(
-        (purchase_price * capacity_loss_dec) / (2 * expected_cycles * usable_capacity),
-        3,
+    depr = (purchase_price * capacity_loss_dec) / (
+        2 * expected_cycles * usable_capacity
     )
+
+    # Round-trip conversion loss — added as a fixed per-kWh term when both
+    # efficiencies are provided.
+    conv_loss = 0.0
+    if (
+        charge_efficiency_pct is not None
+        and discharge_efficiency_pct is not None
+        and charge_efficiency_pct > 0
+        and discharge_efficiency_pct > 0
+    ):
+        ce = max(min(charge_efficiency_pct, 100.0), 1.0) / 100.0
+        de = max(min(discharge_efficiency_pct, 100.0), 1.0) / 100.0
+        conv_loss = 1.0 / (ce * de) - 1.0
+
+    return round(depr + conv_loss, 3)

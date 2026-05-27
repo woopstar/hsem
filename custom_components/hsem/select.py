@@ -1,7 +1,8 @@
 """Select platform for the HSEM integration.
 
-Exposes a ``SelectEntity`` that lets users force a specific working mode or
-leave the planner in ``"auto"`` mode.
+Exposes ``SelectEntity`` instances that let users configure integration
+settings from a dropdown on the entity page, without re-running the
+config/options flow.
 """
 
 from homeassistant.components.select import SelectEntityDescription
@@ -10,10 +11,13 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from custom_components.hsem.custom_selectors.entity import HSEMWorkingModeSelector
+from custom_components.hsem.custom_selectors.select import HSEMSolcastLikelihoodSelector
 from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.sensornames import (
     get_force_working_mode_selector_key,
     get_force_working_mode_selector_name,
+    get_solcast_likelihood_selector_key,
+    get_solcast_likelihood_selector_name,
 )
 
 # Selectable working modes exposed to the user.
@@ -41,6 +45,13 @@ SELECTOR_DESCRIPTIONS: tuple[SelectEntityDescription, ...] = (
         icon="mdi:chart-timeline-variant",
         options=[_DEFAULT_OPTION] + _RECOMMENDATION_OPTIONS,
     ),
+    SelectEntityDescription(
+        key=get_solcast_likelihood_selector_key(),
+        name=get_solcast_likelihood_selector_name(),
+        icon="mdi:solar-power",
+        options=["pv_estimate", "pv_estimate10", "pv_estimate90"],
+        translation_key="pv_estimate_likelihood",
+    ),
 )
 
 
@@ -50,14 +61,23 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up HSEM select entities from a config entry."""
-    async_add_entities(
-        [
-            HSEMWorkingModeSelector(
-                hass,
-                config_entry,
-                description,
-                _DEFAULT_OPTION,
+    entities: list = []
+    for description in SELECTOR_DESCRIPTIONS:
+        if description.key == get_force_working_mode_selector_key():
+            entities.append(
+                HSEMWorkingModeSelector(
+                    hass,
+                    config_entry,
+                    description,
+                    _DEFAULT_OPTION,
+                )
             )
-            for description in SELECTOR_DESCRIPTIONS
-        ]
-    )
+        elif description.key == get_solcast_likelihood_selector_key():
+            entities.append(
+                HSEMSolcastLikelihoodSelector(
+                    hass,
+                    config_entry,
+                    description,
+                )
+            )
+    async_add_entities(entities)

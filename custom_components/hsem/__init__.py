@@ -25,7 +25,13 @@ _LOGGER = logging.getLogger(__name__)
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
-PLATFORMS = [Platform.SENSOR, Platform.SWITCH, Platform.TIME, Platform.SELECT]
+PLATFORMS = [
+    Platform.SENSOR,
+    Platform.SWITCH,
+    Platform.TIME,
+    Platform.SELECT,
+    Platform.NUMBER,
+]
 
 
 def _parse_version(version_str: str) -> Version | None:

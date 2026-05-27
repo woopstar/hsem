@@ -1,0 +1,76 @@
+"""Number platform for the HSEM integration.
+
+Exposes ``NumberEntity`` instances that let users adjust integration
+settings (battery charge/discharge efficiency) from the entity page,
+without re-running the config/options flow.
+"""
+
+from homeassistant.components.number import NumberEntityDescription
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+
+from custom_components.hsem.custom_numbers.entity import HSEMBatteryEfficiencyNumber
+from custom_components.hsem.utils.sensornames import (
+    get_charge_efficiency_number_entity_id,
+    get_charge_efficiency_number_key,
+    get_charge_efficiency_number_name,
+    get_charge_efficiency_number_unique_id,
+    get_discharge_efficiency_number_entity_id,
+    get_discharge_efficiency_number_key,
+    get_discharge_efficiency_number_name,
+    get_discharge_efficiency_number_unique_id,
+)
+
+# Entity descriptions for each number entity in this platform.
+NUMBER_DESCRIPTIONS: tuple[NumberEntityDescription, ...] = (
+    NumberEntityDescription(
+        key=get_charge_efficiency_number_key(),
+        name=get_charge_efficiency_number_name(),
+        icon="mdi:battery-plus",
+        entity_category=EntityCategory.CONFIG,
+    ),
+    NumberEntityDescription(
+        key=get_discharge_efficiency_number_key(),
+        name=get_discharge_efficiency_number_name(),
+        icon="mdi:battery-minus",
+        entity_category=EntityCategory.CONFIG,
+    ),
+)
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Set up HSEM number entities from a config entry."""
+    config_keys = {
+        get_charge_efficiency_number_key(): "hsem_batteries_charge_efficiency",
+        get_discharge_efficiency_number_key(): "hsem_batteries_discharge_efficiency",
+    }
+
+    _id_map = {
+        get_charge_efficiency_number_key(): (
+            get_charge_efficiency_number_unique_id(),
+            get_charge_efficiency_number_entity_id(),
+        ),
+        get_discharge_efficiency_number_key(): (
+            get_discharge_efficiency_number_unique_id(),
+            get_discharge_efficiency_number_entity_id(),
+        ),
+    }
+
+    entities = [
+        HSEMBatteryEfficiencyNumber(
+            hass,
+            config_entry,
+            description,
+            config_key=config_keys[description.key],
+            unique_id=_id_map[description.key][0],
+            entity_id=_id_map[description.key][1],
+        )
+        for description in NUMBER_DESCRIPTIONS
+    ]
+    async_add_entities(entities)

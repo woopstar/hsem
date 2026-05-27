@@ -31,18 +31,20 @@ When asked to solve a GitHub issue, always follow these steps in order:
    - Format: `<type>/<issue-number>-<slug>` — e.g., `fix/444-milp-cycle-cost`
 4. **Understand the relevant code** — Search and read the affected files before making changes.
 5. **Implement the smallest safe fix** — No unrelated changes, no broad refactors.
-6. **Add or update regression tests** — Cover the bug or new behavior.
-7. **Run the relevant tests** — `pytest tests/` or the targeted test file.
-8. **Run lint/type + quality checks** — `tox -e lint` (runs isort, black, ruff format, and ruff check) then `tox -e quality` (runs pyright and vulture)
-9. **Report a summary** including:
+6. **Update documentation** — Update every docs/ file that describes the changed behaviour
+   (planner guide, spec, config flow reference, memories.md, README, etc.).
+7. **Add or update regression tests** — Cover the bug or new behavior.
+8. **Run the relevant tests** — `pytest tests/` or the targeted test file.
+9. **Run lint/type + quality checks** — `tox -e lint` (runs isort, black, ruff format, and ruff check) then `tox -e quality` (runs pyright and vulture)
+10. **Report a summary** including:
    - Issue title
    - Branch name
    - Files changed
    - What changed and why
    - Tests added or updated
    - Test and lint results
-10. **Create a pull request** linked to the issue using `Fixes #<ISSUE_NUMBER>` in the description.
-11. **Keep the PR up to date** — after every follow-up commit on a branch that already has an open
+11. **Create a pull request** linked to the issue using `Fixes #<ISSUE_NUMBER>` in the description.
+12. **Keep the PR up to date** — after every follow-up commit on a branch that already has an open
     PR, update both the PR title and description to reflect the current state of all changes made.
     Tick off any completed acceptance criteria in the PR checklist.
     - Use `gh pr edit <PR_NUMBER> --title "..." --body-file <file>` — write the PR body
@@ -60,6 +62,19 @@ When asked to solve a GitHub issue, always follow these steps in order:
 - **Add or update tests** covering the affected invariants for every planner change.
 - A planner PR is not done until: spec is consistent, invariant tests pass, and lint is clean.
 - See `AGENTS.md` → **Planner Specification** for the full compliance checklist.
+
+## Documentation Update Rule (Mandatory)
+- **All documentation that describes the changed behaviour must be updated in the same PR.**
+  This includes, but is not limited to:
+  - `docs/hsem-planner-guide.md` — planner inputs, outputs, cost function, scenarios
+  - `docs/hsem-planner-spec.md` — specification invariants and formulas
+  - `docs/hsem-config-flow-reference.md` — config/options flow step tables
+  - `docs/ev-charge-plan-setup.md` — EV planned load setup guide
+  - `.github/memories.md` — canonical patterns, module map, open issues
+  - `README.md` — user-facing feature descriptions and links
+- **Check every docs/ file before closing a PR** — if a file describes something you changed,
+  update it. Stale documentation causes confusion and bugs.
+- **A PR is not done until all affected docs are consistent with the implementation.**
 
 ## Huawei Solar Sensor Rule (Mandatory)
 - **Always use entities exposed by `wlcrs/huawei_solar`** for every inverter/battery value.

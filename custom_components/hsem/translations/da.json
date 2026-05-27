@@ -219,8 +219,8 @@
           "hsem_huawei_solar_inverter_active_power_control": "Huawei-vekselretter aktiv effektkontrolsensor"
         },
         "data_description": {
-          "hsem_batteries_charge_efficiency": "Angiv batteriets opladningseffektivitet som en procentdel (0–100). Energi lagret i batteriet = inputenergi × denne faktor. Typiske lithium-batterier opnår 95–98%. Standard: 97%.",
-          "hsem_batteries_discharge_efficiency": "Angiv batteriets afladningseffektivitet som en procentdel (0–100). Energi leveret til huset = fjernet batterienergi × denne faktor. Typiske lithium-batterier opnår 95–98%. Standard: 97%.",
+          "hsem_batteries_charge_efficiency": "Angiv batteriets opladningseffektivitet som en procentdel (0–100). Energi lagret i batteriet = inputenergi × denne faktor. Typiske lithium-batterier opnår 95–98%. Standard: 98%.",
+          "hsem_batteries_discharge_efficiency": "Angiv batteriets afladningseffektivitet som en procentdel (0–100). Energi leveret til huset = fjernet batterienergi × denne faktor. Typiske lithium-batterier opnår 95–98%. Standard: 98%.",
           "hsem_batteries_cycle_cost": "Valgfri ekstra per-kWh-omkostning ved at cykle batteriet (EUR/kWh). Tilføjes oven på den automatisk beregnede afskrivningstærskel. Sæt til 0 for kun at stole på afskrivningsbeskyttelsen.",
           "hsem_batteries_expected_cycles": "Indtast det forventede antal fulde opladnings-/afladningscyklusser i batteriets levetid. Bruges til at beregne afskrivningsomkostning pr. kWh. Typiske LiFePO4-batterier understøtter 4000–8000 cyklusser.",
           "hsem_batteries_purchase_price": "Indtast den samlede købspris for dit batterisystem i EUR. Bruges sammen med forventede cyklusser og brugbar kapacitet til at beregne afskrivningsomkostning pr. kWh.",
@@ -241,6 +241,24 @@
         },
         "description": "Konfigurer arbejdstilstanden for Huawei-solcellebatterier.",
         "title": "Huawei Solar-sensorer"
+      },
+      "battery_economics": {
+        "data": {
+          "hsem_batteries_purchase_price": "Batteri-købspris (EUR)",
+          "hsem_batteries_expected_cycles": "Forventede battericyklusser",
+          "hsem_batteries_cycle_cost": "Batteri-cyklusomkostning (EUR/kWh)",
+          "hsem_batteries_charge_efficiency": "Batteri-opladningseffektivitet (%)",
+          "hsem_batteries_discharge_efficiency": "Batteri-afladningseffektivitet (%)"
+        },
+        "data_description": {
+          "hsem_batteries_purchase_price": "Indtast den samlede købspris for dit batterisystem i EUR. Bruges sammen med forventede cyklusser og brugbar kapacitet til at beregne afskrivningsomkostning pr. kWh.",
+          "hsem_batteries_expected_cycles": "Indtast det forventede antal fulde opladnings-/afladningscyklusser i batteriets levetid. Bruges til at beregne afskrivningsomkostning pr. kWh. Typiske LiFePO4-batterier understøtter 4000–8000 cyklusser.",
+          "hsem_batteries_cycle_cost": "Valgfri ekstra per-kWh-omkostning ved at cykle batteriet (EUR/kWh). Tilføjes oven på den automatisk beregnede afskrivningstærskel. Sæt til 0 for kun at stole på afskrivningsbeskyttelsen.",
+          "hsem_batteries_charge_efficiency": "Angiv batteriets opladningseffektivitet som en procentdel (0–100). Energi lagret i batteriet = inputenergi × denne faktor. Typiske lithium-batterier opnår 95–98%. Standard: 98%.",
+          "hsem_batteries_discharge_efficiency": "Angiv batteriets afladningseffektivitet som en procentdel (0–100). Energi leveret til huset = fjernet batterienergi × denne faktor. Typiske lithium-batterier opnår 95–98%. Standard: 98%."
+        },
+        "description": "Konfigurer batteriøkonomiske parametre, der påvirker afskrivningsberegninger og rundturseffektivitet.",
+        "title": "Batteriøkonomi"
       },
       "init": {
         "data": {

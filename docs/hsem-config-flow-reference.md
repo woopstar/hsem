@@ -57,7 +57,7 @@ PV forecast sensor configuration.
 
 ### Step: `huawei_solar`
 
-Huawei Solar inverter and battery entity configuration.
+Huawei Solar inverter and battery entity configuration (device selectors and entity sensors only).
 
 | Field | Key | Default | Description |
 |---|---|---|---|
@@ -75,6 +75,18 @@ Huawei Solar inverter and battery entity configuration.
 | TOU periods | `hsem_huawei_solar_batteries_tou_charging_and_discharging_periods` | `sensor.batteries_tou_charging_and_discharging_periods` | TOU period schedule |
 | Excess PV use | `hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou` | `select.batteries_excess_pv_energy_use_in_tou` | Excess PV mode in TOU |
 | Active power control | `hsem_huawei_solar_inverter_active_power_control` | `sensor.inverter_active_power_control` | Export power control mode |
+
+### Step: `battery_economics`
+
+Battery depreciation and efficiency parameters.
+
+| Field | Key | Default | Description |
+|---|---|---|---|
+| Purchase price | `hsem_batteries_purchase_price` | 0 | Battery system cost (EUR) |
+| Expected cycles | `hsem_batteries_expected_cycles` | 6000 | Total expected lifetime cycles |
+| Cycle cost | `hsem_batteries_cycle_cost` | 0 | Extra per-kWh wear margin (EUR/kWh) |
+| Charge efficiency | `hsem_batteries_charge_efficiency` | 98 % | Charge-side efficiency |
+| Discharge efficiency | `hsem_batteries_discharge_efficiency` | 98 % | Discharge-side efficiency |
 
 ### Step: `power`
 

@@ -127,8 +127,12 @@ class HSEMForecastAccuracySensor(
                 round(latest.bias_load, 4) if latest.bias_load is not None else None
             )
 
-        # Include serialized tracker data for reboot persistence
-        attrs["_forecast_tracker_data"] = tracker.to_dict()
+        # Include serialized tracker data for reboot persistence.
+        # Limit to most recent 24 records to stay under HA's 16 KB attribute limit.
+        _data = tracker.to_dict()
+        if _data:
+            _data["records"] = _data.get("records", [])[-24:]
+        attrs["_forecast_tracker_data"] = _data
 
         return attrs
 

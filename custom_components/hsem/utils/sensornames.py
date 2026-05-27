@@ -1,4 +1,4 @@
-from homeassistant.components import select, sensor, switch, time
+from homeassistant.components import number, select, sensor, switch, time
 from homeassistant.util import slugify as s
 
 from custom_components.hsem.const import DOMAIN
@@ -514,6 +514,64 @@ def get_force_working_mode_selector_name() -> str:
 def get_force_working_mode_selector_entity_id() -> str:
     """Return the entity_id for the force-working-mode select entity."""
     return select.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_force_working_mode"))
+
+
+# Solcast PV Forecast Likelihood Selector
+def get_solcast_likelihood_selector_key() -> str:
+    """Return the entity description key for the solcast likelihood select entity."""
+    return f"{DOMAIN}_solcast_likelihood"
+
+
+def get_solcast_likelihood_selector_name() -> str:
+    """Return the display name for the solcast likelihood select entity."""
+    return "Solcast PV Forecast Likelihood"
+
+
+def get_solcast_likelihood_selector_entity_id() -> str:
+    """Return the entity_id for the solcast likelihood select entity."""
+    return select.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_solcast_likelihood"))
+
+
+# Battery Charge Efficiency Number
+def get_charge_efficiency_number_key() -> str:
+    """Return the entity description key for the charge efficiency number entity."""
+    return f"{DOMAIN}_charge_efficiency"
+
+
+def get_charge_efficiency_number_name() -> str:
+    """Return the display name for the charge efficiency number entity."""
+    return "Battery Charge Efficiency"
+
+
+def get_charge_efficiency_number_unique_id() -> str:
+    """Return the unique_id for the charge efficiency number entity."""
+    return f"{DOMAIN}_battery_charge_efficiency"
+
+
+def get_charge_efficiency_number_entity_id() -> str:
+    """Return the entity_id for the charge efficiency number entity."""
+    return number.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_battery_charge_efficiency"))
+
+
+# Battery Discharge Efficiency Number
+def get_discharge_efficiency_number_key() -> str:
+    """Return the entity description key for the discharge efficiency number entity."""
+    return f"{DOMAIN}_discharge_efficiency"
+
+
+def get_discharge_efficiency_number_name() -> str:
+    """Return the display name for the discharge efficiency number entity."""
+    return "Battery Discharge Efficiency"
+
+
+def get_discharge_efficiency_number_unique_id() -> str:
+    """Return the unique_id for the discharge efficiency number entity."""
+    return f"{DOMAIN}_battery_discharge_efficiency"
+
+
+def get_discharge_efficiency_number_entity_id() -> str:
+    """Return the entity_id for the discharge efficiency number entity."""
+    return number.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_battery_discharge_efficiency"))
 
 
 # Applier Status Sensor

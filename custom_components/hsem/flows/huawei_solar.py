@@ -1,3 +1,10 @@
+"""Config flow step for Huawei Solar device and entity selections.
+
+This step contains only the Huawei-specific device and entity selectors.
+Battery economics (purchase price, expected cycles, cycle cost, efficiencies)
+have been moved to the separate ``battery_economics`` step.
+"""
+
 import voluptuous as vol
 from homeassistant.helpers.selector import selector
 
@@ -5,7 +12,6 @@ from custom_components.hsem.utils.config_validator import (
     async_validate_device_ids,
     async_validate_entity_ids,
     merge_errors,
-    validate_price,
 )
 from custom_components.hsem.utils.misc import get_config_value
 
@@ -96,47 +102,6 @@ async def get_huawei_solar_step_schema(config_entry) -> vol.Schema:
                 ),
             ): selector({"entity": {"domain": ["sensor", "input_number"]}}),
             vol.Required(
-                "hsem_batteries_purchase_price",
-                default=get_config_value(config_entry, "hsem_batteries_purchase_price"),
-            ): selector(
-                {
-                    "number": {
-                        "min": 0,
-                        "max": 100000,
-                        "step": 100,
-                        "mode": "box",
-                    }
-                }
-            ),
-            vol.Required(
-                "hsem_batteries_expected_cycles",
-                default=get_config_value(
-                    config_entry, "hsem_batteries_expected_cycles"
-                ),
-            ): selector(
-                {
-                    "number": {
-                        "min": 1,
-                        "max": 20000,
-                        "step": 100,
-                        "mode": "box",
-                    }
-                }
-            ),
-            vol.Required(
-                "hsem_batteries_cycle_cost",
-                default=get_config_value(config_entry, "hsem_batteries_cycle_cost"),
-            ): selector(
-                {
-                    "number": {
-                        "min": 0,
-                        "max": 1,
-                        "step": 0.001,
-                        "mode": "box",
-                    }
-                }
-            ),
-            vol.Required(
                 "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou",
                 default=get_config_value(
                     config_entry,
@@ -149,15 +114,6 @@ async def get_huawei_solar_step_schema(config_entry) -> vol.Schema:
 
 async def validate_huawei_solar_input(hass, user_input) -> dict[str, str]:
     """Validate user input for the 'huawei_solar' step."""
-    # --- required scalar fields (no HA lookup needed) ---
-    scalar_required = [
-        "hsem_batteries_purchase_price",
-        "hsem_batteries_expected_cycles",
-    ]
-    required_errors: dict[str, str] = {
-        f: "required" for f in scalar_required if f not in user_input
-    }
-
     # --- entity existence ---
     entity_errors = await async_validate_entity_ids(
         hass,
@@ -190,13 +146,4 @@ async def validate_huawei_solar_input(hass, user_input) -> dict[str, str]:
         ],
     )
 
-    # --- price validation for purchase price ---
-    price_errors = validate_price(
-        user_input,
-        "hsem_batteries_purchase_price",
-        min_price=0.0,
-        max_price=100_000.0,
-        allow_negative=False,
-    )
-
-    return merge_errors(required_errors, entity_errors, device_errors, price_errors)
+    return merge_errors(entity_errors, device_errors)
