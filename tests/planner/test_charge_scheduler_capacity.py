@@ -1,15 +1,8 @@
-"""Tests for the cross-occurrence battery capacity cap in charge_scheduler.py.
+"""Tests for per-occurrence charge budgets in charge_scheduler.py.
 
-Bug A fix: _apply_grid_charge must return the energy it assigned so that
-total_charged is correctly accumulated across discharge-window occurrences.
-Without this fix, the capacity cap (usable_kwh - current_kwh) is never
-exhausted by grid charging, causing far more charge slots than the battery
-can physically hold.
-
-Acceptance criteria verified here
------------------------------------
-- Total batteries_charged_kwh across all slots never exceeds
-  usable_kwh - current_kwh after apply_charge_schedules completes.
+Each discharge-window occurrence (calendar day) receives its own independent
+charge budget because the battery is discharged between windows, making room
+for new charging.
 
 All tests are synchronous with no Home Assistant imports.
 """
@@ -52,14 +45,16 @@ def _slot(
     )
 
 
-class TestGridChargeCapacityCap:
-    """apply_charge_schedules must not assign more charge energy than the
-    battery can hold, even when multiple discharge-window occurrences exist."""
+class TestGridChargePerOccurrenceBudgets:
+    """apply_charge_schedules uses per-occurrence budgets — each discharge
+    window occurrence gets its own independent charge allocation capped at
+    min(needed, usable_kwh)."""
 
-    def test_grid_charge_does_not_exceed_battery_capacity(self):
-        """With two discharge-window occurrences each needing 8 kWh and a
-        battery headroom of 8 kWh (usable_kwh=10, current_kwh=2), the total
-        charged energy across all slots must not exceed 8.0 kWh."""
+    def test_per_occurrence_budgets_are_independent(self):
+        """Two discharge-window occurrences each needing 8 kWh with
+        usable_kwh=10.  Each occurrence gets min(needed, usable_kwh) = 8 kWh
+        as its own budget.  Total planned charge can be up to 16 kWh
+        because the battery is discharged between windows."""
         slots: list[PlannedSlot] = []
 
         for h in range(8, 10):
@@ -120,9 +115,64 @@ class TestGridChargeCapacityCap:
         )
 
         total_charged = sum(s.batteries_charged_kwh for s in slots)
-        headroom = 10.0 - 2.0
+        # Each occurrence gets min(needed=8, usable_kwh=10) = 8 kWh
+        # Two occurrences = up to 16 kWh (battery recharged between windows)
+        per_occ_budget = min(8.0, 10.0)
+        max_total = per_occ_budget * 2
         assert total_charged >= 0.0
-        assert total_charged - 1e-9 < headroom
+        assert total_charged - 1e-9 < max_total + 1e-9, (
+            f"Total charged ({total_charged:.3f}) must not exceed "
+            f"per-occurrence budget x 2 ({max_total:.3f})"
+        )
+
+    def test_single_occurrence_budget_capped_at_usable_kwh(self):
+        """A single occurrence needing more than usable_kwh is capped."""
+        slots: list[PlannedSlot] = []
+
+        for h in range(8, 14):
+            slots.append(_slot(hour=h, import_price=0.10, net_consumption=0.0))
+
+        for h in range(14, 15):
+            slots.append(
+                _slot(
+                    hour=h,
+                    import_price=1.50,
+                    net_consumption=20.0,
+                    recommendation=Recommendations.BatteriesDischargeMode.value,
+                )
+            )
+
+        sched = BatteryScheduleInput(
+            enabled=True,
+            start=datetime(2024, 6, 15, 14, 0, tzinfo=_TZ).time(),
+            end=datetime(2024, 6, 15, 15, 0, tzinfo=_TZ).time(),
+        )
+        sched._occurrences = [
+            (
+                datetime(2024, 6, 15, 14, 0, tzinfo=_TZ),
+                datetime(2024, 6, 15, 15, 0, tzinfo=_TZ),
+                20.0,
+                1.50,
+            ),
+        ]
+
+        apply_charge_schedules(
+            slots=slots,
+            battery_schedules=[sched],
+            now=_NOW,
+            max_charge_per_interval=5.0,
+            current_kwh=0.0,
+            usable_kwh=10.0,
+            cycle_cost_per_kwh=0.0,
+            recommended_threshold=0.0,
+        )
+
+        total_charged = sum(s.batteries_charged_kwh for s in slots)
+        # Budget = min(needed=20, usable_kwh=10) = 10
+        assert total_charged - 1e-9 < 10.0 + 1e-9, (
+            f"Total charged ({total_charged:.3f}) must not exceed "
+            f"usable_kwh ({10.0:.3f})"
+        )
 
 
 class TestOpportunisticChargeCapacityCap:
@@ -170,7 +220,7 @@ class TestOpportunisticChargeCapacityCap:
             ),
         ]
 
-        # First, apply charge schedules — this fills the battery to capacity
+        # First, apply charge schedules
         apply_charge_schedules(
             slots=slots,
             battery_schedules=[sched],
@@ -183,9 +233,12 @@ class TestOpportunisticChargeCapacityCap:
         )
 
         charged_before = sum(s.batteries_charged_kwh for s in slots)
-        headroom = 10.0 - 2.0
-        # The schedule charge should not have exceeded capacity
-        assert charged_before - 1e-9 < headroom
+        # Single occurrence, budget = min(needed=8, usable_kwh=10) = 8
+        per_occ_budget = min(8.0, 10.0)
+        assert charged_before - 1e-9 < per_occ_budget + 1e-9, (
+            f"Schedule charge ({charged_before:.3f}) must not exceed "
+            f"per-occurrence budget ({per_occ_budget:.3f})"
+        )
 
         # Now try opportunistic charging with very low prices
         apply_opportunistic_charge(
@@ -199,12 +252,14 @@ class TestOpportunisticChargeCapacityCap:
         )
 
         charged_after = sum(s.batteries_charged_kwh for s in slots)
-        # Total charged must not exceed battery headroom
-        assert charged_after - 1e-9 < headroom, (
+        # Opportunistic must not add charge when already_planned fills battery
+        headroom = 10.0 - 2.0
+        assert charged_after - 1e-9 < headroom + 1e-9, (
             f"Total charged ({charged_after:.3f}) must not exceed "
             f"headroom ({headroom:.3f})"
         )
         # The opportunistic pass should not have added any new charge
+        # after schedule charging already planned up to the budget
         assert abs(charged_after - charged_before) < 1e-9, (
             f"Opportunistic charge added {charged_after - charged_before:.3f} kWh "
             f"when battery was already at capacity"
