@@ -311,12 +311,7 @@ async def async_apply_battery_settings(
 
     match recommendation:
         case Recommendations.ForceExport.value:
-            forcible_result = await _async_apply_forcible_discharge(
-                sensor, cfg, live, current_required_battery_kwh, max_discharge_power
-            )
-            if forcible_result is not None:
-                summary.results.append(forcible_result)
-            return summary
+            working_mode = WorkingModes.FullyFedToGrid.value
 
         case Recommendations.BatteriesChargeGrid.value:
             tou_modes = DEFAULT_HSEM_TOU_MODES_FORCE_CHARGE

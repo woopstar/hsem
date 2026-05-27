@@ -86,9 +86,15 @@ class Recommendations(Enum):
     """
 
     ForceExport = "force_export"
-    """Force battery discharge to grid — identical to ForceBatteriesDischarge.
+    """Force PV export to grid — sets inverter to FullyFedToGrid mode.
 
-    Same behavior as ForceBatteriesDischarge on Huawei hardware.
+    Battery:   unchanged (may still charge/discharge per schedule)
+    House:     covered by grid import (PV bypasses house)
+    Grid:      ALL PV production exported to grid
+
+    Different from ForceBatteriesDischarge: this mode changes the
+    INVERTER behavior (PV routing), not the battery.  The battery
+    continues normal operation.
     """
 
     # ------------------------------------------------------------------
