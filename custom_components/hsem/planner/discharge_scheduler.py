@@ -200,12 +200,17 @@ def apply_excess_export(
     required_capacity: float,
     export_price_threshold: float,
     warnings: list[str],
+    *,
+    export_min_price: float = 0.0,
+    recommended_threshold: float = 0.0,
 ) -> None:
     """Mark high-export-price future slots for forced battery discharge.
 
     Only triggered when the battery holds more energy than needed until
     the next solar surplus.  Grid-charged batteries require a minimum price
-    difference; solar-charged batteries export opportunistically.
+    difference; solar-charged batteries export opportunistically but still
+    require ``export_price >= max(export_min_price, recommended_threshold)``
+    — the higher of the user-configured minimum and the cycle-wear cost.
 
     Args:
         slots: Mutable list of planned slots.
@@ -215,6 +220,14 @@ def apply_excess_export(
         export_price_threshold: Minimum export-minus-import price delta for
             grid-charged batteries.
         warnings: Mutable list to append diagnostic messages to.
+        export_min_price: Minimum export price (local currency/kWh) below
+            which forced discharge is never triggered.  Sourced from
+            ``hsem_export_electricity_min_price``.
+        recommended_threshold: Battery cycle-wear cost per kWh
+            (depreciation + conversion loss) from
+            :func:`~custom_components.hsem.utils.misc.calculate_recommended_threshold`.
+            Used as a floor — exporting below this price costs more in
+            battery wear than it earns in revenue.
     """
     # battery_discharge_budget_kwh is the kWh the battery can export beyond what is
     # already needed to cover future house load.  Solar surplus in a slot does NOT
@@ -263,6 +276,11 @@ def apply_excess_export(
         or solar_charged_kwh / total_planned_charge_kwh > 0.5
     )
 
+    # Minimum export price floor: the higher of the user-configured minimum
+    # and the battery cycle-wear cost (depreciation + conversion loss).
+    # Exporting below this floor loses money on battery wear.
+    min_export = max(export_min_price, recommended_threshold)
+
     candidates = sorted(
         (
             s
@@ -276,7 +294,7 @@ def apply_excess_export(
                     >= export_price_threshold
                 )
             )
-            and s.price.export_price > 0
+            and s.price.export_price >= min_export
         ),
         key=lambda x: x.price.export_price,
         reverse=True,

@@ -243,7 +243,14 @@ def _schedule_slots(
     )
     if inp.excess_export_enabled:
         apply_excess_export(
-            slots, now, current_kwh, rc, inp.excess_export_price_threshold, warnings
+            slots,
+            now,
+            current_kwh,
+            rc,
+            inp.excess_export_price_threshold,
+            warnings,
+            export_min_price=inp.export_min_price,
+            recommended_threshold=rt,
         )
         log_planner(
             "debug",
