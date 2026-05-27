@@ -348,23 +348,44 @@ def populate_net_consumption(slots: list[PlannedSlot]) -> None:
         )
 
 
-def populate_estimated_cost(slots: list[PlannedSlot]) -> None:
-    """Compute estimated grid cost per slot.
+def populate_estimated_cost(
+    slots: list[PlannedSlot],
+    *,
+    export_min_price: float = 0.0,
+) -> None:
+    """Populate per-slot ``estimated_cost_currency``.
+
+    Net consumption >= 0 → cost = net × import_price.
+    Net consumption < 0  → revenue = net × export_price (negative cost).
+
+    When ``export_min_price > 0``, export prices below the threshold are
+    treated as 0 to match the physical inverter behaviour (the applier
+    blocks all export below ``export_min_price`` via
+    ``GRID_EXPORT_LIMIT_WATT``).
 
     Args:
         slots: Mutable list of planned slots to update.
+        export_min_price: Minimum export price for grid power control.
+            Export prices below this are clamped to 0.  Defaults to 0.0.
     """
     log_planner(
         "debug",
-        "[pop] populate_estimated_cost  slots=%d",
+        "[pop] populate_estimated_cost  slots=%d  export_min_price=%.4f",
         len(slots),
+        export_min_price,
     )
     for slot in slots:
         net = slot.estimated_net_consumption_kwh
         if net >= 0:
             slot.estimated_cost_currency = round(net * slot.price.import_price, 4)
         else:
-            slot.estimated_cost_currency = round(net * slot.price.export_price, 4)
+            exp_price = slot.price.export_price
+            # Clamp to match MILP + cost_function behaviour (issue #483)
+            if exp_price < 0.0:
+                exp_price = 0.0
+            if export_min_price > 1e-9 and exp_price < export_min_price:
+                exp_price = 0.0
+            slot.estimated_cost_currency = round(net * exp_price, 4)
 
 
 def mark_time_passed(slots: list[PlannedSlot], now: datetime) -> None:

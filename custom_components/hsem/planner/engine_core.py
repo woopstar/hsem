@@ -537,7 +537,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         s.ev_accounted_load_kwh = round(combined_ev_raw[i] - combined_ev_inj[i], 3)
         s.ev_total_planned_load_kwh = round(combined_ev_raw[i], 3)
     populate_net_consumption(slots)
-    populate_estimated_cost(slots)
+    populate_estimated_cost(slots, export_min_price=inp.export_min_price)
     rt = calculate_recommended_threshold(
         purchase_price=inp.battery_purchase_price,
         expected_cycles=inp.battery_expected_cycles,
