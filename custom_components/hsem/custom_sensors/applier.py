@@ -316,15 +316,12 @@ async def async_apply_battery_settings(
         Recommendations.ForceBatteriesDischarge.value,
         Recommendations.ForceExport.value,
     ):
-        fc_entity = (
-            cfg.huawei_solar_batteries_forcible_charge
-            or "sensor.batteries_forcible_charge"
-        )
-        forcible_state = sensor.hass.states.get(fc_entity)
-        if forcible_state is not None and forcible_state.state not in (
+        fc_state = live.huawei_batteries_forcible_charge_state or ""
+        if fc_state and fc_state.lower() not in (
+            "stopped",
             "unavailable",
             "unknown",
-            "stopped",
+            "",
         ):
             await async_stop_forcible_discharge(
                 sensor, cfg.huawei_solar_device_id_batteries

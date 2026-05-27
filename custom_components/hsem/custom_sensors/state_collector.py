@@ -206,6 +206,14 @@ async def async_collect_live_state(
     state.huawei_batteries_excess_pv_use_in_tou = (
         str(_raw_excess) if _raw_excess is not None else None
     )
+    _raw_fc = _read(
+        cfg.huawei_solar_batteries_forcible_charge,
+        "string",
+        label="forcible_charge",
+    )
+    state.huawei_batteries_forcible_charge_state = (
+        str(_raw_fc) if _raw_fc is not None else None
+    )
     _raw_wm = _read(
         cfg.huawei_solar_batteries_working_mode,
         "string",
