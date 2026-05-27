@@ -542,6 +542,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         purchase_price=inp.battery_purchase_price,
         expected_cycles=inp.battery_expected_cycles,
         usable_capacity=usable_kwh,
+        capacity_loss_pct=inp.battery_capacity_loss_pct,
         charge_efficiency_pct=inp.battery_charge_efficiency_pct,
         discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
     )

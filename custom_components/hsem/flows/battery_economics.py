@@ -67,6 +67,22 @@ async def get_battery_economics_step_schema(config_entry) -> vol.Schema:
                 }
             ),
             vol.Required(
+                "hsem_batteries_capacity_loss_pct",
+                default=get_config_value(
+                    config_entry, "hsem_batteries_capacity_loss_pct"
+                ),
+            ): selector(
+                {
+                    "number": {
+                        "min": 10,
+                        "max": 50,
+                        "step": 1,
+                        "unit_of_measurement": "%",
+                        "mode": "slider",
+                    }
+                }
+            ),
+            vol.Required(
                 "hsem_batteries_charge_efficiency",
                 default=get_config_value(
                     config_entry, "hsem_batteries_charge_efficiency"
@@ -115,6 +131,7 @@ async def validate_battery_economics_input(user_input) -> dict[str, str]:
         "hsem_batteries_purchase_price",
         "hsem_batteries_expected_cycles",
         "hsem_batteries_cycle_cost",
+        "hsem_batteries_capacity_loss_pct",
         "hsem_batteries_charge_efficiency",
         "hsem_batteries_discharge_efficiency",
     ]

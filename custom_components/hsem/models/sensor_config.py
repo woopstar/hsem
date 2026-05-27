@@ -175,6 +175,11 @@ class SensorConfig:
     #: spread covers both losses AND wear.  0.0 means no extra guard.
     batteries_cycle_cost: float = 0.0
 
+    #: Expected battery capacity loss at end-of-life as a percentage (0-100).
+    #: LiFePO4 EOL is typically 20 % (80 % retained).  Default 30 % includes
+    #: margin for calendar ageing.
+    batteries_capacity_loss_pct: float = 30.0
+
     # Battery discharge schedules
     batteries_schedule_1: BatteryScheduleConfig = field(
         default_factory=BatteryScheduleConfig
