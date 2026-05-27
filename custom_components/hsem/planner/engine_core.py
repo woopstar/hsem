@@ -575,6 +575,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         battery_expected_cycles=inp.battery_expected_cycles,
         charge_efficiency_pct=inp.battery_charge_efficiency_pct,
         discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
+        export_min_price=inp.export_min_price,
         time_discount_rate=inp.time_discount_rate,
     )
     sdh = inp.interval_minutes / 60.0

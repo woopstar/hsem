@@ -681,6 +681,15 @@ export_revenue = Σ (grid_export_kwh[slot] × export_price[slot])
 
 Revenue is subtracted from total cost (it reduces the net expense).
 
+**Export price clamping:** When ``export_min_price > 0``, the applier
+blocks all grid export for slots where ``export_price < export_min_price``
+by setting the inverter to ``GRID_EXPORT_LIMIT_WATT``.  To keep the
+planner consistent with this physical behaviour, both the MILP and the
+cost function treat ``export_price`` as 0 for any slot where
+``export_price < export_min_price`` — no revenue is counted for exports
+that can never happen.  See *Excess export and grid controls* for the
+configuration fields.
+
 ### Conversion loss cost
 
 Energy lost in the round trip (charge → store → discharge) is priced at

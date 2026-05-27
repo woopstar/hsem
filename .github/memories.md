@@ -118,6 +118,27 @@ Do **not** remove or change this factor without updating `docs/hsem-planner-spec
 
 ---
 
+## Export Price Clamping (MILP + Cost Function)
+
+When `export_min_price > 0`, the applier physically blocks all grid export
+by setting the inverter to `GRID_EXPORT_LIMIT_WATT` for any slot where
+`export_price < export_min_price`.  To keep the planner consistent:
+
+- **MILP** (`milp_optimizer.py`): `p_exp` is clamped to 0 for all slots
+  where `p_exp < export_min_price` **before** the LP solves.  This prevents
+  the LP from optimising around a price signal that will never be realised.
+- **Cost function** (`cost_function.py`): `CostWeights.export_min_price`
+  applies the same clamping in `score_plan()` so that scored costs match
+  the MILP's assumptions.
+
+Both locations also clamp negative export prices to 0 because the inverter
+curtails PV rather than pay to export.
+
+The raw `slot.price.export_price` is **not** mutated — clamping only affects
+optimisation and scoring.
+
+---
+
 ## Candidate Deduplication
 
 When generating discharge fraction candidates, deduplicate targets within `0.05 kWh` of each other.

@@ -190,6 +190,17 @@ def solve_milp(
             opportunity cost of ending the horizon with less stored energy.
             Passed from the engine (computed from the next discharge window).
             ``None`` disables the terminal-SoC credit term.
+        export_min_price:
+            Minimum export price (local currency/kWh) below which the inverter
+            physically blocks export (``GRID_EXPORT_LIMIT_WATT``).  Sourced from
+            ``hsem_export_electricity_min_price``.  Export prices below this
+            threshold are clamped to 0 before the LP solves, because the
+            applier will prevent any export at those prices.  Defaults to 0.0.
+        recommended_threshold:
+            Recommended discharge price threshold (local currency/kWh) computed
+            by ``calculate_recommended_threshold()``.  Used in post-processing
+            to decide between ``ForceBatteriesDischarge`` (export is worthwhile)
+            and ``BatteriesDischargeMode`` (house-load only).  Defaults to 0.0.
 
     Returns:
         A list of :class:`PlannedSlot` copies with MILP-derived recommendations,
@@ -261,10 +272,14 @@ def solve_milp(
     p_imp = np.nan_to_num(p_imp, nan=0.0)
     p_exp = np.nan_to_num(p_exp, nan=0.0)
 
-    # Clamp export prices to >= 0 so the LP never pays to export.
-    # (The MILP cannot curtail PV surplus — it must export when the
-    # battery is full.  Flooring at 0 ensures it does so without penalty
-    # rather than actively seeking negative-price exports.)
+    # Clamp export prices to reflect physical inverter behaviour:
+    # 1. Negative prices → 0 (the inverter curtails PV rather than pay to export).
+    # 2. Prices below export_min_price → 0 (the applier sets the inverter to
+    #    GRID_EXPORT_LIMIT_WATT, blocking export entirely).
+    #
+    # The MILP cannot model curtailment (pv[t] is fixed), so flooring to 0 is
+    # the best approximation: the LP sees no revenue for blocked-export slots
+    # and does not optimise around a price signal that will never be realised.
     neg_mask = p_exp < 0.0
     n_neg = int(np.sum(neg_mask))
     if n_neg > 0:
@@ -275,6 +290,20 @@ def solve_milp(
             float(np.min(p_exp)),
         )
     p_exp = np.maximum(p_exp, 0.0)
+
+    if export_min_price > 1e-9:
+        blocked = p_exp < export_min_price
+        n_blocked = int(np.sum(blocked))
+        if n_blocked > 0:
+            log_planner(
+                "debug",
+                "[milp] Clamping %d export prices below min_price (%.4f) to 0 "
+                "(max clamped=%.4f)",
+                n_blocked,
+                export_min_price,
+                float(np.max(p_exp[blocked])),
+            )
+        p_exp = np.where(blocked, 0.0, p_exp)
 
     # Net load = house consumption + EV extra load − PV estimate.
     # A positive value means the battery/grid must supply extra energy.

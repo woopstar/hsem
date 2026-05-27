@@ -359,7 +359,22 @@ When the export price is negative (curtailment penalty), ``export_revenue``
 is negative — exporting costs money rather than earning it.  The
 ``total_cost`` formula ``import_cost − export_revenue`` correctly handles
 this: subtracting a negative adds the cost.
-```
+
+**Export price clamping (``export_min_price``):**  When
+``export_min_price > 0``, the inverter physically blocks all export for
+slots where ``export_price < export_min_price`` (applier sets
+``GRID_EXPORT_LIMIT_WATT``).  To keep the planner model consistent with
+this physical behaviour:
+
+- The MILP clamps ``export_price`` to 0 for all slots where
+  ``export_price < export_min_price`` *before* solving the LP.
+- The cost function (``score_plan``) applies the same clamping via
+  ``CostWeights.export_min_price``.
+- This clamping only affects the planner's decision-making; the raw slot
+  ``export_price`` is preserved for diagnostics.
+
+Invariant: ``export_price < export_min_price`` → planner treats export
+revenue as 0 in both optimisation and scoring.
 
 ### Battery cycle cost
 
