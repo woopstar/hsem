@@ -105,6 +105,7 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_huawei_solar_batteries_charging_cutoff_capacity": "number.batteries_end_of_charge_soc",
     "hsem_huawei_solar_batteries_end_of_discharge_soc": "number.batteries_end_of_discharge_soc",
     "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "select.batteries_excess_pv_energy_use_in_tou",
+    "hsem_huawei_solar_batteries_forcible_charge": "sensor.batteries_forcible_charge",
     "hsem_huawei_solar_batteries_grid_charge_cutoff_soc": "number.batteries_grid_charge_cutoff_soc",
     "hsem_huawei_solar_batteries_maximum_charging_power": "number.batteries_maximum_charging_power",
     "hsem_huawei_solar_batteries_maximum_discharging_power": "number.batteries_maximum_discharging_power",
