@@ -311,7 +311,12 @@ async def async_apply_battery_settings(
 
     match recommendation:
         case Recommendations.ForceExport.value:
-            working_mode = WorkingModes.FullyFedToGrid.value
+            forcible_result = await _async_apply_forcible_discharge(
+                sensor, cfg, live, current_required_battery_kwh, max_discharge_power
+            )
+            if forcible_result is not None:
+                summary.results.append(forcible_result)
+            return summary
 
         case Recommendations.BatteriesChargeGrid.value:
             tou_modes = DEFAULT_HSEM_TOU_MODES_FORCE_CHARGE
@@ -489,8 +494,8 @@ async def _async_apply_forcible_discharge(
     ):
         return None
 
-    target_soc = int((current_required_kwh / live.battery_usable_capacity_kwh) * 100)
-    target_soc = max(10, min(100, target_soc))  # clamp 10–100
+    target_soc = int(live.battery_end_of_discharge_soc_pct)  # discharge to floor
+    target_soc = max(5, min(100, target_soc))  # clamp 5-100 for safety
 
     bat_soc_entity = cfg.huawei_solar_batteries_state_of_capacity
     device_id = cfg.huawei_solar_device_id_batteries
