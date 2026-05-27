@@ -340,6 +340,17 @@ recommendation it is not changed by later rules in the same layer.
 | 5 | Summer month, solar surplus available | `batteries_charge_solar` |
 | 5 | Summer month, no solar surplus | `batteries_discharge_mode` |
 
+**Discharge concentration** (`concentrate_discharge_on_expensive_slots`) runs after the
+seasonal fill but before candidate generation. It re-evaluates all discharge-mode
+slots and clears the cheapest ones that exceed the battery's capacity, turning them
+into `batteries_wait_mode` (grid-import) so the battery is reserved for the most
+expensive slots.
+
+Slots are grouped by **calendar day** and each day receives its own independent
+battery budget (`usable_kwh`). This correctly accounts for solar recharging between
+discharge windows on different days — day N+1's discharge slots do not compete with
+day N's for the same capacity pool.
+
 ---
 
 ##### Layer 2 — EV planned load labelling (engine, post-simulation)
