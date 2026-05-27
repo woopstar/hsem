@@ -9,7 +9,6 @@ All functions are pure — no I/O, no Home Assistant imports.  They mutate the
 
 from __future__ import annotations
 
-import logging
 from datetime import datetime
 
 from custom_components.hsem.const import SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH
@@ -23,8 +22,6 @@ from custom_components.hsem.utils.recommendations import (
     DISCHARGE_RECS as _DISCHARGE_RECS,
 )
 from custom_components.hsem.utils.recommendations import Recommendations
-
-_LOGGER = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Charge scheduling
@@ -556,12 +553,14 @@ def apply_arbitrage_grid_charge(
         recommended_threshold,
     )
     if max_charge_per_interval <= 0:
-        _LOGGER.debug("arbitrage: max_charge_per_interval <= 0, skipping")
+        log_planner("debug", "arbitrage: max_charge_per_interval <= 0, skipping")
         return
 
     enabled = [s for s in battery_schedules if s.enabled]
     if not enabled:
-        _LOGGER.debug("arbitrage: no enabled battery schedule — grid charge disabled")
+        log_planner(
+            "debug", "arbitrage: no enabled battery schedule — grid charge disabled"
+        )
         return
 
     # Use usable_capacity as the budget rather than usable_capacity -
@@ -573,7 +572,8 @@ def apply_arbitrage_grid_charge(
     already_planned = _already_planned_charge_kwh(slots)
     remaining_capacity = max(remaining_capacity - already_planned, 0.0)
     if remaining_capacity <= 1e-9:
-        _LOGGER.debug(
+        log_planner(
+            "debug",
             "arbitrage: battery effectively full (remaining=%.3f, already_planned=%.3f)",
             remaining_capacity,
             already_planned,
@@ -605,8 +605,9 @@ def apply_arbitrage_grid_charge(
         expensive_slots.append((s, float(s.estimated_net_consumption_kwh)))
 
     if not expensive_slots:
-        _LOGGER.debug(
-            "arbitrage: no future positive-net-consumption slots — nothing to offset"
+        log_planner(
+            "debug",
+            "arbitrage: no future positive-net-consumption slots — nothing to offset",
         )
         return
 
@@ -620,7 +621,7 @@ def apply_arbitrage_grid_charge(
         key=lambda x: (x.price.import_price, x.start),
     )
     if not candidates:
-        _LOGGER.debug("arbitrage: no unassigned future slots")
+        log_planner("debug", "arbitrage: no unassigned future slots")
         return
 
     # Track per-expensive-slot remaining unmatched import demand (kWh).
@@ -678,7 +679,8 @@ def apply_arbitrage_grid_charge(
                 continue
             remaining_demand[id(es)] = available_demand - energy
             slot_charged += energy
-            _LOGGER.debug(
+            log_planner(
+                "debug",
                 "arbitrage: pairing %.3f kWh at %s (price=%.4f) -> %s "
                 "(price=%.4f, spread=%.4f, required=%.4f)",
                 energy,
@@ -696,7 +698,8 @@ def apply_arbitrage_grid_charge(
             charged_total += slot_charged
             chosen_any = True
         else:
-            _LOGGER.debug(
+            log_planner(
+                "debug",
                 "arbitrage: no profitable future slot for candidate at %s "
                 "(price=%.4f, required spread=%.4f)",
                 cand.start.isoformat(),
@@ -717,12 +720,14 @@ def apply_arbitrage_grid_charge(
                 es.recommendation = Recommendations.ForceBatteriesDischarge.value
                 discharged_count += 1
         if discharged_count > 0:
-            _LOGGER.debug(
+            log_planner(
+                "debug",
                 "arbitrage: marked %d expensive slot(s) for force discharge",
                 discharged_count,
             )
 
-        _LOGGER.debug(
+        log_planner(
+            "debug",
             "arbitrage: total %.3f kWh of grid charging scheduled "
             "(remaining_capacity=%.3f, sched_min_diff=%.4f, "
             "cycle_cost=%.4f, conversion_loss_pct=%.2f)",
@@ -733,7 +738,8 @@ def apply_arbitrage_grid_charge(
             conversion_loss_pct,
         )
     else:
-        _LOGGER.debug(
+        log_planner(
+            "debug",
             "arbitrage: no slot scheduled — price spread did not cover "
             "min_price_difference(%.4f) + cycle_cost(%.4f) + conversion loss",
             sched_min_diff,

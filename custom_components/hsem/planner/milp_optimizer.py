@@ -96,7 +96,6 @@ Design constraints
 
 from __future__ import annotations
 
-import logging
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -107,8 +106,6 @@ from custom_components.hsem.utils.recommendations import Recommendations
 
 if TYPE_CHECKING:
     from custom_components.hsem.models.planner_outputs import PlannedSlot
-
-_LOGGER = logging.getLogger(__name__)
 
 # Name exported so the engine and tests can reference it without re-defining
 CANDIDATE_MILP = "milp"
@@ -233,11 +230,12 @@ def solve_milp(
         import numpy as np
         from scipy.optimize import linprog
     except ImportError:
-        _LOGGER.debug("[milp] scipy/numpy not available — MILP disabled")
+        log_planner("debug", "[milp] scipy/numpy not available — MILP disabled")
         return None
 
     if usable_kwh <= 0 or max_charge_per_slot <= 0:
-        _LOGGER.debug(
+        log_planner(
+            "debug",
             "[milp] Skipping — usable_kwh=%.3f max_charge_per_slot=%.3f",
             usable_kwh,
             max_charge_per_slot,
@@ -493,12 +491,15 @@ def solve_milp(
             options={"time_limit": _SOLVER_TIME_LIMIT_S, "disp": False},
         )
     except Exception as exc:
-        _LOGGER.warning("[milp] Solver raised an exception: %s", exc)
+        log_planner("warning", "[milp] Solver raised an exception: %s", exc)
         return None
 
     if not result.success:
-        _LOGGER.debug(
-            "[milp] Solver returned status=%s (%s)", result.status, result.message
+        log_planner(
+            "debug",
+            "[milp] Solver returned status=%s (%s)",
+            result.status,
+            result.message,
         )
         return None
 
@@ -566,7 +567,8 @@ def solve_milp(
                     slot_i
                 ].recommendation = Recommendations.BatteriesDischargeMode.value
 
-    _LOGGER.debug(
+    log_planner(
+        "debug",
         "[milp] LP solved: objective=%.4f  charge_slots=%d  discharge_slots=%d"
         "  replacement_price=%s",
         float(result.fun),
