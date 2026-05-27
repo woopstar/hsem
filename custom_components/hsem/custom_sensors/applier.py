@@ -48,6 +48,7 @@ from custom_components.hsem.utils.huawei import (
     async_set_grid_export_power_pct,
     async_set_grid_export_power_watt,
     async_set_tou_periods,
+    async_stop_forcible_discharge,
 )
 from custom_components.hsem.utils.inverter_verify import (
     ApplyResult,
@@ -308,6 +309,22 @@ async def async_apply_battery_settings(
                 return summary
 
     recommendation = rec.recommendation
+
+    # If we're switching away from force discharge, explicitly stop any
+    # active forcible charge/discharge before applying the new mode.
+    if recommendation not in (
+        Recommendations.ForceBatteriesDischarge.value,
+        Recommendations.ForceExport.value,
+    ):
+        forcible_state = sensor.hass.states.get("sensor.batteries_forcible_charge")
+        if forcible_state is not None and forcible_state.state not in (
+            "unavailable",
+            "unknown",
+            "stopped",
+        ):
+            await async_stop_forcible_discharge(
+                sensor, cfg.huawei_solar_device_id_batteries
+            )
 
     match recommendation:
         case Recommendations.ForceExport.value:
