@@ -340,6 +340,7 @@ def _build_and_inject_for_ev(
     eff: float,
     deadline,
     base_includes: bool,
+    allow_past_target: bool,
     label: str,
     now: datetime,
     slots: list,
@@ -378,6 +379,7 @@ def _build_and_inject_for_ev(
         charger_efficiency_pct=eff,
         deadline=deadline,
         base_load_includes_ev=base_includes,
+        allow_charge_past_target_soc=allow_past_target,
         now=now,
     )
     plan = build_ev_charging_plan(
@@ -564,6 +566,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
             eff=inp.ev_planned_load_charger_efficiency_pct,
             deadline=inp.ev_planned_load_deadline,
             base_includes=inp.ev_planned_load_base_load_includes_ev,
+            allow_past_target=inp.ev_planned_allow_charge_past_target_soc,
             label="primary",
             **common_kw,
         )
@@ -579,6 +582,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
             eff=inp.ev_second_planned_load_charger_efficiency_pct,
             deadline=inp.ev_second_planned_load_deadline,
             base_includes=inp.ev_second_planned_load_base_load_includes_ev,
+            allow_past_target=inp.ev_second_allow_charge_past_target_soc,
             label="second",
             **common_kw,
         )

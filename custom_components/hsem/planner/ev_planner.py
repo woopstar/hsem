@@ -99,6 +99,10 @@ class EVPlannerInput:
         base_load_includes_ev: True when the house consumption sensor already
             includes EV charging power.  When True, planned EV load must not
             be added to net consumption a second time.
+        allow_charge_past_target_soc: When True, the planner may continue
+            charging past the target SoC using surplus PV that would otherwise
+            be curtailed (e.g. battery full, negative export prices).
+            Only applies when the EV has reached target SoC but is below 100 %.
         now: Timezone-aware current datetime.
     """
 
@@ -112,6 +116,7 @@ class EVPlannerInput:
     charger_efficiency_pct: float = 100.0
     deadline: datetime | None = None
     base_load_includes_ev: bool = False
+    allow_charge_past_target_soc: bool = False
     now: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
@@ -491,6 +496,63 @@ def build_ev_charging_plan(
         )
         selected.append(ev_slot)
         remaining_energy -= allocated
+
+    # --- Pass 3: charge past target on surplus PV only ---
+    # When allow_charge_past_target_soc is enabled and the EV has reached
+    # its target SoC (remaining_energy ≈ 0), continue charging from any
+    # remaining PV-surplus slots.  These slots are free — the energy would
+    # otherwise be curtailed when the battery is full and export prices are
+    # negative.  Only slots that are NOT already in the plan are considered.
+    if (
+        inp.allow_charge_past_target_soc
+        and remaining_energy < 1e-9
+        and inp.current_soc_pct < 100
+    ):
+        used_starts = {s.start for s in selected}
+        # Re-scan surplus slots, skipping those already allocated.
+        for i in surplus_slots:
+            s_start = slots_start[i]
+            s_end = slots_end[i]
+            if s_start in used_starts:
+                continue
+            if (
+                max_charge_energy_for_slot(
+                    slot_duration_minutes(s_start, s_end),
+                    inp.charger_power_kw,
+                    inp.charger_efficiency_pct,
+                )
+                < 1e-9
+            ):
+                continue
+
+            # The EV already reached target — no strict energy budget.
+            # Use as much surplus as possible up to the full slot capacity,
+            # limited by the available surplus.
+            avail_min = slot_duration_minutes(s_start, s_end)
+            max_charge = max_charge_energy_for_slot(
+                avail_min, inp.charger_power_kw, inp.charger_efficiency_pct
+            )
+            net_surplus = slot_net_surplus_kwh[i]
+            # Allocate the minimum of max power and available surplus.
+            # We charge only from surplus, never from grid in this pass.
+            allocated = min(max_charge, net_surplus)
+            if allocated < 1e-9:
+                continue
+
+            eff = max(inp.charger_efficiency_pct, 1.0) / 100.0
+            ac_load = allocated / eff
+
+            ev_slot = EVChargingSlot(
+                start=s_start,
+                end=s_end,
+                estimated_charged_kwh=round(allocated, 3),
+                ac_load_kwh=round(ac_load, 3),
+                solar_surplus_kwh=round(allocated, 3),
+                import_needed_kwh=0.0,
+                import_price=slot_import_price[i],
+                estimated_cost=0.0,
+            )
+            selected.append(ev_slot)
 
     # Build output
     plan.charging_slots = selected

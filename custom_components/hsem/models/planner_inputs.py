@@ -255,6 +255,10 @@ class PlannerInput:
     ev_planned_load_charger_efficiency_pct: float = 100.0
     ev_planned_load_deadline: datetime | None = None
     ev_planned_load_base_load_includes_ev: bool = False
+    #: When True, the EV may continue charging past its target SoC using
+    #: surplus PV that would otherwise be curtailed (e.g. battery full,
+    #: negative export prices).
+    ev_planned_allow_charge_past_target_soc: bool = False
 
     # --- EV planned load integration — second EV (optional, disabled by default) ---
     #: When True, the second EV planned load feature is active.
@@ -268,6 +272,8 @@ class PlannerInput:
     ev_second_planned_load_charger_efficiency_pct: float = 100.0
     ev_second_planned_load_deadline: datetime | None = None
     ev_second_planned_load_base_load_includes_ev: bool = False
+    #: Same as ev_planned_allow_charge_past_target_soc, for the second EV.
+    ev_second_allow_charge_past_target_soc: bool = False
 
     # --- planner hysteresis — keep the active plan unless the new plan
     # is materially better (anti-flapping, issue #372). ---
