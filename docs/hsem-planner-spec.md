@@ -949,7 +949,15 @@ The EV planner (`planner/ev_planner.py`) MUST satisfy these invariants:
 ### Invariants for tests
 
 - When `ev_planned_load_enabled = False`, all `ev_planned_load_kwh == 0.0`.
-- When EV is fully charged (`current_soc >= target_soc`), all three EV load fields are `0.0`.
+- When EV is at or above target SoC (`current_soc >= target_soc`) and
+  `allow_charge_past_target_soc` is disabled or `current_soc >= 100`,
+  all EV load fields are `0.0` (early return `"fully_charged"`).
+- When `allow_charge_past_target_soc` is enabled and
+  `target_soc <= current_soc < 100`, Pass 3 may allocate surplus-PV
+  charging slots past the target SoC (energy_needed ≈ 0 does **not**
+  trigger an early return).
+- Pass 3 surplus-PV slots: allocated kWh = `min(max_charge, net_surplus)`,
+  `import_needed_kwh == 0.0`, `estimated_cost == 0.0`.
 - When `base_load_includes_ev = True`:
   - `ev_planned_load_kwh == 0.0` for all slots.
   - `ev_accounted_load_kwh > 0` for charging slots.

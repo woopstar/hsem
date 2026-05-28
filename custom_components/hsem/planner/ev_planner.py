@@ -25,6 +25,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from custom_components.hsem.utils.datetime_utils import utc_key
+from custom_components.hsem.utils.logger import log_planner
 
 # ---------------------------------------------------------------------------
 # Public data structures
@@ -390,9 +391,22 @@ def build_ev_charging_plan(
     plan.total_kwh_needed = round(energy_needed, 3)
     plan.deadline = inp.deadline
 
+    # When energy_needed ≈ 0 the EV is at or above target SoC.
+    # Normally we return "fully_charged", but when allow_charge_past_target_soc
+    # is enabled and the EV is not already at 100 %, we let the function
+    # continue so Pass 3 can allocate surplus-PV slots (battery already full,
+    # surplus would otherwise be curtailed).
     if abs(energy_needed) < 1e-9:
-        plan.state = "fully_charged"
-        return plan
+        if not inp.allow_charge_past_target_soc or inp.current_soc_pct >= 100:
+            plan.state = "fully_charged"
+            return plan
+        log_planner(
+            "debug",
+            "[ev_planner] SoC at/above target (%.1f%% >= %.1f%%), "
+            "allow_charge_past_target_soc=True — continuing to Pass 3",
+            inp.current_soc_pct,
+            inp.target_soc_pct,
+        )
 
     # --- Candidate slot filtering (before effective deadline) ---
     #
@@ -512,19 +526,51 @@ def build_ev_charging_plan(
     # remaining PV-surplus slots — but only when the house battery is
     # already predicted to be full at that slot, meaning the surplus
     # would otherwise be stranded (curtailed).
-    if (
+    _pass3_battery_data_ready = len(inp.slot_predicted_battery_kwh) > 0
+    _pass3_enter = (
         inp.allow_charge_past_target_soc
         and remaining_energy < 1e-9
         and inp.current_soc_pct < 100
-        and len(inp.slot_predicted_battery_kwh)
-        == len(surplus_slots) + len(non_surplus_slots)  # type: ignore[arg-type]
-    ):
+    )
+    log_planner(
+        "debug",
+        "[ev_planner] Pass 3 check  allow_past=%s  remaining=%.6f  soc=%.1f%%  "
+        "battery_data_ready=%s  surplus_slots=%d  non_surplus=%d  "
+        "pred_len=%d",
+        inp.allow_charge_past_target_soc,
+        remaining_energy,
+        inp.current_soc_pct,
+        _pass3_battery_data_ready,
+        len(surplus_slots),
+        len(non_surplus_slots),
+        len(inp.slot_predicted_battery_kwh),
+    )
+    if _pass3_enter and not _pass3_battery_data_ready:
+        log_planner(
+            "debug",
+            "[ev_planner] Pass 3 SKIPPED — slot_predicted_battery_kwh is empty",
+        )
+    if _pass3_enter and _pass3_battery_data_ready:
         used_starts = {s.start for s in selected}
+        log_planner(
+            "debug",
+            "[ev_planner] Pass 3 ENTER  usable_battery=%.3f  already_used=%d  "
+            "surplus_candidates=%d",
+            inp.usable_battery_kwh,
+            len(used_starts),
+            len(surplus_slots),
+        )
         # Re-scan surplus slots, skipping those already allocated.
         for i in surplus_slots:
             s_start = slots_start[i]
             s_end = slots_end[i]
             if s_start in used_starts:
+                log_planner(
+                    "debug",
+                    "[ev_planner] Pass 3 slot i=%d  %s  SKIP (already used)",
+                    i,
+                    s_start.isoformat(),
+                )
                 continue
             # Only charge past target when the battery is already full
             # at this slot — the surplus has nowhere else to go.
@@ -533,34 +579,79 @@ def build_ev_charging_plan(
                 and i < len(inp.slot_predicted_battery_kwh)
                 and inp.slot_predicted_battery_kwh[i] < inp.usable_battery_kwh - 1e-6
             ):
+                log_planner(
+                    "debug",
+                    "[ev_planner] Pass 3 slot i=%d  %s  SKIP (battery not full: "
+                    "pred=%.3f  usable=%.3f)",
+                    i,
+                    s_start.isoformat(),
+                    (
+                        inp.slot_predicted_battery_kwh[i]
+                        if i < len(inp.slot_predicted_battery_kwh)
+                        else -1.0
+                    ),
+                    inp.usable_battery_kwh,
+                )
                 continue
-            if (
-                max_charge_energy_for_slot(
-                    slot_duration_minutes(s_start, s_end),
+            slot_min = slot_duration_minutes(s_start, s_end)
+            max_charge = max_charge_energy_for_slot(
+                slot_min,
+                inp.charger_power_kw,
+                inp.charger_efficiency_pct,
+            )
+            if max_charge < 1e-9:
+                log_planner(
+                    "debug",
+                    "[ev_planner] Pass 3 slot i=%d  %s  SKIP (zero max charge: "
+                    "dur=%.1f min  pwr=%.2f  eff=%.1f%%)",
+                    i,
+                    s_start.isoformat(),
+                    slot_min,
                     inp.charger_power_kw,
                     inp.charger_efficiency_pct,
                 )
-                < 1e-9
-            ):
                 continue
 
             # The EV already reached target — no strict energy budget.
             # Use as much surplus as possible up to the full slot capacity,
             # limited by the available surplus.
-            avail_min = slot_duration_minutes(s_start, s_end)
-            max_charge = max_charge_energy_for_slot(
-                avail_min, inp.charger_power_kw, inp.charger_efficiency_pct
-            )
             net_surplus = slot_net_surplus_kwh[i]
             # Allocate the minimum of max power and available surplus.
             # We charge only from surplus, never from grid in this pass.
             allocated = min(max_charge, net_surplus)
             if allocated < 1e-9:
+                log_planner(
+                    "debug",
+                    "[ev_planner] Pass 3 slot i=%d  %s  SKIP (allocated < 1e-9: "
+                    "max_charge=%.3f  surplus=%.3f)",
+                    i,
+                    s_start.isoformat(),
+                    max_charge,
+                    net_surplus,
+                )
                 continue
 
             eff = max(inp.charger_efficiency_pct, 1.0) / 100.0
             ac_load = allocated / eff
 
+            log_planner(
+                "debug",
+                "[ev_planner] Pass 3 slot i=%d  %s  ALLOCATED  dc=%.3f kWh  "
+                "ac_load=%.3f kWh  surplus=%.3f kWh  max_charge=%.3f "
+                "dur=%.1f min  batt_pred=%.3f",
+                i,
+                s_start.isoformat(),
+                allocated,
+                ac_load,
+                net_surplus,
+                max_charge,
+                slot_min,
+                (
+                    inp.slot_predicted_battery_kwh[i]
+                    if i < len(inp.slot_predicted_battery_kwh)
+                    else -1.0
+                ),
+            )
             ev_slot = EVChargingSlot(
                 start=s_start,
                 end=s_end,
@@ -572,6 +663,11 @@ def build_ev_charging_plan(
                 estimated_cost=0.0,
             )
             selected.append(ev_slot)
+        log_planner(
+            "debug",
+            "[ev_planner] Pass 3 DONE  total_selected=%d",
+            len(selected),
+        )
 
     # Build output
     plan.charging_slots = selected
