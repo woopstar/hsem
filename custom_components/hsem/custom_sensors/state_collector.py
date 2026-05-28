@@ -577,8 +577,14 @@ async def _register_listeners(
     candidates = [
         cfg.ev.status_entity,
         cfg.ev.connected_entity,
+        cfg.ev.soc_target_entity,
+        cfg.ev_planned_load_smart_charging_entity,
+        cfg.ev_planned_load_deadline_entity,
         cfg.ev_second.status_entity,
         cfg.ev_second.connected_entity,
+        cfg.ev_second.soc_target_entity,
+        cfg.ev_second_planned_load_smart_charging_entity,
+        cfg.ev_second_planned_load_deadline_entity,
         state.force_working_mode,
     ]
 
