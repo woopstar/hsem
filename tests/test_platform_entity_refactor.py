@@ -35,9 +35,7 @@ from custom_components.hsem.custom_switches.description import (
     HSEMSwitchEntityDescription,
 )
 from custom_components.hsem.custom_switches.switch import HSEMSwitch
-from custom_components.hsem.custom_times.description import (
-    HSEMTimeEntityDescription,
-)
+from custom_components.hsem.custom_times.description import HSEMTimeEntityDescription
 from custom_components.hsem.custom_times.time import HSEMTimeEntity
 
 # ---------------------------------------------------------------------------
