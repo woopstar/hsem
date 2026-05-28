@@ -454,6 +454,12 @@
       },
       "discharge_efficiency": {
         "name": "Batteri Afladningseffektivitet"
+      },
+      "ev_target_soc": {
+        "name": "EV Mål SoC"
+      },
+      "ev_second_target_soc": {
+        "name": "EV 2 Mål SoC"
       }
     },
     "time": {

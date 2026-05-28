@@ -825,6 +825,12 @@
       },
       "discharge_efficiency": {
         "name": "Battery Discharge Efficiency"
+      },
+      "ev_target_soc": {
+        "name": "EV Target SoC"
+      },
+      "ev_second_target_soc": {
+        "name": "EV 2 Target SoC"
       }
     },
     "time": {

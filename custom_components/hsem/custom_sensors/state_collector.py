@@ -453,10 +453,10 @@ def _read_ev_planned_load_state(
     ev_cfg = cfg.ev_second if is_second else cfg.ev
 
     # The planned-load sensors duplicate the basic EV charger sensors
-    # (hsem_ev_connected, hsem_ev_soc, hsem_ev_soc_target).
+    # (hsem_ev_connected, hsem_ev_soc). Target SoC is now an HSEM
+    # number entity persisted in the config entry options.
     connected_sensor = ev_cfg.connected_entity
     soc_sensor = ev_cfg.soc_entity
-    target_soc_entity = ev_cfg.soc_target_entity
 
     # Smart charging is now controlled by the HSEM switch entity instead of
     # an external input_boolean.  Read the switch state from config options.
@@ -494,17 +494,18 @@ def _read_ev_planned_load_state(
         _soc = convert_to_float(_read(soc_sensor, "float", label=f"{p}_soc"))
         setattr(state, f"{p}_current_soc_pct", _soc if _soc is not None else 0.0)
 
-    if target_soc_entity:
-        _tsoc = convert_to_float(
-            _read(target_soc_entity, "float", label=f"{p}_target_soc")
-        )
-        setattr(
-            state,
-            f"{p}_target_soc_pct",
-            _tsoc if _tsoc is not None else 80.0,
-        )
-    else:
-        setattr(state, f"{p}_target_soc_pct", 80.0)
+    # Target SoC is read from the HSEM number entity config option.
+    target_soc_config_key = (
+        "hsem_ev_second_target_soc" if is_second else "hsem_ev_target_soc"
+    )
+    _tsoc = convert_to_float(
+        get_config_value(sensor._config_entry, target_soc_config_key)
+    )
+    setattr(
+        state,
+        f"{p}_target_soc_pct",
+        _tsoc if _tsoc is not None else 80.0,
+    )
 
     setattr(state, f"{p}_smart_charging_enabled", smart_enabled)
 
@@ -585,18 +586,20 @@ async def _register_listeners(
         get_ev_deadline_time_entity_id,
         get_ev_second_deadline_time_entity_id,
         get_ev_second_smart_charging_switch_entity_id,
+        get_ev_second_target_soc_number_entity_id,
         get_ev_smart_charging_switch_entity_id,
+        get_ev_target_soc_number_entity_id,
     )
 
     candidates = [
         cfg.ev.status_entity,
         cfg.ev.connected_entity,
-        cfg.ev.soc_target_entity,
+        get_ev_target_soc_number_entity_id(),
         get_ev_smart_charging_switch_entity_id(),
         get_ev_deadline_time_entity_id(),
         cfg.ev_second.status_entity,
         cfg.ev_second.connected_entity,
-        cfg.ev_second.soc_target_entity,
+        get_ev_second_target_soc_number_entity_id(),
         get_ev_second_smart_charging_switch_entity_id(),
         get_ev_second_deadline_time_entity_id(),
         state.force_working_mode,

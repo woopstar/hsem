@@ -39,6 +39,8 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_batteries_enable_batteries_schedule_3_end": "02:00:00",
     "hsem_batteries_enable_batteries_schedule_3_start": "23:00:00",
     "hsem_batteries_enable_batteries_schedule_3": False,
+    "hsem_ev_target_soc": 80,
+    "hsem_ev_second_target_soc": 80,
     "hsem_ev_deadline_time": "07:00",
     "hsem_ev_second_deadline_time": "07:00",
     "hsem_export_electricity_min_price": -0.00,

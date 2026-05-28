@@ -574,6 +574,50 @@ def get_discharge_efficiency_number_entity_id() -> str:
     return number.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_battery_discharge_efficiency"))
 
 
+# EV Target SoC Number
+def get_ev_target_soc_number_key() -> str:
+    """Return the entity description key for the EV target SoC number entity."""
+    return f"{DOMAIN}_ev_target_soc"
+
+
+def get_ev_target_soc_number_name() -> str:
+    """Return the display name for the EV target SoC number entity."""
+    return "EV Target SoC"
+
+
+def get_ev_target_soc_number_unique_id() -> str:
+    """Return the unique_id for the EV target SoC number entity."""
+    return f"{DOMAIN}_{get_ev_target_soc_number_key()}_number"
+
+
+def get_ev_target_soc_number_entity_id() -> str:
+    """Return the entity_id for the EV target SoC number entity."""
+    return number.ENTITY_ID_FORMAT.format(s(get_ev_target_soc_number_unique_id()))
+
+
+# EV 2 Target SoC Number
+def get_ev_second_target_soc_number_key() -> str:
+    """Return the entity description key for the EV 2 target SoC number entity."""
+    return f"{DOMAIN}_ev_second_target_soc"
+
+
+def get_ev_second_target_soc_number_name() -> str:
+    """Return the display name for the EV 2 target SoC number entity."""
+    return "EV 2 Target SoC"
+
+
+def get_ev_second_target_soc_number_unique_id() -> str:
+    """Return the unique_id for the EV 2 target SoC number entity."""
+    return f"{DOMAIN}_{get_ev_second_target_soc_number_key()}_number"
+
+
+def get_ev_second_target_soc_number_entity_id() -> str:
+    """Return the entity_id for the EV 2 target SoC number entity."""
+    return number.ENTITY_ID_FORMAT.format(
+        s(get_ev_second_target_soc_number_unique_id())
+    )
+
+
 # Applier Status Sensor
 def get_applier_status_sensor_name() -> str:
     """Return the display name for the applier-status diagnostic sensor."""
