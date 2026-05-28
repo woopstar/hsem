@@ -230,9 +230,8 @@ def apply_excess_export(
         export_min_price: Minimum export price (local currency/kWh) below
             which forced discharge is never triggered.  Sourced from
             ``hsem_export_electricity_min_price``.
-        recommended_threshold: Battery cycle-wear cost per kWh
-            (depreciation + conversion loss) from
-            :func:`~custom_components.hsem.utils.misc.calculate_recommended_threshold`.
+        recommended_threshold: Battery cycle-wear cost per kWh (depreciation)
+            from :func:`~custom_components.hsem.utils.misc.calculate_recommended_threshold`.
             Used as a floor — exporting below this price costs more in
             battery wear than it earns in revenue.
     """

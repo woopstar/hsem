@@ -395,7 +395,7 @@ def apply_opportunistic_charge(
         max_charge_per_interval: Maximum energy chargeable per slot (kWh).
         depreciation_threshold: Price ceiling below which grid charging is
             considered economically justified (local currency / kWh).
-            Typically the depreciation + conversion-loss threshold from
+            This is the depreciation threshold from
             :func:`~custom_components.hsem.utils.misc.calculate_recommended_threshold`.
         cycle_cost_per_kwh: Additional per-kWh wear cost *subtracted* from the
             depreciation threshold.  Only slots with import price below

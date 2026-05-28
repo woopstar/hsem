@@ -309,6 +309,13 @@ def solve_milp(
     # Split into base_load (positive demand) and pv_avail (PV surplus after load).
     # pv_avail[t] is added as an explicit LP variable to prevent infeasibility
     # when net_load is strongly negative and SoC limits constrain charge.
+    #
+    # EV adjustment: when EV charging is active, the EV consumes PV surplus
+    # first (before the battery).  This reduces the PV surplus available to
+    # the battery by the EV's total planned load (which includes both
+    # ev_planned_load_kwh and ev_accounted_load_kwh).  base_load is NOT
+    # increased because the battery never feeds the EV — any remaining EV
+    # demand after PV goes to the grid.
     net_load = np.array(
         [
             slots[i].avg_house_consumption_kwh
@@ -320,6 +327,27 @@ def solve_milp(
     )
     pv_avail = np.maximum(-net_load, 0.0)  # PV surplus after house consumption
     base_load = np.maximum(net_load, 0.0)  # remaining demand after PV
+
+    # Reduce PV surplus by EV load: the EV charger is fed from excess PV
+    # first, so energy that would charge the battery goes to the EV instead.
+    ev_total = np.array(
+        [
+            slots[i].ev_planned_load_kwh + slots[i].ev_accounted_load_kwh
+            for i in future_idx
+        ],
+        dtype=float,
+    )
+    if np.any(ev_total > 1e-9):
+        n_ev_slots = int(np.sum(ev_total > 1e-9))
+        total_ev_pv = float(np.sum(np.minimum(ev_total, pv_avail)))
+        pv_avail = np.maximum(pv_avail - ev_total, 0.0)
+        log_planner(
+            "debug",
+            "[milp] EV adjustment: %d slot(s) with EV load, "
+            "%.3f kWh PV diverted from battery to EV",
+            n_ev_slots,
+            total_ev_pv,
+        )
     m = len(future_idx)  # number of active LP slots
 
     # ------------------------------------------------------------------
