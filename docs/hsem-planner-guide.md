@@ -105,18 +105,19 @@ conversion loss:
 ```text
 depreciation      = (purchase_price × capacity_loss_pct / 100)
                    / (2 × usable_capacity_kwh × expected_cycles)
-conversion_loss   = 1 / (charge_eff × discharge_eff) − 1
-threshold         = depreciation + conversion_loss
+threshold         = depreciation
 ```
 
-The ``2×`` factor in the depreciation term accounts for one full cycle
-(charge + discharge).  The ``capacity_loss_pct`` (default 30 %) accounts for the
-fraction of the battery's value that is consumed over its lifetime — typically
-20 % physical capacity loss at 6000 LiFePO4 cycles plus ~10 % margin for
-calendar ageing.
+Conversion (in)efficiency losses are priced per-slot by the MILP objective
+and the cost function's ``conversion_loss_cost`` term, both of which use the
+actual import price of each slot rather than a fixed add-on.  The 2× factor
+in the depreciation term accounts for one full cycle (charge + discharge).  The
+``capacity_loss_pct`` (default 30 %) accounts for the fraction of the battery's
+value that is consumed over its lifetime — typically 20 % physical capacity
+loss at 6000 LiFePO4 cycles plus ~10 % margin for calendar ageing.
 
 The `excess_export_price_threshold` and the schedule profitability guard both use this
-combined threshold.  Users who want extra margin can set `battery_cycle_cost_per_kwh`
+depreciation threshold.  Users who want extra margin can set `battery_cycle_cost_per_kwh`
 to a positive value, which is added on top.
 
 ### Consumption prediction
