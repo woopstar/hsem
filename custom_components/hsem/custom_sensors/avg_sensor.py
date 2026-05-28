@@ -1,4 +1,3 @@
-import logging
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -14,9 +13,8 @@ from homeassistant.helpers.event import (
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from custom_components.hsem.entity import HSEMEntity
+from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 from custom_components.hsem.utils.misc import ha_get_entity_state_and_convert
-
-_LOGGER = logging.getLogger(__name__)
 
 
 class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):

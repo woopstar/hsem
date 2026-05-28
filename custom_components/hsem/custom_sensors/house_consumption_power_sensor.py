@@ -22,7 +22,6 @@ Functions:
     async_update(event=None): Manually triggers the sensor update.
 """
 
-import logging
 from datetime import timedelta
 from typing import Any
 
@@ -47,6 +46,7 @@ from custom_components.hsem.custom_sensors.utility_meter_sensor import (
     HSEMUtilityMeterSensor,
 )
 from custom_components.hsem.entity import HSEMEntity
+from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 from custom_components.hsem.utils.misc import (
     convert_to_float,
     get_config_value,
@@ -66,8 +66,6 @@ from custom_components.hsem.utils.sensornames import (
     get_utility_meter_sensor_name,
     get_utility_meter_sensor_unique_id,
 )
-
-_LOGGER = logging.getLogger(__name__)
 
 
 class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):

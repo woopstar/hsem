@@ -14,7 +14,6 @@ are defined in ``services.yaml``.
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 import voluptuous as vol
@@ -24,11 +23,10 @@ from homeassistant.exceptions import HomeAssistantError
 from custom_components.hsem.const import DOMAIN
 from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
 from custom_components.hsem.utils.diagnostics import build_diagnostics_dump
+from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 from custom_components.hsem.utils.sensornames import (
     get_force_working_mode_selector_entity_id,
 )
-
-_LOGGER = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Supported override modes

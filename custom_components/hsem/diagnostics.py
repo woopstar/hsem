@@ -22,16 +22,13 @@ issues.
 
 from __future__ import annotations
 
-import logging
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from custom_components.hsem.const import DOMAIN
 from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
 from custom_components.hsem.utils.diagnostics import build_diagnostics_dump
-
-_LOGGER = logging.getLogger(__name__)
+from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 
 # ---------------------------------------------------------------------------
 # HA diagnostics hook

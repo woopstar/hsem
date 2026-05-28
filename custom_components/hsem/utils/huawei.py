@@ -24,8 +24,6 @@ Usage:
     "huawei_solar" integration and manage errors appropriately.
 """
 
-import logging
-
 import voluptuous as vol
 from homeassistant.exceptions import (
     HomeAssistantError,
@@ -33,7 +31,7 @@ from homeassistant.exceptions import (
     ServiceValidationError,
 )
 
-_LOGGER = logging.getLogger(__name__)
+from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 
 
 async def async_set_grid_export_power_pct(self, device_id, power_percentage) -> None:

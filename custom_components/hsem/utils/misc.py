@@ -1,7 +1,6 @@
 """This module provides utility functions for the Home Assistant custom integration."""
 
 import hashlib
-import logging
 from datetime import datetime, time, timedelta
 
 from homeassistant.exceptions import (
@@ -16,8 +15,7 @@ from custom_components.hsem.const import DEFAULT_CONFIG_VALUES, DOMAIN
 
 # Re-export async_logger from its dedicated module so that existing callers
 # importing it from utils.misc continue to work without changes.
-
-_LOGGER = logging.getLogger(__name__)
+from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 
 _entity_id_from_unique_id_cache = {}
 
