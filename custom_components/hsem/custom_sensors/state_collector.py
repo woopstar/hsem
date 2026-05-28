@@ -41,6 +41,12 @@ from custom_components.hsem.utils.misc import (
 )
 from custom_components.hsem.utils.sensornames import (
     get_energy_average_sensor_unique_id,
+    get_ev_deadline_time_entity_id,
+    get_ev_second_deadline_time_entity_id,
+    get_ev_second_smart_charging_switch_entity_id,
+    get_ev_second_target_soc_number_entity_id,
+    get_ev_smart_charging_switch_entity_id,
+    get_ev_target_soc_number_entity_id,
     get_force_working_mode_selector_key,
 )
 
@@ -459,8 +465,6 @@ def _read_ev_planned_load_state(
 
     # Smart charging is now controlled by the HSEM switch entity instead of
     # an external input_boolean.  Read the switch state from config options.
-    from custom_components.hsem.utils.misc import get_config_value
-
     smart_switch_key = (
         "hsem_ev_second_smart_charging" if is_second else "hsem_ev_smart_charging"
     )
@@ -581,14 +585,6 @@ async def _register_listeners(
         this call.  The caller should store these and cancel them on teardown.
     """
     new_unsubs: list = []
-    from custom_components.hsem.utils.sensornames import (
-        get_ev_deadline_time_entity_id,
-        get_ev_second_deadline_time_entity_id,
-        get_ev_second_smart_charging_switch_entity_id,
-        get_ev_second_target_soc_number_entity_id,
-        get_ev_smart_charging_switch_entity_id,
-        get_ev_target_soc_number_entity_id,
-    )
 
     candidates = [
         cfg.ev.status_entity,
