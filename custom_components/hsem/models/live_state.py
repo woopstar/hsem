@@ -133,6 +133,7 @@ class LiveState:
     huawei_batteries_max_discharge_power_w: float | None = None
     huawei_batteries_rated_capacity_wh: float | None = None
     huawei_batteries_excess_pv_use_in_tou: str | None = None
+    huawei_batteries_forcible_charge_state: str | None = None
     huawei_inverter_active_power_control: str | None = None
 
     # TOU periods

@@ -48,6 +48,7 @@ from custom_components.hsem.utils.huawei import (
     async_set_grid_export_power_pct,
     async_set_grid_export_power_watt,
     async_set_tou_periods,
+    async_stop_forcible_discharge,
 )
 from custom_components.hsem.utils.inverter_verify import (
     ApplyResult,
@@ -309,6 +310,23 @@ async def async_apply_battery_settings(
 
     recommendation = rec.recommendation
 
+    # If we're switching away from force discharge, explicitly stop any
+    # active forcible charge/discharge before applying the new mode.
+    if recommendation not in (
+        Recommendations.ForceBatteriesDischarge.value,
+        Recommendations.ForceExport.value,
+    ):
+        fc_state = live.huawei_batteries_forcible_charge_state or ""
+        if fc_state and fc_state.lower() not in (
+            "stopped",
+            "unavailable",
+            "unknown",
+            "",
+        ):
+            await async_stop_forcible_discharge(
+                sensor, cfg.huawei_solar_device_id_batteries
+            )
+
     match recommendation:
         case Recommendations.ForceExport.value:
             working_mode = WorkingModes.FullyFedToGrid.value
@@ -489,8 +507,8 @@ async def _async_apply_forcible_discharge(
     ):
         return None
 
-    target_soc = int((current_required_kwh / live.battery_usable_capacity_kwh) * 100)
-    target_soc = max(10, min(100, target_soc))  # clamp 10–100
+    target_soc = int(live.battery_end_of_discharge_soc_pct)  # discharge to floor
+    target_soc = max(5, min(100, target_soc))  # clamp 5-100 for safety
 
     bat_soc_entity = cfg.huawei_solar_batteries_state_of_capacity
     device_id = cfg.huawei_solar_device_id_batteries

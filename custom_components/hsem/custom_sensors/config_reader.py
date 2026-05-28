@@ -154,6 +154,9 @@ def build_sensor_config(config_entry) -> SensorConfig:
     cfg.huawei_solar_batteries_excess_pv_energy_use_in_tou = get_config_value(
         config_entry, "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou"
     )
+    cfg.huawei_solar_batteries_forcible_charge = get_config_value(
+        config_entry, "hsem_huawei_solar_batteries_forcible_charge"
+    )
     cfg.huawei_solar_inverter_active_power_control = get_config_value(
         config_entry, "hsem_huawei_solar_inverter_active_power_control"
     )

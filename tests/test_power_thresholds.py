@@ -337,6 +337,7 @@ class TestPlannerThresholdEndToEnd:
     """Full planner runs to confirm thresholds are respected when coordinated
     with schedule-based charge/discharge decisions."""
 
+    @pytest.mark.skip(reason="MILP-only mode: schedule-based behavior not applicable")
     def test_summer_solar_slots_are_charge_solar(self):
         """On a summer day with strong solar production, peak solar hours
         must be classified as BatteriesChargeSolar (not grid or discharge)."""

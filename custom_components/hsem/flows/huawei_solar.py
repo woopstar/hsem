@@ -102,6 +102,12 @@ async def get_huawei_solar_step_schema(config_entry) -> vol.Schema:
                 ),
             ): selector({"entity": {"domain": ["sensor", "input_number"]}}),
             vol.Required(
+                "hsem_huawei_solar_batteries_forcible_charge",
+                default=get_config_value(
+                    config_entry, "hsem_huawei_solar_batteries_forcible_charge"
+                ),
+            ): selector({"entity": {"domain": "sensor"}}),
+            vol.Required(
                 "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou",
                 default=get_config_value(
                     config_entry,

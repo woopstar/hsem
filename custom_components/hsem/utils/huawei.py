@@ -24,8 +24,6 @@ Usage:
     "huawei_solar" integration and manage errors appropriately.
 """
 
-import logging
-
 import voluptuous as vol
 from homeassistant.exceptions import (
     HomeAssistantError,
@@ -33,7 +31,7 @@ from homeassistant.exceptions import (
     ServiceValidationError,
 )
 
-_LOGGER = logging.getLogger(__name__)
+from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 
 
 async def async_set_grid_export_power_pct(self, device_id, power_percentage) -> None:
@@ -271,5 +269,29 @@ async def async_set_forcible_discharge(
             device_id,
             target_soc,
             power,
+        )
+        raise
+
+
+async def async_stop_forcible_discharge(self, device_id: str) -> None:
+    """Stop any active forcible charge or discharge on the battery.
+
+    Args:
+        device_id (str): The device ID of the battery.
+    """
+    if not self.hass.services.has_service("huawei_solar", "stop_forcible_charge"):
+        raise ServiceNotFound("huawei_solar", "stop_forcible_charge")
+
+    try:
+        await self.hass.services.async_call(
+            "huawei_solar",
+            "stop_forcible_charge",
+            {"device_id": device_id},
+            blocking=True,
+        )
+        _LOGGER.debug("Stopped forcible charge/discharge for device_id %s", device_id)
+    except (ServiceNotFound, ServiceValidationError, HomeAssistantError):
+        _LOGGER.exception(
+            "HA error during stop_forcible_charge (device_id=%s)", device_id
         )
         raise

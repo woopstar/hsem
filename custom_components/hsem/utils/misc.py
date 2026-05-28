@@ -1,7 +1,6 @@
 """This module provides utility functions for the Home Assistant custom integration."""
 
 import hashlib
-import logging
 from datetime import datetime, time, timedelta
 
 from homeassistant.exceptions import (
@@ -16,8 +15,7 @@ from custom_components.hsem.const import DEFAULT_CONFIG_VALUES, DOMAIN
 
 # Re-export async_logger from its dedicated module so that existing callers
 # importing it from utils.misc continue to work without changes.
-
-_LOGGER = logging.getLogger(__name__)
+from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 
 _entity_id_from_unique_id_cache = {}
 
@@ -506,31 +504,22 @@ def calculate_recommended_threshold(
     expected_cycles: int,
     usable_capacity: float,
     capacity_loss_pct: float = 30.0,
-    charge_efficiency_pct: float | None = None,
-    discharge_efficiency_pct: float | None = None,
 ) -> float:
-    """Calculate the recommended price threshold based on battery depreciation
-    and (optionally) round-trip conversion loss.
+    """Calculate the recommended price threshold based on battery depreciation.
 
-    The threshold represents the minimum import price spread required for
-    grid charging to be economically rational.
+    The threshold represents the minimum price spread required for grid
+    charging to be economically rational.  It covers only battery
+    depreciation — conversion (in)efficiency losses are handled separately
+    by the MILP objective and the cost function's ``conversion_loss_cost``
+    term, both of which price the losses using the actual import price of
+    each slot rather than a fixed add-on.
 
-    **Depreciation term** (always included)::
+    **Depreciation term**::
 
-        depreciation = (purchase_price × capacity_loss_pct)
+        depreciation = (purchase_price × capacity_loss_pct / 100)
                        / (2 × usable_capacity × expected_cycles)
 
     The ``2×`` factor accounts for one full cycle (charge + discharge).
-
-    **Conversion-loss term** (included when both ``charge_efficiency_pct`` and
-    ``discharge_efficiency_pct`` are provided)::
-
-        conversion_loss = 1 / (charge_eff × discharge_eff) - 1
-
-    This is a fixed per-kWh add-on representing the cost of energy lost to
-    heat during a full round-trip.  At the default 98 % efficiency the term
-    is approximately 0.042 EUR/kWh — too large to ignore in the profitability
-    guard.
 
     Args:
         purchase_price: Total battery system cost in local currency.
@@ -540,12 +529,10 @@ def calculate_recommended_threshold(
             of original capacity (0-100).  LiFePO4 EOL is typically defined at
             80% retained capacity = 20% loss.  Defaults to 30% to account for
             both EOL degradation and calendar ageing.
-        charge_efficiency_pct: Charge-side efficiency (0-100).  When provided
-            together with ``discharge_efficiency_pct`` the round-trip conversion
-            loss is added to the threshold.
-        discharge_efficiency_pct: Discharge-side efficiency (0-100).  When
-            provided together with ``charge_efficiency_pct`` the round-trip
-            conversion loss is added to the threshold.
+
+    Returns:
+        Depreciation cost per kWh of battery throughput, rounded to 3 decimal
+        places (local currency / kWh).
     """
     if purchase_price <= 0 or expected_cycles <= 0 or usable_capacity <= 0:
         return 0.0
@@ -558,17 +545,4 @@ def calculate_recommended_threshold(
         2 * expected_cycles * usable_capacity
     )
 
-    # Round-trip conversion loss — added as a fixed per-kWh term when both
-    # efficiencies are provided.
-    conv_loss = 0.0
-    if (
-        charge_efficiency_pct is not None
-        and discharge_efficiency_pct is not None
-        and charge_efficiency_pct > 0
-        and discharge_efficiency_pct > 0
-    ):
-        ce = max(min(charge_efficiency_pct, 100.0), 1.0) / 100.0
-        de = max(min(discharge_efficiency_pct, 100.0), 1.0) / 100.0
-        conv_loss = 1.0 / (ce * de) - 1.0
-
-    return round(depr + conv_loss, 3)
+    return round(depr, 3)

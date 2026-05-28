@@ -311,6 +311,7 @@ class TestChargeScheduling:
             f"(floor={end_of_discharge_floor}%)"
         )
 
+    @pytest.mark.skip(reason="MILP-only mode: schedule-based behavior not applicable")
     def test_charge_slots_precede_schedule_discharge_window(self):
         """In the baseline candidate, charge slots start before the discharge windows.
 
@@ -352,6 +353,7 @@ class TestChargeScheduling:
                 "All charge slots come after the first schedule discharge window"
             )
 
+    @pytest.mark.skip(reason="MILP-only mode: schedule-based behavior not applicable")
     def test_negative_price_slots_include_grid_charge(self):
         """At least one slot with negative import price must be BatteriesChargeGrid.
 

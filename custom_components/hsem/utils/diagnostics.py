@@ -33,7 +33,6 @@ re-run deterministically in tests:
 from __future__ import annotations
 
 import json
-import logging
 import re
 from dataclasses import asdict
 from datetime import datetime, time
@@ -49,8 +48,6 @@ from custom_components.hsem.models.planner_inputs import (
     SolcastSlot,
 )
 from custom_components.hsem.models.planner_outputs import PlannerOutput
-
-_LOGGER = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Redaction helpers

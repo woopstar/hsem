@@ -15,8 +15,6 @@ so that downstream population functions never need additional
 
 from __future__ import annotations
 
-import logging
-
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_track_state_change_event
 
@@ -32,6 +30,7 @@ from custom_components.hsem.models.live_state import (
 )
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.models.state_snapshot import StateSnapshot
+from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 from custom_components.hsem.utils.logger import async_logger
 from custom_components.hsem.utils.misc import (
     async_resolve_entity_id_from_unique_id,
@@ -43,9 +42,6 @@ from custom_components.hsem.utils.sensornames import (
     get_energy_average_sensor_unique_id,
     get_force_working_mode_selector_key,
 )
-
-_LOGGER = logging.getLogger(__name__)
-
 
 # ---------------------------------------------------------------------------
 # HA entity states → LiveState
@@ -205,6 +201,14 @@ async def async_collect_live_state(
     )
     state.huawei_batteries_excess_pv_use_in_tou = (
         str(_raw_excess) if _raw_excess is not None else None
+    )
+    _raw_fc = _read(
+        cfg.huawei_solar_batteries_forcible_charge,
+        "string",
+        label="forcible_charge",
+    )
+    state.huawei_batteries_forcible_charge_state = (
+        str(_raw_fc) if _raw_fc is not None else None
     )
     _raw_wm = _read(
         cfg.huawei_solar_batteries_working_mode,

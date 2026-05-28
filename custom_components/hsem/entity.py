@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 import homeassistant.helpers.device_registry as dr
@@ -10,11 +9,10 @@ from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from custom_components.hsem.const import DOMAIN, NAME
+from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 
 if TYPE_CHECKING:
     from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
-
-_LOGGER = logging.getLogger(__name__)
 
 
 class HSEMEntity(Entity):

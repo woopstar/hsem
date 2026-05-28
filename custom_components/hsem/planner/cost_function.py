@@ -181,6 +181,11 @@ class CostWeights:
     charge_efficiency_pct: float = 100.0
     discharge_efficiency_pct: float = 100.0
 
+    # Minimum export price — exports below this are physically blocked by the
+    # applier (inverter set to GRID_EXPORT_LIMIT_WATT).  Mirrors the clamping
+    # in milp_optimizer.py so that cost_function scores match MILP assumptions.
+    export_min_price: float = 0.0
+
     # Time discount for selector score (1.0 = no discount)
     time_discount_rate: float = 0.995
 
@@ -616,9 +621,18 @@ def score_plan(
             import_cost += cost
             import_cost_disc += cost * discount
 
-        # 2. Export revenue
+        # 2. Export revenue — clamp export prices below export_min_price
+        #    to 0 to match the applier's physical export block and the MILP's
+        #    clamping (milp_optimizer.py).  Without this the cost function
+        #    would report revenue for exports that can never happen.
         if slot.grid_export_kwh > 1e-9:
-            rev = slot.grid_export_kwh * exp_price
+            effective_exp_price = exp_price
+            if (
+                weights.export_min_price > 1e-9
+                and effective_exp_price < weights.export_min_price
+            ):
+                effective_exp_price = 0.0
+            rev = slot.grid_export_kwh * effective_exp_price
             export_revenue += rev
             export_revenue_disc += rev * discount
 

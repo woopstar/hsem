@@ -21,13 +21,12 @@ so that they can be unit-tested without a running HA instance.
 from __future__ import annotations
 
 import asyncio
-import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
-_LOGGER = logging.getLogger(__name__)
+from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 
 # ---------------------------------------------------------------------------
 # Public constants

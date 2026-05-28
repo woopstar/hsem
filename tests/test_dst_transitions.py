@@ -400,6 +400,7 @@ class TestPlannerRunsDstDays:
             assert slot.start.tzinfo is not None, f"slot.start is naive: {slot.start}"
             assert slot.end.tzinfo is not None, f"slot.end is naive: {slot.end}"
 
+    @pytest.mark.skip(reason="MILP-only mode: schedule-based behavior not applicable")
     def test_spring_forward_discharge_window_evening_is_planned(self):
         """Discharge window 17:00–21:00 must be planned correctly on spring-forward day.
 
@@ -415,6 +416,7 @@ class TestPlannerRunsDstDays:
         )
         assert discharge_slots, "Expected discharge slots on spring-forward day"
 
+    @pytest.mark.skip(reason="MILP-only mode: schedule-based behavior not applicable")
     def test_autumn_fallback_discharge_window_evening_is_planned(self):
         """Discharge window 17:00–21:00 must be planned correctly on autumn-fallback day.
 

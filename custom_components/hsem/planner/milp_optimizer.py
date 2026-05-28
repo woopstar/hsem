@@ -1,9 +1,8 @@
-"""MILP-based optimal battery charge/discharge scheduler (issue #416).
+"""MILP-based optimal battery charge/discharge scheduler.
 
 This module implements a **Mixed Integer Linear Program** that finds the
 globally cost-optimal charge/discharge schedule for the planning horizon.
-It complements (and can eventually replace) the rule-based 6-candidate
-heuristic by guaranteeing a near-optimal solution for every input.
+It is the PRIMARY planner — heuristic candidates are disabled.
 
 Algorithm overview
 ------------------
@@ -97,7 +96,6 @@ Design constraints
 
 from __future__ import annotations
 
-import logging
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -108,8 +106,6 @@ from custom_components.hsem.utils.recommendations import Recommendations
 
 if TYPE_CHECKING:
     from custom_components.hsem.models.planner_outputs import PlannedSlot
-
-_LOGGER = logging.getLogger(__name__)
 
 # Name exported so the engine and tests can reference it without re-defining
 CANDIDATE_MILP = "milp"
@@ -191,6 +187,17 @@ def solve_milp(
             opportunity cost of ending the horizon with less stored energy.
             Passed from the engine (computed from the next discharge window).
             ``None`` disables the terminal-SoC credit term.
+        export_min_price:
+            Minimum export price (local currency/kWh) below which the inverter
+            physically blocks export (``GRID_EXPORT_LIMIT_WATT``).  Sourced from
+            ``hsem_export_electricity_min_price``.  Export prices below this
+            threshold are clamped to 0 before the LP solves, because the
+            applier will prevent any export at those prices.  Defaults to 0.0.
+        recommended_threshold:
+            Recommended discharge price threshold (local currency/kWh) computed
+            by ``calculate_recommended_threshold()``.  Used in post-processing
+            to decide between ``ForceBatteriesDischarge`` (export is worthwhile)
+            and ``BatteriesDischargeMode`` (house-load only).  Defaults to 0.0.
 
     Returns:
         A list of :class:`PlannedSlot` copies with MILP-derived recommendations,
@@ -223,11 +230,12 @@ def solve_milp(
         import numpy as np
         from scipy.optimize import linprog
     except ImportError:
-        _LOGGER.debug("[milp] scipy/numpy not available — MILP disabled")
+        log_planner("debug", "[milp] scipy/numpy not available — MILP disabled")
         return None
 
     if usable_kwh <= 0 or max_charge_per_slot <= 0:
-        _LOGGER.debug(
+        log_planner(
+            "debug",
             "[milp] Skipping — usable_kwh=%.3f max_charge_per_slot=%.3f",
             usable_kwh,
             max_charge_per_slot,
@@ -262,10 +270,14 @@ def solve_milp(
     p_imp = np.nan_to_num(p_imp, nan=0.0)
     p_exp = np.nan_to_num(p_exp, nan=0.0)
 
-    # Clamp export prices to >= 0 so the LP never pays to export.
-    # (The MILP cannot curtail PV surplus — it must export when the
-    # battery is full.  Flooring at 0 ensures it does so without penalty
-    # rather than actively seeking negative-price exports.)
+    # Clamp export prices to reflect physical inverter behaviour:
+    # 1. Negative prices → 0 (the inverter curtails PV rather than pay to export).
+    # 2. Prices below export_min_price → 0 (the applier sets the inverter to
+    #    GRID_EXPORT_LIMIT_WATT, blocking export entirely).
+    #
+    # The MILP cannot model curtailment (pv[t] is fixed), so flooring to 0 is
+    # the best approximation: the LP sees no revenue for blocked-export slots
+    # and does not optimise around a price signal that will never be realised.
     neg_mask = p_exp < 0.0
     n_neg = int(np.sum(neg_mask))
     if n_neg > 0:
@@ -277,12 +289,33 @@ def solve_milp(
         )
     p_exp = np.maximum(p_exp, 0.0)
 
+    if export_min_price > 1e-9:
+        blocked = p_exp < export_min_price
+        n_blocked = int(np.sum(blocked))
+        if n_blocked > 0:
+            log_planner(
+                "debug",
+                "[milp] Clamping %d export prices below min_price (%.4f) to 0 "
+                "(max clamped=%.4f)",
+                n_blocked,
+                export_min_price,
+                float(np.max(p_exp[blocked])),
+            )
+        p_exp = np.where(blocked, 0.0, p_exp)
+
     # Net load = house consumption + EV extra load − PV estimate.
     # A positive value means the battery/grid must supply extra energy.
     # A negative value means there is PV surplus.
     # Split into base_load (positive demand) and pv_avail (PV surplus after load).
     # pv_avail[t] is added as an explicit LP variable to prevent infeasibility
     # when net_load is strongly negative and SoC limits constrain charge.
+    #
+    # EV adjustment: when EV charging is active, the EV consumes PV surplus
+    # first (before the battery).  This reduces the PV surplus available to
+    # the battery by the EV's total planned load (which includes both
+    # ev_planned_load_kwh and ev_accounted_load_kwh).  base_load is NOT
+    # increased because the battery never feeds the EV — any remaining EV
+    # demand after PV goes to the grid.
     net_load = np.array(
         [
             slots[i].avg_house_consumption_kwh
@@ -294,6 +327,27 @@ def solve_milp(
     )
     pv_avail = np.maximum(-net_load, 0.0)  # PV surplus after house consumption
     base_load = np.maximum(net_load, 0.0)  # remaining demand after PV
+
+    # Reduce PV surplus by EV load: the EV charger is fed from excess PV
+    # first, so energy that would charge the battery goes to the EV instead.
+    ev_total = np.array(
+        [
+            slots[i].ev_planned_load_kwh + slots[i].ev_accounted_load_kwh
+            for i in future_idx
+        ],
+        dtype=float,
+    )
+    if np.any(ev_total > 1e-9):
+        n_ev_slots = int(np.sum(ev_total > 1e-9))
+        total_ev_pv = float(np.sum(np.minimum(ev_total, pv_avail)))
+        pv_avail = np.maximum(pv_avail - ev_total, 0.0)
+        log_planner(
+            "debug",
+            "[milp] EV adjustment: %d slot(s) with EV load, "
+            "%.3f kWh PV diverted from battery to EV",
+            n_ev_slots,
+            total_ev_pv,
+        )
     m = len(future_idx)  # number of active LP slots
 
     # ------------------------------------------------------------------
@@ -465,12 +519,15 @@ def solve_milp(
             options={"time_limit": _SOLVER_TIME_LIMIT_S, "disp": False},
         )
     except Exception as exc:
-        _LOGGER.warning("[milp] Solver raised an exception: %s", exc)
+        log_planner("warning", "[milp] Solver raised an exception: %s", exc)
         return None
 
     if not result.success:
-        _LOGGER.debug(
-            "[milp] Solver returned status=%s (%s)", result.status, result.message
+        log_planner(
+            "debug",
+            "[milp] Solver returned status=%s (%s)",
+            result.status,
+            result.message,
         )
         return None
 
@@ -491,6 +548,7 @@ def solve_milp(
     for lp_t, slot_i in enumerate(future_idx):
         ec_kwh = float(ec_sol[lp_t])
         ed_kwh = float(ed_sol[lp_t])
+        ge_kwh = float(result.x[ge_off + lp_t])  # grid export from LP
 
         if ec_kwh > _MIN_ACTION_KWH and ed_kwh > _MIN_ACTION_KWH:
             # Mutual exclusion is guaranteed by the LP constraint
@@ -505,30 +563,51 @@ def solve_milp(
                 - 2.0 * cycle_cost_per_kwh
             )
             if net_charge_profit > 0:
-                # Charging is net profitable — keep charge, drop discharge
                 ed_kwh = 0.0
             else:
-                # Round trip is not profitable — drop both (idle)
                 ec_kwh = 0.0
                 ed_kwh = 0.0
 
         if ec_kwh > _MIN_ACTION_KWH:
-            out_slots[slot_i].recommendation = Recommendations.BatteriesChargeGrid.value
+            # Use BatteriesChargeSolar when PV surplus is available,
+            # BatteriesChargeGrid otherwise.
+            if pv_avail[lp_t] > _MIN_ACTION_KWH:
+                out_slots[
+                    slot_i
+                ].recommendation = Recommendations.BatteriesChargeSolar.value
+            else:
+                out_slots[
+                    slot_i
+                ].recommendation = Recommendations.BatteriesChargeGrid.value
             out_slots[slot_i].batteries_charged_kwh = round(ec_kwh, 3)
         elif ed_kwh > _MIN_ACTION_KWH:
-            out_slots[
-                slot_i
-            ].recommendation = Recommendations.BatteriesDischargeMode.value
-            # batteries_charged stays 0 for discharge slots
+            # If the LP is exporting (ge > 0) in this slot, use
+            # ForceBatteriesDischarge to signal that the battery should
+            # cover house load AND export excess to grid.
+            if ge_kwh > _MIN_ACTION_KWH and p_exp[lp_t] >= max(
+                export_min_price, recommended_threshold
+            ):
+                out_slots[
+                    slot_i
+                ].recommendation = Recommendations.ForceBatteriesDischarge.value
+            else:
+                out_slots[
+                    slot_i
+                ].recommendation = Recommendations.BatteriesDischargeMode.value
 
-    _LOGGER.debug(
+    log_planner(
+        "debug",
         "[milp] LP solved: objective=%.4f  charge_slots=%d  discharge_slots=%d"
         "  replacement_price=%s",
         float(result.fun),
         sum(
             1
             for i in future_idx
-            if out_slots[i].recommendation == Recommendations.BatteriesChargeGrid.value
+            if out_slots[i].recommendation
+            in (
+                Recommendations.BatteriesChargeGrid.value,
+                Recommendations.BatteriesChargeSolar.value,
+            )
         ),
         sum(
             1

@@ -1,4 +1,3 @@
-import logging
+from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 
-_LOGGER = logging.getLogger(__name__)
 _LOGGER.info("Initializing hsem package")

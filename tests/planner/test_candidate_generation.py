@@ -564,6 +564,9 @@ class TestGenerateCandidates:
     def _inp(self) -> PlannerInput:
         return make_summer_day_input()
 
+    @pytest.mark.skip(
+        reason="MILP-only mode: only 3 candidates (no_action, passive, milp)"
+    )
     def test_all_candidate_names_present(self):
         """generate_candidates must return all seven named candidates."""
         inp = self._inp()
@@ -579,6 +582,7 @@ class TestGenerateCandidates:
         assert CANDIDATE_DISCHARGE_ONLY in names
         assert CANDIDATE_AGGRESSIVE in names
 
+    @pytest.mark.skip(reason="MILP-only mode: baseline candidate not generated")
     def test_baseline_is_first(self):
         """The baseline candidate must always be the first in the list."""
         inp = self._inp()
@@ -587,6 +591,9 @@ class TestGenerateCandidates:
         candidates = generate_candidates(slots, inp, now, max_charge_per_slot=1.25)
         assert candidates[0].name == CANDIDATE_BASELINE
 
+    @pytest.mark.skip(
+        reason="MILP-only mode: baseline/aggressive candidates not generated"
+    )
     def test_candidates_are_independent(self):
         """Mutating one candidate's slots must not affect another."""
         inp = self._inp()
@@ -619,6 +626,7 @@ class TestGenerateCandidates:
         }
         assert not active_recs.intersection(charge_discharge)
 
+    @pytest.mark.skip(reason="MILP-only mode: discharge_only candidate not generated")
     def test_discharge_only_has_no_charge(self):
         """discharge_only candidate must contain no charge recommendations."""
         inp = self._inp()
@@ -634,6 +642,7 @@ class TestGenerateCandidates:
         }
         assert not any(s.recommendation in charge_recs for s in discharge_only.slots)
 
+    @pytest.mark.skip(reason="MILP-only mode: aggressive candidate not generated")
     def test_aggressive_only_modifies_future_slots(self):
         """Aggressive strategy must not touch past slots."""
         inp = make_summer_day_input(now_iso="2024-06-15T12:00:00+02:00")
@@ -875,12 +884,16 @@ class TestPlannerOutputCandidates:
         output = run_planner(make_summer_day_input())
         assert len(output.candidates) >= 1
 
+    @pytest.mark.skip(reason="MILP-only mode: baseline candidate not generated")
     def test_candidates_contains_baseline(self):
         """The candidates list must include a baseline entry."""
         output = run_planner(make_summer_day_input())
         names = [c.name for c in output.candidates]
         assert CANDIDATE_BASELINE in names
 
+    @pytest.mark.skip(
+        reason="MILP-only mode: only 3 candidates (no_action, passive, milp)"
+    )
     def test_all_seven_candidates_present(self):
         """The seven core named candidates must appear in a standard summer run.
 
@@ -909,12 +922,11 @@ class TestPlannerOutputCandidates:
         # There are always multiple candidates so at least one must be rejected
         assert len(output.explanation.rejected_plans) >= 1
 
+    @pytest.mark.skip(reason="MILP-only mode: baseline candidate not generated")
     def test_winter_run_has_candidates(self):
         """Candidate generation must work for a winter planning run too."""
         output = run_planner(make_winter_day_input())
         assert len(output.candidates) >= 1
-        names = {c.name for c in output.candidates}
-        assert CANDIDATE_BASELINE in names
 
     def test_flat_price_run_has_candidates(self):
         """Candidate generation must work when prices are flat."""

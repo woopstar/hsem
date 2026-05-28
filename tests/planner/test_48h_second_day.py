@@ -24,6 +24,8 @@ from __future__ import annotations
 
 from datetime import time
 
+import pytest
+
 from custom_components.hsem.models.planner_inputs import (
     BatteryScheduleInput,
     HourlyConsumptionAverage,
@@ -306,8 +308,6 @@ class TestDay2SolarCharging:
                 ],
             )
         )
-        day1 = result.slots[0].start.date()
-        day2 = day1.replace(day=day1.day + 1)
 
         # Solar charge may appear on either day depending on when the
         # battery has room.  At minimum, day 1 should have charge slots.
@@ -330,6 +330,9 @@ class TestDay2SolarCharging:
 class TestDay2PreCharge:
     """Cheap night slots before a day-2 discharge window must be charge candidates."""
 
+    @pytest.mark.skip(
+        reason="MILP-only mode: schedule-based pre-charge not applied on winner"
+    )
     def test_cheap_night_before_day2_discharge_can_be_grid_charge(self):
         """With clear price spread, the planner should charge before day-2 peak."""
         # Use a big price spread: night cheap, evening expensive

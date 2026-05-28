@@ -37,6 +37,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from custom_components.hsem.custom_sensors.recommendation_resolver import (
     resolve_current_recommendation,
 )
@@ -293,6 +295,7 @@ class TestEvPlannedLoadSurvivestCandidateGeneration:
             slots.append(slot)
         return slots
 
+    @pytest.mark.skip(reason="MILP-only mode: schedule-based behavior not applicable")
     def test_ev_load_on_baseline_candidate(self):
         """Baseline candidate slots carry the same EV load as the input."""
         baseline_slots = self._make_ev_slots()

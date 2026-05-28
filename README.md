@@ -381,7 +381,9 @@ The Excess Battery Export feature automatically forces battery discharge to sell
 
 5. **Economic Threshold Calculation:**
    - The price threshold is automatically calculated based on battery depreciation costs.
-   - Formula: Depreciation = (Battery_Purchase_Price × 0.30) / (Expected_Cycles × Usable_Capacity) + Conversion_Loss_Cost
+   - Formula: ``Depreciation = (Purchase_Price × Capacity_Loss_Pct / 100) / (2 × Expected_Cycles × Usable_Capacity)``
+   - Conversion (in)efficiency losses are priced per-slot by the MILP objective and the cost function,
+     using actual import prices, rather than as a fixed add-on to the threshold.
    - Users can view the recommended threshold during configuration.
 
 **Configuration Parameters:**
@@ -393,7 +395,7 @@ The Excess Battery Export feature automatically forces battery discharge to sell
 | **Price Threshold** | EUR/kWh | Calculated | Minimum price difference required to export grid-charged battery (0.00-1.00). |
 | **Battery Purchase Price** | EUR | 48000 | Battery system purchase price (used to calculate depreciation). |
 | **Expected Cycles** | Number | 6000 | Expected battery cycle lifespan (used to calculate depreciation). |
-| **Conversion Loss** | Percentage | 10% | Battery conversion loss rate as percentage (used in threshold calculation). |
+| **Conversion Loss** | Percentage | 10% | Battery conversion loss rate (priced per-slot by the planner, not an input to the threshold). |
 
 **Example Scenarios:**
 

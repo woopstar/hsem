@@ -30,7 +30,6 @@ platform retrieves it and passes it to the relevant entity constructors.
 from __future__ import annotations
 
 import asyncio
-import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
@@ -72,11 +71,9 @@ from custom_components.hsem.utils.forecast_tracker import (
     compute_accumulated_energy,
 )
 from custom_components.hsem.utils.inverter_verify import CycleApplySummary
+from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 from custom_components.hsem.utils.logger import async_logger, set_planner_verbose
 from custom_components.hsem.utils.recommendations import Recommendations
-
-_LOGGER = logging.getLogger(__name__)
-
 
 # ---------------------------------------------------------------------------
 # Data payload exposed to subscriber entities
