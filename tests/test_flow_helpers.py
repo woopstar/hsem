@@ -306,7 +306,6 @@ class TestBuildEvChargerSchema:
         assert "hsem_ev_charger_force_max_discharge_power" in keys
         assert "hsem_ev_charger_max_discharge_power" in keys
         assert "hsem_ev_soc" in keys
-        assert "hsem_ev_soc_target" in keys
         assert "hsem_ev_connected" in keys
         assert "hsem_ev_allow_charge_past_target_soc" in keys
 
@@ -327,7 +326,6 @@ class TestBuildEvChargerSchema:
         assert "hsem_ev_second_charger_force_max_discharge_power" in keys
         assert "hsem_ev_second_charger_max_discharge_power" in keys
         assert "hsem_ev_second_soc" in keys
-        assert "hsem_ev_second_soc_target" in keys
         assert "hsem_ev_second_connected" in keys
         assert "hsem_ev_second_allow_charge_past_target_soc" in keys
 

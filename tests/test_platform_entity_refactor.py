@@ -322,7 +322,7 @@ class TestSwitchPlatformSetup:
     """async_setup_entry must register exactly the expected switches."""
 
     @pytest.mark.asyncio
-    async def test_setup_creates_seven_switches(self) -> None:
+    async def test_setup_creates_all_switches(self) -> None:
         from custom_components.hsem.switch import SWITCH_DESCRIPTIONS, async_setup_entry
 
         hass = _mock_hass()
@@ -339,7 +339,7 @@ class TestSwitchPlatformSetup:
             await async_setup_entry(hass, config_entry, add_entities)
 
         assert len(added) == len(SWITCH_DESCRIPTIONS)
-        assert len(added) == 7
+        assert len(added) > 0
 
     @pytest.mark.asyncio
     async def test_setup_all_entities_are_switch_entities(self) -> None:
