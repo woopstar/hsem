@@ -35,6 +35,10 @@ class HourlyRecommendation:
             (kWh, ≥ 0).  Equals ``ev_planned_load_kwh + ev_accounted_load_kwh``.
             Use this for diagnostics and UI — it is non-zero whenever EV
             charging is planned regardless of the ``base_load_includes_ev`` flag.
+        ev_charger_calculated_power: Target AC power (W) for the primary EV
+            charger during this slot.  Zero when no charging is planned.
+        ev_second_charger_calculated_power: Target AC power (W) for the
+            second EV charger during this slot.  Zero when no charging is planned.
         estimated_cost_currency: Estimated grid cost for the slot (local currency).
         batteries_charged_kwh: Energy scheduled to be charged into battery (kWh).
         batteries_discharged_kwh: Energy drawn from battery by the SoC simulation (kWh).
@@ -70,3 +74,5 @@ class HourlyRecommendation:
     ev_planned_load_kwh: float = 0.0
     ev_accounted_load_kwh: float = 0.0
     ev_total_planned_load_kwh: float = 0.0
+    ev_charger_calculated_power: float = 0.0
+    ev_second_charger_calculated_power: float = 0.0

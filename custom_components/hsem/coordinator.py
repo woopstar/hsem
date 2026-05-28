@@ -662,6 +662,10 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             rec.ev_planned_load_kwh = slot.ev_planned_load_kwh
             rec.ev_accounted_load_kwh = slot.ev_accounted_load_kwh
             rec.ev_total_planned_load_kwh = slot.ev_total_planned_load_kwh
+            rec.ev_charger_calculated_power = slot.ev_charger_calculated_power
+            rec.ev_second_charger_calculated_power = (
+                slot.ev_second_charger_calculated_power
+            )
             rec.estimated_cost_currency = slot.estimated_cost_currency
             rec.estimated_battery_capacity_kwh = slot.estimated_battery_capacity_kwh
             rec.estimated_battery_soc_pct = slot.estimated_battery_soc_pct

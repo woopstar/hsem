@@ -276,6 +276,59 @@ def _schedule_slots(
     return mcps, mdps, max_soc_kwh, rc, warnings
 
 
+def _compute_ev_charger_power(
+    slots: list,
+    slot_starts: list[datetime],
+    ev_plan: EVChargingPlan | None,
+    interval_minutes: int,
+    *,
+    second: bool = False,
+) -> None:
+    """Compute per-slot EV charger target power (W) and write to slots.
+
+    ``EVChargingSlot.ac_load_kwh`` is the AC-side energy the charger draws
+    from the grid/PV.  The target power is::
+
+        AC power (W) = (ac_load_kwh / slot_hours) × 1000
+
+    When the plan is ``None`` or empty the field stays at the default 0.0.
+
+    Args:
+        slots: Mutable planner slot list to update in place.
+        slot_starts: Slot start datetimes (same length as *slots*).
+        ev_plan: EV charging plan (may be ``None``).
+        interval_minutes: Slot width in minutes.
+        second: If ``True``, write to ``ev_second_charger_calculated_power``;
+            otherwise write to ``ev_charger_calculated_power``.
+    """
+    if ev_plan is None or not ev_plan.charging_slots:
+        return
+
+    # Build a lookup from UTC key → slot index.
+    from custom_components.hsem.utils.datetime_utils import utc_key
+
+    slot_map = {utc_key(s): i for i, s in enumerate(slot_starts)}
+    hours_per_slot = interval_minutes / 60.0
+
+    for ev_slot in ev_plan.charging_slots:
+        idx = slot_map.get(utc_key(ev_slot.start))
+        if idx is None:
+            continue
+        if ev_slot.ac_load_kwh < 1e-9:
+            continue
+
+        # AC-side power: ac_load_kwh (already includes charger efficiency)
+        # divided by slot duration in hours.
+        ac_power_w = round((ev_slot.ac_load_kwh / hours_per_slot) * 1000)
+
+        attr = (
+            "ev_second_charger_calculated_power"
+            if second
+            else "ev_charger_calculated_power"
+        )
+        setattr(slots[idx], attr, ac_power_w)
+
+
 def _build_and_inject_for_ev(
     enabled: bool,
     connected: bool,
@@ -287,6 +340,7 @@ def _build_and_inject_for_ev(
     eff: float,
     deadline,
     base_includes: bool,
+    allow_past_target: bool,
     label: str,
     now: datetime,
     slots: list,
@@ -297,6 +351,8 @@ def _build_and_inject_for_ev(
     combined_ev_raw_load: list[float],
     combined_ev_injected_load: list[float],
     warnings: list[str],
+    predicted_battery_kwh: list[float],
+    usable_battery_kwh: float,
 ) -> EVChargingPlan | None:
     """Build an EV charging plan and accumulate its loads."""
     if not enabled:
@@ -325,6 +381,9 @@ def _build_and_inject_for_ev(
         charger_efficiency_pct=eff,
         deadline=deadline,
         base_load_includes_ev=base_includes,
+        allow_charge_past_target_soc=allow_past_target,
+        slot_predicted_battery_kwh=predicted_battery_kwh,
+        usable_battery_kwh=usable_battery_kwh,
         now=now,
     )
     plan = build_ev_charging_plan(
@@ -485,6 +544,18 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     combined_ev_inj = [0.0] * len(slots)
     populate_net_consumption(slots)
     sns = [max(-s.estimated_net_consumption_kwh, 0.0) for s in slots]
+    # Predicted battery energy (kWh above floor) at the START of each slot,
+    # assuming no EV charging and no grid charging.  Used to gate Pass 3
+    # in the EV planner: the EV only charges past target when the battery
+    # is already full and the surplus would otherwise be stranded.
+    predicted_battery_kwh: list[float] = []
+    cumulative = current_kwh
+    for s in slots:
+        predicted_battery_kwh.append(cumulative)
+        net = s.estimated_net_consumption_kwh
+        # net positive → battery must cover deficit
+        # net negative → surplus charges battery (up to usable_kwh)
+        cumulative = max(0.0, min(usable_kwh, cumulative - net))
     ss = [s.start for s in slots]
     se = [s.end for s in slots]
     sp = [s.price.import_price for s in slots]
@@ -498,6 +569,8 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         combined_ev_raw_load=combined_ev_raw,
         combined_ev_injected_load=combined_ev_inj,
         warnings=warnings,
+        predicted_battery_kwh=predicted_battery_kwh,
+        usable_battery_kwh=usable_kwh,
     )
     if inp.ev_planned_load_enabled:
         ev_cp = _build_and_inject_for_ev(
@@ -511,6 +584,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
             eff=inp.ev_planned_load_charger_efficiency_pct,
             deadline=inp.ev_planned_load_deadline,
             base_includes=inp.ev_planned_load_base_load_includes_ev,
+            allow_past_target=inp.ev_planned_allow_charge_past_target_soc,
             label="primary",
             **common_kw,
         )
@@ -526,6 +600,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
             eff=inp.ev_second_planned_load_charger_efficiency_pct,
             deadline=inp.ev_second_planned_load_deadline,
             base_includes=inp.ev_second_planned_load_base_load_includes_ev,
+            allow_past_target=inp.ev_second_allow_charge_past_target_soc,
             label="second",
             **common_kw,
         )
@@ -533,6 +608,13 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         s.ev_planned_load_kwh = combined_ev_inj[i]
         s.ev_accounted_load_kwh = round(combined_ev_raw[i] - combined_ev_inj[i], 3)
         s.ev_total_planned_load_kwh = round(combined_ev_raw[i], 3)
+
+    # Compute per-slot EV charger target power (W) from the planner's
+    # per-slot energy targets.  The EVChargingSlot.estimated_charged_kwh is
+    # battery-side (DC) kWh delivered to the EV.  The AC power the charger
+    # must draw is larger by 1/eff to account for charger/cable losses.
+    _compute_ev_charger_power(slots, ss, ev_cp, inp.interval_minutes)
+    _compute_ev_charger_power(slots, ss, ev2_cp, inp.interval_minutes, second=True)
     populate_net_consumption(slots)
     populate_estimated_cost(slots, export_min_price=inp.export_min_price)
     rt = calculate_recommended_threshold(

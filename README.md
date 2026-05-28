@@ -109,7 +109,16 @@ When "battery" is mentioned in this documentation or the integration, it **alway
 
 ### Does HSEM optimize EV charging?
 
-HSEM **does not provide direct EV charging optimization**. Instead, it monitors your EV charger's power sensor (from any wall charger integration) to ensure that your EV is not charged from the house battery. HSEM disables battery discharge while the EV charger is active, but it does **not** estimate how much charge your EV needs or prioritize charging hours for the EV.
+**Yes.** When "EV Planned Load" is enabled in the configuration, HSEM's EV planner
+computes an optimal charging schedule that:
+- Charges from excess PV first, then from the cheapest grid hours.
+- Completes charging before the configured deadline.
+- Respects charger efficiency and power limits.
+- Can continue charging past the target SoC using stranded PV surplus
+  (when the house battery is already full).
+
+The planner outputs a per-slot `ev_charger_calculated_power` (W) value that
+the applier can use to throttle a go-e Gemini charger to the optimal speed.
 
 ### How does HSEM use EV charger data in its calculations?
 

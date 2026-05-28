@@ -141,6 +141,10 @@ async def async_apply_inverter_power_control(
                 isinstance(ev1.soc_pct, (int, float))
                 and ev1_cfg.allow_charge_past_target_soc
                 and ev1.soc_pct < 100
+                # Only force export when house battery is already full —
+                # otherwise the MILP should get the PV surplus for the battery.
+                and live.huawei_batteries_soc_pct is not None
+                and live.huawei_batteries_soc_pct >= 99.0
             ):
                 export_pct = 100
 
@@ -157,6 +161,9 @@ async def async_apply_inverter_power_control(
                 isinstance(ev2.soc_pct, (int, float))
                 and ev2_cfg.allow_charge_past_target_soc
                 and ev2.soc_pct < 100
+                # Only force export when house battery is already full.
+                and live.huawei_batteries_soc_pct is not None
+                and live.huawei_batteries_soc_pct >= 99.0
             ):
                 export_pct = 100
 
