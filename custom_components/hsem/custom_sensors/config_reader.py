@@ -367,17 +367,11 @@ def build_sensor_config(config_entry) -> SensorConfig:
     cfg.ev_planned_load_enabled = convert_to_boolean(
         get_config_value(config_entry, "hsem_ev_planned_load_enabled")
     )
-    cfg.ev_planned_load_soc_sensor = _optional_entity(
-        get_config_value(config_entry, "hsem_ev_planned_load_soc_sensor")
-    )
-    cfg.ev_planned_load_target_soc_entity = _optional_entity(
-        get_config_value(config_entry, "hsem_ev_planned_load_target_soc_entity")
-    )
-    _target_soc_fixed = convert_to_float(
-        get_config_value(config_entry, "hsem_ev_planned_load_target_soc_fixed")
-    )
     cfg.ev_planned_load_target_soc_fixed = (
-        _target_soc_fixed if _target_soc_fixed is not None else 80.0
+        convert_to_float(
+            get_config_value(config_entry, "hsem_ev_planned_load_target_soc_fixed")
+        )
+        or 80.0
     )
     cfg.ev_planned_load_deadline_entity = _optional_entity(
         get_config_value(config_entry, "hsem_ev_planned_load_deadline_entity")
@@ -410,17 +404,13 @@ def build_sensor_config(config_entry) -> SensorConfig:
     cfg.ev_second_planned_load_enabled = convert_to_boolean(
         get_config_value(config_entry, "hsem_ev_second_planned_load_enabled")
     )
-    cfg.ev_second_planned_load_soc_sensor = _optional_entity(
-        get_config_value(config_entry, "hsem_ev_second_planned_load_soc_sensor")
-    )
-    cfg.ev_second_planned_load_target_soc_entity = _optional_entity(
-        get_config_value(config_entry, "hsem_ev_second_planned_load_target_soc_entity")
-    )
-    _s2_tsoc = convert_to_float(
-        get_config_value(config_entry, "hsem_ev_second_planned_load_target_soc_fixed")
-    )
     cfg.ev_second_planned_load_target_soc_fixed = (
-        _s2_tsoc if _s2_tsoc is not None else 80.0
+        convert_to_float(
+            get_config_value(
+                config_entry, "hsem_ev_second_planned_load_target_soc_fixed"
+            )
+        )
+        or 80.0
     )
     cfg.ev_second_planned_load_deadline_entity = _optional_entity(
         get_config_value(config_entry, "hsem_ev_second_planned_load_deadline_entity")

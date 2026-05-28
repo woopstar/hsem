@@ -65,8 +65,6 @@
       "ev_second_planned_load": {
         "data": {
           "hsem_ev_second_planned_load_enabled": "Enable EV 2 Planned Load Integration",
-          "hsem_ev_second_planned_load_soc_sensor": "EV 2 Battery SoC Sensor",
-          "hsem_ev_second_planned_load_target_soc_entity": "EV 2 Target SoC Entity (optional)",
           "hsem_ev_second_planned_load_target_soc_fixed": "EV 2 Target SoC (fixed fallback)",
           "hsem_ev_second_planned_load_deadline_entity": "EV 2 Charge Deadline Entity (optional)",
           "hsem_ev_second_planned_load_deadline_fixed": "EV 2 Charge Deadline (fixed HH:MM fallback)",
@@ -77,8 +75,6 @@
         },
         "data_description": {
           "hsem_ev_second_planned_load_enabled": "Enable or disable planned charging load integration for the second EV.",
-          "hsem_ev_second_planned_load_soc_sensor": "Sensor reporting the current second EV battery state of charge.",
-          "hsem_ev_second_planned_load_target_soc_entity": "Optional entity for the second EV target SoC. Overrides fixed target when set.",
           "hsem_ev_second_planned_load_target_soc_fixed": "Fixed second EV target SoC used when no entity is configured. Default: 80.",
           "hsem_ev_second_planned_load_deadline_entity": "Optional entity whose state is a time string (HH:MM) for the second EV charge deadline.",
           "hsem_ev_second_planned_load_deadline_fixed": "Fixed charge deadline (HH:MM) for the second EV. Default: 07:00.",
