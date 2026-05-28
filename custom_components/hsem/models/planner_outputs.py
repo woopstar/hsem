@@ -331,6 +331,14 @@ class PlannedSlot:
             ``EVSmartCharging`` recommendation label decision (use
             ``ev_total_planned_load_kwh > 0`` instead of
             ``ev_planned_load_kwh > 0`` to detect *any* planned EV charging).
+        ev_charger_calculated_power:
+            Target AC power (W) for the primary EV charger during this slot.
+            Computed from the EV planner's per-slot energy target and charger
+            efficiency.  Zero when no primary EV charging is planned in this
+            slot.  The applier can use this to throttle the charger via
+            the go-e (or compatible) API instead of running at full speed.
+        ev_second_charger_calculated_power:
+            Same as ``ev_charger_calculated_power``, but for the second EV.
     """
 
     start: datetime
@@ -345,6 +353,8 @@ class PlannedSlot:
     ev_planned_load_kwh: float = 0.0
     ev_accounted_load_kwh: float = 0.0
     ev_total_planned_load_kwh: float = 0.0
+    ev_charger_calculated_power: float = 0.0
+    ev_second_charger_calculated_power: float = 0.0
     estimated_net_consumption_kwh: float = 0.0
     estimated_cost_currency: float = 0.0
     estimated_battery_soc_pct: float = 0.0
