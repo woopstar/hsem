@@ -15,27 +15,26 @@ from custom_components.hsem.custom_numbers.entity import HSEMBatteryEfficiencyNu
 from custom_components.hsem.utils.sensornames import (
     get_charge_efficiency_number_entity_id,
     get_charge_efficiency_number_key,
-    get_charge_efficiency_number_name,
     get_charge_efficiency_number_unique_id,
     get_discharge_efficiency_number_entity_id,
     get_discharge_efficiency_number_key,
-    get_discharge_efficiency_number_name,
     get_discharge_efficiency_number_unique_id,
 )
 
 # Entity descriptions for each number entity in this platform.
+# Display names come from translations via translation_key.
 NUMBER_DESCRIPTIONS: tuple[NumberEntityDescription, ...] = (
     NumberEntityDescription(
         key=get_charge_efficiency_number_key(),
-        name=get_charge_efficiency_number_name(),
         icon="mdi:battery-plus",
         entity_category=EntityCategory.CONFIG,
+        translation_key="charge_efficiency",
     ),
     NumberEntityDescription(
         key=get_discharge_efficiency_number_key(),
-        name=get_discharge_efficiency_number_name(),
         icon="mdi:battery-minus",
         entity_category=EntityCategory.CONFIG,
+        translation_key="discharge_efficiency",
     ),
 )
 

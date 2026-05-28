@@ -807,6 +807,37 @@
       }
     }
   },
+  "entity": {
+    "switch": {
+      "read_only": { "name": "Read Only Mode" },
+      "extended_attributes": { "name": "Extended Attributes" },
+      "verbose_logging": { "name": "Verbose Logging" },
+      "batteries_schedule_1": { "name": "Batteries Schedule 1" },
+      "batteries_schedule_2": { "name": "Batteries Schedule 2" },
+      "batteries_schedule_3": { "name": "Batteries Schedule 3" },
+      "ev_force_discharge": { "name": "EV Force Max Discharge Power" },
+      "ev_smart_charging": { "name": "EV Smart Charging" },
+      "ev_force_charge_now": { "name": "EV Force Charge Now" },
+      "ev_second_smart_charging": { "name": "EV 2 Smart Charging" },
+      "ev_second_force_charge_now": { "name": "EV 2 Force Charge Now" }
+    },
+    "select": {
+      "force_working_mode": { "name": "Force Working Mode" },
+      "pv_estimate_likelihood": { "name": "Solcast PV Estimate Likelihood" }
+    },
+    "number": {
+      "charge_efficiency": { "name": "Battery Charge Efficiency" },
+      "discharge_efficiency": { "name": "Battery Discharge Efficiency" }
+    },
+    "time": {
+      "schedule_1_start": { "name": "Batteries Discharge Schedule 1 Start" },
+      "schedule_1_end": { "name": "Batteries Discharge Schedule 1 End" },
+      "schedule_2_start": { "name": "Batteries Discharge Schedule 2 Start" },
+      "schedule_2_end": { "name": "Batteries Discharge Schedule 2 End" },
+      "schedule_3_start": { "name": "Batteries Discharge Schedule 3 Start" },
+      "schedule_3_end": { "name": "Batteries Discharge Schedule 3 End" }
+    }
+  },
   "services": {
     "force_recalculation": {
       "name": "Force recalculation",

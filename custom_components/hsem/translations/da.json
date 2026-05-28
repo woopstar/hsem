@@ -446,6 +446,37 @@
       }
     }
   },
+  "entity": {
+    "switch": {
+      "read_only": { "name": "Skrivebeskyttet tilstand" },
+      "extended_attributes": { "name": "Udvidede attributter" },
+      "verbose_logging": { "name": "Detaljeret logning" },
+      "batteries_schedule_1": { "name": "Batteriplan 1" },
+      "batteries_schedule_2": { "name": "Batteriplan 2" },
+      "batteries_schedule_3": { "name": "Batteriplan 3" },
+      "ev_force_discharge": { "name": "EV Tving maks. afladningseffekt" },
+      "ev_smart_charging": { "name": "EV Smart Opladning" },
+      "ev_force_charge_now": { "name": "EV Tving Opladning Nu" },
+      "ev_second_smart_charging": { "name": "EV 2 Smart Opladning" },
+      "ev_second_force_charge_now": { "name": "EV 2 Tving Opladning Nu" }
+    },
+    "select": {
+      "force_working_mode": { "name": "Tving Arbejdstilstand" },
+      "pv_estimate_likelihood": { "name": "Solcast PV-estimat Sandsynlighed" }
+    },
+    "number": {
+      "charge_efficiency": { "name": "Batteri Opladningseffektivitet" },
+      "discharge_efficiency": { "name": "Batteri Afladningseffektivitet" }
+    },
+    "time": {
+      "schedule_1_start": { "name": "Batteri Afladningsplan 1 Start" },
+      "schedule_1_end": { "name": "Batteri Afladningsplan 1 Slut" },
+      "schedule_2_start": { "name": "Batteri Afladningsplan 2 Start" },
+      "schedule_2_end": { "name": "Batteri Afladningsplan 2 Slut" },
+      "schedule_3_start": { "name": "Batteri Afladningsplan 3 Start" },
+      "schedule_3_end": { "name": "Batteri Afladningsplan 3 Slut" }
+    }
+  },
   "services": {
     "force_recalculation": {
       "name": "Tving genberegning",
