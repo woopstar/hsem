@@ -519,24 +519,36 @@ async def _async_apply_forcible_discharge(
     )  # discharge to floor
     target_soc = max(5, min(100, target_soc))  # clamp 5-100 for safety
 
-    bat_soc_entity = cfg.huawei_solar_batteries_state_of_capacity
+    bat_fc_entity = cfg.huawei_solar_batteries_forcible_charge
     device_id = cfg.huawei_solar_device_id_batteries
 
+    def _read_fc_accepted() -> float | None:
+        """Return 1.0 if forcible charge state is active (not stopped/empty),
+        None otherwise.  The forcible_charge sensor reports a string like
+        'Discharging at 5000W until 5.0%' when active, or 'Stopped' when idle."""
+        if not bat_fc_entity:
+            return None
+        state = sensor.hass.states.get(bat_fc_entity)
+        if state is None or state.state in ("unknown", "unavailable", ""):
+            return None
+        if state.state.lower() == "stopped":
+            return None
+        return 1.0
+
     result = await async_write_and_verify(
-        entity_id=bat_soc_entity or f"battery:{device_id}",
-        desired=target_soc,
+        entity_id=bat_fc_entity or f"forcible:{device_id}",
+        desired=1.0,
         writer=lambda: async_set_forcible_discharge(
             sensor,
             device_id,
             target_soc,
             max_discharge_power,
         ),
-        reader=lambda: _read_number_state(sensor, bat_soc_entity),
-        # Forcible-discharge target SoC may differ from current SoC even after
-        # a successful write (the battery is actively discharging), so use a
-        # wider tolerance and only 1 retry — the main guard is the write success.
-        tolerance=5.0,
-        max_retries=1,
+        reader=_read_fc_accepted,
+        # The forcible_charge sensor changes state immediately when the
+        # command is accepted — no need for wide tolerance or retries.
+        tolerance=0.0,
+        max_retries=3,
     )
 
     await async_logger(
