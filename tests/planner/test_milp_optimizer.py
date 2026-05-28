@@ -759,6 +759,7 @@ def test_aggressive_charge_only_before_first_discharge_window():
 # ---------------------------------------------------------------------------
 
 
+@_scipy_skip()
 def test_cycle_cost_obj_coefficients_sum_to_one_cycle_cost():
     """Bug A: cycle cost is correctly counted once per slot in the MILP.
 

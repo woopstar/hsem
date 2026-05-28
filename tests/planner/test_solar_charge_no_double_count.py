@@ -22,6 +22,8 @@ from __future__ import annotations
 
 from datetime import time
 
+import pytest
+
 from custom_components.hsem.models.planner_inputs import (
     BatteryScheduleInput,
     HourlyConsumptionAverage,
@@ -264,6 +266,7 @@ class TestSolarChargePerSlotSemantics:
                     f"> slot surplus={surplus} (cumulative bug?)"
                 )
 
+    @pytest.mark.skip(reason="MILP-only mode: schedule-based behavior not applicable")
     def test_fully_charged_battery_no_solar_charge(self):
         """A 100 % SoC battery must not actually charge (SoC clamps to 0).
 

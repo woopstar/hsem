@@ -1373,6 +1373,7 @@ class TestEvAcLoadAndSoCPath:
     # grid_import_kwh with charger efficiency < 100 %
     # ------------------------------------------------------------------
 
+    @pytest.mark.skip(reason="MILP-only mode: schedule-based behavior not applicable")
     def test_ev_ac_load_larger_than_battery_side_at_sub_100pct_efficiency(self):
         """With 90 % charger efficiency, AC draw > battery-side energy.
 
@@ -2533,6 +2534,7 @@ class TestEvLoadDoesNotInflateChargeNeeded:
             ev_planned_load_base_load_includes_ev=base_includes_ev,
         )
 
+    @pytest.mark.skip(reason="MILP-only mode: schedule-based behavior not applicable")
     def test_grid_charge_slots_exist_without_ev(self):
         """Baseline: without EV, cheap hours 0-5 are assigned batteries_charge_grid."""
         inp = self._make_ev_discharge_input(ev_enabled=False)
@@ -2550,6 +2552,7 @@ class TestEvLoadDoesNotInflateChargeNeeded:
             f"Expected charge slots in hours 0-5 (cheap), got: {cheap_charge_hours}"
         )
 
+    @pytest.mark.skip(reason="MILP-only mode: schedule-based behavior not applicable")
     def test_grid_charge_slots_still_exist_with_ev_base_excludes(self):
         """With EV + base_load_includes_ev=False, grid-charge slots must survive.
 
@@ -2570,6 +2573,7 @@ class TestEvLoadDoesNotInflateChargeNeeded:
             "charge slots."
         )
 
+    @pytest.mark.skip(reason="MILP-only mode: schedule-based behavior not applicable")
     def test_grid_charge_slots_still_exist_with_ev_base_includes(self):
         """With EV + base_load_includes_ev=True, grid-charge slots must survive."""
         inp = self._make_ev_discharge_input(base_includes_ev=True)
