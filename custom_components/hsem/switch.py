@@ -20,8 +20,16 @@ from custom_components.hsem.utils.sensornames import (
     get_batteries_schedule_2_switch_name,
     get_batteries_schedule_3_switch_key,
     get_batteries_schedule_3_switch_name,
+    get_ev_force_charge_now_switch_key,
+    get_ev_force_charge_now_switch_name,
     get_ev_force_discharge_switch_key,
     get_ev_force_discharge_switch_name,
+    get_ev_second_force_charge_now_switch_key,
+    get_ev_second_force_charge_now_switch_name,
+    get_ev_second_smart_charging_switch_key,
+    get_ev_second_smart_charging_switch_name,
+    get_ev_smart_charging_switch_key,
+    get_ev_smart_charging_switch_name,
     get_extended_attributes_switch_key,
     get_extended_attributes_switch_name,
     get_read_only_switch_key,
@@ -77,6 +85,30 @@ SWITCH_DESCRIPTIONS: tuple[HSEMSwitchEntityDescription, ...] = (
             "Enable this if you want to force a specific maximum discharge power"
             " for the Huawei batteries while EV is charging."
         ),
+    ),
+    HSEMSwitchEntityDescription(
+        key=get_ev_smart_charging_switch_key(),
+        name=get_ev_smart_charging_switch_name(),
+        icon="mdi:ev-station",
+        description="Enable smart charging for the primary EV.",
+    ),
+    HSEMSwitchEntityDescription(
+        key=get_ev_force_charge_now_switch_key(),
+        name=get_ev_force_charge_now_switch_name(),
+        icon="mdi:ev-station",
+        description="Force the primary EV to charge at full speed immediately, ignoring the deadline.",
+    ),
+    HSEMSwitchEntityDescription(
+        key=get_ev_second_smart_charging_switch_key(),
+        name=get_ev_second_smart_charging_switch_name(),
+        icon="mdi:ev-station",
+        description="Enable smart charging for the second EV.",
+    ),
+    HSEMSwitchEntityDescription(
+        key=get_ev_second_force_charge_now_switch_key(),
+        name=get_ev_second_force_charge_now_switch_name(),
+        icon="mdi:ev-station",
+        description="Force the second EV to charge at full speed immediately, ignoring the deadline.",
     ),
 )
 

@@ -51,6 +51,10 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_ev_charger_power": vol.UNDEFINED,
     "hsem_ev_charger_status": vol.UNDEFINED,
     "hsem_ev_connected": vol.UNDEFINED,
+    "hsem_ev_smart_charging": False,
+    "hsem_ev_force_charge_now": False,
+    "hsem_ev_second_smart_charging": False,
+    "hsem_ev_second_force_charge_now": False,
     # EV planned load integration — primary EV (optional, disabled by default)
     "hsem_ev_planned_load_enabled": False,
     "hsem_ev_planned_load_target_soc_fixed": 80,

@@ -26,9 +26,21 @@ from custom_components.hsem.utils.sensornames import (
     get_batteries_schedule_3_switch_entity_id,
     get_batteries_schedule_3_switch_key,
     get_batteries_schedule_3_switch_unique_id,
+    get_ev_force_charge_now_switch_entity_id,
+    get_ev_force_charge_now_switch_key,
+    get_ev_force_charge_now_switch_unique_id,
     get_ev_force_discharge_switch_entity_id,
     get_ev_force_discharge_switch_key,
     get_ev_force_discharge_switch_unique_id,
+    get_ev_second_force_charge_now_switch_entity_id,
+    get_ev_second_force_charge_now_switch_key,
+    get_ev_second_force_charge_now_switch_unique_id,
+    get_ev_second_smart_charging_switch_entity_id,
+    get_ev_second_smart_charging_switch_key,
+    get_ev_second_smart_charging_switch_unique_id,
+    get_ev_smart_charging_switch_entity_id,
+    get_ev_smart_charging_switch_key,
+    get_ev_smart_charging_switch_unique_id,
     get_extended_attributes_switch_entity_id,
     get_extended_attributes_switch_key,
     get_extended_attributes_switch_unique_id,
@@ -69,6 +81,22 @@ _SWITCH_ID_MAP: dict[str, tuple[str, str]] = {
     get_ev_force_discharge_switch_key(): (
         get_ev_force_discharge_switch_unique_id(),
         get_ev_force_discharge_switch_entity_id(),
+    ),
+    get_ev_smart_charging_switch_key(): (
+        get_ev_smart_charging_switch_unique_id(),
+        get_ev_smart_charging_switch_entity_id(),
+    ),
+    get_ev_force_charge_now_switch_key(): (
+        get_ev_force_charge_now_switch_unique_id(),
+        get_ev_force_charge_now_switch_entity_id(),
+    ),
+    get_ev_second_smart_charging_switch_key(): (
+        get_ev_second_smart_charging_switch_unique_id(),
+        get_ev_second_smart_charging_switch_entity_id(),
+    ),
+    get_ev_second_force_charge_now_switch_key(): (
+        get_ev_second_force_charge_now_switch_unique_id(),
+        get_ev_second_force_charge_now_switch_entity_id(),
     ),
 }
 
