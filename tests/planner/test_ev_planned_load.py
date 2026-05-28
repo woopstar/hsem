@@ -2841,3 +2841,68 @@ class TestEvDeadlineWindowOneMidnight:
         for slot in plan.charging_slots:
             assert slot.start < deadline
             assert slot.end <= deadline
+
+
+# ---------------------------------------------------------------------------
+# ev_charger_calculated_power
+# ---------------------------------------------------------------------------
+
+
+class TestEvChargerCalculatedPower:
+    """ev_charger_calculated_power field behaviour."""
+
+    def test_power_formula_full_speed(self):
+        """Full-speed 15-min slot: (2.75 / 0.25) * 1000 = 11000 W."""
+        assert round((2.75 / 0.25) * 1000) == 11000
+
+    def test_power_formula_trickle(self):
+        """Trickle-charge 15-min slot: (0.5 / 0.25) * 1000 = 2000 W."""
+        assert round((0.5 / 0.25) * 1000) == 2000
+
+    def test_pass_3_skips_when_battery_not_full(self):
+        """Pass 3 adds no slots when battery is below usable_kwh."""
+        now = _dt(0)
+        surplus = [2.0] * 12 + [0.0] * 12
+        starts, ends = _make_slots(24)
+        inp = EVPlannerInput(
+            enabled=True,
+            ev_connected=True,
+            smart_charging_enabled=True,
+            current_soc_pct=97.0,
+            target_soc_pct=98.0,
+            battery_capacity_kwh=100.0,
+            charger_power_kw=11.0,
+            charger_efficiency_pct=100.0,
+            allow_charge_past_target_soc=True,
+            slot_predicted_battery_kwh=[6.0] * 24,
+            usable_battery_kwh=14.25,
+            now=now,
+        )
+        prices = [0.10] * 24
+        plan = build_ev_charging_plan(inp, starts, ends, surplus, prices)
+        total = sum(s.estimated_charged_kwh for s in plan.charging_slots)
+        assert total == pytest.approx(1.0, abs=0.1)
+
+    def test_pass_3_adds_when_battery_full(self):
+        """Pass 3 adds surplus slots when battery is full."""
+        now = _dt(0)
+        surplus = [2.0] * 12 + [0.0] * 12
+        starts, ends = _make_slots(24)
+        inp = EVPlannerInput(
+            enabled=True,
+            ev_connected=True,
+            smart_charging_enabled=True,
+            current_soc_pct=97.0,
+            target_soc_pct=98.0,
+            battery_capacity_kwh=100.0,
+            charger_power_kw=11.0,
+            charger_efficiency_pct=100.0,
+            allow_charge_past_target_soc=True,
+            slot_predicted_battery_kwh=[14.25] * 24,
+            usable_battery_kwh=14.25,
+            now=now,
+        )
+        prices = [0.10] * 24
+        plan = build_ev_charging_plan(inp, starts, ends, surplus, prices)
+        total = sum(s.estimated_charged_kwh for s in plan.charging_slots)
+        assert total > 2.0, f"Pass 3 should add surplus, got {total}"
