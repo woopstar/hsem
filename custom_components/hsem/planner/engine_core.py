@@ -353,6 +353,7 @@ def _build_and_inject_for_ev(
     warnings: list[str],
     predicted_battery_kwh: list[float],
     usable_battery_kwh: float,
+    live_net_consumption_w: float,
 ) -> EVChargingPlan | None:
     """Build an EV charging plan and accumulate its loads."""
     if not enabled:
@@ -384,6 +385,7 @@ def _build_and_inject_for_ev(
         allow_charge_past_target_soc=allow_past_target,
         slot_predicted_battery_kwh=predicted_battery_kwh,
         usable_battery_kwh=usable_battery_kwh,
+        live_net_consumption_w=live_net_consumption_w,
         now=now,
     )
     plan = build_ev_charging_plan(
@@ -571,6 +573,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         warnings=warnings,
         predicted_battery_kwh=predicted_battery_kwh,
         usable_battery_kwh=usable_kwh,
+        live_net_consumption_w=inp.live_net_consumption_w,
     )
     if inp.ev_planned_load_enabled:
         ev_cp = _build_and_inject_for_ev(

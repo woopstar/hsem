@@ -112,6 +112,10 @@ class EVPlannerInput:
         usable_battery_kwh: Maximum usable battery capacity (kWh).  Used as
             the ceiling for the predicted-battery check in Pass 3.
         now: Timezone-aware current datetime.
+        live_net_consumption_w: Live net consumption in Watts from
+            sensor.hsem_net_consumption_sensor.  Negative values indicate
+            surplus.  Used in Pass 3 for the current slot to determine
+            actual (not predicted) surplus power.
     """
 
     enabled: bool = False
@@ -128,6 +132,7 @@ class EVPlannerInput:
     slot_predicted_battery_kwh: list[float] = field(default_factory=list)
     usable_battery_kwh: float = 0.0
     now: datetime = field(default_factory=lambda: datetime.now(UTC))
+    live_net_consumption_w: float = 0.0
 
 
 @dataclass
@@ -615,7 +620,18 @@ def build_ev_charging_plan(
             # The EV already reached target — no strict energy budget.
             # Use as much surplus as possible up to the full slot capacity,
             # limited by the available surplus.
-            net_surplus = slot_net_surplus_kwh[i]
+            #
+            # For the CURRENT slot, prefer the live net consumption sensor
+            # over the predicted surplus — the prediction may be stale.
+            is_current = s_start <= now_tz < s_end
+            if is_current and inp.live_net_consumption_w < -1e-9:
+                # Live net consumption is negative → surplus is available.
+                # Convert watts to kWh for the remaining slot duration.
+                live_surplus_w = -inp.live_net_consumption_w
+                remaining_h = remaining_minutes_in_slot(now_tz, s_end) / 60.0
+                net_surplus = live_surplus_w * remaining_h / 1000.0
+            else:
+                net_surplus = slot_net_surplus_kwh[i]
             # Allocate the minimum of max power and available surplus.
             # We charge only from surplus, never from grid in this pass.
             allocated = min(max_charge, net_surplus)

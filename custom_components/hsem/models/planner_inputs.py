@@ -234,7 +234,15 @@ class PlannerInput:
     # --- seasonal / mode config ---
     months_winter: list[int] = field(default_factory=lambda: [1, 2, 3, 4, 10, 11, 12])
     house_power_includes_ev: bool = True
-    is_read_only: bool = False  # False = hardware writes enabled; set True only in dry-run/test scenarios
+    is_read_only: bool = (
+        False  # False = hardware writes enabled; set True only in dry-run/test scenarios
+    )
+
+    #: Live net consumption in Watts from sensor.hsem_net_consumption_sensor.
+    #: Negative values indicate surplus (solar > house load).  Used by the EV
+    #: planner to determine actual (not predicted) surplus for the current slot
+    #: in Pass 3 (charge-past-target on surplus PV).
+    live_net_consumption_w: float = 0.0
 
     # --- time discount for selector score ---
     #: Per-hour exponential discount factor applied to the selector score
