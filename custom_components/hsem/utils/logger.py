@@ -288,8 +288,10 @@ def log_planner(level: str, msg: str, *args: object) -> None:
         loop = asyncio.get_running_loop()
         executor = _get_executor()
         # Fire-and-forget: run_in_executor returns a Future, not a coroutine,
-        # so we use ensure_future (and discard) ensure_future instead of create_task.
-        asyncio.ensure_future(loop.run_in_executor(executor, log_fn, msg, *args))  # noqa: RUF006
+        # so we use ensure_future instead of create_task.
+        asyncio.ensure_future(  # noqa: RUF006
+            loop.run_in_executor(executor, log_fn, msg, *args)
+        )
     except RuntimeError:
         # No running event loop (tests, early init) — fall back to
         # a direct synchronous call on the current thread.

@@ -22,8 +22,6 @@ from __future__ import annotations
 
 from datetime import time
 
-import pytest
-
 from custom_components.hsem.models.planner_inputs import (
     BatteryScheduleInput,
     HourlyConsumptionAverage,

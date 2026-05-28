@@ -163,9 +163,9 @@ class TestBasic48hContract:
     def test_all_slots_have_recommendation(self):
         result = run_planner(_make_48h_input())
         for slot in result.slots:
-            assert slot.recommendation is not None, (
-                f"Slot {slot.start.isoformat()} has no recommendation in 48h plan"
-            )
+            assert (
+                slot.recommendation is not None
+            ), f"Slot {slot.start.isoformat()} has no recommendation in 48h plan"
 
     def test_slots_span_two_calendar_days(self):
         result = run_planner(_make_48h_input())
@@ -213,9 +213,9 @@ class TestDay2DischargeWindows:
             and s.recommendation in _DISCHARGE_VALUES
             and 17 <= s.start.hour < 21
         ]
-        assert len(day2_eve_discharge) >= 1, (
-            "Expected discharge slots at 17:00-21:00 on day 2, found none."
-        )
+        assert (
+            len(day2_eve_discharge) >= 1
+        ), "Expected discharge slots at 17:00-21:00 on day 2, found none."
 
     def test_discharge_windows_list_covers_both_days(self):
         """PlannerOutput.discharge_windows must include windows from both days."""
@@ -306,8 +306,6 @@ class TestDay2SolarCharging:
                 ],
             )
         )
-        day1 = result.slots[0].start.date()
-        day2 = day1.replace(day=day1.day + 1)
 
         # Solar charge may appear on either day depending on when the
         # battery has room.  At minimum, day 1 should have charge slots.

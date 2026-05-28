@@ -429,9 +429,9 @@ class TestApplySocPlanDischargeDedup:
                 charge_efficiency_pct=97.0,
                 discharge_efficiency_pct=97.0,
             )
-            assert target is not None, (
-                f"_apply_soc_plan returned None for fraction {fraction}"
-            )
+            assert (
+                target is not None
+            ), f"_apply_soc_plan returned None for fraction {fraction}"
             # Dedup using the same threshold as the caller
             DUPLICATE_THRESHOLD_KWH = 0.05
             if not seen_targets or target - seen_targets[-1] >= DUPLICATE_THRESHOLD_KWH:
@@ -439,9 +439,9 @@ class TestApplySocPlanDischargeDedup:
 
         # Assert: fractions 0.25 and 0.50 are within 0.05 kWh of each other,
         # so they are deduplicated. With 5 fractions we get 4 unique targets.
-        assert len(seen_targets) == 4, (
-            f"Expected 4 unique targets but got {len(seen_targets)}: {seen_targets}"
-        )
+        assert (
+            len(seen_targets) == 4
+        ), f"Expected 4 unique targets but got {len(seen_targets)}: {seen_targets}"
         # Verify first target is the floor value (0.5)
         assert seen_targets[0] == pytest.approx(0.5, abs=0.01)
 
@@ -482,18 +482,18 @@ class TestApplySocPlanDischargeDedup:
                 charge_efficiency_pct=97.0,
                 discharge_efficiency_pct=97.0,
             )
-            assert target is not None, (
-                f"_apply_soc_plan returned None for fraction {fraction}"
-            )
+            assert (
+                target is not None
+            ), f"_apply_soc_plan returned None for fraction {fraction}"
             # Dedup using the same threshold as the caller
             DUPLICATE_THRESHOLD_KWH = 0.05
             if not seen_targets or target - seen_targets[-1] >= DUPLICATE_THRESHOLD_KWH:
                 seen_targets.append(target)
 
         # Assert: all 5 fractions produce distinct targets
-        assert len(seen_targets) == 5, (
-            f"Expected 5 unique targets but got {len(seen_targets)}: {seen_targets}"
-        )
+        assert (
+            len(seen_targets) == 5
+        ), f"Expected 5 unique targets but got {len(seen_targets)}: {seen_targets}"
 
     def test_high_soc_all_fractions_distinct_normal_mode(self):
         """With current_kwh=0.0 and large discharge demand, the function
@@ -533,9 +533,9 @@ class TestApplySocPlanDischargeDedup:
             if not seen_targets or target - seen_targets[-1] >= DUPLICATE_THRESHOLD_KWH:
                 seen_targets.append(target)
 
-        assert len(seen_targets) == 5, (
-            f"Expected 5 unique targets but got {len(seen_targets)}: {seen_targets}"
-        )
+        assert (
+            len(seen_targets) == 5
+        ), f"Expected 5 unique targets but got {len(seen_targets)}: {seen_targets}"
 
 
 # ===========================================================================
@@ -852,9 +852,9 @@ class TestSelectBestCandidate:
             slot_duration_hours=1.0,
         )
         # no_action must never win — it is excluded from eligible selection
-        assert winner.name != CANDIDATE_NO_ACTION, (
-            f"no_action must never win; got {winner.name}"
-        )
+        assert (
+            winner.name != CANDIDATE_NO_ACTION
+        ), f"no_action must never win; got {winner.name}"
         # Verify no_action is in rejected with an exclusion reason
         no_action_rejected = next(
             (r for r in rejected if r.name == CANDIDATE_NO_ACTION), None
@@ -899,9 +899,9 @@ class TestPlannerOutputCandidates:
             CANDIDATE_DISCHARGE_ONLY,
             CANDIDATE_AGGRESSIVE,
         }
-        assert expected_core <= names, (
-            f"Missing core candidates: {expected_core - names}"
-        )
+        assert (
+            expected_core <= names
+        ), f"Missing core candidates: {expected_core - names}"
 
     def test_rejected_plans_include_candidate_alternatives(self):
         """explanation.rejected_plans must include non-winning candidates."""
@@ -953,9 +953,9 @@ class TestPlannerOutputCandidates:
             if len(c.slots) == len(output.slots)
             and all(a is b for a, b in zip(c.slots, output.slots))
         ]
-        assert len(winner_candidates) == 1, (
-            "Exactly one candidate should share its slots list with output.slots"
-        )
+        assert (
+            len(winner_candidates) == 1
+        ), "Exactly one candidate should share its slots list with output.slots"
 
 
 # ===========================================================================
@@ -970,9 +970,9 @@ class TestPassiveCandidate:
         """CANDIDATE_PASSIVE must be present after a standard summer day run."""
         output = run_planner(make_summer_day_input())
         names = {c.name for c in output.candidates}
-        assert CANDIDATE_PASSIVE in names, (
-            f"Expected CANDIDATE_PASSIVE in candidates, got {names}"
-        )
+        assert (
+            CANDIDATE_PASSIVE in names
+        ), f"Expected CANDIDATE_PASSIVE in candidates, got {names}"
 
     def test_passive_charges_on_pv_surplus(self):
         """Slots with negative estimated_net_consumption_kwh get solar charge."""
@@ -1037,9 +1037,9 @@ class TestPassiveCandidate:
         ]
         assert len(winner_candidates) == 1
         winner = winner_candidates[0]
-        assert winner.name != CANDIDATE_NO_ACTION, (
-            "no_action must never be the winning candidate"
-        )
+        assert (
+            winner.name != CANDIDATE_NO_ACTION
+        ), "no_action must never be the winning candidate"
 
     def test_passive_never_grid_charges(self):
         """_apply_passive_solar must never assign BatteriesChargeGrid."""

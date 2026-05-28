@@ -212,23 +212,23 @@ class TestAllSlotsHaveRecommendations:
     def test_24h_all_recommendations_present(self):
         result = run_planner(_make_input(horizon_hours=24))
         for slot in result.slots:
-            assert slot.recommendation is not None, (
-                f"Slot {slot.start.isoformat()} has no recommendation in 24h plan"
-            )
+            assert (
+                slot.recommendation is not None
+            ), f"Slot {slot.start.isoformat()} has no recommendation in 24h plan"
 
     def test_48h_all_recommendations_present(self):
         result = run_planner(_make_input(horizon_hours=48))
         for slot in result.slots:
-            assert slot.recommendation is not None, (
-                f"Slot {slot.start.isoformat()} has no recommendation in 48h plan"
-            )
+            assert (
+                slot.recommendation is not None
+            ), f"Slot {slot.start.isoformat()} has no recommendation in 48h plan"
 
     def test_72h_all_recommendations_present(self):
         result = run_planner(_make_input(horizon_hours=72))
         for slot in result.slots:
-            assert slot.recommendation is not None, (
-                f"Slot {slot.start.isoformat()} has no recommendation in 72h plan"
-            )
+            assert (
+                slot.recommendation is not None
+            ), f"Slot {slot.start.isoformat()} has no recommendation in 72h plan"
 
 
 # ===========================================================================
