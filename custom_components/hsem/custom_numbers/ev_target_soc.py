@@ -71,7 +71,11 @@ class HSEMEVTargetSocNumber(NumberEntity, HSEMEntity):
             self.entity_id = entity_id
 
         raw_name = description.name
-        self._attr_name = str(raw_name) if isinstance(raw_name, str) else None
+        if isinstance(raw_name, str):
+            self._attr_name = str(raw_name)
+        # When description.name is UNDEFINED (no explicit name),
+        # leave _attr_name unset so the translation system can
+        # resolve the name via entity_description.translation_key.
 
         # Load initial value from the config entry.
         stored = convert_to_float(get_config_value(config_entry, config_key))

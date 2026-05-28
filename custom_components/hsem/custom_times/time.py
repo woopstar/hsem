@@ -56,7 +56,9 @@ class HSEMTimeEntity(TimeEntity, HSEMEntity):
         self.hass = hass
         self._config_entry = config_entry
         self.entity_description = description
-        self._attr_name = description.name
+        # Do NOT set _attr_name — let the translation system resolve it
+        # via entity_description.translation_key.  Setting _attr_name even
+        # to UNDEFINED blocks the translation lookup in _name_internal().
         # Resolve unique_id and entity_id from the centralized sensornames map.
         unique_id, entity_id = _TIME_ID_MAP[description.key]
         self._attr_unique_id = unique_id

@@ -63,7 +63,11 @@ class HSEMWorkingModeSelector(SelectEntity, HSEMEntity):
         # description.name may be UndefinedType (HA sentinel) or None when not
         # set; fall back to None so HA derives the name from the entity key.
         raw_name = description.name
-        self._attr_name = str(raw_name) if isinstance(raw_name, str) else None
+        if isinstance(raw_name, str):
+            self._attr_name = str(raw_name)
+        # When description.name is UNDEFINED (no explicit name),
+        # leave _attr_name unset so the translation system can
+        # resolve the name via entity_description.translation_key.
 
     async def async_select_option(self, option: str) -> None:
         """Handle the user selecting a new option.

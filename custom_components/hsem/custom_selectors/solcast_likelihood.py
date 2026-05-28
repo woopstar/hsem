@@ -61,7 +61,11 @@ class HSEMSolcastLikelihoodSelector(SelectEntity, HSEMEntity):
         self.entity_id = get_solcast_likelihood_selector_entity_id()
         self._attr_options = list(description.options or _OPTIONS)
         raw_name = description.name
-        self._attr_name = str(raw_name) if isinstance(raw_name, str) else None
+        if isinstance(raw_name, str):
+            self._attr_name = str(raw_name)
+        # When description.name is UNDEFINED (no explicit name),
+        # leave _attr_name unset so the translation system can
+        # resolve the name via entity_description.translation_key.
 
         # Initialise from the config entry value.
         stored = get_config_value(config_entry, _CONFIG_KEY)
