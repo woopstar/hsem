@@ -204,7 +204,6 @@ class SensorConfig:
 
     # EV planned load integration — primary EV (optional, disabled by default)
     ev_planned_load_enabled: bool = False
-    ev_planned_load_connected_sensor: str | None = None
     ev_planned_load_soc_sensor: str | None = None
     ev_planned_load_target_soc_entity: str | None = None
     ev_planned_load_target_soc_fixed: float = 80.0
@@ -216,7 +215,6 @@ class SensorConfig:
     ev_planned_load_charger_efficiency_pct: float = 100.0
     # EV planned load integration — second EV (optional, disabled by default)
     ev_second_planned_load_enabled: bool = False
-    ev_second_planned_load_connected_sensor: str | None = None
     ev_second_planned_load_soc_sensor: str | None = None
     ev_second_planned_load_target_soc_entity: str | None = None
     ev_second_planned_load_target_soc_fixed: float = 80.0

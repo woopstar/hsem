@@ -452,17 +452,11 @@ def _read_ev_planned_load_state(
     p = "ev_second_planned_load" if is_second else "ev_planned_load"
     ev_cfg = cfg.ev_second if is_second else cfg.ev
 
-    # connected_sensor, soc_sensor, and target_soc_entity were removed from
-    # the planned-load schema because they duplicate the basic EV charger
-    # sensors (hsem_ev_connected, hsem_ev_soc, hsem_ev_soc_target).  The
-    # state collector falls back to those here.
-    connected_sensor = (
-        getattr(cfg, f"{p}_connected_sensor", None) or ev_cfg.connected_entity
-    )
-    soc_sensor = getattr(cfg, f"{p}_soc_sensor", None) or ev_cfg.soc_entity
-    target_soc_entity = (
-        getattr(cfg, f"{p}_target_soc_entity", None) or ev_cfg.soc_target_entity
-    )
+    # The planned-load sensors duplicate the basic EV charger sensors
+    # (hsem_ev_connected, hsem_ev_soc, hsem_ev_soc_target).
+    connected_sensor = ev_cfg.connected_entity
+    soc_sensor = ev_cfg.soc_entity
+    target_soc_entity = ev_cfg.soc_target_entity
     target_soc_fixed = getattr(cfg, f"{p}_target_soc_fixed", 80.0)
     smart_entity = getattr(cfg, f"{p}_smart_charging_entity", None)
     deadline_entity = getattr(cfg, f"{p}_deadline_entity", None)

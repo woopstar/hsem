@@ -367,9 +367,6 @@ def build_sensor_config(config_entry) -> SensorConfig:
     cfg.ev_planned_load_enabled = convert_to_boolean(
         get_config_value(config_entry, "hsem_ev_planned_load_enabled")
     )
-    cfg.ev_planned_load_connected_sensor = _optional_entity(
-        get_config_value(config_entry, "hsem_ev_planned_load_connected_sensor")
-    )
     cfg.ev_planned_load_soc_sensor = _optional_entity(
         get_config_value(config_entry, "hsem_ev_planned_load_soc_sensor")
     )
@@ -412,9 +409,6 @@ def build_sensor_config(config_entry) -> SensorConfig:
     # Second EV planned load integration
     cfg.ev_second_planned_load_enabled = convert_to_boolean(
         get_config_value(config_entry, "hsem_ev_second_planned_load_enabled")
-    )
-    cfg.ev_second_planned_load_connected_sensor = _optional_entity(
-        get_config_value(config_entry, "hsem_ev_second_planned_load_connected_sensor")
     )
     cfg.ev_second_planned_load_soc_sensor = _optional_entity(
         get_config_value(config_entry, "hsem_ev_second_planned_load_soc_sensor")
