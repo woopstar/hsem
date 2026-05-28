@@ -41,18 +41,12 @@
       "ev_planned_load": {
         "data": {
           "hsem_ev_planned_load_enabled": "Enable EV Planned Load Integration",
-          "hsem_ev_planned_load_target_soc_fixed": "EV Target SoC (fixed fallback)",
-          "hsem_ev_planned_load_deadline_entity": "EV Charge Deadline Entity (optional)",
-          "hsem_ev_planned_load_deadline_fixed": "EV Charge Deadline (fixed HH:MM fallback)",
           "hsem_ev_planned_load_battery_capacity_kwh": "EV Battery Capacity (kWh)",
           "hsem_ev_planned_load_charger_power_kw": "EV Charger Power (kW)",
           "hsem_ev_planned_load_charger_efficiency": "EV Charger Efficiency"
         },
         "data_description": {
           "hsem_ev_planned_load_enabled": "Enable or disable planned EV charging load integration.",
-          "hsem_ev_planned_load_target_soc_fixed": "Fixed EV target SoC used when no entity is configured. Default: 80.",
-          "hsem_ev_planned_load_deadline_entity": "Optional entity whose state is a time string (HH:MM) for the EV charge deadline.",
-          "hsem_ev_planned_load_deadline_fixed": "Fixed charge deadline (HH:MM) used when no entity is configured. Default: 07:00.",
           "hsem_ev_planned_load_battery_capacity_kwh": "Nameplate battery capacity of the EV in kWh.",
           "hsem_ev_planned_load_charger_power_kw": "AC output power of the EV charger in kW.",
           "hsem_ev_planned_load_charger_efficiency": "Charger efficiency as a percentage (1-100). Default: 100."
@@ -63,18 +57,12 @@
       "ev_second_planned_load": {
         "data": {
           "hsem_ev_second_planned_load_enabled": "Enable EV 2 Planned Load Integration",
-          "hsem_ev_second_planned_load_target_soc_fixed": "EV 2 Target SoC (fixed fallback)",
-          "hsem_ev_second_planned_load_deadline_entity": "EV 2 Charge Deadline Entity (optional)",
-          "hsem_ev_second_planned_load_deadline_fixed": "EV 2 Charge Deadline (fixed HH:MM fallback)",
           "hsem_ev_second_planned_load_battery_capacity_kwh": "EV 2 Battery Capacity (kWh)",
           "hsem_ev_second_planned_load_charger_power_kw": "EV 2 Charger Power (kW)",
           "hsem_ev_second_planned_load_charger_efficiency": "EV 2 Charger Efficiency"
         },
         "data_description": {
           "hsem_ev_second_planned_load_enabled": "Enable or disable planned charging load integration for the second EV.",
-          "hsem_ev_second_planned_load_target_soc_fixed": "Fixed second EV target SoC used when no entity is configured. Default: 80.",
-          "hsem_ev_second_planned_load_deadline_entity": "Optional entity whose state is a time string (HH:MM) for the second EV charge deadline.",
-          "hsem_ev_second_planned_load_deadline_fixed": "Fixed charge deadline (HH:MM) for the second EV. Default: 07:00.",
           "hsem_ev_second_planned_load_battery_capacity_kwh": "Nameplate battery capacity of the second EV in kWh.",
           "hsem_ev_second_planned_load_charger_power_kw": "AC output power of the second EV charger in kW.",
           "hsem_ev_second_planned_load_charger_efficiency": "Second EV charger efficiency as a percentage (1-100). Default: 100."
@@ -432,18 +420,12 @@
       "ev_planned_load": {
         "data": {
           "hsem_ev_planned_load_enabled": "Enable EV Planned Load Integration",
-          "hsem_ev_planned_load_target_soc_fixed": "EV Target SoC (fixed fallback)",
-          "hsem_ev_planned_load_deadline_entity": "EV Charge Deadline Entity (optional)",
-          "hsem_ev_planned_load_deadline_fixed": "EV Charge Deadline (fixed HH:MM fallback)",
           "hsem_ev_planned_load_battery_capacity_kwh": "EV Battery Capacity (kWh)",
           "hsem_ev_planned_load_charger_power_kw": "EV Charger Power (kW)",
           "hsem_ev_planned_load_charger_efficiency": "EV Charger Efficiency"
         },
         "data_description": {
           "hsem_ev_planned_load_enabled": "Enable or disable planned EV charging load integration.",
-          "hsem_ev_planned_load_target_soc_fixed": "Fixed EV target SoC used when no entity is configured. Default: 80.",
-          "hsem_ev_planned_load_deadline_entity": "Optional entity whose state is a time string (HH:MM) for the EV charge deadline.",
-          "hsem_ev_planned_load_deadline_fixed": "Fixed charge deadline (HH:MM) used when no entity is configured. Default: 07:00.",
           "hsem_ev_planned_load_battery_capacity_kwh": "Nameplate battery capacity of the EV in kWh.",
           "hsem_ev_planned_load_charger_power_kw": "AC output power of the EV charger in kW.",
           "hsem_ev_planned_load_charger_efficiency": "Charger efficiency as a percentage (1-100). Default: 100."
@@ -454,18 +436,12 @@
       "ev_second_planned_load": {
         "data": {
           "hsem_ev_second_planned_load_enabled": "Enable EV 2 Planned Load Integration",
-          "hsem_ev_second_planned_load_target_soc_fixed": "EV 2 Target SoC (fixed fallback)",
-          "hsem_ev_second_planned_load_deadline_entity": "EV 2 Charge Deadline Entity (optional)",
-          "hsem_ev_second_planned_load_deadline_fixed": "EV 2 Charge Deadline (fixed HH:MM fallback)",
           "hsem_ev_second_planned_load_battery_capacity_kwh": "EV 2 Battery Capacity (kWh)",
           "hsem_ev_second_planned_load_charger_power_kw": "EV 2 Charger Power (kW)",
           "hsem_ev_second_planned_load_charger_efficiency": "EV 2 Charger Efficiency"
         },
         "data_description": {
           "hsem_ev_second_planned_load_enabled": "Enable or disable planned charging load integration for the second EV.",
-          "hsem_ev_second_planned_load_target_soc_fixed": "Fixed second EV target SoC used when no entity is configured. Default: 80.",
-          "hsem_ev_second_planned_load_deadline_entity": "Optional entity whose state is a time string (HH:MM) for the second EV charge deadline.",
-          "hsem_ev_second_planned_load_deadline_fixed": "Fixed charge deadline (HH:MM) for the second EV. Default: 07:00.",
           "hsem_ev_second_planned_load_battery_capacity_kwh": "Nameplate battery capacity of the second EV in kWh.",
           "hsem_ev_second_planned_load_charger_power_kw": "AC output power of the second EV charger in kW.",
           "hsem_ev_second_planned_load_charger_efficiency": "Second EV charger efficiency as a percentage (1-100). Default: 100."
@@ -801,33 +777,81 @@
   },
   "entity": {
     "switch": {
-      "read_only": { "name": "Read Only Mode" },
-      "extended_attributes": { "name": "Extended Attributes" },
-      "verbose_logging": { "name": "Verbose Logging" },
-      "batteries_schedule_1": { "name": "Batteries Schedule 1" },
-      "batteries_schedule_2": { "name": "Batteries Schedule 2" },
-      "batteries_schedule_3": { "name": "Batteries Schedule 3" },
-      "ev_force_discharge": { "name": "EV Force Max Discharge Power" },
-      "ev_smart_charging": { "name": "EV Smart Charging" },
-      "ev_force_charge_now": { "name": "EV Force Charge Now" },
-      "ev_second_smart_charging": { "name": "EV 2 Smart Charging" },
-      "ev_second_force_charge_now": { "name": "EV 2 Force Charge Now" }
+      "read_only": {
+        "name": "Read Only Mode"
+      },
+      "extended_attributes": {
+        "name": "Extended Attributes"
+      },
+      "verbose_logging": {
+        "name": "Verbose Logging"
+      },
+      "batteries_schedule_1": {
+        "name": "Batteries Schedule 1"
+      },
+      "batteries_schedule_2": {
+        "name": "Batteries Schedule 2"
+      },
+      "batteries_schedule_3": {
+        "name": "Batteries Schedule 3"
+      },
+      "ev_force_discharge": {
+        "name": "EV Force Max Discharge Power"
+      },
+      "ev_smart_charging": {
+        "name": "EV Smart Charging"
+      },
+      "ev_force_charge_now": {
+        "name": "EV Force Charge Now"
+      },
+      "ev_second_smart_charging": {
+        "name": "EV 2 Smart Charging"
+      },
+      "ev_second_force_charge_now": {
+        "name": "EV 2 Force Charge Now"
+      }
     },
     "select": {
-      "force_working_mode": { "name": "Force Working Mode" },
-      "pv_estimate_likelihood": { "name": "Solcast PV Estimate Likelihood" }
+      "force_working_mode": {
+        "name": "Force Working Mode"
+      },
+      "pv_estimate_likelihood": {
+        "name": "Solcast PV Estimate Likelihood"
+      }
     },
     "number": {
-      "charge_efficiency": { "name": "Battery Charge Efficiency" },
-      "discharge_efficiency": { "name": "Battery Discharge Efficiency" }
+      "charge_efficiency": {
+        "name": "Battery Charge Efficiency"
+      },
+      "discharge_efficiency": {
+        "name": "Battery Discharge Efficiency"
+      }
     },
     "time": {
-      "schedule_1_start": { "name": "Batteries Discharge Schedule 1 Start" },
-      "schedule_1_end": { "name": "Batteries Discharge Schedule 1 End" },
-      "schedule_2_start": { "name": "Batteries Discharge Schedule 2 Start" },
-      "schedule_2_end": { "name": "Batteries Discharge Schedule 2 End" },
-      "schedule_3_start": { "name": "Batteries Discharge Schedule 3 Start" },
-      "schedule_3_end": { "name": "Batteries Discharge Schedule 3 End" }
+      "schedule_1_start": {
+        "name": "Batteries Discharge Schedule 1 Start"
+      },
+      "schedule_1_end": {
+        "name": "Batteries Discharge Schedule 1 End"
+      },
+      "schedule_2_start": {
+        "name": "Batteries Discharge Schedule 2 Start"
+      },
+      "schedule_2_end": {
+        "name": "Batteries Discharge Schedule 2 End"
+      },
+      "schedule_3_start": {
+        "name": "Batteries Discharge Schedule 3 Start"
+      },
+      "schedule_3_end": {
+        "name": "Batteries Discharge Schedule 3 End"
+      },
+      "ev_deadline": {
+        "name": "EV Charge Deadline"
+      },
+      "ev_second_deadline": {
+        "name": "EV 2 Charge Deadline"
+      }
     }
   },
   "services": {

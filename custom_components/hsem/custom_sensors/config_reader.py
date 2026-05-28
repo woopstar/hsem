@@ -367,21 +367,6 @@ def build_sensor_config(config_entry) -> SensorConfig:
     cfg.ev_planned_load_enabled = convert_to_boolean(
         get_config_value(config_entry, "hsem_ev_planned_load_enabled")
     )
-    cfg.ev_planned_load_target_soc_fixed = (
-        convert_to_float(
-            get_config_value(config_entry, "hsem_ev_planned_load_target_soc_fixed")
-        )
-        or 80.0
-    )
-    cfg.ev_planned_load_deadline_entity = _optional_entity(
-        get_config_value(config_entry, "hsem_ev_planned_load_deadline_entity")
-    )
-    _deadline_fixed = get_config_value(
-        config_entry, "hsem_ev_planned_load_deadline_fixed"
-    )
-    cfg.ev_planned_load_deadline_fixed = (
-        str(_deadline_fixed) if _deadline_fixed else "07:00"
-    )
     _bat_cap = convert_to_float(
         get_config_value(config_entry, "hsem_ev_planned_load_battery_capacity_kwh")
     )
@@ -401,21 +386,6 @@ def build_sensor_config(config_entry) -> SensorConfig:
     cfg.ev_second_planned_load_enabled = convert_to_boolean(
         get_config_value(config_entry, "hsem_ev_second_planned_load_enabled")
     )
-    cfg.ev_second_planned_load_target_soc_fixed = (
-        convert_to_float(
-            get_config_value(
-                config_entry, "hsem_ev_second_planned_load_target_soc_fixed"
-            )
-        )
-        or 80.0
-    )
-    cfg.ev_second_planned_load_deadline_entity = _optional_entity(
-        get_config_value(config_entry, "hsem_ev_second_planned_load_deadline_entity")
-    )
-    _s2_dl = get_config_value(
-        config_entry, "hsem_ev_second_planned_load_deadline_fixed"
-    )
-    cfg.ev_second_planned_load_deadline_fixed = str(_s2_dl) if _s2_dl else "07:00"
     _s2_cap = convert_to_float(
         get_config_value(
             config_entry, "hsem_ev_second_planned_load_battery_capacity_kwh"

@@ -118,13 +118,14 @@ Primary EV planned load integration (optional, default disabled).
 | Field | Key | Default | Description |
 |---|---|---|---|
 | Enable | `hsem_ev_planned_load_enabled` | `False` | Master switch |
-| Target SoC fixed | `hsem_ev_planned_load_target_soc_fixed` | 80 % | Fixed target when no entity |
-| Deadline entity | `hsem_ev_planned_load_deadline_entity` | — | Override deadline entity |
-| Deadline fixed | `hsem_ev_planned_load_deadline_fixed` | `"07:00"` | Fixed deadline |
-| Smart charging entity | `hsem_ev_planned_load_smart_charging_entity` | — | Enable/disable smart charging at runtime |
 | Battery capacity | `hsem_ev_planned_load_battery_capacity_kwh` | 0.0 | EV battery nameplate capacity (kWh) |
 | Charger power | `hsem_ev_planned_load_charger_power_kw` | 0.0 | Charger AC output (kW) |
 | Charger efficiency | `hsem_ev_planned_load_charger_efficiency` | 100 % | Charger efficiency |
+
+Target SoC and deadline are configured outside this step:
+- **Target SoC**: via the basic EV charger sensor (`hsem_ev_soc_target`)
+- **Deadline**: via the HSEM time entity `time.hsem_ev_deadline_time`
+- **Smart charging**: via the HSEM switch `switch.hsem_ev_smart_charging`
 
 
 ### Step: `batteries_schedule_1/2/3`

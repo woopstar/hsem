@@ -41,18 +41,12 @@
       "ev_planned_load": {
         "data": {
           "hsem_ev_planned_load_enabled": "Aktiver EV-planlagt belastningsintegration",
-          "hsem_ev_planned_load_target_soc_fixed": "EV mÃ¥l SoC (fast reserve)",
-          "hsem_ev_planned_load_deadline_entity": "EV opladningsfrist-enhed (valgfri)",
-          "hsem_ev_planned_load_deadline_fixed": "EV opladningsfrist (fast HH:MM reserve)",
           "hsem_ev_planned_load_battery_capacity_kwh": "EV batterikapacitet (kWh)",
           "hsem_ev_planned_load_charger_power_kw": "EV lader-effekt (kW)",
           "hsem_ev_planned_load_charger_efficiency": "EV lader-efficiens"
         },
         "data_description": {
           "hsem_ev_planned_load_enabled": "Aktiver eller deaktiver planlagt EV-opladningsbelastningsintegration.",
-          "hsem_ev_planned_load_target_soc_fixed": "Fast EV-mÃ¥l-SoC brugt, nÃ¥r ingen enhed er konfigureret. Standard: 80.",
-          "hsem_ev_planned_load_deadline_entity": "Valgfri enhed, hvis tilstand er en tidsstreng (HH:MM) for EV-opladningsfrist.",
-          "hsem_ev_planned_load_deadline_fixed": "Fast opladningsfrist (HH:MM) brugt, nÃ¥r ingen enhed er konfigureret. Standard: 07:00.",
           "hsem_ev_planned_load_battery_capacity_kwh": "EV-batteriets nominelle kapacitet i kWh.",
           "hsem_ev_planned_load_charger_power_kw": "AC-udgangseffekt for EV-laderen i kW.",
           "hsem_ev_planned_load_charger_efficiency": "Laderefficiens i procent (1-100). Standard: 100."
@@ -63,18 +57,12 @@
       "ev_second_planned_load": {
         "data": {
           "hsem_ev_second_planned_load_enabled": "Aktiver EV 2-planlagt belastningsintegration",
-          "hsem_ev_second_planned_load_target_soc_fixed": "EV 2 mÃ¥l SoC (fast reserve)",
-          "hsem_ev_second_planned_load_deadline_entity": "EV 2 opladningsfrist-enhed (valgfri)",
-          "hsem_ev_second_planned_load_deadline_fixed": "EV 2 opladningsfrist (fast HH:MM reserve)",
           "hsem_ev_second_planned_load_battery_capacity_kwh": "EV 2 batterikapacitet (kWh)",
           "hsem_ev_second_planned_load_charger_power_kw": "EV 2 lader-effekt (kW)",
           "hsem_ev_second_planned_load_charger_efficiency": "EV 2 lader-efficiens"
         },
         "data_description": {
           "hsem_ev_second_planned_load_enabled": "Aktiver eller deaktiver planlagt opladningsbelastningsintegration for den anden EV.",
-          "hsem_ev_second_planned_load_target_soc_fixed": "Fast anden EV-mÃ¥l-SoC brugt, nÃ¥r ingen enhed er konfigureret. Standard: 80.",
-          "hsem_ev_second_planned_load_deadline_entity": "Valgfri enhed, hvis tilstand er en tidsstreng (HH:MM) for anden EV-opladningsfrist.",
-          "hsem_ev_second_planned_load_deadline_fixed": "Fast opladningsfrist (HH:MM) for den anden EV. Standard: 07:00.",
           "hsem_ev_second_planned_load_battery_capacity_kwh": "Nominel batterikapacitet for den anden EV i kWh.",
           "hsem_ev_second_planned_load_charger_power_kw": "AC-udgangseffekt for den anden EV-lader i kW.",
           "hsem_ev_second_planned_load_charger_efficiency": "Anden EV-lader-efficiens i procent (1-100). Standard: 100."
@@ -486,6 +474,12 @@
       },
       "schedule_3_end": {
         "name": "Batteri Afladningsplan 3 Slut"
+      },
+      "ev_deadline": {
+        "name": "EV Opladningsfrist"
+      },
+      "ev_second_deadline": {
+        "name": "EV 2 Opladningsfrist"
       }
     }
   },

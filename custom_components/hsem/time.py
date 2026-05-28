@@ -14,6 +14,8 @@ from custom_components.hsem.custom_times.entity import (
 )
 from custom_components.hsem.utils.misc import get_config_value
 from custom_components.hsem.utils.sensornames import (
+    get_ev_deadline_time_key,
+    get_ev_second_deadline_time_key,
     get_schedule_1_end_time_key,
     get_schedule_1_start_time_key,
     get_schedule_2_end_time_key,
@@ -55,6 +57,16 @@ TIME_DESCRIPTIONS: tuple[HSEMTimeEntityDescription, ...] = (
         key=get_schedule_3_end_time_key(),
         icon="mdi:clock",
         translation_key="schedule_3_end",
+    ),
+    HSEMTimeEntityDescription(
+        key=get_ev_deadline_time_key(),
+        icon="mdi:clock",
+        translation_key="ev_deadline",
+    ),
+    HSEMTimeEntityDescription(
+        key=get_ev_second_deadline_time_key(),
+        icon="mdi:clock",
+        translation_key="ev_second_deadline",
     ),
 )
 

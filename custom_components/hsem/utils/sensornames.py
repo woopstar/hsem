@@ -847,6 +847,43 @@ def get_ev_second_force_charge_now_switch_entity_id() -> str:
 
 
 # ---------------------------------------------------------------------------
+# EV deadline time entities
+# ---------------------------------------------------------------------------
+
+
+def get_ev_deadline_time_key() -> str:
+    return f"{DOMAIN}_ev_deadline_time"
+
+
+def get_ev_deadline_time_name() -> str:
+    return "EV Charge Deadline"
+
+
+def get_ev_deadline_time_unique_id() -> str:
+    return f"{DOMAIN}_{get_ev_deadline_time_key()}_time"
+
+
+def get_ev_deadline_time_entity_id() -> str:
+    return time.ENTITY_ID_FORMAT.format(s(get_ev_deadline_time_unique_id()))
+
+
+def get_ev_second_deadline_time_key() -> str:
+    return f"{DOMAIN}_ev_second_deadline_time"
+
+
+def get_ev_second_deadline_time_name() -> str:
+    return "EV 2 Charge Deadline"
+
+
+def get_ev_second_deadline_time_unique_id() -> str:
+    return f"{DOMAIN}_{get_ev_second_deadline_time_key()}_time"
+
+
+def get_ev_second_deadline_time_entity_id() -> str:
+    return time.ENTITY_ID_FORMAT.format(s(get_ev_second_deadline_time_unique_id()))
+
+
+# ---------------------------------------------------------------------------
 # Time entities
 # ---------------------------------------------------------------------------
 

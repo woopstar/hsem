@@ -17,6 +17,12 @@ from homeassistant.core import HomeAssistant
 
 from custom_components.hsem.entity import HSEMEntity
 from custom_components.hsem.utils.sensornames import (
+    get_ev_deadline_time_entity_id,
+    get_ev_deadline_time_key,
+    get_ev_deadline_time_unique_id,
+    get_ev_second_deadline_time_entity_id,
+    get_ev_second_deadline_time_key,
+    get_ev_second_deadline_time_unique_id,
     get_schedule_1_end_time_entity_id,
     get_schedule_1_end_time_key,
     get_schedule_1_end_time_unique_id,
@@ -62,6 +68,14 @@ _TIME_ID_MAP: dict[str, tuple[str, str]] = {
     get_schedule_3_end_time_key(): (
         get_schedule_3_end_time_unique_id(),
         get_schedule_3_end_time_entity_id(),
+    ),
+    get_ev_deadline_time_key(): (
+        get_ev_deadline_time_unique_id(),
+        get_ev_deadline_time_entity_id(),
+    ),
+    get_ev_second_deadline_time_key(): (
+        get_ev_second_deadline_time_unique_id(),
+        get_ev_second_deadline_time_entity_id(),
     ),
 }
 

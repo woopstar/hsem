@@ -252,7 +252,7 @@ def build_planner_input(
         ev_planned_load_target_soc_pct=convert_to_float(
             live.ev_planned_load_target_soc_pct
         )
-        or cfg.ev_planned_load_target_soc_fixed,
+        or 80.0,
         ev_planned_load_battery_capacity_kwh=convert_to_float(
             cfg.ev_planned_load_battery_capacity_kwh
         )
@@ -285,7 +285,7 @@ def build_planner_input(
         ev_second_planned_load_target_soc_pct=convert_to_float(
             live.ev_second_planned_load_target_soc_pct
         )
-        or cfg.ev_second_planned_load_target_soc_fixed,
+        or 80.0,
         ev_second_planned_load_battery_capacity_kwh=convert_to_float(
             cfg.ev_second_planned_load_battery_capacity_kwh
         )

@@ -457,9 +457,6 @@ def _read_ev_planned_load_state(
     connected_sensor = ev_cfg.connected_entity
     soc_sensor = ev_cfg.soc_entity
     target_soc_entity = ev_cfg.soc_target_entity
-    target_soc_fixed = getattr(cfg, f"{p}_target_soc_fixed", 80.0)
-    deadline_entity = getattr(cfg, f"{p}_deadline_entity", None)
-    deadline_fixed = getattr(cfg, f"{p}_deadline_fixed", "07:00")
 
     # Smart charging is now controlled by the HSEM switch entity instead of
     # an external input_boolean.  Read the switch state from config options.
@@ -469,6 +466,14 @@ def _read_ev_planned_load_state(
         "hsem_ev_second_smart_charging" if is_second else "hsem_ev_smart_charging"
     )
     smart_enabled = bool(get_config_value(sensor._config_entry, smart_switch_key))
+
+    # Deadline is now read from the time entity config option.
+    deadline_key = (
+        "hsem_ev_second_deadline_time" if is_second else "hsem_ev_deadline_time"
+    )
+    deadline_fixed = (
+        str(get_config_value(sensor._config_entry, deadline_key)) or "07:00"
+    )
 
     if connected_sensor:
         setattr(
@@ -496,17 +501,17 @@ def _read_ev_planned_load_state(
         setattr(
             state,
             f"{p}_target_soc_pct",
-            _tsoc if _tsoc is not None else target_soc_fixed,
+            _tsoc if _tsoc is not None else 80.0,
         )
     else:
-        setattr(state, f"{p}_target_soc_pct", target_soc_fixed)
+        setattr(state, f"{p}_target_soc_pct", 80.0)
 
     setattr(state, f"{p}_smart_charging_enabled", smart_enabled)
 
     setattr(
         state,
         f"{p}_deadline",
-        _resolve_ev_deadline_from_params(sensor, deadline_entity, deadline_fixed),
+        _resolve_ev_deadline_from_params(sensor, None, deadline_fixed),
     )
 
 
@@ -577,6 +582,8 @@ async def _register_listeners(
     """
     new_unsubs: list = []
     from custom_components.hsem.utils.sensornames import (
+        get_ev_deadline_time_entity_id,
+        get_ev_second_deadline_time_entity_id,
         get_ev_second_smart_charging_switch_entity_id,
         get_ev_smart_charging_switch_entity_id,
     )
@@ -586,12 +593,12 @@ async def _register_listeners(
         cfg.ev.connected_entity,
         cfg.ev.soc_target_entity,
         get_ev_smart_charging_switch_entity_id(),
-        cfg.ev_planned_load_deadline_entity,
+        get_ev_deadline_time_entity_id(),
         cfg.ev_second.status_entity,
         cfg.ev_second.connected_entity,
         cfg.ev_second.soc_target_entity,
         get_ev_second_smart_charging_switch_entity_id(),
-        cfg.ev_second_planned_load_deadline_entity,
+        get_ev_second_deadline_time_entity_id(),
         state.force_working_mode,
     ]
 
