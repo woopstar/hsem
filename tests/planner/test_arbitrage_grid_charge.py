@@ -17,13 +17,13 @@ Acceptance criteria verified here:
 - Existing opportunistic and scheduled passes are not overridden.
 - ``BatteriesDischargeMode`` seasonal fallback does not prevent
   ``BatteriesChargeGrid`` from being assigned earlier.
-
-All tests are synchronous with no Home Assistant imports.
 """
 
 from __future__ import annotations
 
 from datetime import time
+
+import pytest
 
 from custom_components.hsem.models.planner_inputs import (
     BatteryScheduleInput,
