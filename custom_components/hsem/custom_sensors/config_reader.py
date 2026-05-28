@@ -216,9 +216,6 @@ def build_sensor_config(config_entry) -> SensorConfig:
         get_config_value(config_entry, "hsem_ev_charger_power")
     )
     ev.soc_entity = _optional_entity(get_config_value(config_entry, "hsem_ev_soc"))
-    ev.soc_target_entity = _optional_entity(
-        get_config_value(config_entry, "hsem_ev_soc_target")
-    )
     ev.connected_entity = _optional_entity(
         get_config_value(config_entry, "hsem_ev_connected")
     )
@@ -244,9 +241,6 @@ def build_sensor_config(config_entry) -> SensorConfig:
     )
     ev2.soc_entity = _optional_entity(
         get_config_value(config_entry, "hsem_ev_second_soc")
-    )
-    ev2.soc_target_entity = _optional_entity(
-        get_config_value(config_entry, "hsem_ev_second_soc_target")
     )
     ev2.connected_entity = _optional_entity(
         get_config_value(config_entry, "hsem_ev_second_connected")

@@ -76,9 +76,7 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_ev_second_charger_status": vol.UNDEFINED,
     "hsem_ev_second_connected": vol.UNDEFINED,
     "hsem_ev_second_enabled": False,
-    "hsem_ev_second_soc_target": vol.UNDEFINED,
     "hsem_ev_second_soc": vol.UNDEFINED,
-    "hsem_ev_soc_target": vol.UNDEFINED,
     "hsem_ev_soc": vol.UNDEFINED,
     "hsem_extended_attributes": False,
     # Planner hysteresis — keep the active plan unless a new plan is

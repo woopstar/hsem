@@ -126,7 +126,6 @@
           "hsem_ev_connected": "EV tilsluttet sensor",
           "hsem_ev_second_enabled": "Aktiver anden EV-lader",
           "hsem_ev_soc": "EV ladetilstand (SoC) sensor",
-          "hsem_ev_soc_target": "EV ladetilstand (SoC) mÃ¥lsensor",
           "hsem_house_power_includes_ev_charger_power": "Husets effekt inkluderer EV-ladereffekt"
         },
         "data_description": {
@@ -138,7 +137,6 @@
           "hsem_ev_connected": "VÃ¦lg den sensor eller enhed, der angiver, om EV er tilsluttet laderen.",
           "hsem_ev_second_enabled": "Aktiver eller deaktiver konfigurationen for en anden EV-lader.",
           "hsem_ev_soc": "VÃ¦lg den sensor, der leverer den aktuelle ladetilstand (SoC) for dit EV-batteri.",
-          "hsem_ev_soc_target": "VÃ¦lg den sensor, der leverer mÃ¥l-ladetilstanden (SoC) for dit EV-batteri.",
           "hsem_house_power_includes_ev_charger_power": "Aktiver dette, hvis husets forbrugseffektsensor allerede inkluderer EV-laderens strÃ¸mforbrug."
         },
         "description": "Konfigurer EV-laderindstillinger for HSEM.",
@@ -152,8 +150,7 @@
           "hsem_ev_second_charger_power": "Anden EV-lader effektsensor",
           "hsem_ev_second_charger_status": "Anden EV-lader statussensor",
           "hsem_ev_second_connected": "Anden EV tilsluttet sensor",
-          "hsem_ev_second_soc": "Anden EV ladetilstand (SoC) sensor",
-          "hsem_ev_second_soc_target": "Anden EV ladetilstand (SoC) mÃ¥lsensor"
+          "hsem_ev_second_soc": "Anden EV ladetilstand (SoC) sensor"
         },
         "data_description": {
           "hsem_ev_second_allow_charge_past_target_soc": "Aktiver denne mulighed, hvis du vil tillade systemet at fortsÃ¦tte opladningen af EV-batteriet, selv efter det har nÃ¥et mÃ¥l-ladetilstanden (SoC).",
@@ -162,8 +159,7 @@
           "hsem_ev_second_charger_power": "VÃ¦lg den sensor, der mÃ¥ler strÃ¸mforbruget for din EV-lader.",
           "hsem_ev_second_charger_status": "VÃ¦lg den sensor eller enhed, der angiver, om EV-laderen er aktiv.",
           "hsem_ev_second_connected": "VÃ¦lg den sensor eller enhed, der angiver, om EV er tilsluttet laderen.",
-          "hsem_ev_second_soc": "VÃ¦lg den sensor, der leverer den aktuelle ladetilstand (SoC) for dit EV-batteri.",
-          "hsem_ev_second_soc_target": "VÃ¦lg den sensor, der leverer mÃ¥l-ladetilstanden (SoC) for dit EV-batteri."
+          "hsem_ev_second_soc": "VÃ¦lg den sensor, der leverer den aktuelle ladetilstand (SoC) for dit EV-batteri."
         },
         "description": "Konfigurer anden EV-laderindstillinger for HSEM.",
         "title": "Anden EV-laderindstillinger (Valgfri)"

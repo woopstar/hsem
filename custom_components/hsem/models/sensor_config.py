@@ -25,7 +25,6 @@ class EVChargerConfig:
     status_entity: str | None = None
     power_entity: str | None = None
     soc_entity: str | None = None
-    soc_target_entity: str | None = None
     connected_entity: str | None = None
     allow_charge_past_target_soc: bool = False
     force_max_discharge_power: bool = False

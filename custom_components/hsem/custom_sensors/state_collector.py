@@ -36,6 +36,7 @@ from custom_components.hsem.utils.misc import (
     async_resolve_entity_id_from_unique_id,
     convert_to_boolean,
     convert_to_float,
+    get_config_value,
     ha_get_entity_state_and_convert,
 )
 from custom_components.hsem.utils.sensornames import (
@@ -129,10 +130,10 @@ async def async_collect_live_state(
         )
     if cfg.ev.soc_entity:
         ev.soc_pct = convert_to_float(_read(cfg.ev.soc_entity, "float", label="ev_soc"))
-    if cfg.ev.soc_target_entity:
-        ev.soc_target_pct = convert_to_float(
-            _read(cfg.ev.soc_target_entity, "float", label="ev_soc_target")
-        )
+    ev.soc_target_pct = (
+        convert_to_float(get_config_value(sensor._config_entry, "hsem_ev_target_soc"))
+        or 80.0
+    )
     if cfg.ev.connected_entity:
         ev.is_connected = convert_to_boolean(
             _read(cfg.ev.connected_entity, "boolean", label="ev_connected")
@@ -159,14 +160,12 @@ async def async_collect_live_state(
         ev2.soc_pct = convert_to_float(
             _read(cfg.ev_second.soc_entity, "float", label="ev_second_soc")
         )
-    if cfg.ev_second.soc_target_entity:
-        ev2.soc_target_pct = convert_to_float(
-            _read(
-                cfg.ev_second.soc_target_entity,
-                "float",
-                label="ev_second_soc_target",
-            )
+    ev2.soc_target_pct = (
+        convert_to_float(
+            get_config_value(sensor._config_entry, "hsem_ev_second_target_soc")
         )
+        or 80.0
+    )
     if cfg.ev_second.connected_entity:
         ev2.is_connected = convert_to_boolean(
             _read(
