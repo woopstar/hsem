@@ -514,7 +514,9 @@ async def _async_apply_forcible_discharge(
     ):
         return None
 
-    target_soc = int(live.battery_end_of_discharge_soc_pct)  # discharge to floor
+    target_soc = int(
+        live.huawei_batteries_end_of_discharge_soc_pct
+    )  # discharge to floor
     target_soc = max(5, min(100, target_soc))  # clamp 5-100 for safety
 
     bat_soc_entity = cfg.huawei_solar_batteries_state_of_capacity
