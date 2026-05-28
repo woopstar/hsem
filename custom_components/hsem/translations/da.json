@@ -41,9 +41,6 @@
       "ev_planned_load": {
         "data": {
           "hsem_ev_planned_load_enabled": "Aktiver EV-planlagt belastningsintegration",
-          "hsem_ev_planned_load_connected_sensor": "EV tilsluttet binær sensor",
-          "hsem_ev_planned_load_soc_sensor": "EV batteri SoC-sensor",
-          "hsem_ev_planned_load_target_soc_entity": "EV mål SoC-enhed (valgfri)",
           "hsem_ev_planned_load_target_soc_fixed": "EV mål SoC (fast reserve)",
           "hsem_ev_planned_load_deadline_entity": "EV opladningsfrist-enhed (valgfri)",
           "hsem_ev_planned_load_deadline_fixed": "EV opladningsfrist (fast HH:MM reserve)",
@@ -54,9 +51,6 @@
         },
         "data_description": {
           "hsem_ev_planned_load_enabled": "Aktiver eller deaktiver planlagt EV-opladningsbelastningsintegration.",
-          "hsem_ev_planned_load_connected_sensor": "Binær sensor, der rapporterer, om EV er tilsluttet.",
-          "hsem_ev_planned_load_soc_sensor": "Sensor, der rapporterer aktuel EV-batteristatus.",
-          "hsem_ev_planned_load_target_soc_entity": "Valgfri enhed for EV-mål-SoC. Tilsidesætter fast mål, når indstillet.",
           "hsem_ev_planned_load_target_soc_fixed": "Fast EV-mål-SoC brugt, når ingen enhed er konfigureret. Standard: 80.",
           "hsem_ev_planned_load_deadline_entity": "Valgfri enhed, hvis tilstand er en tidsstreng (HH:MM) for EV-opladningsfrist.",
           "hsem_ev_planned_load_deadline_fixed": "Fast opladningsfrist (HH:MM) brugt, når ingen enhed er konfigureret. Standard: 07:00.",
@@ -71,9 +65,6 @@
       "ev_second_planned_load": {
         "data": {
           "hsem_ev_second_planned_load_enabled": "Aktiver EV 2-planlagt belastningsintegration",
-          "hsem_ev_second_planned_load_connected_sensor": "EV 2 tilsluttet binær sensor",
-          "hsem_ev_second_planned_load_soc_sensor": "EV 2 batteri SoC-sensor",
-          "hsem_ev_second_planned_load_target_soc_entity": "EV 2 mål SoC-enhed (valgfri)",
           "hsem_ev_second_planned_load_target_soc_fixed": "EV 2 mål SoC (fast reserve)",
           "hsem_ev_second_planned_load_deadline_entity": "EV 2 opladningsfrist-enhed (valgfri)",
           "hsem_ev_second_planned_load_deadline_fixed": "EV 2 opladningsfrist (fast HH:MM reserve)",
@@ -84,9 +75,6 @@
         },
         "data_description": {
           "hsem_ev_second_planned_load_enabled": "Aktiver eller deaktiver planlagt opladningsbelastningsintegration for den anden EV.",
-          "hsem_ev_second_planned_load_connected_sensor": "Binær sensor, der rapporterer, om den anden EV er tilsluttet.",
-          "hsem_ev_second_planned_load_soc_sensor": "Sensor, der rapporterer aktuel anden EV-batteristatus.",
-          "hsem_ev_second_planned_load_target_soc_entity": "Valgfri enhed for anden EV-mål-SoC. Tilsidesætter fast mål, når indstillet.",
           "hsem_ev_second_planned_load_target_soc_fixed": "Fast anden EV-mål-SoC brugt, når ingen enhed er konfigureret. Standard: 80.",
           "hsem_ev_second_planned_load_deadline_entity": "Valgfri enhed, hvis tilstand er en tidsstreng (HH:MM) for anden EV-opladningsfrist.",
           "hsem_ev_second_planned_load_deadline_fixed": "Fast opladningsfrist (HH:MM) for den anden EV. Standard: 07:00.",

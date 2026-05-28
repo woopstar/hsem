@@ -53,9 +53,6 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_ev_connected": vol.UNDEFINED,
     # EV planned load integration — primary EV (optional, disabled by default)
     "hsem_ev_planned_load_enabled": False,
-    "hsem_ev_planned_load_connected_sensor": vol.UNDEFINED,
-    "hsem_ev_planned_load_soc_sensor": vol.UNDEFINED,
-    "hsem_ev_planned_load_target_soc_entity": vol.UNDEFINED,
     "hsem_ev_planned_load_target_soc_fixed": 80,
     "hsem_ev_planned_load_deadline_entity": vol.UNDEFINED,
     "hsem_ev_planned_load_deadline_fixed": "07:00",
@@ -65,9 +62,6 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_ev_planned_load_charger_efficiency": 100,
     # EV planned load integration — second EV (optional, disabled by default)
     "hsem_ev_second_planned_load_enabled": False,
-    "hsem_ev_second_planned_load_connected_sensor": vol.UNDEFINED,
-    "hsem_ev_second_planned_load_soc_sensor": vol.UNDEFINED,
-    "hsem_ev_second_planned_load_target_soc_entity": vol.UNDEFINED,
     "hsem_ev_second_planned_load_target_soc_fixed": 80,
     "hsem_ev_second_planned_load_deadline_entity": vol.UNDEFINED,
     "hsem_ev_second_planned_load_deadline_fixed": "07:00",

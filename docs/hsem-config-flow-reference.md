@@ -118,9 +118,6 @@ Primary EV planned load integration (optional, default disabled).
 | Field | Key | Default | Description |
 |---|---|---|---|
 | Enable | `hsem_ev_planned_load_enabled` | `False` | Master switch |
-| Connected sensor | `hsem_ev_planned_load_connected_sensor` | — | Binary sensor for EV plugged in |
-| SoC sensor | `hsem_ev_planned_load_soc_sensor` | — | EV battery SoC sensor |
-| Target SoC entity | `hsem_ev_planned_load_target_soc_entity` | — | Override target SoC entity |
 | Target SoC fixed | `hsem_ev_planned_load_target_soc_fixed` | 80 % | Fixed target when no entity |
 | Deadline entity | `hsem_ev_planned_load_deadline_entity` | — | Override deadline entity |
 | Deadline fixed | `hsem_ev_planned_load_deadline_fixed` | `"07:00"` | Fixed deadline |
