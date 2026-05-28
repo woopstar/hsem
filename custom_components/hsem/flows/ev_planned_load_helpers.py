@@ -90,7 +90,6 @@ _SOC_SELECTOR = selector(
 # specific fields are absent.
 _OPTIONAL_ENTITY_SUFFIXES = [
     "deadline_entity",
-    "smart_charging_entity",
 ]
 
 

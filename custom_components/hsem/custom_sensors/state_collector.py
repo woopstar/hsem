@@ -458,9 +458,17 @@ def _read_ev_planned_load_state(
     soc_sensor = ev_cfg.soc_entity
     target_soc_entity = ev_cfg.soc_target_entity
     target_soc_fixed = getattr(cfg, f"{p}_target_soc_fixed", 80.0)
-    smart_entity = getattr(cfg, f"{p}_smart_charging_entity", None)
     deadline_entity = getattr(cfg, f"{p}_deadline_entity", None)
     deadline_fixed = getattr(cfg, f"{p}_deadline_fixed", "07:00")
+
+    # Smart charging is now controlled by the HSEM switch entity instead of
+    # an external input_boolean.  Read the switch state from config options.
+    from custom_components.hsem.utils.misc import get_config_value
+
+    smart_switch_key = (
+        "hsem_ev_second_smart_charging" if is_second else "hsem_ev_smart_charging"
+    )
+    smart_enabled = bool(get_config_value(sensor._config_entry, smart_switch_key))
 
     if connected_sensor:
         setattr(
@@ -493,13 +501,7 @@ def _read_ev_planned_load_state(
     else:
         setattr(state, f"{p}_target_soc_pct", target_soc_fixed)
 
-    if smart_entity:
-        _sc = convert_to_boolean(
-            _read(smart_entity, "boolean", label=f"{p}_smart_charging")
-        )
-        setattr(
-            state, f"{p}_smart_charging_enabled", bool(_sc) if _sc is not None else True
-        )
+    setattr(state, f"{p}_smart_charging_enabled", smart_enabled)
 
     setattr(
         state,
@@ -574,16 +576,21 @@ async def _register_listeners(
         this call.  The caller should store these and cancel them on teardown.
     """
     new_unsubs: list = []
+    from custom_components.hsem.utils.sensornames import (
+        get_ev_second_smart_charging_switch_entity_id,
+        get_ev_smart_charging_switch_entity_id,
+    )
+
     candidates = [
         cfg.ev.status_entity,
         cfg.ev.connected_entity,
         cfg.ev.soc_target_entity,
-        cfg.ev_planned_load_smart_charging_entity,
+        get_ev_smart_charging_switch_entity_id(),
         cfg.ev_planned_load_deadline_entity,
         cfg.ev_second.status_entity,
         cfg.ev_second.connected_entity,
         cfg.ev_second.soc_target_entity,
-        cfg.ev_second_planned_load_smart_charging_entity,
+        get_ev_second_smart_charging_switch_entity_id(),
         cfg.ev_second_planned_load_deadline_entity,
         state.force_working_mode,
     ]

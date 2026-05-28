@@ -6,24 +6,24 @@
     },
     "error": {
       "device_not_found": "Den valgte enhed blev ikke fundet.",
-      "energy_out_of_range": "Energiværdien er uden for det tilladte område.",
+      "energy_out_of_range": "EnergivÃ¦rdien er uden for det tilladte omrÃ¥de.",
       "entity_not_found": "Den valgte enhed blev ikke fundet.",
-      "hsem_house_consumption_energy_weight_total": "Summen af husets energivægte skal være 100%.",
-      "invalid_energy_value": "Ugyldig energiværdi — indtast et tal.",
-      "invalid_entity_id": "Ugyldigt enheds-ID-format. Forventet \"domæne.objekt_id\" med små bogstaver, tal og understregninger.",
-      "invalid_month_value": "En eller flere månedsværdier er ugyldige. Måneder skal være heltal mellem 1 og 12.",
-      "invalid_power_value": "Ugyldig effektværdi — indtast et tal.",
-      "invalid_price_value": "Ugyldig prisværdi — indtast et tal.",
-      "invalid_sensor": "Ugyldig input-sensor. Vælg en gyldig sensor.",
-      "invalid_time_format": "Ugyldigt tidsformat — forventet HH:MM:SS.",
-      "months_summer_empty": "Mindst én måned skal forblive som sommer. Tildel færre måneder til vinter.",
-      "months_winter_empty": "Vintersæsonen skal have mindst én måned.",
-      "only_one_entry_allowed": "Kun én konfiguration af HSEM er tilladt.",
-      "power_out_of_range": "Effektværdien er uden for det tilladte område.",
-      "price_out_of_range": "Prisværdien er uden for det tilladte område.",
-      "required": "Dette felt er påkrævet.",
-      "start_time_after_end_time": "Starttidspunkt skal være før sluttidspunkt.",
-      "start_time_equals_end_time": "Starttidspunkt og sluttidspunkt kan ikke være ens — dette skaber et nul-længdevindue. Deaktiver tidsplanen i stedet."
+      "hsem_house_consumption_energy_weight_total": "Summen af husets energivÃ¦gte skal vÃ¦re 100%.",
+      "invalid_energy_value": "Ugyldig energivÃ¦rdi â€” indtast et tal.",
+      "invalid_entity_id": "Ugyldigt enheds-ID-format. Forventet \"domÃ¦ne.objekt_id\" med smÃ¥ bogstaver, tal og understregninger.",
+      "invalid_month_value": "En eller flere mÃ¥nedsvÃ¦rdier er ugyldige. MÃ¥neder skal vÃ¦re heltal mellem 1 og 12.",
+      "invalid_power_value": "Ugyldig effektvÃ¦rdi â€” indtast et tal.",
+      "invalid_price_value": "Ugyldig prisvÃ¦rdi â€” indtast et tal.",
+      "invalid_sensor": "Ugyldig input-sensor. VÃ¦lg en gyldig sensor.",
+      "invalid_time_format": "Ugyldigt tidsformat â€” forventet HH:MM:SS.",
+      "months_summer_empty": "Mindst Ã©n mÃ¥ned skal forblive som sommer. Tildel fÃ¦rre mÃ¥neder til vinter.",
+      "months_winter_empty": "VintersÃ¦sonen skal have mindst Ã©n mÃ¥ned.",
+      "only_one_entry_allowed": "Kun Ã©n konfiguration af HSEM er tilladt.",
+      "power_out_of_range": "EffektvÃ¦rdien er uden for det tilladte omrÃ¥de.",
+      "price_out_of_range": "PrisvÃ¦rdien er uden for det tilladte omrÃ¥de.",
+      "required": "Dette felt er pÃ¥krÃ¦vet.",
+      "start_time_after_end_time": "Starttidspunkt skal vÃ¦re fÃ¸r sluttidspunkt.",
+      "start_time_equals_end_time": "Starttidspunkt og sluttidspunkt kan ikke vÃ¦re ens â€” dette skaber et nul-lÃ¦ngdevindue. Deaktiver tidsplanen i stedet."
     },
     "step": {
       "batteries_excess_export": {
@@ -32,58 +32,54 @@
           "hsem_batteries_excess_export_discharge_buffer": "Afladningsbuffer (%)"
         },
         "data_description": {
-          "hsem_batteries_enable_excess_export": "Aktiver eller deaktiver eksport af overskydende batterikapacitet til nettet, når det er økonomisk fordelagtigt.",
-          "hsem_batteries_excess_export_discharge_buffer": "Indstil sikkerhedsbufferprocenten for at opretholde minimum batterireserver (0-50%). Standard er 10% for at sikre tilstrækkelig kapacitet til uventet efterspørgsel."
+          "hsem_batteries_enable_excess_export": "Aktiver eller deaktiver eksport af overskydende batterikapacitet til nettet, nÃ¥r det er Ã¸konomisk fordelagtigt.",
+          "hsem_batteries_excess_export_discharge_buffer": "Indstil sikkerhedsbufferprocenten for at opretholde minimum batterireserver (0-50%). Standard er 10% for at sikre tilstrÃ¦kkelig kapacitet til uventet efterspÃ¸rgsel."
         },
-        "description": "Konfigurer indstillinger for eksport af overskydende batterikapacitet til nettet, når det er økonomisk fordelagtigt.",
+        "description": "Konfigurer indstillinger for eksport af overskydende batterikapacitet til nettet, nÃ¥r det er Ã¸konomisk fordelagtigt.",
         "title": "Overskuds-eksport"
       },
       "ev_planned_load": {
         "data": {
           "hsem_ev_planned_load_enabled": "Aktiver EV-planlagt belastningsintegration",
-          "hsem_ev_planned_load_target_soc_fixed": "EV mål SoC (fast reserve)",
+          "hsem_ev_planned_load_target_soc_fixed": "EV mÃ¥l SoC (fast reserve)",
           "hsem_ev_planned_load_deadline_entity": "EV opladningsfrist-enhed (valgfri)",
           "hsem_ev_planned_load_deadline_fixed": "EV opladningsfrist (fast HH:MM reserve)",
-          "hsem_ev_planned_load_smart_charging_entity": "EV smart opladning aktiveret enhed (valgfri)",
           "hsem_ev_planned_load_battery_capacity_kwh": "EV batterikapacitet (kWh)",
           "hsem_ev_planned_load_charger_power_kw": "EV lader-effekt (kW)",
           "hsem_ev_planned_load_charger_efficiency": "EV lader-efficiens"
         },
         "data_description": {
           "hsem_ev_planned_load_enabled": "Aktiver eller deaktiver planlagt EV-opladningsbelastningsintegration.",
-          "hsem_ev_planned_load_target_soc_fixed": "Fast EV-mål-SoC brugt, når ingen enhed er konfigureret. Standard: 80.",
+          "hsem_ev_planned_load_target_soc_fixed": "Fast EV-mÃ¥l-SoC brugt, nÃ¥r ingen enhed er konfigureret. Standard: 80.",
           "hsem_ev_planned_load_deadline_entity": "Valgfri enhed, hvis tilstand er en tidsstreng (HH:MM) for EV-opladningsfrist.",
-          "hsem_ev_planned_load_deadline_fixed": "Fast opladningsfrist (HH:MM) brugt, når ingen enhed er konfigureret. Standard: 07:00.",
-          "hsem_ev_planned_load_smart_charging_entity": "Valgfri boolsk enhed, der aktiverer eller deaktiverer smart EV-opladning.",
+          "hsem_ev_planned_load_deadline_fixed": "Fast opladningsfrist (HH:MM) brugt, nÃ¥r ingen enhed er konfigureret. Standard: 07:00.",
           "hsem_ev_planned_load_battery_capacity_kwh": "EV-batteriets nominelle kapacitet i kWh.",
           "hsem_ev_planned_load_charger_power_kw": "AC-udgangseffekt for EV-laderen i kW.",
           "hsem_ev_planned_load_charger_efficiency": "Laderefficiens i procent (1-100). Standard: 100."
         },
-        "description": "Konfigurer valgfri planlagt EV-opladningsbelastningsintegration. Når aktiveret, tager HSEM højde for kommende EV-opladningsbehov pr. planslot.",
+        "description": "Konfigurer valgfri planlagt EV-opladningsbelastningsintegration. NÃ¥r aktiveret, tager HSEM hÃ¸jde for kommende EV-opladningsbehov pr. planslot.",
         "title": "EV-planlagt belastningsintegration"
       },
       "ev_second_planned_load": {
         "data": {
           "hsem_ev_second_planned_load_enabled": "Aktiver EV 2-planlagt belastningsintegration",
-          "hsem_ev_second_planned_load_target_soc_fixed": "EV 2 mål SoC (fast reserve)",
+          "hsem_ev_second_planned_load_target_soc_fixed": "EV 2 mÃ¥l SoC (fast reserve)",
           "hsem_ev_second_planned_load_deadline_entity": "EV 2 opladningsfrist-enhed (valgfri)",
           "hsem_ev_second_planned_load_deadline_fixed": "EV 2 opladningsfrist (fast HH:MM reserve)",
-          "hsem_ev_second_planned_load_smart_charging_entity": "EV 2 smart opladning aktiveret enhed (valgfri)",
           "hsem_ev_second_planned_load_battery_capacity_kwh": "EV 2 batterikapacitet (kWh)",
           "hsem_ev_second_planned_load_charger_power_kw": "EV 2 lader-effekt (kW)",
           "hsem_ev_second_planned_load_charger_efficiency": "EV 2 lader-efficiens"
         },
         "data_description": {
           "hsem_ev_second_planned_load_enabled": "Aktiver eller deaktiver planlagt opladningsbelastningsintegration for den anden EV.",
-          "hsem_ev_second_planned_load_target_soc_fixed": "Fast anden EV-mål-SoC brugt, når ingen enhed er konfigureret. Standard: 80.",
+          "hsem_ev_second_planned_load_target_soc_fixed": "Fast anden EV-mÃ¥l-SoC brugt, nÃ¥r ingen enhed er konfigureret. Standard: 80.",
           "hsem_ev_second_planned_load_deadline_entity": "Valgfri enhed, hvis tilstand er en tidsstreng (HH:MM) for anden EV-opladningsfrist.",
           "hsem_ev_second_planned_load_deadline_fixed": "Fast opladningsfrist (HH:MM) for den anden EV. Standard: 07:00.",
-          "hsem_ev_second_planned_load_smart_charging_entity": "Valgfri boolsk enhed, der aktiverer eller deaktiverer smart opladning for den anden EV.",
           "hsem_ev_second_planned_load_battery_capacity_kwh": "Nominel batterikapacitet for den anden EV i kWh.",
           "hsem_ev_second_planned_load_charger_power_kw": "AC-udgangseffekt for den anden EV-lader i kW.",
           "hsem_ev_second_planned_load_charger_efficiency": "Anden EV-lader-efficiens i procent (1-100). Standard: 100."
         },
-        "description": "Konfigurer valgfri planlagt opladningsbelastningsintegration for den anden EV. Vises kun, når en anden EV-lader er aktiveret.",
+        "description": "Konfigurer valgfri planlagt opladningsbelastningsintegration for den anden EV. Vises kun, nÃ¥r en anden EV-lader er aktiveret.",
         "title": "EV 2-planlagt belastningsintegration"
       },
       "batteries_schedules": {
@@ -99,9 +95,9 @@
           "hsem_batteries_enable_batteries_schedule_3_start": "Batteritidsplan 3 starttid"
         },
         "data_description": {
-          "hsem_batteries_enable_batteries_schedule_1": "Aktiver eller deaktiver den første batteri-afladningstidsplan.",
-          "hsem_batteries_enable_batteries_schedule_1_end": "Angiv sluttidspunktet for den første batteri-afladningstidsplan.",
-          "hsem_batteries_enable_batteries_schedule_1_start": "Angiv starttidspunktet for den første batteri-afladningstidsplan.",
+          "hsem_batteries_enable_batteries_schedule_1": "Aktiver eller deaktiver den fÃ¸rste batteri-afladningstidsplan.",
+          "hsem_batteries_enable_batteries_schedule_1_end": "Angiv sluttidspunktet for den fÃ¸rste batteri-afladningstidsplan.",
+          "hsem_batteries_enable_batteries_schedule_1_start": "Angiv starttidspunktet for den fÃ¸rste batteri-afladningstidsplan.",
           "hsem_batteries_enable_batteries_schedule_2": "Aktiver eller deaktiver den anden batteri-afladningstidsplan.",
           "hsem_batteries_enable_batteries_schedule_2_end": "Angiv sluttidspunktet for den anden batteri-afladningstidsplan.",
           "hsem_batteries_enable_batteries_schedule_2_start": "Angiv starttidspunktet for den anden batteri-afladningstidsplan.",
@@ -109,7 +105,7 @@
           "hsem_batteries_enable_batteries_schedule_3_end": "Angiv sluttidspunktet for den tredje batteri-afladningstidsplan.",
           "hsem_batteries_enable_batteries_schedule_3_start": "Angiv starttidspunktet for den tredje batteri-afladningstidsplan."
         },
-        "description": "Konfigurer op til tre batteri-afladningstidsplaner, hver med til/fra-knap, starttid og sluttid. Tidsplaner definerer, hvornår batteriet må aflade for at dække spidsbelastning eller eksportere til nettet.",
+        "description": "Konfigurer op til tre batteri-afladningstidsplaner, hver med til/fra-knap, starttid og sluttid.",
         "title": "Batteri-afladningstidsplaner"
       },
       "prices": {
@@ -118,14 +114,14 @@
           "hsem_export_electricity_price_sensor": "Eksport-elprissensor",
           "hsem_import_electricity_price_forecast_sensor": "Import-elprisprognose-sensor (valgfri)",
           "hsem_export_electricity_price_forecast_sensor": "Eksport-elprisprognose-sensor (valgfri)",
-          "hsem_export_electricity_min_price": "Minimum eksportpris påkrævet",
+          "hsem_export_electricity_min_price": "Minimum eksportpris pÃ¥krÃ¦vet",
           "hsem_electricity_price_update_interval": "Elpris opdateringsinterval (minutter)"
         },
         "data_description": {
-          "hsem_import_electricity_price_sensor": "Vælg den sensor, der leverer import-elpriser (f.eks. Energi Data Service, Nordpool, Amber Electric).",
-          "hsem_export_electricity_price_sensor": "Vælg den sensor, der leverer eksport-elpriser.",
-          "hsem_import_electricity_price_forecast_sensor": "Valgfrit: vælg en separat sensor til importprisprognoser (bruges af Amber Electric og lignende integrationer).",
-          "hsem_export_electricity_price_forecast_sensor": "Valgfrit: vælg en separat sensor til eksportprisprognoser.",
+          "hsem_import_electricity_price_sensor": "VÃ¦lg den sensor, der leverer import-elpriser (f.eks. Energi Data Service, Nordpool, Amber Electric).",
+          "hsem_export_electricity_price_sensor": "VÃ¦lg den sensor, der leverer eksport-elpriser.",
+          "hsem_import_electricity_price_forecast_sensor": "Valgfrit: vÃ¦lg en separat sensor til importprisprognoser (bruges af Amber Electric og lignende integrationer).",
+          "hsem_export_electricity_price_forecast_sensor": "Valgfrit: vÃ¦lg en separat sensor til eksportprisprognoser.",
           "hsem_export_electricity_min_price": "Indstil minimumsprisen for eksport. Eksport under denne pris blokeres.",
           "hsem_electricity_price_update_interval": "Hvor ofte din prissensor giver nye data (15, 30 eller 60 minutter)."
         },
@@ -134,7 +130,7 @@
       },
       "ev": {
         "data": {
-          "hsem_ev_allow_charge_past_target_soc": "Tillad opladning ud over mål-SoC (Avanceret)",
+          "hsem_ev_allow_charge_past_target_soc": "Tillad opladning ud over mÃ¥l-SoC (Avanceret)",
           "hsem_ev_charger_force_max_discharge_power": "EV-lader tving maks. afladningseffekt",
           "hsem_ev_charger_max_discharge_power": "EV-lader maks. afladningseffekt",
           "hsem_ev_charger_power": "EV-lader effektsensor",
@@ -142,44 +138,44 @@
           "hsem_ev_connected": "EV tilsluttet sensor",
           "hsem_ev_second_enabled": "Aktiver anden EV-lader",
           "hsem_ev_soc": "EV ladetilstand (SoC) sensor",
-          "hsem_ev_soc_target": "EV ladetilstand (SoC) målsensor",
+          "hsem_ev_soc_target": "EV ladetilstand (SoC) mÃ¥lsensor",
           "hsem_house_power_includes_ev_charger_power": "Husets effekt inkluderer EV-ladereffekt"
         },
         "data_description": {
-          "hsem_ev_allow_charge_past_target_soc": "Aktiver denne mulighed, hvis du vil tillade systemet at fortsætte opladningen af EV-batteriet, selv efter det har nået mål-ladetilstanden (SoC).",
+          "hsem_ev_allow_charge_past_target_soc": "Aktiver denne mulighed, hvis du vil tillade systemet at fortsÃ¦tte opladningen af EV-batteriet, selv efter det har nÃ¥et mÃ¥l-ladetilstanden (SoC).",
           "hsem_ev_charger_force_max_discharge_power": "Aktiver dette, hvis du vil tvinge en specifik maks. afladningseffekt for Huawei-batterierne, mens EV oplader.",
           "hsem_ev_charger_max_discharge_power": "Indstil den maksimale afladningseffekt for Huawei-batterierne, mens EV oplader.",
-          "hsem_ev_charger_power": "Vælg den sensor, der måler strømforbruget for din EV-lader.",
-          "hsem_ev_charger_status": "Vælg den sensor eller enhed, der angiver, om EV-laderen er aktiv.",
-          "hsem_ev_connected": "Vælg den sensor eller enhed, der angiver, om EV er tilsluttet laderen.",
+          "hsem_ev_charger_power": "VÃ¦lg den sensor, der mÃ¥ler strÃ¸mforbruget for din EV-lader.",
+          "hsem_ev_charger_status": "VÃ¦lg den sensor eller enhed, der angiver, om EV-laderen er aktiv.",
+          "hsem_ev_connected": "VÃ¦lg den sensor eller enhed, der angiver, om EV er tilsluttet laderen.",
           "hsem_ev_second_enabled": "Aktiver eller deaktiver konfigurationen for en anden EV-lader.",
-          "hsem_ev_soc": "Vælg den sensor, der leverer den aktuelle ladetilstand (SoC) for dit EV-batteri.",
-          "hsem_ev_soc_target": "Vælg den sensor, der leverer mål-ladetilstanden (SoC) for dit EV-batteri.",
-          "hsem_house_power_includes_ev_charger_power": "Aktiver dette, hvis husets forbrugseffektsensor allerede inkluderer EV-laderens strømforbrug."
+          "hsem_ev_soc": "VÃ¦lg den sensor, der leverer den aktuelle ladetilstand (SoC) for dit EV-batteri.",
+          "hsem_ev_soc_target": "VÃ¦lg den sensor, der leverer mÃ¥l-ladetilstanden (SoC) for dit EV-batteri.",
+          "hsem_house_power_includes_ev_charger_power": "Aktiver dette, hvis husets forbrugseffektsensor allerede inkluderer EV-laderens strÃ¸mforbrug."
         },
         "description": "Konfigurer EV-laderindstillinger for HSEM.",
         "title": "EV-laderindstillinger (Valgfri)"
       },
       "ev_second": {
         "data": {
-          "hsem_ev_second_allow_charge_past_target_soc": "Tillad opladning ud over mål-SoC for anden EV (Avanceret)",
+          "hsem_ev_second_allow_charge_past_target_soc": "Tillad opladning ud over mÃ¥l-SoC for anden EV (Avanceret)",
           "hsem_ev_second_charger_force_max_discharge_power": "Anden EV-lader tving maks. afladningseffekt",
           "hsem_ev_second_charger_max_discharge_power": "Anden EV-lader maks. afladningseffekt",
           "hsem_ev_second_charger_power": "Anden EV-lader effektsensor",
           "hsem_ev_second_charger_status": "Anden EV-lader statussensor",
           "hsem_ev_second_connected": "Anden EV tilsluttet sensor",
           "hsem_ev_second_soc": "Anden EV ladetilstand (SoC) sensor",
-          "hsem_ev_second_soc_target": "Anden EV ladetilstand (SoC) målsensor"
+          "hsem_ev_second_soc_target": "Anden EV ladetilstand (SoC) mÃ¥lsensor"
         },
         "data_description": {
-          "hsem_ev_second_allow_charge_past_target_soc": "Aktiver denne mulighed, hvis du vil tillade systemet at fortsætte opladningen af EV-batteriet, selv efter det har nået mål-ladetilstanden (SoC).",
+          "hsem_ev_second_allow_charge_past_target_soc": "Aktiver denne mulighed, hvis du vil tillade systemet at fortsÃ¦tte opladningen af EV-batteriet, selv efter det har nÃ¥et mÃ¥l-ladetilstanden (SoC).",
           "hsem_ev_second_charger_force_max_discharge_power": "Aktiver dette, hvis du vil tvinge en specifik maks. afladningseffekt for Huawei-batterierne, mens EV oplader.",
           "hsem_ev_second_charger_max_discharge_power": "Indstil den maksimale afladningseffekt for Huawei-batterierne, mens EV oplader.",
-          "hsem_ev_second_charger_power": "Vælg den sensor, der måler strømforbruget for din EV-lader.",
-          "hsem_ev_second_charger_status": "Vælg den sensor eller enhed, der angiver, om EV-laderen er aktiv.",
-          "hsem_ev_second_connected": "Vælg den sensor eller enhed, der angiver, om EV er tilsluttet laderen.",
-          "hsem_ev_second_soc": "Vælg den sensor, der leverer den aktuelle ladetilstand (SoC) for dit EV-batteri.",
-          "hsem_ev_second_soc_target": "Vælg den sensor, der leverer mål-ladetilstanden (SoC) for dit EV-batteri."
+          "hsem_ev_second_charger_power": "VÃ¦lg den sensor, der mÃ¥ler strÃ¸mforbruget for din EV-lader.",
+          "hsem_ev_second_charger_status": "VÃ¦lg den sensor eller enhed, der angiver, om EV-laderen er aktiv.",
+          "hsem_ev_second_connected": "VÃ¦lg den sensor eller enhed, der angiver, om EV er tilsluttet laderen.",
+          "hsem_ev_second_soc": "VÃ¦lg den sensor, der leverer den aktuelle ladetilstand (SoC) for dit EV-batteri.",
+          "hsem_ev_second_soc_target": "VÃ¦lg den sensor, der leverer mÃ¥l-ladetilstanden (SoC) for dit EV-batteri."
         },
         "description": "Konfigurer anden EV-laderindstillinger for HSEM.",
         "title": "Anden EV-laderindstillinger (Valgfri)"
@@ -190,7 +186,7 @@
           "hsem_batteries_cycle_cost": "Batteri-cyklusomkostning (EUR/kWh)",
           "hsem_batteries_discharge_efficiency": "Batteri-afladningseffektivitet (%)",
           "hsem_batteries_expected_cycles": "Forventede battericyklusser",
-          "hsem_batteries_purchase_price": "Batteri-købspris (EUR)",
+          "hsem_batteries_purchase_price": "Batteri-kÃ¸bspris (EUR)",
           "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Huawei-batterier overskydende PV-energianvendelse i TOU",
           "hsem_huawei_solar_batteries_end_of_discharge_soc": "Huawei-batterier afladningsstop SOC (%)",
           "hsem_huawei_solar_batteries_charging_cutoff_capacity": "Huawei-batterier opladningsstopkapacitet (maks. SoC %)",
@@ -207,62 +203,62 @@
           "hsem_huawei_solar_inverter_active_power_control": "Huawei-vekselretter aktiv effektkontrolsensor"
         },
         "data_description": {
-          "hsem_batteries_charge_efficiency": "Angiv batteriets opladningseffektivitet som en procentdel (0–100). Energi lagret i batteriet = inputenergi × denne faktor. Typiske lithium-batterier opnår 95–98%. Standard: 98%.",
-          "hsem_batteries_discharge_efficiency": "Angiv batteriets afladningseffektivitet som en procentdel (0–100). Energi leveret til huset = fjernet batterienergi × denne faktor. Typiske lithium-batterier opnår 95–98%. Standard: 98%.",
-          "hsem_batteries_cycle_cost": "Valgfri ekstra per-kWh-omkostning ved at cykle batteriet (EUR/kWh). Tilføjes oven på den automatisk beregnede afskrivningstærskel. Sæt til 0 for kun at stole på afskrivningsbeskyttelsen.",
-          "hsem_batteries_expected_cycles": "Indtast det forventede antal fulde opladnings-/afladningscyklusser i batteriets levetid. Bruges til at beregne afskrivningsomkostning pr. kWh. Typiske LiFePO4-batterier understøtter 4000–8000 cyklusser.",
-          "hsem_batteries_purchase_price": "Indtast den samlede købspris for dit batterisystem i EUR. Bruges sammen med forventede cyklusser og brugbar kapacitet til at beregne afskrivningsomkostning pr. kWh.",
-          "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Vælg den sensor, der giver indstilling for overskydende PV-energianvendelse i TOU-perioder.",
-          "hsem_huawei_solar_batteries_end_of_discharge_soc": "Angiv afladningsstop SOC-procent for dine Huawei-batterier. Når batteriet når dette SOC-niveau, stopper det afladning for at forhindre dybdeafladning.",
-          "hsem_huawei_solar_batteries_charging_cutoff_capacity": "Vælg den enhed, der definerer den maksimale ladetilstand (SoC), batteriet må nå under opladning. Typisk 90–100%. Bruges af SoC-simuleringen som den øvre SoC-grænse.",
+          "hsem_batteries_charge_efficiency": "Angiv batteriets opladningseffektivitet som en procentdel (0â€“100). Energi lagret i batteriet = inputenergi Ã— denne faktor. Typiske lithium-batterier opnÃ¥r 95â€“98%. Standard: 98%.",
+          "hsem_batteries_discharge_efficiency": "Angiv batteriets afladningseffektivitet som en procentdel (0â€“100). Energi leveret til huset = fjernet batterienergi Ã— denne faktor. Typiske lithium-batterier opnÃ¥r 95â€“98%. Standard: 98%.",
+          "hsem_batteries_cycle_cost": "Valgfri ekstra per-kWh-omkostning ved at cykle batteriet (EUR/kWh). TilfÃ¸jes oven pÃ¥ den automatisk beregnede afskrivningstÃ¦rskel. SÃ¦t til 0 for kun at stole pÃ¥ afskrivningsbeskyttelsen.",
+          "hsem_batteries_expected_cycles": "Indtast det forventede antal fulde opladnings-/afladningscyklusser i batteriets levetid. Bruges til at beregne afskrivningsomkostning pr. kWh. Typiske LiFePO4-batterier understÃ¸tter 4000â€“8000 cyklusser.",
+          "hsem_batteries_purchase_price": "Indtast den samlede kÃ¸bspris for dit batterisystem i EUR. Bruges sammen med forventede cyklusser og brugbar kapacitet til at beregne afskrivningsomkostning pr. kWh.",
+          "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "VÃ¦lg den sensor, der giver indstilling for overskydende PV-energianvendelse i TOU-perioder.",
+          "hsem_huawei_solar_batteries_end_of_discharge_soc": "Angiv afladningsstop SOC-procent for dine Huawei-batterier. NÃ¥r batteriet nÃ¥r dette SOC-niveau, stopper det afladning for at forhindre dybdeafladning.",
+          "hsem_huawei_solar_batteries_charging_cutoff_capacity": "VÃ¦lg den enhed, der definerer den maksimale ladetilstand (SoC), batteriet mÃ¥ nÃ¥ under opladning. Typisk 90â€“100%. Bruges af SoC-simuleringen som den Ã¸vre SoC-grÃ¦nse.",
           "hsem_huawei_solar_batteries_grid_charge_cutoff_soc": "Angiv netopladningsstop SOC-procent for dine Huawei-batterier.",
-          "hsem_huawei_solar_batteries_maximum_charging_power": "Vælg den sensor, der leverer den maksimale opladningseffekt for dine Huawei-batterier i watt (W).",
-          "hsem_huawei_solar_batteries_maximum_discharging_power": "Vælg den sensor, der leverer den maksimale afladningseffekt for dine Huawei-batterier.",
-          "hsem_huawei_solar_batteries_rated_capacity": "Vælg den sensor, der leverer den totale nominelle kapacitet for dine Huawei-batterier i watt (W).",
-          "hsem_huawei_solar_batteries_state_of_capacity": "Vælg den sensor, der leverer ladetilstanden (SOC) for dine Huawei-batterier.",
-          "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods": "Vælg den sensor, der definerer Time-of-Use (TOU) opladnings- og afladningsperioder for dine Huawei-batterier.",
-          "hsem_huawei_solar_batteries_working_mode": "Vælg den sensor, der angiver den aktuelle arbejdstilstand for dine Huawei-batterier.",
-          "hsem_huawei_solar_device_id_batteries": "Vælg din Huawei-batterienhed.",
-          "hsem_huawei_solar_device_id_inverter_1": "Vælg din primære Huawei-vekselretterenhed.",
-          "hsem_huawei_solar_device_id_inverter_2": "Vælg din sekundære Huawei-vekselretterenhed, hvis relevant.",
-          "hsem_huawei_solar_inverter_active_power_control": "Vælg den sensor, der styrer aktiv effektudgang for din Huawei-vekselretter."
+          "hsem_huawei_solar_batteries_maximum_charging_power": "VÃ¦lg den sensor, der leverer den maksimale opladningseffekt for dine Huawei-batterier i watt (W).",
+          "hsem_huawei_solar_batteries_maximum_discharging_power": "VÃ¦lg den sensor, der leverer den maksimale afladningseffekt for dine Huawei-batterier.",
+          "hsem_huawei_solar_batteries_rated_capacity": "VÃ¦lg den sensor, der leverer den totale nominelle kapacitet for dine Huawei-batterier i watt (W).",
+          "hsem_huawei_solar_batteries_state_of_capacity": "VÃ¦lg den sensor, der leverer ladetilstanden (SOC) for dine Huawei-batterier.",
+          "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods": "VÃ¦lg den sensor, der definerer Time-of-Use (TOU) opladnings- og afladningsperioder for dine Huawei-batterier.",
+          "hsem_huawei_solar_batteries_working_mode": "VÃ¦lg den sensor, der angiver den aktuelle arbejdstilstand for dine Huawei-batterier.",
+          "hsem_huawei_solar_device_id_batteries": "VÃ¦lg din Huawei-batterienhed.",
+          "hsem_huawei_solar_device_id_inverter_1": "VÃ¦lg din primÃ¦re Huawei-vekselretterenhed.",
+          "hsem_huawei_solar_device_id_inverter_2": "VÃ¦lg din sekundÃ¦re Huawei-vekselretterenhed, hvis relevant.",
+          "hsem_huawei_solar_inverter_active_power_control": "VÃ¦lg den sensor, der styrer aktiv effektudgang for din Huawei-vekselretter."
         },
         "description": "Konfigurer arbejdstilstanden for Huawei-solcellebatterier.",
         "title": "Huawei Solar-sensorer"
       },
       "battery_economics": {
         "data": {
-          "hsem_batteries_purchase_price": "Batteri-købspris (EUR)",
+          "hsem_batteries_purchase_price": "Batteri-kÃ¸bspris (EUR)",
           "hsem_batteries_expected_cycles": "Forventede battericyklusser",
           "hsem_batteries_cycle_cost": "Batteri-cyklusomkostning (EUR/kWh)",
           "hsem_batteries_charge_efficiency": "Batteri-opladningseffektivitet (%)",
           "hsem_batteries_discharge_efficiency": "Batteri-afladningseffektivitet (%)"
         },
         "data_description": {
-          "hsem_batteries_purchase_price": "Indtast den samlede købspris for dit batterisystem i EUR. Bruges sammen med forventede cyklusser og brugbar kapacitet til at beregne afskrivningsomkostning pr. kWh.",
-          "hsem_batteries_expected_cycles": "Indtast det forventede antal fulde opladnings-/afladningscyklusser i batteriets levetid. Bruges til at beregne afskrivningsomkostning pr. kWh. Typiske LiFePO4-batterier understøtter 4000–8000 cyklusser.",
-          "hsem_batteries_cycle_cost": "Valgfri ekstra per-kWh-omkostning ved at cykle batteriet (EUR/kWh). Tilføjes oven på den automatisk beregnede afskrivningstærskel. Sæt til 0 for kun at stole på afskrivningsbeskyttelsen.",
-          "hsem_batteries_charge_efficiency": "Angiv batteriets opladningseffektivitet som en procentdel (0–100). Energi lagret i batteriet = inputenergi × denne faktor. Typiske lithium-batterier opnår 95–98%. Standard: 98%.",
-          "hsem_batteries_discharge_efficiency": "Angiv batteriets afladningseffektivitet som en procentdel (0–100). Energi leveret til huset = fjernet batterienergi × denne faktor. Typiske lithium-batterier opnår 95–98%. Standard: 98%."
+          "hsem_batteries_purchase_price": "Indtast den samlede kÃ¸bspris for dit batterisystem i EUR. Bruges sammen med forventede cyklusser og brugbar kapacitet til at beregne afskrivningsomkostning pr. kWh.",
+          "hsem_batteries_expected_cycles": "Indtast det forventede antal fulde opladnings-/afladningscyklusser i batteriets levetid. Bruges til at beregne afskrivningsomkostning pr. kWh. Typiske LiFePO4-batterier understÃ¸tter 4000â€“8000 cyklusser.",
+          "hsem_batteries_cycle_cost": "Valgfri ekstra per-kWh-omkostning ved at cykle batteriet (EUR/kWh). TilfÃ¸jes oven pÃ¥ den automatisk beregnede afskrivningstÃ¦rskel. SÃ¦t til 0 for kun at stole pÃ¥ afskrivningsbeskyttelsen.",
+          "hsem_batteries_charge_efficiency": "Angiv batteriets opladningseffektivitet som en procentdel (0â€“100). Energi lagret i batteriet = inputenergi Ã— denne faktor. Typiske lithium-batterier opnÃ¥r 95â€“98%. Standard: 98%.",
+          "hsem_batteries_discharge_efficiency": "Angiv batteriets afladningseffektivitet som en procentdel (0â€“100). Energi leveret til huset = fjernet batterienergi Ã— denne faktor. Typiske lithium-batterier opnÃ¥r 95â€“98%. Standard: 98%."
         },
-        "description": "Konfigurer batteriøkonomiske parametre, der påvirker afskrivningsberegninger og rundturseffektivitet.",
-        "title": "Batteriøkonomi"
+        "description": "Konfigurer batteriÃ¸konomiske parametre, der pÃ¥virker afskrivningsberegninger og rundturseffektivitet.",
+        "title": "BatteriÃ¸konomi"
       },
       "init": {
         "data": {
           "device_name": "Navn",
           "hsem_extended_attributes": "Udvidede attributter",
-          "hsem_read_only": "Kun læsning",
-          "hsem_recommendation_interval_length": "Anbefalingsinterval-længde",
+          "hsem_read_only": "Kun lÃ¦sning",
+          "hsem_recommendation_interval_length": "Anbefalingsinterval-lÃ¦ngde",
           "hsem_recommendation_interval_minutes": "Anbefalingsinterval-minutter",
           "hsem_update_interval": "Opdateringsinterval",
           "hsem_verbose_logging": "Detaljeret logning"
         },
         "data_description": {
           "device_name": "Indtast et unikt navn for denne enhed.",
-          "hsem_extended_attributes": "Aktiver denne mulighed for at eksponere ekstra diagnostiske attributter på sensorenheden.",
-          "hsem_read_only": "Aktiver denne mulighed for at sætte integrationen i skrivebeskyttet tilstand, så den ikke sender kommandoer til enheder.",
-          "hsem_recommendation_interval_length": "Længden i minutter af hvert anbefalingsinterval, der bruges til at beregne optimal batteribrug.",
+          "hsem_extended_attributes": "Aktiver denne mulighed for at eksponere ekstra diagnostiske attributter pÃ¥ sensorenheden.",
+          "hsem_read_only": "Aktiver denne mulighed for at sÃ¦tte integrationen i skrivebeskyttet tilstand, sÃ¥ den ikke sender kommandoer til enheder.",
+          "hsem_recommendation_interval_length": "LÃ¦ngden i minutter af hvert anbefalingsinterval, der bruges til at beregne optimal batteribrug.",
           "hsem_recommendation_interval_minutes": "Antallet af anbefalingsintervaller, der skal overvejes ved beregning af optimal batteribrug.",
           "hsem_update_interval": "Opdateringsintervallet i minutter for arbejdstilstandssensoren.",
           "hsem_verbose_logging": "Aktiver detaljeret fejlfindingslogning til fejlfinding."
@@ -270,41 +266,15 @@
         "description": "Opdater indstillingerne for HSEM",
         "title": "Opdater Huawei Solar Energy Management"
       },
-      "batteries_schedules": {
-        "data": {
-          "hsem_batteries_enable_batteries_schedule_1": "Aktiver batteritidsplan 1",
-          "hsem_batteries_enable_batteries_schedule_1_end": "Batteritidsplan 1 sluttid",
-          "hsem_batteries_enable_batteries_schedule_1_start": "Batteritidsplan 1 starttid",
-          "hsem_batteries_enable_batteries_schedule_2": "Aktiver batteritidsplan 2",
-          "hsem_batteries_enable_batteries_schedule_2_end": "Batteritidsplan 2 sluttid",
-          "hsem_batteries_enable_batteries_schedule_2_start": "Batteritidsplan 2 starttid",
-          "hsem_batteries_enable_batteries_schedule_3": "Aktiver batteritidsplan 3",
-          "hsem_batteries_enable_batteries_schedule_3_end": "Batteritidsplan 3 sluttid",
-          "hsem_batteries_enable_batteries_schedule_3_start": "Batteritidsplan 3 starttid"
-        },
-        "data_description": {
-          "hsem_batteries_enable_batteries_schedule_1": "Aktiver eller deaktiver den første batteri-afladningstidsplan.",
-          "hsem_batteries_enable_batteries_schedule_1_end": "Angiv sluttidspunktet for den første batteri-afladningstidsplan.",
-          "hsem_batteries_enable_batteries_schedule_1_start": "Angiv starttidspunktet for den første batteri-afladningstidsplan.",
-          "hsem_batteries_enable_batteries_schedule_2": "Aktiver eller deaktiver den anden batteri-afladningstidsplan.",
-          "hsem_batteries_enable_batteries_schedule_2_end": "Angiv sluttidspunktet for den anden batteri-afladningstidsplan.",
-          "hsem_batteries_enable_batteries_schedule_2_start": "Angiv starttidspunktet for den anden batteri-afladningstidsplan.",
-          "hsem_batteries_enable_batteries_schedule_3": "Aktiver eller deaktiver den tredje batteri-afladningstidsplan.",
-          "hsem_batteries_enable_batteries_schedule_3_end": "Angiv sluttidspunktet for den tredje batteri-afladningstidsplan.",
-          "hsem_batteries_enable_batteries_schedule_3_start": "Angiv starttidspunktet for den tredje batteri-afladningstidsplan."
-        },
-        "description": "Konfigurer op til tre batteri-afladningstidsplaner, hver med til/fra-knap, starttid og sluttid.",
-        "title": "Batteri-afladningstidsplaner"
-      },
       "months": {
         "data": {
-          "hsem_months_winter": "Måneder betragtet som vinter/forår"
+          "hsem_months_winter": "MÃ¥neder betragtet som vinter/forÃ¥r"
         },
         "data_description": {
-          "hsem_months_winter": "Vælg de måneder, der skal betragtes som vinter/forår for sæsonbestemt arbejdstilstandsjustering."
+          "hsem_months_winter": "VÃ¦lg de mÃ¥neder, der skal betragtes som vinter/forÃ¥r for sÃ¦sonbestemt arbejdstilstandsjustering."
         },
-        "description": "Konfigurer de måneder, der betragtes som vinter/forår. I disse måneder prioriterer systemet opladning af batterierne fra netstrøm.",
-        "title": "Vinter/forår-måneder"
+        "description": "Konfigurer de mÃ¥neder, der betragtes som vinter/forÃ¥r. I disse mÃ¥neder prioriterer systemet opladning af batterierne fra netstrÃ¸m.",
+        "title": "Vinter/forÃ¥r-mÃ¥neder"
       },
       "power": {
         "data": {
@@ -312,10 +282,10 @@
           "hsem_solar_production_power": "Solproduktionseffektsensor"
         },
         "data_description": {
-          "hsem_house_consumption_power": "Vælg den sensor, der måler husets samlede strømforbrug.",
-          "hsem_solar_production_power": "Vælg den sensor, der måler strømmen genereret af dine solpaneler."
+          "hsem_house_consumption_power": "VÃ¦lg den sensor, der mÃ¥ler husets samlede strÃ¸mforbrug.",
+          "hsem_solar_production_power": "VÃ¦lg den sensor, der mÃ¥ler strÃ¸mmen genereret af dine solpaneler."
         },
-        "description": "Vælg effektsensorer til HSEM.",
+        "description": "VÃ¦lg effektsensorer til HSEM.",
         "title": "Effektsensorer"
       },
       "solcast": {
@@ -325,28 +295,28 @@
           "hsem_solcast_pv_forecast_forecast_tomorrow": "Solcast PV-prognose i morgen sensor"
         },
         "data_description": {
-          "hsem_solcast_pv_forecast_forecast_likelihood": "Vælg den foretrukne prognosesandsynlighed for Solcast PV-prognoser.",
-          "hsem_solcast_pv_forecast_forecast_today": "Vælg den sensor, der leverer dagens PV-produktionsprognose fra Solcast.",
-          "hsem_solcast_pv_forecast_forecast_tomorrow": "Vælg den sensor, der leverer morgendagens PV-produktionsprognose fra Solcast."
+          "hsem_solcast_pv_forecast_forecast_likelihood": "VÃ¦lg den foretrukne prognosesandsynlighed for Solcast PV-prognoser.",
+          "hsem_solcast_pv_forecast_forecast_today": "VÃ¦lg den sensor, der leverer dagens PV-produktionsprognose fra Solcast.",
+          "hsem_solcast_pv_forecast_forecast_tomorrow": "VÃ¦lg den sensor, der leverer morgendagens PV-produktionsprognose fra Solcast."
         },
-        "description": "Vælg Solcast-prognosesensorer.",
+        "description": "VÃ¦lg Solcast-prognosesensorer.",
         "title": "Solcast-sensorer"
       },
       "user": {
         "data": {
           "device_name": "Navn",
           "hsem_extended_attributes": "Udvidede attributter",
-          "hsem_read_only": "Kun læsning",
-          "hsem_recommendation_interval_length": "Anbefalingsinterval-længde",
+          "hsem_read_only": "Kun lÃ¦sning",
+          "hsem_recommendation_interval_length": "Anbefalingsinterval-lÃ¦ngde",
           "hsem_recommendation_interval_minutes": "Anbefalingsinterval-minutter",
           "hsem_update_interval": "Opdateringsinterval",
           "hsem_verbose_logging": "Detaljeret logning"
         },
         "data_description": {
           "device_name": "Indtast et unikt navn for denne enhed.",
-          "hsem_extended_attributes": "Aktiver denne mulighed for at eksponere ekstra diagnostiske attributter på sensorenheden.",
-          "hsem_read_only": "Aktiver denne mulighed for at sætte integrationen i skrivebeskyttet tilstand, så den ikke sender kommandoer til enheder.",
-          "hsem_recommendation_interval_length": "Længden i minutter af hvert anbefalingsinterval, der bruges til at beregne optimal batteribrug.",
+          "hsem_extended_attributes": "Aktiver denne mulighed for at eksponere ekstra diagnostiske attributter pÃ¥ sensorenheden.",
+          "hsem_read_only": "Aktiver denne mulighed for at sÃ¦tte integrationen i skrivebeskyttet tilstand, sÃ¥ den ikke sender kommandoer til enheder.",
+          "hsem_recommendation_interval_length": "LÃ¦ngden i minutter af hvert anbefalingsinterval, der bruges til at beregne optimal batteribrug.",
           "hsem_recommendation_interval_minutes": "Antallet af anbefalingsintervaller, der skal overvejes ved beregning af optimal batteribrug.",
           "hsem_update_interval": "Opdateringsintervallet i minutter for arbejdstilstandssensoren.",
           "hsem_verbose_logging": "Aktiver detaljeret fejlfindingslogning til fejlfinding."
@@ -356,43 +326,43 @@
       },
       "weighted_values": {
         "data": {
-          "hsem_house_consumption_energy_weight_14d": "Husets energivægt 14 dage",
-          "hsem_house_consumption_energy_weight_1d": "Husets energivægt 1 dag",
-          "hsem_house_consumption_energy_weight_3d": "Husets energivægt 3 dage",
-          "hsem_house_consumption_energy_weight_7d": "Husets energivægt 7 dage"
+          "hsem_house_consumption_energy_weight_14d": "Husets energivÃ¦gt 14 dage",
+          "hsem_house_consumption_energy_weight_1d": "Husets energivÃ¦gt 1 dag",
+          "hsem_house_consumption_energy_weight_3d": "Husets energivÃ¦gt 3 dage",
+          "hsem_house_consumption_energy_weight_7d": "Husets energivÃ¦gt 7 dage"
         },
         "data_description": {
-          "hsem_house_consumption_energy_weight_14d": "Angiv vægtprocenten for husets energiforbrug over de sidste 14 dage.",
-          "hsem_house_consumption_energy_weight_1d": "Angiv vægtprocenten for husets energiforbrug over de sidste 1 dag.",
-          "hsem_house_consumption_energy_weight_3d": "Angiv vægtprocenten for husets energiforbrug over de sidste 3 dage.",
-          "hsem_house_consumption_energy_weight_7d": "Angiv vægtprocenten for husets energiforbrug over de sidste 7 dage."
+          "hsem_house_consumption_energy_weight_14d": "Angiv vÃ¦gtprocenten for husets energiforbrug over de sidste 14 dage.",
+          "hsem_house_consumption_energy_weight_1d": "Angiv vÃ¦gtprocenten for husets energiforbrug over de sidste 1 dag.",
+          "hsem_house_consumption_energy_weight_3d": "Angiv vÃ¦gtprocenten for husets energiforbrug over de sidste 3 dage.",
+          "hsem_house_consumption_energy_weight_7d": "Angiv vÃ¦gtprocenten for husets energiforbrug over de sidste 7 dage."
         },
-        "description": "Konfigurer vægtede værdier for husets energiforbrug til at estimere dit gennemsnitlige strømforbrug.",
-        "title": "Vægtede værdier"
+        "description": "Konfigurer vÃ¦gtede vÃ¦rdier for husets energiforbrug til at estimere dit gennemsnitlige strÃ¸mforbrug.",
+        "title": "VÃ¦gtede vÃ¦rdier"
       }
     }
   },
   "options": {
     "error": {
       "device_not_found": "Den valgte enhed blev ikke fundet.",
-      "energy_out_of_range": "Energiværdien er uden for det tilladte område.",
+      "energy_out_of_range": "EnergivÃ¦rdien er uden for det tilladte omrÃ¥de.",
       "entity_not_found": "Den valgte enhed blev ikke fundet.",
-      "hsem_house_consumption_energy_weight_total": "Summen af husets energivægte skal være 100%.",
-      "invalid_energy_value": "Ugyldig energiværdi — indtast et tal.",
-      "invalid_entity_id": "Ugyldigt enheds-ID-format. Forventet \"domæne.objekt_id\" med små bogstaver, tal og understregninger.",
-      "invalid_month_value": "En eller flere månedsværdier er ugyldige. Måneder skal være heltal mellem 1 og 12.",
-      "invalid_power_value": "Ugyldig effektværdi — indtast et tal.",
-      "invalid_price_value": "Ugyldig prisværdi — indtast et tal.",
-      "invalid_sensor": "Ugyldig input-sensor. Vælg en gyldig sensor.",
-      "invalid_time_format": "Ugyldigt tidsformat — forventet HH:MM:SS.",
-      "months_summer_empty": "Mindst én måned skal forblive som sommer. Tildel færre måneder til vinter.",
-      "months_winter_empty": "Vintersæsonen skal have mindst én måned.",
-      "only_one_entry_allowed": "Kun én konfiguration af HSEM er tilladt.",
-      "power_out_of_range": "Effektværdien er uden for det tilladte område.",
-      "price_out_of_range": "Prisværdien er uden for det tilladte område.",
-      "required": "Dette felt er påkrævet.",
-      "start_time_after_end_time": "Starttidspunkt skal være før sluttidspunkt.",
-      "start_time_equals_end_time": "Starttidspunkt og sluttidspunkt kan ikke være ens — dette skaber et nul-længdevindue. Deaktiver tidsplanen i stedet."
+      "hsem_house_consumption_energy_weight_total": "Summen af husets energivÃ¦gte skal vÃ¦re 100%.",
+      "invalid_energy_value": "Ugyldig energivÃ¦rdi â€” indtast et tal.",
+      "invalid_entity_id": "Ugyldigt enheds-ID-format. Forventet \"domÃ¦ne.objekt_id\" med smÃ¥ bogstaver, tal og understregninger.",
+      "invalid_month_value": "En eller flere mÃ¥nedsvÃ¦rdier er ugyldige. MÃ¥neder skal vÃ¦re heltal mellem 1 og 12.",
+      "invalid_power_value": "Ugyldig effektvÃ¦rdi â€” indtast et tal.",
+      "invalid_price_value": "Ugyldig prisvÃ¦rdi â€” indtast et tal.",
+      "invalid_sensor": "Ugyldig input-sensor. VÃ¦lg en gyldig sensor.",
+      "invalid_time_format": "Ugyldigt tidsformat â€” forventet HH:MM:SS.",
+      "months_summer_empty": "Mindst Ã©n mÃ¥ned skal forblive som sommer. Tildel fÃ¦rre mÃ¥neder til vinter.",
+      "months_winter_empty": "VintersÃ¦sonen skal have mindst Ã©n mÃ¥ned.",
+      "only_one_entry_allowed": "Kun Ã©n konfiguration af HSEM er tilladt.",
+      "power_out_of_range": "EffektvÃ¦rdien er uden for det tilladte omrÃ¥de.",
+      "price_out_of_range": "PrisvÃ¦rdien er uden for det tilladte omrÃ¥de.",
+      "required": "Dette felt er pÃ¥krÃ¦vet.",
+      "start_time_after_end_time": "Starttidspunkt skal vÃ¦re fÃ¸r sluttidspunkt.",
+      "start_time_equals_end_time": "Starttidspunkt og sluttidspunkt kan ikke vÃ¦re ens â€” dette skaber et nul-lÃ¦ngdevindue. Deaktiver tidsplanen i stedet."
     },
     "step": {
       "batteries_excess_export": {},
@@ -448,57 +418,99 @@
   },
   "entity": {
     "switch": {
-      "read_only": { "name": "Skrivebeskyttet tilstand" },
-      "extended_attributes": { "name": "Udvidede attributter" },
-      "verbose_logging": { "name": "Detaljeret logning" },
-      "batteries_schedule_1": { "name": "Batteriplan 1" },
-      "batteries_schedule_2": { "name": "Batteriplan 2" },
-      "batteries_schedule_3": { "name": "Batteriplan 3" },
-      "ev_force_discharge": { "name": "EV Tving maks. afladningseffekt" },
-      "ev_smart_charging": { "name": "EV Smart Opladning" },
-      "ev_force_charge_now": { "name": "EV Tving Opladning Nu" },
-      "ev_second_smart_charging": { "name": "EV 2 Smart Opladning" },
-      "ev_second_force_charge_now": { "name": "EV 2 Tving Opladning Nu" }
+      "read_only": {
+        "name": "Skrivebeskyttet tilstand"
+      },
+      "extended_attributes": {
+        "name": "Udvidede attributter"
+      },
+      "verbose_logging": {
+        "name": "Detaljeret logning"
+      },
+      "batteries_schedule_1": {
+        "name": "Batteriplan 1"
+      },
+      "batteries_schedule_2": {
+        "name": "Batteriplan 2"
+      },
+      "batteries_schedule_3": {
+        "name": "Batteriplan 3"
+      },
+      "ev_force_discharge": {
+        "name": "EV Tving maks. afladningseffekt"
+      },
+      "ev_smart_charging": {
+        "name": "EV Smart Opladning"
+      },
+      "ev_force_charge_now": {
+        "name": "EV Tving Opladning Nu"
+      },
+      "ev_second_smart_charging": {
+        "name": "EV 2 Smart Opladning"
+      },
+      "ev_second_force_charge_now": {
+        "name": "EV 2 Tving Opladning Nu"
+      }
     },
     "select": {
-      "force_working_mode": { "name": "Tving Arbejdstilstand" },
-      "pv_estimate_likelihood": { "name": "Solcast PV-estimat Sandsynlighed" }
+      "force_working_mode": {
+        "name": "Tving Arbejdstilstand"
+      },
+      "pv_estimate_likelihood": {
+        "name": "Solcast PV-estimat Sandsynlighed"
+      }
     },
     "number": {
-      "charge_efficiency": { "name": "Batteri Opladningseffektivitet" },
-      "discharge_efficiency": { "name": "Batteri Afladningseffektivitet" }
+      "charge_efficiency": {
+        "name": "Batteri Opladningseffektivitet"
+      },
+      "discharge_efficiency": {
+        "name": "Batteri Afladningseffektivitet"
+      }
     },
     "time": {
-      "schedule_1_start": { "name": "Batteri Afladningsplan 1 Start" },
-      "schedule_1_end": { "name": "Batteri Afladningsplan 1 Slut" },
-      "schedule_2_start": { "name": "Batteri Afladningsplan 2 Start" },
-      "schedule_2_end": { "name": "Batteri Afladningsplan 2 Slut" },
-      "schedule_3_start": { "name": "Batteri Afladningsplan 3 Start" },
-      "schedule_3_end": { "name": "Batteri Afladningsplan 3 Slut" }
+      "schedule_1_start": {
+        "name": "Batteri Afladningsplan 1 Start"
+      },
+      "schedule_1_end": {
+        "name": "Batteri Afladningsplan 1 Slut"
+      },
+      "schedule_2_start": {
+        "name": "Batteri Afladningsplan 2 Start"
+      },
+      "schedule_2_end": {
+        "name": "Batteri Afladningsplan 2 Slut"
+      },
+      "schedule_3_start": {
+        "name": "Batteri Afladningsplan 3 Start"
+      },
+      "schedule_3_end": {
+        "name": "Batteri Afladningsplan 3 Slut"
+      }
     }
   },
   "services": {
     "force_recalculation": {
       "name": "Tving genberegning",
-      "description": "Tving HSEM-koordinatoren til at køre en fuld genberegningscyklus med det samme."
+      "description": "Tving HSEM-koordinatoren til at kÃ¸re en fuld genberegningscyklus med det samme."
     },
     "set_temporary_override": {
-      "name": "Indstil midlertidig tilsidesættelse",
-      "description": "Tilsidesæt midlertidigt den automatiske planlægger ved at tvinge en specifik arbejdstilstand.",
+      "name": "Indstil midlertidig tilsidesÃ¦ttelse",
+      "description": "TilsidesÃ¦t midlertidigt den automatiske planlÃ¦gger ved at tvinge en specifik arbejdstilstand.",
       "fields": {
         "working_mode": {
           "name": "Arbejdstilstand",
-          "description": "Den arbejdstilstand, der skal tvinges. Skal være en af de understøttede tilsidesættelsestilstande."
+          "description": "Den arbejdstilstand, der skal tvinges. Skal vÃ¦re en af de understÃ¸ttede tilsidesÃ¦ttelsestilstande."
         }
       }
     },
     "clear_override": {
-      "name": "Ryd tilsidesættelse",
-      "description": "Ryd enhver aktiv midlertidig arbejdstilstandstilsidesættelse og vend tilbage til automatisk planlægningskontrol."
+      "name": "Ryd tilsidesÃ¦ttelse",
+      "description": "Ryd enhver aktiv midlertidig arbejdstilstandstilsidesÃ¦ttelse og vend tilbage til automatisk planlÃ¦gningskontrol."
     },
     "export_diagnostics": {
-      "name": "Eksportér diagnosticering",
-      "description": "Eksportér et struktureret diagnosticeringsdump for HSEM-integrationen med alle enheds-ID'er redigeret."
+      "name": "EksportÃ©r diagnosticering",
+      "description": "EksportÃ©r et struktureret diagnosticeringsdump for HSEM-integrationen med alle enheds-ID'er redigeret."
     }
   }
 }

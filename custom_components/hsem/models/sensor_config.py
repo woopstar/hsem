@@ -207,7 +207,6 @@ class SensorConfig:
     ev_planned_load_target_soc_fixed: float = 80.0
     ev_planned_load_deadline_entity: str | None = None
     ev_planned_load_deadline_fixed: str = "07:00"
-    ev_planned_load_smart_charging_entity: str | None = None
     ev_planned_load_battery_capacity_kwh: float = 0.0
     ev_planned_load_charger_power_kw: float = 0.0
     ev_planned_load_charger_efficiency_pct: float = 100.0
@@ -216,7 +215,6 @@ class SensorConfig:
     ev_second_planned_load_target_soc_fixed: float = 80.0
     ev_second_planned_load_deadline_entity: str | None = None
     ev_second_planned_load_deadline_fixed: str = "07:00"
-    ev_second_planned_load_smart_charging_entity: str | None = None
     ev_second_planned_load_battery_capacity_kwh: float = 0.0
     ev_second_planned_load_charger_power_kw: float = 0.0
     ev_second_planned_load_charger_efficiency_pct: float = 100.0

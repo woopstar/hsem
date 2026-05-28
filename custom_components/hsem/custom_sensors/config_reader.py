@@ -382,9 +382,6 @@ def build_sensor_config(config_entry) -> SensorConfig:
     cfg.ev_planned_load_deadline_fixed = (
         str(_deadline_fixed) if _deadline_fixed else "07:00"
     )
-    cfg.ev_planned_load_smart_charging_entity = _optional_entity(
-        get_config_value(config_entry, "hsem_ev_planned_load_smart_charging_entity")
-    )
     _bat_cap = convert_to_float(
         get_config_value(config_entry, "hsem_ev_planned_load_battery_capacity_kwh")
     )
@@ -419,11 +416,6 @@ def build_sensor_config(config_entry) -> SensorConfig:
         config_entry, "hsem_ev_second_planned_load_deadline_fixed"
     )
     cfg.ev_second_planned_load_deadline_fixed = str(_s2_dl) if _s2_dl else "07:00"
-    cfg.ev_second_planned_load_smart_charging_entity = _optional_entity(
-        get_config_value(
-            config_entry, "hsem_ev_second_planned_load_smart_charging_entity"
-        )
-    )
     _s2_cap = convert_to_float(
         get_config_value(
             config_entry, "hsem_ev_second_planned_load_battery_capacity_kwh"
