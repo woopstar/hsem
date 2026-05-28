@@ -259,31 +259,6 @@ def apply_excess_export(
         )
         return
 
-    # D16 fix: track actual solar vs grid fractions rather than a coarse flag.
-    # We compute the total kWh scheduled to be charged from solar vs from the
-    # grid within this planning run.  The solar fraction determines how much of
-    # the battery is considered "free" (solar-charged) vs paid-for (grid-charged).
-    # When the solar fraction exceeds 50 % of total planned charging we treat
-    # the battery as predominantly solar-charged and bypass the price threshold;
-    # otherwise the full price-difference guard applies.
-    solar_charged_kwh = sum(
-        s.batteries_charged_kwh
-        for s in slots
-        if s.recommendation == Recommendations.BatteriesChargeSolar.value
-    )
-    grid_charged_kwh = sum(
-        s.batteries_charged_kwh
-        for s in slots
-        if s.recommendation == Recommendations.BatteriesChargeGrid.value
-    )
-    total_planned_charge_kwh = solar_charged_kwh + grid_charged_kwh
-    # battery_is_solar_charged is True only when solar charging is the
-    # dominant (> 50 %) planned source, or when no grid charging is planned.
-    battery_is_solar_charged = (
-        total_planned_charge_kwh < 1e-9
-        or solar_charged_kwh / total_planned_charge_kwh > 0.5
-    )
-
     # Force discharge profitability per slot:
     #   profit = export × battery - house × import - charge - cycle
     # where battery ≈ min(max_discharge, net_demand) and house ≈ net_demand.
