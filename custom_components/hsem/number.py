@@ -11,8 +11,10 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from custom_components.hsem.custom_numbers.entity import (
+from custom_components.hsem.custom_numbers.battery_efficiency import (
     HSEMBatteryEfficiencyNumber,
+)
+from custom_components.hsem.custom_numbers.ev_target_soc import (
     HSEMEVTargetSocNumber,
 )
 from custom_components.hsem.utils.sensornames import (
