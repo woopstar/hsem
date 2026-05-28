@@ -8,10 +8,10 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from custom_components.hsem.custom_times.entity import (
-    HSEMTimeEntity,
+from custom_components.hsem.custom_times.description import (
     HSEMTimeEntityDescription,
 )
+from custom_components.hsem.custom_times.time import HSEMTimeEntity
 from custom_components.hsem.utils.misc import get_config_value
 from custom_components.hsem.utils.sensornames import (
     get_ev_deadline_time_key,

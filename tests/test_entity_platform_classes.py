@@ -22,12 +22,12 @@ from homeassistant.components.switch import SwitchEntity
 from homeassistant.components.time import TimeEntity
 from homeassistant.helpers.entity import ToggleEntity
 
-from custom_components.hsem.custom_selectors.entity import HSEMWorkingModeSelector
-from custom_components.hsem.custom_switches.entity import HSEMSwitch
-from custom_components.hsem.custom_times.entity import (
-    HSEMTimeEntity,
+from custom_components.hsem.custom_selectors.working_mode import HSEMWorkingModeSelector
+from custom_components.hsem.custom_switches.switch import HSEMSwitch
+from custom_components.hsem.custom_times.description import (
     HSEMTimeEntityDescription,
 )
+from custom_components.hsem.custom_times.time import HSEMTimeEntity
 
 # ---------------------------------------------------------------------------
 # Helpers

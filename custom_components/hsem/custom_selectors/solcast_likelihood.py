@@ -1,4 +1,4 @@
-"""Select entity for the HSEM Solcast PV Forecast Likelihood.
+"""Solcast PV forecast likelihood selector entity for the HSEM integration.
 
 This module defines :class:`HSEMSolcastLikelihoodSelector`, a standard
 :class:`homeassistant.components.select.SelectEntity` that lets users pick

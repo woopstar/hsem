@@ -30,15 +30,15 @@ from homeassistant.components.switch import SwitchEntity
 from homeassistant.components.time import TimeEntity
 
 from custom_components.hsem.const import DOMAIN
-from custom_components.hsem.custom_selectors.entity import HSEMWorkingModeSelector
-from custom_components.hsem.custom_switches.entity import (
-    HSEMSwitch,
+from custom_components.hsem.custom_selectors.working_mode import HSEMWorkingModeSelector
+from custom_components.hsem.custom_switches.description import (
     HSEMSwitchEntityDescription,
 )
-from custom_components.hsem.custom_times.entity import (
-    HSEMTimeEntity,
+from custom_components.hsem.custom_switches.switch import HSEMSwitch
+from custom_components.hsem.custom_times.description import (
     HSEMTimeEntityDescription,
 )
+from custom_components.hsem.custom_times.time import HSEMTimeEntity
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -207,7 +207,7 @@ class TestSwitchUniqueId:
 
     def test_unique_id_all_switches(self) -> None:
         """Every switch key produces the unique_id from the sensornames getter."""
-        from custom_components.hsem.custom_switches.entity import _SWITCH_ID_MAP
+        from custom_components.hsem.custom_switches.description import _SWITCH_ID_MAP
         from custom_components.hsem.switch import SWITCH_DESCRIPTIONS
 
         for desc in SWITCH_DESCRIPTIONS:

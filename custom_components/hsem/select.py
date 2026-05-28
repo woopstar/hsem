@@ -10,8 +10,10 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from custom_components.hsem.custom_selectors.entity import HSEMWorkingModeSelector
-from custom_components.hsem.custom_selectors.select import HSEMSolcastLikelihoodSelector
+from custom_components.hsem.custom_selectors.solcast_likelihood import (
+    HSEMSolcastLikelihoodSelector,
+)
+from custom_components.hsem.custom_selectors.working_mode import HSEMWorkingModeSelector
 from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.sensornames import (
     get_force_working_mode_selector_key,

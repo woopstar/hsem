@@ -9,10 +9,10 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from custom_components.hsem.custom_switches.entity import (
-    HSEMSwitch,
+from custom_components.hsem.custom_switches.description import (
     HSEMSwitchEntityDescription,
 )
+from custom_components.hsem.custom_switches.switch import HSEMSwitch
 from custom_components.hsem.utils.sensornames import (
     get_batteries_schedule_1_switch_key,
     get_batteries_schedule_2_switch_key,
