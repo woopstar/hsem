@@ -103,6 +103,13 @@ class EVPlannerInput:
             charging past the target SoC using surplus PV that would otherwise
             be curtailed (e.g. battery full, negative export prices).
             Only applies when the EV has reached target SoC but is below 100 %.
+        slot_predicted_battery_kwh: Per-slot predicted battery energy (kWh
+            above discharge floor) at the *start* of each slot, assuming no
+            EV charging and no grid charging.  Used to gate Pass 3 — the EV
+            only charges past target when the battery is already full and
+            the surplus would otherwise be stranded.
+        usable_battery_kwh: Maximum usable battery capacity (kWh).  Used as
+            the ceiling for the predicted-battery check in Pass 3.
         now: Timezone-aware current datetime.
     """
 
@@ -117,6 +124,8 @@ class EVPlannerInput:
     deadline: datetime | None = None
     base_load_includes_ev: bool = False
     allow_charge_past_target_soc: bool = False
+    slot_predicted_battery_kwh: list[float] = field(default_factory=list)
+    usable_battery_kwh: float = 0.0
     now: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
@@ -500,13 +509,15 @@ def build_ev_charging_plan(
     # --- Pass 3: charge past target on surplus PV only ---
     # When allow_charge_past_target_soc is enabled and the EV has reached
     # its target SoC (remaining_energy ≈ 0), continue charging from any
-    # remaining PV-surplus slots.  These slots are free — the energy would
-    # otherwise be curtailed when the battery is full and export prices are
-    # negative.  Only slots that are NOT already in the plan are considered.
+    # remaining PV-surplus slots — but only when the house battery is
+    # already predicted to be full at that slot, meaning the surplus
+    # would otherwise be stranded (curtailed).
     if (
         inp.allow_charge_past_target_soc
         and remaining_energy < 1e-9
         and inp.current_soc_pct < 100
+        and len(inp.slot_predicted_battery_kwh)
+        == len(surplus_slots) + len(non_surplus_slots)  # type: ignore[arg-type]
     ):
         used_starts = {s.start for s in selected}
         # Re-scan surplus slots, skipping those already allocated.
@@ -514,6 +525,14 @@ def build_ev_charging_plan(
             s_start = slots_start[i]
             s_end = slots_end[i]
             if s_start in used_starts:
+                continue
+            # Only charge past target when the battery is already full
+            # at this slot — the surplus has nowhere else to go.
+            if (
+                inp.slot_predicted_battery_kwh
+                and i < len(inp.slot_predicted_battery_kwh)
+                and inp.slot_predicted_battery_kwh[i] < inp.usable_battery_kwh - 1e-6
+            ):
                 continue
             if (
                 max_charge_energy_for_slot(
