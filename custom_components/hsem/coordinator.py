@@ -73,6 +73,7 @@ from custom_components.hsem.utils.forecast_tracker import (
 from custom_components.hsem.utils.inverter_verify import CycleApplySummary
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 from custom_components.hsem.utils.logger import async_logger, set_planner_verbose
+from custom_components.hsem.utils.misc import get_config_value
 from custom_components.hsem.utils.recommendations import Recommendations
 
 # ---------------------------------------------------------------------------
@@ -517,6 +518,59 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 # hourly_recommendations so the current slot resolution in
                 # step 9 sees the held recommendation.
                 self._apply_planner_output(planner_output)
+
+                # 8b. Force-charge-now override: when the user toggles the
+                # "EV Force Charge Now" switch, override the current slot's
+                # recommendation and calculated power to charge at max speed.
+                force_primary = bool(
+                    get_config_value(self._config_entry, "hsem_ev_force_charge_now")
+                )
+                force_second = bool(
+                    get_config_value(
+                        self._config_entry, "hsem_ev_second_force_charge_now"
+                    )
+                )
+                if force_primary or force_second:
+                    now_slot = next(
+                        (
+                            r
+                            for r in self._hourly_recommendations
+                            if as_tz(r.start, now.tzinfo)
+                            <= now
+                            < as_tz(r.end, now.tzinfo)
+                        ),
+                        None,
+                    )
+                    if now_slot is not None:
+                        # Max AC power = charger_power_kw * 1000
+                        if force_primary:
+                            now_slot.recommendation = (
+                                Recommendations.EVSmartCharging.value
+                            )
+                            pwr_kw = float(
+                                get_config_value(
+                                    self._config_entry,
+                                    "hsem_ev_planned_load_charger_power_kw",
+                                )
+                                or 0.0
+                            )
+                            now_slot.ev_charger_calculated_power = (
+                                round(pwr_kw * 1000) if pwr_kw > 0 else 0.0
+                            )
+                        if force_second:
+                            now_slot.recommendation = (
+                                Recommendations.EVSmartCharging.value
+                            )
+                            pwr_kw = float(
+                                get_config_value(
+                                    self._config_entry,
+                                    "hsem_ev_second_planned_load_charger_power_kw",
+                                )
+                                or 0.0
+                            )
+                            now_slot.ev_second_charger_calculated_power = (
+                                round(pwr_kw * 1000) if pwr_kw > 0 else 0.0
+                            )
 
                 # 9. Find the current time-slot recommendation.
                 self._hourly_recommendations.sort(key=lambda x: x.start)

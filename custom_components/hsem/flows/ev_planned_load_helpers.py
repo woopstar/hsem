@@ -29,8 +29,6 @@ from custom_components.hsem.utils.misc import get_config_value
 
 # Entity domains accepted for EV connected binary sensor and smart charging flag.
 _BOOL_DOMAINS = ["binary_sensor", "input_boolean", "sensor", "switch"]
-# Entity domains accepted for deadline entity.
-_TIME_DOMAINS = ["input_datetime", "sensor", "input_text"]
 
 # Shared number selectors — defined once for reuse across both EV steps.
 _CAPACITY_SELECTOR = selector(
@@ -69,30 +67,6 @@ _EFFICIENCY_SELECTOR = selector(
     }
 )
 
-_SOC_SELECTOR = selector(
-    {
-        "number": {
-            "min": 0,
-            "max": 100,
-            "step": 1,
-            "unit_of_measurement": "%",
-            "mode": "slider",
-        }
-    }
-)
-
-# Optional entity field names relative to a prefix (suffix only, without trailing _)
-# NOTE: connected_sensor, soc_sensor, target_soc_entity, and actual_power_sensor
-# are omitted because they duplicate the basic EV charger sensors configured in
-# the `ev` flow step (hsem_ev_connected, hsem_ev_soc, hsem_ev_soc_target,
-# hsem_ev_charger_power).  The state collector reads those from the EV charger
-# config and falls back to them for planned load state when the planned-load-
-# specific fields are absent.
-_OPTIONAL_ENTITY_SUFFIXES = [
-    "deadline_entity",
-    "smart_charging_entity",
-]
-
 
 async def build_ev_planned_load_schema(config_entry, prefix: str) -> vol.Schema:
     """Return the data schema for an EV planned load config flow step.
@@ -118,18 +92,6 @@ async def build_ev_planned_load_schema(config_entry, prefix: str) -> vol.Schema:
                 _k("enabled"),
                 default=_v("enabled"),
             ): selector({"boolean": {}}),
-            vol.Required(
-                _k("target_soc_fixed"),
-                default=_v("target_soc_fixed"),
-            ): _SOC_SELECTOR,
-            vol.Optional(
-                _k("deadline_entity"),
-                default=_v("deadline_entity"),
-            ): selector({"entity": {"domain": _TIME_DOMAINS}}),
-            vol.Required(
-                _k("deadline_fixed"),
-                default=_v("deadline_fixed"),
-            ): selector({"text": {}}),
             vol.Optional(
                 _k("smart_charging_entity"),
                 default=_v("smart_charging_entity"),
@@ -171,10 +133,10 @@ async def validate_ev_planned_load_schema_input(
         return {}
 
     errors: dict[str, str] = {}
-    for suffix in _OPTIONAL_ENTITY_SUFFIXES:
-        field = f"{prefix}_{suffix}"
-        val = user_input.get(field)
-        if val and str(val).strip():
-            entity_errors = await async_validate_entity_ids(hass, {field: val}, [field])
-            merge_errors(errors, entity_errors)
+    # Validate optional smart charging entity if provided.
+    field = f"{prefix}_smart_charging_entity"
+    val = user_input.get(field)
+    if val and str(val).strip():
+        entity_errors = await async_validate_entity_ids(hass, {field: val}, [field])
+        merge_errors(errors, entity_errors)
     return errors

@@ -1,13 +1,9 @@
-"""Number entity for the HSEM battery charge/discharge efficiency.
+"""Number entity for HSEM battery charge/discharge efficiency.
 
-This module defines :class:`HSEMBatteryEfficiencyNumber`, a standard
+Defines :class:`HSEMBatteryEfficiencyNumber`, a standard
 :class:`homeassistant.components.number.NumberEntity` that lets users
 adjust the battery charge/discharge efficiency percentage from the UI
 without re-running the config/options flow.
-
-The ``unique_id`` and ``entity_id`` are injected by the ``number.py``
-platform module after construction, so this class does not hard-code
-any entity identifiers.
 
 The value is persisted to the config entry options so it survives
 HA restarts.
@@ -57,7 +53,8 @@ class HSEMBatteryEfficiencyNumber(NumberEntity, HSEMEntity):
             hass: The Home Assistant instance.
             config_entry: The config entry this entity belongs to.
             description: Entity description carrying ``key`` and ``name``.
-            config_key: Config entry option key (e.g. ``hsem_batteries_charge_efficiency``).
+            config_key: Config entry option key
+                (e.g. ``hsem_batteries_charge_efficiency``).
             default: Default value when no config entry value exists yet.
             unique_id: Stable unique ID for HA entity registry.
             entity_id: The desired entity_id string for this entity.

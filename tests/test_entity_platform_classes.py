@@ -22,12 +22,12 @@ from homeassistant.components.switch import SwitchEntity
 from homeassistant.components.time import TimeEntity
 from homeassistant.helpers.entity import ToggleEntity
 
-from custom_components.hsem.custom_selectors.entity import HSEMWorkingModeSelector
-from custom_components.hsem.custom_switches.entity import HSEMSwitch
-from custom_components.hsem.custom_times.entity import (
-    HSEMTimeEntity,
+from custom_components.hsem.custom_selectors.working_mode import HSEMWorkingModeSelector
+from custom_components.hsem.custom_switches.switch import HSEMSwitch
+from custom_components.hsem.custom_times.description import (
     HSEMTimeEntityDescription,
 )
+from custom_components.hsem.custom_times.time import HSEMTimeEntity
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -273,9 +273,9 @@ class TestTimePlatformSetup:
     """Verify that async_setup_entry registers the expected time entities."""
 
     @pytest.mark.asyncio
-    async def test_setup_entry_creates_six_time_entities(self) -> None:
-        """Six time entities (3 schedules × start/end) should be created."""
-        from custom_components.hsem.time import TIMES, async_setup_entry
+    async def test_setup_entry_creates_eight_time_entities(self) -> None:
+        """Eight time entities (3 schedules + 2 EV deadlines) should be created."""
+        from custom_components.hsem.time import async_setup_entry
 
         hass = _mock_hass()
         config_entry = _mock_config_entry(
@@ -286,6 +286,8 @@ class TestTimePlatformSetup:
                 "hsem_batteries_enable_batteries_schedule_2_end": "21:00:00",
                 "hsem_batteries_enable_batteries_schedule_3_start": "23:00:00",
                 "hsem_batteries_enable_batteries_schedule_3_end": "02:00:00",
+                "hsem_ev_deadline_time": "07:00:00",
+                "hsem_ev_second_deadline_time": "07:00:00",
             }
         )
 
@@ -300,8 +302,7 @@ class TestTimePlatformSetup:
         ):
             await async_setup_entry(hass, config_entry, add_entities)
 
-        assert len(added) == len(TIMES)
-        assert len(added) == 6
+        assert len(added) == 8
 
     @pytest.mark.asyncio
     async def test_setup_entry_all_entities_are_time_entities(self) -> None:
@@ -348,6 +349,8 @@ class TestTimePlatformSetup:
                 "hsem_batteries_enable_batteries_schedule_2_end": "21:00:00",
                 "hsem_batteries_enable_batteries_schedule_3_start": "23:00:00",
                 "hsem_batteries_enable_batteries_schedule_3_end": "02:00:00",
+                "hsem_ev_deadline_time": "07:00:00",
+                "hsem_ev_second_deadline_time": "07:00:00",
             }
         )
         added: list = []
@@ -364,3 +367,7 @@ class TestTimePlatformSetup:
         for entity in added:
             assert entity.native_value is not None
             assert isinstance(entity.native_value, time)
+
+
+# ---------------------------------------------------------------------------
+# HSEMTimeEntity — async_set_value round-trip

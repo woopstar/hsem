@@ -216,9 +216,6 @@ def build_sensor_config(config_entry) -> SensorConfig:
         get_config_value(config_entry, "hsem_ev_charger_power")
     )
     ev.soc_entity = _optional_entity(get_config_value(config_entry, "hsem_ev_soc"))
-    ev.soc_target_entity = _optional_entity(
-        get_config_value(config_entry, "hsem_ev_soc_target")
-    )
     ev.connected_entity = _optional_entity(
         get_config_value(config_entry, "hsem_ev_connected")
     )
@@ -244,9 +241,6 @@ def build_sensor_config(config_entry) -> SensorConfig:
     )
     ev2.soc_entity = _optional_entity(
         get_config_value(config_entry, "hsem_ev_second_soc")
-    )
-    ev2.soc_target_entity = _optional_entity(
-        get_config_value(config_entry, "hsem_ev_second_soc_target")
     )
     ev2.connected_entity = _optional_entity(
         get_config_value(config_entry, "hsem_ev_second_connected")
@@ -367,24 +361,6 @@ def build_sensor_config(config_entry) -> SensorConfig:
     cfg.ev_planned_load_enabled = convert_to_boolean(
         get_config_value(config_entry, "hsem_ev_planned_load_enabled")
     )
-    cfg.ev_planned_load_target_soc_fixed = (
-        convert_to_float(
-            get_config_value(config_entry, "hsem_ev_planned_load_target_soc_fixed")
-        )
-        or 80.0
-    )
-    cfg.ev_planned_load_deadline_entity = _optional_entity(
-        get_config_value(config_entry, "hsem_ev_planned_load_deadline_entity")
-    )
-    _deadline_fixed = get_config_value(
-        config_entry, "hsem_ev_planned_load_deadline_fixed"
-    )
-    cfg.ev_planned_load_deadline_fixed = (
-        str(_deadline_fixed) if _deadline_fixed else "07:00"
-    )
-    cfg.ev_planned_load_smart_charging_entity = _optional_entity(
-        get_config_value(config_entry, "hsem_ev_planned_load_smart_charging_entity")
-    )
     _bat_cap = convert_to_float(
         get_config_value(config_entry, "hsem_ev_planned_load_battery_capacity_kwh")
     )
@@ -403,26 +379,6 @@ def build_sensor_config(config_entry) -> SensorConfig:
     # Second EV planned load integration
     cfg.ev_second_planned_load_enabled = convert_to_boolean(
         get_config_value(config_entry, "hsem_ev_second_planned_load_enabled")
-    )
-    cfg.ev_second_planned_load_target_soc_fixed = (
-        convert_to_float(
-            get_config_value(
-                config_entry, "hsem_ev_second_planned_load_target_soc_fixed"
-            )
-        )
-        or 80.0
-    )
-    cfg.ev_second_planned_load_deadline_entity = _optional_entity(
-        get_config_value(config_entry, "hsem_ev_second_planned_load_deadline_entity")
-    )
-    _s2_dl = get_config_value(
-        config_entry, "hsem_ev_second_planned_load_deadline_fixed"
-    )
-    cfg.ev_second_planned_load_deadline_fixed = str(_s2_dl) if _s2_dl else "07:00"
-    cfg.ev_second_planned_load_smart_charging_entity = _optional_entity(
-        get_config_value(
-            config_entry, "hsem_ev_second_planned_load_smart_charging_entity"
-        )
     )
     _s2_cap = convert_to_float(
         get_config_value(

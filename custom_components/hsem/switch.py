@@ -9,74 +9,82 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from custom_components.hsem.custom_switches.entity import (
-    HSEMSwitch,
+from custom_components.hsem.custom_switches.description import (
     HSEMSwitchEntityDescription,
 )
+from custom_components.hsem.custom_switches.switch import HSEMSwitch
 from custom_components.hsem.utils.sensornames import (
     get_batteries_schedule_1_switch_key,
-    get_batteries_schedule_1_switch_name,
     get_batteries_schedule_2_switch_key,
-    get_batteries_schedule_2_switch_name,
     get_batteries_schedule_3_switch_key,
-    get_batteries_schedule_3_switch_name,
+    get_ev_force_charge_now_switch_key,
     get_ev_force_discharge_switch_key,
-    get_ev_force_discharge_switch_name,
+    get_ev_second_force_charge_now_switch_key,
+    get_ev_second_smart_charging_switch_key,
+    get_ev_smart_charging_switch_key,
     get_extended_attributes_switch_key,
-    get_extended_attributes_switch_name,
     get_read_only_switch_key,
-    get_read_only_switch_name,
     get_verbose_logging_switch_key,
-    get_verbose_logging_switch_name,
 )
 
-# One description per switch.  Keys and names are sourced from sensornames.py
-# so that unique_ids, entity_ids, and display names are defined in one place.
+# One description per switch.  Keys are sourced from sensornames.py so that
+# unique_ids and entity_ids are defined in one place.  Display names come
+# from translations via translation_key.
 SWITCH_DESCRIPTIONS: tuple[HSEMSwitchEntityDescription, ...] = (
     HSEMSwitchEntityDescription(
         key=get_read_only_switch_key(),
-        name=get_read_only_switch_name(),
         icon="mdi:toggle-switch",
-        description="Toggle read-only mode for the integration.",
+        translation_key="read_only",
     ),
     HSEMSwitchEntityDescription(
         key=get_extended_attributes_switch_key(),
-        name=get_extended_attributes_switch_name(),
         icon="mdi:toggle-switch",
-        description="Extend amount of attributes provided by the working mode sensor.",
+        translation_key="extended_attributes",
     ),
     HSEMSwitchEntityDescription(
         key=get_verbose_logging_switch_key(),
-        name=get_verbose_logging_switch_name(),
         icon="mdi:toggle-switch",
-        description="Enable to get verbose logging into the HA log.",
+        translation_key="verbose_logging",
     ),
     HSEMSwitchEntityDescription(
         key=get_batteries_schedule_1_switch_key(),
-        name=get_batteries_schedule_1_switch_name(),
         icon="mdi:toggle-switch",
-        description="Enable or disable batteries schedule 1.",
+        translation_key="batteries_schedule_1",
     ),
     HSEMSwitchEntityDescription(
         key=get_batteries_schedule_2_switch_key(),
-        name=get_batteries_schedule_2_switch_name(),
         icon="mdi:toggle-switch",
-        description="Enable or disable batteries schedule 2.",
+        translation_key="batteries_schedule_2",
     ),
     HSEMSwitchEntityDescription(
         key=get_batteries_schedule_3_switch_key(),
-        name=get_batteries_schedule_3_switch_name(),
         icon="mdi:toggle-switch",
-        description="Enable or disable batteries schedule 3.",
+        translation_key="batteries_schedule_3",
     ),
     HSEMSwitchEntityDescription(
         key=get_ev_force_discharge_switch_key(),
-        name=get_ev_force_discharge_switch_name(),
         icon="mdi:toggle-switch",
-        description=(
-            "Enable this if you want to force a specific maximum discharge power"
-            " for the Huawei batteries while EV is charging."
-        ),
+        translation_key="ev_force_discharge",
+    ),
+    HSEMSwitchEntityDescription(
+        key=get_ev_smart_charging_switch_key(),
+        icon="mdi:ev-station",
+        translation_key="ev_smart_charging",
+    ),
+    HSEMSwitchEntityDescription(
+        key=get_ev_force_charge_now_switch_key(),
+        icon="mdi:ev-station",
+        translation_key="ev_force_charge_now",
+    ),
+    HSEMSwitchEntityDescription(
+        key=get_ev_second_smart_charging_switch_key(),
+        icon="mdi:ev-station",
+        translation_key="ev_second_smart_charging",
+    ),
+    HSEMSwitchEntityDescription(
+        key=get_ev_second_force_charge_now_switch_key(),
+        icon="mdi:ev-station",
+        translation_key="ev_second_force_charge_now",
     ),
 )
 

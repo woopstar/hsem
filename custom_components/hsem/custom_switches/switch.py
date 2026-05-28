@@ -1,90 +1,24 @@
 """Switch entity for the HSEM integration.
 
-Defines :class:`HSEMSwitchEntityDescription` and :class:`HSEMSwitch`.
+Defines :class:`HSEMSwitch`.
 
 :class:`HSEMSwitch` is a standard :class:`SwitchEntity` that persists its
 on/off state to the config entry options so it survives HA restarts.
 """
 
-from dataclasses import dataclass
 from typing import Any
 
-from homeassistant.components.switch import SwitchEntity, SwitchEntityDescription
+from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 
+from custom_components.hsem.custom_switches.description import (
+    _SWITCH_ID_MAP,
+    HSEMSwitchEntityDescription,
+)
 from custom_components.hsem.entity import HSEMEntity
 from custom_components.hsem.utils.misc import get_config_value
-from custom_components.hsem.utils.sensornames import (
-    get_batteries_schedule_1_switch_entity_id,
-    get_batteries_schedule_1_switch_key,
-    get_batteries_schedule_1_switch_unique_id,
-    get_batteries_schedule_2_switch_entity_id,
-    get_batteries_schedule_2_switch_key,
-    get_batteries_schedule_2_switch_unique_id,
-    get_batteries_schedule_3_switch_entity_id,
-    get_batteries_schedule_3_switch_key,
-    get_batteries_schedule_3_switch_unique_id,
-    get_ev_force_discharge_switch_entity_id,
-    get_ev_force_discharge_switch_key,
-    get_ev_force_discharge_switch_unique_id,
-    get_extended_attributes_switch_entity_id,
-    get_extended_attributes_switch_key,
-    get_extended_attributes_switch_unique_id,
-    get_read_only_switch_entity_id,
-    get_read_only_switch_key,
-    get_read_only_switch_unique_id,
-    get_verbose_logging_switch_entity_id,
-    get_verbose_logging_switch_key,
-    get_verbose_logging_switch_unique_id,
-)
-
-# Map from config-entry key → (unique_id getter, entity_id getter)
-_SWITCH_ID_MAP: dict[str, tuple[str, str]] = {
-    get_read_only_switch_key(): (
-        get_read_only_switch_unique_id(),
-        get_read_only_switch_entity_id(),
-    ),
-    get_extended_attributes_switch_key(): (
-        get_extended_attributes_switch_unique_id(),
-        get_extended_attributes_switch_entity_id(),
-    ),
-    get_verbose_logging_switch_key(): (
-        get_verbose_logging_switch_unique_id(),
-        get_verbose_logging_switch_entity_id(),
-    ),
-    get_batteries_schedule_1_switch_key(): (
-        get_batteries_schedule_1_switch_unique_id(),
-        get_batteries_schedule_1_switch_entity_id(),
-    ),
-    get_batteries_schedule_2_switch_key(): (
-        get_batteries_schedule_2_switch_unique_id(),
-        get_batteries_schedule_2_switch_entity_id(),
-    ),
-    get_batteries_schedule_3_switch_key(): (
-        get_batteries_schedule_3_switch_unique_id(),
-        get_batteries_schedule_3_switch_entity_id(),
-    ),
-    get_ev_force_discharge_switch_key(): (
-        get_ev_force_discharge_switch_unique_id(),
-        get_ev_force_discharge_switch_entity_id(),
-    ),
-}
-
-
-@dataclass(frozen=True)
-class HSEMSwitchEntityDescription(SwitchEntityDescription):
-    """Extended entity description that adds a human-readable description field.
-
-    Attributes
-    ----------
-    description:
-        Short human-readable description of the switch's purpose, exposed as
-        an entity attribute for dashboard display.
-    """
-
-    description: str = ""
 
 
 class HSEMSwitch(SwitchEntity, HSEMEntity):

@@ -25,7 +25,6 @@ class EVChargerConfig:
     status_entity: str | None = None
     power_entity: str | None = None
     soc_entity: str | None = None
-    soc_target_entity: str | None = None
     connected_entity: str | None = None
     allow_charge_past_target_soc: bool = False
     force_max_discharge_power: bool = False
@@ -204,19 +203,11 @@ class SensorConfig:
 
     # EV planned load integration — primary EV (optional, disabled by default)
     ev_planned_load_enabled: bool = False
-    ev_planned_load_target_soc_fixed: float = 80.0
-    ev_planned_load_deadline_entity: str | None = None
-    ev_planned_load_deadline_fixed: str = "07:00"
-    ev_planned_load_smart_charging_entity: str | None = None
     ev_planned_load_battery_capacity_kwh: float = 0.0
     ev_planned_load_charger_power_kw: float = 0.0
     ev_planned_load_charger_efficiency_pct: float = 100.0
     # EV planned load integration — second EV (optional, disabled by default)
     ev_second_planned_load_enabled: bool = False
-    ev_second_planned_load_target_soc_fixed: float = 80.0
-    ev_second_planned_load_deadline_entity: str | None = None
-    ev_second_planned_load_deadline_fixed: str = "07:00"
-    ev_second_planned_load_smart_charging_entity: str | None = None
     ev_second_planned_load_battery_capacity_kwh: float = 0.0
     ev_second_planned_load_charger_power_kw: float = 0.0
     ev_second_planned_load_charger_efficiency_pct: float = 100.0

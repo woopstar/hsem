@@ -10,14 +10,14 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from custom_components.hsem.custom_selectors.entity import HSEMWorkingModeSelector
-from custom_components.hsem.custom_selectors.select import HSEMSolcastLikelihoodSelector
+from custom_components.hsem.custom_selectors.solcast_likelihood import (
+    HSEMSolcastLikelihoodSelector,
+)
+from custom_components.hsem.custom_selectors.working_mode import HSEMWorkingModeSelector
 from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.sensornames import (
     get_force_working_mode_selector_key,
-    get_force_working_mode_selector_name,
     get_solcast_likelihood_selector_key,
-    get_solcast_likelihood_selector_name,
 )
 
 # Selectable working modes exposed to the user.
@@ -38,16 +38,16 @@ _DEFAULT_OPTION = "auto"
 # Using SelectEntityDescription keeps the definition declarative and makes it
 # trivial to add more selectors in the future without duplicating constructor
 # arguments.
+# Display names come from translations via translation_key.
 SELECTOR_DESCRIPTIONS: tuple[SelectEntityDescription, ...] = (
     SelectEntityDescription(
         key=get_force_working_mode_selector_key(),
-        name=get_force_working_mode_selector_name(),
         icon="mdi:chart-timeline-variant",
         options=[_DEFAULT_OPTION] + _RECOMMENDATION_OPTIONS,
+        translation_key="force_working_mode",
     ),
     SelectEntityDescription(
         key=get_solcast_likelihood_selector_key(),
-        name=get_solcast_likelihood_selector_name(),
         icon="mdi:solar-power",
         options=["pv_estimate", "pv_estimate10", "pv_estimate90"],
         translation_key="pv_estimate_likelihood",

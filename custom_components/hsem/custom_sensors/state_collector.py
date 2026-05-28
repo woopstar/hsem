@@ -36,10 +36,17 @@ from custom_components.hsem.utils.misc import (
     async_resolve_entity_id_from_unique_id,
     convert_to_boolean,
     convert_to_float,
+    get_config_value,
     ha_get_entity_state_and_convert,
 )
 from custom_components.hsem.utils.sensornames import (
     get_energy_average_sensor_unique_id,
+    get_ev_deadline_time_entity_id,
+    get_ev_second_deadline_time_entity_id,
+    get_ev_second_smart_charging_switch_entity_id,
+    get_ev_second_target_soc_number_entity_id,
+    get_ev_smart_charging_switch_entity_id,
+    get_ev_target_soc_number_entity_id,
     get_force_working_mode_selector_key,
 )
 
@@ -129,10 +136,10 @@ async def async_collect_live_state(
         )
     if cfg.ev.soc_entity:
         ev.soc_pct = convert_to_float(_read(cfg.ev.soc_entity, "float", label="ev_soc"))
-    if cfg.ev.soc_target_entity:
-        ev.soc_target_pct = convert_to_float(
-            _read(cfg.ev.soc_target_entity, "float", label="ev_soc_target")
-        )
+    ev.soc_target_pct = (
+        convert_to_float(get_config_value(sensor._config_entry, "hsem_ev_target_soc"))
+        or 80.0
+    )
     if cfg.ev.connected_entity:
         ev.is_connected = convert_to_boolean(
             _read(cfg.ev.connected_entity, "boolean", label="ev_connected")
@@ -159,14 +166,12 @@ async def async_collect_live_state(
         ev2.soc_pct = convert_to_float(
             _read(cfg.ev_second.soc_entity, "float", label="ev_second_soc")
         )
-    if cfg.ev_second.soc_target_entity:
-        ev2.soc_target_pct = convert_to_float(
-            _read(
-                cfg.ev_second.soc_target_entity,
-                "float",
-                label="ev_second_soc_target",
-            )
+    ev2.soc_target_pct = (
+        convert_to_float(
+            get_config_value(sensor._config_entry, "hsem_ev_second_target_soc")
         )
+        or 80.0
+    )
     if cfg.ev_second.connected_entity:
         ev2.is_connected = convert_to_boolean(
             _read(
@@ -453,14 +458,25 @@ def _read_ev_planned_load_state(
     ev_cfg = cfg.ev_second if is_second else cfg.ev
 
     # The planned-load sensors duplicate the basic EV charger sensors
-    # (hsem_ev_connected, hsem_ev_soc, hsem_ev_soc_target).
+    # (hsem_ev_connected, hsem_ev_soc). Target SoC is now an HSEM
+    # number entity persisted in the config entry options.
     connected_sensor = ev_cfg.connected_entity
     soc_sensor = ev_cfg.soc_entity
-    target_soc_entity = ev_cfg.soc_target_entity
-    target_soc_fixed = getattr(cfg, f"{p}_target_soc_fixed", 80.0)
-    smart_entity = getattr(cfg, f"{p}_smart_charging_entity", None)
-    deadline_entity = getattr(cfg, f"{p}_deadline_entity", None)
-    deadline_fixed = getattr(cfg, f"{p}_deadline_fixed", "07:00")
+
+    # Smart charging is now controlled by the HSEM switch entity instead of
+    # an external input_boolean.  Read the switch state from config options.
+    smart_switch_key = (
+        "hsem_ev_second_smart_charging" if is_second else "hsem_ev_smart_charging"
+    )
+    smart_enabled = bool(get_config_value(sensor._config_entry, smart_switch_key))
+
+    # Deadline is now read from the time entity config option.
+    deadline_key = (
+        "hsem_ev_second_deadline_time" if is_second else "hsem_ev_deadline_time"
+    )
+    deadline_fixed = (
+        str(get_config_value(sensor._config_entry, deadline_key)) or "07:00"
+    )
 
     if connected_sensor:
         setattr(
@@ -481,30 +497,25 @@ def _read_ev_planned_load_state(
         _soc = convert_to_float(_read(soc_sensor, "float", label=f"{p}_soc"))
         setattr(state, f"{p}_current_soc_pct", _soc if _soc is not None else 0.0)
 
-    if target_soc_entity:
-        _tsoc = convert_to_float(
-            _read(target_soc_entity, "float", label=f"{p}_target_soc")
-        )
-        setattr(
-            state,
-            f"{p}_target_soc_pct",
-            _tsoc if _tsoc is not None else target_soc_fixed,
-        )
-    else:
-        setattr(state, f"{p}_target_soc_pct", target_soc_fixed)
+    # Target SoC is read from the HSEM number entity config option.
+    target_soc_config_key = (
+        "hsem_ev_second_target_soc" if is_second else "hsem_ev_target_soc"
+    )
+    _tsoc = convert_to_float(
+        get_config_value(sensor._config_entry, target_soc_config_key)
+    )
+    setattr(
+        state,
+        f"{p}_target_soc_pct",
+        _tsoc if _tsoc is not None else 80.0,
+    )
 
-    if smart_entity:
-        _sc = convert_to_boolean(
-            _read(smart_entity, "boolean", label=f"{p}_smart_charging")
-        )
-        setattr(
-            state, f"{p}_smart_charging_enabled", bool(_sc) if _sc is not None else True
-        )
+    setattr(state, f"{p}_smart_charging_enabled", smart_enabled)
 
     setattr(
         state,
         f"{p}_deadline",
-        _resolve_ev_deadline_from_params(sensor, deadline_entity, deadline_fixed),
+        _resolve_ev_deadline_from_params(sensor, None, deadline_fixed),
     )
 
 
@@ -574,17 +585,18 @@ async def _register_listeners(
         this call.  The caller should store these and cancel them on teardown.
     """
     new_unsubs: list = []
+
     candidates = [
         cfg.ev.status_entity,
         cfg.ev.connected_entity,
-        cfg.ev.soc_target_entity,
-        cfg.ev_planned_load_smart_charging_entity,
-        cfg.ev_planned_load_deadline_entity,
+        get_ev_target_soc_number_entity_id(),
+        get_ev_smart_charging_switch_entity_id(),
+        get_ev_deadline_time_entity_id(),
         cfg.ev_second.status_entity,
         cfg.ev_second.connected_entity,
-        cfg.ev_second.soc_target_entity,
-        cfg.ev_second_planned_load_smart_charging_entity,
-        cfg.ev_second_planned_load_deadline_entity,
+        get_ev_second_target_soc_number_entity_id(),
+        get_ev_second_smart_charging_switch_entity_id(),
+        get_ev_second_deadline_time_entity_id(),
         state.force_working_mode,
     ]
 

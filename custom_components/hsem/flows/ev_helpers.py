@@ -125,13 +125,6 @@ async def build_ev_charger_schema(
 
     fields[
         vol.Optional(
-            f"{prefix}_soc_target",
-            default=get_config_value(config_entry, f"{prefix}_soc_target"),
-        )
-    ] = selector({"entity": {"domain": _SOC_DOMAINS}})
-
-    fields[
-        vol.Optional(
             f"{prefix}_connected",
             default=get_config_value(config_entry, f"{prefix}_connected"),
         )
@@ -191,7 +184,6 @@ async def validate_ev_charger_input(
             f"{prefix}_charger_status",
             f"{prefix}_charger_power",
             f"{prefix}_soc",
-            f"{prefix}_soc_target",
             f"{prefix}_connected",
         ],
     )

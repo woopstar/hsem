@@ -8,71 +8,71 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from custom_components.hsem.custom_times.entity import (
-    HSEMTimeEntity,
+from custom_components.hsem.custom_times.description import (
     HSEMTimeEntityDescription,
 )
+from custom_components.hsem.custom_times.time import HSEMTimeEntity
 from custom_components.hsem.utils.misc import get_config_value
 from custom_components.hsem.utils.sensornames import (
+    get_ev_deadline_time_key,
+    get_ev_second_deadline_time_key,
     get_schedule_1_end_time_key,
-    get_schedule_1_end_time_name,
     get_schedule_1_start_time_key,
-    get_schedule_1_start_time_name,
     get_schedule_2_end_time_key,
-    get_schedule_2_end_time_name,
     get_schedule_2_start_time_key,
-    get_schedule_2_start_time_name,
     get_schedule_3_end_time_key,
-    get_schedule_3_end_time_name,
     get_schedule_3_start_time_key,
-    get_schedule_3_start_time_name,
 )
 
-# One description per time entity.  Keys and names are sourced from sensornames.py
-# so that unique_ids, entity_ids, and display names are defined in one place.
+# One description per time entity.  Keys are sourced from sensornames.py so
+# that unique_ids and entity_ids are defined in one place.  Display names
+# come from translations via translation_key.
 TIME_DESCRIPTIONS: tuple[HSEMTimeEntityDescription, ...] = (
     HSEMTimeEntityDescription(
         key=get_schedule_1_start_time_key(),
-        name=get_schedule_1_start_time_name(),
         icon="mdi:clock",
-        description="Start time for schedule 1.",
+        translation_key="schedule_1_start",
     ),
     HSEMTimeEntityDescription(
         key=get_schedule_1_end_time_key(),
-        name=get_schedule_1_end_time_name(),
         icon="mdi:clock",
-        description="End time for schedule 1.",
+        translation_key="schedule_1_end",
     ),
     HSEMTimeEntityDescription(
         key=get_schedule_2_start_time_key(),
-        name=get_schedule_2_start_time_name(),
         icon="mdi:clock",
-        description="Start time for schedule 2.",
+        translation_key="schedule_2_start",
     ),
     HSEMTimeEntityDescription(
         key=get_schedule_2_end_time_key(),
-        name=get_schedule_2_end_time_name(),
         icon="mdi:clock",
-        description="End time for schedule 2.",
+        translation_key="schedule_2_end",
     ),
     HSEMTimeEntityDescription(
         key=get_schedule_3_start_time_key(),
-        name=get_schedule_3_start_time_name(),
         icon="mdi:clock",
-        description="Start time for schedule 3.",
+        translation_key="schedule_3_start",
     ),
     HSEMTimeEntityDescription(
         key=get_schedule_3_end_time_key(),
-        name=get_schedule_3_end_time_name(),
         icon="mdi:clock",
-        description="End time for schedule 3.",
+        translation_key="schedule_3_end",
+    ),
+    HSEMTimeEntityDescription(
+        key=get_ev_deadline_time_key(),
+        icon="mdi:clock",
+        translation_key="ev_deadline",
+    ),
+    HSEMTimeEntityDescription(
+        key=get_ev_second_deadline_time_key(),
+        icon="mdi:clock",
+        translation_key="ev_second_deadline",
     ),
 )
 
 # Keep TIMES for backwards compat with existing tests that import it.
 TIMES: dict[str, dict[str, str]] = {
-    desc.key: {"name": desc.name, "description": desc.description}
-    for desc in TIME_DESCRIPTIONS
+    desc.key: {"name": "", "description": ""} for desc in TIME_DESCRIPTIONS
 }
 
 
@@ -91,9 +91,8 @@ async def async_setup_entry(
                 # default_value so the entity starts with the persisted time.
                 HSEMTimeEntityDescription(
                     key=description.key,
-                    name=description.name,
                     icon=description.icon,
-                    description=description.description,
+                    translation_key=description.translation_key,
                     default_value=str(get_config_value(config_entry, description.key)),
                 ),
             )

@@ -574,6 +574,50 @@ def get_discharge_efficiency_number_entity_id() -> str:
     return number.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_battery_discharge_efficiency"))
 
 
+# EV Target SoC Number
+def get_ev_target_soc_number_key() -> str:
+    """Return the entity description key for the EV target SoC number entity."""
+    return f"{DOMAIN}_ev_target_soc"
+
+
+def get_ev_target_soc_number_name() -> str:
+    """Return the display name for the EV target SoC number entity."""
+    return "EV Target SoC"
+
+
+def get_ev_target_soc_number_unique_id() -> str:
+    """Return the unique_id for the EV target SoC number entity."""
+    return f"{DOMAIN}_{get_ev_target_soc_number_key()}_number"
+
+
+def get_ev_target_soc_number_entity_id() -> str:
+    """Return the entity_id for the EV target SoC number entity."""
+    return number.ENTITY_ID_FORMAT.format(s(get_ev_target_soc_number_unique_id()))
+
+
+# EV 2 Target SoC Number
+def get_ev_second_target_soc_number_key() -> str:
+    """Return the entity description key for the EV 2 target SoC number entity."""
+    return f"{DOMAIN}_ev_second_target_soc"
+
+
+def get_ev_second_target_soc_number_name() -> str:
+    """Return the display name for the EV 2 target SoC number entity."""
+    return "EV 2 Target SoC"
+
+
+def get_ev_second_target_soc_number_unique_id() -> str:
+    """Return the unique_id for the EV 2 target SoC number entity."""
+    return f"{DOMAIN}_{get_ev_second_target_soc_number_key()}_number"
+
+
+def get_ev_second_target_soc_number_entity_id() -> str:
+    """Return the entity_id for the EV 2 target SoC number entity."""
+    return number.ENTITY_ID_FORMAT.format(
+        s(get_ev_second_target_soc_number_unique_id())
+    )
+
+
 # Applier Status Sensor
 def get_applier_status_sensor_name() -> str:
     """Return the display name for the applier-status diagnostic sensor."""
@@ -755,6 +799,132 @@ def get_ev_force_discharge_switch_unique_id() -> str:
 def get_ev_force_discharge_switch_entity_id() -> str:
     """Return the entity_id for the EV-force-discharge switch."""
     return switch.ENTITY_ID_FORMAT.format(s(get_ev_force_discharge_switch_unique_id()))
+
+
+# ---------------------------------------------------------------------------
+# EV smart charging switches
+# ---------------------------------------------------------------------------
+
+
+def get_ev_smart_charging_switch_key() -> str:
+    """Return the config-entry key for the primary EV smart charging switch."""
+    return f"{DOMAIN}_ev_smart_charging"
+
+
+def get_ev_smart_charging_switch_name() -> str:
+    """Return the display name for the primary EV smart charging switch."""
+    return "EV Smart Charging"
+
+
+def get_ev_smart_charging_switch_unique_id() -> str:
+    """Return the unique_id for the primary EV smart charging switch."""
+    return f"{DOMAIN}_{get_ev_smart_charging_switch_key()}_switch"
+
+
+def get_ev_smart_charging_switch_entity_id() -> str:
+    """Return the entity_id for the primary EV smart charging switch."""
+    return switch.ENTITY_ID_FORMAT.format(s(get_ev_smart_charging_switch_unique_id()))
+
+
+def get_ev_force_charge_now_switch_key() -> str:
+    """Return the config-entry key for the primary EV force-charge-now switch."""
+    return f"{DOMAIN}_ev_force_charge_now"
+
+
+def get_ev_force_charge_now_switch_name() -> str:
+    """Return the display name for the primary EV force-charge-now switch."""
+    return "EV Force Charge Now"
+
+
+def get_ev_force_charge_now_switch_unique_id() -> str:
+    """Return the unique_id for the primary EV force-charge-now switch."""
+    return f"{DOMAIN}_{get_ev_force_charge_now_switch_key()}_switch"
+
+
+def get_ev_force_charge_now_switch_entity_id() -> str:
+    """Return the entity_id for the primary EV force-charge-now switch."""
+    return switch.ENTITY_ID_FORMAT.format(s(get_ev_force_charge_now_switch_unique_id()))
+
+
+def get_ev_second_smart_charging_switch_key() -> str:
+    """Return the config-entry key for the second EV smart charging switch."""
+    return f"{DOMAIN}_ev_second_smart_charging"
+
+
+def get_ev_second_smart_charging_switch_name() -> str:
+    """Return the display name for the second EV smart charging switch."""
+    return "EV 2 Smart Charging"
+
+
+def get_ev_second_smart_charging_switch_unique_id() -> str:
+    """Return the unique_id for the second EV smart charging switch."""
+    return f"{DOMAIN}_{get_ev_second_smart_charging_switch_key()}_switch"
+
+
+def get_ev_second_smart_charging_switch_entity_id() -> str:
+    """Return the entity_id for the second EV smart charging switch."""
+    return switch.ENTITY_ID_FORMAT.format(
+        s(get_ev_second_smart_charging_switch_unique_id())
+    )
+
+
+def get_ev_second_force_charge_now_switch_key() -> str:
+    """Return the config-entry key for the second EV force-charge-now switch."""
+    return f"{DOMAIN}_ev_second_force_charge_now"
+
+
+def get_ev_second_force_charge_now_switch_name() -> str:
+    """Return the display name for the second EV force-charge-now switch."""
+    return "EV 2 Force Charge Now"
+
+
+def get_ev_second_force_charge_now_switch_unique_id() -> str:
+    """Return the unique_id for the second EV force-charge-now switch."""
+    return f"{DOMAIN}_{get_ev_second_force_charge_now_switch_key()}_switch"
+
+
+def get_ev_second_force_charge_now_switch_entity_id() -> str:
+    """Return the entity_id for the second EV force-charge-now switch."""
+    return switch.ENTITY_ID_FORMAT.format(
+        s(get_ev_second_force_charge_now_switch_unique_id())
+    )
+
+
+# ---------------------------------------------------------------------------
+# EV deadline time entities
+# ---------------------------------------------------------------------------
+
+
+def get_ev_deadline_time_key() -> str:
+    return f"{DOMAIN}_ev_deadline_time"
+
+
+def get_ev_deadline_time_name() -> str:
+    return "EV Charge Deadline"
+
+
+def get_ev_deadline_time_unique_id() -> str:
+    return f"{DOMAIN}_{get_ev_deadline_time_key()}_time"
+
+
+def get_ev_deadline_time_entity_id() -> str:
+    return time.ENTITY_ID_FORMAT.format(s(get_ev_deadline_time_unique_id()))
+
+
+def get_ev_second_deadline_time_key() -> str:
+    return f"{DOMAIN}_ev_second_deadline_time"
+
+
+def get_ev_second_deadline_time_name() -> str:
+    return "EV 2 Charge Deadline"
+
+
+def get_ev_second_deadline_time_unique_id() -> str:
+    return f"{DOMAIN}_{get_ev_second_deadline_time_key()}_time"
+
+
+def get_ev_second_deadline_time_entity_id() -> str:
+    return time.ENTITY_ID_FORMAT.format(s(get_ev_second_deadline_time_unique_id()))
 
 
 # ---------------------------------------------------------------------------
