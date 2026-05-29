@@ -66,6 +66,7 @@ import logging
 import logging.handlers
 import os
 from concurrent.futures import ThreadPoolExecutor
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -186,7 +187,7 @@ async def async_close_hsem_logger() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def async_logger(self, msg: str, level: str = "debug") -> None:
+async def async_logger(self: Any, msg: str, level: str = "debug") -> None:
     """Emit *msg* through the HSEM file logger if verbose logging is on.
 
     The write is delegated to a ``ThreadPoolExecutor`` so that the

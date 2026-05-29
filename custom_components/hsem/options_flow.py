@@ -59,7 +59,7 @@ from custom_components.hsem.utils.misc import convert_months_to_int
 class HSEMOptionsFlow(config_entries.OptionsFlow):
     """Options flow for HSEM."""
 
-    def __init__(self, config_entry) -> None:
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         self._config_entry = config_entry
         self._user_input = {}
 

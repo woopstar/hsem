@@ -58,7 +58,7 @@ class TestBuildBatteriesScheduleStepSchema:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("n", [1, 2, 3])
-    async def test_schema_contains_three_fields(self, n: int):
+    async def test_schema_contains_three_fields(self, n: int) -> None:
         """All expected keys must be present in the built schema."""
         from custom_components.hsem.flows.schedule_helpers import (
             build_batteries_schedule_step_schema,
@@ -74,7 +74,7 @@ class TestBuildBatteriesScheduleStepSchema:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("n", [1, 2, 3])
-    async def test_schema_keys_match_original_numbered_wrappers(self, n: int):
+    async def test_schema_keys_match_original_numbered_wrappers(self, n: int) -> None:
         """Schema keys produced by the helper must equal those of the original
         numbered modules — ensuring no config migration is needed."""
         # Import the numbered wrapper (which now delegates to the helper)
@@ -156,7 +156,7 @@ class TestValidateBatteriesScheduleInput:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("n", [1, 2, 3])
-    async def test_disabled_schedule_passes_with_invalid_times(self, n: int):
+    async def test_disabled_schedule_passes_with_invalid_times(self, n: int) -> None:
         """Disabled schedule must skip time validation entirely."""
         from custom_components.hsem.flows.schedule_helpers import (
             validate_batteries_schedule_input,
@@ -175,7 +175,7 @@ class TestValidateBatteriesScheduleInput:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("n", [1, 2, 3])
-    async def test_zero_length_active_schedule_is_rejected(self, n: int):
+    async def test_zero_length_active_schedule_is_rejected(self, n: int) -> None:
         """start == end when enabled must produce a base error."""
         from custom_components.hsem.flows.schedule_helpers import (
             validate_batteries_schedule_input,
@@ -194,7 +194,7 @@ class TestValidateBatteriesScheduleInput:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("n", [1, 2, 3])
-    async def test_valid_cross_midnight_window_accepted(self, n: int):
+    async def test_valid_cross_midnight_window_accepted(self, n: int) -> None:
         """A valid cross-midnight window must pass with no errors."""
         from custom_components.hsem.flows.schedule_helpers import (
             validate_batteries_schedule_input,
@@ -213,7 +213,7 @@ class TestValidateBatteriesScheduleInput:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("n", [1, 2, 3])
-    async def test_invalid_time_format_rejected(self, n: int):
+    async def test_invalid_time_format_rejected(self, n: int) -> None:
         """An unparseable time string must produce an ``invalid_time_format`` error."""
         from custom_components.hsem.flows.schedule_helpers import (
             validate_batteries_schedule_input,
@@ -232,7 +232,7 @@ class TestValidateBatteriesScheduleInput:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("n", [1, 2, 3])
-    async def test_helper_output_matches_numbered_wrapper(self, n: int):
+    async def test_helper_output_matches_numbered_wrapper(self, n: int) -> None:
         """Helper and numbered wrapper must return identical errors for the same input."""
         import importlib
 
@@ -492,7 +492,7 @@ class TestSchemaRoundTrip:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("n", [1, 2, 3])
-    async def test_schedule_schema_accepts_valid_input(self, n: int):
+    async def test_schedule_schema_accepts_valid_input(self, n: int) -> None:
         from custom_components.hsem.flows.schedule_helpers import (
             build_batteries_schedule_step_schema,
         )

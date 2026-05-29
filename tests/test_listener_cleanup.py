@@ -23,7 +23,7 @@ import pytest
 # ---------------------------------------------------------------------------
 
 
-def _make_config_entry(**overrides) -> MagicMock:
+def _make_config_entry(**overrides: object) -> MagicMock:
     """Minimal mock ConfigEntry used by HSEMAvgSensor and HSEMHouseConsumption."""
     defaults = {
         "entry_id": "test_entry_id",

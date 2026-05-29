@@ -24,6 +24,8 @@ Usage:
     "huawei_solar" integration and manage errors appropriately.
 """
 
+from typing import Any
+
 import voluptuous as vol
 from homeassistant.exceptions import (
     HomeAssistantError,
@@ -34,7 +36,9 @@ from homeassistant.exceptions import (
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 
 
-async def async_set_grid_export_power_pct(self, device_id, power_percentage) -> None:
+async def async_set_grid_export_power_pct(
+    self: Any, device_id: str, power_percentage: int
+) -> None:
     """Set the maximum grid export power percentage and handle errors.
 
     Raises:
@@ -90,7 +94,9 @@ async def async_set_grid_export_power_pct(self, device_id, power_percentage) -> 
         raise
 
 
-async def async_set_grid_export_power_watt(self, device_id, power_watt) -> None:
+async def async_set_grid_export_power_watt(
+    self: Any, device_id: str, power_watt: int
+) -> None:
     """Set the maximum grid export power in watts and handle errors.
 
     Uses the ``huawei_solar.set_maximum_feed_grid_power`` service to set an
@@ -150,7 +156,9 @@ async def async_set_grid_export_power_watt(self, device_id, power_watt) -> None:
         raise
 
 
-async def async_set_tou_periods(self, batteries_id, tou_modes) -> None:
+async def async_set_tou_periods(
+    self: Any, batteries_id: str, tou_modes: list[str]
+) -> None:
     """Set the TOU modes for the specified batteries.
 
     Raises:
@@ -204,7 +212,7 @@ async def async_set_tou_periods(self, batteries_id, tou_modes) -> None:
 
 
 async def async_set_forcible_discharge(
-    self, device_id: str, target_soc: int, power: int
+    self: Any, device_id: str, target_soc: int, power: int
 ) -> None:
     """Set forcible discharge for the battery at specified power and target SOC.
 
@@ -273,7 +281,7 @@ async def async_set_forcible_discharge(
         raise
 
 
-async def async_stop_forcible_discharge(self, device_id: str) -> None:
+async def async_stop_forcible_discharge(self: Any, device_id: str) -> None:
     """Stop any active forcible charge or discharge on the battery.
 
     Args:

@@ -12,6 +12,7 @@ called synchronously and tested without a running HA instance.
 from __future__ import annotations
 
 from datetime import time
+from typing import Any
 
 import voluptuous as vol
 
@@ -31,7 +32,7 @@ from custom_components.hsem.utils.misc import (
 )
 
 
-def build_sensor_config(config_entry) -> SensorConfig:
+def build_sensor_config(config_entry: Any) -> SensorConfig:  # TODO: tighten type
     """Read all config-entry options and return a populated :class:`SensorConfig`.
 
     This is a pure synchronous function that reads from ``config_entry.options``
@@ -455,7 +456,7 @@ def build_battery_schedules(cfg: SensorConfig) -> list[BatterySchedule]:
 # ---------------------------------------------------------------------------
 
 
-def _optional_entity(value) -> str | None:
+def _optional_entity(value: Any) -> str | None:  # TODO: tighten type
     """Return None if value is vol.UNDEFINED or falsy, else the string."""
     if value is vol.UNDEFINED or not value:
         return None

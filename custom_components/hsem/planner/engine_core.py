@@ -12,6 +12,7 @@ from datetime import datetime
 
 from custom_components.hsem.models.planner_inputs import PlannerInput
 from custom_components.hsem.models.planner_outputs import DataQuality, PlannerOutput
+from custom_components.hsem.models.time_series import TimeSeriesIndex
 from custom_components.hsem.planner.candidate_generator import generate_candidates
 from custom_components.hsem.planner.candidate_selector import (
     replacement_price_from_next_discharge,
@@ -68,7 +69,11 @@ def _parse_now(now_iso: str) -> datetime:
 
 
 def _populate_slots(
-    slots: list, inp: PlannerInput, tsi, warnings: list[str], missing_inputs: list[str]
+    slots: list,
+    inp: PlannerInput,
+    tsi: TimeSeriesIndex,
+    warnings: list[str],
+    missing_inputs: list[str],
 ) -> tuple[DataQuality, list[str], list[str]]:
     """Populate price/PV/consumption data, data-quality diagnostics, confidence decay."""
     log_planner(
@@ -338,7 +343,7 @@ def _build_and_inject_for_ev(
     cap_kwh: float,
     pwr_kw: float,
     eff: float,
-    deadline,
+    deadline: datetime | None,
     base_includes: bool,
     allow_past_target: bool,
     label: str,

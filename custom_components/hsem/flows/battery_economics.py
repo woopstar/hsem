@@ -7,6 +7,7 @@ and charge/discharge efficiency.
 """
 
 import voluptuous as vol
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE
 from homeassistant.helpers.selector import selector
 
@@ -14,7 +15,9 @@ from custom_components.hsem.utils.config_validator import merge_errors, validate
 from custom_components.hsem.utils.misc import get_config_value
 
 
-async def get_battery_economics_step_schema(config_entry) -> vol.Schema:
+async def get_battery_economics_step_schema(
+    config_entry: ConfigEntry | None,
+) -> vol.Schema:
     """Return the data schema for the 'battery_economics' step.
 
     Args:
@@ -119,7 +122,7 @@ async def get_battery_economics_step_schema(config_entry) -> vol.Schema:
     )
 
 
-async def validate_battery_economics_input(user_input) -> dict[str, str]:
+async def validate_battery_economics_input(user_input: dict) -> dict[str, str]:
     """Validate user input for the 'battery_economics' step.
 
     Args:

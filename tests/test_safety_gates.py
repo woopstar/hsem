@@ -374,7 +374,7 @@ class TestWorkingModeSensorTopLevelGate:
         *,
         read_only: bool = False,
         degraded_mode: DegradedMode = DegradedMode.OK,
-    ):
+    ) -> MagicMock:
         """Build a minimal CoordinatorData-like object for gate testing."""
         cfg = _make_cfg(read_only=read_only)
         live = _make_live(degraded_mode=degraded_mode)

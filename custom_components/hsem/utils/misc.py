@@ -2,6 +2,7 @@
 
 import hashlib
 from datetime import datetime, time, timedelta
+from typing import Any
 
 from homeassistant.const import STATE_OFF, STATE_ON, STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.exceptions import (
@@ -13,6 +14,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
 from custom_components.hsem.const import DEFAULT_CONFIG_VALUES, DOMAIN
+
 # Re-export async_logger from its dedicated module so that existing callers
 # importing it from utils.misc continue to work without changes.
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
@@ -24,12 +26,12 @@ class EntityNotFoundError(HomeAssistantError):
     """Exception raised when an entity is not found."""
 
 
-def generate_hash(input_sensor) -> str:
+def generate_hash(input_sensor: str) -> str:
     """Generate an SHA-256 hash based on the input sensor's name."""
     return hashlib.sha256(input_sensor.encode("utf-8")).hexdigest()
 
 
-def get_config_value(config_entry, key) -> str | None:
+def get_config_value(config_entry: Any | None, key: str) -> str | None:
     """Get the configuration value from options or fall back to the initial data."""
     if key not in DEFAULT_CONFIG_VALUES:
         raise KeyError(f"Key '{key}' not found in DEFAULT_VALUES")
@@ -50,7 +52,7 @@ def get_config_value(config_entry, key) -> str | None:
     return data
 
 
-def convert_to_time(time_value) -> time:
+def convert_to_time(time_value: str | time) -> time:
     """Convert a time value (str or datetime.time) to a datetime.time object."""
     if isinstance(time_value, time):
         return time_value
@@ -128,7 +130,7 @@ def interval_ends_before_window_start(
     return interval_end <= next_window_start_dt(now, window_start)
 
 
-def convert_to_float(state) -> float | None:
+def convert_to_float(state: Any) -> float | None:
     """Resolve the input sensor state and cast it to a float.
 
     Returns ``None`` for values that cannot be meaningfully interpreted as a
@@ -163,7 +165,7 @@ def convert_to_float(state) -> float | None:
         return None
 
 
-def convert_to_int(state) -> int | None:
+def convert_to_int(state: Any) -> int | None:
     """Cast *state* to an integer, distinguishing real zero from invalid input.
 
     Returns:
@@ -216,7 +218,7 @@ def convert_months_to_int(months: list) -> list[int]:
     return result
 
 
-def convert_to_boolean(state) -> bool:
+def convert_to_boolean(state: Any) -> bool:
     """Resolve the input sensor state and cast it to a boolean."""
 
     if state is None:
@@ -283,7 +285,7 @@ def clamp_efficiency(pct: float) -> float:
 
 
 async def async_resolve_entity_id_from_unique_id(
-    self, unique_entity_id, domain="sensor"
+    self: Any, unique_entity_id: str, domain: str = "sensor"
 ) -> str | None:
     """Resolve the entity_id from the unique_id using the entity registry.
 
@@ -326,7 +328,7 @@ async def async_resolve_entity_id_from_unique_id(
         return None
 
 
-async def async_set_number_value(self, entity_id, value) -> None:
+async def async_set_number_value(self: Any, entity_id: str, value: float | int) -> None:
     """Set the value for a number entity.
 
     Parameters:
@@ -360,7 +362,7 @@ async def async_set_number_value(self, entity_id, value) -> None:
         raise
 
 
-async def async_set_select_option(self, entity_id, option) -> None:
+async def async_set_select_option(self: Any, entity_id: str, option: str) -> None:
     """Set the selected option for an entity."""
 
     # Check if entity_id exists
@@ -392,7 +394,10 @@ async def async_set_select_option(self, entity_id, option) -> None:
 
 
 def ha_get_entity_state_and_convert(
-    self, entity_id, output_type=None, float_precision=2
+    self: Any,
+    entity_id: str | None,
+    output_type: str | None = None,
+    float_precision: int = 2,
 ) -> float | int | bool | str | None:
     """Get the state of an entity."""
 
@@ -444,7 +449,7 @@ def ha_get_entity_state_and_convert(
         )
 
 
-async def async_remove_entity_from_ha(self, entity_unique_id) -> bool:
+async def async_remove_entity_from_ha(self: Any, entity_unique_id: str) -> bool:
     """Remove an existing entity in Home Assistant based on its unique ID.
 
     :param entity_unique_id: The unique ID of the entity to be removed.
@@ -471,12 +476,12 @@ async def async_remove_entity_from_ha(self, entity_unique_id) -> bool:
         return False
 
 
-async def async_entity_exists(hass, entity_id) -> bool:
+async def async_entity_exists(hass: Any, entity_id: str) -> bool:
     """Check if an entity exists in Home Assistant."""
     return hass.states.get(entity_id) is not None
 
 
-async def async_device_exists(hass, device_id) -> bool:
+async def async_device_exists(hass: Any, device_id: str) -> bool:
     """Check if a device exists in Home Assistant."""
     device_registry = dr.async_get(hass)
     return device_registry.async_get(device_id) is not None

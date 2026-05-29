@@ -22,6 +22,7 @@ from __future__ import annotations
 import io
 import logging
 from logging.handlers import RotatingFileHandler
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -47,7 +48,7 @@ def _attach_capture_handler() -> logging.Handler:
 class TestLoggerHandlerHygiene:
     """Verify the HSEM logger uses its dedicated file handler."""
 
-    def test_logger_owns_rotating_file_handler(self, tmp_path) -> None:
+    def test_logger_owns_rotating_file_handler(self, tmp_path: Path) -> None:
         """HSEM_LOGGER must have a RotatingFileHandler after init."""
         config_dir = str(tmp_path)
         logger_module.init_hsem_logger_sync(config_dir)
@@ -88,7 +89,9 @@ class TestLoggerHandlerHygiene:
         assert hasattr(logger_module, "_HSEM_LOG_FILENAME")
         assert logger_module._HSEM_LOG_FILENAME == "hsem.log"
 
-    def test_logger_has_no_duplicate_handlers_after_reinit(self, tmp_path) -> None:
+    def test_logger_has_no_duplicate_handlers_after_reinit(
+        self, tmp_path: Path
+    ) -> None:
         """Calling init twice must not produce duplicate handlers."""
         config_dir = str(tmp_path)
         logger_module.init_hsem_logger_sync(config_dir)

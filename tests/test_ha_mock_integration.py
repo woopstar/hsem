@@ -1784,7 +1784,9 @@ class TestApplyPlannerOutputEvLoad:
     # Helpers
     # ------------------------------------------------------------------
 
-    def _make_coord_with_recs(self, interval_minutes: int = 60, total_hours: int = 24):
+    def _make_coord_with_recs(
+        self, interval_minutes: int = 60, total_hours: int = 24
+    ) -> Any:
         """Return a bare coordinator whose _hourly_recommendations are pre-generated."""
         coord = make_bare_coordinator()
         coord._batteries_schedules = []
@@ -1795,11 +1797,11 @@ class TestApplyPlannerOutputEvLoad:
 
     def _make_output_from_recs(
         self,
-        recs,
+        recs: list[Any],
         ev_load_by_hour: dict[int, float],
         ev_accounted_by_hour: dict[int, float] | None = None,
         ev_total_by_hour: dict[int, float] | None = None,
-    ):
+    ) -> Any:
         """Build a PlannerOutput whose slot starts exactly match *recs*.
 
         Args:
@@ -2383,7 +2385,7 @@ class TestEvFieldsEndToEnd:
     fields must be visible in hourly_recommendations.
     """
 
-    def _run_end_to_end(self, base_includes_ev: bool):
+    def _run_end_to_end(self, base_includes_ev: bool) -> Any:
         """Run planner + apply_planner_output and return (coordinator, output)."""
         from datetime import datetime, timedelta
 

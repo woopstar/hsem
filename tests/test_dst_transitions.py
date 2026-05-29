@@ -15,10 +15,12 @@ Timezone under test: ``Europe/Copenhagen``
 from __future__ import annotations
 
 from datetime import datetime, time, timedelta
+from typing import Any
 from zoneinfo import ZoneInfo
 
 import pytest
 
+from custom_components.hsem.models.planner_inputs import PlannerInput
 from custom_components.hsem.planner.engine_core import _parse_now
 from custom_components.hsem.planner.slot_population import build_slots
 from custom_components.hsem.utils.misc import (
@@ -109,7 +111,7 @@ class TestBuildSlotsDst:
 
     def _make_input_stub(
         self, interval_minutes: int = 60, interval_length_hours: int = 24
-    ):
+    ) -> Any:
         """Return a minimal object with the fields build_slots needs."""
 
         class _Stub:
@@ -310,12 +312,11 @@ class TestIntervalEndsDst:
 class TestPlannerRunsDstDays:
     """run_planner must complete without raising on both DST transition days."""
 
-    def _base_input(self, now_iso: str):
+    def _base_input(self, now_iso: str) -> PlannerInput:
         """Return a minimal PlannerInput for a 24-hour summer-like day."""
         from custom_components.hsem.models.planner_inputs import (
             BatteryScheduleInput,
             HourlyConsumptionAverage,
-            PlannerInput,
             PricePoint,
             SolcastSlot,
         )

@@ -14,6 +14,7 @@ TestPlannerEngineEVIntegration — full engine runs with EV planned load
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 
@@ -40,12 +41,12 @@ from custom_components.hsem.planner.ev_planner import (
 _UTC = UTC
 
 
-def _dt(h: int, tz=_UTC) -> datetime:
+def _dt(h: int, tz: Any = _UTC) -> datetime:
     """Return a datetime on 2024-06-15 at hour h in tz."""
     return datetime(2024, 6, 15, h, 0, 0, tzinfo=tz)
 
 
-def _make_slots(n: int = 24, tz=_UTC):
+def _make_slots(n: int = 24, tz: Any = _UTC) -> tuple[list[datetime], list[datetime]]:
     """Return n 1-hour slot (start, end) pairs starting at 00:00."""
     starts = [_dt(h, tz) for h in range(n)]
     ends = [_dt(h + 1 if h < 23 else 0, tz) for h in range(n)]
@@ -201,7 +202,7 @@ class TestMaxChargeEnergy:
 class TestBuildEvChargingPlanGuards:
     """Test guard conditions in build_ev_charging_plan."""
 
-    def _make_inp(self, **kwargs) -> EVPlannerInput:
+    def _make_inp(self, **kwargs: Any) -> EVPlannerInput:
         now = _dt(14)
         deadline = now + timedelta(hours=8)
         base = EVPlannerInput(
@@ -2632,7 +2633,9 @@ class TestEvLoadDoesNotInflateChargeNeeded:
 # ---------------------------------------------------------------------------
 
 
-def _make_slots_48(now: datetime, tz=_UTC):
+def _make_slots_48(
+    now: datetime, tz: Any = _UTC
+) -> tuple[list[datetime], list[datetime]]:
     """Return 48 contiguous 1-hour slot ``(start, end)`` pairs anchored at ``now``.
 
     Slot ``i`` runs ``[now + i h, now + (i+1) h]``.  This mimics a 48-hour

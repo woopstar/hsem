@@ -35,7 +35,7 @@ from custom_components.hsem.utils.config_validator import (
 # ---------------------------------------------------------------------------
 
 
-def _hass_with_states(*entity_ids: str):
+def _hass_with_states(*entity_ids: str) -> MagicMock:
     """Return a minimal hass mock where the given entity IDs exist."""
     hass = MagicMock()
 

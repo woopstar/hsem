@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import pytest
 
+from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.utils.misc import convert_to_float, convert_to_int
 
 # ---------------------------------------------------------------------------
@@ -44,7 +45,7 @@ class TestConvertToFloatInvalidValues:
             None,
         ],
     )
-    def test_returns_none(self, bad_input) -> None:
+    def test_returns_none(self, bad_input: str | None) -> None:
         """Every HA sentinel / non-numeric value must yield None."""
         assert convert_to_float(bad_input) is None
 
@@ -63,7 +64,7 @@ class TestConvertToFloatRealZero:
             "  0  ",
         ],
     )
-    def test_zero_returns_zero(self, zero_input) -> None:
+    def test_zero_returns_zero(self, zero_input: int | float | str) -> None:
         """Real zero is a valid, non-missing measurement."""
         result = convert_to_float(zero_input)
         assert result == pytest.approx(0.0)
@@ -85,7 +86,9 @@ class TestConvertToFloatNumericRoundTrip:
             ("1e3", 1000.0),
         ],
     )
-    def test_numeric_round_trip(self, value, expected: float) -> None:
+    def test_numeric_round_trip(
+        self, value: int | float | str, expected: float
+    ) -> None:
         result = convert_to_float(value)
         assert result == pytest.approx(expected)
 
@@ -98,10 +101,8 @@ class TestConvertToFloatNumericRoundTrip:
 class TestCriticalSensorNoneSetsMissingFlag:
     """When a critical battery sensor returns None the LiveState must flag it."""
 
-    def _make_live_with_none_soc(self):
+    def _make_live_with_none_soc(self) -> LiveState:
         """Simulate state_collector behaviour for a None battery SoC."""
-        from custom_components.hsem.models.live_state import LiveState
-
         state = LiveState()
         soc_pct = convert_to_float(
             "unavailable"
@@ -127,8 +128,7 @@ class TestCriticalSensorNoneSetsMissingFlag:
         state = self._make_live_with_none_soc()
         assert any("SoC" in label for label in state.missing_entities_list)
 
-    def _make_live_with_valid_soc(self, raw: str = "75.0"):
-        from custom_components.hsem.models.live_state import LiveState
+    def _make_live_with_valid_soc(self, raw: str = "75.0") -> LiveState:
 
         state = LiveState()
         soc_pct = convert_to_float(raw)
@@ -290,7 +290,7 @@ class TestConvertToIntInvalidValues:
             None,
         ],
     )
-    def test_returns_none(self, bad_input) -> None:
+    def test_returns_none(self, bad_input: str | None) -> None:
         """Every HA sentinel / non-numeric value must yield None."""
         assert convert_to_int(bad_input) is None
 
@@ -308,7 +308,7 @@ class TestConvertToIntRealZero:
             "  0  ",
         ],
     )
-    def test_zero_returns_zero(self, zero_input) -> None:
+    def test_zero_returns_zero(self, zero_input: int | float | str) -> None:
         """Real zero is a valid, non-missing value."""
         result = convert_to_int(zero_input)
         assert result == 0
@@ -332,7 +332,7 @@ class TestConvertToIntNumericRoundTrip:
             (3.9, 3),
         ],
     )
-    def test_numeric_round_trip(self, value, expected: int) -> None:
+    def test_numeric_round_trip(self, value: int | float | str, expected: int) -> None:
         result = convert_to_int(value)
         assert result == expected
 
@@ -393,7 +393,7 @@ class TestCoordinatorConfigNullSafeDefaults:
     """
 
     @staticmethod
-    def _apply_weight_default(raw, default: int) -> int:
+    def _apply_weight_default(raw: str | int | None, default: int) -> int:
         """Mirror the coordinator pattern: v if (v := convert_to_int(raw)) is not None else default."""
         v = convert_to_int(raw)
         return v if v is not None else default
@@ -411,7 +411,9 @@ class TestCoordinatorConfigNullSafeDefaults:
             (0, 6000, 0),  # zero cycles is valid (unusual but not corrupt)
         ],
     )
-    def test_weight_default_logic(self, raw, default: int, expected: int) -> None:
+    def test_weight_default_logic(
+        self, raw: str | int | None, default: int, expected: int
+    ) -> None:
         assert self._apply_weight_default(raw, default) == expected
 
     def test_zero_expected_cycles_preserved(self) -> None:
@@ -488,7 +490,7 @@ class TestFlowExpectedCyclesNullSafety:
     """
 
     @staticmethod
-    def _flow_expected_cycles(raw_config_value) -> int:
+    def _flow_expected_cycles(raw_config_value: str | int | None) -> int:
         """Mirror the fixed flow pattern used in all four flow files."""
         _v = convert_to_int(raw_config_value)
         return _v if _v is not None else 6000
@@ -506,7 +508,7 @@ class TestFlowExpectedCyclesNullSafety:
             (0, 0),  # integer zero must survive
         ],
     )
-    def test_flow_cycles_never_none(self, raw, expected: int) -> None:
+    def test_flow_cycles_never_none(self, raw: str | int | None, expected: int) -> None:
         """Invalid raw values always fall back to 6000; real zero is preserved."""
         result = self._flow_expected_cycles(raw)
         assert result == expected

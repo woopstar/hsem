@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime, time, timedelta
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -498,7 +499,7 @@ class TestP006ConcurrentUpdates:
             self.cycle_runs: int = 0
             self.skipped: int = 0
 
-        async def _async_handle_update(self, event=None) -> None:
+        async def _async_handle_update(self, event: Any = None) -> None:
             if self._update_lock.locked():
                 self.skipped += 1
                 return

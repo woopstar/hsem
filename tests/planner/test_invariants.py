@@ -1940,7 +1940,9 @@ class TestPastSlotSocPenaltyExclusion:
     cost differences between strategies.
     """
 
-    def _make_slots_with_past(self, n_past: int = 10, n_future: int = 5):
+    def _make_slots_with_past(
+        self, n_past: int = 10, n_future: int = 5
+    ) -> list[PlannedSlot]:
         """Return a mixed list with *n_past* past slots and *n_future* future slots."""
         tz = ZoneInfo("Europe/Copenhagen")
         base = datetime(2024, 6, 15, 8, 0, tzinfo=tz)

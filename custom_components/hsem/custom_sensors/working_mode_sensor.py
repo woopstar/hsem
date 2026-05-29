@@ -19,6 +19,7 @@ import asyncio
 from typing import Any
 
 from homeassistant.components.sensor import SensorEntity
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import MATCH_ALL
 
 from custom_components.hsem.coordinator import (
@@ -68,7 +69,7 @@ class HSEMWorkingModeSensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
 
     def __init__(
         self,
-        config_entry,
+        config_entry: ConfigEntry,
         coordinator: HSEMDataUpdateCoordinator,
     ) -> None:
         """Initialise the working-mode sensor.
@@ -432,7 +433,7 @@ class HSEMWorkingModeSensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
     # Legacy compatibility
     # ------------------------------------------------------------------
 
-    async def async_update(self, event=None) -> None:
+    async def async_update(self, event: Any | None = None) -> None:
         """Manually request a coordinator refresh.
 
         Kept for backwards compatibility with any callers that invoke
@@ -440,7 +441,7 @@ class HSEMWorkingModeSensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
         """
         await self.coordinator.async_request_refresh()
 
-    async def async_options_updated(self, config_entry) -> None:
+    async def async_options_updated(self, config_entry: ConfigEntry) -> None:
         """Handle options update from configuration change.
 
         Delegates to the coordinator so all entities benefit simultaneously.

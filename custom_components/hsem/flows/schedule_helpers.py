@@ -14,6 +14,8 @@ Public API
 """
 
 import voluptuous as vol
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.selector import selector
 
 from custom_components.hsem.utils.config_validator import validate_time_window
@@ -21,8 +23,8 @@ from custom_components.hsem.utils.misc import convert_to_float, get_config_value
 
 
 def resolve_usable_capacity_kwh(
-    hass,
-    config_entry,
+    hass: HomeAssistant | None,
+    config_entry: ConfigEntry | None,
     user_input: dict | None = None,
 ) -> float:
     """Return the usable battery capacity in kWh for threshold preview calculations.
@@ -62,8 +64,8 @@ def resolve_usable_capacity_kwh(
 
 async def build_batteries_schedule_step_schema(
     schedule_number: int,
-    config_entry,
-    hass=None,
+    config_entry: ConfigEntry | None,
+    hass: HomeAssistant | None = None,
     user_input: dict | None = None,
 ) -> vol.Schema:
     """Return the voluptuous schema for a numbered battery schedule step.

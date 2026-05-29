@@ -17,7 +17,7 @@ import inspect
 # ---------------------------------------------------------------------------
 
 
-def _public_names(module) -> set[str]:
+def _public_names(module: object) -> set[str]:
     """Return the set of public names exported by *module*."""
     if hasattr(module, "__all__"):
         return set(module.__all__)

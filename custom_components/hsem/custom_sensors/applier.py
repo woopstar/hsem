@@ -32,6 +32,7 @@ to Home Assistant.
 from __future__ import annotations
 
 import re
+from typing import Any
 
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 
@@ -71,7 +72,7 @@ from custom_components.hsem.utils.workingmodes import WorkingModes
 
 
 async def async_apply_inverter_power_control(
-    sensor,
+    sensor: Any,  # TODO: tighten type
     cfg: SensorConfig,
     live: LiveState,
 ) -> CycleApplySummary:
@@ -241,7 +242,7 @@ async def async_apply_inverter_power_control(
 
 
 async def async_apply_battery_settings(
-    sensor,
+    sensor: Any,  # TODO: tighten type
     cfg: SensorConfig,
     live: LiveState,
     rec: HourlyRecommendation,
@@ -497,7 +498,7 @@ async def async_apply_battery_settings(
 
 
 async def _async_apply_forcible_discharge(
-    sensor,
+    sensor: Any,  # TODO: tighten type
     cfg: SensorConfig,
     live: LiveState,
     current_required_kwh: float,
@@ -566,7 +567,9 @@ async def _async_apply_forcible_discharge(
 # ---------------------------------------------------------------------------
 
 
-def _read_number_state(sensor, entity_id: str | None) -> float | None:
+def _read_number_state(
+    sensor: Any, entity_id: str | None
+) -> float | None:  # TODO: tighten type on sensor
     """Read a number entity state from HA and return it as float, or None.
 
     Args:
@@ -587,7 +590,9 @@ def _read_number_state(sensor, entity_id: str | None) -> float | None:
         return None
 
 
-def _read_select_state(sensor, entity_id: str | None) -> str | None:
+def _read_select_state(
+    sensor: Any, entity_id: str | None
+) -> str | None:  # TODO: tighten type on sensor
     """Read a select entity state from HA and return it as a string, or None.
 
     Args:

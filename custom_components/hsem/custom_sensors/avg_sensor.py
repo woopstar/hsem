@@ -1,9 +1,12 @@
+from __future__ import annotations
+
 from datetime import datetime, timedelta
 from typing import Any
 
 import homeassistant.util.dt as dt_util
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.components.sensor.const import SensorDeviceClass, SensorStateClass
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfEnergy
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import (
@@ -30,14 +33,14 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
 
     def __init__(
         self,
-        config_entry,
-        hour_start,
-        hour_end,
-        avg,
-        tracked_entity,
-        name,
-        unique_id,
-        entity_id,
+        config_entry: ConfigEntry,
+        hour_start: int,
+        hour_end: int,
+        avg: int,
+        tracked_entity: str,
+        name: str,
+        unique_id: str,
+        entity_id: str,
     ) -> None:
         super().__init__(config_entry)
         self._hour_start = hour_start
@@ -96,11 +99,11 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
     def should_poll(self) -> bool:
         return True
 
-    async def async_update(self, event=None) -> None:
+    async def async_update(self, event: Any | None = None) -> None:
         """Manually trigger the sensor update."""
         return await self._async_handle_update(event)
 
-    def parse_date(self, date_str) -> str:
+    def parse_date(self, date_str: str) -> str:
         # Strip any time component if it exists
         date_part = date_str.split("T")[0] if "T" in date_str else date_str
         return datetime.strptime(date_part, "%Y-%m-%d").date().isoformat()
@@ -154,7 +157,7 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
                 self._unsub_callbacks.append(unsub)
                 self._tracked_entities.add(self._tracked_entity)
 
-    async def _async_handle_update(self, event=None) -> None:
+    async def _async_handle_update(self, event: Any | None = None) -> None:
         """Handle updates to the source sensor."""
         self._state = 0.00
 

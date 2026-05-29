@@ -22,6 +22,7 @@ Acceptance criteria verified here:
 from __future__ import annotations
 
 from datetime import time
+from typing import Any
 
 import pytest
 
@@ -137,7 +138,7 @@ def _make_arbitrage_input(
     )
 
 
-def _slot_at_hour(slots, hour: int):
+def _slot_at_hour(slots: list[Any], hour: int) -> Any:
     for s in slots:
         if s.start.hour == hour:
             return s
