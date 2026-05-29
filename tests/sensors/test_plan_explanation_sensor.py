@@ -91,7 +91,7 @@ def _make_explanation(**kwargs: Any) -> PlanExplanation:
         rejected_plans=[RejectedPlan("do_nothing", "Costs more idle.", 1.65)],
     )
     defaults.update(kwargs)
-    return PlanExplanation(**defaults)
+    return PlanExplanation(**defaults)  # type: ignore[arg-type]  # test helper: dict values are typed at runtime
 
 
 def _make_coordinator_data(

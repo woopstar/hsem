@@ -92,7 +92,7 @@ class TestCoordinatorData:
         """List fields must be independent instances (not shared default)."""
         d1 = CoordinatorData()
         d2 = CoordinatorData()
-        d1.hourly_recommendations.append("x")
+        d1.hourly_recommendations.append("x")  # type: ignore[arg-type]  # intentional: test verifies list independence with a sentinel string
         assert "x" not in d2.hourly_recommendations
 
     def test_numeric_fields_default_to_zero(self) -> None:

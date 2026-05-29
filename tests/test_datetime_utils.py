@@ -75,7 +75,7 @@ def _make_planned_slot(start: datetime, end: datetime, **kwargs: Any) -> Planned
         "grid_export_kwh": 0.0,
     }
     defaults.update(kwargs)
-    return PlannedSlot(start=start, end=end, **defaults)
+    return PlannedSlot(start=start, end=end, **defaults)  # type: ignore[arg-type]  # test helper: dict values are typed at runtime
 
 
 def _make_hourly_recommendation(
@@ -104,7 +104,7 @@ def _make_hourly_recommendation(
         "solcast_pv_estimate_kwh": 0.5,
     }
     defaults.update(kwargs)
-    return HourlyRecommendation(start=start, end=end, **defaults)
+    return HourlyRecommendation(start=start, end=end, **defaults)  # type: ignore[arg-type]  # test helper: dict values are typed at runtime
 
 
 # ---------------------------------------------------------------------------

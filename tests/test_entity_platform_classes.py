@@ -300,7 +300,7 @@ class TestTimePlatformSetup:
             "custom_components.hsem.utils.misc.get_config_value",
             side_effect=lambda entry, key: entry.options.get(key, "00:00:00"),
         ):
-            await async_setup_entry(hass, config_entry, add_entities)
+            await async_setup_entry(hass, config_entry, add_entities)  # type: ignore[arg-type]  # HA AddEntitiesCallback stub too strict for test callback
 
         assert len(added) == 8
 
@@ -329,7 +329,7 @@ class TestTimePlatformSetup:
             "custom_components.hsem.utils.misc.get_config_value",
             side_effect=lambda entry, key: entry.options.get(key, "00:00:00"),
         ):
-            await async_setup_entry(hass, config_entry, add_entities)
+            await async_setup_entry(hass, config_entry, add_entities)  # type: ignore[arg-type]  # HA AddEntitiesCallback stub too strict for test callback
 
         for entity in added:
             assert isinstance(entity, HSEMTimeEntity)
@@ -362,7 +362,7 @@ class TestTimePlatformSetup:
             "custom_components.hsem.utils.misc.get_config_value",
             side_effect=lambda entry, key: entry.options.get(key, "00:00:00"),
         ):
-            await async_setup_entry(hass, config_entry, add_entities)
+            await async_setup_entry(hass, config_entry, add_entities)  # type: ignore[arg-type]  # HA AddEntitiesCallback stub too strict for test callback
 
         for entity in added:
             assert entity.native_value is not None

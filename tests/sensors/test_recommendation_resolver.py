@@ -206,9 +206,9 @@ class TestDataStateSync:
         @dataclass
         class _Data:
             state: str | None
-            hourly_recommendation: object
+            hourly_recommendation: HourlyRecommendation
             batteries_schedules_remaining_capacity_needed: float
-            live: object
+            live: LiveState
 
         rec = _make_rec(recommendation=planner_recommendation)
         data = _Data(
