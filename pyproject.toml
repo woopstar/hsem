@@ -13,7 +13,7 @@ dependencies = []
 
 [tool.ruff]
 line-length = 88
-target-version = "py312"
+target-version = "py313"
 include = ["custom_components/**/*.py", "tests/**/*.py", "scripts/**/*.py"]
 exclude = [
     ".git",
@@ -60,7 +60,7 @@ markers = [
 ]
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.13"
 warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
