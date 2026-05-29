@@ -1,10 +1,11 @@
 """This module defines the configuration flow for the HSEM integration in Home Assistant."""
 
+import logging
 from typing import Any
 
 from homeassistant import config_entries
-from homeassistant.config_entries import ConfigFlowResult
-from homeassistant.core import callback
+from homeassistant.config_entries import ConfigEntry, ConfigFlowResult
+from homeassistant.core import HomeAssistant, callback
 
 from custom_components.hsem.const import DOMAIN, NAME
 from custom_components.hsem.flows.batteries_excess_export import (
@@ -60,11 +61,41 @@ from custom_components.hsem.flows.weighted_values import (
 from custom_components.hsem.options_flow import HSEMOptionsFlow
 from custom_components.hsem.utils.misc import convert_months_to_int
 
+_LOGGER = logging.getLogger(__name__)
+
 
 class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: ignore[reportGeneralTypeIssues]
     """Config flow for HSEM."""
 
     VERSION = 1
+
+    async def async_migrate_entry(
+        self, hass: HomeAssistant, config_entry: ConfigEntry
+    ) -> bool:
+        """Migrate old config entries to the current version.
+
+        This integration started at config version 1.  When the config
+        schema is bumped in the future, add explicit migration steps here
+        for each version jump.
+        """
+        _LOGGER.debug(
+            "Migrating config entry %s from version %s to %s",
+            config_entry.entry_id,
+            config_entry.version,
+            self.VERSION,
+        )
+
+        if config_entry.version > self.VERSION:
+            _LOGGER.error(
+                "Config entry %s has future version %s (current %s) — cannot migrate",
+                config_entry.entry_id,
+                config_entry.version,
+                self.VERSION,
+            )
+            return False
+
+        # config_entry.version == self.VERSION (both 1) — nothing to migrate
+        return True
 
     def __init__(self) -> None:
         """Initialise the config flow with instance-level state.
