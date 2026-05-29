@@ -3,6 +3,7 @@
 import hashlib
 from datetime import datetime, time, timedelta
 
+from homeassistant.const import STATE_OFF, STATE_ON, STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.exceptions import (
     HomeAssistantError,
     ServiceNotFound,
@@ -12,7 +13,6 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
 from custom_components.hsem.const import DEFAULT_CONFIG_VALUES, DOMAIN
-
 # Re-export async_logger from its dedicated module so that existing callers
 # importing it from utils.misc continue to work without changes.
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
@@ -150,7 +150,7 @@ def convert_to_float(state) -> float | None:
 
     if isinstance(state, str):
         stripped = state.strip()
-        if stripped == "" or stripped.lower() in ("unknown", "unavailable"):
+        if stripped == "" or stripped.lower() in (STATE_UNKNOWN, STATE_UNAVAILABLE):
             return None
         try:
             return float(stripped)
@@ -179,7 +179,7 @@ def convert_to_int(state) -> int | None:
 
     if isinstance(state, str):
         stripped = state.strip().lower()
-        if stripped in ("unknown", "unavailable", ""):
+        if stripped in (STATE_UNKNOWN, STATE_UNAVAILABLE, ""):
             return None
         try:
             return int(float(stripped))
@@ -229,18 +229,18 @@ def convert_to_boolean(state) -> bool:
         return state != 0
 
     state_map = {
-        "on": True,
+        STATE_ON: True,
         "true": True,
         "1": True,
-        "off": False,
+        STATE_OFF: False,
         "false": False,
         "0": False,
         "charging": True,
         "not_charging": False,
         "notcharging": False,
-        "unknown": False,
+        STATE_UNKNOWN: False,
         "available": True,
-        "unavailable": False,
+        STATE_UNAVAILABLE: False,
         "ready": True,
         "notready": False,
         "not_ready": False,
@@ -406,13 +406,13 @@ def ha_get_entity_state_and_convert(
 
     try:
         if output_type is None:
-            if state.state == "unknown":
+            if state.state == STATE_UNKNOWN:
                 raise EntityNotFoundError(f"Entity '{entity_id}' state unknown.")
 
             return state
 
         if output_type.lower() == "float":
-            if state.state in ("unknown", "unavailable"):
+            if state.state in (STATE_UNKNOWN, STATE_UNAVAILABLE):
                 return None
             value = convert_to_float(state.state)
             if value is None:
@@ -420,12 +420,12 @@ def ha_get_entity_state_and_convert(
             return round(value, float_precision)
 
         if output_type.lower() == "int":
-            if state.state == "unknown":
+            if state.state == STATE_UNKNOWN:
                 raise EntityNotFoundError(f"Entity '{entity_id}' state unknown.")
             return convert_to_int(state.state)
 
         if output_type.lower() == "boolean":
-            if state.state == "unknown":
+            if state.state == STATE_UNKNOWN:
                 raise EntityNotFoundError(f"Entity '{entity_id}' state unknown.")
 
             return convert_to_boolean(state.state)

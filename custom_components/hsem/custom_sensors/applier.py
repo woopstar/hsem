@@ -33,6 +33,8 @@ from __future__ import annotations
 
 import re
 
+from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
+
 from custom_components.hsem.const import (
     DEFAULT_HSEM_BATTERIES_WAIT_MODE,
     DEFAULT_HSEM_EV_CHARGER_TOU_MODES,
@@ -326,8 +328,8 @@ async def async_apply_battery_settings(
         fc_state = live.huawei_batteries_forcible_charge_state or ""
         if fc_state and fc_state.lower() not in (
             "stopped",
-            "unavailable",
-            "unknown",
+            STATE_UNAVAILABLE,
+            STATE_UNKNOWN,
             "",
         ):
             await async_stop_forcible_discharge(
@@ -529,7 +531,7 @@ async def _async_apply_forcible_discharge(
         if not bat_fc_entity:
             return None
         state = sensor.hass.states.get(bat_fc_entity)
-        if state is None or state.state in ("unknown", "unavailable", ""):
+        if state is None or state.state in (STATE_UNKNOWN, STATE_UNAVAILABLE, ""):
             return None
         if state.state.lower() == "stopped":
             return None
@@ -577,7 +579,7 @@ def _read_number_state(sensor, entity_id: str | None) -> float | None:
     if not entity_id:
         return None
     state = sensor.hass.states.get(entity_id)
-    if state is None or state.state in ("unknown", "unavailable", None):
+    if state is None or state.state in (STATE_UNKNOWN, STATE_UNAVAILABLE, None):
         return None
     try:
         return float(state.state)
@@ -598,7 +600,7 @@ def _read_select_state(sensor, entity_id: str | None) -> str | None:
     if not entity_id:
         return None
     state = sensor.hass.states.get(entity_id)
-    if state is None or state.state in ("unknown", "unavailable", None):
+    if state is None or state.state in (STATE_UNKNOWN, STATE_UNAVAILABLE, None):
         return None
     return str(state.state)
 

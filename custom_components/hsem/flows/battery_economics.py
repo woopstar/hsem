@@ -7,6 +7,7 @@ and charge/discharge efficiency.
 """
 
 import voluptuous as vol
+from homeassistant.const import PERCENTAGE
 from homeassistant.helpers.selector import selector
 
 from custom_components.hsem.utils.config_validator import merge_errors, validate_price
@@ -77,7 +78,7 @@ async def get_battery_economics_step_schema(config_entry) -> vol.Schema:
                         "min": 10,
                         "max": 50,
                         "step": 1,
-                        "unit_of_measurement": "%",
+                        "unit_of_measurement": PERCENTAGE,
                         "mode": "slider",
                     }
                 }
@@ -93,7 +94,7 @@ async def get_battery_economics_step_schema(config_entry) -> vol.Schema:
                         "min": 50,
                         "max": 100,
                         "step": 1,
-                        "unit_of_measurement": "%",
+                        "unit_of_measurement": PERCENTAGE,
                         "mode": "slider",
                     }
                 }
@@ -109,7 +110,7 @@ async def get_battery_economics_step_schema(config_entry) -> vol.Schema:
                         "min": 50,
                         "max": 100,
                         "step": 1,
-                        "unit_of_measurement": "%",
+                        "unit_of_measurement": PERCENTAGE,
                         "mode": "slider",
                     }
                 }

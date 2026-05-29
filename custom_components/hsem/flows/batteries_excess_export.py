@@ -1,6 +1,7 @@
 """Flow configuration for battery excess energy export optimization."""
 
 import voluptuous as vol
+from homeassistant.const import PERCENTAGE
 from homeassistant.helpers.selector import selector
 
 from custom_components.hsem.utils.config_validator import merge_errors, validate_price
@@ -43,7 +44,7 @@ async def get_batteries_excess_export_step_schema(
                         "max": 50,
                         "step": 1,
                         "mode": "slider",
-                        "unit_of_measurement": "%",
+                        "unit_of_measurement": PERCENTAGE,
                     }
                 }
             ),
