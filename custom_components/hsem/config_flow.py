@@ -1,6 +1,9 @@
 """This module defines the configuration flow for the HSEM integration in Home Assistant."""
 
+from typing import Any
+
 from homeassistant import config_entries
+from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.core import callback
 
 from custom_components.hsem.const import DOMAIN, NAME
@@ -73,7 +76,9 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
         super().__init__()
         self._user_input: dict = {}
 
-    async def async_step_user(self, user_input=None):
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         errors = {}
 
         # Set a stable, deterministic unique id so that the guard below
@@ -100,7 +105,9 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
             last_step=False,
         )
 
-    async def async_step_prices(self, user_input=None):
+    async def async_step_prices(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         errors = {}
 
         if user_input is not None:
@@ -118,7 +125,9 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
             last_step=False,
         )
 
-    async def async_step_months(self, user_input=None):
+    async def async_step_months(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         errors = {}
 
         if user_input is not None:
@@ -149,7 +158,9 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
             last_step=False,
         )
 
-    async def async_step_solcast(self, user_input=None):
+    async def async_step_solcast(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         errors = {}
 
         if user_input is not None:
@@ -167,7 +178,9 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
             last_step=False,
         )
 
-    async def async_step_huawei_solar(self, user_input=None):
+    async def async_step_huawei_solar(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         errors = {}
 
         if user_input is not None:
@@ -199,7 +212,9 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
             last_step=False,
         )
 
-    async def async_step_battery_economics(self, user_input=None):
+    async def async_step_battery_economics(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         errors = {}
 
         if user_input is not None:
@@ -217,7 +232,9 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
             last_step=False,
         )
 
-    async def async_step_power(self, user_input=None):
+    async def async_step_power(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         errors = {}
 
         if user_input is not None:
@@ -235,7 +252,9 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
             last_step=False,
         )
 
-    async def async_step_ev(self, user_input=None):
+    async def async_step_ev(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         errors = {}
 
         if user_input is not None:
@@ -257,7 +276,9 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
             last_step=False,
         )
 
-    async def async_step_ev_second(self, user_input=None):
+    async def async_step_ev_second(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         errors = {}
 
         if user_input is not None:
@@ -275,7 +296,9 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
             last_step=False,
         )
 
-    async def async_step_ev_planned_load(self, user_input=None):
+    async def async_step_ev_planned_load(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         errors = {}
 
         if user_input is not None:
@@ -295,7 +318,9 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
             last_step=False,
         )
 
-    async def async_step_ev_second_planned_load(self, user_input=None):
+    async def async_step_ev_second_planned_load(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         errors = {}
 
         if user_input is not None:
@@ -313,7 +338,9 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
             last_step=False,
         )
 
-    async def async_step_batteries_schedules(self, user_input=None):
+    async def async_step_batteries_schedules(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         errors = {}
 
         if user_input is not None:
@@ -333,7 +360,9 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
             last_step=False,
         )
 
-    async def async_step_batteries_excess_export(self, user_input=None):
+    async def async_step_batteries_excess_export(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         errors = {}
 
         if user_input is not None:
@@ -353,7 +382,9 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
             last_step=False,
         )
 
-    async def async_step_weighted_values(self, user_input=None):
+    async def async_step_weighted_values(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         errors = {}
 
         if user_input is not None:
