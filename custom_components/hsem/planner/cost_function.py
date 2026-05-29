@@ -598,6 +598,9 @@ def score_plan(
         # discount = discount_rate ^ hours_from_now
         # Past slots are already skipped above, so hours_ahead >= 0.
         if use_discount:
+            assert (
+                now is not None
+            )  # guarded by use_discount = discount_rate < 1.0 and now is not None
             slot_mid = slot.start + (slot.end - slot.start) / 2
             hours_ahead = max((slot_mid - now).total_seconds() / 3600.0, 0.0)
             discount = discount_rate**hours_ahead
