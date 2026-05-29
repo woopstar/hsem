@@ -118,12 +118,18 @@ class TestUniqueIdIsSetEarly:
         """async_set_unique_id must be called before _abort_if_unique_id_configured."""
         call_order: list[str] = []
 
+        def _set_unique_id_side_effect(uid: str) -> None:
+            call_order.append("set_unique_id")
+
+        def _abort_guard_side_effect() -> None:
+            call_order.append("abort_guard")
+
         flow = _make_flow()
         flow.async_set_unique_id = AsyncMock(  # type: ignore[method-assign]
-            side_effect=lambda uid: call_order.append("set_unique_id") or None
+            side_effect=_set_unique_id_side_effect
         )
         flow._abort_if_unique_id_configured = MagicMock(  # type: ignore[method-assign]
-            side_effect=lambda: call_order.append("abort_guard") or None
+            side_effect=_abort_guard_side_effect
         )
         flow.async_show_form = MagicMock(  # type: ignore[method-assign]
             return_value={"type": "form", "step_id": "user", "errors": {}}
@@ -141,9 +147,12 @@ class TestUniqueIdIsSetEarly:
         """The unique id value must equal the DOMAIN constant, not a random uuid."""
         recorded_uid: list[Any] = []
 
+        def _record_uid_side_effect(uid: str) -> None:
+            recorded_uid.append(uid)
+
         flow = _make_flow()
         flow.async_set_unique_id = AsyncMock(  # type: ignore[method-assign]
-            side_effect=lambda uid: recorded_uid.append(uid) or None
+            side_effect=_record_uid_side_effect
         )
         flow.async_show_form = MagicMock(  # type: ignore[method-assign]
             return_value={"type": "form", "step_id": "user", "errors": {}}
