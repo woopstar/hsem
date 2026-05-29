@@ -5,16 +5,12 @@ from datetime import datetime, time, timedelta
 from typing import Any
 
 from homeassistant.const import STATE_OFF, STATE_ON, STATE_UNAVAILABLE, STATE_UNKNOWN
-from homeassistant.exceptions import (
-    HomeAssistantError,
-    ServiceNotFound,
-    ServiceValidationError,
-)
+from homeassistant.exceptions import (HomeAssistantError, ServiceNotFound,
+                                      ServiceValidationError)
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
 from custom_components.hsem.const import DEFAULT_CONFIG_VALUES, DOMAIN
-
 # Re-export async_logger from its dedicated module so that existing callers
 # importing it from utils.misc continue to work without changes.
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
@@ -31,7 +27,7 @@ def generate_hash(input_sensor: str) -> str:
     return hashlib.sha256(input_sensor.encode("utf-8")).hexdigest()
 
 
-def get_config_value(config_entry: Any | None, key: str) -> str | None:
+def get_config_value(config_entry: Any | None, key: str) -> Any:
     """Get the configuration value from options or fall back to the initial data."""
     if key not in DEFAULT_CONFIG_VALUES:
         raise KeyError(f"Key '{key}' not found in DEFAULT_VALUES")
