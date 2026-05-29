@@ -119,10 +119,10 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
         self.entity_id = get_house_consumption_power_sensor_entity_id(
             hour_start, hour_end
         )
-        self._state = None
-        self._state_previous = None
+        self._state: float | None = None
+        self._state_previous: float | None = None
         self._config_entry = config_entry
-        self._last_updated = None
+        self._last_updated: str | None = None
         # Track which derived sensors have already been created to avoid duplicate adds.
         self._derived_sensors_created: set[str] = set()
         self._tracked_entities = set()

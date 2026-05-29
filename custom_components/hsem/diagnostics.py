@@ -85,7 +85,9 @@ async def async_get_config_entry_diagnostics(
 
         integration_version = pkg_version("hsem")
     except Exception:  # noqa: BLE001
-        integration_version = entry.version if hasattr(entry, "version") else "unknown"
+        integration_version = (
+            str(entry.version) if hasattr(entry, "version") else "unknown"
+        )
 
     return build_diagnostics_dump(
         planner_input,

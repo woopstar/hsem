@@ -66,7 +66,7 @@ warn_unused_configs = true
 ignore_missing_imports = true
 disallow_incomplete_defs = true
 # Pre-existing type issues tracked for a future cleanup PR:
-disable_error_code = ["assignment", "operator", "no-any-return", "var-annotated", "method-assign", "annotation-unchecked", "type-var", "attr-defined", "func-returns-value", "override", "index", "name-defined"]
+disable_error_code = ["operator", "no-any-return", "var-annotated", "method-assign", "annotation-unchecked", "type-var", "attr-defined", "func-returns-value", "override", "index", "name-defined"]
 
 [tool.coverage.run]
 source = ["custom_components"]
