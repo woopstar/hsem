@@ -159,6 +159,7 @@ class TestHSEMTimeEntityConstruction:
     def test_unique_id_ends_with_time_suffix(self) -> None:
         """unique_id uses the '_time' suffix to avoid collisions with other platforms."""
         entity = self._make_entity()
+        assert entity.unique_id is not None
         assert entity.unique_id.endswith("_time")
 
     def test_extra_state_attributes_contains_description(self) -> None:

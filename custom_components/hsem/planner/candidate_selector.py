@@ -281,15 +281,15 @@ def select_best_candidate(
 
         # Sort by score ascending, then total_cost ascending (real savings),
         # then name for determinism. Baseline gets no positional advantage.
-        eligible_sorted = sorted(
-            eligible,
-            key=lambda c: (
-                c._cost.score,
-                c._cost.total_cost,
-                c.name,
-            ),
-        )
+        # All eligible candidates have been scored above; the sort key
+        # function asserts this invariant for the type checker.
+        def _sort_key(c: CandidatePlan) -> tuple[float, float, str]:
+            assert c._cost is not None
+            return (c._cost.score, c._cost.total_cost, c.name)
+
+        eligible_sorted = sorted(eligible, key=_sort_key)
         winner = eligible_sorted[0]
+        assert winner._cost is not None
         log_planner(
             "debug",
             "[selector] SELECTED candidate=%-20s  score=%.4f  total_cost=%.4f",
@@ -309,16 +309,17 @@ def select_best_candidate(
         new_score=getattr(getattr(winner, "_cost", None), "score", 0.0),
     )
 
+    winner_cost = winner._cost
     if (
         hysteresis_enabled
         and previous_winner_name is not None
-        and getattr(winner, "_cost", None) is not None
+        and winner_cost is not None
     ):
         # Find the previous winner's candidate in the current candidate list
         prev_candidate = _find_by_name(candidates, previous_winner_name)
         if prev_candidate is not None and prev_candidate is not winner:
             prev_score = getattr(getattr(prev_candidate, "_cost", None), "score", None)
-            new_score = winner._cost.score
+            new_score = winner_cost.score
             if prev_score is not None:
                 hysteresis_result.previous_score = prev_score
                 hysteresis_result.new_score = new_score

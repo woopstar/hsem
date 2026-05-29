@@ -634,6 +634,7 @@ class TestSelectorUniqueId:
 
     def test_unique_id_includes_hsem_prefix(self) -> None:
         entity = _make_selector(key="hsem_force_working_mode")
+        assert entity.unique_id is not None
         assert entity.unique_id.startswith("hsem_")
 
     def test_unique_id_equals_canonical_key(self) -> None:
