@@ -35,7 +35,7 @@ class HSEMUtilityMeterSensor(UtilityMeterSensor, HSEMEntity):
     def unique_id(self) -> str | None:
         return self._attr_unique_id
 
-    @property
+    @property  # type: ignore[misc]  # HA stub declares unit_of_measurement as @final
     def unit_of_measurement(self) -> str:
         return UnitOfEnergy.KILO_WATT_HOUR
 

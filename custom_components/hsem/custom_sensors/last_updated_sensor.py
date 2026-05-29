@@ -88,7 +88,7 @@ class HSEMLastUpdatedSensor(
         """Return the unique ID."""
         return self._attr_unique_id
 
-    @property
+    @property  # type: ignore[misc]  # HA stub declares state as @final
     def state(self) -> str | None:
         """Return the last-updated ISO timestamp."""
         data: CoordinatorData | None = self.coordinator.data
