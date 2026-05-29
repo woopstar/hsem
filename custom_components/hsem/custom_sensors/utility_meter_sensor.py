@@ -40,11 +40,11 @@ class HSEMUtilityMeterSensor(UtilityMeterSensor, HSEMEntity):
         return UnitOfEnergy.KILO_WATT_HOUR
 
     @property
-    def device_class(self) -> str:
+    def device_class(self) -> SensorDeviceClass:
         return SensorDeviceClass.ENERGY
 
     @property
-    def state_class(self) -> str:
+    def state_class(self) -> SensorStateClass:
         return SensorStateClass.TOTAL
 
     @property
