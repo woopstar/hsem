@@ -352,9 +352,9 @@ class TestPlannerThresholdEndToEnd:
             s.start.hour for s in output.slots if s.recommendation == _CHARGE_SOLAR
         }
         # At least hours 10-14 should be solar-charged (surplus >> 0.2 threshold)
-        assert solar_charged_hours.issuperset({10, 11, 12, 13, 14}), (
-            f"Expected solar hours 10-14 to be charged, got: {solar_charged_hours}"
-        )
+        assert solar_charged_hours.issuperset(
+            {10, 11, 12, 13, 14}
+        ), f"Expected solar hours 10-14 to be charged, got: {solar_charged_hours}"
 
     def test_no_false_solar_charge_on_consumption_hours(self):
         """Hours where consumption clearly exceeds solar must NOT be

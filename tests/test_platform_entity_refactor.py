@@ -765,13 +765,13 @@ class TestAttrPatternEnforcement:
     def test_hsem_selector_no_unique_id_property(self) -> None:
         """HSEMWorkingModeSelector must NOT define a @property 'unique_id'."""
         prop = HSEMWorkingModeSelector.__dict__.get("unique_id")
-        assert prop is None, (
-            "HSEMWorkingModeSelector must not override unique_id as a @property"
-        )
+        assert (
+            prop is None
+        ), "HSEMWorkingModeSelector must not override unique_id as a @property"
 
     def test_hsem_selector_no_current_option_property(self) -> None:
         """HSEMWorkingModeSelector must NOT override current_option as a @property."""
         prop = HSEMWorkingModeSelector.__dict__.get("current_option")
-        assert prop is None, (
-            "HSEMWorkingModeSelector must not override current_option as a @property"
-        )
+        assert (
+            prop is None
+        ), "HSEMWorkingModeSelector must not override current_option as a @property"

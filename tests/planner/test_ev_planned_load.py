@@ -890,13 +890,13 @@ class TestEvSolarSurplusRegression:
         # --- Assert EV plan selected the solar slot ---
         assert out.ev_charging_plan is not None
         plan = out.ev_charging_plan
-        assert len(plan.charging_slots) >= 1, (
-            "EV should have at least one charging slot"
-        )
+        assert (
+            len(plan.charging_slots) >= 1
+        ), "EV should have at least one charging slot"
         solar_ev_slots = [s for s in plan.charging_slots if s.start.hour == 10]
-        assert solar_ev_slots, (
-            "EV should be scheduled in the solar-surplus slot (hour 10)"
-        )
+        assert (
+            solar_ev_slots
+        ), "EV should be scheduled in the solar-surplus slot (hour 10)"
 
         # The slot at hour 10 should use the full 2.5 kWh from solar
         slot_10 = solar_ev_slots[0]
@@ -904,22 +904,20 @@ class TestEvSolarSurplusRegression:
             f"EV solar_surplus_kwh should be 2.5, got {slot_10.solar_surplus_kwh}. "
             "If 0.0, the solar surplus computation bug is still present."
         )
-        assert slot_10.import_needed_kwh == pytest.approx(0.0, abs=0.01), (
-            f"EV import_needed_kwh should be 0.0 (covered by solar), got {slot_10.import_needed_kwh}"
-        )
+        assert slot_10.import_needed_kwh == pytest.approx(
+            0.0, abs=0.01
+        ), f"EV import_needed_kwh should be 0.0 (covered by solar), got {slot_10.import_needed_kwh}"
 
         # --- Assert effective net load at hour 10 ---
         planner_slot_10 = next((s for s in out.slots if s.start.hour == 10), None)
         assert planner_slot_10 is not None
-        assert planner_slot_10.ev_planned_load_kwh == pytest.approx(2.5, abs=0.01), (
-            f"Planner slot 10 ev_planned_load_kwh should be 2.5, got {planner_slot_10.ev_planned_load_kwh}"
-        )
+        assert planner_slot_10.ev_planned_load_kwh == pytest.approx(
+            2.5, abs=0.01
+        ), f"Planner slot 10 ev_planned_load_kwh should be 2.5, got {planner_slot_10.ev_planned_load_kwh}"
         # effective_net = house(1.0) + ev(2.5) - pv(3.5) = 0.0
         assert planner_slot_10.estimated_net_consumption_kwh == pytest.approx(
             0.0, abs=0.01
-        ), (
-            f"effective_net at hour 10 should be 0.0, got {planner_slot_10.estimated_net_consumption_kwh}"
-        )
+        ), f"effective_net at hour 10 should be 0.0, got {planner_slot_10.estimated_net_consumption_kwh}"
 
         # --- Assert battery does NOT charge energy from consumed surplus ---
         # The recommendation label may still be 'batteries_charge_solar' because
@@ -1068,9 +1066,9 @@ class TestEvSmartChargingRecommendationLabel:
         out = run_planner(inp)
 
         for s in out.slots:
-            assert s.recommendation != "ev_smart_charging", (
-                f"Slot {s.start.hour}: unexpected ev_smart_charging (EV disabled)"
-            )
+            assert (
+                s.recommendation != "ev_smart_charging"
+            ), f"Slot {s.start.hour}: unexpected ev_smart_charging (EV disabled)"
 
     def test_no_ev_smart_charging_when_disconnected(self):
         """When EV is not connected, no slot should be labelled ev_smart_charging."""
@@ -1078,9 +1076,9 @@ class TestEvSmartChargingRecommendationLabel:
         out = run_planner(inp)
 
         for s in out.slots:
-            assert s.recommendation != "ev_smart_charging", (
-                f"Slot {s.start.hour}: unexpected ev_smart_charging (EV not connected)"
-            )
+            assert (
+                s.recommendation != "ev_smart_charging"
+            ), f"Slot {s.start.hour}: unexpected ev_smart_charging (EV not connected)"
 
     def test_grid_charge_slots_not_overridden_by_ev_label(self):
         """Slots already marked batteries_charge_grid keep that recommendation.
@@ -1132,9 +1130,9 @@ class TestEvSmartChargingRecommendationLabel:
             # At least one charge window should cover the EV slots
             all_window_starts = {w.start for w in out.charge_windows}
             ev_starts = {s.start for s in ev_smart_slots}
-            assert ev_starts & all_window_starts, (
-                "ev_smart_charging slots should appear in at least one charge window"
-            )
+            assert (
+                ev_starts & all_window_starts
+            ), "ev_smart_charging slots should appear in at least one charge window"
 
 
 # ---------------------------------------------------------------------------
@@ -1317,9 +1315,9 @@ class TestEvAcLoadAndSoCPath:
             )
             # With no PV and 100 % efficiency, AC load = battery-side
             # net = 0.5 + ev_ac = 0.5 + 10.0 = 10.5
-            assert s.estimated_net_consumption_kwh == pytest.approx(10.5, abs=0.1), (
-                f"Slot {s.start.hour}: expected net=10.5, got {s.estimated_net_consumption_kwh}"
-            )
+            assert s.estimated_net_consumption_kwh == pytest.approx(
+                10.5, abs=0.1
+            ), f"Slot {s.start.hour}: expected net=10.5, got {s.estimated_net_consumption_kwh}"
 
     # ------------------------------------------------------------------
     # grid_import_kwh includes EV AC draw (SoC simulation path)
@@ -1413,9 +1411,9 @@ class TestEvAcLoadAndSoCPath:
         assert plan_slot.ac_load_kwh == pytest.approx(10.0, abs=0.01)
 
         # PlannedSlot: ev_planned_load_kwh = ac_load_kwh = 10.0
-        assert s.ev_planned_load_kwh == pytest.approx(10.0, abs=0.01), (
-            f"ev_planned_load_kwh should be AC-side 10.0, got {s.ev_planned_load_kwh}"
-        )
+        assert s.ev_planned_load_kwh == pytest.approx(
+            10.0, abs=0.01
+        ), f"ev_planned_load_kwh should be AC-side 10.0, got {s.ev_planned_load_kwh}"
         # net = house + ev_ac - pv = 0.5 + 10.0 - 0.0 = 10.5
         assert s.estimated_net_consumption_kwh == pytest.approx(10.5, abs=0.05)
         # grid_import = house + ev_ac + battery_charge = 0.5 + 10.0 + 5.0 = 15.5
@@ -1457,9 +1455,9 @@ class TestEvAcLoadAndSoCPath:
         total_ev_ac = sum(s.ev_planned_load_kwh for s in out.slots)
 
         # EV AC load must be positive — the fix is working
-        assert total_ev_ac > 1e-9, (
-            "total ev_planned_load_kwh should be > 0; EV load not injected"
-        )
+        assert (
+            total_ev_ac > 1e-9
+        ), "total ev_planned_load_kwh should be > 0; EV load not injected"
 
         # Use future/current slots only — past slots have grid_import=0 by design
         # so including them in house sums would break the energy balance.
@@ -1662,9 +1660,9 @@ class TestEvLoadSemantics:
         apply_ev_planned_load_to_slots(
             starts, result, plan, base_load_includes_ev=False
         )
-        assert result[8] == pytest.approx(7.0), (
-            f"Expected additive result 7.0, got {result[8]}"
-        )
+        assert result[8] == pytest.approx(
+            7.0
+        ), f"Expected additive result 7.0, got {result[8]}"
 
     # ------------------------------------------------------------------
     # Test 2: Two EVs, same slot, base_load_includes_ev=False
@@ -1754,15 +1752,15 @@ class TestEvLoadSemantics:
         total_ev_accounted = sum(s.ev_accounted_load_kwh for s in out.slots)
         total_ev_total = sum(s.ev_total_planned_load_kwh for s in out.slots)
 
-        assert total_ev_injected == pytest.approx(7.0, abs=0.1), (
-            f"Total ev_planned_load_kwh should be 7.0 (3+4), got {total_ev_injected:.3f}"
-        )
-        assert total_ev_accounted == pytest.approx(0.0, abs=1e-9), (
-            f"ev_accounted_load_kwh should be 0 (base excludes EV), got {total_ev_accounted:.3f}"
-        )
-        assert total_ev_total == pytest.approx(7.0, abs=0.1), (
-            f"ev_total_planned_load_kwh should be 7.0, got {total_ev_total:.3f}"
-        )
+        assert total_ev_injected == pytest.approx(
+            7.0, abs=0.1
+        ), f"Total ev_planned_load_kwh should be 7.0 (3+4), got {total_ev_injected:.3f}"
+        assert total_ev_accounted == pytest.approx(
+            0.0, abs=1e-9
+        ), f"ev_accounted_load_kwh should be 0 (base excludes EV), got {total_ev_accounted:.3f}"
+        assert total_ev_total == pytest.approx(
+            7.0, abs=0.1
+        ), f"ev_total_planned_load_kwh should be 7.0, got {total_ev_total:.3f}"
 
     # ------------------------------------------------------------------
     # Test 3: Two EVs, same slot, base_load_includes_ev=True
@@ -1854,12 +1852,12 @@ class TestEvLoadSemantics:
         total_ev_accounted = sum(s.ev_accounted_load_kwh for s in out.slots)
         total_ev_total = sum(s.ev_total_planned_load_kwh for s in out.slots)
 
-        assert total_ev_accounted == pytest.approx(7.0, abs=0.1), (
-            f"ev_accounted_load_kwh total should be 7.0, got {total_ev_accounted:.3f}"
-        )
-        assert total_ev_total == pytest.approx(7.0, abs=0.1), (
-            f"ev_total_planned_load_kwh total should be 7.0, got {total_ev_total:.3f}"
-        )
+        assert total_ev_accounted == pytest.approx(
+            7.0, abs=0.1
+        ), f"ev_accounted_load_kwh total should be 7.0, got {total_ev_accounted:.3f}"
+        assert total_ev_total == pytest.approx(
+            7.0, abs=0.1
+        ), f"ev_total_planned_load_kwh total should be 7.0, got {total_ev_total:.3f}"
 
         # net consumption must NOT include EV load (no double-count)
         for s in out.slots:
@@ -2292,9 +2290,9 @@ class TestEvLoadSemantics:
 
         # ev_accounted_load_kwh = ev_total (all accounted, none injected)
         total_ev_accounted = sum(s.ev_accounted_load_kwh for s in out.slots)
-        assert total_ev_accounted == pytest.approx(5.0, abs=0.1), (
-            f"ev_accounted_load_kwh total should be ~5.0, got {total_ev_accounted:.3f}"
-        )
+        assert total_ev_accounted == pytest.approx(
+            5.0, abs=0.1
+        ), f"ev_accounted_load_kwh total should be ~5.0, got {total_ev_accounted:.3f}"
 
     # ------------------------------------------------------------------
     # Test 9: EVSmartCharging label applied even when ev_planned == 0
@@ -2548,9 +2546,9 @@ class TestEvLoadDoesNotInflateChargeNeeded:
             "Check schedule config and price spread."
         )
         cheap_charge_hours = {s.start.hour for s in charge_grid_slots}
-        assert cheap_charge_hours & set(range(6)), (
-            f"Expected charge slots in hours 0-5 (cheap), got: {cheap_charge_hours}"
-        )
+        assert cheap_charge_hours & set(
+            range(6)
+        ), f"Expected charge slots in hours 0-5 (cheap), got: {cheap_charge_hours}"
 
     @pytest.mark.skip(reason="MILP-only mode: schedule-based behavior not applicable")
     def test_grid_charge_slots_still_exist_with_ev_base_excludes(self):
@@ -2809,9 +2807,9 @@ class TestEvDeadlineWindowOneMidnight:
         # ``plan.data_quality`` is currently only written on the "no
         # candidate slots" path; in the success path it may be absent.
         for slot in plan.charging_slots:
-            assert slot.start < end_of_tomorrow, (
-                f"EV slot {slot.start.isoformat()} bypassed the one-midnight cap."
-            )
+            assert (
+                slot.start < end_of_tomorrow
+            ), f"EV slot {slot.start.isoformat()} bypassed the one-midnight cap."
 
     def test_deadline_at_horizon_cap_exactly(self):
         """A deadline exactly equal to end-of-tomorrow is honoured as-is.
@@ -2935,9 +2933,9 @@ class TestEvChargerCalculatedPower:
         prices = [0.10] * 24
         plan = build_ev_charging_plan(inp, starts, ends, surplus, prices)
         total = sum(s.estimated_charged_kwh for s in plan.charging_slots)
-        assert total > 2.0, (
-            f"Pass 3 should allocate surplus when above target, got {total}"
-        )
+        assert (
+            total > 2.0
+        ), f"Pass 3 should allocate surplus when above target, got {total}"
         # All slots must be pure surplus (no grid import).
         for s in plan.charging_slots:
             assert s.import_needed_kwh == 0.0
@@ -2973,9 +2971,9 @@ class TestEvChargerCalculatedPower:
         )
         plan = build_ev_charging_plan(inp, starts, ends, surplus, prices)
         total = sum(s.estimated_charged_kwh for s in plan.charging_slots)
-        assert total > 2.0, (
-            f"Pass 3 should enter with mismatched prediction length, got {total}"
-        )
+        assert (
+            total > 2.0
+        ), f"Pass 3 should enter with mismatched prediction length, got {total}"
 
     def test_pass_3_not_entered_allow_past_target_disabled(self):
         """When allow_charge_past_target_soc=False and SoC >= target,

@@ -67,15 +67,15 @@ class TestEntityBaseClasses:
 
     def test_time_entity_inherits_from_time_entity(self) -> None:
         """HSEMTimeEntity must extend TimeEntity, not ToggleEntity."""
-        assert issubclass(HSEMTimeEntity, TimeEntity), (
-            "HSEMTimeEntity should inherit from homeassistant.components.time.TimeEntity"
-        )
+        assert issubclass(
+            HSEMTimeEntity, TimeEntity
+        ), "HSEMTimeEntity should inherit from homeassistant.components.time.TimeEntity"
 
     def test_time_entity_does_not_inherit_from_toggle_entity(self) -> None:
         """HSEMTimeEntity must NOT extend ToggleEntity (the old incorrect base)."""
-        assert not issubclass(HSEMTimeEntity, ToggleEntity), (
-            "HSEMTimeEntity must not inherit from ToggleEntity"
-        )
+        assert not issubclass(
+            HSEMTimeEntity, ToggleEntity
+        ), "HSEMTimeEntity must not inherit from ToggleEntity"
 
     def test_switch_entity_inherits_from_switch_entity(self) -> None:
         """HSEMSwitch must extend SwitchEntity."""

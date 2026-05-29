@@ -69,9 +69,9 @@ class TestWindowHysteresis:
             previous_current_recommendation=None,
             previous_current_slot_start=None,
         )
-        assert rec == Recommendations.BatteriesChargeGrid.value, (
-            "First run must accept the new recommendation"
-        )
+        assert (
+            rec == Recommendations.BatteriesChargeGrid.value
+        ), "First run must accept the new recommendation"
 
     # ------------------------------------------------------------------
     # Same-category transitions (no hold needed)
@@ -89,9 +89,9 @@ class TestWindowHysteresis:
             previous_current_recommendation=Recommendations.BatteriesChargeGrid.value,
             previous_current_slot_start=_NOW - timedelta(minutes=5),
         )
-        assert rec == Recommendations.BatteriesChargeSolar.value, (
-            "Same-category charge change must not be held"
-        )
+        assert (
+            rec == Recommendations.BatteriesChargeSolar.value
+        ), "Same-category charge change must not be held"
 
     def test_discharge_to_discharge_no_hold(self):
         """Same-category change (discharge → force-discharge) must not hold."""
@@ -105,9 +105,9 @@ class TestWindowHysteresis:
             previous_current_recommendation=Recommendations.BatteriesDischargeMode.value,
             previous_current_slot_start=_NOW - timedelta(minutes=5),
         )
-        assert rec == Recommendations.ForceBatteriesDischarge.value, (
-            "Same-category discharge change must not be held"
-        )
+        assert (
+            rec == Recommendations.ForceBatteriesDischarge.value
+        ), "Same-category discharge change must not be held"
 
     # ------------------------------------------------------------------
     # Cross-category transitions within hold time
@@ -125,13 +125,13 @@ class TestWindowHysteresis:
             previous_current_recommendation=Recommendations.BatteriesChargeGrid.value,
             previous_current_slot_start=_NOW - timedelta(minutes=5),
         )
-        assert rec == Recommendations.BatteriesChargeGrid.value, (
-            "Charge→discharge within hold time must be held"
-        )
+        assert (
+            rec == Recommendations.BatteriesChargeGrid.value
+        ), "Charge→discharge within hold time must be held"
         # The slot's recommendation should also be updated
-        assert slots[0].recommendation == Recommendations.BatteriesChargeGrid.value, (
-            "Slot recommendation must reflect the held value"
-        )
+        assert (
+            slots[0].recommendation == Recommendations.BatteriesChargeGrid.value
+        ), "Slot recommendation must reflect the held value"
 
     def test_discharge_to_charge_within_hold(self):
         """Discharge→charge within hold time must keep the previous recommendation."""
@@ -145,9 +145,9 @@ class TestWindowHysteresis:
             previous_current_recommendation=Recommendations.BatteriesDischargeMode.value,
             previous_current_slot_start=_NOW - timedelta(minutes=5),
         )
-        assert rec == Recommendations.BatteriesDischargeMode.value, (
-            "Discharge→charge within hold time must be held"
-        )
+        assert (
+            rec == Recommendations.BatteriesDischargeMode.value
+        ), "Discharge→charge within hold time must be held"
         assert (
             slots[0].recommendation == Recommendations.BatteriesDischargeMode.value
         ), "Slot recommendation must reflect the held value"
@@ -164,9 +164,9 @@ class TestWindowHysteresis:
             previous_current_recommendation=Recommendations.EVSmartCharging.value,
             previous_current_slot_start=_NOW - timedelta(minutes=2),
         )
-        assert rec == Recommendations.EVSmartCharging.value, (
-            "Charge→force-export within hold time must be held"
-        )
+        assert (
+            rec == Recommendations.EVSmartCharging.value
+        ), "Charge→force-export within hold time must be held"
 
     # ------------------------------------------------------------------
     # Cross-category transitions after hold time expires
@@ -184,9 +184,9 @@ class TestWindowHysteresis:
             previous_current_recommendation=Recommendations.BatteriesChargeGrid.value,
             previous_current_slot_start=_NOW - timedelta(minutes=15),
         )
-        assert rec == Recommendations.BatteriesDischargeMode.value, (
-            "Charge→discharge after hold time must be allowed"
-        )
+        assert (
+            rec == Recommendations.BatteriesDischargeMode.value
+        ), "Charge→discharge after hold time must be allowed"
 
     def test_discharge_to_charge_after_hold(self):
         """Discharge→charge after hold time must allow the switch."""
@@ -200,9 +200,9 @@ class TestWindowHysteresis:
             previous_current_recommendation=Recommendations.BatteriesDischargeMode.value,
             previous_current_slot_start=_NOW - timedelta(minutes=10),
         )
-        assert rec == Recommendations.BatteriesChargeGrid.value, (
-            "Discharge→charge after hold time must be allowed"
-        )
+        assert (
+            rec == Recommendations.BatteriesChargeGrid.value
+        ), "Discharge→charge after hold time must be allowed"
 
     # ------------------------------------------------------------------
     # Neutral recommendations
@@ -220,9 +220,9 @@ class TestWindowHysteresis:
             previous_current_recommendation=Recommendations.BatteriesChargeGrid.value,
             previous_current_slot_start=_NOW - timedelta(minutes=2),
         )
-        assert rec == Recommendations.BatteriesWaitMode.value, (
-            "Charge→neutral must not be held"
-        )
+        assert (
+            rec == Recommendations.BatteriesWaitMode.value
+        ), "Charge→neutral must not be held"
 
     def test_discharge_to_neutral_no_hold(self):
         """Discharge→neutral must not hold."""
@@ -250,9 +250,9 @@ class TestWindowHysteresis:
             previous_current_recommendation=Recommendations.TimePassed.value,
             previous_current_slot_start=_NOW - timedelta(minutes=2),
         )
-        assert rec == Recommendations.BatteriesChargeGrid.value, (
-            "Neutral→charge must not be held"
-        )
+        assert (
+            rec == Recommendations.BatteriesChargeGrid.value
+        ), "Neutral→charge must not be held"
 
     # ------------------------------------------------------------------
     # Feature disabled
@@ -270,9 +270,9 @@ class TestWindowHysteresis:
             previous_current_recommendation=Recommendations.BatteriesChargeGrid.value,
             previous_current_slot_start=_NOW - timedelta(minutes=2),
         )
-        assert rec == Recommendations.BatteriesDischargeMode.value, (
-            "Transition must be allowed when feature is disabled"
-        )
+        assert (
+            rec == Recommendations.BatteriesDischargeMode.value
+        ), "Transition must be allowed when feature is disabled"
 
     # ------------------------------------------------------------------
     # Edge cases — exact boundary
@@ -290,9 +290,9 @@ class TestWindowHysteresis:
             previous_current_recommendation=Recommendations.EVSmartCharging.value,
             previous_current_slot_start=_NOW - timedelta(minutes=10),
         )
-        assert rec == Recommendations.BatteriesDischargeMode.value, (
-            "Transition exactly at hold time boundary must be allowed (>=)"
-        )
+        assert (
+            rec == Recommendations.BatteriesDischargeMode.value
+        ), "Transition exactly at hold time boundary must be allowed (>=)"
 
     def test_one_second_before_boundary(self):
         """Transition just before hold time boundary must be held."""
@@ -306,9 +306,9 @@ class TestWindowHysteresis:
             previous_current_recommendation=Recommendations.EVSmartCharging.value,
             previous_current_slot_start=_NOW - timedelta(minutes=9, seconds=59),
         )
-        assert rec == Recommendations.EVSmartCharging.value, (
-            "Transition just before hold time boundary must be held"
-        )
+        assert (
+            rec == Recommendations.EVSmartCharging.value
+        ), "Transition just before hold time boundary must be held"
 
     # ------------------------------------------------------------------
     # Return value semantics
@@ -326,9 +326,9 @@ class TestWindowHysteresis:
             previous_current_recommendation=Recommendations.BatteriesChargeGrid.value,
             previous_current_slot_start=_NOW - timedelta(minutes=15),
         )
-        assert start == slots[0].start, (
-            "Returned start time must be from the current slot after a switch"
-        )
+        assert (
+            start == slots[0].start
+        ), "Returned start time must be from the current slot after a switch"
 
     def test_returns_previous_start_time_on_hold(self):
         """When held, the returned start time must be the previous slot start."""
@@ -343,6 +343,6 @@ class TestWindowHysteresis:
             previous_current_recommendation=Recommendations.BatteriesChargeGrid.value,
             previous_current_slot_start=prev_start,
         )
-        assert start == prev_start, (
-            "Returned start time must be the previous slot start when held"
-        )
+        assert (
+            start == prev_start
+        ), "Returned start time must be the previous slot start when held"

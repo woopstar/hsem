@@ -195,14 +195,14 @@ class TestTimeSeriesIndexMultiDayAlignment:
 
         # First 24 slots (day_offset=0) must carry today's price.
         for i in range(24):
-            assert aligned_imp[i] == pytest.approx(today_import), (
-                f"slot {i} (day 0): expected {today_import}, got {aligned_imp[i]}"
-            )
+            assert aligned_imp[i] == pytest.approx(
+                today_import
+            ), f"slot {i} (day 0): expected {today_import}, got {aligned_imp[i]}"
         # Next 24 slots (day_offset=1) must carry tomorrow's price.
         for i in range(24, 48):
-            assert aligned_imp[i] == pytest.approx(tomorrow_import), (
-                f"slot {i} (day 1): expected {tomorrow_import}, got {aligned_imp[i]}"
-            )
+            assert aligned_imp[i] == pytest.approx(
+                tomorrow_import
+            ), f"slot {i} (day 1): expected {tomorrow_import}, got {aligned_imp[i]}"
 
     def test_align_pv_day_hour_keys_distinct_days(self):
         tsi = self._make_tsi()
@@ -253,9 +253,9 @@ class TestTimeSeriesIndexMultiDayAlignment:
 
         # Day-1 slots should all be marked missing.
         missing_day1 = {k for k in tsi.missing_price_slots if k.day_offset == 1}
-        assert len(missing_day1) == 24, (
-            f"Expected 24 missing day-1 price slots, got {len(missing_day1)}"
-        )
+        assert (
+            len(missing_day1) == 24
+        ), f"Expected 24 missing day-1 price slots, got {len(missing_day1)}"
 
 
 # ---------------------------------------------------------------------------
