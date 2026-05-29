@@ -37,9 +37,9 @@ from custom_components.hsem.utils.sensornames import (
 
 class HSEMReadOnlySensor(
     HSEMCoordinatorEntity,
+    RestoreEntity,
     SensorEntity,
     HSEMEntity,
-    RestoreEntity,
 ):
     """Diagnostic sensor exposing whether HSEM is in read-only mode.
 

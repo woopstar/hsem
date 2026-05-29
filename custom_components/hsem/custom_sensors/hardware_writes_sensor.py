@@ -45,9 +45,9 @@ _VALID_STATES = {_ALLOWED, _BLOCKED}
 
 class HSEMHardwareWritesSensor(
     HSEMCoordinatorEntity,
+    RestoreEntity,
     SensorEntity,
     HSEMEntity,
-    RestoreEntity,
 ):
     """Diagnostic sensor exposing whether HSEM hardware writes are allowed.
 

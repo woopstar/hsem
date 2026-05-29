@@ -40,9 +40,9 @@ from custom_components.hsem.utils.sensornames import (
 
 class HSEMForceModeSensor(
     HSEMCoordinatorEntity,
+    RestoreEntity,
     SensorEntity,
     HSEMEntity,
-    RestoreEntity,
 ):
     """Diagnostic sensor exposing the current force-working-mode state.
 

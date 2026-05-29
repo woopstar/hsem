@@ -41,9 +41,9 @@ from custom_components.hsem.utils.sensornames import (
 
 class HSEMUpdateIntervalSensor(
     HSEMCoordinatorEntity,
+    RestoreEntity,
     SensorEntity,
     HSEMEntity,
-    RestoreEntity,
 ):
     """Diagnostic sensor exposing the current HSEM update interval in minutes.
 

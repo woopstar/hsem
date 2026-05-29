@@ -54,9 +54,9 @@ _VALID_STATES = {s.value for s in ApplyStatus} | {_PENDING}
 
 class HSEMApplierStatusSensor(
     HSEMCoordinatorEntity,
+    RestoreEntity,
     SensorEntity,
     HSEMEntity,
-    RestoreEntity,
 ):
     """Diagnostic sensor exposing the last hardware-write cycle outcome.
 

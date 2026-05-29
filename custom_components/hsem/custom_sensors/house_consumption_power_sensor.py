@@ -72,7 +72,7 @@ from custom_components.hsem.utils.sensornames import (
 )
 
 
-class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
+class HSEMHouseConsumptionPowerSensor(RestoreEntity, SensorEntity, HSEMEntity):
     """Representation of a sensor that tracks power consumption per hour block."""
 
     _attr_icon = "mdi:flash"

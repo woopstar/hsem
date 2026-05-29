@@ -40,9 +40,9 @@ _VALID_STATES = {STATE_ON, STATE_OFF}
 
 class HSEMEVChargingSensor(
     HSEMCoordinatorEntity,
+    RestoreEntity,
     SensorEntity,
     HSEMEntity,
-    RestoreEntity,
 ):
     """Diagnostic sensor exposing whether any HSEM-managed EV charger is active.
 

@@ -20,7 +20,7 @@ from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 from custom_components.hsem.utils.misc import ha_get_entity_state_and_convert
 
 
-class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
+class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
     """Rolling N-day average of a utility-meter energy reading (kWh)."""
 
     _attr_icon = "mdi:calculator"

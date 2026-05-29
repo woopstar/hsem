@@ -75,9 +75,9 @@ def _determine_forecast_mode(
 
 class HSEMPlanExplanationSensor(
     HSEMCoordinatorEntity,
+    RestoreEntity,
     SensorEntity,
     HSEMEntity,
-    RestoreEntity,
 ):
     """Diagnostic sensor exposing the active HSEM planner strategy.
 

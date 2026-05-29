@@ -44,9 +44,9 @@ from custom_components.hsem.utils.sensornames import (
 
 class HSEMNetConsumptionSensor(
     HSEMCoordinatorEntity,
+    RestoreEntity,
     SensorEntity,
     HSEMEntity,
-    RestoreEntity,
 ):
     """Diagnostic sensor exposing the instantaneous net power consumption (W).
 

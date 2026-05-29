@@ -44,9 +44,9 @@ from custom_components.hsem.utils.sensornames import (
 
 class HSEMBatterySoCSensor(
     HSEMCoordinatorEntity,
+    RestoreEntity,
     SensorEntity,
     HSEMEntity,
-    RestoreEntity,
 ):
     """Diagnostic sensor mirroring the battery SoC snapshot from the last cycle.
 
