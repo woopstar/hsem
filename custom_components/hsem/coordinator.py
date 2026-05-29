@@ -30,6 +30,7 @@ platform retrieves it and passes it to the relevant entity constructors.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
@@ -179,8 +180,8 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         self._update_lock = asyncio.Lock()
 
         # Timer handles — cancelled/re-registered when the interval changes.
-        self._interval_timer_unsub = None
-        self._hourly_timer_unsub = None
+        self._interval_timer_unsub: Callable[[], None] | None = None
+        self._hourly_timer_unsub: Callable[[], None] | None = None
         self._timer_interval: timedelta | None = None
 
         # Per-cycle mutable state (not exposed directly; packaged into CoordinatorData).
@@ -210,7 +211,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         self._ev_second_charging_plan: EVChargingPlan | None = None
         # Most recent planner input/output retained for diagnostics dumps.
         self._last_planner_input: PlannerInput | None = None
-        self._last_planner_output = None
+        self._last_planner_output: PlannerOutput | None = None
         # Previous planner winner name and score for hysteresis (issue #372).
         # Persisted across cycles so the planner can compare against the
         # previously active plan.

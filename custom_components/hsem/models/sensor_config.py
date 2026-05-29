@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import time
+from typing import cast
 
 from custom_components.hsem.const import DEFAULT_CONFIG_VALUES
 
@@ -181,9 +182,9 @@ class SensorConfig:
     #: LiFePO4 EOL is typically 20 % (80 % retained).  Default 30 % includes
     #: margin for calendar ageing.
     batteries_capacity_loss_pct: float = field(
-        default_factory=lambda: DEFAULT_CONFIG_VALUES[
-            "hsem_batteries_capacity_loss_pct"
-        ]
+        default_factory=lambda: cast(
+            float, DEFAULT_CONFIG_VALUES["hsem_batteries_capacity_loss_pct"]
+        )
     )
 
     # Battery discharge schedules

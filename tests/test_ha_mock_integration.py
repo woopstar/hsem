@@ -208,7 +208,7 @@ def make_bare_coordinator(
     coord._listener_unsubs = []
     coord._timer_interval = None
     coord._next_update = None
-    coord.data = None
+    coord.data = None  # type: ignore[assignment]  # test sets data to None before first cycle
     coord.last_update_success = True
     coord.logger = MagicMock()
 
@@ -709,7 +709,7 @@ class TestDryRunCycle:
         coord._set_update_interval = AsyncMock()
 
         captured: list[CoordinatorData] = []
-        coord.async_set_updated_data = lambda d: captured.append(d)
+        coord.async_set_updated_data = lambda d: captured.append(d)  # type: ignore[assignment]  # test monkey-patch
 
         with _patch_all_ha_helpers():
             await coord._async_run_update_cycle()
@@ -728,14 +728,14 @@ class TestDryRunCycle:
         coord._set_update_interval = AsyncMock()
 
         captured: list[CoordinatorData] = []
-        coord.async_set_updated_data = lambda d: captured.append(d)
+        coord.async_set_updated_data = lambda d: captured.append(d)  # type: ignore[assignment]  # test monkey-patch
 
         with _patch_all_ha_helpers():
             await coord._async_run_update_cycle()
 
         live = captured[0].live
         assert live is not None
-        # Battery SoC should be read from "sensor.batteries_state_of_capacity" = "65"
+        # Battery SoC should be read from "sensor.batteries_state_of_capacity"
         assert live.huawei_batteries_soc_pct == pytest.approx(65.0)
 
     @pytest.mark.asyncio
@@ -780,7 +780,7 @@ class TestDryRunCycle:
         coord._set_update_interval = AsyncMock()
 
         captured: list[CoordinatorData] = []
-        coord.async_set_updated_data = lambda d: captured.append(d)
+        coord.async_set_updated_data = lambda d: captured.append(d)  # type: ignore[assignment]  # test monkey-patch
 
         with _patch_all_ha_helpers():
             await coord._async_run_update_cycle()
@@ -802,7 +802,7 @@ class TestDryRunCycle:
         coord._set_update_interval = AsyncMock()
 
         captured: list[CoordinatorData] = []
-        coord.async_set_updated_data = lambda d: captured.append(d)
+        coord.async_set_updated_data = lambda d: captured.append(d)  # type: ignore[assignment]  # test monkey-patch
 
         with _patch_all_ha_helpers():
             await coord._async_run_update_cycle()
@@ -846,7 +846,7 @@ class TestDryRunCycle:
         coord._set_update_interval = AsyncMock()
 
         captured: list[CoordinatorData] = []
-        coord.async_set_updated_data = lambda d: captured.append(d)
+        coord.async_set_updated_data = lambda d: captured.append(d)  # type: ignore[assignment]  # test monkey-patch
 
         with _patch_all_ha_helpers():
             await coord._async_run_update_cycle()

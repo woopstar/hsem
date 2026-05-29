@@ -60,7 +60,7 @@ def _make_bare_coordinator() -> HSEMDataUpdateCoordinator:
     coord._listener_unsubs = []
     coord._timer_interval = None
     coord._next_update = None
-    coord.data = None
+    coord.data = None  # type: ignore[assignment]  # test sets data to None before first cycle
     coord.last_update_success = True
     cfg = MagicMock()
     cfg.verbose_logging = False

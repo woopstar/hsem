@@ -49,11 +49,11 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
         self._tracked_entity = tracked_entity
         self._attr_unique_id = unique_id
         self.entity_id = entity_id
-        self._state = None
-        self._last_updated = None
+        self._state: float | None = None
+        self._last_updated: str | None = None
         self._config_entry = config_entry
         self._name = name
-        self._measurements = None
+        self._measurements: dict[str, float] | None = None
         self._tracked_entities = set()
         # Unsubscribe callbacks registered by async_track_* helpers.
         self._unsub_callbacks: list = []

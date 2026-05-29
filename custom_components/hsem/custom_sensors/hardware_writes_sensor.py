@@ -138,7 +138,7 @@ class HSEMHardwareWritesSensor(
             }
         live = data.live
         cfg = data.cfg
-        attrs = {
+        attrs: dict[str, Any] = {
             "degraded_mode": live.degraded_mode.value,
             "missing_entities_list": list(live.missing_entities_list),
             "read_only_active": bool(cfg.read_only) if cfg is not None else False,
