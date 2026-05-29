@@ -19,7 +19,7 @@ from custom_components.hsem.const import DEFAULT_CONFIG_VALUES, DOMAIN
 # importing it from utils.misc continue to work without changes.
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 
-_entity_id_from_unique_id_cache = {}
+_entity_id_from_unique_id_cache: dict[tuple[str, str, str], str] = {}
 
 
 class EntityNotFoundError(HomeAssistantError):

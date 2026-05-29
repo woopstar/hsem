@@ -1,5 +1,7 @@
 """This module defines the configuration flow for the HSEM integration in Home Assistant."""
 
+from typing import Any
+
 from homeassistant import config_entries
 
 from custom_components.hsem.const import NAME
@@ -61,7 +63,7 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         self._config_entry = config_entry
-        self._user_input = {}
+        self._user_input: dict[str, Any] = {}
 
     def update_config_entry_data(self) -> None:
         """Update config_entry.data with the latest configuration values from options."""

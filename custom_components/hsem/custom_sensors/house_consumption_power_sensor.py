@@ -125,7 +125,7 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
         self._last_updated: str | None = None
         # Track which derived sensors have already been created to avoid duplicate adds.
         self._derived_sensors_created: set[str] = set()
-        self._tracked_entities = set()
+        self._tracked_entities: set[str] = set()
         # Unsubscribe callbacks registered by async_track_* helpers.
         self._unsub_callbacks: list = []
         self._async_add_entities = async_add_entities

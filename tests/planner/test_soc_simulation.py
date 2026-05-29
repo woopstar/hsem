@@ -178,7 +178,7 @@ def _make_slots_for_simulation(
 
     tz = ZoneInfo("Europe/Copenhagen")
     t0 = datetime.fromisoformat(now_iso).replace(tzinfo=tz)
-    slots = []
+    slots: list[PlannedSlot] = []
     for i in range(n):
         start = t0 + timedelta(hours=i)
         end = start + timedelta(hours=1)
