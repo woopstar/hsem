@@ -45,16 +45,21 @@ from datetime import datetime
 from custom_components.hsem.models.planner_inputs import PlannerInput
 from custom_components.hsem.models.planner_outputs import PlannedSlot
 from custom_components.hsem.planner.cost_function import PlanCostBreakdown
-from custom_components.hsem.planner.milp_optimizer import (CANDIDATE_MILP,
-                                                           is_scipy_available,
-                                                           solve_milp)
+from custom_components.hsem.planner.milp_optimizer import (
+    CANDIDATE_MILP,
+    is_scipy_available,
+    solve_milp,
+)
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import log_planner
-from custom_components.hsem.utils.misc import (calculate_recommended_threshold,
-                                               clamp_efficiency)
+from custom_components.hsem.utils.misc import (
+    calculate_recommended_threshold,
+    clamp_efficiency,
+)
 from custom_components.hsem.utils.recommendations import CHARGE_RECS as _CHARGE_RECS
-from custom_components.hsem.utils.recommendations import \
-    DISCHARGE_RECS as _DISCHARGE_RECS
+from custom_components.hsem.utils.recommendations import (
+    DISCHARGE_RECS as _DISCHARGE_RECS,
+)
 from custom_components.hsem.utils.recommendations import Recommendations
 
 # ---------------------------------------------------------------------------
