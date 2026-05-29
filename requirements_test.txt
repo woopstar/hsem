@@ -1,7 +1,7 @@
-pytest>=9.0.3
-pytest-asyncio>=1.4.0
-pytest-cov>=7.1.0
-pytest-socket>=0.8.0
-pytest-timeout>=2.4.0
-pyright>=1.1.409
-vulture>=2.16
+pytest==9.0.3
+pytest-asyncio==1.4.0
+pytest-cov==7.1.0
+pytest-socket==0.8.0
+pytest-timeout==2.4.0
+pyright==1.1.409
+vulture==2.16
