@@ -21,6 +21,7 @@ from typing import Any
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.components.sensor.const import SensorDeviceClass
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     STATE_UNAVAILABLE,
     STATE_UNKNOWN,
@@ -66,7 +67,7 @@ class HSEMNetConsumptionSensor(
 
     def __init__(
         self,
-        config_entry,
+        config_entry: ConfigEntry,
         coordinator: HSEMDataUpdateCoordinator,
     ) -> None:
         """Initialise the net-consumption sensor.

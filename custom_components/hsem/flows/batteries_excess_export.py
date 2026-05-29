@@ -1,7 +1,9 @@
 """Flow configuration for battery excess energy export optimization."""
 
 import voluptuous as vol
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.selector import selector
 
 from custom_components.hsem.utils.config_validator import merge_errors, validate_price
@@ -9,7 +11,9 @@ from custom_components.hsem.utils.misc import get_config_value
 
 
 async def get_batteries_excess_export_step_schema(
-    config_entry, user_input: dict | None = None, hass=None
+    config_entry: ConfigEntry | None,
+    user_input: dict | None = None,
+    hass: HomeAssistant | None = None,
 ) -> vol.Schema:
     """Return the data schema for the 'batteries_excess_export' step.
 
@@ -52,7 +56,7 @@ async def get_batteries_excess_export_step_schema(
     )
 
 
-async def validate_batteries_excess_export_input(user_input) -> dict[str, str]:
+async def validate_batteries_excess_export_input(user_input: dict) -> dict[str, str]:
     """Validate user input for batteries excess export configuration.
 
     The price threshold is auto-calculated at runtime from battery

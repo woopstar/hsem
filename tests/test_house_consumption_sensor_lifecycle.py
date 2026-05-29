@@ -28,6 +28,7 @@ Key invariants verified here:
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -56,7 +57,7 @@ from custom_components.hsem.utils.sensornames import (
 # ---------------------------------------------------------------------------
 
 
-def _mock_config_entry(**overrides) -> MagicMock:
+def _mock_config_entry(**overrides: Any) -> MagicMock:
     """Return a minimal config-entry mock."""
     import voluptuous as vol
 
@@ -73,7 +74,7 @@ def _mock_config_entry(**overrides) -> MagicMock:
 
 
 def _make_sensor(
-    hour_start: int = 14, *, config_entry=None
+    hour_start: int = 14, *, config_entry: MagicMock | None = None
 ) -> tuple[
     HSEMHouseConsumptionPowerSensor,
     list,
@@ -449,7 +450,12 @@ class TestPowerSensorActiveWindow:
 
 
 def _fake_integration_init(
-    self_inner, *args, id, e_id, config_entry=None, **kwargs
+    self_inner: Any,
+    *args: Any,
+    id: Any,
+    e_id: Any,
+    config_entry: Any = None,
+    **kwargs: Any,
 ) -> None:
     """Minimal HSEMIntegrationSensor init that bypasses the real HA bootstrap."""
     self_inner._attr_unique_id = id
@@ -457,14 +463,14 @@ def _fake_integration_init(
 
 
 def _fake_utility_init(
-    self_inner,
-    *args,
-    id,
-    e_id,
-    config_entry=None,
-    source_entity=None,
-    _parent_meter=None,
-    **kwargs,
+    self_inner: Any,
+    *args: Any,
+    id: Any,
+    e_id: Any,
+    config_entry: Any = None,
+    source_entity: Any = None,
+    _parent_meter: Any = None,
+    **kwargs: Any,
 ) -> None:
     """Minimal HSEMUtilityMeterSensor init that bypasses the real HA bootstrap."""
     self_inner._attr_unique_id = id
@@ -631,14 +637,14 @@ class TestDerivedSensorLifecycle:
         captured_source: list[str] = []
 
         def capturing_utility_init(
-            self_inner,
-            *args,
-            id,
-            e_id,
-            config_entry=None,
-            source_entity=None,
-            _parent_meter=None,
-            **kwargs,
+            self_inner: Any,
+            *args: Any,
+            id: Any,
+            e_id: Any,
+            config_entry: Any = None,
+            source_entity: Any = None,
+            _parent_meter: Any = None,
+            **kwargs: Any,
         ) -> None:
             self_inner._attr_unique_id = id
             self_inner.entity_id = e_id

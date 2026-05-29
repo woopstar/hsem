@@ -9,7 +9,10 @@ These tests exercise ``_async_handle_update`` in isolation, using a minimal
 stub sensor so that no Home Assistant runtime or real inverter is required.
 """
 
+from __future__ import annotations
+
 import asyncio
+from typing import Any
 
 import pytest
 
@@ -30,7 +33,7 @@ class _StubSensor:
     async def _async_logger(self, msg: str) -> None:  # noqa: D102 (no docstring needed)
         pass
 
-    async def _async_handle_update(self, event=None) -> None:
+    async def _async_handle_update(self, event: Any = None) -> None:
         """Exact copy of the production guard logic."""
         if self._update_lock.locked():
             await self._async_logger(
@@ -42,7 +45,7 @@ class _StubSensor:
         async with self._update_lock:
             await self._async_run_update_cycle(event)
 
-    async def _async_run_update_cycle(self, event=None) -> None:
+    async def _async_run_update_cycle(self, event: Any = None) -> None:
         """Simulates a slow update cycle (2 event-loop ticks)."""
         self._cycle_call_count += 1
         # Yield control so a concurrent caller can attempt to acquire the lock.
@@ -114,7 +117,7 @@ class TestUpdateLoopLock:
         write_calls: list[str] = []
 
         class _WriteTrackingSensor(_StubSensor):
-            async def _async_run_update_cycle(self, event=None) -> None:  # type: ignore[override]
+            async def _async_run_update_cycle(self, event: Any = None) -> None:  # type: ignore[override]
                 self._cycle_call_count += 1
                 write_calls.append("write")
                 # Simulate async I/O latency so the second caller can arrive.

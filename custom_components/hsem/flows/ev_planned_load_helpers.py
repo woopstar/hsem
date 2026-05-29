@@ -18,8 +18,12 @@ Public API
 
 from __future__ import annotations
 
+from typing import Any
+
 import voluptuous as vol
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE, UnitOfEnergy, UnitOfPower
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.selector import selector
 
 from custom_components.hsem.utils.config_validator import (
@@ -69,7 +73,9 @@ _EFFICIENCY_SELECTOR = selector(
 )
 
 
-async def build_ev_planned_load_schema(config_entry, prefix: str) -> vol.Schema:
+async def build_ev_planned_load_schema(
+    config_entry: ConfigEntry | None, prefix: str
+) -> vol.Schema:
     """Return the data schema for an EV planned load config flow step.
 
     Args:
@@ -84,7 +90,7 @@ async def build_ev_planned_load_schema(config_entry, prefix: str) -> vol.Schema:
     def _k(suffix: str) -> str:
         return f"{prefix}_{suffix}"
 
-    def _v(suffix: str):
+    def _v(suffix: str) -> Any:  # TODO: tighten type
         return get_config_value(config_entry, _k(suffix))
 
     return vol.Schema(
@@ -114,7 +120,7 @@ async def build_ev_planned_load_schema(config_entry, prefix: str) -> vol.Schema:
 
 
 async def validate_ev_planned_load_schema_input(
-    hass, user_input: dict, prefix: str
+    hass: HomeAssistant, user_input: dict, prefix: str
 ) -> dict[str, str]:
     """Validate user input for an EV planned load flow step.
 

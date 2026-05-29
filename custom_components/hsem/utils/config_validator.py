@@ -19,6 +19,7 @@ Design principles
 
 import re
 from datetime import datetime as _datetime
+from typing import Any
 
 from custom_components.hsem.utils.misc import (
     async_device_exists,
@@ -105,7 +106,7 @@ def validate_entity_id_fields(
 
 
 async def async_validate_entity_ids(
-    hass,
+    hass: Any,
     user_input: dict,
     required_fields: list[str],
     optional_fields: list[str] | None = None,
@@ -145,7 +146,7 @@ async def async_validate_entity_ids(
 
 
 async def async_validate_device_ids(
-    hass,
+    hass: Any,
     user_input: dict,
     required_fields: list[str],
     optional_fields: list[str] | None = None,

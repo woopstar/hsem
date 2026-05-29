@@ -14,7 +14,7 @@ side-effects beyond that.  No hardware writes occur here.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, tzinfo
 from typing import Any
 
 from homeassistant.exceptions import HomeAssistantError
@@ -37,10 +37,10 @@ from custom_components.hsem.utils.sensornames import get_energy_average_sensor_u
 
 
 async def async_populate_price_and_solcast(
-    sensor,
+    sensor: Any,  # TODO: tighten type
     recommendations: list[HourlyRecommendation],
     cfg: SensorConfig,
-    tz,
+    tz: tzinfo | None,
 ) -> None:
     """Populate import/export prices and Solcast PV estimates into recommendation slots.
 
@@ -152,7 +152,7 @@ async def async_populate_price_and_solcast(
 
 
 async def async_populate_avg_house_consumption(
-    sensor,
+    sensor: Any,  # TODO: tighten type
     recommendations: list[HourlyRecommendation],
     cfg: SensorConfig,
     entity_id_cache: dict[str, str],
@@ -279,7 +279,7 @@ async def async_populate_avg_house_consumption(
 
 
 async def _resolve_cached(
-    sensor,
+    sensor: Any,  # TODO: tighten type
     cache: dict[str, str],
     unique_id: str,
 ) -> str | None:
@@ -292,13 +292,13 @@ async def _resolve_cached(
 
 
 async def _async_update_hourly_field(
-    sensor,
+    sensor: Any,  # TODO: tighten type
     recommendations: list[HourlyRecommendation],
     sensor_id: str | None,
     field_name: str,
     share: float,
     solcast_likelihood_key: str,
-    tz,
+    tz: tzinfo | None,
 ) -> None:
     """Match sensor attribute data to recommendation slots and write one field.
 
@@ -401,7 +401,7 @@ def populate_price_and_solcast_from_snapshot(
     recommendations: list[HourlyRecommendation],
     snapshot: StateSnapshot,
     cfg: SensorConfig,
-    tz,
+    tz: tzinfo | None,
 ) -> None:
     """Populate prices and Solcast PV estimates using a pre-collected snapshot.
 
@@ -481,7 +481,7 @@ def _update_hourly_field_from_attrs(
     field_name: str,
     share: float,
     solcast_likelihood_key: str,
-    tz,
+    tz: tzinfo | None,
 ) -> None:
     """Match pre-read sensor attribute data to recommendation slots.
 

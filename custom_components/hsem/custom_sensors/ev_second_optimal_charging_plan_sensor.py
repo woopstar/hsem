@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from homeassistant.components.sensor import SensorEntity
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_UNAVAILABLE, EntityCategory
 from homeassistant.helpers.restore_state import RestoreEntity
 
@@ -49,7 +50,7 @@ class HSEMEVSecondOptimalChargingPlanSensor(
 
     def __init__(
         self,
-        config_entry,
+        config_entry: ConfigEntry,
         coordinator: HSEMDataUpdateCoordinator,
     ) -> None:
         """Initialise the second EV optimal charging plan sensor."""

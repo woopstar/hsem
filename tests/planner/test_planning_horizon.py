@@ -16,6 +16,7 @@ All tests are pure-Python; no Home Assistant runtime is required.
 from __future__ import annotations
 
 from datetime import time
+from typing import Any
 
 from custom_components.hsem.models.planner_inputs import (
     BatteryScheduleInput,
@@ -366,7 +367,7 @@ class TestCompleteFutureData:
 class TestConfidenceDecay:
     """PV estimates for day+1 and day+2 must be lower due to confidence decay."""
 
-    def _get_solar_noon_pv(self, result, day_offset: int) -> float:
+    def _get_solar_noon_pv(self, result: Any, day_offset: int) -> float:
         """Return the solar-noon (12:00) PV estimate for a given day_offset."""
         from datetime import date
 

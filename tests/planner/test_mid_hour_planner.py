@@ -23,6 +23,7 @@ All tests are synchronous and import nothing from Home Assistant's runtime.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -33,6 +34,7 @@ from custom_components.hsem.models.planner_inputs import (
     PricePoint,
     SolcastSlot,
 )
+from custom_components.hsem.models.planner_outputs import PlannerOutput
 from custom_components.hsem.planner import run_planner
 from custom_components.hsem.utils.recommendations import Recommendations
 from tests.planner.fixtures import make_summer_day_input
@@ -60,14 +62,14 @@ _START_CURRENT_KWH = min(
 # ---------------------------------------------------------------------------
 
 
-def _first_future_slot(result):
+def _first_future_slot(result: PlannerOutput) -> Any:
     """Return the first slot not marked as TimePassed."""
     return next(
         s for s in result.slots if s.recommendation != Recommendations.TimePassed.value
     )
 
 
-def _time_passed_count(result) -> int:
+def _time_passed_count(result: PlannerOutput) -> int:
     """Count slots marked as TimePassed."""
     return sum(
         1 for s in result.slots if s.recommendation == Recommendations.TimePassed.value

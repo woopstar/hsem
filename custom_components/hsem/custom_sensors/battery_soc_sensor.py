@@ -21,6 +21,7 @@ from typing import Any
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.components.sensor.const import SensorDeviceClass
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     PERCENTAGE,
     STATE_UNAVAILABLE,
@@ -65,7 +66,7 @@ class HSEMBatterySoCSensor(
 
     def __init__(
         self,
-        config_entry,
+        config_entry: ConfigEntry,
         coordinator: HSEMDataUpdateCoordinator,
     ) -> None:
         """Initialise the battery-SoC sensor.

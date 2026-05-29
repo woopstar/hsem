@@ -21,6 +21,7 @@ from __future__ import annotations
 from typing import Any
 
 from homeassistant.components.sensor import SensorEntity
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN, EntityCategory
 from homeassistant.helpers.restore_state import RestoreEntity
 
@@ -58,7 +59,7 @@ class HSEMMissingEntitiesSensor(
 
     def __init__(
         self,
-        config_entry,
+        config_entry: ConfigEntry,
         coordinator: HSEMDataUpdateCoordinator,
     ) -> None:
         """Initialise the missing-entities sensor.

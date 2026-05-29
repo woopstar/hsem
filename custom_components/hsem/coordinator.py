@@ -34,7 +34,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import Event, HomeAssistant
 from homeassistant.helpers.event import (
     async_track_time_change,
     async_track_time_interval,
@@ -57,15 +57,18 @@ from custom_components.hsem.custom_sensors.state_collector import (  # noqa: F40
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.planner_inputs import PlannerInput
-from custom_components.hsem.models.planner_outputs import DataQuality, PlanExplanation
+from custom_components.hsem.models.planner_outputs import (
+    DataQuality,
+    PlanExplanation,
+    PlannerOutput,
+)
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.models.state_snapshot import StateSnapshot
 from custom_components.hsem.planner import run_planner
 from custom_components.hsem.planner.charge_scheduler import apply_window_hysteresis
 from custom_components.hsem.planner.ev_planner import EVChargingPlan
-from custom_components.hsem.utils.datetime_utils import as_tz
+from custom_components.hsem.utils.datetime_utils import as_tz, utc_key, utc_now_iso
 from custom_components.hsem.utils.datetime_utils import now as hsem_now
-from custom_components.hsem.utils.datetime_utils import utc_key, utc_now_iso
 from custom_components.hsem.utils.forecast_tracker import (
     ForecastTracker,
     compute_accumulated_energy,
@@ -274,7 +277,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
     # Internal update pipeline
     # ------------------------------------------------------------------
 
-    async def _async_handle_update(self, event=None) -> None:
+    async def _async_handle_update(self, event: Event | None = None) -> None:
         """Drop concurrent updates; run the update cycle while holding the lock."""
         if self._update_lock.locked():
             await async_logger(
@@ -688,7 +691,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
     # Planner bridge helpers
     # ------------------------------------------------------------------
 
-    def _apply_planner_output(self, output) -> None:
+    def _apply_planner_output(self, output: PlannerOutput) -> None:
         """Write :class:`PlannerOutput` decisions back into the recommendation list.
 
         The lookup normalises both sides to UTC with ``microsecond=0`` so that
@@ -823,7 +826,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         # Finalise any slots whose end time has passed.
         self._forecast_tracker.finalise_past_records(now)
 
-    def _register_forecasts_from_planner(self, output) -> None:
+    def _register_forecasts_from_planner(self, output: PlannerOutput) -> None:
         """Register PV and load forecasts from planner output into the tracker.
 
         This is called after the planner runs successfully.  Forecast values

@@ -6,6 +6,8 @@ have been moved to the separate ``battery_economics`` step.
 """
 
 import voluptuous as vol
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.selector import selector
 
 from custom_components.hsem.utils.config_validator import (
@@ -16,7 +18,7 @@ from custom_components.hsem.utils.config_validator import (
 from custom_components.hsem.utils.misc import get_config_value
 
 
-async def get_huawei_solar_step_schema(config_entry) -> vol.Schema:
+async def get_huawei_solar_step_schema(config_entry: ConfigEntry | None) -> vol.Schema:
     """Return the data schema for the 'huawei_solar' step."""
     return vol.Schema(
         {
@@ -118,7 +120,9 @@ async def get_huawei_solar_step_schema(config_entry) -> vol.Schema:
     )
 
 
-async def validate_huawei_solar_input(hass, user_input) -> dict[str, str]:
+async def validate_huawei_solar_input(
+    hass: HomeAssistant, user_input: dict
+) -> dict[str, str]:
     """Validate user input for the 'huawei_solar' step."""
     # --- entity existence ---
     entity_errors = await async_validate_entity_ids(

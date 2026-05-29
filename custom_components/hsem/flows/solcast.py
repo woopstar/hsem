@@ -1,11 +1,13 @@
 import voluptuous as vol
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.selector import selector
 
 from custom_components.hsem.utils.config_validator import async_validate_entity_ids
 from custom_components.hsem.utils.misc import get_config_value
 
 
-async def get_solcast_step_schema(config_entry) -> vol.Schema:
+async def get_solcast_step_schema(config_entry: ConfigEntry | None) -> vol.Schema:
     """Return the data schema for the 'solcast' step."""
     return vol.Schema(
         {
@@ -40,7 +42,9 @@ async def get_solcast_step_schema(config_entry) -> vol.Schema:
     )
 
 
-async def validate_solcast_step_input(hass, user_input) -> dict[str, str]:
+async def validate_solcast_step_input(
+    hass: HomeAssistant, user_input: dict
+) -> dict[str, str]:
     """Validate user input for the 'solcast' step."""
     return await async_validate_entity_ids(
         hass,

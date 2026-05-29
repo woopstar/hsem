@@ -14,6 +14,7 @@ Acceptance criteria
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -72,7 +73,7 @@ _CONTEXT_ATTR_KEYS = {
 }
 
 
-def _make_explanation(**kwargs) -> PlanExplanation:
+def _make_explanation(**kwargs: Any) -> PlanExplanation:
     """Return a PlanExplanation with sensible defaults overridable by kwargs."""
     defaults = dict(
         selected_strategy="charge_grid_discharge_peak",
@@ -245,7 +246,7 @@ class TestSensorState:
             "solar_charge_only",
         ],
     )
-    def test_state_for_all_known_strategies(self, strategy: str):
+    def test_state_for_all_known_strategies(self, strategy: str) -> None:
         """All known strategy values round-trip correctly through state."""
         sensor = _make_sensor(
             _make_coordinator_data(_make_explanation(selected_strategy=strategy))

@@ -16,6 +16,7 @@ Acceptance criteria
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -37,7 +38,7 @@ from custom_components.hsem.utils.huawei import (
 # ---------------------------------------------------------------------------
 
 
-def _make_sensor(has_service: bool = True, service_exception=None):
+def _make_sensor(has_service: bool = True, service_exception: Any = None) -> Any:
     """Return a minimal sensor mock whose ``hass`` object mimics HA services.
 
     Args:

@@ -376,6 +376,8 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
 
     @staticmethod
     @callback
-    def async_get_options_flow(config_entry) -> HSEMOptionsFlow:
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> HSEMOptionsFlow:
         """Return the options flow."""
         return HSEMOptionsFlow(config_entry)

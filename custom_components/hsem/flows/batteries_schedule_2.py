@@ -6,6 +6,8 @@ construction and validation logic lives there.
 """
 
 import voluptuous as vol
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
 
 from custom_components.hsem.flows.schedule_helpers import (
     build_batteries_schedule_step_schema,
@@ -14,7 +16,9 @@ from custom_components.hsem.flows.schedule_helpers import (
 
 
 async def get_batteries_schedule_2_step_schema(
-    config_entry, hass=None, user_input: dict | None = None
+    config_entry: ConfigEntry | None,
+    hass: HomeAssistant | None = None,
+    user_input: dict | None = None,
 ) -> vol.Schema:
     """Return the data schema for the batteries_schedule_2 flow step."""
     return await build_batteries_schedule_step_schema(
@@ -22,6 +26,6 @@ async def get_batteries_schedule_2_step_schema(
     )
 
 
-async def validate_batteries_schedule_2_input(user_input) -> dict[str, str]:
+async def validate_batteries_schedule_2_input(user_input: dict) -> dict[str, str]:
     """Validate user input for the battery schedule 2 step."""
     return await validate_batteries_schedule_input(2, user_input)

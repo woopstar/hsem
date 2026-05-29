@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -148,7 +149,7 @@ class _StubCoordinator:
         self._cfg = MagicMock()
         self._cfg.verbose_logging = False
 
-    async def _async_handle_update(self, event=None) -> None:
+    async def _async_handle_update(self, event: Any = None) -> None:
         """Identical guard logic to the production coordinator."""
         if self._update_lock.locked():
             self._skip_count += 1

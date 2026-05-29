@@ -16,6 +16,8 @@ or any other price source share the same configuration step.
 from __future__ import annotations
 
 import voluptuous as vol
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.selector import selector
 
 from custom_components.hsem.utils.config_validator import (
@@ -26,7 +28,7 @@ from custom_components.hsem.utils.config_validator import (
 from custom_components.hsem.utils.misc import get_config_value
 
 
-async def get_prices_step_schema(config_entry) -> vol.Schema:
+async def get_prices_step_schema(config_entry: ConfigEntry | None) -> vol.Schema:
     """Return the data schema for the 'prices' step.
 
     Args:
@@ -106,7 +108,9 @@ async def get_prices_step_schema(config_entry) -> vol.Schema:
     )
 
 
-async def validate_prices_input(hass, user_input) -> dict[str, str]:
+async def validate_prices_input(
+    hass: HomeAssistant, user_input: dict
+) -> dict[str, str]:
     """Validate user input for the 'prices' step.
 
     Args:

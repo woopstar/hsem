@@ -14,6 +14,7 @@ for time entities without requiring a live Home Assistant instance.
 from __future__ import annotations
 
 from datetime import time
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -291,7 +292,7 @@ class TestTimePlatformSetup:
 
         added: list[HSEMTimeEntity] = []
 
-        def add_entities(entities, _update_before_add: bool = False) -> None:
+        def add_entities(entities: Any, _update_before_add: bool = False) -> None:
             added.extend(entities)
 
         with patch(
@@ -320,7 +321,7 @@ class TestTimePlatformSetup:
         )
         added: list = []
 
-        def add_entities(entities, _update_before_add: bool = False) -> None:
+        def add_entities(entities: Any, _update_before_add: bool = False) -> None:
             added.extend(entities)
 
         with patch(
@@ -353,7 +354,7 @@ class TestTimePlatformSetup:
         )
         added: list = []
 
-        def add_entities(entities, _update_before_add: bool = False) -> None:
+        def add_entities(entities: Any, _update_before_add: bool = False) -> None:
             added.extend(entities)
 
         with patch(

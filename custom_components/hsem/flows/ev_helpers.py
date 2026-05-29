@@ -19,6 +19,8 @@ Public API
 """
 
 import voluptuous as vol
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.selector import selector
 
 from custom_components.hsem.utils.config_validator import (
@@ -47,7 +49,7 @@ _DISCHARGE_POWER_SELECTOR = selector(
 
 
 async def build_ev_charger_schema(
-    config_entry,
+    config_entry: ConfigEntry | None,
     prefix: str,
     include_primary_fields: bool = False,
 ) -> vol.Schema:
@@ -143,7 +145,7 @@ async def build_ev_charger_schema(
 
 
 async def validate_ev_charger_input(
-    hass,
+    hass: HomeAssistant,
     user_input: dict,
     prefix: str,
     extra_required_fields: list[str] | None = None,

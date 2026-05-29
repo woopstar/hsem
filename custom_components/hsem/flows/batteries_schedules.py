@@ -7,6 +7,8 @@ validation reuse the shared helpers in :mod:`schedule_helpers`.
 """
 
 import voluptuous as vol
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
 
 from custom_components.hsem.flows.schedule_helpers import (
     build_batteries_schedule_step_schema,
@@ -20,7 +22,9 @@ _resolve_usable_capacity_kwh = resolve_usable_capacity_kwh
 
 
 async def get_batteries_schedules_step_schema(
-    config_entry, hass=None, user_input: dict | None = None
+    config_entry: ConfigEntry | None,
+    hass: HomeAssistant | None = None,
+    user_input: dict | None = None,
 ) -> vol.Schema:
     """Return the data schema for the merged batteries_schedules step.
 
@@ -44,7 +48,7 @@ async def get_batteries_schedules_step_schema(
     return vol.Schema(merged)
 
 
-async def validate_batteries_schedules_input(user_input) -> dict[str, str]:
+async def validate_batteries_schedules_input(user_input: dict) -> dict[str, str]:
     """Validate user input for the merged batteries_schedules step.
 
     Delegates to the shared validator for each of the three schedules.

@@ -22,6 +22,8 @@ Functions:
     async_update(event=None): Manually triggers the sensor update.
 """
 
+from __future__ import annotations
+
 from datetime import timedelta
 from typing import Any
 
@@ -33,6 +35,7 @@ from homeassistant.components.utility_meter.const import (
     DATA_TARIFF_SENSORS,
     DATA_UTILITY,
 )
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfPower, UnitOfTime
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_track_state_change_event
@@ -93,7 +96,13 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
         ]
     )
 
-    def __init__(self, config_entry, hour_start, hour_end, async_add_entities) -> None:
+    def __init__(
+        self,
+        config_entry: ConfigEntry,
+        hour_start: int,
+        hour_end: int,
+        async_add_entities: Any,
+    ) -> None:
         super().__init__(config_entry)
         self._available = False
         self._missing_input_entities = True
@@ -171,11 +180,11 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
             "unique_id": self._attr_unique_id,
         }
 
-    async def async_update(self, event=None) -> None:
+    async def async_update(self, event: Any | None = None) -> None:
         """Manually trigger the sensor update."""
         await self._async_handle_update(event)
 
-    async def async_options_updated(self, config_entry) -> None:
+    async def async_options_updated(self, config_entry: ConfigEntry) -> None:
         """Handle options update from configuration change."""
 
         self._update_settings()
@@ -239,7 +248,7 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
             self._config_entry, "hsem_house_power_includes_ev_charger_power"
         )
 
-    async def _async_handle_update(self, event=None) -> None:
+    async def _async_handle_update(self, event: Any | None = None) -> None:
         """Handle updates to the source sensor.
 
         ``_state`` is reset to ``None`` at the start of every cycle so that a

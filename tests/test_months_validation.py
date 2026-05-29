@@ -1,7 +1,10 @@
 """Tests for month validation and month matching logic."""
 
+from __future__ import annotations
+
 # Mock the logging to avoid file creation errors during testing
 from logging.handlers import RotatingFileHandler
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -160,7 +163,7 @@ class TestValidateMonthsInput:
 class TestGetMonthsSchema:
     """Test that get_months_schema converts stored integers back to strings for the UI."""
 
-    def _get_default(self, schema) -> list:
+    def _get_default(self, schema: Any) -> list:
         """Extract the default value for hsem_months_winter from a vol.Schema."""
         import voluptuous as vol
 

@@ -23,10 +23,14 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime, timedelta, timezone
+from typing import Any
 from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
 
 import pytest
+
+from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
+from custom_components.hsem.models.planner_outputs import PlannedSlot, PlannerOutput
 
 # ---------------------------------------------------------------------------
 # Helpers – build lightweight planner/coordinator objects for testing
@@ -51,9 +55,8 @@ def _make_bare_coordinator():
     return coord
 
 
-def _make_planned_slot(start: datetime, end: datetime, **kwargs):
+def _make_planned_slot(start: datetime, end: datetime, **kwargs: Any) -> PlannedSlot:
     """Return a minimal ``PlannedSlot`` for testing."""
-    from custom_components.hsem.models.planner_outputs import PlannedSlot
     from custom_components.hsem.utils.prices import SlotPrice
 
     defaults = {
@@ -75,9 +78,10 @@ def _make_planned_slot(start: datetime, end: datetime, **kwargs):
     return PlannedSlot(start=start, end=end, **defaults)
 
 
-def _make_hourly_recommendation(start: datetime, end: datetime, **kwargs):
+def _make_hourly_recommendation(
+    start: datetime, end: datetime, **kwargs: Any
+) -> HourlyRecommendation:
     """Return a minimal ``HourlyRecommendation`` for testing."""
-    from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 
     defaults = {
         "avg_house_consumption_kwh": 1.0,
@@ -258,7 +262,7 @@ class TestNormalizeSlotStart15Min:
             (59, 45),
         ],
     )
-    def test_floor_to_15min_boundary(self, minute_in: int, minute_out: int):
+    def test_floor_to_15min_boundary(self, minute_in: int, minute_out: int) -> None:
         """22:mm:ss → 22:floored:00 for various minutes."""
         from custom_components.hsem.utils.datetime_utils import normalize_slot_start
 
@@ -297,7 +301,7 @@ class TestNormalizeSlotStart60Min:
         "minute_in",
         [0, 1, 17, 30, 42, 59],
     )
-    def test_floor_to_60min_boundary(self, minute_in: int):
+    def test_floor_to_60min_boundary(self, minute_in: int) -> None:
         """Any 22:mm:ss → 22:00:00 for 60-min slots."""
         from custom_components.hsem.utils.datetime_utils import normalize_slot_start
 
@@ -405,9 +409,8 @@ class TestEvPlannedLoadReachesRecommendation:
 
     def _build_slots_and_recs(
         self, midnight: datetime, ev_hours: dict[int, float], interval_minutes: int = 60
-    ):
+    ) -> tuple[list[Any], PlannerOutput]:
         """Build matching slots and recs for the given horizon."""
-        from custom_components.hsem.models.planner_outputs import PlannerOutput
 
         recs = []
         slots = []

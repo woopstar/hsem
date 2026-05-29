@@ -32,6 +32,7 @@ from __future__ import annotations
 from typing import Any
 
 from homeassistant.components.sensor import SensorEntity
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.helpers.restore_state import RestoreEntity
 
@@ -79,7 +80,7 @@ class HSEMApplierStatusSensor(
 
     def __init__(
         self,
-        config_entry,
+        config_entry: ConfigEntry,
         coordinator: HSEMDataUpdateCoordinator,
     ) -> None:
         """Initialise the applier-status sensor.

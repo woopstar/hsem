@@ -7,6 +7,7 @@ tested with plain dataclasses — no Home Assistant required.
 from __future__ import annotations
 
 from datetime import UTC
+from typing import Any
 
 from custom_components.hsem.custom_sensors.recommendation_resolver import (
     resolve_current_recommendation,
@@ -20,7 +21,7 @@ from custom_components.hsem.utils.recommendations import Recommendations
 # ---------------------------------------------------------------------------
 
 
-def _make_rec(recommendation=None) -> HourlyRecommendation:
+def _make_rec(recommendation: str | None = None) -> HourlyRecommendation:
     """Return a minimal HourlyRecommendation with a given recommendation value."""
     from datetime import datetime
 
@@ -189,7 +190,7 @@ class TestDataStateSync:
         planner_recommendation: str,
         resolved_recommendation: str,
         live: LiveState,
-    ):
+    ) -> Any:
         """Return a CoordinatorData-like namespace simulating the sync behaviour.
 
         The ``resolved_recommendation`` parameter is passed by callers as

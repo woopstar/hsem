@@ -7,6 +7,7 @@ which can be exercised without a running Home Assistant instance.
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -25,7 +26,7 @@ from custom_components.hsem.models.sensor_config import SensorConfig
 # ---------------------------------------------------------------------------
 
 
-def _make_config_entry(**overrides) -> MagicMock:
+def _make_config_entry(**overrides: Any) -> MagicMock:
     """Return a minimal mock ConfigEntry whose options contain the given overrides."""
     defaults = {
         "hsem_read_only": False,
