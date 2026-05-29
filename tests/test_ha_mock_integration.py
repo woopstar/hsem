@@ -928,6 +928,7 @@ class TestEntityStateAfterCoordinatorPush:
         config_entry = make_fake_config_entry()
         coord = make_bare_coordinator(config_entry=config_entry)
         data = self._make_populated_data()
+        assert data.live is not None
         data.live.add_missing_entity(
             "Critical: batteries_state_of_capacity unavailable"
         )
@@ -970,6 +971,7 @@ class TestEntityStateAfterCoordinatorPush:
         config_entry = make_fake_config_entry()
         coord = make_bare_coordinator(config_entry=config_entry)
         data = self._make_populated_data()
+        assert data.live is not None
         data.live.add_missing_entity(
             "Critical: batteries_state_of_capacity unavailable"
         )

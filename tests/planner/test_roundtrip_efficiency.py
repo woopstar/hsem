@@ -467,6 +467,7 @@ class TestPlannerInputEfficiencyFields:
         # The plan should have a valid cost (not NaN)
         import math
 
+        assert output.plan_cost is not None
         assert not math.isnan(output.plan_cost.total)
 
     def test_100pct_efficiency_no_extra_grid_import_for_charging(self) -> None:
