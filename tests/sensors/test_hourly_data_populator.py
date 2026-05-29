@@ -100,9 +100,9 @@ class TestComputeWeightedAverage:
         # The IQR on [0.569, 0.578, 0.708, 0.718] should flag 0.569 as outlier
         assert mask[0] is True, "1d should be flagged as downward outlier"
         # The weighted average should be close to the 7d/14d baseline, not pulled down by 1d
-        assert result > 0.5, (
-            f"Result {result} should be > 0.5 (not dragged down by 1d outlier)"
-        )
+        assert (
+            result > 0.5
+        ), f"Result {result} should be > 0.5 (not dragged down by 1d outlier)"
 
     def test_repeated_high_load_not_outlier(self):
         """When 1d, 3d, and 7d are all high (repeated load), none should be outlier."""
@@ -381,12 +381,12 @@ class TestSnapshotPopulation:
             assert r1.avg_house_consumption_kwh == pytest.approx(
                 r2.avg_house_consumption_kwh
             ), f"Hour {i}: avg_house_consumption_kwh differs between runs"
-            assert r1.import_price == pytest.approx(r2.import_price), (
-                f"Hour {i}: import_price differs between runs"
-            )
-            assert r1.export_price == pytest.approx(r2.export_price), (
-                f"Hour {i}: export_price differs between runs"
-            )
+            assert r1.import_price == pytest.approx(
+                r2.import_price
+            ), f"Hour {i}: import_price differs between runs"
+            assert r1.export_price == pytest.approx(
+                r2.export_price
+            ), f"Hour {i}: export_price differs between runs"
             assert r1.solcast_pv_estimate_kwh == pytest.approx(
                 r2.solcast_pv_estimate_kwh
             ), f"Hour {i}: solcast_pv_estimate_kwh differs between runs"

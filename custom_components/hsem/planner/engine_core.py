@@ -566,20 +566,6 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     ss = [s.start for s in slots]
     se = [s.end for s in slots]
     sp = [s.price.import_price for s in slots]
-    common_kw = dict(
-        now=now,
-        slots=slots,
-        slot_starts=ss,
-        slot_ends=se,
-        slot_prices=sp,
-        slot_net_surplus=sns,
-        combined_ev_raw_load=combined_ev_raw,
-        combined_ev_injected_load=combined_ev_inj,
-        warnings=warnings,
-        predicted_battery_kwh=predicted_battery_kwh,
-        usable_battery_kwh=usable_kwh,
-        live_net_consumption_w=inp.live_net_consumption_w,
-    )
     if inp.ev_planned_load_enabled:
         ev_cp = _build_and_inject_for_ev(
             enabled=True,
@@ -594,7 +580,18 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
             base_includes=inp.ev_planned_load_base_load_includes_ev,
             allow_past_target=inp.ev_planned_allow_charge_past_target_soc,
             label="primary",
-            **common_kw,
+            now=now,
+            slots=slots,
+            slot_starts=ss,
+            slot_ends=se,
+            slot_prices=sp,
+            slot_net_surplus=sns,
+            combined_ev_raw_load=combined_ev_raw,
+            combined_ev_injected_load=combined_ev_inj,
+            warnings=warnings,
+            predicted_battery_kwh=predicted_battery_kwh,
+            usable_battery_kwh=usable_kwh,
+            live_net_consumption_w=inp.live_net_consumption_w,
         )
     if inp.ev_second_planned_load_enabled:
         ev2_cp = _build_and_inject_for_ev(
@@ -610,7 +607,18 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
             base_includes=inp.ev_second_planned_load_base_load_includes_ev,
             allow_past_target=inp.ev_second_allow_charge_past_target_soc,
             label="second",
-            **common_kw,
+            now=now,
+            slots=slots,
+            slot_starts=ss,
+            slot_ends=se,
+            slot_prices=sp,
+            slot_net_surplus=sns,
+            combined_ev_raw_load=combined_ev_raw,
+            combined_ev_injected_load=combined_ev_inj,
+            warnings=warnings,
+            predicted_battery_kwh=predicted_battery_kwh,
+            usable_battery_kwh=usable_kwh,
+            live_net_consumption_w=inp.live_net_consumption_w,
         )
     for i, s in enumerate(slots):
         s.ev_planned_load_kwh = combined_ev_inj[i]

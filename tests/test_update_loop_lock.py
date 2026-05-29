@@ -78,9 +78,9 @@ class TestUpdateLoopLock:
 
         source = inspect.getsource(HSEMDataUpdateCoordinator.__init__)
 
-        assert "_update_lock = asyncio.Lock()" in source, (
-            "HSEMDataUpdateCoordinator.__init__ must create self._update_lock = asyncio.Lock()"
-        )
+        assert (
+            "_update_lock = asyncio.Lock()" in source
+        ), "HSEMDataUpdateCoordinator.__init__ must create self._update_lock = asyncio.Lock()"
 
     @pytest.mark.asyncio
     async def test_single_update_runs_cycle(self) -> None:
@@ -104,12 +104,12 @@ class TestUpdateLoopLock:
         )
 
         # The cycle must have run exactly once; the duplicate was dropped.
-        assert sensor._cycle_call_count == 1, (
-            f"Expected cycle to run once, ran {sensor._cycle_call_count} times"
-        )
-        assert sensor._skipped_count == 1, (
-            f"Expected one skip, got {sensor._skipped_count}"
-        )
+        assert (
+            sensor._cycle_call_count == 1
+        ), f"Expected cycle to run once, ran {sensor._cycle_call_count} times"
+        assert (
+            sensor._skipped_count == 1
+        ), f"Expected one skip, got {sensor._skipped_count}"
 
     @pytest.mark.asyncio
     async def test_no_double_write_on_concurrent_calls(self) -> None:
@@ -131,9 +131,9 @@ class TestUpdateLoopLock:
             sensor._async_handle_update(),
         )
 
-        assert len(write_calls) == 1, (
-            f"Inverter write must happen exactly once; happened {len(write_calls)} times"
-        )
+        assert (
+            len(write_calls) == 1
+        ), f"Inverter write must happen exactly once; happened {len(write_calls)} times"
 
     @pytest.mark.asyncio
     async def test_sequential_updates_both_run(self) -> None:
@@ -153,9 +153,9 @@ class TestUpdateLoopLock:
 
         await sensor._async_handle_update()
 
-        assert not sensor._update_lock.locked(), (
-            "Lock must be released after the update cycle completes"
-        )
+        assert (
+            not sensor._update_lock.locked()
+        ), "Lock must be released after the update cycle completes"
 
     @pytest.mark.asyncio
     async def test_three_concurrent_calls_only_one_runs(self) -> None:

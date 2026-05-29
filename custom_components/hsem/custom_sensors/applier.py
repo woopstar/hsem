@@ -300,13 +300,19 @@ async def async_apply_battery_settings(
     if not live.ev.is_charging and not live.ev_second.is_charging:
         if live.huawei_batteries_max_discharge_power_w != max_discharge_power:
             discharge_entity = cfg.huawei_solar_batteries_maximum_discharging_power
+            if discharge_entity is None:
+                await async_logger(
+                    sensor,
+                    "Max discharge power entity not configured; skipping write.",
+                    "warning",
+                )
+                return summary
+            _de: str = discharge_entity  # narrowed for closure
             result = await async_write_and_verify(
-                entity_id=discharge_entity or "batteries_maximum_discharging_power",
+                entity_id=_de,
                 desired=max_discharge_power,
-                writer=lambda: async_set_number_value(
-                    sensor, discharge_entity, max_discharge_power
-                ),
-                reader=lambda: _read_number_state(sensor, discharge_entity),
+                writer=lambda: async_set_number_value(sensor, _de, max_discharge_power),
+                reader=lambda: _read_number_state(sensor, _de),
             )
             summary.results.append(result)
             if result.status == ApplyStatus.FAILED:
@@ -333,9 +339,10 @@ async def async_apply_battery_settings(
             STATE_UNKNOWN,
             "",
         ):
-            await async_stop_forcible_discharge(
-                sensor, cfg.huawei_solar_device_id_batteries
-            )
+            if cfg.huawei_solar_device_id_batteries is not None:
+                await async_stop_forcible_discharge(
+                    sensor, cfg.huawei_solar_device_id_batteries
+                )
 
     match recommendation:
         case Recommendations.ForceExport.value:
@@ -387,11 +394,19 @@ async def async_apply_battery_settings(
         )
         if live.huawei_batteries_max_discharge_power_w != ev_max:
             discharge_entity = cfg.huawei_solar_batteries_maximum_discharging_power
+            if discharge_entity is None:
+                await async_logger(
+                    sensor,
+                    "EV V2H discharge power entity not configured; skipping write.",
+                    "warning",
+                )
+                return summary
+            _de2: str = discharge_entity  # narrowed for closure
             ev_result = await async_write_and_verify(
-                entity_id=discharge_entity or "batteries_maximum_discharging_power",
+                entity_id=_de2,
                 desired=ev_max,
-                writer=lambda: async_set_number_value(sensor, discharge_entity, ev_max),
-                reader=lambda: _read_number_state(sensor, discharge_entity),
+                writer=lambda: async_set_number_value(sensor, _de2, ev_max),
+                reader=lambda: _read_number_state(sensor, _de2),
             )
             summary.results.append(ev_result)
             if ev_result.status == ApplyStatus.FAILED:
@@ -417,13 +432,19 @@ async def async_apply_battery_settings(
     )
     if live.huawei_batteries_excess_pv_use_in_tou != desired_excess:
         excess_entity = cfg.huawei_solar_batteries_excess_pv_energy_use_in_tou
+        if excess_entity is None:
+            await async_logger(
+                sensor,
+                "Excess PV use entity not configured; skipping write.",
+                "warning",
+            )
+            return summary
+        _ee: str = excess_entity  # narrowed for closure
         excess_result = await async_write_and_verify(
-            entity_id=excess_entity or "batteries_excess_pv_energy_use_in_tou",
+            entity_id=_ee,
             desired=desired_excess,
-            writer=lambda: async_set_select_option(
-                sensor, excess_entity, desired_excess
-            ),
-            reader=lambda: _read_select_state(sensor, excess_entity),
+            writer=lambda: async_set_select_option(sensor, _ee, desired_excess),
+            reader=lambda: _read_select_state(sensor, _ee),
         )
         summary.results.append(excess_result)
         if excess_result.status == ApplyStatus.FAILED:
@@ -442,11 +463,19 @@ async def async_apply_battery_settings(
             str(live.tou_periods.periods)
         ):
             tou_entity = cfg.huawei_solar_batteries_tou_charging_and_discharging_periods
+            battery_device_id = cfg.huawei_solar_device_id_batteries
+            if tou_entity is None or battery_device_id is None:
+                await async_logger(
+                    sensor,
+                    "TOU entity or battery device ID not configured; skipping write.",
+                    "warning",
+                )
+                return summary
             result = await async_write_and_verify(
-                entity_id=tou_entity or "batteries_tou_periods",
+                entity_id=tou_entity,
                 desired=generate_hash(str(tou_modes)),
                 writer=lambda: async_set_tou_periods(
-                    sensor, cfg.huawei_solar_device_id_batteries, tou_modes
+                    sensor, battery_device_id, tou_modes
                 ),
                 reader=lambda: generate_hash(
                     str(
@@ -473,11 +502,19 @@ async def async_apply_battery_settings(
     # Working mode
     if working_mode and live.huawei_batteries_working_mode != working_mode:
         mode_entity = cfg.huawei_solar_batteries_working_mode
+        if mode_entity is None:
+            await async_logger(
+                sensor,
+                "Working mode entity not configured; skipping write.",
+                "warning",
+            )
+            return summary
+        _me: str = mode_entity  # narrowed for closure
         mode_result = await async_write_and_verify(
-            entity_id=mode_entity or "batteries_working_mode",
+            entity_id=_me,
             desired=working_mode,
-            writer=lambda: async_set_select_option(sensor, mode_entity, working_mode),
-            reader=lambda: _read_select_state(sensor, mode_entity),
+            writer=lambda: async_set_select_option(sensor, _me, working_mode),
+            reader=lambda: _read_select_state(sensor, _me),
         )
         summary.results.append(mode_result)
         if mode_result.status == ApplyStatus.FAILED:

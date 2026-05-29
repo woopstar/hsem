@@ -5,7 +5,7 @@ settings (battery charge/discharge efficiency and EV target SoC) from
 the entity page, without re-running the config/options flow.
 """
 
-from homeassistant.components.number import NumberEntityDescription
+from homeassistant.components.number import NumberEntity, NumberEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
@@ -95,7 +95,7 @@ async def async_setup_entry(
         get_ev_second_target_soc_number_key(),
     }
 
-    entities = []
+    entities: list[NumberEntity] = []
     for description in NUMBER_DESCRIPTIONS:
         if description.key in _ev_target_soc_keys:
             entities.append(

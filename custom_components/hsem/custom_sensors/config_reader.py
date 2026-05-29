@@ -299,50 +299,44 @@ def build_sensor_config(config_entry: Any) -> SensorConfig:  # TODO: tighten typ
     )
 
     # Battery schedules
+    _s1_start = get_config_value(
+        config_entry, "hsem_batteries_enable_batteries_schedule_1_start"
+    )
+    _s1_end = get_config_value(
+        config_entry, "hsem_batteries_enable_batteries_schedule_1_end"
+    )
+    _s2_start = get_config_value(
+        config_entry, "hsem_batteries_enable_batteries_schedule_2_start"
+    )
+    _s2_end = get_config_value(
+        config_entry, "hsem_batteries_enable_batteries_schedule_2_end"
+    )
+    _s3_start = get_config_value(
+        config_entry, "hsem_batteries_enable_batteries_schedule_3_start"
+    )
+    _s3_end = get_config_value(
+        config_entry, "hsem_batteries_enable_batteries_schedule_3_end"
+    )
     cfg.batteries_schedule_1 = BatteryScheduleConfig(
         enabled=convert_to_boolean(
             get_config_value(config_entry, "hsem_batteries_enable_batteries_schedule_1")
         ),
-        start=convert_to_time(
-            get_config_value(
-                config_entry, "hsem_batteries_enable_batteries_schedule_1_start"
-            )
-        ),
-        end=convert_to_time(
-            get_config_value(
-                config_entry, "hsem_batteries_enable_batteries_schedule_1_end"
-            )
-        ),
+        start=convert_to_time(_s1_start) if _s1_start is not None else None,
+        end=convert_to_time(_s1_end) if _s1_end is not None else None,
     )
     cfg.batteries_schedule_2 = BatteryScheduleConfig(
         enabled=convert_to_boolean(
             get_config_value(config_entry, "hsem_batteries_enable_batteries_schedule_2")
         ),
-        start=convert_to_time(
-            get_config_value(
-                config_entry, "hsem_batteries_enable_batteries_schedule_2_start"
-            )
-        ),
-        end=convert_to_time(
-            get_config_value(
-                config_entry, "hsem_batteries_enable_batteries_schedule_2_end"
-            )
-        ),
+        start=convert_to_time(_s2_start) if _s2_start is not None else None,
+        end=convert_to_time(_s2_end) if _s2_end is not None else None,
     )
     cfg.batteries_schedule_3 = BatteryScheduleConfig(
         enabled=convert_to_boolean(
             get_config_value(config_entry, "hsem_batteries_enable_batteries_schedule_3")
         ),
-        start=convert_to_time(
-            get_config_value(
-                config_entry, "hsem_batteries_enable_batteries_schedule_3_start"
-            )
-        ),
-        end=convert_to_time(
-            get_config_value(
-                config_entry, "hsem_batteries_enable_batteries_schedule_3_end"
-            )
-        ),
+        start=convert_to_time(_s3_start) if _s3_start is not None else None,
+        end=convert_to_time(_s3_end) if _s3_end is not None else None,
     )
 
     # Excess export

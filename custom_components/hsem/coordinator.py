@@ -67,8 +67,9 @@ from custom_components.hsem.models.state_snapshot import StateSnapshot
 from custom_components.hsem.planner import run_planner
 from custom_components.hsem.planner.charge_scheduler import apply_window_hysteresis
 from custom_components.hsem.planner.ev_planner import EVChargingPlan
-from custom_components.hsem.utils.datetime_utils import as_tz, utc_key, utc_now_iso
+from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.datetime_utils import now as hsem_now
+from custom_components.hsem.utils.datetime_utils import utc_key, utc_now_iso
 from custom_components.hsem.utils.forecast_tracker import (
     ForecastTracker,
     compute_accumulated_energy,
@@ -248,7 +249,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         # Hourly tick — guarantees a refresh at the top of every hour.
         self._hourly_timer_unsub = async_track_time_change(
             self.hass,
-            self._async_handle_update,
+            self._async_handle_update,  # type: ignore[arg-type]  # HA stub expects Callable[[datetime], ...]; our callback also serves as coordinator update callback
             hour="*",
             minute=0,
             second=10,
@@ -579,9 +580,9 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 self._hourly_recommendations.sort(key=lambda x: x.start)
                 # now.tzinfo is guaranteed non-None because hsem_now() returns
                 # a timezone-aware datetime; assert so pyright narrows the type.
-                assert now.tzinfo is not None, (
-                    "hsem_now() must return tz-aware datetime"
-                )
+                assert (
+                    now.tzinfo is not None
+                ), "hsem_now() must return tz-aware datetime"
                 hourly_rec = next(
                     (
                         r
@@ -681,7 +682,9 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             self._interval_timer_unsub()
             self._interval_timer_unsub = None
         self._interval_timer_unsub = async_track_time_interval(
-            self.hass, self._async_handle_update, interval
+            self.hass,
+            self._async_handle_update,  # type: ignore[arg-type]  # HA stub expects Callable[[datetime], ...]; our callback also serves as coordinator update callback
+            interval,
         )
         await async_logger(
             self, f"HSEM Coordinator: update interval set to {interval}."

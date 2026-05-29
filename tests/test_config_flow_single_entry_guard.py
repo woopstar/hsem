@@ -152,9 +152,9 @@ class TestUniqueIdIsSetEarly:
         await flow.async_step_user(user_input=None)
 
         assert len(recorded_uid) == 1
-        assert recorded_uid[0] == DOMAIN, (
-            f"Expected unique_id == {DOMAIN!r}, got {recorded_uid[0]!r}"
-        )
+        assert (
+            recorded_uid[0] == DOMAIN
+        ), f"Expected unique_id == {DOMAIN!r}, got {recorded_uid[0]!r}"
 
 
 # ---------------------------------------------------------------------------

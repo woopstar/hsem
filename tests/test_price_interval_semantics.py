@@ -187,9 +187,9 @@ class TestRoundTripPriceRecovery:
             results.append(planner_price)
 
         for planner_price in results:
-            assert planner_price == pytest.approx(raw_price), (
-                f"round trip broke for price {raw_price}"
-            )
+            assert planner_price == pytest.approx(
+                raw_price
+            ), f"round trip broke for price {raw_price}"
 
 
 # ---------------------------------------------------------------------------
