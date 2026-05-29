@@ -624,7 +624,7 @@ def build_ev_charging_plan(
             # For the CURRENT slot, prefer the live net consumption sensor
             # over the predicted surplus — the prediction may be stale.
             is_current = s_start <= now_tz < s_end
-            if is_current and inp.live_net_consumption_w < -1e-9:
+            if is_current:
                 # Live net consumption is negative → surplus is available.
                 # Convert watts to kWh for the remaining slot duration.
                 live_surplus_w = -inp.live_net_consumption_w
