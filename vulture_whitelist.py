@@ -12,9 +12,7 @@ module-level-import-not-at-top warning for the entire file.
 """
 
 # ruff: noqa: E402
-from custom_components.hsem import (
-    async_setup,  # noqa: F401
-    )
+from custom_components.hsem import async_setup  # noqa: F401
 from custom_components.hsem.config_flow import HSEMConfigFlow  # noqa: F401
 
 # Config flow steps (called dynamically by HA)

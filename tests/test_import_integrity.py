@@ -183,15 +183,15 @@ class TestFlowsMonthsPublicAPI:
 
     def test_get_months_schema_exported(self):
         """get_months_schema must be importable from flows.months."""
-        assert hasattr(
-            self.module, "get_months_schema"
-        ), "flows.months is missing 'get_months_schema'"
+        assert hasattr(self.module, "get_months_schema"), (
+            "flows.months is missing 'get_months_schema'"
+        )
 
     def test_validate_months_input_exported(self):
         """validate_months_input must be importable from flows.months."""
-        assert hasattr(
-            self.module, "validate_months_input"
-        ), "flows.months is missing 'validate_months_input'"
+        assert hasattr(self.module, "validate_months_input"), (
+            "flows.months is missing 'validate_months_input'"
+        )
 
     def test_private_convert_months_not_in_flows_months(self):
         """_convert_months_to_int must NOT live in flows.months (it belongs in utils.misc).
@@ -213,9 +213,9 @@ class TestUtilsMiscPublicAPI:
 
     def test_convert_months_to_int_exported(self):
         """convert_months_to_int must be importable from utils.misc."""
-        assert hasattr(
-            self.module, "convert_months_to_int"
-        ), "utils.misc is missing 'convert_months_to_int'"
+        assert hasattr(self.module, "convert_months_to_int"), (
+            "utils.misc is missing 'convert_months_to_int'"
+        )
 
     def test_convert_months_to_int_is_callable(self):
         """convert_months_to_int must be a callable function."""
@@ -237,12 +237,12 @@ class TestOptionsFlowUsesCorrectImport:
         # The function bound in options_flow's namespace must be the same object
         # as the one in utils.misc — not a re-export from flows.months.
         options_fn = getattr(options_flow, "convert_months_to_int", None)
-        assert (
-            options_fn is not None
-        ), "options_flow does not have 'convert_months_to_int' in its namespace"
-        assert (
-            options_fn is misc.convert_months_to_int
-        ), "'convert_months_to_int' in options_flow is not the function from utils.misc"
+        assert options_fn is not None, (
+            "options_flow does not have 'convert_months_to_int' in its namespace"
+        )
+        assert options_fn is misc.convert_months_to_int, (
+            "'convert_months_to_int' in options_flow is not the function from utils.misc"
+        )
 
     def test_options_flow_does_not_import_from_flows_months_private(self):
         """options_flow's source must not reference _convert_months_to_int."""

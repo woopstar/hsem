@@ -576,9 +576,9 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 self._hourly_recommendations.sort(key=lambda x: x.start)
                 # now.tzinfo is guaranteed non-None because hsem_now() returns
                 # a timezone-aware datetime; assert so pyright narrows the type.
-                assert (
-                    now.tzinfo is not None
-                ), "hsem_now() must return tz-aware datetime"
+                assert now.tzinfo is not None, (
+                    "hsem_now() must return tz-aware datetime"
+                )
                 hourly_rec = next(
                     (
                         r

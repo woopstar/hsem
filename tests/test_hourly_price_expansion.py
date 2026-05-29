@@ -335,12 +335,12 @@ class TestMissingPriceHours:
         slots = expand_hourly_prices_to_slots(self.now, imp, exp)
         for h in missing:
             for s in range(4):
-                assert _is_sentinel(
-                    slots[h * 4 + s].import_price
-                ), f"hour {h} slot {s} import should be sentinel"
-                assert _is_sentinel(
-                    slots[h * 4 + s].export_price
-                ), f"hour {h} slot {s} export should be sentinel"
+                assert _is_sentinel(slots[h * 4 + s].import_price), (
+                    f"hour {h} slot {s} import should be sentinel"
+                )
+                assert _is_sentinel(slots[h * 4 + s].export_price), (
+                    f"hour {h} slot {s} export should be sentinel"
+                )
 
     def test_import_and_export_can_have_different_missing_hours(self):
         # Import missing hour 5, export missing hour 10 — independent gaps.
@@ -387,9 +387,9 @@ class TestFillMissingPrices:
         slots = expand_hourly_prices_to_slots(self.now, imp, exp)
         fill_missing_prices(slots, import_fallback=99.0)
         # Hour 6 is missing → original sentinel must be preserved (NaN)
-        assert math.isnan(
-            slots[6 * 4].import_price
-        ), "fill_missing_prices must not mutate the original slot list"
+        assert math.isnan(slots[6 * 4].import_price), (
+            "fill_missing_prices must not mutate the original slot list"
+        )
 
     def test_fill_returns_new_list(self):
         slots = expand_hourly_prices_to_slots(self.now, {}, {})
@@ -504,9 +504,9 @@ class TestPriceBroadcast:
         slots = expand_hourly_prices_to_slots(self.now, imp, exp)
         for h in range(24):
             prices = [slots[h * 4 + s].import_price for s in range(4)]
-            assert all(
-                p == pytest.approx(0.25) for p in prices
-            ), f"hour {h} prices should all be 0.25, got {prices}"
+            assert all(p == pytest.approx(0.25) for p in prices), (
+                f"hour {h} prices should all be 0.25, got {prices}"
+            )
 
     def test_30_min_slots_have_same_price_as_input(self):
         imp = {h: float(h) for h in range(24)}
@@ -688,12 +688,12 @@ class TestIntegrationWithPopulatePrices:
         populate_prices(planned_slots, price_points, tsi=tsi)
 
         for i, (sp, ps) in enumerate(zip(expanded, planned_slots)):
-            assert sp.import_price == pytest.approx(
-                ps.price.import_price
-            ), f"slot {i} import mismatch"
-            assert sp.export_price == pytest.approx(
-                ps.price.export_price
-            ), f"slot {i} export mismatch"
+            assert sp.import_price == pytest.approx(ps.price.import_price), (
+                f"slot {i} import mismatch"
+            )
+            assert sp.export_price == pytest.approx(ps.price.export_price), (
+                f"slot {i} export mismatch"
+            )
 
     def test_negative_export_survives_populate_prices(self):
         """Negative export prices must not be zeroed out by populate_prices."""
@@ -729,6 +729,6 @@ class TestIntegrationWithPopulatePrices:
         populate_prices(planned_slots, price_points, tsi=tsi)
 
         for ps in planned_slots:
-            assert ps.price.export_price == pytest.approx(
-                -0.05
-            ), f"negative export price was lost: {ps.price.export_price}"
+            assert ps.price.export_price == pytest.approx(-0.05), (
+                f"negative export price was lost: {ps.price.export_price}"
+            )

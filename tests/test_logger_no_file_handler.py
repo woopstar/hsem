@@ -119,9 +119,9 @@ class TestAsyncLoggerNonBlocking:
             stream = handler.stream
             stream.seek(0)
             output = stream.read()
-            assert (
-                "regression: test message" in output
-            ), "async_logger must write to HSEM_LOGGER (the file handler)."
+            assert "regression: test message" in output, (
+                "async_logger must write to HSEM_LOGGER (the file handler)."
+            )
         finally:
             HSEM_LOGGER.removeHandler(handler)
             handler.close()

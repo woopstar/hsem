@@ -174,9 +174,9 @@ def test_milp_charges_in_cheap_slots_and_discharges_in_expensive():
     }
 
     # The LP should charge during some cheap hours
-    assert charge_hours & set(
-        cheap
-    ), f"Expected charge in cheap hours {cheap}, got charge hours: {sorted(charge_hours)}"
+    assert charge_hours & set(cheap), (
+        f"Expected charge in cheap hours {cheap}, got charge hours: {sorted(charge_hours)}"
+    )
     # The LP should discharge during some expensive hours
     assert discharge_hours & set(expensive), (
         f"Expected discharge in expensive hours {expensive}, "
@@ -212,9 +212,9 @@ def test_milp_cheaper_than_no_action_on_arbitrage_case():
     milp_score = _score(milp_slots, current_kwh=0.0)
     baseline_score = _score(baseline_slots, current_kwh=0.0)
 
-    assert (
-        milp_score < baseline_score
-    ), f"MILP score {milp_score:.4f} must be lower than no-action {baseline_score:.4f}"
+    assert milp_score < baseline_score, (
+        f"MILP score {milp_score:.4f} must be lower than no-action {baseline_score:.4f}"
+    )
 
 
 @_scipy_skip()
@@ -292,9 +292,9 @@ def test_milp_candidate_present_in_planner_output():
     output = run_planner(inp)
 
     candidate_names = {c.name for c in (output.candidates or [])}
-    assert (
-        CANDIDATE_MILP in candidate_names
-    ), f"Expected 'milp' in candidates, got: {sorted(candidate_names)}"
+    assert CANDIDATE_MILP in candidate_names, (
+        f"Expected 'milp' in candidates, got: {sorted(candidate_names)}"
+    )
 
 
 @_scipy_skip()
@@ -445,9 +445,9 @@ def test_milp_solves_96_slot_horizon_under_100ms():
     elapsed = time_module.perf_counter() - t_start
 
     assert result is not None, "MILP must solve the 96-slot horizon"
-    assert (
-        elapsed < 0.10
-    ), f"MILP took {elapsed * 1000:.1f} ms on 96 slots — must be under 100 ms"
+    assert elapsed < 0.10, (
+        f"MILP took {elapsed * 1000:.1f} ms on 96 slots — must be under 100 ms"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -523,9 +523,9 @@ def test_aggressive_slots_fallback_when_headroom_zero():
         for s in slots_copy
         if s.recommendation == Recommendations.BatteriesChargeGrid.value
     )
-    assert (
-        charge_slots_count == 0
-    ), f"Expected 0 charge slots when battery is full (headroom=0), got {charge_slots_count}"
+    assert charge_slots_count == 0, (
+        f"Expected 0 charge slots when battery is full (headroom=0), got {charge_slots_count}"
+    )
 
 
 def test_aggressive_slots_fallback_on_degenerate_max_charge():
@@ -547,9 +547,9 @@ def test_aggressive_slots_fallback_on_degenerate_max_charge():
         for s in slots_copy
         if s.recommendation == Recommendations.BatteriesChargeGrid.value
     )
-    assert (
-        charge_slots_count == 3
-    ), f"Expected fallback of 3 charge slots, got {charge_slots_count}"
+    assert charge_slots_count == 3, (
+        f"Expected fallback of 3 charge slots, got {charge_slots_count}"
+    )
 
 
 def test_aggressive_large_headroom_claims_all_available_charge_candidates():
@@ -594,9 +594,9 @@ def test_aggressive_large_headroom_claims_all_available_charge_candidates():
         f"Expected significantly more than 3 charge slots at large headroom, "
         f"got {charge_slots_count}"
     )
-    assert (
-        charge_slots_count >= 5
-    ), f"Expected at least 5 charge slots (ceil(10/2)=5), got {charge_slots_count}"
+    assert charge_slots_count >= 5, (
+        f"Expected at least 5 charge slots (ceil(10/2)=5), got {charge_slots_count}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -664,9 +664,9 @@ def test_replacement_price_is_minimum_of_future_prices():
     # Both should assign a credit (negative terminal_soc_value) because
     # terminal SoC > initial SoC.  The credit is larger (more negative) with
     # the higher avg price.
-    assert (
-        cost_min.terminal_soc_value < 1e-9
-    ), "Expected negative terminal_soc_value (credit) when terminal SoC > initial SoC"
+    assert cost_min.terminal_soc_value < 1e-9, (
+        "Expected negative terminal_soc_value (credit) when terminal SoC > initial SoC"
+    )
     # min_price < avg_price → |credit with min| < |credit with avg|
     # i.e. terminal_soc_value is less negative with min price
     assert cost_min.terminal_soc_value >= cost_avg.terminal_soc_value - 1e-9, (
@@ -749,9 +749,9 @@ def test_aggressive_charge_only_before_first_discharge_window():
     )
 
     # All charge hours must be strictly before hour 8
-    assert all(
-        h < 8 for h in charge_hours
-    ), f"Charge hours {charge_hours} include slots at or after discharge window at hour 8"
+    assert all(h < 8 for h in charge_hours), (
+        f"Charge hours {charge_hours} include slots at or after discharge window at hour 8"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -968,9 +968,9 @@ def test_milp_no_simultaneous_charge_discharge_at_negative_prices():
     for s in milp_slots:
         is_charge = s.recommendation == Recommendations.BatteriesChargeGrid.value
         is_discharge = s.recommendation == Recommendations.BatteriesDischargeMode.value
-        assert not (
-            is_charge and is_discharge
-        ), f"Bug C: Simultaneous charge+discharge at hour {s.start.hour}"
+        assert not (is_charge and is_discharge), (
+            f"Bug C: Simultaneous charge+discharge at hour {s.start.hour}"
+        )
 
 
 @_scipy_skip()
