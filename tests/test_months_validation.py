@@ -169,7 +169,7 @@ class TestGetMonthsSchema:
 
         for key in schema.schema:
             if isinstance(key, vol.Required) and key.schema == "hsem_months_winter":
-                return key.default()  # type: ignore[operator]  # voluptuous stubs incomplete
+                return key.default()  # type: ignore[no-any-return,operator]  # voluptuous stubs incomplete
         raise KeyError("hsem_months_winter not found in schema")
 
     async def test_schema_default_is_strings_when_config_has_integers(self):

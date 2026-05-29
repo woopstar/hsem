@@ -24,7 +24,7 @@ The sensor is a *diagnostic* entity (``EntityCategory.DIAGNOSTIC``).
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
@@ -93,7 +93,7 @@ class HSEMForecastAccuracySensor(
         summary = tracker.summary
         if summary.finalised_count == 0:
             return None
-        return round(summary.mae_pv_kwh, 3)
+        return cast(float, round(summary.mae_pv_kwh, 3))
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
@@ -135,7 +135,7 @@ class HSEMForecastAccuracySensor(
             _data["records"] = _data.get("records", [])[-24:]
         attrs["_forecast_tracker_data"] = _data
 
-        return attrs
+        return cast(dict[str, Any], attrs)
 
     @property
     def native_unit_of_measurement(self) -> str | None:
