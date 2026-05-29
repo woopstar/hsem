@@ -538,7 +538,7 @@ class TestP006ConcurrentUpdates:
         """Concurrent updates must not trigger more than one hardware write."""
         writes: list[str] = []
 
-        class _WriteTracking(self.__class__._Sensor):
+        class _WriteTracking(TestP006ConcurrentUpdates._Sensor):
             async def _run_cycle(self) -> None:
                 self.cycle_runs += 1
                 writes.append("write")

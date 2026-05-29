@@ -65,8 +65,6 @@ warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
 disallow_incomplete_defs = true
-# Pre-existing type issues tracked for a future cleanup PR:
-disable_error_code = ["name-defined"]
 
 [tool.coverage.run]
 source = ["custom_components"]
