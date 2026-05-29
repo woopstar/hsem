@@ -10,7 +10,7 @@ permissions: read-all
 
 jobs:
   lint:
-    name: Lint with isort, black, and ruff
+    name: Lint with tox
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -20,26 +20,22 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Cache pip packages
+      - name: Cache tox environments
         uses: actions/cache@v5
         with:
-          path: ~/.cache/pip
-          key: pip-lint-${{ hashFiles('**/requirements.txt', '**/requirements_lint.txt') }}
+          path: .tox
+          key: tox-lint-${{ hashFiles('requirements.txt', 'requirements_lint.txt') }}
           restore-keys: |
-            pip-lint-
+            tox-lint-
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install -r requirements_lint.txt
-          pip install tox
+      - name: Install tox
+        run: python -m pip install tox
 
       - name: Format and lint with tox
         run: tox -e lint
 
   type-check:
-    name: Type check with mypy
+    name: Type check with tox
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -49,26 +45,22 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Cache pip packages
+      - name: Cache tox environments
         uses: actions/cache@v5
         with:
-          path: ~/.cache/pip
-          key: pip-typing-${{ hashFiles('**/requirements.txt', '**/requirements_typing.txt') }}
+          path: .tox
+          key: tox-typing-${{ hashFiles('requirements.txt', 'requirements_typing.txt') }}
           restore-keys: |
-            pip-typing-
+            tox-typing-
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install -r requirements_typing.txt
+      - name: Install tox
+        run: python -m pip install tox
 
-      - name: Type check with mypy
-        run: mypy custom_components tests
-        continue-on-error: true  # TODO: fix mypy errors before enforcing
+      - name: Type check with tox
+        run: tox -e typing
 
   quality:
-    name: Static quality checks (Pyright + Vulture)
+    name: Static quality checks with tox
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -78,28 +70,22 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Cache pip packages
+      - name: Cache tox environments
         uses: actions/cache@v5
         with:
-          path: ~/.cache/pip
-          key: pip-quality-${{ hashFiles('**/requirements.txt', '**/requirements_test.txt') }}
+          path: .tox
+          key: tox-quality-${{ hashFiles('requirements.txt', 'requirements_test.txt') }}
           restore-keys: |
-            pip-quality-
+            tox-quality-
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install -r requirements_test.txt
+      - name: Install tox
+        run: python -m pip install tox
 
-      - name: Run Pyright type checker
-        run: python -m pyright
-
-      - name: Run Vulture dead-code detector
-        run: python -m vulture custom_components/hsem tests vulture_whitelist.py --min-confidence 80
+      - name: Run quality checks with tox
+        run: tox -e quality
 
   tests:
-    name: Tests with pytest (Python ${{ matrix.python-version }})
+    name: Tests with tox (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -113,23 +99,19 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Cache pip packages
+      - name: Cache tox environments
         uses: actions/cache@v5
         with:
-          path: ~/.cache/pip
-          key: pip-test-${{ hashFiles('**/requirements.txt', '**/requirements_test.txt') }}
+          path: .tox
+          key: tox-test-${{ hashFiles('requirements.txt', 'requirements_test.txt') }}
           restore-keys: |
-            pip-test-
+            tox-test-
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install -r requirements_test.txt
+      - name: Install tox
+        run: python -m pip install tox
 
-      - name: Run tests with pytest
-        run: |
-          pytest tests/ --timeout=30 --cov=custom_components.hsem --cov-report=xml
+      - name: Run tests with tox
+        run: tox -e py313
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v6
