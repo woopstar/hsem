@@ -13,10 +13,8 @@ please refer to `AGENTS.md`.
 2. **Verify Python 3.13** — Ensure you're using Python 3.13 (see `.python-version`)
 3. **Create a feature branch** — Use format: `feat/<issue-number>-<description>`
 4. **Make focused changes** — Solve one issue at a time
-5. **Run `tox -e lint` before committing** — Runs isort, black, ruff format, and ruff check in one command
-6. **Run `tox -e quality` after lint** — Runs pyright and vulture static checks
-7. **Run all checks** — Linting, formatting, tests, type checking, quality
-8. **Submit PR for review** — Do not merge without explicit permission
+5. **Run quality checks** — `tox -e lint`, `tox -e typing`, `tox -e quality`, `tox -e py313`
+6. **Submit PR for review** — Do not merge without explicit permission
 
 ## Core Principles
 
@@ -34,8 +32,10 @@ please refer to `AGENTS.md`.
    - Keep changes focused and minimal
 
 3. **Code Quality**
-   - Run `tox -e lint` before committing (single command: isort + black + ruff format + ruff check)
-   - Run `tox -e quality` after lint (single command: pyright + vulture)
+   - Run `tox -e lint` before committing (isort + black + ruff format + ruff check)
+   - Run `tox -e typing` after lint (mypy type checking)
+   - Run `tox -e quality` after typing (pyright + vulture)
+   - Run `tox -e py313` to run tests with coverage before opening a PR
    - Include type hints for all public functions
    - Write docstrings for all public modules, classes, and functions
    - Write tests for new functionality
@@ -127,23 +127,25 @@ git checkout -b feat/<issue-number>-<description>
 
 # 3. Make your changes and write tests
 
-# 4. Format and lint (REQUIRED - single command)
+# 4. Format and lint (REQUIRED)
 tox -e lint
-# 5. Run quality checks (REQUIRED - single command)
+# 5. Type check (REQUIRED)
+tox -e typing
+# 6. Quality checks (REQUIRED)
 tox -e quality
-# 6. Run tests
-pytest tests/
+# 7. Run tests (REQUIRED)
+tox -e py313
 
-# 7. Verify changes
+# 8. Verify changes
 git status
 
-# 8. Commit with conventional commit format
+# 9. Commit with conventional commit format
 git commit -m "feat(scope): description - Fixes #<ISSUE_NUMBER>"
 
-# 9. Push and create PR (do not merge)
+# 10. Push and create PR (do not merge)
 git push origin feat/<issue-number>-<description>
 
-# 10. If the PR already exists and you make further commits, update it
+# 11. If the PR already exists and you make further commits, update it
 #     Write the body to a file first, then pass --body-file (shell-agnostic):
 Set-Content -Path pr_body.md -Value @"
 <markdown body here>
@@ -187,19 +189,19 @@ See `AGENTS.md` → **Home Assistant Compliance** section for detailed requireme
 # Step 1: Format and lint (MUST be done — isort + black + ruff format + ruff check)
 tox -e lint
 
-# Step 2: Quality checks (pyright + vulture)
-tox -e quality
-
-# Step 3: Run tests
-pytest tests/
-
-# Step 3: Type checking
+# Step 2: Type checking
 mypy custom_components tests
 
-# Step 4: Verify no unintended changes
+# Step 3: Quality checks (pyright + vulture)
+tox -e quality
+
+# Step 4: Run tests with coverage
+tox -e py313
+
+# Step 5: Verify no unintended changes
 git status
 
-# Step 5: Use pre-commit hooks (optional, but recommended)
+# Step 6: Use pre-commit hooks (optional, but recommended)
 pre-commit run --all-files
 ```
 
@@ -279,7 +281,7 @@ atomic and focused ✅ Reference `AGENTS.md` for comprehensive rules
 
 ## What to Avoid
 
-❌ Submitting a PR without running `tox -e lint` and `tox -e quality` first ❌ Ignoring lint warnings or errors
+❌ Submitting a PR without running `tox -e lint`, `tox -e typing`, `tox -e quality`, and `tox -e py313` first ❌ Ignoring lint warnings or errors
 ❌ Using Python versions other than 3.13 ❌ Refactoring unrelated code ❌ Changing planner or safety
 features without explicit issue ❌ Reformatting code outside your changes ❌ Adding new dependencies
 without justification ❌ Changing logging levels or sensitive output ❌ Modifying configuration

@@ -35,7 +35,11 @@ When asked to solve a GitHub issue, always follow these steps in order:
    (planner guide, spec, config flow reference, memories.md, README, etc.).
 7. **Add or update regression tests** — Cover the bug or new behavior.
 8. **Run the relevant tests** — `pytest tests/` or the targeted test file.
-9. **Run lint/type + quality checks** — `tox -e lint` (runs isort, black, ruff format, and ruff check) then `tox -e quality` (runs pyright and vulture)
+9. **Run lint/type + quality checks** — all four must pass before opening a PR:
+   - `tox -e lint` — isort + black + ruff format + ruff check
+   - `tox -e typing` — mypy type checking
+   - `tox -e quality` — pyright + vulture
+   - `tox -e py313` — pytest with coverage
 10. **Report a summary** including:
    - Issue title
    - Branch name
@@ -137,7 +141,9 @@ These helpers exist — never re-implement them inline:
 - **Never use `==` or `!=` to compare floating-point values.** In production code use an epsilon
   guard (`abs(x) > 1e-9` instead of `x != 0`). In tests always use `pytest.approx()`.
 - Run `tox -e lint` before every commit (isort + black + ruff format + ruff check in one command).
-- Run `tox -e quality` after lint (pyright + vulture static checks).
+- Run `tox -e typing` after lint — mypy type checking.
+- Run `tox -e quality` after typing (pyright + vulture static checks).
+- Run `tox -e py313` to run the full test suite with coverage before opening a PR.
 
 ## Write Modular Code
 - Break code into modules and components for easy reuse.
