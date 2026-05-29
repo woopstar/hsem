@@ -142,7 +142,7 @@ class HSEMHouseConsumptionPowerSensor(SensorEntity, HSEMEntity, RestoreEntity):
     def unique_id(self) -> str | None:
         return self._attr_unique_id
 
-    @property
+    @property  # type: ignore[misc]  # HA stub declares state as @final
     def state(self) -> float | None:
         return self._state
 

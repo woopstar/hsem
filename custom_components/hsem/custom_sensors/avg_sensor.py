@@ -71,11 +71,11 @@ class HSEMAvgSensor(SensorEntity, HSEMEntity, RestoreEntity):
             "measurements": self._measurements,
         }
 
-    @property
+    @property  # type: ignore[misc]  # HA stub declares state as @final
     def state(self) -> float | None:
         return self._state
 
-    @property
+    @property  # type: ignore[misc]  # HA stub declares unit_of_measurement as @final
     def unit_of_measurement(self) -> str:
         return UnitOfEnergy.KILO_WATT_HOUR
 

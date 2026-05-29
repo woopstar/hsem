@@ -93,7 +93,7 @@ class HSEMForceModeSensor(
         """Return the unique ID."""
         return self._attr_unique_id
 
-    @property
+    @property  # type: ignore[misc]  # HA stub declares state as @final
     def state(self) -> str:
         """Return the force-mode select value (``'auto'`` when not overriding)."""
         data: CoordinatorData | None = self.coordinator.data

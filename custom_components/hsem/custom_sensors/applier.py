@@ -203,7 +203,7 @@ async def async_apply_inverter_power_control(
             result = await async_write_and_verify(
                 entity_id=inv_entity or f"inverter:{inv_id}",
                 desired=desired,
-                writer=lambda _id=inv_id, _w=desired: async_set_grid_export_power_watt(
+                writer=lambda _id=inv_id, _w=desired: async_set_grid_export_power_watt(  # type: ignore[misc]  # mypy cannot infer lambda types with default parameters
                     sensor, _id, _w
                 ),
                 reader=reader_fn,
@@ -220,7 +220,7 @@ async def async_apply_inverter_power_control(
             result = await async_write_and_verify(
                 entity_id=inv_entity or f"inverter:{inv_id}",
                 desired=export_pct,
-                writer=lambda _id=inv_id, _pct=export_pct: (
+                writer=lambda _id=inv_id, _pct=export_pct: (  # type: ignore[misc]  # mypy cannot infer lambda types with default parameters
                     async_set_grid_export_power_pct(sensor, _id, _pct)
                 ),
                 reader=reader_fn,
