@@ -28,6 +28,9 @@ class HSEMIntegrationSensor(IntegrationSensor, HSEMEntity):
         **kwargs: Any,
     ) -> None:
         IntegrationSensor.__init__(self, *args, **kwargs)
+        assert (
+            config_entry is not None
+        ), "config_entry is required for HSEMIntegrationSensor"
         HSEMEntity.__init__(self, config_entry)
         self._attr_unique_id = id
         self.entity_id = e_id

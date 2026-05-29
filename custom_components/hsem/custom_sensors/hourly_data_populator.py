@@ -421,7 +421,7 @@ def populate_price_and_solcast_from_snapshot(
 
     _update_hourly_field_from_attrs(
         recommendations,
-        snapshot.sensor_attributes.get(cfg.import_electricity_price_sensor),
+        snapshot.sensor_attributes.get(cfg.import_electricity_price_sensor or ""),
         "import_price",
         price_share,
         cfg.solcast_pv_forecast_forecast_likelihood,
@@ -431,7 +431,7 @@ def populate_price_and_solcast_from_snapshot(
         _update_hourly_field_from_attrs(
             recommendations,
             snapshot.sensor_attributes.get(
-                cfg.import_electricity_price_forecast_sensor
+                cfg.import_electricity_price_forecast_sensor or ""
             ),
             "import_price",
             price_share,
@@ -440,7 +440,7 @@ def populate_price_and_solcast_from_snapshot(
         )
     _update_hourly_field_from_attrs(
         recommendations,
-        snapshot.sensor_attributes.get(cfg.export_electricity_price_sensor),
+        snapshot.sensor_attributes.get(cfg.export_electricity_price_sensor or ""),
         "export_price",
         price_share,
         cfg.solcast_pv_forecast_forecast_likelihood,
@@ -450,7 +450,7 @@ def populate_price_and_solcast_from_snapshot(
         _update_hourly_field_from_attrs(
             recommendations,
             snapshot.sensor_attributes.get(
-                cfg.export_electricity_price_forecast_sensor
+                cfg.export_electricity_price_forecast_sensor or ""
             ),
             "export_price",
             price_share,
@@ -459,7 +459,7 @@ def populate_price_and_solcast_from_snapshot(
         )
     _update_hourly_field_from_attrs(
         recommendations,
-        snapshot.sensor_attributes.get(cfg.solcast_pv_forecast_forecast_today),
+        snapshot.sensor_attributes.get(cfg.solcast_pv_forecast_forecast_today or ""),
         "solcast_pv_estimate_kwh",
         solcast_share,
         cfg.solcast_pv_forecast_forecast_likelihood,
@@ -467,7 +467,7 @@ def populate_price_and_solcast_from_snapshot(
     )
     _update_hourly_field_from_attrs(
         recommendations,
-        snapshot.sensor_attributes.get(cfg.solcast_pv_forecast_forecast_tomorrow),
+        snapshot.sensor_attributes.get(cfg.solcast_pv_forecast_forecast_tomorrow or ""),
         "solcast_pv_estimate_kwh",
         solcast_share,
         cfg.solcast_pv_forecast_forecast_likelihood,
@@ -642,7 +642,7 @@ def populate_avg_house_consumption_from_snapshot(
             eid_14d,
         )
 
-        if None in (eid_1d, eid_3d, eid_7d, eid_14d):
+        if eid_1d is None or eid_3d is None or eid_7d is None or eid_14d is None:
             log_planner(
                 "debug",
                 "[avg] hour %d: missing entity IDs in cache (1d=%s, 3d=%s, 7d=%s, 14d=%s), returning False",

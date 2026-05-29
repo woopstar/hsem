@@ -234,7 +234,9 @@ class PlannerInput:
     # --- seasonal / mode config ---
     months_winter: list[int] = field(default_factory=lambda: [1, 2, 3, 4, 10, 11, 12])
     house_power_includes_ev: bool = True
-    is_read_only: bool = False  # False = hardware writes enabled; set True only in dry-run/test scenarios
+    is_read_only: bool = (
+        False  # False = hardware writes enabled; set True only in dry-run/test scenarios
+    )
 
     #: Live net consumption in Watts from sensor.hsem_net_consumption_sensor.
     #: Negative values indicate surplus (solar > house load).  Used by the EV

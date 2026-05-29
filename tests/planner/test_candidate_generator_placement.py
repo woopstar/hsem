@@ -86,9 +86,9 @@ class TestAggressiveLatestCheapSlots:
         charge_slots = [s for s in slots if s.recommendation == _CHARGE_GRID]
 
         # Should have exactly 2 charge slots (ceil(10/5) = 2)
-        assert len(charge_slots) == 2, (
-            f"Expected 2 charge slots, got {len(charge_slots)}"
-        )
+        assert (
+            len(charge_slots) == 2
+        ), f"Expected 2 charge slots, got {len(charge_slots)}"
 
         # Phase 1 selects indices 2 and 5 (cheapest by price, stable sort).
         # Phase 2 assigns latest-first: index 5, then index 2.
@@ -145,9 +145,9 @@ class TestAggressiveLatestCheapSlots:
 
         charge_slots = [s for s in slots if s.recommendation == _CHARGE_GRID]
 
-        assert len(charge_slots) == 2, (
-            f"Expected 2 charge slots, got {len(charge_slots)}"
-        )
+        assert (
+            len(charge_slots) == 2
+        ), f"Expected 2 charge slots, got {len(charge_slots)}"
 
         charge_indices = sorted(
             s.start.hour * 2 + (1 if s.start.minute >= 30 else 0) for s in charge_slots
@@ -185,6 +185,6 @@ class TestAggressiveLatestCheapSlots:
         # Check that some slots exist - the latest cheap slots should charge
         # since they come before the aggressive discharge
         for s in charge_slots:
-            assert s.start < slots[0].start + timedelta(hours=2), (
-                f"Charge slot at {s.start} should not be at or after first discharge"
-            )
+            assert s.start < slots[0].start + timedelta(
+                hours=2
+            ), f"Charge slot at {s.start} should not be at or after first discharge"

@@ -80,7 +80,7 @@ def _make_switch(
     is_on: bool = False,
 ) -> HSEMSwitch:
     hass = _mock_hass()
-    config_entry = _mock_config_entry(**{key: is_on})
+    config_entry = _mock_config_entry(**{key: is_on})  # type: ignore[arg-type]  # test helper: typed dict values
     desc = HSEMSwitchEntityDescription(
         key=key,
         name=name,
@@ -96,7 +96,7 @@ def _make_time(
     default: str = "07:00:00",
 ) -> HSEMTimeEntity:
     hass = _mock_hass()
-    config_entry = _mock_config_entry(**{key: default})
+    config_entry = _mock_config_entry(**{key: default})  # type: ignore[arg-type]  # test helper: typed dict values
     desc = HSEMTimeEntityDescription(
         key=key,
         name=name,
@@ -334,7 +334,7 @@ class TestSwitchPlatformSetup:
             "custom_components.hsem.utils.misc.get_config_value",
             side_effect=lambda entry, key: entry.options.get(key, False),
         ):
-            await async_setup_entry(hass, config_entry, add_entities)
+            await async_setup_entry(hass, config_entry, add_entities)  # type: ignore[arg-type]  # HA AddEntitiesCallback stub too strict for test callback
 
         assert len(added) == len(SWITCH_DESCRIPTIONS)
         assert len(added) > 0
@@ -354,7 +354,7 @@ class TestSwitchPlatformSetup:
             "custom_components.hsem.utils.misc.get_config_value",
             side_effect=lambda entry, key: entry.options.get(key, False),
         ):
-            await async_setup_entry(hass, config_entry, add_entities)
+            await async_setup_entry(hass, config_entry, add_entities)  # type: ignore[arg-type]  # HA AddEntitiesCallback stub too strict for test callback
 
         for entity in added:
             assert isinstance(entity, HSEMSwitch)
@@ -376,7 +376,7 @@ class TestSwitchPlatformSetup:
             "custom_components.hsem.utils.misc.get_config_value",
             side_effect=lambda entry, key: entry.options.get(key, False),
         ):
-            await async_setup_entry(hass, config_entry, add_entities)
+            await async_setup_entry(hass, config_entry, add_entities)  # type: ignore[arg-type]  # HA AddEntitiesCallback stub too strict for test callback
 
         unique_ids = [e.unique_id for e in added]
         assert len(unique_ids) == len(set(unique_ids)), "Duplicate unique_ids detected"
@@ -396,7 +396,7 @@ class TestSwitchPlatformSetup:
             "hsem_batteries_enable_batteries_schedule_3": False,
             "hsem_ev_charger_force_max_discharge_power": True,
         }
-        config_entry = _mock_config_entry(**opts)
+        config_entry = _mock_config_entry(**opts)  # type: ignore[arg-type]  # test helper: typed dict values
         added: list[HSEMSwitch] = []
 
         def add_entities(entities: list, _update_before_add: bool = False) -> None:
@@ -406,7 +406,7 @@ class TestSwitchPlatformSetup:
             "custom_components.hsem.utils.misc.get_config_value",
             side_effect=lambda entry, key: entry.options.get(key, False),
         ):
-            await async_setup_entry(hass, config_entry, add_entities)
+            await async_setup_entry(hass, config_entry, add_entities)  # type: ignore[arg-type]  # HA AddEntitiesCallback stub too strict for test callback
 
         by_key = {e.entity_description.key: e for e in added}
         for key, expected in opts.items():
@@ -469,7 +469,7 @@ class TestTimePlatformSetupExtended:
             "custom_components.hsem.utils.misc.get_config_value",
             side_effect=lambda entry, key: entry.options.get(key, "00:00:00"),
         ):
-            await async_setup_entry(hass, config_entry, add_entities)
+            await async_setup_entry(hass, config_entry, add_entities)  # type: ignore[arg-type]  # HA AddEntitiesCallback stub too strict for test callback
 
         unique_ids = [e.unique_id for e in added]
         assert len(unique_ids) == len(set(unique_ids)), "Duplicate unique_ids detected"
@@ -488,7 +488,7 @@ class TestTimePlatformSetupExtended:
             "hsem_batteries_enable_batteries_schedule_3_start": "22:00:00",
             "hsem_batteries_enable_batteries_schedule_3_end": "01:00:00",
         }
-        config_entry = _mock_config_entry(**opts)
+        config_entry = _mock_config_entry(**opts)  # type: ignore[arg-type]  # test helper: typed dict values
         added: list[HSEMTimeEntity] = []
 
         def add_entities(entities: list, _update_before_add: bool = False) -> None:
@@ -498,7 +498,7 @@ class TestTimePlatformSetupExtended:
             "custom_components.hsem.utils.misc.get_config_value",
             side_effect=lambda entry, key: entry.options.get(key, "00:00:00"),
         ):
-            await async_setup_entry(hass, config_entry, add_entities)
+            await async_setup_entry(hass, config_entry, add_entities)  # type: ignore[arg-type]  # HA AddEntitiesCallback stub too strict for test callback
 
         by_key = {e.entity_description.key: e for e in added}
         assert by_key[
@@ -536,7 +536,7 @@ class TestTimePlatformSetupExtended:
             "custom_components.hsem.utils.misc.get_config_value",
             side_effect=lambda entry, key: entry.options.get(key, "00:00:00"),
         ):
-            await async_setup_entry(hass, config_entry, add_entities)
+            await async_setup_entry(hass, config_entry, add_entities)  # type: ignore[arg-type]  # HA AddEntitiesCallback stub too strict for test callback
 
         desc_keys = {d.key for d in TIME_DESCRIPTIONS}
         entity_keys = {e.entity_description.key for e in added}
@@ -565,7 +565,7 @@ class TestSelectPlatformSetup:
         def add_entities(entities: list, _update_before_add: bool = False) -> None:
             added.extend(entities)
 
-        await async_setup_entry(hass, config_entry, add_entities)
+        await async_setup_entry(hass, config_entry, add_entities)  # type: ignore[arg-type]  # HA AddEntitiesCallback stub too strict for test callback
 
         assert len(added) == len(SELECTOR_DESCRIPTIONS)
         assert len(added) == 2
@@ -581,7 +581,7 @@ class TestSelectPlatformSetup:
         def add_entities(entities: list, _update_before_add: bool = False) -> None:
             added.extend(entities)
 
-        await async_setup_entry(hass, config_entry, add_entities)
+        await async_setup_entry(hass, config_entry, add_entities)  # type: ignore[arg-type]  # HA AddEntitiesCallback stub too strict for test callback
 
         for entity in added:
             assert isinstance(entity, SelectEntity)
@@ -597,7 +597,7 @@ class TestSelectPlatformSetup:
         def add_entities(entities: list, _update_before_add: bool = False) -> None:
             added.extend(entities)
 
-        await async_setup_entry(hass, config_entry, add_entities)
+        await async_setup_entry(hass, config_entry, add_entities)  # type: ignore[arg-type]  # HA AddEntitiesCallback stub too strict for test callback
 
         # First selector is the working-mode selector (default = "auto").
         assert added[0].current_option == "auto"
@@ -613,7 +613,7 @@ class TestSelectPlatformSetup:
         def add_entities(entities: list, _update_before_add: bool = False) -> None:
             added.extend(entities)
 
-        await async_setup_entry(hass, config_entry, add_entities)
+        await async_setup_entry(hass, config_entry, add_entities)  # type: ignore[arg-type]  # HA AddEntitiesCallback stub too strict for test callback
 
         # First selector is the working-mode selector (includes "auto").
         assert "auto" in added[0].options
@@ -766,13 +766,13 @@ class TestAttrPatternEnforcement:
     def test_hsem_selector_no_unique_id_property(self) -> None:
         """HSEMWorkingModeSelector must NOT define a @property 'unique_id'."""
         prop = HSEMWorkingModeSelector.__dict__.get("unique_id")
-        assert prop is None, (
-            "HSEMWorkingModeSelector must not override unique_id as a @property"
-        )
+        assert (
+            prop is None
+        ), "HSEMWorkingModeSelector must not override unique_id as a @property"
 
     def test_hsem_selector_no_current_option_property(self) -> None:
         """HSEMWorkingModeSelector must NOT override current_option as a @property."""
         prop = HSEMWorkingModeSelector.__dict__.get("current_option")
-        assert prop is None, (
-            "HSEMWorkingModeSelector must not override current_option as a @property"
-        )
+        assert (
+            prop is None
+        ), "HSEMWorkingModeSelector must not override current_option as a @property"

@@ -68,15 +68,15 @@ class TestEntityBaseClasses:
 
     def test_time_entity_inherits_from_time_entity(self) -> None:
         """HSEMTimeEntity must extend TimeEntity, not ToggleEntity."""
-        assert issubclass(HSEMTimeEntity, TimeEntity), (
-            "HSEMTimeEntity should inherit from homeassistant.components.time.TimeEntity"
-        )
+        assert issubclass(
+            HSEMTimeEntity, TimeEntity
+        ), "HSEMTimeEntity should inherit from homeassistant.components.time.TimeEntity"
 
     def test_time_entity_does_not_inherit_from_toggle_entity(self) -> None:
         """HSEMTimeEntity must NOT extend ToggleEntity (the old incorrect base)."""
-        assert not issubclass(HSEMTimeEntity, ToggleEntity), (
-            "HSEMTimeEntity must not inherit from ToggleEntity"
-        )
+        assert not issubclass(
+            HSEMTimeEntity, ToggleEntity
+        ), "HSEMTimeEntity must not inherit from ToggleEntity"
 
     def test_switch_entity_inherits_from_switch_entity(self) -> None:
         """HSEMSwitch must extend SwitchEntity."""
@@ -300,7 +300,7 @@ class TestTimePlatformSetup:
             "custom_components.hsem.utils.misc.get_config_value",
             side_effect=lambda entry, key: entry.options.get(key, "00:00:00"),
         ):
-            await async_setup_entry(hass, config_entry, add_entities)
+            await async_setup_entry(hass, config_entry, add_entities)  # type: ignore[arg-type]  # HA AddEntitiesCallback stub too strict for test callback
 
         assert len(added) == 8
 
@@ -329,7 +329,7 @@ class TestTimePlatformSetup:
             "custom_components.hsem.utils.misc.get_config_value",
             side_effect=lambda entry, key: entry.options.get(key, "00:00:00"),
         ):
-            await async_setup_entry(hass, config_entry, add_entities)
+            await async_setup_entry(hass, config_entry, add_entities)  # type: ignore[arg-type]  # HA AddEntitiesCallback stub too strict for test callback
 
         for entity in added:
             assert isinstance(entity, HSEMTimeEntity)
@@ -362,7 +362,7 @@ class TestTimePlatformSetup:
             "custom_components.hsem.utils.misc.get_config_value",
             side_effect=lambda entry, key: entry.options.get(key, "00:00:00"),
         ):
-            await async_setup_entry(hass, config_entry, add_entities)
+            await async_setup_entry(hass, config_entry, add_entities)  # type: ignore[arg-type]  # HA AddEntitiesCallback stub too strict for test callback
 
         for entity in added:
             assert entity.native_value is not None

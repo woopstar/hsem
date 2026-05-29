@@ -91,7 +91,7 @@ def _make_explanation(**kwargs: Any) -> PlanExplanation:
         rejected_plans=[RejectedPlan("do_nothing", "Costs more idle.", 1.65)],
     )
     defaults.update(kwargs)
-    return PlanExplanation(**defaults)
+    return PlanExplanation(**defaults)  # type: ignore[arg-type]  # test helper: dict values are typed at runtime
 
 
 def _make_coordinator_data(
@@ -345,9 +345,9 @@ class TestSensorContextAttributes:
         """All context keys must be present when cfg/live/slot/apply are set."""
         sensor = _make_sensor(_make_coordinator_data(has_context=True))
         keys = set(sensor.extra_state_attributes.keys())
-        assert _CONTEXT_ATTR_KEYS.issubset(keys), (
-            f"Missing context keys: {_CONTEXT_ATTR_KEYS - keys}"
-        )
+        assert _CONTEXT_ATTR_KEYS.issubset(
+            keys
+        ), f"Missing context keys: {_CONTEXT_ATTR_KEYS - keys}"
 
     def test_context_keys_absent_when_no_coordinator_data(self):
         """Context keys must NOT be present when coordinator.data is None."""

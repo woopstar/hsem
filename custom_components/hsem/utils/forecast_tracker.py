@@ -258,10 +258,18 @@ class ForecastTracker:
         if not finalised:
             return ForecastErrorSummary(window_slots=len(self._records))
 
-        mae_pv = statistics.mean(r.mae_pv for r in finalised)  # type: ignore[misc]
-        mae_load = statistics.mean(r.mae_load for r in finalised)  # type: ignore[misc]
-        bias_pv = statistics.mean(r.bias_pv for r in finalised)  # type: ignore[misc]
-        bias_load = statistics.mean(r.bias_load for r in finalised)  # type: ignore[misc]
+        mae_pv: float = statistics.mean(
+            r.mae_pv for r in finalised if r.mae_pv is not None
+        )  # type: ignore[misc]
+        mae_load: float = statistics.mean(
+            r.mae_load for r in finalised if r.mae_load is not None
+        )  # type: ignore[misc]
+        bias_pv: float = statistics.mean(
+            r.bias_pv for r in finalised if r.bias_pv is not None
+        )  # type: ignore[misc]
+        bias_load: float = statistics.mean(
+            r.bias_load for r in finalised if r.bias_load is not None
+        )  # type: ignore[misc]
 
         # RMSE
         rmse_pv = statistics.sqrt(
