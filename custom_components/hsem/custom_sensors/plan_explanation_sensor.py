@@ -39,7 +39,7 @@ from __future__ import annotations
 from typing import Any
 
 from homeassistant.components.sensor import SensorEntity
-from homeassistant.const import EntityCategory
+from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN, EntityCategory
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from custom_components.hsem.coordinator import (
@@ -215,7 +215,7 @@ class HSEMPlanExplanationSensor(
         restored = await self.async_get_last_state()
         if restored is not None and restored.state not in (
             None,
-            "unavailable",
-            "unknown",
+            STATE_UNAVAILABLE,
+            STATE_UNKNOWN,
         ):
             self._restored_state = restored.state

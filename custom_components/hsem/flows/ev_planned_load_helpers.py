@@ -19,6 +19,7 @@ Public API
 from __future__ import annotations
 
 import voluptuous as vol
+from homeassistant.const import PERCENTAGE, UnitOfEnergy, UnitOfPower
 from homeassistant.helpers.selector import selector
 
 from custom_components.hsem.utils.config_validator import (
@@ -37,7 +38,7 @@ _CAPACITY_SELECTOR = selector(
             "min": 1.0,
             "max": 200.0,
             "step": 0.5,
-            "unit_of_measurement": "kWh",
+            "unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR,
             "mode": "box",
         }
     }
@@ -49,7 +50,7 @@ _POWER_KW_SELECTOR = selector(
             "min": 0.1,
             "max": 50.0,
             "step": 0.1,
-            "unit_of_measurement": "kW",
+            "unit_of_measurement": UnitOfPower.KILO_WATT,
             "mode": "box",
         }
     }
@@ -61,7 +62,7 @@ _EFFICIENCY_SELECTOR = selector(
             "min": 50,
             "max": 100,
             "step": 1,
-            "unit_of_measurement": "%",
+            "unit_of_measurement": PERCENTAGE,
             "mode": "slider",
         }
     }

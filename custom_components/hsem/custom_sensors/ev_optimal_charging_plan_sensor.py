@@ -26,7 +26,7 @@ from __future__ import annotations
 from typing import Any
 
 from homeassistant.components.sensor import SensorEntity
-from homeassistant.const import EntityCategory
+from homeassistant.const import STATE_UNAVAILABLE, EntityCategory
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from custom_components.hsem.coordinator import (
@@ -46,7 +46,7 @@ _VALID_STATES = {
     "fully_charged",
     "charging",
     "waiting",
-    "unavailable",
+    STATE_UNAVAILABLE,
 }
 
 
@@ -106,12 +106,12 @@ class HSEMEVOptimalChargingPlanSensor(
         """Return the current EV charging plan state."""
         data: CoordinatorData | None = self.coordinator.data
         if data is None:
-            return self._restored_state or "unavailable"
+            return self._restored_state or STATE_UNAVAILABLE
         plan = data.ev_charging_plan
         if plan is None:
-            return "unavailable"
+            return STATE_UNAVAILABLE
         state = plan.state
-        return state if state in _VALID_STATES else "unavailable"
+        return state if state in _VALID_STATES else STATE_UNAVAILABLE
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:

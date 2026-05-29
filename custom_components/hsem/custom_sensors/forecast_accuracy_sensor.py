@@ -27,7 +27,7 @@ from __future__ import annotations
 from typing import Any
 
 from homeassistant.components.sensor import SensorEntity
-from homeassistant.const import EntityCategory
+from homeassistant.const import EntityCategory, UnitOfEnergy
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from custom_components.hsem.coordinator import (
@@ -139,7 +139,7 @@ class HSEMForecastAccuracySensor(
     @property
     def native_unit_of_measurement(self) -> str | None:
         """Return the unit of measurement."""
-        return "kWh"
+        return UnitOfEnergy.KILO_WATT_HOUR
 
     # ------------------------------------------------------------------
     # HA lifecycle — reboot persistence

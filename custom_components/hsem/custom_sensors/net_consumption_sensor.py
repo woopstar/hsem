@@ -21,7 +21,12 @@ from typing import Any
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.components.sensor.const import SensorDeviceClass
-from homeassistant.const import EntityCategory, UnitOfPower
+from homeassistant.const import (
+    STATE_UNAVAILABLE,
+    STATE_UNKNOWN,
+    EntityCategory,
+    UnitOfPower,
+)
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from custom_components.hsem.coordinator import (
@@ -148,8 +153,8 @@ class HSEMNetConsumptionSensor(
         await super().async_added_to_hass()
         restored = await self.async_get_last_state()
         if restored is not None and restored.state not in {
-            "unavailable",
-            "unknown",
+            STATE_UNAVAILABLE,
+            STATE_UNKNOWN,
             None,
         }:
             self._restored_state = restored.state

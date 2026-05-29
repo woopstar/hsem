@@ -1,4 +1,5 @@
 import voluptuous as vol
+from homeassistant.const import PERCENTAGE
 from homeassistant.helpers.selector import selector
 
 from custom_components.hsem.utils.config_validator import validate_consumption_weights
@@ -20,7 +21,7 @@ async def get_weighted_values_step_schema(config_entry) -> vol.Schema:
                         "min": 0,
                         "max": 100,
                         "step": 1,
-                        "unit_of_measurement": "%",
+                        "unit_of_measurement": PERCENTAGE,
                         "mode": "slider",
                     }
                 }
@@ -36,7 +37,7 @@ async def get_weighted_values_step_schema(config_entry) -> vol.Schema:
                         "min": 0,
                         "max": 100,
                         "step": 1,
-                        "unit_of_measurement": "%",
+                        "unit_of_measurement": PERCENTAGE,
                         "mode": "slider",
                     }
                 }
@@ -52,7 +53,7 @@ async def get_weighted_values_step_schema(config_entry) -> vol.Schema:
                         "min": 0,
                         "max": 100,
                         "step": 1,
-                        "unit_of_measurement": "%",
+                        "unit_of_measurement": PERCENTAGE,
                         "mode": "slider",
                     }
                 }
@@ -68,7 +69,7 @@ async def get_weighted_values_step_schema(config_entry) -> vol.Schema:
                         "min": 0,
                         "max": 100,
                         "step": 1,
-                        "unit_of_measurement": "%",
+                        "unit_of_measurement": PERCENTAGE,
                         "mode": "slider",
                     }
                 }

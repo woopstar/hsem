@@ -20,7 +20,7 @@ from __future__ import annotations
 from typing import Any
 
 from homeassistant.components.sensor import SensorEntity
-from homeassistant.const import EntityCategory
+from homeassistant.const import STATE_OFF, STATE_ON, EntityCategory
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from custom_components.hsem.coordinator import (
@@ -34,7 +34,7 @@ from custom_components.hsem.utils.sensornames import (
     get_ev_charging_sensor_unique_id,
 )
 
-_VALID_STATES = {"on", "off"}
+_VALID_STATES = {STATE_ON, STATE_OFF}
 
 
 class HSEMEVChargingSensor(
@@ -97,8 +97,8 @@ class HSEMEVChargingSensor(
         """Return ``'on'`` when any EV charger is active, ``'off'`` otherwise."""
         data: CoordinatorData | None = self.coordinator.data
         if data is None or data.live is None:
-            return self._restored_state or "off"
-        return "on" if data.live.any_ev_charging else "off"
+            return self._restored_state or STATE_OFF
+        return STATE_ON if data.live.any_ev_charging else STATE_OFF
 
     @property
     def should_poll(self) -> bool:
