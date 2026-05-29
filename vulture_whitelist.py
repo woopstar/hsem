@@ -12,12 +12,9 @@ module-level-import-not-at-top warning for the entire file.
 """
 
 # ruff: noqa: E402
-from custom_components.hsem import (  # noqa: F401
-    async_migrate_entry,
-    async_setup,
-    async_setup_entry,
-    async_unload_entry,
-)
+from custom_components.hsem import (
+    async_setup,  # noqa: F401
+    )
 from custom_components.hsem.config_flow import HSEMConfigFlow  # noqa: F401
 
 # Config flow steps (called dynamically by HA)
@@ -42,9 +39,6 @@ _OptionsFlow.async_step_recommendations
 _OptionsFlow.async_step_working_mode
 _OptionsFlow.async_step_misc
 
-from custom_components.hsem.diagnostics import (  # noqa: F401
-    async_get_config_entry_diagnostics,
-)
 from custom_components.hsem.entity import HSEMEntity as _Entity  # noqa: F401
 
 # Properties consumed by HA entity registry

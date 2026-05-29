@@ -56,9 +56,9 @@ class TestNextWindowStartDt:
         """At 09:00 a 07:00 window is already past → resolved to tomorrow at 07:00."""
         now = _dt(9, 0)
         result = next_window_start_dt(now, time(7, 0))
-        assert result == _dt(7, 0, day_offset=1), (
-            f"Expected tomorrow 07:00, got {result}"
-        )
+        assert result == _dt(
+            7, 0, day_offset=1
+        ), f"Expected tomorrow 07:00, got {result}"
 
     def test_next_day_window_from_late_evening(self):
         """At 22:00 a 07:00 morning window is resolved to tomorrow at 07:00.
@@ -68,26 +68,26 @@ class TestNextWindowStartDt:
         """
         now = _dt(22, 0)
         result = next_window_start_dt(now, time(7, 0))
-        assert result == _dt(7, 0, day_offset=1), (
-            f"At 22:00, the 07:00 window should resolve to tomorrow, got {result}"
-        )
+        assert result == _dt(
+            7, 0, day_offset=1
+        ), f"At 22:00, the 07:00 window should resolve to tomorrow, got {result}"
 
     def test_exact_window_start_treated_as_past(self):
         """At exactly 07:00 the 07:00 window is considered to have started and
         thus the *next* occurrence is tomorrow."""
         now = _dt(7, 0)
         result = next_window_start_dt(now, time(7, 0))
-        assert result == _dt(7, 0, day_offset=1), (
-            "Exact window start should resolve to tomorrow (window already started)"
-        )
+        assert result == _dt(
+            7, 0, day_offset=1
+        ), "Exact window start should resolve to tomorrow (window already started)"
 
     def test_midnight_window_at_00_30(self):
         """At 00:30 a 23:00 cross-midnight window is resolved to tonight at 23:00."""
         now = _dt(0, 30)
         result = next_window_start_dt(now, time(23, 0))
-        assert result == _dt(23, 0), (
-            f"At 00:30, the 23:00 window should be tonight (same day), got {result}"
-        )
+        assert result == _dt(
+            23, 0
+        ), f"At 00:30, the 23:00 window should be tonight (same day), got {result}"
 
     def test_before_midnight_window_today(self):
         """At 21:00 a 23:00 window is resolved to tonight at 23:00."""
@@ -320,9 +320,9 @@ class TestCrossDayChargePlanningIntegration:
 
         # All discharge intervals must be on the next calendar day
         for iv in discharge_intervals:
-            assert iv["start"].date() == (now.date() + timedelta(days=1)), (
-                f"Discharge interval {iv['start']} is not on the expected next-day date"
-            )
+            assert iv["start"].date() == (
+                now.date() + timedelta(days=1)
+            ), f"Discharge interval {iv['start']} is not on the expected next-day date"
 
     def test_no_charge_slots_after_discharge_window_start(self):
         """Slots that start after the discharge window begins must not be charge windows."""
@@ -401,6 +401,6 @@ class TestCrossDayChargePlanningIntegration:
 
         # The 02:00-03:00 slot (price=0.08) should be among the top-3 cheapest
         top3_hours = {iv["start"].hour for iv in valid_charge[:3]}
-        assert 2 in top3_hours or 3 in top3_hours, (
-            f"Expected cheap night hours (02:00-04:00) in top-3, got hours: {top3_hours}"
-        )
+        assert (
+            2 in top3_hours or 3 in top3_hours
+        ), f"Expected cheap night hours (02:00-04:00) in top-3, got hours: {top3_hours}"

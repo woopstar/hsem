@@ -224,8 +224,8 @@ async def async_set_forcible_discharge(
         raise ValueError(f"power must be a non-negative integer, got {power}")
 
     # Raise explicitly so callers (write-and-verify) can record the failure.
-    if not self.hass.services.has_service("huawei_solar", "set_forcible_discharge"):
-        raise ServiceNotFound("huawei_solar", "set_forcible_discharge")
+    if not self.hass.services.has_service("huawei_solar", "forcible_discharge_soc"):
+        raise ServiceNotFound("huawei_solar", "forcible_discharge_soc")
 
     try:
         # Send the service call to set forcible discharge.
@@ -233,7 +233,7 @@ async def async_set_forcible_discharge(
         # write-and-verify can record the failure and retry.
         await self.hass.services.async_call(
             "huawei_solar",
-            "set_forcible_discharge",
+            "forcible_discharge_soc",
             {
                 "device_id": device_id,
                 "target_soc": target_soc,
@@ -253,7 +253,7 @@ async def async_set_forcible_discharge(
     except vol.Invalid as err:
         # Handle validation errors (e.g., wrong device_id, out-of-range target_soc)
         _LOGGER.exception(
-            "Invalid input for set_forcible_discharge "
+            "Invalid input for forcible_discharge_soc "
             "(device_id=%s, target_soc=%s, power=%s)",
             device_id,
             target_soc,
@@ -264,7 +264,7 @@ async def async_set_forcible_discharge(
     except (ServiceNotFound, ServiceValidationError, HomeAssistantError):
         # Service missing or HA rejected the call — propagate so callers can enter safe mode
         _LOGGER.exception(
-            "HA error during set_forcible_discharge "
+            "HA error during forcible_discharge_soc "
             "(device_id=%s, target_soc=%s, power=%s)",
             device_id,
             target_soc,

@@ -55,7 +55,12 @@ class HSEMSwitch(SwitchEntity, HSEMEntity):
         self.hass = hass
         self._config_entry = config_entry
         self.entity_description = description
-        self._attr_name = description.name
+        # Only set _attr_name when description.name is an explicit string.
+        # When name is UNDEFINED (the default), leave _attr_name unset so
+        # the translation system can resolve it via translation_key.
+        raw_name = description.name
+        if isinstance(raw_name, str):
+            self._attr_name = str(raw_name)
         # Resolve unique_id and entity_id from the centralized sensornames map.
         unique_id, entity_id = _SWITCH_ID_MAP[description.key]
         self._attr_unique_id = unique_id

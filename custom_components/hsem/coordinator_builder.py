@@ -238,6 +238,7 @@ def build_planner_input(
         export_min_price=convert_to_float(cfg.export_electricity_min_price) or 0.0,
         months_winter=list(cfg.months_winter or []),
         house_power_includes_ev=bool(cfg.house_power_includes_ev_charger_power),
+        live_net_consumption_w=convert_to_float(live.net_consumption_w) or 0.0,
         is_read_only=bool(cfg.read_only),
         # EV planned load
         ev_planned_load_enabled=bool(cfg.ev_planned_load_enabled),

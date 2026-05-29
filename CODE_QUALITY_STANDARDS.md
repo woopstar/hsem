@@ -204,7 +204,7 @@ The following checks run on every PR:
 ## Python Version
 
 - **Runtime**: Python 3.13 — check `.python-version` for the exact patch version
-- **Lint / type-check target**: Python 3.12 — set via `target-version = "py312"` in `pyproject.toml`
+- **Lint / type-check target**: Python 3.13 — set via `target-version = "py313"` in `pyproject.toml`
   to maintain compatibility with Home Assistant’s supported Python range
 - Use `pyenv` or `asdf` to manage multiple Python versions locally
 
