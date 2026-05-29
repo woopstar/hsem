@@ -200,7 +200,8 @@ class TestFirstSetupProceeds:
         flow = _make_flow(already_configured=False)
         result = await flow.async_step_user(user_input=None)
 
-        assert "base" not in result["errors"]
+        errors: dict[str, str] = result["errors"]  # type: ignore[assignment]
+        assert "base" not in errors
 
 
 # ---------------------------------------------------------------------------

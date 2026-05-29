@@ -43,6 +43,7 @@ Usage example
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import NamedTuple
@@ -595,7 +596,7 @@ class TimeSeriesIndex:
         """Return the total number of slots in the index."""
         return len(self.slots)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[SlotMeta]:
         """Iterate over :class:`SlotMeta` objects in chronological order."""
         return iter(self.slots)
 

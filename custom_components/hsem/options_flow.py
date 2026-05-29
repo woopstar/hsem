@@ -3,6 +3,7 @@
 from typing import Any
 
 from homeassistant import config_entries
+from homeassistant.config_entries import ConfigFlowResult
 
 from custom_components.hsem.const import NAME
 from custom_components.hsem.flows.batteries_excess_export import (
@@ -72,7 +73,9 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
             self._config_entry, data=updated_data
         )
 
-    async def async_step_init(self, user_input=None):
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         errors = {}
 
         if user_input is not None:
@@ -90,7 +93,9 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
             last_step=False,
         )
 
-    async def async_step_prices(self, user_input=None):
+    async def async_step_prices(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         errors = {}
 
         if user_input is not None:
@@ -108,7 +113,9 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
             last_step=False,
         )
 
-    async def async_step_months(self, user_input=None):
+    async def async_step_months(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         errors = {}
 
         if user_input is not None:
@@ -139,7 +146,9 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
             last_step=False,
         )
 
-    async def async_step_solcast(self, user_input=None):
+    async def async_step_solcast(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         errors = {}
 
         if user_input is not None:
@@ -157,7 +166,9 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
             last_step=False,
         )
 
-    async def async_step_huawei_solar(self, user_input=None):
+    async def async_step_huawei_solar(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         errors = {}
 
         if user_input is not None:
@@ -175,7 +186,9 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
             last_step=False,
         )
 
-    async def async_step_battery_economics(self, user_input=None):
+    async def async_step_battery_economics(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         errors = {}
 
         if user_input is not None:
@@ -193,7 +206,9 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
             last_step=False,
         )
 
-    async def async_step_power(self, user_input=None):
+    async def async_step_power(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         errors = {}
 
         if user_input is not None:
@@ -211,7 +226,9 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
             last_step=False,
         )
 
-    async def async_step_ev(self, user_input=None):
+    async def async_step_ev(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         errors = {}
 
         if user_input is not None:
@@ -233,7 +250,9 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
             last_step=False,
         )
 
-    async def async_step_ev_second(self, user_input=None):
+    async def async_step_ev_second(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         errors = {}
 
         if user_input is not None:
@@ -251,7 +270,9 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
             last_step=False,
         )
 
-    async def async_step_ev_planned_load(self, user_input=None):
+    async def async_step_ev_planned_load(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         errors = {}
 
         if user_input is not None:
@@ -271,7 +292,9 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
             last_step=False,
         )
 
-    async def async_step_ev_second_planned_load(self, user_input=None):
+    async def async_step_ev_second_planned_load(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         errors = {}
 
         if user_input is not None:
@@ -289,7 +312,9 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
             last_step=False,
         )
 
-    async def async_step_batteries_schedules(self, user_input=None):
+    async def async_step_batteries_schedules(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         errors = {}
 
         if user_input is not None:
@@ -309,7 +334,9 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
             last_step=False,
         )
 
-    async def async_step_batteries_excess_export(self, user_input=None):
+    async def async_step_batteries_excess_export(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         errors = {}
 
         if user_input is not None:
@@ -329,7 +356,9 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
             last_step=False,
         )
 
-    async def async_step_weighted_values(self, user_input=None):
+    async def async_step_weighted_values(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         errors = {}
 
         if user_input is not None:
