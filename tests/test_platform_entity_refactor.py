@@ -267,8 +267,8 @@ class TestSwitchState:
         entity = _make_switch(key="hsem_read_only", is_on=False)
         entity.async_write_ha_state = MagicMock()  # type: ignore[method-assign]
         await entity.async_turn_on()
-        entity.hass.config_entries.async_update_entry.assert_called_once()
-        opts = entity.hass.config_entries.async_update_entry.call_args[1]["options"]
+        entity.hass.config_entries.async_update_entry.assert_called_once()  # type: ignore[attr-defined]
+        opts = entity.hass.config_entries.async_update_entry.call_args[1]["options"]  # type: ignore[attr-defined]
         assert opts["hsem_read_only"] is True
 
     @pytest.mark.asyncio
@@ -276,7 +276,7 @@ class TestSwitchState:
         entity = _make_switch(key="hsem_read_only", is_on=True)
         entity.async_write_ha_state = MagicMock()  # type: ignore[method-assign]
         await entity.async_turn_off()
-        opts = entity.hass.config_entries.async_update_entry.call_args[1]["options"]
+        opts = entity.hass.config_entries.async_update_entry.call_args[1]["options"]  # type: ignore[attr-defined]
         assert opts["hsem_read_only"] is False
 
     @pytest.mark.asyncio

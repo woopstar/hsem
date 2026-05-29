@@ -115,7 +115,8 @@ class TestBuildSlotsDst:
         """Return a minimal object with the fields build_slots needs."""
 
         class _Stub:
-            pass
+            interval_minutes: int
+            interval_length_hours: int
 
         stub = _Stub()
         stub.interval_minutes = interval_minutes

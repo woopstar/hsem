@@ -12,6 +12,7 @@ plain ``pytest``.
 
 from __future__ import annotations
 
+import math
 import statistics
 from dataclasses import dataclass
 from datetime import datetime
@@ -272,12 +273,12 @@ class ForecastTracker:
         )  # type: ignore[misc]
 
         # RMSE
-        rmse_pv = statistics.sqrt(
+        rmse_pv = math.sqrt(
             statistics.mean(
                 (r.forecast_pv_kwh - r.actual_pv_kwh) ** 2 for r in finalised
             )
         )
-        rmse_load = statistics.sqrt(
+        rmse_load = math.sqrt(
             statistics.mean(
                 (r.forecast_load_kwh - r.actual_load_kwh) ** 2 for r in finalised
             )

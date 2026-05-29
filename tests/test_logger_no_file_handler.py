@@ -34,7 +34,7 @@ from custom_components.hsem.utils.logger import HSEM_LOGGER, async_logger
 _ORIGINAL = HSEM_LOGGER.handlers.copy()
 
 
-def _attach_capture_handler() -> logging.Handler:
+def _attach_capture_handler() -> logging.StreamHandler:
     """Attach a memory handler to HSEM_LOGGER for test assertions.
 
     Returns the handler so callers can close/remove it after the test.
