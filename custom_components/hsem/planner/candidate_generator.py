@@ -45,21 +45,16 @@ from datetime import datetime
 from custom_components.hsem.models.planner_inputs import PlannerInput
 from custom_components.hsem.models.planner_outputs import PlannedSlot
 from custom_components.hsem.planner.cost_function import PlanCostBreakdown
-from custom_components.hsem.planner.milp_optimizer import (
-    CANDIDATE_MILP,
-    is_scipy_available,
-    solve_milp,
-)
+from custom_components.hsem.planner.milp_optimizer import (CANDIDATE_MILP,
+                                                           is_scipy_available,
+                                                           solve_milp)
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import log_planner
-from custom_components.hsem.utils.misc import (
-    calculate_recommended_threshold,
-    clamp_efficiency,
-)
+from custom_components.hsem.utils.misc import (calculate_recommended_threshold,
+                                               clamp_efficiency)
 from custom_components.hsem.utils.recommendations import CHARGE_RECS as _CHARGE_RECS
-from custom_components.hsem.utils.recommendations import (
-    DISCHARGE_RECS as _DISCHARGE_RECS,
-)
+from custom_components.hsem.utils.recommendations import \
+    DISCHARGE_RECS as _DISCHARGE_RECS
 from custom_components.hsem.utils.recommendations import Recommendations
 
 # ---------------------------------------------------------------------------
@@ -736,7 +731,7 @@ def _apply_soc_plan(
     # before the first discharge window, but only if the price spread
     # covers the cycle cost (avoid uneconomical cycling).
     if not discharge_slots:
-        return  # No discharge slots after filtering — nothing to plan for
+        return None  # No discharge slots after filtering — nothing to plan for
 
     first_discharge_start = min(as_tz(s.start, now.tzinfo) for s in discharge_slots)
 
