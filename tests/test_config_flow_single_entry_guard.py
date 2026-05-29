@@ -30,6 +30,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 from homeassistant.data_entry_flow import AbortFlow
 
 from custom_components.hsem.config_flow import HSEMConfigFlow

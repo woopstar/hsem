@@ -27,8 +27,9 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Any
 
-import homeassistant.util.dt as dt_util
 import voluptuous as vol
+
+import homeassistant.util.dt as dt_util
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.components.sensor.const import SensorDeviceClass, SensorStateClass
 from homeassistant.components.utility_meter.const import (

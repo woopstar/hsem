@@ -18,6 +18,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+
 from homeassistant.const import EntityCategory
 
 from custom_components.hsem.coordinator import CoordinatorData

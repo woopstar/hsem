@@ -21,6 +21,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import voluptuous as vol
+
 from homeassistant.exceptions import (
     HomeAssistantError,
     ServiceNotFound,

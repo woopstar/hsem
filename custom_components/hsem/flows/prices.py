@@ -16,6 +16,7 @@ or any other price source share the same configuration step.
 from __future__ import annotations
 
 import voluptuous as vol
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.selector import selector

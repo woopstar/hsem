@@ -19,9 +19,9 @@ from custom_components.hsem.config_flow import HSEMConfigFlow  # noqa: F401
 HSEMConfigFlow.async_step_user
 HSEMConfigFlow.async_step_reconfigure
 
-from custom_components.hsem.options_flow import (
+from custom_components.hsem.options_flow import (  # noqa: F401
     HSEMOptionsFlow as _OptionsFlow,
-)  # noqa: F401
+)
 
 # Options flow steps (called dynamically by HA)
 _OptionsFlow.async_step_init

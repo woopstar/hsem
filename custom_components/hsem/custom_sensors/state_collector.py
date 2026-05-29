@@ -33,8 +33,7 @@ from custom_components.hsem.models.live_state import (
 )
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.models.state_snapshot import StateSnapshot
-from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
-from custom_components.hsem.utils.logger import async_logger
+from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER, async_logger
 from custom_components.hsem.utils.misc import (
     async_resolve_entity_id_from_unique_id,
     convert_to_boolean,
@@ -541,9 +540,7 @@ def _resolve_ev_deadline_from_params(sensor, deadline_entity, deadline_fixed):
         A timezone-aware ``datetime`` for the deadline, or ``None``.
     """
     import re
-    from datetime import datetime as _dt
-    from datetime import time as _time
-    from datetime import timedelta
+    from datetime import datetime as _dt, time as _time, timedelta
 
     time_str: str | None = None
 

@@ -6,6 +6,7 @@ have been moved to the separate ``battery_economics`` step.
 """
 
 import voluptuous as vol
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.selector import selector

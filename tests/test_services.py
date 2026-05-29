@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import voluptuous as vol
+
 from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.hsem.const import DOMAIN
