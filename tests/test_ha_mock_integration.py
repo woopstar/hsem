@@ -881,7 +881,7 @@ class TestEntityStateAfterCoordinatorPush:
         cfg.update_interval = 5
         cfg.batteries_purchase_price = 0.0
         cfg.batteries_expected_cycles = 6000
-        cfg.batteries_conversion_loss = 10
+        cfg.batteries_conversion_loss = 10  # type: ignore[attr-defined]
         cfg.export_electricity_min_price = 0.0
         cfg.electricity_price_update_interval = 15
 

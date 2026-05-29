@@ -111,7 +111,7 @@ class TestUniqueIdIsSetEarly:
         ):
             await flow.async_step_user(user_input=None)
 
-        flow.async_set_unique_id.assert_awaited_once_with(DOMAIN)
+        flow.async_set_unique_id.assert_awaited_once_with(DOMAIN)  # type: ignore[attr-defined]
 
     @pytest.mark.asyncio
     async def test_unique_id_is_called_before_abort_guard(self) -> None:
@@ -219,7 +219,7 @@ class TestDuplicateFlowAbortsEarly:
         with pytest.raises(AbortFlow):
             await flow.async_step_user(user_input=None)
 
-        flow.async_show_form.assert_not_called()
+        flow.async_show_form.assert_not_called()  # type: ignore[attr-defined]
 
     @pytest.mark.asyncio
     async def test_duplicate_flow_aborts_before_user_input_is_processed(
@@ -242,7 +242,7 @@ class TestDuplicateFlowAbortsEarly:
         with pytest.raises(AbortFlow):
             await flow.async_step_user(user_input=None)
 
-        flow.async_set_unique_id.assert_awaited_once_with(DOMAIN)
+        flow.async_set_unique_id.assert_awaited_once_with(DOMAIN)  # type: ignore[attr-defined]
 
 
 # ---------------------------------------------------------------------------
@@ -264,7 +264,7 @@ class TestGuardMechanism:
         flow = _make_flow(already_configured=False)
         await flow.async_step_user(user_input=None)
 
-        flow.hass.config_entries.async_entries.assert_not_called()
+        flow.hass.config_entries.async_entries.assert_not_called()  # type: ignore[attr-defined]
 
     @pytest.mark.asyncio
     async def test_abort_guard_called_exactly_once_per_step(self) -> None:
@@ -272,4 +272,4 @@ class TestGuardMechanism:
         flow = _make_flow(already_configured=False)
         await flow.async_step_user(user_input=None)
 
-        flow._abort_if_unique_id_configured.assert_called_once()
+        flow._abort_if_unique_id_configured.assert_called_once()  # type: ignore[attr-defined]

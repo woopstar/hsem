@@ -211,8 +211,8 @@ class TestHSEMTimeEntitySetValue:
         entity.async_write_ha_state = MagicMock()  # type: ignore[method-assign]
         new_time = time(21, 30, 0)
         await entity.async_set_value(new_time)
-        entity.hass.config_entries.async_update_entry.assert_called_once()
-        call_kwargs = entity.hass.config_entries.async_update_entry.call_args
+        entity.hass.config_entries.async_update_entry.assert_called_once()  # type: ignore[attr-defined]
+        call_kwargs = entity.hass.config_entries.async_update_entry.call_args  # type: ignore[attr-defined]
         updated_options = call_kwargs[1]["options"]
         assert (
             updated_options["hsem_batteries_enable_batteries_schedule_1_start"]

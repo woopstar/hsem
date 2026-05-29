@@ -151,7 +151,7 @@ class TestIntegrationSensorMetadata:
         )
         # Spot-check by calling it via the descriptor protocol with a minimal mock.
         mock_instance = MagicMock(spec=HSEMIntegrationSensor)
-        result = HSEMIntegrationSensor.state_class.fget(mock_instance)
+        result = HSEMIntegrationSensor.state_class.fget(mock_instance)  # type: ignore[attr-defined]
         assert result == SensorStateClass.TOTAL_INCREASING
 
     def test_device_class_is_energy(self) -> None:
@@ -160,7 +160,7 @@ class TestIntegrationSensorMetadata:
             "device_class must be a @property on HSEMIntegrationSensor"
         )
         mock_instance = MagicMock(spec=HSEMIntegrationSensor)
-        result = HSEMIntegrationSensor.device_class.fget(mock_instance)
+        result = HSEMIntegrationSensor.device_class.fget(mock_instance)  # type: ignore[attr-defined]
         assert result == SensorDeviceClass.ENERGY
 
 
@@ -173,21 +173,21 @@ class TestAvgSensorMetadata:
             "device_class must be a @property on HSEMAvgSensor"
         )
         mock_instance = MagicMock(spec=HSEMAvgSensor)
-        result = HSEMAvgSensor.device_class.fget(mock_instance)
+        result = HSEMAvgSensor.device_class.fget(mock_instance)  # type: ignore[attr-defined]
         assert result == SensorDeviceClass.ENERGY
 
     def test_state_class_is_measurement(self) -> None:
         prop = HSEMAvgSensor.__dict__.get("state_class")
         assert prop is not None and isinstance(prop, property)
         mock_instance = MagicMock(spec=HSEMAvgSensor)
-        result = HSEMAvgSensor.state_class.fget(mock_instance)
+        result = HSEMAvgSensor.state_class.fget(mock_instance)  # type: ignore[attr-defined]
         assert result == SensorStateClass.MEASUREMENT
 
     def test_unit_is_kwh(self) -> None:
         prop = HSEMAvgSensor.__dict__.get("unit_of_measurement")
         assert prop is not None and isinstance(prop, property)
         mock_instance = MagicMock(spec=HSEMAvgSensor)
-        result = HSEMAvgSensor.unit_of_measurement.fget(mock_instance)
+        result = HSEMAvgSensor.unit_of_measurement.fget(mock_instance)  # type: ignore[attr-defined]
         assert result == UnitOfEnergy.KILO_WATT_HOUR
 
 
