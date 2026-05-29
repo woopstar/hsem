@@ -152,9 +152,9 @@ class TestHysteresis:
         # Hysteresis should not be applied — no previous plan to keep
         assert hysteresis.applied is False, "Hysteresis must not be active on first run"
         # Winner should be the candidate with the lowest score
-        assert (
-            winner.name == CANDIDATE_BASELINE
-        ), f"Expected baseline to win, got {winner.name}"
+        assert winner.name == CANDIDATE_BASELINE, (
+            f"Expected baseline to win, got {winner.name}"
+        )
 
     def test_tiny_improvement_below_absolute_threshold(self):
         """A tiny improvement below the absolute threshold keeps the previous plan."""
@@ -282,12 +282,12 @@ class TestHysteresis:
         passive_score = getattr(passive._cost, "score", float("-inf"))
 
         if baseline_score < passive_score and (passive_score - baseline_score) > 0.001:
-            assert (
-                winner.name == CANDIDATE_BASELINE
-            ), "Better candidate should win when improvement exceeds absolute threshold"
-            assert (
-                not hysteresis.applied
-            ), "Hysteresis should not be applied when improvement exceeds threshold"
+            assert winner.name == CANDIDATE_BASELINE, (
+                "Better candidate should win when improvement exceeds absolute threshold"
+            )
+            assert not hysteresis.applied, (
+                "Hysteresis should not be applied when improvement exceeds threshold"
+            )
 
     def test_meaningful_improvement_above_percentage_threshold(self):
         """A meaningful improvement above the percentage threshold switches plans."""
@@ -329,12 +329,12 @@ class TestHysteresis:
                 (passive_score - baseline_score) / abs(passive_score)
             ) * 100.0
             if pct_improvement > 0.01:
-                assert (
-                    winner.name == CANDIDATE_BASELINE
-                ), "Better candidate should win when improvement exceeds % threshold"
-                assert (
-                    not hysteresis.applied
-                ), "Hysteresis should not be applied when % improvement exceeds threshold"
+                assert winner.name == CANDIDATE_BASELINE, (
+                    "Better candidate should win when improvement exceeds % threshold"
+                )
+                assert not hysteresis.applied, (
+                    "Hysteresis should not be applied when % improvement exceeds threshold"
+                )
 
     def test_previous_plan_not_found_in_current_set(self):
         """When the previous plan name is not found, fall back to normal selection."""
@@ -364,16 +364,16 @@ class TestHysteresis:
         )
 
         # Should fall back to normal selection
-        assert (
-            winner.name == CANDIDATE_BASELINE
-        ), "Should fall back to normal selection when previous plan not found"
-        assert (
-            not hysteresis.applied
-        ), "Hysteresis should not be applied when previous plan not found"
+        assert winner.name == CANDIDATE_BASELINE, (
+            "Should fall back to normal selection when previous plan not found"
+        )
+        assert not hysteresis.applied, (
+            "Hysteresis should not be applied when previous plan not found"
+        )
         # Reason should explain the fallback
-        assert (
-            "not found" in hysteresis.reason.lower()
-        ), f"Hysteresis reason should mention 'not found': {hysteresis.reason}"
+        assert "not found" in hysteresis.reason.lower(), (
+            f"Hysteresis reason should mention 'not found': {hysteresis.reason}"
+        )
 
     def test_previous_plan_is_still_the_best(self):
         """When the previous plan is still the best candidate, no hysteresis log needed."""

@@ -151,9 +151,9 @@ class TestSolarChargePerSlotSemantics:
         manual_sum = round(sum(s.batteries_charged_kwh for s in result.slots), 3)
         reported = result.total_charged_energy_kwh()
 
-        assert (
-            abs(manual_sum - reported) < 1e-6
-        ), f"Manual sum {manual_sum} != total_charged_energy_kwh {reported}"
+        assert abs(manual_sum - reported) < 1e-6, (
+            f"Manual sum {manual_sum} != total_charged_energy_kwh {reported}"
+        )
 
     def test_total_charged_does_not_exceed_usable_capacity(self):
         """Total solar charge must not exceed the available battery headroom."""
@@ -173,9 +173,9 @@ class TestSolarChargePerSlotSemantics:
         result = run_planner(inp)
 
         total = result.total_charged_energy_kwh()
-        assert (
-            total <= headroom + 1e-3
-        ), f"Total charged {total} kWh exceeds battery headroom {headroom} kWh"
+        assert total <= headroom + 1e-3, (
+            f"Total charged {total} kWh exceeds battery headroom {headroom} kWh"
+        )
 
     def test_no_single_slot_holds_entire_cumulative_sum(self):
         """No individual slot may carry a batteries_charged_kwh value larger than its surplus.
@@ -193,9 +193,9 @@ class TestSolarChargePerSlotSemantics:
         solar_slots = [
             s for s in result.slots if s.recommendation == _SOLAR_CHARGE_VALUE
         ]
-        assert (
-            len(solar_slots) >= 2
-        ), "Need multiple solar-charge slots to test double-count regression"
+        assert len(solar_slots) >= 2, (
+            "Need multiple solar-charge slots to test double-count regression"
+        )
 
         for slot in solar_slots:
             per_slot_max = abs(slot.estimated_net_consumption_kwh)
@@ -253,9 +253,9 @@ class TestSolarChargePerSlotSemantics:
         total = result.total_charged_energy_kwh()
         # Total charged must not exceed rated capacity (usable + reserve) as an
         # absolute upper bound — the planner may cap at usable but never above rated.
-        assert (
-            total <= rated + 1e-3
-        ), f"Total charged {total} kWh exceeds rated capacity {rated} kWh"
+        assert total <= rated + 1e-3, (
+            f"Total charged {total} kWh exceeds rated capacity {rated} kWh"
+        )
 
         # Each individual solar slot must store a per-slot value ≤ its own surplus
         for slot in result.slots:

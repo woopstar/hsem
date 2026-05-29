@@ -24,9 +24,9 @@ class HSEMUtilityMeterSensor(UtilityMeterSensor, HSEMEntity):
         **kwargs: Any,
     ) -> None:
         UtilityMeterSensor.__init__(self, *args, **kwargs)
-        assert (
-            config_entry is not None
-        ), "config_entry is required for HSEMUtilityMeterSensor"
+        assert config_entry is not None, (
+            "config_entry is required for HSEMUtilityMeterSensor"
+        )
         HSEMEntity.__init__(self, config_entry)
         self._attr_unique_id = id
         self.entity_id = e_id

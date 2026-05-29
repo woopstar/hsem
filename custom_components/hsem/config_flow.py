@@ -58,9 +58,7 @@ from custom_components.hsem.options_flow import HSEMOptionsFlow
 from custom_components.hsem.utils.misc import convert_months_to_int
 
 
-class HSEMConfigFlow(
-    config_entries.ConfigFlow, domain=DOMAIN
-):  # pyright: ignore[reportGeneralTypeIssues]
+class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: ignore[reportGeneralTypeIssues]
     """Config flow for HSEM."""
 
     VERSION = 1

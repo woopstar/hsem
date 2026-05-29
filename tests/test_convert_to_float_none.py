@@ -354,9 +354,9 @@ class TestSensorConfigZeroWeightPreserved:
         result = convert_to_int("0")
         # Simulate the config_reader guard: _w if _w is not None else 25
         assigned = result if result is not None else 25
-        assert (
-            assigned == 0
-        ), "A config value of '0' must be stored as 0, not replaced by the 25 default."
+        assert assigned == 0, (
+            "A config value of '0' must be stored as 0, not replaced by the 25 default."
+        )
 
     def test_invalid_weight_falls_back_to_default(self) -> None:
         """convert_to_int('unknown') returns None → fallback default (25) is used."""
@@ -512,9 +512,9 @@ class TestFlowExpectedCyclesNullSafety:
         """Invalid raw values always fall back to 6000; real zero is preserved."""
         result = self._flow_expected_cycles(raw)
         assert result == expected
-        assert (
-            result is not None
-        ), "None must never reach calculate_recommended_threshold"
+        assert result is not None, (
+            "None must never reach calculate_recommended_threshold"
+        )
 
     def test_invalid_cycles_does_not_raise_in_threshold_calc(self) -> None:
         """End-to-end: even if config holds 'unknown', threshold calculation succeeds.
