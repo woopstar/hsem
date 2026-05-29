@@ -207,7 +207,7 @@ class TestNoWriteAfterUnload:
             nonlocal write_called
             write_called = True
 
-        sensor._async_apply_hardware_writes = _spy_write
+        sensor._async_apply_hardware_writes = _spy_write  # type: ignore[method-assign]
 
         # Create a task that yields control once, giving us the window to cancel.
         event = asyncio.Event()
@@ -246,7 +246,7 @@ class TestNoWriteAfterUnload:
         async def _hanging_apply(_data):
             await event.wait()
 
-        sensor._async_apply_hardware_writes = _hanging_apply
+        sensor._async_apply_hardware_writes = _hanging_apply  # type: ignore[method-assign]
         sensor.coordinator.data = MagicMock()
 
         task = asyncio.get_event_loop().create_task(

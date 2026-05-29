@@ -246,7 +246,7 @@ def make_bare_coordinator(
     coord._override_expiry = None
 
     # CoordinatorEntity support — some entity methods call this
-    coord.async_set_updated_data = MagicMock()
+    coord.async_set_updated_data = MagicMock()  # type: ignore[method-assign]
 
     return coord
 
@@ -706,10 +706,10 @@ class TestDryRunCycle:
         hass = make_fake_hass(_BASE_ENTITY_STATES)
         coord = make_bare_coordinator(hass=hass, config_entry=config_entry)
         # Patch instance method to avoid actual HA timer calls.
-        coord._set_update_interval = AsyncMock()
+        coord._set_update_interval = AsyncMock()  # type: ignore[method-assign]
 
         captured: list[CoordinatorData] = []
-        coord.async_set_updated_data = lambda d: captured.append(d)  # type: ignore[assignment]  # test monkey-patch
+        coord.async_set_updated_data = lambda d: captured.append(d)  # type: ignore[assignment,method-assign]  # test monkey-patch
 
         with _patch_all_ha_helpers():
             await coord._async_run_update_cycle()
@@ -725,10 +725,10 @@ class TestDryRunCycle:
         config_entry = make_fake_config_entry({"hsem_read_only": True})
         hass = make_fake_hass(_BASE_ENTITY_STATES)
         coord = make_bare_coordinator(hass=hass, config_entry=config_entry)
-        coord._set_update_interval = AsyncMock()
+        coord._set_update_interval = AsyncMock()  # type: ignore[method-assign]
 
         captured: list[CoordinatorData] = []
-        coord.async_set_updated_data = lambda d: captured.append(d)  # type: ignore[assignment]  # test monkey-patch
+        coord.async_set_updated_data = lambda d: captured.append(d)  # type: ignore[assignment,method-assign]  # test monkey-patch
 
         with _patch_all_ha_helpers():
             await coord._async_run_update_cycle()
@@ -744,8 +744,8 @@ class TestDryRunCycle:
         config_entry = make_fake_config_entry({"hsem_read_only": True})
         hass = make_fake_hass(_BASE_ENTITY_STATES)
         coord = make_bare_coordinator(hass=hass, config_entry=config_entry)
-        coord._set_update_interval = AsyncMock()
-        coord.async_set_updated_data = MagicMock()
+        coord._set_update_interval = AsyncMock()  # type: ignore[method-assign]
+        coord.async_set_updated_data = MagicMock()  # type: ignore[method-assign]
 
         with (
             _patch_all_ha_helpers(),
@@ -777,10 +777,10 @@ class TestDryRunCycle:
         config_entry = make_fake_config_entry({"hsem_read_only": True})
         hass = make_fake_hass(states)
         coord = make_bare_coordinator(hass=hass, config_entry=config_entry)
-        coord._set_update_interval = AsyncMock()
+        coord._set_update_interval = AsyncMock()  # type: ignore[method-assign]
 
         captured: list[CoordinatorData] = []
-        coord.async_set_updated_data = lambda d: captured.append(d)  # type: ignore[assignment]  # test monkey-patch
+        coord.async_set_updated_data = lambda d: captured.append(d)  # type: ignore[assignment,method-assign]  # test monkey-patch
 
         with _patch_all_ha_helpers():
             await coord._async_run_update_cycle()
@@ -799,10 +799,10 @@ class TestDryRunCycle:
         config_entry = make_fake_config_entry({"hsem_read_only": True})
         hass = make_fake_hass(states)
         coord = make_bare_coordinator(hass=hass, config_entry=config_entry)
-        coord._set_update_interval = AsyncMock()
+        coord._set_update_interval = AsyncMock()  # type: ignore[method-assign]
 
         captured: list[CoordinatorData] = []
-        coord.async_set_updated_data = lambda d: captured.append(d)  # type: ignore[assignment]  # test monkey-patch
+        coord.async_set_updated_data = lambda d: captured.append(d)  # type: ignore[assignment,method-assign]  # test monkey-patch
 
         with _patch_all_ha_helpers():
             await coord._async_run_update_cycle()
@@ -843,10 +843,10 @@ class TestDryRunCycle:
         config_entry = make_fake_config_entry({"hsem_read_only": True})
         hass = make_fake_hass(_BASE_ENTITY_STATES)
         coord = make_bare_coordinator(hass=hass, config_entry=config_entry)
-        coord._set_update_interval = AsyncMock()
+        coord._set_update_interval = AsyncMock()  # type: ignore[method-assign]
 
         captured: list[CoordinatorData] = []
-        coord.async_set_updated_data = lambda d: captured.append(d)  # type: ignore[assignment]  # test monkey-patch
+        coord.async_set_updated_data = lambda d: captured.append(d)  # type: ignore[assignment,method-assign]  # test monkey-patch
 
         with _patch_all_ha_helpers():
             await coord._async_run_update_cycle()
