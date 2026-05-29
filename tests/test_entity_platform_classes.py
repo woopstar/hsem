@@ -68,15 +68,15 @@ class TestEntityBaseClasses:
 
     def test_time_entity_inherits_from_time_entity(self) -> None:
         """HSEMTimeEntity must extend TimeEntity, not ToggleEntity."""
-        assert issubclass(HSEMTimeEntity, TimeEntity), (
-            "HSEMTimeEntity should inherit from homeassistant.components.time.TimeEntity"
-        )
+        assert issubclass(
+            HSEMTimeEntity, TimeEntity
+        ), "HSEMTimeEntity should inherit from homeassistant.components.time.TimeEntity"
 
     def test_time_entity_does_not_inherit_from_toggle_entity(self) -> None:
         """HSEMTimeEntity must NOT extend ToggleEntity (the old incorrect base)."""
-        assert not issubclass(HSEMTimeEntity, ToggleEntity), (
-            "HSEMTimeEntity must not inherit from ToggleEntity"
-        )
+        assert not issubclass(
+            HSEMTimeEntity, ToggleEntity
+        ), "HSEMTimeEntity must not inherit from ToggleEntity"
 
     def test_switch_entity_inherits_from_switch_entity(self) -> None:
         """HSEMSwitch must extend SwitchEntity."""
@@ -154,6 +154,7 @@ class TestHSEMTimeEntityConstruction:
         """unique_id is derived from the config-entry key."""
         key = "hsem_batteries_enable_batteries_schedule_1_start"
         entity = self._make_entity(key=key)
+        assert entity.unique_id is not None
         assert key in entity.unique_id
 
     def test_unique_id_ends_with_time_suffix(self) -> None:
