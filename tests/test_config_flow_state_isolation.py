@@ -48,16 +48,16 @@ def _make_flow() -> HSEMConfigFlow:
     hass.config_entries.async_entries.return_value = []
     flow.hass = hass
 
-    flow.async_set_unique_id = AsyncMock(return_value=None)
-    flow._abort_if_unique_id_configured = MagicMock(return_value=None)
-    flow.async_show_form = MagicMock(
+    flow.async_set_unique_id = AsyncMock(return_value=None)  # type: ignore[method-assign]
+    flow._abort_if_unique_id_configured = MagicMock(return_value=None)  # type: ignore[method-assign]
+    flow.async_show_form = MagicMock(  # type: ignore[method-assign]
         side_effect=lambda **kwargs: {
             "type": "form",
             "step_id": kwargs.get("step_id"),
             "errors": kwargs.get("errors", {}),
         }
     )
-    flow.async_create_entry = MagicMock(
+    flow.async_create_entry = MagicMock(  # type: ignore[method-assign]
         side_effect=lambda **kwargs: {
             "type": "create_entry",
             "title": kwargs.get("title"),
@@ -327,10 +327,10 @@ class TestAsyncStepUserPerInstanceState:
             ),
         ):
             # Patch the next-step on each instance independently.
-            flow_a.async_step_prices = AsyncMock(
+            flow_a.async_step_prices = AsyncMock(  # type: ignore[method-assign]
                 return_value={"type": "form", "step_id": "prices"}
             )
-            flow_b.async_step_prices = AsyncMock(
+            flow_b.async_step_prices = AsyncMock(  # type: ignore[method-assign]
                 return_value={"type": "form", "step_id": "prices"}
             )
 

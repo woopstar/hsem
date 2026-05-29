@@ -60,19 +60,19 @@ def _make_flow(*, already_configured: bool = False) -> HSEMConfigFlow:
     flow.hass = hass
 
     # async_set_unique_id: record the id but do nothing else.
-    flow.async_set_unique_id = AsyncMock(return_value=None)
+    flow.async_set_unique_id = AsyncMock(return_value=None)  # type: ignore[method-assign]
 
     if already_configured:
         # Simulate the real HA behaviour: raises AbortFlow("already_configured").
-        flow._abort_if_unique_id_configured = MagicMock(
+        flow._abort_if_unique_id_configured = MagicMock(  # type: ignore[method-assign]
             side_effect=AbortFlow("already_configured")
         )
     else:
         # No duplicate: the guard is a no-op.
-        flow._abort_if_unique_id_configured = MagicMock(return_value=None)
+        flow._abort_if_unique_id_configured = MagicMock(return_value=None)  # type: ignore[method-assign]
 
     # async_show_form: return a dict representing the form result.
-    flow.async_show_form = MagicMock(
+    flow.async_show_form = MagicMock(  # type: ignore[method-assign]
         side_effect=lambda **kwargs: {
             "type": "form",
             "step_id": kwargs.get("step_id"),
@@ -81,7 +81,7 @@ def _make_flow(*, already_configured: bool = False) -> HSEMConfigFlow:
     )
 
     # async_create_entry: return a dict representing the created entry.
-    flow.async_create_entry = MagicMock(
+    flow.async_create_entry = MagicMock(  # type: ignore[method-assign]
         side_effect=lambda **kwargs: {
             "type": "create_entry",
             "title": kwargs.get("title"),
@@ -119,13 +119,13 @@ class TestUniqueIdIsSetEarly:
         call_order: list[str] = []
 
         flow = _make_flow()
-        flow.async_set_unique_id = AsyncMock(
+        flow.async_set_unique_id = AsyncMock(  # type: ignore[method-assign]
             side_effect=lambda uid: call_order.append("set_unique_id") or None
         )
-        flow._abort_if_unique_id_configured = MagicMock(
+        flow._abort_if_unique_id_configured = MagicMock(  # type: ignore[method-assign]
             side_effect=lambda: call_order.append("abort_guard") or None
         )
-        flow.async_show_form = MagicMock(
+        flow.async_show_form = MagicMock(  # type: ignore[method-assign]
             return_value={"type": "form", "step_id": "user", "errors": {}}
         )
 
@@ -142,10 +142,10 @@ class TestUniqueIdIsSetEarly:
         recorded_uid: list[Any] = []
 
         flow = _make_flow()
-        flow.async_set_unique_id = AsyncMock(
+        flow.async_set_unique_id = AsyncMock(  # type: ignore[method-assign]
             side_effect=lambda uid: recorded_uid.append(uid) or None
         )
-        flow.async_show_form = MagicMock(
+        flow.async_show_form = MagicMock(  # type: ignore[method-assign]
             return_value={"type": "form", "step_id": "user", "errors": {}}
         )
 
