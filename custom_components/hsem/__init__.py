@@ -4,11 +4,12 @@ import inspect
 import logging
 from importlib.metadata import PackageNotFoundError, version
 
+from packaging.version import InvalidVersion, Version
+
 import homeassistant.helpers.config_validation as cv
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
-from packaging.version import InvalidVersion, Version
 
 from custom_components.hsem.const import DOMAIN, MIN_HUAWEI_SOLAR_VERSION
 from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator

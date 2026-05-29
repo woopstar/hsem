@@ -357,8 +357,7 @@ class TestSnapshotPopulation:
             )
 
         # First population
-        from datetime import datetime as dt
-        from datetime import timedelta as td
+        from datetime import datetime as dt, timedelta as td
 
         base = dt(2025, 1, 1, 0, 0, 0)
         recs1 = [

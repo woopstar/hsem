@@ -35,8 +35,10 @@ from custom_components.hsem.models.planner_outputs import PlannedSlot
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import clamp_efficiency
-from custom_components.hsem.utils.recommendations import CHARGE_RECS as _CHARGE_RECS
-from custom_components.hsem.utils.recommendations import Recommendations
+from custom_components.hsem.utils.recommendations import (
+    CHARGE_RECS as _CHARGE_RECS,
+    Recommendations,
+)
 
 
 def simulate_soc(

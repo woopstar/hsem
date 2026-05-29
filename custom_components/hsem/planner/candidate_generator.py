@@ -56,11 +56,11 @@ from custom_components.hsem.utils.misc import (
     calculate_recommended_threshold,
     clamp_efficiency,
 )
-from custom_components.hsem.utils.recommendations import CHARGE_RECS as _CHARGE_RECS
 from custom_components.hsem.utils.recommendations import (
+    CHARGE_RECS as _CHARGE_RECS,
     DISCHARGE_RECS as _DISCHARGE_RECS,
+    Recommendations,
 )
-from custom_components.hsem.utils.recommendations import Recommendations
 
 # ---------------------------------------------------------------------------
 # Candidate name constants — shared with selector so both sides speak the

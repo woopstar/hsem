@@ -25,6 +25,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from homeassistant.components.select import SelectEntity, SelectEntityDescription
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.components.time import TimeEntity

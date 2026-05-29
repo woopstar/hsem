@@ -20,8 +20,8 @@ from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import clamp_efficiency, next_window_start_dt
 from custom_components.hsem.utils.recommendations import (
     DISCHARGE_RECS as _DISCHARGE_RECS,
+    Recommendations,
 )
-from custom_components.hsem.utils.recommendations import Recommendations
 
 # ---------------------------------------------------------------------------
 # Discharge schedule detection

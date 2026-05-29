@@ -20,7 +20,7 @@ import pytest_socket
 
 
 @pytest.fixture
-def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
+def event_loop() -> Generator[asyncio.AbstractEventLoop]:
     """Yield an asyncio event loop, temporarily enabling sockets during loop creation.
 
     The ProactorEventLoop / SelectorEventLoop on Windows needs to call

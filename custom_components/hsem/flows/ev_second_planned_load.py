@@ -8,6 +8,7 @@ lives in the shared helpers module.
 from __future__ import annotations
 
 import voluptuous as vol
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 

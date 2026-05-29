@@ -11,6 +11,7 @@ all fields are ignored by the planner and state collector.
 from __future__ import annotations
 
 import voluptuous as vol
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 

@@ -27,6 +27,7 @@ Usage:
 from typing import Any
 
 import voluptuous as vol
+
 from homeassistant.exceptions import (
     HomeAssistantError,
     ServiceNotFound,
