@@ -2,7 +2,7 @@
 
 import hashlib
 from datetime import datetime, time, timedelta
-from typing import Any
+from typing import Any, cast
 
 from homeassistant.const import STATE_OFF, STATE_ON, STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.exceptions import (
@@ -305,7 +305,7 @@ async def async_resolve_entity_id_from_unique_id(
     entity_id = _entity_id_from_unique_id_cache.get(cache_key)
     if entity_id:
         if self.hass.states.get(entity_id) is not None:
-            return entity_id
+            return cast(str, entity_id)
         del _entity_id_from_unique_id_cache[cache_key]
 
     # Get the entity registry
@@ -320,7 +320,7 @@ async def async_resolve_entity_id_from_unique_id(
         _entity_id_from_unique_id_cache[cache_key] = entry
 
         _LOGGER.debug(f"Resolved entity_id for unique_id {unique_entity_id}: {entry}")
-        return entry
+        return cast(str, entry)
     else:
         _LOGGER.debug(
             f"Entity with unique_id {unique_entity_id} not found in registry."
@@ -414,7 +414,7 @@ def ha_get_entity_state_and_convert(
             if state.state == STATE_UNKNOWN:
                 raise EntityNotFoundError(f"Entity '{entity_id}' state unknown.")
 
-            return state
+            return cast("float | int | bool | str | None", state)
 
         if output_type.lower() == "float":
             if state.state in (STATE_UNKNOWN, STATE_UNAVAILABLE):
@@ -422,7 +422,7 @@ def ha_get_entity_state_and_convert(
             value = convert_to_float(state.state)
             if value is None:
                 return None
-            return round(value, float_precision)
+            return cast(float, round(value, float_precision))
 
         if output_type.lower() == "int":
             if state.state == STATE_UNKNOWN:

@@ -16,7 +16,7 @@ All tests are pure-Python; no Home Assistant runtime is required.
 from __future__ import annotations
 
 from datetime import time
-from typing import Any
+from typing import Any, cast
 
 from custom_components.hsem.models.planner_inputs import (
     BatteryScheduleInput,
@@ -213,23 +213,23 @@ class TestAllSlotsHaveRecommendations:
     def test_24h_all_recommendations_present(self):
         result = run_planner(_make_input(horizon_hours=24))
         for slot in result.slots:
-            assert slot.recommendation is not None, (
-                f"Slot {slot.start.isoformat()} has no recommendation in 24h plan"
-            )
+            assert (
+                slot.recommendation is not None
+            ), f"Slot {slot.start.isoformat()} has no recommendation in 24h plan"
 
     def test_48h_all_recommendations_present(self):
         result = run_planner(_make_input(horizon_hours=48))
         for slot in result.slots:
-            assert slot.recommendation is not None, (
-                f"Slot {slot.start.isoformat()} has no recommendation in 48h plan"
-            )
+            assert (
+                slot.recommendation is not None
+            ), f"Slot {slot.start.isoformat()} has no recommendation in 48h plan"
 
     def test_72h_all_recommendations_present(self):
         result = run_planner(_make_input(horizon_hours=72))
         for slot in result.slots:
-            assert slot.recommendation is not None, (
-                f"Slot {slot.start.isoformat()} has no recommendation in 72h plan"
-            )
+            assert (
+                slot.recommendation is not None
+            ), f"Slot {slot.start.isoformat()} has no recommendation in 72h plan"
 
 
 # ===========================================================================
@@ -380,7 +380,7 @@ class TestConfidenceDecay:
         )
         for slot in result.slots:
             if slot.start.date() == target_date and slot.start.hour == 12:
-                return slot.solcast_pv_estimate_kwh
+                return cast(float, slot.solcast_pv_estimate_kwh)
         return 0.0
 
     def test_48h_day1_pv_less_than_day0_same_input(self):

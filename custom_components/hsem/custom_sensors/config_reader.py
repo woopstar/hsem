@@ -12,7 +12,7 @@ called synchronously and tested without a running HA instance.
 from __future__ import annotations
 
 from datetime import time
-from typing import Any
+from typing import Any, cast
 
 import voluptuous as vol
 
@@ -454,4 +454,4 @@ def _optional_entity(value: Any) -> str | None:  # TODO: tighten type
     """Return None if value is vol.UNDEFINED or falsy, else the string."""
     if value is vol.UNDEFINED or not value:
         return None
-    return value
+    return cast(str, value)

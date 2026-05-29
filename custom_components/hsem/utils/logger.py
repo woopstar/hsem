@@ -66,7 +66,7 @@ import logging
 import logging.handlers
 import os
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any
+from typing import Any, cast
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -325,7 +325,7 @@ def _resolve_hass_config(hass: object) -> str:
             config = getattr(hass, "config")
             # Config objects expose config_dir; string paths are fallback.
             if hasattr(config, "config_dir") and config.config_dir:
-                return config.config_dir
+                return cast(str, config.config_dir)
             # On some HA versions config might still be a string path.
             if isinstance(config, str):
                 return config
