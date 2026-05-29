@@ -45,9 +45,9 @@ from custom_components.hsem.utils.sensornames import (
 
 class HSEMRecommendationIntervalSensor(
     HSEMCoordinatorEntity,
+    RestoreEntity,
     SensorEntity,
     HSEMEntity,
-    RestoreEntity,
 ):
     """Diagnostic sensor exposing the HSEM recommendation slot-width in minutes.
 

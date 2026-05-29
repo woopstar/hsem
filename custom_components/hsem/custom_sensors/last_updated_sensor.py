@@ -35,9 +35,9 @@ from custom_components.hsem.utils.sensornames import (
 
 class HSEMLastUpdatedSensor(
     HSEMCoordinatorEntity,
+    RestoreEntity,
     SensorEntity,
     HSEMEntity,
-    RestoreEntity,
 ):
     """Diagnostic sensor exposing the timestamp of the last HSEM update cycle.
 

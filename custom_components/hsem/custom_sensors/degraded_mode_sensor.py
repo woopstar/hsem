@@ -54,9 +54,9 @@ from custom_components.hsem.utils.sensornames import (
 
 class HSEMDegradedModeSensor(
     HSEMCoordinatorEntity,
+    RestoreEntity,
     SensorEntity,
     HSEMEntity,
-    RestoreEntity,
 ):
     """Diagnostic sensor exposing the current HSEM system-health state.
 

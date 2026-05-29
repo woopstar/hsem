@@ -39,9 +39,9 @@ from custom_components.hsem.utils.sensornames import (
 
 class HSEMMissingEntitiesSensor(
     HSEMCoordinatorEntity,
+    RestoreEntity,
     SensorEntity,
     HSEMEntity,
-    RestoreEntity,
 ):
     """Diagnostic sensor exposing the count of missing HSEM input entities.
 

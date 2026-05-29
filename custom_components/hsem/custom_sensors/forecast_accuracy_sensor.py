@@ -46,9 +46,9 @@ from custom_components.hsem.utils.sensornames import (
 
 class HSEMForecastAccuracySensor(
     HSEMCoordinatorEntity,
+    RestoreEntity,
     SensorEntity,
     HSEMEntity,
-    RestoreEntity,
 ):
     """Diagnostic sensor exposing forecast-vs-actual accuracy metrics.
 

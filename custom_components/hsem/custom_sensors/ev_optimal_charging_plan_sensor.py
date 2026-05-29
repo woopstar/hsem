@@ -53,9 +53,9 @@ _VALID_STATES = {
 
 class HSEMEVOptimalChargingPlanSensor(
     HSEMCoordinatorEntity,
+    RestoreEntity,
     SensorEntity,
     HSEMEntity,
-    RestoreEntity,
 ):
     """Sensor exposing the HSEM EV optimal charging plan state and attributes.
 
