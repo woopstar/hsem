@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
+from homeassistant.const import STATE_UNKNOWN
+
 from custom_components.hsem.utils.prices import SlotPrice
 
 if TYPE_CHECKING:
@@ -193,7 +195,7 @@ class PlanExplanation:
             ``""`` on first run.
     """
 
-    selected_strategy: str = "unknown"
+    selected_strategy: str = STATE_UNKNOWN
     summary: str = ""
     score: float = 0.0
     estimated_total_cost: float = 0.0

@@ -383,11 +383,11 @@ class TestForecastTrackerSummary:
         )
         d = tracker.summary.as_dict()
         assert isinstance(d, dict)
-        assert d["mae_pv_kwh"] == 1.0
+        assert d["mae_pv_kwh"] == pytest.approx(1.0)
         assert d["finalised_slots"] == 1
         assert d["window_slots"] == 1
-        assert d["mape_pv_pct"] == 25.0
-        assert d["mape_load_pct"] == 50.0
+        assert d["mape_pv_pct"] == pytest.approx(25.0)
+        assert d["mape_load_pct"] == pytest.approx(50.0)
 
 
 # ---------------------------------------------------------------------------
@@ -507,8 +507,8 @@ class TestForecastTrackerSerialization:
         d = rec.to_dict()
         assert d["start"] == _slot_start(10).isoformat()
         assert d["end"] == _slot_start(11).isoformat()
-        assert d["forecast_pv_kwh"] == 0.0
-        assert d["actual_pv_kwh"] == 0.0
+        assert d["forecast_pv_kwh"] == pytest.approx(0.0)
+        assert d["actual_pv_kwh"] == pytest.approx(0.0)
         assert d["finalised"] is False
         assert d["mae_pv"] is None
 
@@ -594,7 +594,7 @@ class TestForecastTrackerSerialization:
         data = tracker.to_dict()
         assert len(data["records"]) == 1
         assert data["records"][0]["finalised"] is False
-        assert data["records"][0]["actual_pv_kwh"] == 0.0
+        assert data["records"][0]["actual_pv_kwh"] == pytest.approx(0.0)
 
         restored = ForecastTracker()
         restored.load_from_dict(data)

@@ -135,12 +135,12 @@ def apply_discharge_schedules(
             window_start_abs += timedelta(days=1)
 
         # _occurrences: per-day data consumed by apply_charge_schedules
-        sched._occurrences = occurrences  # type: ignore[attr-defined]
+        sched._occurrences = occurrences  # type: ignore[attr-defined]  # _occurrences is a runtime attribute set on the schedule dataclass
         # _needed_capacity: aggregate across all occurrences (used by coordinator)
-        sched._needed_capacity = max(sched_total_net, 0.0)  # type: ignore[attr-defined]
+        sched._needed_capacity = max(sched_total_net, 0.0)  # type: ignore[attr-defined]  # _needed_capacity is a runtime attribute set on the schedule dataclass
         # _avg_import_price: average across all occurrences
         all_occ_prices = [avg for _, _, _, avg in occurrences if avg > 0]
-        sched._avg_import_price = (  # type: ignore[attr-defined]
+        sched._avg_import_price = (  # type: ignore[attr-defined]  # _avg_import_price is a runtime attribute set on the schedule dataclass
             round(sum(all_occ_prices) / len(all_occ_prices), 3)
             if all_occ_prices
             else 0.0

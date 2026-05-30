@@ -41,6 +41,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from homeassistant.const import STATE_OFF, STATE_ON
+
 from custom_components.hsem.coordinator import (
     CoordinatorData,
     HSEMDataUpdateCoordinator,
@@ -415,7 +417,7 @@ class TestEntitySetup:
 
         sensor = HSEMReadOnlySensor(config_entry, coord)
 
-        assert sensor.state == "off"
+        assert sensor.state == STATE_OFF
 
     def test_read_only_sensor_should_not_poll(self) -> None:
         """ReadOnlySensor must not poll independently (coordinator-driven)."""
@@ -465,7 +467,7 @@ class TestEntitySetup:
 
         sensor = HSEMReadOnlySensor(config_entry, coord)
 
-        assert sensor.state == "on"
+        assert sensor.state == STATE_ON
 
     def test_read_only_sensor_state_off_when_disabled(self) -> None:
         """ReadOnlySensor must report 'off' when coordinator data has read_only=False."""
@@ -482,7 +484,7 @@ class TestEntitySetup:
 
         sensor = HSEMReadOnlySensor(config_entry, coord)
 
-        assert sensor.state == "off"
+        assert sensor.state == STATE_OFF
 
     def test_read_only_sensor_extra_attrs_include_update_interval(self) -> None:
         """ReadOnlySensor extra_state_attributes must expose update_interval_minutes."""
@@ -1641,14 +1643,14 @@ class TestRemainingDiagnosticSensors:
         coord = make_bare_coordinator(config_entry=config_entry)
         coord.data = self._make_data(live=self._make_live(ev_charging=False))
         s = HSEMEVChargingSensor(config_entry, coord)
-        assert s.state == "off"
+        assert s.state == STATE_OFF
 
     def test_ev_charging_on_when_primary_is_charging(self) -> None:
         config_entry = make_fake_config_entry()
         coord = make_bare_coordinator(config_entry=config_entry)
         coord.data = self._make_data(live=self._make_live(ev_charging=True))
         s = HSEMEVChargingSensor(config_entry, coord)
-        assert s.state == "on"
+        assert s.state == STATE_ON
 
     def test_ev_charging_on_when_secondary_is_charging(self) -> None:
         config_entry = make_fake_config_entry()
@@ -1657,13 +1659,13 @@ class TestRemainingDiagnosticSensors:
             live=self._make_live(ev_charging=False, ev_second_charging=True)
         )
         s = HSEMEVChargingSensor(config_entry, coord)
-        assert s.state == "on"
+        assert s.state == STATE_ON
 
     def test_ev_charging_default_off_before_first_cycle(self) -> None:
         config_entry = make_fake_config_entry()
         coord = make_bare_coordinator(config_entry=config_entry)
         s = HSEMEVChargingSensor(config_entry, coord)
-        assert s.state == "off"
+        assert s.state == STATE_OFF
 
     def test_ev_charging_attrs_include_individual_states(self) -> None:
         config_entry = make_fake_config_entry()
@@ -2276,7 +2278,7 @@ class TestApplyPlannerOutputEvLoad:
 
         coord._apply_planner_output(PlannerOutput(slots=slots))
 
-        assert orphan.ev_planned_load_kwh == 0.0
+        assert orphan.ev_planned_load_kwh == pytest.approx(0.0)
         assert orphan.recommendation is None
 
     # ------------------------------------------------------------------

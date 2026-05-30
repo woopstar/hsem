@@ -20,7 +20,7 @@ from typing import Any
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory
+from homeassistant.const import STATE_OFF, STATE_ON, EntityCategory
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from custom_components.hsem.coordinator import (
@@ -96,8 +96,8 @@ class HSEMReadOnlySensor(
         """Return ``'on'`` when read-only mode is active, ``'off'`` otherwise."""
         data: CoordinatorData | None = self.coordinator.data
         if data is None or data.cfg is None:
-            return self._restored_state or "off"
-        return "on" if bool(data.cfg.read_only) else "off"
+            return self._restored_state or STATE_OFF
+        return STATE_ON if bool(data.cfg.read_only) else STATE_OFF
 
     @property
     def should_poll(self) -> bool:
@@ -134,5 +134,5 @@ class HSEMReadOnlySensor(
         """Restore previous state and register coordinator listener."""
         await super().async_added_to_hass()
         restored = await self.async_get_last_state()
-        if restored is not None and restored.state in {"on", "off"}:
+        if restored is not None and restored.state in {STATE_ON, STATE_OFF}:
             self._restored_state = restored.state

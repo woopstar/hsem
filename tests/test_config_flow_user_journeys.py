@@ -145,7 +145,7 @@ class TestFreshInstallFullFlow:
 
         # Verify accumulated data
         assert flow._user_input["device_name"] == "Test HSEM"
-        assert flow._user_input["hsem_energy_share_price"] == 0.15
+        assert flow._user_input["hsem_energy_share_price"] == pytest.approx(0.15)
         assert (
             flow._user_input["hsem_import_electricity_price_sensor"] == "sensor.import"
         )
@@ -182,7 +182,7 @@ class TestReconfigureOptionsFlow:
         flow = self._make_options_flow(existing)
 
         assert flow._user_input["device_name"] == "Existing HSEM"
-        assert flow._user_input["hsem_energy_share_price"] == 0.25
+        assert flow._user_input["hsem_energy_share_price"] == pytest.approx(0.25)
         assert (
             flow._user_input["hsem_import_electricity_price_sensor"]
             == "sensor.energi_data_service"
@@ -201,7 +201,7 @@ class TestReconfigureOptionsFlow:
         flow._user_input["hsem_energy_share_price"] = 0.30
 
         assert flow._user_input["device_name"] == "New Name"
-        assert flow._user_input["hsem_energy_share_price"] == 0.30
+        assert flow._user_input["hsem_energy_share_price"] == pytest.approx(0.30)
 
     def test_reconfigure_preserves_unchanged_values(self) -> None:
         """Values not touched during reconfigure must remain unchanged."""
@@ -216,7 +216,7 @@ class TestReconfigureOptionsFlow:
         flow._user_input["hsem_energy_share_price"] = 0.35
 
         assert flow._user_input["device_name"] == "My HSEM"
-        assert flow._user_input["hsem_energy_share_price"] == 0.35
+        assert flow._user_input["hsem_energy_share_price"] == pytest.approx(0.35)
         assert (
             flow._user_input["hsem_import_electricity_price_sensor"]
             == "sensor.import_price"

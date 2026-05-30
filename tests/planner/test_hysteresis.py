@@ -32,6 +32,8 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from custom_components.hsem.models.planner_outputs import PlannedSlot
 from custom_components.hsem.planner.candidate_generator import (
     CANDIDATE_BASELINE,
@@ -475,8 +477,8 @@ class TestHysteresisResultDataclass:
         assert result.applied is False
         assert result.reason == ""
         assert result.previous_plan_name == ""
-        assert result.previous_score == 0.0
-        assert result.new_score == 0.0
+        assert result.previous_score == pytest.approx(0.0)
+        assert result.new_score == pytest.approx(0.0)
 
     def test_custom_values(self):
         """HysteresisResult should store custom values."""
@@ -490,5 +492,5 @@ class TestHysteresisResultDataclass:
         assert result.applied is True
         assert result.reason == "Kept previous plan"
         assert result.previous_plan_name == "baseline"
-        assert result.previous_score == 10.0
-        assert result.new_score == 9.5
+        assert result.previous_score == pytest.approx(10.0)
+        assert result.new_score == pytest.approx(9.5)

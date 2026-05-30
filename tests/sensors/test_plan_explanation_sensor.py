@@ -19,7 +19,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from homeassistant.const import EntityCategory
+from homeassistant.const import STATE_UNKNOWN, EntityCategory
 
 from custom_components.hsem.coordinator import CoordinatorData
 from custom_components.hsem.custom_sensors.plan_explanation_sensor import (
@@ -209,7 +209,7 @@ class TestSensorState:
     def test_state_unknown_when_no_coordinator_data(self):
         """state must return 'unknown' before the first cycle."""
         sensor = _make_sensor(data=None)
-        assert sensor.state == "unknown"
+        assert sensor.state == STATE_UNKNOWN
 
     def test_state_falls_back_to_restored_state(self):
         """state uses _restored_state when coordinator.data is None."""
@@ -232,7 +232,7 @@ class TestSensorState:
         sensor = _make_sensor(
             _make_coordinator_data(_make_explanation(selected_strategy=""))
         )
-        assert sensor.state == "unknown"
+        assert sensor.state == STATE_UNKNOWN
 
     @pytest.mark.parametrize(
         "strategy",
@@ -317,7 +317,7 @@ class TestSensorAttributes:
         sensor = _make_sensor(data=None)
         attrs = sensor.extra_state_attributes
         assert set(attrs.keys()) == _EXPECTED_ATTR_KEYS
-        assert attrs["selected_strategy"] == "unknown"
+        assert attrs["selected_strategy"] == STATE_UNKNOWN
 
     def test_price_spread_rounded(self):
         """price_spread is rounded to 4 decimal places."""

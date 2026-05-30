@@ -1,8 +1,11 @@
 """This module initializes the custom component for Home Assistant."""
 
+from __future__ import annotations
+
 import inspect
 import logging
 from importlib.metadata import PackageNotFoundError, version
+from typing import Any
 
 from packaging.version import InvalidVersion, Version
 
@@ -27,11 +30,11 @@ _LOGGER = logging.getLogger(__name__)
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 PLATFORMS = [
+    Platform.NUMBER,
+    Platform.SELECT,
     Platform.SENSOR,
     Platform.SWITCH,
     Platform.TIME,
-    Platform.SELECT,
-    Platform.NUMBER,
 ]
 
 
@@ -64,7 +67,7 @@ async def check_huawei_solar_version(hass: HomeAssistant) -> bool:
     installed_version_str = await hass.async_add_executor_job(_get_version)
 
     if installed_version_str is None:
-        _LOGGER.error("Huawei Solar integration is not installed.")
+        _LOGGER.error("Huawei Solar integration is not installed")
         return False
 
     installed_version = _parse_version(installed_version_str)
@@ -72,14 +75,14 @@ async def check_huawei_solar_version(hass: HomeAssistant) -> bool:
 
     if installed_version is None:
         _LOGGER.error(
-            "Could not parse installed Huawei Solar version: '%s'.",
+            "Could not parse installed Huawei Solar version: '%s'",
             installed_version_str,
         )
         return False
 
     if required_version is None:
         _LOGGER.error(
-            "Could not parse required Huawei Solar version constant: '%s'.",
+            "Could not parse required Huawei Solar version constant: '%s'",
             MIN_HUAWEI_SOLAR_VERSION,
         )
         return False
@@ -87,7 +90,7 @@ async def check_huawei_solar_version(hass: HomeAssistant) -> bool:
     if installed_version < required_version:
         _LOGGER.error(
             "Huawei Solar version %s is installed, "
-            "but version %s or higher is required.",
+            "but version %s or higher is required",
             installed_version_str,
             MIN_HUAWEI_SOLAR_VERSION,
         )
@@ -96,7 +99,7 @@ async def check_huawei_solar_version(hass: HomeAssistant) -> bool:
     return True
 
 
-async def async_setup(hass: HomeAssistant, _config: dict) -> bool:
+async def async_setup(hass: HomeAssistant, _config: dict[str, Any]) -> bool:
     """Set up the HSEM integration.
 
     The ``_config`` parameter is required by the Home Assistant component-setup
@@ -106,11 +109,11 @@ async def async_setup(hass: HomeAssistant, _config: dict) -> bool:
     """
     if not await check_huawei_solar_version(hass):
         _LOGGER.error(
-            "Failed to set up HSEM due to missing or incompatible Huawei Solar version."
+            "Failed to set up HSEM due to missing or incompatible Huawei Solar version"
         )
         return False
 
-    _LOGGER.debug("HSEM integration successfully initialized.")
+    _LOGGER.debug("HSEM integration successfully initialized")
     hass.data.setdefault(DOMAIN, {})
 
     return True
@@ -136,13 +139,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    # Register HSEM services (force_recalculation, set_temporary_override, etc.)
+    # Register HSEM services (force_recalculation, set_temporary_override, etc.).
     await async_register_services(hass)
 
-    # Add update listener for options
+    # Add update listener for options.
     entry.async_on_unload(entry.add_update_listener(async_update_options))
 
-    _LOGGER.debug("HSEM integration successfully set up.")
+    _LOGGER.debug("HSEM integration successfully set up")
     return True
 
 
@@ -192,6 +195,6 @@ async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
         if not callable(method):
             continue
 
-        result = method(entry)  # may be None, sync, or coroutine
+        result = method(entry)  # May be None, sync, or coroutine.
         if inspect.isawaitable(result):
             await result

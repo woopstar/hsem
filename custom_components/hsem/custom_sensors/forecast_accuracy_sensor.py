@@ -71,11 +71,11 @@ class HSEMForecastAccuracySensor(
             config_entry: The HSEM config entry.
             coordinator: The shared HSEM coordinator.
         """
-        super().__init__(coordinator)
+        HSEMCoordinatorEntity.__init__(self, coordinator)
         HSEMEntity.__init__(self, config_entry)
         self._attr_unique_id = get_forecast_accuracy_sensor_unique_id()
         self._attr_name = get_forecast_accuracy_sensor_name()
-        self._attr_entity_id = get_forecast_accuracy_sensor_entity_id()
+        self.entity_id = get_forecast_accuracy_sensor_entity_id()
 
     @property
     def native_value(self) -> str | float | None:

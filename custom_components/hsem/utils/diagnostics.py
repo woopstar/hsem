@@ -39,6 +39,7 @@ from datetime import datetime, time
 from typing import Any
 
 import homeassistant.util.dt as dt_util
+from homeassistant.const import STATE_UNKNOWN
 
 from custom_components.hsem.models.planner_inputs import (
     BatteryScheduleInput,
@@ -414,7 +415,7 @@ def build_diagnostics_dump(
     input_dict = redact_dict(input_dict)
 
     return {
-        "hsem_version": integration_version or "unknown",
+        "hsem_version": integration_version or STATE_UNKNOWN,
         "dump_timestamp": dt_util.now().isoformat(),
         "planner_input": input_dict,
         "planner_output": _planner_output_summary(planner_output),

@@ -311,7 +311,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         Raises:
             UpdateFailed: When an unrecoverable error occurs during the pipeline.
         """
-        await async_logger(self, "------ HSEM Coordinator: starting update cycle...")
+        await async_logger(self, "------ HSEM Coordinator: starting update cycle")
         now = hsem_now()
 
         try:
@@ -647,7 +647,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
 
         # Notify all subscriber entities atomically.
         self.async_set_updated_data(data)
-        await async_logger(self, "------ HSEM Coordinator: update cycle complete.")
+        await async_logger(self, "------ HSEM Coordinator: update cycle complete")
 
     # ------------------------------------------------------------------
     # DataUpdateCoordinator override
@@ -700,7 +700,8 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             interval,
         )
         await async_logger(
-            self, f"HSEM Coordinator: update interval set to {interval}."
+            self,
+            f"HSEM Coordinator: update interval set to {interval}",
         )
 
     # ------------------------------------------------------------------

@@ -27,12 +27,12 @@ from custom_components.hsem.utils.sensornames import (
 )
 
 _VALID_STATES = {
+    "charging",
+    "fully_charged",
     "not_connected",
     "smart_charging_disabled",
-    "fully_charged",
-    "charging",
-    "waiting",
     STATE_UNAVAILABLE,
+    "waiting",
 }
 
 

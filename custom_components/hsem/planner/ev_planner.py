@@ -24,6 +24,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from homeassistant.const import STATE_UNAVAILABLE
+
 from custom_components.hsem.utils.datetime_utils import utc_key
 from custom_components.hsem.utils.logger import log_planner
 
@@ -154,7 +156,7 @@ class EVChargingPlan:
         data_quality: Structured diagnostics dict.
     """
 
-    state: str = "unavailable"
+    state: str = STATE_UNAVAILABLE
     ev_connected: bool = False
     base_load_includes_ev: bool = False
     current_soc_pct: float = 0.0
@@ -384,7 +386,7 @@ def build_ev_charging_plan(
         return plan
 
     if inp.battery_capacity_kwh <= 0 or inp.charger_power_kw <= 0:
-        plan.state = "unavailable"
+        plan.state = STATE_UNAVAILABLE
         plan.data_quality = {
             "error": "battery_capacity_kwh or charger_power_kw is zero"
         }
