@@ -267,6 +267,12 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
 
         Called from :func:`~custom_components.hsem.__init__.async_unload_entry`.
         """
+        # Cancel the base DataUpdateCoordinator's internal refresh timer
+        # (set to 24 h as a fallback).  Without this the timer holds a
+        # reference to the coordinator and prevents garbage collection.
+        unsub_refresh = getattr(self, "_unsub_refresh", None)
+        if unsub_refresh is not None:
+            unsub_refresh()
         if self._hourly_timer_unsub is not None:
             self._hourly_timer_unsub()
             self._hourly_timer_unsub = None
