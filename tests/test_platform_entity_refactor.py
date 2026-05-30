@@ -11,8 +11,8 @@ Verifies that the select, switch, and time platform entities:
 - preserve user-facing entity IDs
 
 Unique-ID format contract (must never change):
-  - Switch:  ``"hsem_<key>_switch"``   e.g. ``"hsem_hsem_read_only_switch"``
-  - Time:    ``"hsem_<key>_time"``     e.g. ``"hsem_hsem_batteries_enable_batteries_schedule_1_start_time"``
+  - Switch:  ``"hsem_<entry_id>_<key>_switch"``   e.g. ``"hsem_<entry_id>_hsem_read_only_switch"``
+  - Time:    ``"hsem_<entry_id>_<key>_time"``     e.g. ``"hsem_<entry_id>_hsem_batteries_enable_batteries_schedule_1_start_time"``
   - Select:  ``"<key>"``               e.g. ``"hsem_force_working_mode"``
     (The key already carries the ``hsem_`` prefix, keeping it consistent with
     the switch/time convention and compatible with state-collector lookups.)
@@ -426,18 +426,18 @@ class TestTimeUniqueId:
     """Time unique_id must preserve the existing format to avoid breaking registries."""
 
     def test_unique_id_format(self) -> None:
-        """unique_id must be 'hsem_<key>_time'."""
+        """unique_id must be 'hsem_<entry_id>_<key>_time'."""
         key = "hsem_batteries_enable_batteries_schedule_1_start"
         entity = _make_time(key=key)
-        assert entity.unique_id == f"{DOMAIN}_{key}_time"
+        assert entity.unique_id == f"{DOMAIN}_test_entry_id_{key}_time"
 
     def test_unique_id_all_times(self) -> None:
-        """Every time key produces the expected 'hsem_<key>_time' id."""
+        """Every time key produces the expected 'hsem_<entry_id>_<key>_time' id."""
         from custom_components.hsem.time import TIME_DESCRIPTIONS
 
         for desc in TIME_DESCRIPTIONS:
             entity = _make_time(key=desc.key, name=str(desc.name))
-            assert entity.unique_id == f"{DOMAIN}_{desc.key}_time"
+            assert entity.unique_id == f"{DOMAIN}_test_entry_id_{desc.key}_time"
 
     def test_unique_id_is_attr_not_property(self) -> None:
         entity = _make_time()
