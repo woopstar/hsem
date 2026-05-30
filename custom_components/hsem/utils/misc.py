@@ -1,4 +1,8 @@
-"""This module provides utility functions for the Home Assistant custom integration."""
+"""General-purpose utility functions for the HSEM custom integration.
+
+Includes helpers for config value retrieval, type conversion, entity
+resolution, service calls, and battery power calculations.
+"""
 
 import hashlib
 from datetime import datetime, time, timedelta
@@ -31,7 +35,21 @@ def generate_hash(input_sensor: str) -> str:
 
 
 def get_config_value(config_entry: Any | None, key: str) -> Any:
-    """Get the configuration value from options or fall back to the initial data."""
+    """Get a configuration value from options, data, or defaults.
+
+    Looks up the key in the config entry's ``options`` first, then
+    ``data``, and finally falls back to ``DEFAULT_CONFIG_VALUES``.
+
+    Args:
+        config_entry: The Home Assistant config entry, or None.
+        key: The configuration key to look up.
+
+    Returns:
+        The resolved configuration value.
+
+    Raises:
+        KeyError: If the key is not present in DEFAULT_CONFIG_VALUES.
+    """
     if key not in DEFAULT_CONFIG_VALUES:
         raise KeyError(f"Key '{key}' not found in DEFAULT_VALUES")
 
@@ -52,7 +70,14 @@ def get_config_value(config_entry: Any | None, key: str) -> Any:
 
 
 def convert_to_time(time_value: str | time) -> time:
-    """Convert a time value (str or datetime.time) to a datetime.time object."""
+    """Convert a string or ``datetime.time`` to a ``datetime.time`` object.
+
+    Args:
+        time_value: A time string in ``HH:MM:SS`` format or a ``datetime.time``.
+
+    Returns:
+        The converted ``datetime.time`` object.
+    """
     if isinstance(time_value, time):
         return time_value
 
@@ -218,7 +243,17 @@ def convert_months_to_int(months: list) -> list[int]:
 
 
 def convert_to_boolean(state: Any) -> bool:
-    """Resolve the input sensor state and cast it to a boolean."""
+    """Resolve an input sensor state and cast it to a boolean.
+
+    Handles booleans, integers, and a wide range of string values
+    (``"on"``, ``"off"``, ``"charging"``, ``"connected"``, etc.).
+
+    Args:
+        state: The raw sensor state value.
+
+    Returns:
+        The resolved boolean value.  Returns False for unrecognised inputs.
+    """
 
     if state is None:
         return False
@@ -286,11 +321,18 @@ def clamp_efficiency(pct: float) -> float:
 async def async_resolve_entity_id_from_unique_id(
     self: Any, unique_entity_id: str, domain: str = "sensor"
 ) -> str | None:
-    """Resolve the entity_id from the unique_id using the entity registry.
+    """Resolve an entity_id from a unique_id using the entity registry.
 
-    :param unique_entity_id: Unique ID of the entity to resolve.
-    :param domain: The domain of the entity (e.g., 'sensor').
-    :return: The resolved entity_id or None if not found.
+    Results are cached per (domain, unique_id) pair to avoid repeated
+    registry lookups.
+
+    Args:
+        self: The calling coordinator or component instance.
+        unique_entity_id: The unique ID of the entity to resolve.
+        domain: The Home Assistant domain (e.g. ``"sensor"``).
+
+    Returns:
+        The resolved entity_id, or None if not found.
     """
 
     global _entity_id_from_unique_id_cache
@@ -328,12 +370,16 @@ async def async_resolve_entity_id_from_unique_id(
 
 
 async def async_set_number_value(self: Any, entity_id: str, value: float | int) -> None:
-    """Set the value for a number entity.
+    """Set the value of a Home Assistant number entity.
 
-    Parameters:
-    - entity_id (str): The entity_id of the number entity.
-    - value (float|int): The value to set.
+    Args:
+        self: The calling coordinator or component instance.
+        entity_id: The entity_id of the number entity.
+        value: The numeric value to set.
 
+    Raises:
+        ServiceNotFound: If the ``number.set_value`` service is not registered.
+        HomeAssistantError: On any other HA-level write failure.
     """
     entity = self.hass.states.get(entity_id)
 
@@ -362,7 +408,17 @@ async def async_set_number_value(self: Any, entity_id: str, value: float | int) 
 
 
 async def async_set_select_option(self: Any, entity_id: str, option: str) -> None:
-    """Set the selected option for an entity."""
+    """Set the selected option of a Home Assistant select entity.
+
+    Args:
+        self: The calling coordinator or component instance.
+        entity_id: The entity_id of the select entity.
+        option: The option value to select.
+
+    Raises:
+        ServiceNotFound: If the ``select.select_option`` service is not registered.
+        HomeAssistantError: On any other HA-level write failure.
+    """
 
     # Check if entity_id exists
     entity = self.hass.states.get(entity_id)
@@ -398,7 +454,22 @@ def ha_get_entity_state_and_convert(
     output_type: str | None = None,
     float_precision: int = 2,
 ) -> float | int | bool | str | None:
-    """Get the state of an entity."""
+    """Get an entity's state and convert it to the requested type.
+
+    Args:
+        self: The calling coordinator or component instance.
+        entity_id: The entity_id to query, or None.
+        output_type: The desired output type (``"float"``, ``"int"``,
+            ``"boolean"``, ``"string"``, or None for the raw state object).
+        float_precision: Number of decimal places when output_type is ``"float"``.
+
+    Returns:
+        The converted state value, or None if the entity is unavailable.
+
+    Raises:
+        EntityNotFoundError: If the entity is not found or state is unknown.
+        HomeAssistantError: If conversion fails.
+    """
 
     if entity_id is None:
         return None
@@ -449,9 +520,14 @@ def ha_get_entity_state_and_convert(
 
 
 async def async_remove_entity_from_ha(self: Any, entity_unique_id: str) -> bool:
-    """Remove an existing entity in Home Assistant based on its unique ID.
+    """Remove an entity from Home Assistant by its unique ID.
 
-    :param entity_unique_id: The unique ID of the entity to be removed.
+    Args:
+        self: The calling coordinator or component instance.
+        entity_unique_id: The unique ID of the entity to remove.
+
+    Returns:
+        True if the entity was found and removed, False otherwise.
     """
     # Check if the entity exists
     entity_exists = await async_resolve_entity_id_from_unique_id(self, entity_unique_id)
@@ -476,19 +552,43 @@ async def async_remove_entity_from_ha(self: Any, entity_unique_id: str) -> bool:
 
 
 async def async_entity_exists(hass: Any, entity_id: str) -> bool:
-    """Check if an entity exists in Home Assistant."""
+    """Check whether an entity exists in Home Assistant.
+
+    Args:
+        hass: The Home Assistant core instance.
+        entity_id: The entity_id to check.
+
+    Returns:
+        True if the entity exists, False otherwise.
+    """
     return hass.states.get(entity_id) is not None
 
 
 async def async_device_exists(hass: Any, device_id: str) -> bool:
-    """Check if a device exists in Home Assistant."""
+    """Check whether a device exists in Home Assistant.
+
+    Args:
+        hass: The Home Assistant core instance.
+        device_id: The device ID to check.
+
+    Returns:
+        True if the device exists, False otherwise.
+    """
     device_registry = dr.async_get(hass)
     return device_registry.async_get(device_id) is not None
 
 
 def get_max_discharge_power(usable_capacity: int) -> int:
-    """Return max discharge power in WATT based on Huawei batteries max rated capacity.
+    """Return the maximum discharge power in watts for a Huawei battery.
+
     Supports both old (S0: 5/10/15 kWh) and new (S1: 7/14/21 kWh) series.
+
+    Args:
+        usable_capacity: The usable battery capacity in watt-hours.
+
+    Returns:
+        The maximum discharge power in watts.  Defaults to 2500 W for
+        unknown capacities.
     """
     mapping = {
         # Old batteries (S0)

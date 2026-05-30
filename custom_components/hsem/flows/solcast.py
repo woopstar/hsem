@@ -1,3 +1,9 @@
+"""Config flow step for Solcast solar forecast configuration.
+
+Allows the user to select the Solcast forecast entities for today
+and tomorrow, as well as the PV estimate likelihood level.
+"""
+
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry

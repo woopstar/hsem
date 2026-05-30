@@ -1,3 +1,9 @@
+"""Config flow step for selecting winter months.
+
+Allows the user to select which months are considered winter months
+for the purpose of seasonal adjustments in the planner.
+"""
+
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
@@ -13,7 +19,7 @@ def _month_options() -> list[str]:
 
 
 async def get_months_schema(config_entry: ConfigEntry | None) -> vol.Schema:
-    """Return the data schema for the 'power' step."""
+    """Return the data schema for the 'months' step."""
 
     # Stored months are integers; the multi-select selector requires string
     # option values.  Convert here so the form pre-selects the saved months.

@@ -117,6 +117,12 @@ async def async_setup(hass: HomeAssistant, _config: dict) -> bool:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up the HSEM integration from a config entry.
+
+    Creates the shared :class:`HSEMDataUpdateCoordinator`, runs the first
+    update cycle, forwards platform setups, registers services, and adds
+    an options update listener.
+    """
     if not await check_huawei_solar_version(hass):
         return False
 

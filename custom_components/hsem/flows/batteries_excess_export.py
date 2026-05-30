@@ -1,4 +1,10 @@
-"""Flow configuration for battery excess energy export optimization."""
+"""Config flow step for battery excess energy export optimization.
+
+Allows the user to enable or disable excess energy export from
+batteries and configure the discharge buffer percentage. The price
+threshold is auto-calculated at runtime from battery depreciation
+parameters.
+"""
 
 import voluptuous as vol
 

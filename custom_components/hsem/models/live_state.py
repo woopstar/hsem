@@ -21,7 +21,12 @@ from custom_components.hsem.utils.degraded_mode import (
 
 @dataclass
 class EVLiveState:
-    """Live state snapshot for a single EV charger."""
+    """Live state snapshot for a single EV charger.
+
+    Captures the charger's current operating state (charging status, power,
+    SoC, connection state) and user-configured limits such as target SoC
+    and maximum discharge power.
+    """
 
     is_charging: bool = False
     """True when the charger reports an active charging session."""
@@ -47,7 +52,11 @@ class EVLiveState:
 
 @dataclass
 class TouPeriodsState:
-    """Live state of the Huawei TOU charging/discharging periods entity."""
+    """Live state of the Huawei TOU charging/discharging periods entity.
+
+    Captures the raw TOU period string from the inverter and the parsed
+    list of period entries used by the planner.
+    """
 
     raw_state: str | None = None
     """String state of the TOU entity (e.g. ``"active"``)."""

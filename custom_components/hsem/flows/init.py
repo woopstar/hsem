@@ -1,3 +1,10 @@
+"""Config flow step for initial HSEM device setup.
+
+Handles the first step of the config flow where the user configures
+the device name, update interval, logging verbosity, extended
+attributes, and recommendation interval settings.
+"""
+
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry

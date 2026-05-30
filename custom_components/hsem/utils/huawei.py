@@ -1,27 +1,7 @@
-"""This module provides utility functions for interacting with Huawei solar inverters
-via Home Assistant services. It includes functions to set the maximum grid export
-power percentage and to configure Time-of-Use (TOU) periods for batteries.
+"""Utility functions for interacting with Huawei solar inverters via Home Assistant services.
 
-Functions:
-    async_set_grid_export_power_pct(self, device_id, power_percentage):
-        Asynchronously sets the maximum grid export power percentage for a specified device.
-
-    async_set_grid_export_power_watt(self, device_id, power_watt):
-        Asynchronously sets the maximum grid export power in watts for a specified device.
-
-    async_set_tou_periods(self, batteries_id, tou_modes):
-        Asynchronously sets the Time-of-Use (TOU) periods for specified batteries.
-
-Dependencies:
-    - logging: For logging error and success messages.
-    - voluptuous as vol: For input validation.
-    - homeassistant.core: For Home Assistant core functionalities.
-    - homeassistant.exceptions: For Home Assistant specific exceptions.
-
-Usage:
-    These functions are designed to be used within a Home Assistant custom component
-    to interact with Huawei solar inverters. They handle service calls to the
-    "huawei_solar" integration and manage errors appropriately.
+Includes functions to set the maximum grid export power percentage and
+to configure Time-of-Use (TOU) periods for batteries.
 """
 
 from typing import Any
@@ -40,7 +20,12 @@ from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 async def async_set_grid_export_power_pct(
     self: Any, device_id: str, power_percentage: int
 ) -> None:
-    """Set the maximum grid export power percentage and handle errors.
+    """Set the maximum grid export power percentage for a Huawei inverter.
+
+    Args:
+        self: The calling coordinator or component instance.
+        device_id: The device ID of the inverter.
+        power_percentage: The export power limit as a percentage (0-100).
 
     Raises:
         ServiceNotFound: When the huawei_solar service is not registered in HA.
@@ -160,7 +145,12 @@ async def async_set_grid_export_power_watt(
 async def async_set_tou_periods(
     self: Any, batteries_id: str, tou_modes: list[str]
 ) -> None:
-    """Set the TOU modes for the specified batteries.
+    """Set the Time-of-Use periods for the specified batteries.
+
+    Args:
+        self: The calling coordinator or component instance.
+        batteries_id: The device ID of the batteries.
+        tou_modes: A list of TOU mode strings to apply.
 
     Raises:
         ServiceNotFound: When the huawei_solar service is not registered in HA.
@@ -218,9 +208,15 @@ async def async_set_forcible_discharge(
     """Set forcible discharge for the battery at specified power and target SOC.
 
     Args:
-        device_id (str): The device ID of the battery (e.g. sensor.luna2000_xxx).
-        target_soc (int): The target SOC level to discharge to (0-100).
-        power (int): The maximum discharge power in watts.
+        self: The calling coordinator or component instance.
+        device_id: The device ID of the battery (e.g. ``sensor.luna2000_xxx``).
+        target_soc: The target SOC level to discharge to (0-100).
+        power: The maximum discharge power in watts.
+
+    Raises:
+        ValueError: If target_soc or power are out of valid range.
+        ServiceNotFound: When the huawei_solar service is not registered in HA.
+        HomeAssistantError: On any other HA-level write failure.
     """
 
     # Validate input parameters
@@ -286,7 +282,12 @@ async def async_stop_forcible_discharge(self: Any, device_id: str) -> None:
     """Stop any active forcible charge or discharge on the battery.
 
     Args:
-        device_id (str): The device ID of the battery.
+        self: The calling coordinator or component instance.
+        device_id: The device ID of the battery.
+
+    Raises:
+        ServiceNotFound: When the huawei_solar service is not registered in HA.
+        HomeAssistantError: On any other HA-level write failure.
     """
     if not self.hass.services.has_service("huawei_solar", "stop_forcible_charge"):
         raise ServiceNotFound("huawei_solar", "stop_forcible_charge")

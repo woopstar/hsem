@@ -178,6 +178,10 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        """Handle the user config flow step.
+
+        Validates user input and advances to the next step in the config flow.
+        """
         errors = {}
 
         # Set a stable, deterministic unique id so that the guard below
@@ -207,6 +211,10 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
     async def async_step_prices(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        """Handle the prices config flow step.
+
+        Validates user input and advances to the next step in the config flow.
+        """
         errors = {}
 
         if user_input is not None:
@@ -227,6 +235,10 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
     async def async_step_months(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        """Handle the months config flow step.
+
+        Validates user input and advances to the next step in the config flow.
+        """
         errors = {}
 
         if user_input is not None:
@@ -260,6 +272,10 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
     async def async_step_solcast(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        """Handle the solcast config flow step.
+
+        Validates user input and advances to the next step in the config flow.
+        """
         errors = {}
 
         if user_input is not None:
@@ -280,6 +296,10 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
     async def async_step_huawei_solar(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        """Handle the huawei_solar config flow step.
+
+        Validates user input and advances to the next step in the config flow.
+        """
         errors = {}
 
         if user_input is not None:
@@ -314,6 +334,10 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
     async def async_step_battery_economics(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        """Handle the battery_economics config flow step.
+
+        Validates user input and advances to the next step in the config flow.
+        """
         errors = {}
 
         if user_input is not None:
@@ -334,6 +358,10 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
     async def async_step_power(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        """Handle the power config flow step.
+
+        Validates user input and advances to the next step in the config flow.
+        """
         errors = {}
 
         if user_input is not None:
@@ -354,6 +382,10 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
     async def async_step_ev(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        """Handle the ev config flow step.
+
+        Validates user input and advances to the next step in the config flow.
+        """
         errors = {}
 
         if user_input is not None:
@@ -378,6 +410,10 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
     async def async_step_ev_second(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        """Handle the ev_second config flow step.
+
+        Validates user input and advances to the next step in the config flow.
+        """
         errors = {}
 
         if user_input is not None:
@@ -398,6 +434,10 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
     async def async_step_ev_planned_load(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        """Handle the ev_planned_load config flow step.
+
+        Validates user input and advances to the next step in the config flow.
+        """
         errors = {}
 
         if user_input is not None:
@@ -420,6 +460,10 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
     async def async_step_ev_second_planned_load(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        """Handle the ev_second_planned_load config flow step.
+
+        Validates user input and advances to the next step in the config flow.
+        """
         errors = {}
 
         if user_input is not None:
@@ -440,6 +484,10 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
     async def async_step_batteries_schedules(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        """Handle the batteries_schedules config flow step.
+
+        Validates user input and advances to the next step in the config flow.
+        """
         errors = {}
 
         if user_input is not None:
@@ -462,6 +510,10 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
     async def async_step_batteries_excess_export(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        """Handle the batteries_excess_export config flow step.
+
+        Validates user input and advances to the next step in the config flow.
+        """
         errors = {}
 
         if user_input is not None:
@@ -484,6 +536,10 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
     async def async_step_weighted_values(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        """Handle the weighted_values config flow step.
+
+        Validates user input and advances to the next step in the config flow.
+        """
         errors = {}
 
         if user_input is not None:
