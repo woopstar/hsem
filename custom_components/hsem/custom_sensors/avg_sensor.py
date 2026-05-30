@@ -1,3 +1,13 @@
+"""Rolling N-day energy average sensor for HSEM hour-block consumption.
+
+Computes a moving average of daily utility-meter energy readings (kWh)
+over a configurable number of days.  Used by the planner to estimate
+expected house consumption per hour block.
+
+Created dynamically by :class:`HSEMHouseConsumptionPowerSensor` for each
+hour block and average period (1, 3, 7, or 14 days).
+"""
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta
@@ -42,6 +52,18 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
         unique_id: str,
         entity_id: str,
     ) -> None:
+        """Initialize the rolling average sensor.
+
+        Args:
+            config_entry: The HSEM config entry.
+            hour_start: Start hour (0-23) of the consumption block.
+            hour_end: End hour (0-23) of the consumption block.
+            avg: Number of days over which to compute the rolling average.
+            tracked_entity: Entity ID of the utility meter to track.
+            name: Display name for the sensor.
+            unique_id: Unique ID for the HA entity registry.
+            entity_id: Entity ID for the sensor.
+        """
         super().__init__(config_entry)
         self._hour_start = hour_start
         self._hour_end = hour_end
@@ -104,6 +126,14 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
         return await self._async_handle_update(event)
 
     def parse_date(self, date_str: str) -> str:
+        """Normalize an ISO date string to YYYY-MM-DD format.
+
+        Args:
+            date_str: ISO datetime string (e.g. ``"2025-01-15T12:00:00"``).
+
+        Returns:
+            Normalized date string in ``YYYY-MM-DD`` format.
+        """
         # Strip any time component if it exists
         date_part = date_str.split("T")[0] if "T" in date_str else date_str
         return datetime.strptime(date_part, "%Y-%m-%d").date().isoformat()
@@ -147,6 +177,7 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
         await super().async_will_remove_from_hass()
 
     async def _async_track_entities(self) -> None:
+        """Register a state-change listener for the tracked utility meter."""
         if self._tracked_entity:
             if self._tracked_entity not in self._tracked_entities:
                 unsub = async_track_state_change_event(
