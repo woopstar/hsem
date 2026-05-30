@@ -11,7 +11,7 @@ hour block and average period (1, 3, 7, or 14 days).
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, override
 
 import homeassistant.util.dt as dt_util
 from homeassistant.components.sensor import SensorEntity
@@ -81,6 +81,7 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
         self._unsub_callbacks: list = []
 
     @property
+    @override
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return the state attributes."""
         return {
@@ -94,30 +95,37 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
         }
 
     @property  # type: ignore[misc]  # HA stub declares state as @final
+    @override
     def state(self) -> float | None:
         return self._state
 
     @property  # type: ignore[misc]  # HA stub declares unit_of_measurement as @final
+    @override
     def unit_of_measurement(self) -> str:
         return UnitOfEnergy.KILO_WATT_HOUR
 
     @property
+    @override
     def state_class(self) -> SensorStateClass:
         return SensorStateClass.MEASUREMENT
 
     @property
+    @override
     def device_class(self) -> SensorDeviceClass:
         return SensorDeviceClass.ENERGY
 
     @property
+    @override
     def unique_id(self) -> str | None:
         return self._attr_unique_id
 
     @property
+    @override
     def name(self) -> str:
         return self._name
 
     @property
+    @override
     def should_poll(self) -> bool:
         return True
 
@@ -138,6 +146,7 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
         date_part = date_str.split("T")[0] if "T" in date_str else date_str
         return datetime.strptime(date_part, "%Y-%m-%d").date().isoformat()
 
+    @override
     async def async_added_to_hass(self) -> None:
         """Handle when sensor is added to Home Assistant."""
 
@@ -169,6 +178,7 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
 
         await super().async_added_to_hass()
 
+    @override
     async def async_will_remove_from_hass(self) -> None:
         """Cancel all tracked listeners when the entity is removed."""
         for unsub in self._unsub_callbacks:

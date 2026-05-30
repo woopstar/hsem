@@ -5,6 +5,8 @@ This module defines :class:`HSEMWorkingModeSelector`, a standard
 specific working mode or leave it on ``"auto"``.
 """
 
+from typing import override
+
 from homeassistant.components.select import SelectEntity, SelectEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
@@ -69,6 +71,7 @@ class HSEMWorkingModeSelector(SelectEntity, HSEMEntity):
         # leave _attr_name unset so the translation system can
         # resolve the name via entity_description.translation_key.
 
+    @override
     async def async_select_option(self, option: str) -> None:
         """Handle the user selecting a new option.
 

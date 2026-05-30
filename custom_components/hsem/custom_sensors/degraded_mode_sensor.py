@@ -28,7 +28,7 @@ polling or push from the working-mode sensor.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, override
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
@@ -99,16 +99,19 @@ class HSEMDegradedModeSensor(
     # ------------------------------------------------------------------
 
     @property
+    @override
     def name(self) -> str:
         """Return the display name."""
         return self._name
 
     @property
+    @override
     def unique_id(self) -> str | None:
         """Return the unique ID."""
         return self._attr_unique_id
 
     @property  # type: ignore[misc]  # HA stub declares state as @final
+    @override
     def state(self) -> str:
         """Return the current health state string."""
         data: CoordinatorData | None = self.coordinator.data
@@ -118,11 +121,13 @@ class HSEMDegradedModeSensor(
         return data.live.degraded_mode.value
 
     @property
+    @override
     def should_poll(self) -> bool:
         """No polling — driven by the coordinator."""
         return False
 
     @property
+    @override
     def available(self) -> bool:
         """True once the coordinator has completed at least one successful cycle."""
         return (
@@ -130,6 +135,7 @@ class HSEMDegradedModeSensor(
         ) or self._restored_state is not None
 
     @property
+    @override
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return diagnostic attributes visible on the entity detail page.
 
@@ -185,6 +191,7 @@ class HSEMDegradedModeSensor(
     # HA lifecycle
     # ------------------------------------------------------------------
 
+    @override
     async def async_added_to_hass(self) -> None:
         """Restore previous state and register coordinator listener."""
         await super().async_added_to_hass()

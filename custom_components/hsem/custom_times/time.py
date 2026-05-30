@@ -7,7 +7,7 @@ value to the config entry options so it survives HA restarts.
 """
 
 from datetime import datetime, time
-from typing import Any
+from typing import Any, override
 
 from homeassistant.components.time import TimeEntity
 from homeassistant.config_entries import ConfigEntry
@@ -102,6 +102,7 @@ class HSEMTimeEntity(TimeEntity, HSEMEntity):
     # ------------------------------------------------------------------
 
     @property
+    @override
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional state attributes."""
         return {"description": self.entity_description.description}
@@ -110,6 +111,7 @@ class HSEMTimeEntity(TimeEntity, HSEMEntity):
     # TimeEntity interface
     # ------------------------------------------------------------------
 
+    @override
     async def async_set_value(self, value: time) -> None:
         """Handle a user-requested time change.
 

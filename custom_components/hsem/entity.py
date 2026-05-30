@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 import homeassistant.helpers.device_registry as dr
 import homeassistant.helpers.entity_registry as er
@@ -34,6 +34,7 @@ class HSEMEntity(Entity):
         self._config = config_entry
 
     @property
+    @override
     def device_info(self) -> DeviceInfo:
         """Return the device information."""
         return DeviceInfo(
@@ -43,10 +44,12 @@ class HSEMEntity(Entity):
             model="Custom Integration",
         )
 
+    @override
     async def async_will_remove_from_hass(self) -> None:
         """Entity being removed from hass."""
         await super().async_will_remove_from_hass()
 
+    @override
     async def async_added_to_hass(self) -> None:
         """Attach the entity to same device as the source entity."""
 

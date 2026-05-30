@@ -36,7 +36,7 @@ the default Lovelace dashboard.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, override
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
@@ -117,16 +117,19 @@ class HSEMPlanExplanationSensor(
     # ------------------------------------------------------------------
 
     @property
+    @override
     def name(self) -> str:
         """Return the display name."""
         return self._name
 
     @property
+    @override
     def unique_id(self) -> str | None:
         """Return the unique ID."""
         return self._attr_unique_id
 
     @property  # type: ignore[misc]  # HA stub declares state as @final
+    @override
     def state(self) -> str:
         """Return the currently active plan strategy.
 
@@ -139,11 +142,13 @@ class HSEMPlanExplanationSensor(
         return data.plan_explanation.selected_strategy or _UNKNOWN_STRATEGY
 
     @property
+    @override
     def should_poll(self) -> bool:
         """No polling — driven by the coordinator."""
         return False
 
     @property
+    @override
     def available(self) -> bool:
         """True once the coordinator has completed at least one successful cycle."""
         return (
@@ -151,6 +156,7 @@ class HSEMPlanExplanationSensor(
         ) or self._restored_state is not None
 
     @property
+    @override
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return the full plan explanation merged with diagnostic context.
 
@@ -210,6 +216,7 @@ class HSEMPlanExplanationSensor(
     # HA lifecycle
     # ------------------------------------------------------------------
 
+    @override
     async def async_added_to_hass(self) -> None:
         """Restore previous state and register coordinator listener."""
         await super().async_added_to_hass()

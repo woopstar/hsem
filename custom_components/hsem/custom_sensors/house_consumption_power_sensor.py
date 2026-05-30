@@ -14,7 +14,7 @@ These derived sensors feed the planner's house-consumption estimates.
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import Any
+from typing import Any, override
 
 import voluptuous as vol
 
@@ -137,26 +137,32 @@ class HSEMHouseConsumptionPowerSensor(RestoreEntity, SensorEntity, HSEMEntity):
         self._update_settings()
 
     @property
+    @override
     def name(self) -> str:
         return self._name
 
     @property
+    @override
     def unique_id(self) -> str | None:
         return self._attr_unique_id
 
     @property  # type: ignore[misc]  # HA stub declares state as @final
+    @override
     def state(self) -> float | None:
         return self._state
 
     @property
+    @override
     def should_poll(self) -> bool:
         return True
 
     @property
+    @override
     def available(self) -> bool:
         return self._available
 
     @property
+    @override
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return the state attributes for the sensor.
 
@@ -196,6 +202,7 @@ class HSEMHouseConsumptionPowerSensor(RestoreEntity, SensorEntity, HSEMEntity):
 
         await self._async_handle_update(None)
 
+    @override
     async def async_added_to_hass(self) -> None:
         """Handle when sensor is added to Home Assistant.
 
@@ -229,6 +236,7 @@ class HSEMHouseConsumptionPowerSensor(RestoreEntity, SensorEntity, HSEMEntity):
 
         await super().async_added_to_hass()
 
+    @override
     async def async_will_remove_from_hass(self) -> None:
         """Cancel all tracked listeners when the entity is removed."""
         for unsub in self._unsub_callbacks:

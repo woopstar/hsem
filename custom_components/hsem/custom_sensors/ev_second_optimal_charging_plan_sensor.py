@@ -8,7 +8,7 @@ See :mod:`ev_optimal_charging_plan_sensor` for full documentation.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, override
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
@@ -65,16 +65,19 @@ class HSEMEVSecondOptimalChargingPlanSensor(
         self._restored_state: str | None = None
 
     @property
+    @override
     def name(self) -> str:
         """Return the display name."""
         return self._name
 
     @property
+    @override
     def unique_id(self) -> str | None:
         """Return the unique ID."""
         return self._attr_unique_id
 
     @property  # type: ignore[misc]  # HA stub declares state as @final
+    @override
     def state(self) -> str:
         """Return the current second EV charging plan state."""
         data: CoordinatorData | None = self.coordinator.data
@@ -87,6 +90,7 @@ class HSEMEVSecondOptimalChargingPlanSensor(
         return state if state in _VALID_STATES else STATE_UNAVAILABLE
 
     @property
+    @override
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return second EV charging plan attributes."""
         data: CoordinatorData | None = self.coordinator.data
@@ -95,10 +99,12 @@ class HSEMEVSecondOptimalChargingPlanSensor(
         return data.ev_second_charging_plan.as_attributes()
 
     @property
+    @override
     def available(self) -> bool:
         """Return True when the coordinator has data."""
         return self.coordinator.data is not None
 
+    @override
     async def async_added_to_hass(self) -> None:
         """Restore previous state on startup."""
         await super().async_added_to_hass()

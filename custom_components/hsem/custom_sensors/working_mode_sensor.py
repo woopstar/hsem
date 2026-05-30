@@ -16,7 +16,7 @@ coordinator.  This entity only reacts to coordinator pushes.
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import Any, override
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
@@ -97,16 +97,19 @@ class HSEMWorkingModeSensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
     # ------------------------------------------------------------------
 
     @property
+    @override
     def name(self) -> str:
         """Return the display name."""
         return self._name
 
     @property
+    @override
     def unique_id(self) -> str | None:
         """Return the unique ID."""
         return self._attr_unique_id
 
     @property  # type: ignore[misc]  # HA stub declares state as @final
+    @override
     def state(self) -> str | None:
         """Return the working-mode recommendation for the current slot."""
         if self.coordinator.data is None:
@@ -114,11 +117,13 @@ class HSEMWorkingModeSensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
         return self.coordinator.data.state
 
     @property
+    @override
     def should_poll(self) -> bool:
         """No polling — driven by the coordinator."""
         return False
 
     @property
+    @override
     def available(self) -> bool:
         """True once the coordinator has completed at least one successful cycle."""
         return (
@@ -126,6 +131,7 @@ class HSEMWorkingModeSensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
         )
 
     @property
+    @override
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return entity state attributes."""
         data: CoordinatorData | None = self.coordinator.data
@@ -294,6 +300,7 @@ class HSEMWorkingModeSensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
     # HA lifecycle
     # ------------------------------------------------------------------
 
+    @override
     async def async_added_to_hass(self) -> None:
         """Register coordinator listener and run an initial hardware-write pass."""
         await super().async_added_to_hass()
@@ -302,6 +309,7 @@ class HSEMWorkingModeSensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
         if self.coordinator.data is not None:
             await self._async_apply_hardware_writes(self.coordinator.data)
 
+    @override
     async def async_will_remove_from_hass(self) -> None:
         """Cancel any pending background update task before unloading.
 
@@ -325,6 +333,7 @@ class HSEMWorkingModeSensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
     # Coordinator callback
     # ------------------------------------------------------------------
 
+    @override
     def _handle_coordinator_update(self) -> None:
         """Receive a coordinator push and schedule hardware writes + state flush.
 
