@@ -345,7 +345,8 @@ class HSEMWorkingModeSensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
         This method runs asynchronously after every coordinator refresh.
         A ``CancelledError`` is re-raised immediately so that asyncio can
         clean up the task correctly; no hardware write can occur after
-        cancellation.
+        cancellation.  Other exceptions are logged so that hardware-write
+        failures are visible in the HA log.
         """
         try:
             data = self.coordinator.data
@@ -357,6 +358,12 @@ class HSEMWorkingModeSensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
         except asyncio.CancelledError:
             # Task was cancelled (entity unloaded) — propagate cleanly.
             raise
+        except Exception:
+            await async_logger(
+                self,
+                "Hardware-write task failed during coordinator update",
+                level="error",
+            )
 
     async def _async_apply_hardware_writes(self, data: CoordinatorData) -> None:
         """Perform inverter and battery hardware writes for the current slot.
