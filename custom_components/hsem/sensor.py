@@ -1,3 +1,11 @@
+"""Sensor platform for the HSEM integration.
+
+Sets up all HSEM sensor entities from a config entry, including
+diagnostic sensors, forecast accuracy, working mode, and EV charging
+sensors.  All sensors subscribe to the shared
+:class:`HSEMDataUpdateCoordinator` for periodic updates.
+"""
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback

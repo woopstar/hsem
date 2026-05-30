@@ -1,3 +1,9 @@
+"""Config flow step for power sensor selection.
+
+Allows the user to select the Home Assistant entities for house
+consumption power and solar production power.
+"""
+
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry

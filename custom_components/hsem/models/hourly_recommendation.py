@@ -1,4 +1,9 @@
-"""Dataclass representing a single planning slot recommendation."""
+"""Dataclass representing a single planning slot recommendation.
+
+Each :class:`HourlyRecommendation` captures the planner's decision for one
+time slot: the recommended working mode, all energy flows (consumption,
+production, battery, EV, grid), and the resulting cost estimate.
+"""
 
 from dataclasses import dataclass
 from datetime import datetime

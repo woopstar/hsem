@@ -21,7 +21,12 @@ from custom_components.hsem.const import DEFAULT_CONFIG_VALUES
 
 @dataclass
 class EVChargerConfig:
-    """Configuration for a single EV charger."""
+    """Configuration for a single EV charger.
+
+    Holds the entity IDs for the charger's status, power, SoC, and
+    connection sensors, along with behavioural flags such as whether to
+    allow charging past the target SoC and force maximum discharge power.
+    """
 
     status_entity: str | None = None
     power_entity: str | None = None
@@ -34,7 +39,12 @@ class EVChargerConfig:
 
 @dataclass
 class BatteryScheduleConfig:
-    """Configuration for one charge/discharge battery schedule window."""
+    """Configuration for one charge/discharge battery schedule window.
+
+    Defines whether the schedule window is enabled and its start/end times.
+    Used as a nested config block within :class:`SensorConfig` for up to
+    three independent battery schedule windows.
+    """
 
     enabled: bool = False
     start: time | None = None

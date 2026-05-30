@@ -1,3 +1,10 @@
+"""Config flow step for weighted consumption values.
+
+Allows the user to configure the weighting percentages for house
+consumption energy estimates over 1-day, 3-day, 7-day, and 14-day
+lookback periods.
+"""
+
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry

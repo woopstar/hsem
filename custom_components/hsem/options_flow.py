@@ -1,4 +1,4 @@
-"""This module defines the configuration flow for the HSEM integration in Home Assistant."""
+"""This module defines the options flow for the HSEM integration in Home Assistant."""
 
 from typing import Any
 
@@ -63,6 +63,7 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
     """Options flow for HSEM."""
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        """Initialize the options flow with a reference to the config entry."""
         self._config_entry = config_entry
         self._user_input: dict[str, Any] = {}
 
@@ -76,6 +77,10 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        """Handle the init options step.
+
+        Validates user input and advances to the next step in the options flow.
+        """
         errors = {}
 
         if user_input is not None:
@@ -96,6 +101,10 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
     async def async_step_prices(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        """Handle the prices options step.
+
+        Validates user input and advances to the next step in the options flow.
+        """
         errors = {}
 
         if user_input is not None:
@@ -116,6 +125,10 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
     async def async_step_months(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        """Handle the months options step.
+
+        Validates user input and advances to the next step in the options flow.
+        """
         errors = {}
 
         if user_input is not None:
@@ -149,6 +162,10 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
     async def async_step_solcast(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        """Handle the solcast options step.
+
+        Validates user input and advances to the next step in the options flow.
+        """
         errors = {}
 
         if user_input is not None:
@@ -169,6 +186,10 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
     async def async_step_huawei_solar(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        """Handle the huawei_solar options step.
+
+        Validates user input and advances to the next step in the options flow.
+        """
         errors = {}
 
         if user_input is not None:
@@ -189,6 +210,10 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
     async def async_step_battery_economics(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        """Handle the battery_economics options step.
+
+        Validates user input and advances to the next step in the options flow.
+        """
         errors = {}
 
         if user_input is not None:
@@ -209,6 +234,10 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
     async def async_step_power(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        """Handle the power options step.
+
+        Validates user input and advances to the next step in the options flow.
+        """
         errors = {}
 
         if user_input is not None:
@@ -229,6 +258,10 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
     async def async_step_ev(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        """Handle the ev options step.
+
+        Validates user input and advances to the next step in the options flow.
+        """
         errors = {}
 
         if user_input is not None:
@@ -253,6 +286,10 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
     async def async_step_ev_second(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        """Handle the ev_second options step.
+
+        Validates user input and advances to the next step in the options flow.
+        """
         errors = {}
 
         if user_input is not None:
@@ -273,6 +310,10 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
     async def async_step_ev_planned_load(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        """Handle the ev_planned_load options step.
+
+        Validates user input and advances to the next step in the options flow.
+        """
         errors = {}
 
         if user_input is not None:
@@ -295,6 +336,10 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
     async def async_step_ev_second_planned_load(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        """Handle the ev_second_planned_load options step.
+
+        Validates user input and advances to the next step in the options flow.
+        """
         errors = {}
 
         if user_input is not None:
@@ -315,6 +360,10 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
     async def async_step_batteries_schedules(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        """Handle the batteries_schedules options step.
+
+        Validates user input and advances to the next step in the options flow.
+        """
         errors = {}
 
         if user_input is not None:
@@ -337,6 +386,10 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
     async def async_step_batteries_excess_export(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        """Handle the batteries_excess_export options step.
+
+        Validates user input and advances to the next step in the options flow.
+        """
         errors = {}
 
         if user_input is not None:
@@ -359,6 +412,10 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
     async def async_step_weighted_values(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        """Handle the weighted_values options step.
+
+        Validates user input and advances to the next step in the options flow.
+        """
         errors = {}
 
         if user_input is not None:

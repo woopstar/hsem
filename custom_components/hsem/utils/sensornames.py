@@ -1,3 +1,10 @@
+"""Sensor name, unique ID, and entity ID generators for HSEM entities.
+
+Each entity type has a family of getter functions that return the
+configuration key, display name, unique ID, and Home Assistant entity ID
+for use in config flow, entity registration, and state collection.
+"""
+
 from homeassistant.components import number, select, sensor, switch, time
 from homeassistant.util import slugify as s
 
@@ -896,34 +903,42 @@ def get_ev_second_force_charge_now_switch_entity_id() -> str:
 
 
 def get_ev_deadline_time_key() -> str:
+    """Return the config key for the EV charge deadline time entity."""
     return f"{DOMAIN}_ev_deadline_time"
 
 
 def get_ev_deadline_time_name() -> str:
+    """Return the display name for the EV charge deadline time entity."""
     return "EV Charge Deadline"
 
 
 def get_ev_deadline_time_unique_id() -> str:
+    """Return the unique ID for the EV charge deadline time entity."""
     return f"{DOMAIN}_{get_ev_deadline_time_key()}_time"
 
 
 def get_ev_deadline_time_entity_id() -> str:
+    """Return the Home Assistant entity ID for the EV charge deadline time entity."""
     return time.ENTITY_ID_FORMAT.format(s(get_ev_deadline_time_unique_id()))
 
 
 def get_ev_second_deadline_time_key() -> str:
+    """Return the config key for the second EV charge deadline time entity."""
     return f"{DOMAIN}_ev_second_deadline_time"
 
 
 def get_ev_second_deadline_time_name() -> str:
+    """Return the display name for the second EV charge deadline time entity."""
     return "EV 2 Charge Deadline"
 
 
 def get_ev_second_deadline_time_unique_id() -> str:
+    """Return the unique ID for the second EV charge deadline time entity."""
     return f"{DOMAIN}_{get_ev_second_deadline_time_key()}_time"
 
 
 def get_ev_second_deadline_time_entity_id() -> str:
+    """Return the Home Assistant entity ID for the second EV charge deadline time entity."""
     return time.ENTITY_ID_FORMAT.format(s(get_ev_second_deadline_time_unique_id()))
 
 
