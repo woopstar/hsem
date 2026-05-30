@@ -1,3 +1,9 @@
+"""Custom HSEM utility meter sensor with HSEM device metadata.
+
+Wraps Home Assistant's built-in :class:`UtilityMeterSensor` so that all
+per-hour energy meters appear on the HSEM device page.
+"""
+
 from __future__ import annotations
 
 from typing import Any
@@ -11,7 +17,12 @@ from custom_components.hsem.entity import HSEMEntity
 
 
 class HSEMUtilityMeterSensor(UtilityMeterSensor, HSEMEntity):
-    """Custom Utility Meter Sensor with device_info."""
+    """Custom Utility Meter Sensor with HSEM device_info.
+
+    Tracks daily energy accumulation per hour block with
+    ``state_class=TOTAL`` so the energy dashboard can sum
+    across hours correctly.
+    """
 
     _attr_icon = "mdi:counter"
 
@@ -23,6 +34,15 @@ class HSEMUtilityMeterSensor(UtilityMeterSensor, HSEMEntity):
         config_entry: ConfigEntry | None = None,
         **kwargs: Any,
     ) -> None:
+        """Initialize the HSEM utility meter sensor.
+
+        Args:
+            *args: Positional arguments forwarded to :class:`UtilityMeterSensor`.
+            id: Unique ID for the HA entity registry.
+            e_id: Entity ID for the sensor.
+            config_entry: The HSEM config entry (required).
+            **kwargs: Keyword arguments forwarded to :class:`UtilityMeterSensor`.
+        """
         UtilityMeterSensor.__init__(self, *args, **kwargs)
         assert config_entry is not None, (
             "config_entry is required for HSEMUtilityMeterSensor"

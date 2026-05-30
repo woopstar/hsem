@@ -1,3 +1,9 @@
+"""Custom HSEM integration sensor that converts power (W) to energy (kWh).
+
+Wraps Home Assistant's built-in :class:`IntegrationSensor` with HSEM device
+metadata so that all derived energy sensors appear on the HSEM device page.
+"""
+
 from __future__ import annotations
 
 from typing import Any
@@ -27,6 +33,15 @@ class HSEMIntegrationSensor(IntegrationSensor, HSEMEntity):
         config_entry: ConfigEntry | None = None,
         **kwargs: Any,
     ) -> None:
+        """Initialize the HSEM integration sensor.
+
+        Args:
+            *args: Positional arguments forwarded to :class:`IntegrationSensor`.
+            id: Unique ID for the HA entity registry.
+            e_id: Entity ID for the sensor.
+            config_entry: The HSEM config entry (required).
+            **kwargs: Keyword arguments forwarded to :class:`IntegrationSensor`.
+        """
         IntegrationSensor.__init__(self, *args, **kwargs)
         assert config_entry is not None, (
             "config_entry is required for HSEMIntegrationSensor"

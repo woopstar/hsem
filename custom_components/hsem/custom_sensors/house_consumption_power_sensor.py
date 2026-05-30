@@ -1,25 +1,14 @@
-"""Module for the HouseConsumptionPowerSensor class.
+"""Per-hour-block house consumption power sensor for HSEM.
 
-This module defines the HouseConsumptionPowerSensor class, which represents a sensor
-that tracks power consumption per hour block in a Home Assistant environment.
+Tracks the instantaneous power drawn by the house during a specific
+one-hour window (e.g. 13:00–14:00) and dynamically creates derived
+child sensors:
 
-Classes:
-    HouseConsumptionPowerSensor: A sensor entity that tracks power consumption per hour block.
+- :class:`HSEMIntegrationSensor` — converts power (W) to energy (kWh).
+- :class:`HSEMUtilityMeterSensor` — daily-resetting energy meter.
+- :class:`HSEMAvgSensor` — rolling 1/3/7/14-day energy averages.
 
-Functions:
-    set_hsem_house_consumption_power(value): Sets the house consumption power entity.
-    set_hsem_house_power_includes_ev_charger_power(value): Sets whether house power includes EV charger power.
-    set_hsem_ev_charger_power(value): Sets the EV charger power entity.
-    name: Returns the name of the sensor.
-    unit_of_measurement: Returns the unit of measurement for the sensor.
-    device_class: Returns the device class of the sensor.
-    unique_id: Returns the unique ID of the sensor.
-    state: Returns the current state of the sensor.
-    extra_state_attributes: Returns the extra state attributes of the sensor.
-    _update_settings(): Fetches updated settings from config_entry options.
-    async_added_to_hass(): Handles when the sensor is added to Home Assistant.
-    _async_handle_update(event): Handles updates to the source sensor.
-    async_update(event=None): Manually triggers the sensor update.
+These derived sensors feed the planner's house-consumption estimates.
 """
 
 from __future__ import annotations
@@ -73,7 +62,11 @@ from custom_components.hsem.utils.sensornames import (
 
 
 class HSEMHouseConsumptionPowerSensor(RestoreEntity, SensorEntity, HSEMEntity):
-    """Representation of a sensor that tracks power consumption per hour block."""
+    """Sensor that tracks power consumption for a specific one-hour block.
+
+    Measures the house power draw (minus EV when configured) during the
+    active hour window and dynamically creates derived energy sensors.
+    """
 
     _attr_icon = "mdi:flash"
     _attr_has_entity_name = True
@@ -104,6 +97,14 @@ class HSEMHouseConsumptionPowerSensor(RestoreEntity, SensorEntity, HSEMEntity):
         hour_end: int,
         async_add_entities: Any,
     ) -> None:
+        """Initialize the house consumption power sensor.
+
+        Args:
+            config_entry: The HSEM config entry.
+            hour_start: Start hour (0-23) of the measurement block.
+            hour_end: End hour (0-23) of the measurement block.
+            async_add_entities: HA callback to register derived child entities.
+        """
         super().__init__(config_entry)
         self._available = False
         self._missing_input_entities = True
@@ -157,7 +158,11 @@ class HSEMHouseConsumptionPowerSensor(RestoreEntity, SensorEntity, HSEMEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the state attributes for the sensor.
 
+        Includes source entity configurations and live power readings.
+        When input entities are missing, returns an error status instead.
+        """
         if self._missing_input_entities:
             return {
                 "status": "error",
@@ -166,7 +171,6 @@ class HSEMHouseConsumptionPowerSensor(RestoreEntity, SensorEntity, HSEMEntity):
                 "unique_id": self._attr_unique_id,
             }
 
-        """Return the state attributes."""
         return {
             "house_consumption_power_entity": self._hsem_house_consumption_power,
             "house_consumption_power_state": round(
@@ -319,6 +323,7 @@ class HSEMHouseConsumptionPowerSensor(RestoreEntity, SensorEntity, HSEMEntity):
             self.async_write_ha_state()
 
     async def _async_track_entities(self) -> None:
+        """Register state-change listeners for source power entities."""
         # Track state changes for the source sensor
         if self._hsem_house_consumption_power:
             if self._hsem_house_consumption_power not in self._tracked_entities:
@@ -345,6 +350,7 @@ class HSEMHouseConsumptionPowerSensor(RestoreEntity, SensorEntity, HSEMEntity):
                 self._tracked_entities.add(self._hsem_ev_charger_power)
 
     async def _async_fetch_sensor_states(self) -> None:
+        """Read live power values from the configured HA source entities."""
         # Update the state of the sensor for house consumption power
 
         self._missing_input_entities = False
