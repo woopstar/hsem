@@ -6,7 +6,7 @@ Defines :class:`HSEMSwitch`.
 on/off state to the config entry options so it survives HA restarts.
 """
 
-from typing import Any
+from typing import Any, override
 
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
@@ -68,16 +68,19 @@ class HSEMSwitch(SwitchEntity, HSEMEntity):
         self._attr_is_on = bool(get_config_value(self._config_entry, description.key))
 
     @property
+    @override
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional state attributes."""
         return {"description": self.entity_description.description}
 
+    @override
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the switch on and persist to config entry."""
         self._attr_is_on = True
         await self._persist_state()
         self.async_write_ha_state()
 
+    @override
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the switch off and persist to config entry."""
         self._attr_is_on = False

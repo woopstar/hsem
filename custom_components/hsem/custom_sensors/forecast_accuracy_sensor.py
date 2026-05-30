@@ -24,7 +24,7 @@ The sensor is a *diagnostic* entity (``EntityCategory.DIAGNOSTIC``).
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any, cast, override
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
@@ -78,6 +78,7 @@ class HSEMForecastAccuracySensor(
         self.entity_id = get_forecast_accuracy_sensor_entity_id()
 
     @property
+    @override
     def native_value(self) -> str | float | None:
         """Return the sensor state.
 
@@ -96,6 +97,7 @@ class HSEMForecastAccuracySensor(
         return cast(float, round(summary.mae_pv_kwh, 3))
 
     @property
+    @override
     def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return diagnostic attributes for the sensor.
 
@@ -138,6 +140,7 @@ class HSEMForecastAccuracySensor(
         return cast(dict[str, Any], attrs)
 
     @property
+    @override
     def native_unit_of_measurement(self) -> str | None:
         """Return the unit of measurement."""
         return UnitOfEnergy.KILO_WATT_HOUR
@@ -146,6 +149,7 @@ class HSEMForecastAccuracySensor(
     # HA lifecycle — reboot persistence
     # ------------------------------------------------------------------
 
+    @override
     async def async_added_to_hass(self) -> None:
         """Restore forecast tracker data from the previous HA session."""
         await super().async_added_to_hass()

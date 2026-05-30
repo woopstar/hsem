@@ -19,7 +19,7 @@ and updates automatically after every coordinator cycle.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, override
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
@@ -91,16 +91,19 @@ class HSEMRecommendationIntervalSensor(
     # ------------------------------------------------------------------
 
     @property
+    @override
     def name(self) -> str:
         """Return the display name."""
         return self._name
 
     @property
+    @override
     def unique_id(self) -> str | None:
         """Return the unique ID."""
         return self._attr_unique_id
 
     @property
+    @override
     def native_value(self) -> int | None:
         """Return the recommendation slot width in minutes."""
         data: CoordinatorData | None = self.coordinator.data
@@ -114,11 +117,13 @@ class HSEMRecommendationIntervalSensor(
         return data.cfg.recommendation_interval_minutes
 
     @property
+    @override
     def should_poll(self) -> bool:
         """No polling — driven by the coordinator."""
         return False
 
     @property
+    @override
     def available(self) -> bool:
         """True once the coordinator has completed at least one successful cycle."""
         return (
@@ -126,6 +131,7 @@ class HSEMRecommendationIntervalSensor(
         ) or self._restored_state is not None
 
     @property
+    @override
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return the planning horizon (hours) as an attribute."""
         data: CoordinatorData | None = self.coordinator.data
@@ -147,6 +153,7 @@ class HSEMRecommendationIntervalSensor(
     # HA lifecycle
     # ------------------------------------------------------------------
 
+    @override
     async def async_added_to_hass(self) -> None:
         """Restore previous state and register coordinator listener."""
         await super().async_added_to_hass()

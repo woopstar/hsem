@@ -23,7 +23,7 @@ appears in the *Diagnostic* section of the device page.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, override
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
@@ -93,16 +93,19 @@ class HSEMEVOptimalChargingPlanSensor(
     # ------------------------------------------------------------------
 
     @property
+    @override
     def name(self) -> str:
         """Return the display name."""
         return self._name
 
     @property
+    @override
     def unique_id(self) -> str | None:
         """Return the unique ID."""
         return self._attr_unique_id
 
     @property  # type: ignore[misc]  # HA stub declares state as @final
+    @override
     def state(self) -> str:
         """Return the current EV charging plan state."""
         data: CoordinatorData | None = self.coordinator.data
@@ -115,6 +118,7 @@ class HSEMEVOptimalChargingPlanSensor(
         return state if state in _VALID_STATES else STATE_UNAVAILABLE
 
     @property
+    @override
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return EV charging plan attributes."""
         data: CoordinatorData | None = self.coordinator.data
@@ -123,6 +127,7 @@ class HSEMEVOptimalChargingPlanSensor(
         return data.ev_charging_plan.as_attributes()
 
     @property
+    @override
     def available(self) -> bool:
         """Return True when the coordinator has data."""
         return self.coordinator.data is not None
@@ -131,6 +136,7 @@ class HSEMEVOptimalChargingPlanSensor(
     # State restore
     # ------------------------------------------------------------------
 
+    @override
     async def async_added_to_hass(self) -> None:
         """Restore previous state on startup."""
         await super().async_added_to_hass()

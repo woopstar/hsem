@@ -11,6 +11,8 @@ HA restarts.
 
 from __future__ import annotations
 
+from typing import override
+
 from homeassistant.components.number import NumberEntity, NumberEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE, EntityCategory
@@ -81,6 +83,7 @@ class HSEMEVTargetSocNumber(NumberEntity, HSEMEntity):
         stored = convert_to_float(get_config_value(config_entry, config_key))
         self._attr_native_value = stored if stored is not None else default
 
+    @override
     async def async_set_native_value(self, value: float) -> None:
         """Handle the user setting a new value.
 

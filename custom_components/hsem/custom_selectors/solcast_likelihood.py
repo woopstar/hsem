@@ -9,6 +9,8 @@ The selected value is persisted to the config entry options so it survives
 HA restarts.
 """
 
+from typing import override
+
 from homeassistant.components.select import SelectEntity, SelectEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
@@ -71,6 +73,7 @@ class HSEMSolcastLikelihoodSelector(SelectEntity, HSEMEntity):
         stored = get_config_value(config_entry, _CONFIG_KEY)
         self._attr_current_option = str(stored) if stored in _OPTIONS else _DEFAULT
 
+    @override
     async def async_select_option(self, option: str) -> None:
         """Handle the user selecting a new option.
 
