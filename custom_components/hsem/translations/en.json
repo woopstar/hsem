@@ -78,48 +78,42 @@
         "data": {
           "hsem_batteries_enable_batteries_schedule_1": "Enable Battery Schedule 1",
           "hsem_batteries_enable_batteries_schedule_1_end": "Battery Schedule 1 End Time",
-          "hsem_batteries_enable_batteries_schedule_1_min_price_difference": "Minimum Price Difference for Schedule 1",
           "hsem_batteries_enable_batteries_schedule_1_start": "Battery Schedule 1 Start Time"
         },
         "data_description": {
           "hsem_batteries_enable_batteries_schedule_1": "Enable or disable the first battery discharge schedule.",
           "hsem_batteries_enable_batteries_schedule_1_end": "Specify the end time for the first battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_1_min_price_difference": "Set the minimum price difference required for this schedule to activate.",
           "hsem_batteries_enable_batteries_schedule_1_start": "Specify the start time for the first battery discharge schedule."
         },
-        "description": "Configure battery discharge schedules 1, including it's activation time and optional minimum price differences for activation.",
+        "description": "Configure battery discharge schedule 1, including its activation time.",
         "title": "Battery Discharge Schedule 1"
       },
       "batteries_schedule_2": {
         "data": {
           "hsem_batteries_enable_batteries_schedule_2": "Enable Battery Schedule 2",
           "hsem_batteries_enable_batteries_schedule_2_end": "Battery Schedule 2 End Time",
-          "hsem_batteries_enable_batteries_schedule_2_min_price_difference": "Minimum Price Difference for Schedule 2",
           "hsem_batteries_enable_batteries_schedule_2_start": "Battery Schedule 2 Start Time"
         },
         "data_description": {
           "hsem_batteries_enable_batteries_schedule_2": "Enable or disable the second battery discharge schedule.",
           "hsem_batteries_enable_batteries_schedule_2_end": "Specify the end time for the second battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_2_min_price_difference": "Set the minimum price difference required for this schedule to activate.",
           "hsem_batteries_enable_batteries_schedule_2_start": "Specify the start time for the second battery discharge schedule."
         },
-        "description": "Configure battery discharge schedules 2, including it's activation time and optional minimum price differences for activation.",
+        "description": "Configure battery discharge schedule 2, including its activation time.",
         "title": "Battery Discharge Schedule 2"
       },
       "batteries_schedule_3": {
         "data": {
           "hsem_batteries_enable_batteries_schedule_3": "Enable Battery Schedule 3",
           "hsem_batteries_enable_batteries_schedule_3_end": "Battery Schedule 3 End Time",
-          "hsem_batteries_enable_batteries_schedule_3_min_price_difference": "Minimum Price Difference for Schedule 3",
           "hsem_batteries_enable_batteries_schedule_3_start": "Battery Schedule 3 Start Time"
         },
         "data_description": {
           "hsem_batteries_enable_batteries_schedule_3": "Enable or disable the third battery discharge schedule.",
           "hsem_batteries_enable_batteries_schedule_3_end": "Specify the end time for the third battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_3_min_price_difference": "Set the minimum price difference required for this schedule to activate.",
           "hsem_batteries_enable_batteries_schedule_3_start": "Specify the start time for the third battery discharge schedule."
         },
-        "description": "Configure battery discharge schedules 3, including it's activation time and optional minimum price differences for activation.",
+        "description": "Configure battery discharge schedule 3, including its activation time.",
         "title": "Battery Discharge Schedule 3"
       },
       "prices": {
@@ -457,48 +451,42 @@
         "data": {
           "hsem_batteries_enable_batteries_schedule_1": "Enable Battery Schedule 1",
           "hsem_batteries_enable_batteries_schedule_1_end": "Battery Schedule 1 End Time",
-          "hsem_batteries_enable_batteries_schedule_1_min_price_difference": "Minimum Price Difference for Schedule 1",
           "hsem_batteries_enable_batteries_schedule_1_start": "Battery Schedule 1 Start Time"
         },
         "data_description": {
           "hsem_batteries_enable_batteries_schedule_1": "Enable or disable the first battery discharge schedule.",
           "hsem_batteries_enable_batteries_schedule_1_end": "Specify the end time for the first battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_1_min_price_difference": "Set the minimum price difference required for this schedule to activate.",
           "hsem_batteries_enable_batteries_schedule_1_start": "Specify the start time for the first battery discharge schedule."
         },
-        "description": "Configure battery discharge schedules 1, including it's activation time and optional minimum price differences for activation.",
+        "description": "Configure battery discharge schedule 1, including its activation time.",
         "title": "Battery Discharge Schedule 1"
       },
       "batteries_schedule_2": {
         "data": {
           "hsem_batteries_enable_batteries_schedule_2": "Enable Battery Schedule 2",
           "hsem_batteries_enable_batteries_schedule_2_end": "Battery Schedule 2 End Time",
-          "hsem_batteries_enable_batteries_schedule_2_min_price_difference": "Minimum Price Difference for Schedule 2",
           "hsem_batteries_enable_batteries_schedule_2_start": "Battery Schedule 2 Start Time"
         },
         "data_description": {
           "hsem_batteries_enable_batteries_schedule_2": "Enable or disable the second battery discharge schedule.",
           "hsem_batteries_enable_batteries_schedule_2_end": "Specify the end time for the second battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_2_min_price_difference": "Set the minimum price difference required for this schedule to activate.",
           "hsem_batteries_enable_batteries_schedule_2_start": "Specify the start time for the second battery discharge schedule."
         },
-        "description": "Configure battery discharge schedules 2, including it's activation time and optional minimum price differences for activation.",
+        "description": "Configure battery discharge schedule 2, including its activation time.",
         "title": "Battery Discharge Schedule 2"
       },
       "batteries_schedule_3": {
         "data": {
           "hsem_batteries_enable_batteries_schedule_3": "Enable Battery Schedule 3",
           "hsem_batteries_enable_batteries_schedule_3_end": "Battery Schedule 3 End Time",
-          "hsem_batteries_enable_batteries_schedule_3_min_price_difference": "Minimum Price Difference for Schedule 3",
           "hsem_batteries_enable_batteries_schedule_3_start": "Battery Schedule 3 Start Time"
         },
         "data_description": {
           "hsem_batteries_enable_batteries_schedule_3": "Enable or disable the third battery discharge schedule.",
           "hsem_batteries_enable_batteries_schedule_3_end": "Specify the end time for the third battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_3_min_price_difference": "Set the minimum price difference required for this schedule to activate.",
           "hsem_batteries_enable_batteries_schedule_3_start": "Specify the start time for the third battery discharge schedule."
         },
-        "description": "Configure battery discharge schedules 3, including it's activation time and optional minimum price differences for activation.",
+        "description": "Configure battery discharge schedule 3, including its activation time.",
         "title": "Battery Discharge Schedule 3"
       },
       "prices": {
@@ -785,6 +773,62 @@
     }
   },
   "entity": {
+    "sensor": {
+      "applier_status": {
+        "name": "Applier Status"
+      },
+      "battery_soc": {
+        "name": "Battery State of Charge"
+      },
+      "degraded_mode": {
+        "name": "System Health"
+      },
+      "ev_charging": {
+        "name": "EV Charging Active"
+      },
+      "ev_optimal_charging_plan": {
+        "name": "EV Optimal Charging Plan"
+      },
+      "ev_second_optimal_charging_plan": {
+        "name": "EV 2 Optimal Charging Plan"
+      },
+      "force_mode": {
+        "name": "Force Working Mode"
+      },
+      "forecast_accuracy": {
+        "name": "Forecast Accuracy"
+      },
+      "hardware_writes": {
+        "name": "Hardware Writes"
+      },
+      "last_updated": {
+        "name": "Last Updated"
+      },
+      "missing_entities": {
+        "name": "Missing Input Entities"
+      },
+      "net_consumption": {
+        "name": "Net Consumption"
+      },
+      "next_update": {
+        "name": "Next Update"
+      },
+      "plan_explanation": {
+        "name": "Plan Strategy"
+      },
+      "read_only": {
+        "name": "Read-Only Mode"
+      },
+      "recommendation_interval": {
+        "name": "Recommendation Interval"
+      },
+      "update_interval": {
+        "name": "Update Interval"
+      },
+      "working_mode": {
+        "name": "Working Mode Sensor"
+      }
+    },
     "switch": {
       "read_only": {
         "name": "Read Only Mode"
