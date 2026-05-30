@@ -5,7 +5,6 @@ configuration key, display name, unique ID, and Home Assistant entity ID
 for use in config flow, entity registration, and state collection.
 """
 
-from homeassistant.components import number, select, sensor, switch, time
 from homeassistant.util import slugify as s
 
 from custom_components.hsem.const import DOMAIN
@@ -51,9 +50,7 @@ def get_integral_sensor_entity_id(hour_start: int, hour_end: int) -> str:
         str: Entity ID of the integral sensor.
 
     """
-    return sensor.ENTITY_ID_FORMAT.format(
-        s(f"{DOMAIN}_house_consumption_energy_integral_{hour_start:02d}_{hour_end:02d}")
-    )
+    return f"sensor.{s(f'{DOMAIN}_house_consumption_energy_integral_{hour_start:02d}_{hour_end:02d}')}"
 
 
 # Energy Average Sensor
@@ -105,11 +102,7 @@ def get_energy_average_sensor_entity_id(
         str: Entity ID of the energy average sensor.
 
     """
-    return sensor.ENTITY_ID_FORMAT.format(
-        s(
-            f"{DOMAIN}_house_consumption_energy_avg_{hour_start:02d}_{hour_end:02d}_{avg}d"
-        )
-    )
+    return f"sensor.{s(f'{DOMAIN}_house_consumption_energy_avg_{hour_start:02d}_{hour_end:02d}_{avg}d')}"
 
 
 # Utility Meter Sensor
@@ -152,11 +145,7 @@ def get_utility_meter_sensor_entity_id(hour_start: int, hour_end: int) -> str:
         str: Entity ID of the utility meter sensor.
 
     """
-    return sensor.ENTITY_ID_FORMAT.format(
-        s(
-            f"{DOMAIN}_house_consumption_energy_{hour_start:02d}_{hour_end:02d}_utility_meter"
-        )
-    )
+    return f"sensor.{s(f'{DOMAIN}_house_consumption_energy_{hour_start:02d}_{hour_end:02d}_utility_meter')}"
 
 
 # House Consumption Power Sensor
@@ -199,9 +188,7 @@ def get_house_consumption_power_sensor_entity_id(hour_start: int, hour_end: int)
         str: Entity ID of the house consumption power sensor.
 
     """
-    return sensor.ENTITY_ID_FORMAT.format(
-        s(f"{DOMAIN}_house_consumption_power_{hour_start:02d}_{hour_end:02d}")
-    )
+    return f"sensor.{s(f'{DOMAIN}_house_consumption_power_{hour_start:02d}_{hour_end:02d}')}"
 
 
 # Working Mode Sensor
@@ -232,7 +219,7 @@ def get_working_mode_sensor_entity_id() -> str:
         str: Entity ID of the working mode sensor.
 
     """
-    return sensor.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_workingmode_sensor"))
+    return f"sensor.{s(f'{DOMAIN}_workingmode_sensor')}"
 
 
 # Degraded Mode Sensor
@@ -263,7 +250,7 @@ def get_degraded_mode_sensor_entity_id() -> str:
         str: Entity ID.
 
     """
-    return sensor.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_degraded_mode_sensor"))
+    return f"sensor.{s(f'{DOMAIN}_degraded_mode_sensor')}"
 
 
 # Read-Only Mode Sensor
@@ -294,7 +281,7 @@ def get_read_only_sensor_entity_id() -> str:
         str: Entity ID.
 
     """
-    return sensor.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_read_only_sensor"))
+    return f"sensor.{s(f'{DOMAIN}_read_only_sensor')}"
 
 
 # Next Update Sensor
@@ -310,7 +297,7 @@ def get_next_update_sensor_unique_id() -> str:
 
 def get_next_update_sensor_entity_id() -> str:
     """Return the entity_id for the next-update sensor."""
-    return sensor.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_next_update_sensor"))
+    return f"sensor.{s(f'{DOMAIN}_next_update_sensor')}"
 
 
 # Missing Entities Sensor
@@ -326,7 +313,7 @@ def get_missing_entities_sensor_unique_id() -> str:
 
 def get_missing_entities_sensor_entity_id() -> str:
     """Return the entity_id for the missing-entities sensor."""
-    return sensor.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_missing_entities_sensor"))
+    return f"sensor.{s(f'{DOMAIN}_missing_entities_sensor')}"
 
 
 # Hardware Writes Blocked Sensor
@@ -342,7 +329,7 @@ def get_hardware_writes_sensor_unique_id() -> str:
 
 def get_hardware_writes_sensor_entity_id() -> str:
     """Return the entity_id for the hardware-writes-blocked sensor."""
-    return sensor.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_hardware_writes_sensor"))
+    return f"sensor.{s(f'{DOMAIN}_hardware_writes_sensor')}"
 
 
 # Net Consumption Sensor
@@ -358,7 +345,7 @@ def get_net_consumption_sensor_unique_id() -> str:
 
 def get_net_consumption_sensor_entity_id() -> str:
     """Return the entity_id for the net-consumption sensor."""
-    return sensor.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_net_consumption_sensor"))
+    return f"sensor.{s(f'{DOMAIN}_net_consumption_sensor')}"
 
 
 # Force Working Mode Sensor
@@ -374,7 +361,7 @@ def get_force_mode_sensor_unique_id() -> str:
 
 def get_force_mode_sensor_entity_id() -> str:
     """Return the entity_id for the force-working-mode sensor."""
-    return sensor.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_force_mode_sensor"))
+    return f"sensor.{s(f'{DOMAIN}_force_mode_sensor')}"
 
 
 # Update Interval Sensor
@@ -390,7 +377,7 @@ def get_update_interval_sensor_unique_id() -> str:
 
 def get_update_interval_sensor_entity_id() -> str:
     """Return the entity_id for the update-interval sensor."""
-    return sensor.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_update_interval_sensor"))
+    return f"sensor.{s(f'{DOMAIN}_update_interval_sensor')}"
 
 
 # Last Updated Sensor
@@ -406,7 +393,7 @@ def get_last_updated_sensor_unique_id() -> str:
 
 def get_last_updated_sensor_entity_id() -> str:
     """Return the entity_id for the last-updated sensor."""
-    return sensor.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_last_updated_sensor"))
+    return f"sensor.{s(f'{DOMAIN}_last_updated_sensor')}"
 
 
 # Battery SoC Sensor
@@ -422,7 +409,7 @@ def get_battery_soc_sensor_unique_id() -> str:
 
 def get_battery_soc_sensor_entity_id() -> str:
     """Return the entity_id for the battery-SoC sensor."""
-    return sensor.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_battery_soc_sensor"))
+    return f"sensor.{s(f'{DOMAIN}_battery_soc_sensor')}"
 
 
 # Recommendation Interval Sensor
@@ -438,7 +425,7 @@ def get_recommendation_interval_sensor_unique_id() -> str:
 
 def get_recommendation_interval_sensor_entity_id() -> str:
     """Return the entity_id for the recommendation-interval sensor."""
-    return sensor.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_recommendation_interval_sensor"))
+    return f"sensor.{s(f'{DOMAIN}_recommendation_interval_sensor')}"
 
 
 # EV Charging Active Sensor
@@ -454,7 +441,7 @@ def get_ev_charging_sensor_unique_id() -> str:
 
 def get_ev_charging_sensor_entity_id() -> str:
     """Return the entity_id for the EV-charging sensor."""
-    return sensor.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_ev_charging_sensor"))
+    return f"sensor.{s(f'{DOMAIN}_ev_charging_sensor')}"
 
 
 # EV Optimal Charging Plan Sensor
@@ -470,7 +457,7 @@ def get_ev_optimal_charging_plan_sensor_unique_id() -> str:
 
 def get_ev_optimal_charging_plan_sensor_entity_id() -> str:
     """Return the entity_id for the EV optimal charging plan sensor."""
-    return sensor.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_ev_optimal_charging_plan"))
+    return f"sensor.{s(f'{DOMAIN}_ev_optimal_charging_plan')}"
 
 
 # EV Second Optimal Charging Plan Sensor
@@ -486,9 +473,7 @@ def get_ev_second_optimal_charging_plan_sensor_unique_id() -> str:
 
 def get_ev_second_optimal_charging_plan_sensor_entity_id() -> str:
     """Return the entity_id for the second EV optimal charging plan sensor."""
-    return sensor.ENTITY_ID_FORMAT.format(
-        s(f"{DOMAIN}_ev_second_optimal_charging_plan")
-    )
+    return f"sensor.{s(f'{DOMAIN}_ev_second_optimal_charging_plan')}"
 
 
 # Plan Explanation Sensor
@@ -504,7 +489,7 @@ def get_plan_explanation_sensor_unique_id() -> str:
 
 def get_plan_explanation_sensor_entity_id() -> str:
     """Return the entity_id for the plan-explanation sensor."""
-    return sensor.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_plan_explanation_sensor"))
+    return f"sensor.{s(f'{DOMAIN}_plan_explanation_sensor')}"
 
 
 # Force Working Mode Selector
@@ -520,7 +505,7 @@ def get_force_working_mode_selector_name() -> str:
 
 def get_force_working_mode_selector_entity_id() -> str:
     """Return the entity_id for the force-working-mode select entity."""
-    return select.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_force_working_mode"))
+    return f"select.{s(f'{DOMAIN}_force_working_mode')}"
 
 
 # Solcast PV Forecast Likelihood Selector
@@ -536,7 +521,7 @@ def get_solcast_likelihood_selector_name() -> str:
 
 def get_solcast_likelihood_selector_entity_id() -> str:
     """Return the entity_id for the solcast likelihood select entity."""
-    return select.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_solcast_likelihood"))
+    return f"select.{s(f'{DOMAIN}_solcast_likelihood')}"
 
 
 # Battery Charge Efficiency Number
@@ -557,7 +542,7 @@ def get_charge_efficiency_number_unique_id() -> str:
 
 def get_charge_efficiency_number_entity_id() -> str:
     """Return the entity_id for the charge efficiency number entity."""
-    return number.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_battery_charge_efficiency"))
+    return f"number.{s(f'{DOMAIN}_battery_charge_efficiency')}"
 
 
 # Battery Discharge Efficiency Number
@@ -578,7 +563,7 @@ def get_discharge_efficiency_number_unique_id() -> str:
 
 def get_discharge_efficiency_number_entity_id() -> str:
     """Return the entity_id for the discharge efficiency number entity."""
-    return number.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_battery_discharge_efficiency"))
+    return f"number.{s(f'{DOMAIN}_battery_discharge_efficiency')}"
 
 
 # EV Target SoC Number
@@ -599,7 +584,7 @@ def get_ev_target_soc_number_unique_id() -> str:
 
 def get_ev_target_soc_number_entity_id() -> str:
     """Return the entity_id for the EV target SoC number entity."""
-    return number.ENTITY_ID_FORMAT.format(s(get_ev_target_soc_number_unique_id()))
+    return f"number.{s(get_ev_target_soc_number_unique_id())}"
 
 
 # EV 2 Target SoC Number
@@ -620,9 +605,7 @@ def get_ev_second_target_soc_number_unique_id() -> str:
 
 def get_ev_second_target_soc_number_entity_id() -> str:
     """Return the entity_id for the EV 2 target SoC number entity."""
-    return number.ENTITY_ID_FORMAT.format(
-        s(get_ev_second_target_soc_number_unique_id())
-    )
+    return f"number.{s(get_ev_second_target_soc_number_unique_id())}"
 
 
 # Applier Status Sensor
@@ -638,7 +621,7 @@ def get_applier_status_sensor_unique_id() -> str:
 
 def get_applier_status_sensor_entity_id() -> str:
     """Return the entity_id for the applier-status sensor."""
-    return sensor.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_applier_status_sensor"))
+    return f"sensor.{s(f'{DOMAIN}_applier_status_sensor')}"
 
 
 # Forecast Accuracy Sensor
@@ -654,7 +637,7 @@ def get_forecast_accuracy_sensor_unique_id() -> str:
 
 def get_forecast_accuracy_sensor_entity_id() -> str:
     """Return the entity_id for the forecast accuracy sensor."""
-    return sensor.ENTITY_ID_FORMAT.format(s(f"{DOMAIN}_forecast_accuracy_sensor"))
+    return f"sensor.{s(f'{DOMAIN}_forecast_accuracy_sensor')}"
 
 
 # ---------------------------------------------------------------------------
@@ -679,7 +662,7 @@ def get_read_only_switch_unique_id() -> str:
 
 def get_read_only_switch_entity_id() -> str:
     """Return the entity_id for the read-only switch."""
-    return switch.ENTITY_ID_FORMAT.format(s(get_read_only_switch_unique_id()))
+    return f"switch.{s(get_read_only_switch_unique_id())}"
 
 
 def get_extended_attributes_switch_key() -> str:
@@ -699,7 +682,7 @@ def get_extended_attributes_switch_unique_id() -> str:
 
 def get_extended_attributes_switch_entity_id() -> str:
     """Return the entity_id for the extended-attributes switch."""
-    return switch.ENTITY_ID_FORMAT.format(s(get_extended_attributes_switch_unique_id()))
+    return f"switch.{s(get_extended_attributes_switch_unique_id())}"
 
 
 def get_verbose_logging_switch_key() -> str:
@@ -719,7 +702,7 @@ def get_verbose_logging_switch_unique_id() -> str:
 
 def get_verbose_logging_switch_entity_id() -> str:
     """Return the entity_id for the verbose-logging switch."""
-    return switch.ENTITY_ID_FORMAT.format(s(get_verbose_logging_switch_unique_id()))
+    return f"switch.{s(get_verbose_logging_switch_unique_id())}"
 
 
 def get_batteries_schedule_1_switch_key() -> str:
@@ -739,9 +722,7 @@ def get_batteries_schedule_1_switch_unique_id() -> str:
 
 def get_batteries_schedule_1_switch_entity_id() -> str:
     """Return the entity_id for the batteries-schedule-1 switch."""
-    return switch.ENTITY_ID_FORMAT.format(
-        s(get_batteries_schedule_1_switch_unique_id())
-    )
+    return f"switch.{s(get_batteries_schedule_1_switch_unique_id())}"
 
 
 def get_batteries_schedule_2_switch_key() -> str:
@@ -761,9 +742,7 @@ def get_batteries_schedule_2_switch_unique_id() -> str:
 
 def get_batteries_schedule_2_switch_entity_id() -> str:
     """Return the entity_id for the batteries-schedule-2 switch."""
-    return switch.ENTITY_ID_FORMAT.format(
-        s(get_batteries_schedule_2_switch_unique_id())
-    )
+    return f"switch.{s(get_batteries_schedule_2_switch_unique_id())}"
 
 
 def get_batteries_schedule_3_switch_key() -> str:
@@ -783,9 +762,7 @@ def get_batteries_schedule_3_switch_unique_id() -> str:
 
 def get_batteries_schedule_3_switch_entity_id() -> str:
     """Return the entity_id for the batteries-schedule-3 switch."""
-    return switch.ENTITY_ID_FORMAT.format(
-        s(get_batteries_schedule_3_switch_unique_id())
-    )
+    return f"switch.{s(get_batteries_schedule_3_switch_unique_id())}"
 
 
 def get_ev_force_discharge_switch_key() -> str:
@@ -805,7 +782,7 @@ def get_ev_force_discharge_switch_unique_id() -> str:
 
 def get_ev_force_discharge_switch_entity_id() -> str:
     """Return the entity_id for the EV-force-discharge switch."""
-    return switch.ENTITY_ID_FORMAT.format(s(get_ev_force_discharge_switch_unique_id()))
+    return f"switch.{s(get_ev_force_discharge_switch_unique_id())}"
 
 
 # ---------------------------------------------------------------------------
@@ -830,7 +807,7 @@ def get_ev_smart_charging_switch_unique_id() -> str:
 
 def get_ev_smart_charging_switch_entity_id() -> str:
     """Return the entity_id for the primary EV smart charging switch."""
-    return switch.ENTITY_ID_FORMAT.format(s(get_ev_smart_charging_switch_unique_id()))
+    return f"switch.{s(get_ev_smart_charging_switch_unique_id())}"
 
 
 def get_ev_force_charge_now_switch_key() -> str:
@@ -850,7 +827,7 @@ def get_ev_force_charge_now_switch_unique_id() -> str:
 
 def get_ev_force_charge_now_switch_entity_id() -> str:
     """Return the entity_id for the primary EV force-charge-now switch."""
-    return switch.ENTITY_ID_FORMAT.format(s(get_ev_force_charge_now_switch_unique_id()))
+    return f"switch.{s(get_ev_force_charge_now_switch_unique_id())}"
 
 
 def get_ev_second_smart_charging_switch_key() -> str:
@@ -870,9 +847,7 @@ def get_ev_second_smart_charging_switch_unique_id() -> str:
 
 def get_ev_second_smart_charging_switch_entity_id() -> str:
     """Return the entity_id for the second EV smart charging switch."""
-    return switch.ENTITY_ID_FORMAT.format(
-        s(get_ev_second_smart_charging_switch_unique_id())
-    )
+    return f"switch.{s(get_ev_second_smart_charging_switch_unique_id())}"
 
 
 def get_ev_second_force_charge_now_switch_key() -> str:
@@ -892,9 +867,7 @@ def get_ev_second_force_charge_now_switch_unique_id() -> str:
 
 def get_ev_second_force_charge_now_switch_entity_id() -> str:
     """Return the entity_id for the second EV force-charge-now switch."""
-    return switch.ENTITY_ID_FORMAT.format(
-        s(get_ev_second_force_charge_now_switch_unique_id())
-    )
+    return f"switch.{s(get_ev_second_force_charge_now_switch_unique_id())}"
 
 
 # ---------------------------------------------------------------------------
@@ -919,7 +892,7 @@ def get_ev_deadline_time_unique_id() -> str:
 
 def get_ev_deadline_time_entity_id() -> str:
     """Return the Home Assistant entity ID for the EV charge deadline time entity."""
-    return time.ENTITY_ID_FORMAT.format(s(get_ev_deadline_time_unique_id()))
+    return f"time.{s(get_ev_deadline_time_unique_id())}"
 
 
 def get_ev_second_deadline_time_key() -> str:
@@ -939,7 +912,7 @@ def get_ev_second_deadline_time_unique_id() -> str:
 
 def get_ev_second_deadline_time_entity_id() -> str:
     """Return the Home Assistant entity ID for the second EV charge deadline time entity."""
-    return time.ENTITY_ID_FORMAT.format(s(get_ev_second_deadline_time_unique_id()))
+    return f"time.{s(get_ev_second_deadline_time_unique_id())}"
 
 
 # ---------------------------------------------------------------------------
@@ -964,7 +937,7 @@ def get_schedule_1_start_time_unique_id() -> str:
 
 def get_schedule_1_start_time_entity_id() -> str:
     """Return the entity_id for the schedule-1-start time entity."""
-    return time.ENTITY_ID_FORMAT.format(s(get_schedule_1_start_time_unique_id()))
+    return f"time.{s(get_schedule_1_start_time_unique_id())}"
 
 
 def get_schedule_1_end_time_key() -> str:
@@ -984,7 +957,7 @@ def get_schedule_1_end_time_unique_id() -> str:
 
 def get_schedule_1_end_time_entity_id() -> str:
     """Return the entity_id for the schedule-1-end time entity."""
-    return time.ENTITY_ID_FORMAT.format(s(get_schedule_1_end_time_unique_id()))
+    return f"time.{s(get_schedule_1_end_time_unique_id())}"
 
 
 def get_schedule_2_start_time_key() -> str:
@@ -1004,7 +977,7 @@ def get_schedule_2_start_time_unique_id() -> str:
 
 def get_schedule_2_start_time_entity_id() -> str:
     """Return the entity_id for the schedule-2-start time entity."""
-    return time.ENTITY_ID_FORMAT.format(s(get_schedule_2_start_time_unique_id()))
+    return f"time.{s(get_schedule_2_start_time_unique_id())}"
 
 
 def get_schedule_2_end_time_key() -> str:
@@ -1024,7 +997,7 @@ def get_schedule_2_end_time_unique_id() -> str:
 
 def get_schedule_2_end_time_entity_id() -> str:
     """Return the entity_id for the schedule-2-end time entity."""
-    return time.ENTITY_ID_FORMAT.format(s(get_schedule_2_end_time_unique_id()))
+    return f"time.{s(get_schedule_2_end_time_unique_id())}"
 
 
 def get_schedule_3_start_time_key() -> str:
@@ -1044,7 +1017,7 @@ def get_schedule_3_start_time_unique_id() -> str:
 
 def get_schedule_3_start_time_entity_id() -> str:
     """Return the entity_id for the schedule-3-start time entity."""
-    return time.ENTITY_ID_FORMAT.format(s(get_schedule_3_start_time_unique_id()))
+    return f"time.{s(get_schedule_3_start_time_unique_id())}"
 
 
 def get_schedule_3_end_time_key() -> str:
@@ -1064,4 +1037,4 @@ def get_schedule_3_end_time_unique_id() -> str:
 
 def get_schedule_3_end_time_entity_id() -> str:
     """Return the entity_id for the schedule-3-end time entity."""
-    return time.ENTITY_ID_FORMAT.format(s(get_schedule_3_end_time_unique_id()))
+    return f"time.{s(get_schedule_3_end_time_unique_id())}"
