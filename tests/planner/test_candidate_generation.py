@@ -314,7 +314,7 @@ class TestApplySocPlanThreshold:
             usable_capacity=9.0,
             capacity_loss_pct=30.0,
         )
-        assert result == 0.0
+        assert result == pytest.approx(0.0)
 
     def test_soc_plan_skips_grid_charge_when_spread_below_threshold(self):
         """When the price spread is below the proper threshold, _apply_soc_plan

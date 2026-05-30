@@ -18,6 +18,7 @@ from typing import Any
 
 import voluptuous as vol
 
+from homeassistant.const import STATE_UNKNOWN
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
 
@@ -118,9 +119,9 @@ async def async_handle_force_recalculation(
         raise HomeAssistantError(
             "HSEM coordinator not found — integration may not be configured."
         )
-    _LOGGER.info("HSEM service: force_recalculation called — triggering update cycle.")
+    _LOGGER.info("HSEM service: force_recalculation called — triggering update cycle")
     await coordinator._async_handle_update(None)  # noqa: SLF001
-    _LOGGER.info("HSEM service: force_recalculation completed.")
+    _LOGGER.info("HSEM service: force_recalculation completed")
 
 
 async def async_handle_set_temporary_override(
@@ -155,7 +156,7 @@ async def async_handle_set_temporary_override(
         )
 
     _LOGGER.info(
-        "HSEM service: set_temporary_override called — setting '%s' to '%s'.",
+        "HSEM service: set_temporary_override called — setting '%s' to '%s'",
         entity_id,
         working_mode,
     )
@@ -179,7 +180,7 @@ async def async_handle_set_temporary_override(
                 minutes=duration_minutes
             )
             _LOGGER.info(
-                "HSEM service: set_temporary_override — mode='%s' will expire at %s.",
+                "HSEM service: set_temporary_override — mode='%s' will expire at %s",
                 working_mode,
                 coordinator._override_expiry.isoformat(),
             )
@@ -189,7 +190,7 @@ async def async_handle_set_temporary_override(
         await coordinator._async_handle_update(None)  # noqa: SLF001
 
     _LOGGER.info(
-        "HSEM service: set_temporary_override completed — mode='%s'.", working_mode
+        "HSEM service: set_temporary_override completed — mode='%s'", working_mode
     )
 
 
@@ -215,7 +216,7 @@ async def async_handle_clear_override(
         )
 
     _LOGGER.info(
-        "HSEM service: clear_override called — resetting '%s' to 'auto'.",
+        "HSEM service: clear_override called — resetting '%s' to 'auto'",
         entity_id,
     )
 
@@ -232,7 +233,7 @@ async def async_handle_clear_override(
         coordinator._override_expiry = None  # noqa: SLF001
         await coordinator._async_handle_update(None)  # noqa: SLF001
 
-    _LOGGER.info("HSEM service: clear_override completed.")
+    _LOGGER.info("HSEM service: clear_override completed")
 
 
 async def async_handle_export_diagnostics(
@@ -278,7 +279,7 @@ async def async_handle_export_diagnostics(
 
         integration_version = pkg_version("hsem")
     except Exception:  # noqa: BLE001
-        integration_version = "unknown"
+        integration_version = STATE_UNKNOWN
 
     dump = build_diagnostics_dump(
         planner_input,
@@ -287,7 +288,7 @@ async def async_handle_export_diagnostics(
         integration_version=str(integration_version),
     )
 
-    _LOGGER.info("HSEM service: export_diagnostics completed.")
+    _LOGGER.info("HSEM service: export_diagnostics completed")
     return dump
 
 
@@ -296,16 +297,6 @@ async def async_handle_export_diagnostics(
 # ---------------------------------------------------------------------------
 
 SERVICE_HANDLER_MAP: dict[str, tuple[vol.Schema, Any, SupportsResponse]] = {
-    SERVICE_FORCE_RECALCULATION: (
-        SCHEMA_FORCE_RECALCULATION,
-        async_handle_force_recalculation,
-        SupportsResponse.NONE,
-    ),
-    SERVICE_SET_TEMPORARY_OVERRIDE: (
-        SCHEMA_SET_TEMPORARY_OVERRIDE,
-        async_handle_set_temporary_override,
-        SupportsResponse.NONE,
-    ),
     SERVICE_CLEAR_OVERRIDE: (
         SCHEMA_CLEAR_OVERRIDE,
         async_handle_clear_override,
@@ -315,6 +306,16 @@ SERVICE_HANDLER_MAP: dict[str, tuple[vol.Schema, Any, SupportsResponse]] = {
         SCHEMA_EXPORT_DIAGNOSTICS,
         async_handle_export_diagnostics,
         SupportsResponse.ONLY,
+    ),
+    SERVICE_FORCE_RECALCULATION: (
+        SCHEMA_FORCE_RECALCULATION,
+        async_handle_force_recalculation,
+        SupportsResponse.NONE,
+    ),
+    SERVICE_SET_TEMPORARY_OVERRIDE: (
+        SCHEMA_SET_TEMPORARY_OVERRIDE,
+        async_handle_set_temporary_override,
+        SupportsResponse.NONE,
     ),
 }
 

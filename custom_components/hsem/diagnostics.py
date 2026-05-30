@@ -23,6 +23,7 @@ issues.
 from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
 
 from custom_components.hsem.const import DOMAIN
@@ -86,7 +87,7 @@ async def async_get_config_entry_diagnostics(
         integration_version = pkg_version("hsem")
     except Exception:  # noqa: BLE001
         integration_version = (
-            str(entry.version) if hasattr(entry, "version") else "unknown"
+            str(entry.version) if hasattr(entry, "version") else STATE_UNKNOWN
         )
 
     return build_diagnostics_dump(

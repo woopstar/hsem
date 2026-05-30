@@ -130,7 +130,7 @@ _V2_NEW_KEY_DEFAULTS: dict[str, Any] = {
 }
 
 
-class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: ignore[reportGeneralTypeIssues]
+class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: ignore[reportGeneralTypeIssues]  # HA ConfigFlow class hierarchy triggers false-positive on MRO
     """Config flow for HSEM."""
 
     VERSION = 2

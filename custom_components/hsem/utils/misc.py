@@ -360,11 +360,13 @@ async def async_resolve_entity_id_from_unique_id(
         # Store in cache
         _entity_id_from_unique_id_cache[cache_key] = entry
 
-        _LOGGER.debug(f"Resolved entity_id for unique_id {unique_entity_id}: {entry}")
+        _LOGGER.debug(
+            "Resolved entity_id for unique_id %s: %s", unique_entity_id, entry
+        )
         return cast(str, entry)
     else:
         _LOGGER.debug(
-            f"Entity with unique_id {unique_entity_id} not found in registry."
+            "Entity with unique_id %s not found in registry", unique_entity_id
         )
         return None
 
@@ -424,7 +426,7 @@ async def async_set_select_option(self: Any, entity_id: str, option: str) -> Non
     entity = self.hass.states.get(entity_id)
 
     if entity is None:
-        _LOGGER.error(f"Entity with id {entity_id} not found.")
+        _LOGGER.error("Entity with id %s not found", entity_id)
         return  # Exit the method if entity_id does not exist
 
     try:

@@ -2943,8 +2943,8 @@ class TestEvChargerCalculatedPower:
         )
         # All slots must be pure surplus (no grid import).
         for s in plan.charging_slots:
-            assert s.import_needed_kwh == 0.0
-            assert s.estimated_cost == 0.0
+            assert s.import_needed_kwh == pytest.approx(0.0)
+            assert s.estimated_cost == pytest.approx(0.0)
 
     def test_pass_3_enters_with_mismatched_prediction_length(self):
         """Pass 3 enters when len(predicted_battery) != len(candidates).

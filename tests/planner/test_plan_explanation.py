@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import pytest
 
+from homeassistant.const import STATE_UNKNOWN
+
 from custom_components.hsem.models.planner_outputs import (
     PlanExplanation,
     PlannerOutput,
@@ -62,7 +64,7 @@ class TestPlanExplanationDataclass:
     def test_default_construction(self):
         """PlanExplanation can be created with no arguments."""
         exp = PlanExplanation()
-        assert exp.selected_strategy == "unknown"
+        assert exp.selected_strategy == STATE_UNKNOWN
         assert exp.summary == ""
         assert exp.constraints == []
         assert exp.rejected_plans == []

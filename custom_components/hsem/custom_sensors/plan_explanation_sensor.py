@@ -57,7 +57,7 @@ from custom_components.hsem.utils.sensornames import (
     get_plan_explanation_sensor_unique_id,
 )
 
-_UNKNOWN_STRATEGY = "unknown"
+_UNKNOWN_STRATEGY = STATE_UNKNOWN
 
 
 def _determine_forecast_mode(
