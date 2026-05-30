@@ -380,6 +380,30 @@ class TestEntitySetup:
         assert degraded.unique_id
         assert working.unique_id != degraded.unique_id
 
+    def test_working_mode_sensor_device_info(self) -> None:
+        """WorkingModeSensor.device_info must include identifiers and name."""
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+
+        sensor = HSEMWorkingModeSensor(config_entry, coord)
+        info = sensor.device_info
+
+        assert isinstance(info, dict)
+        assert "identifiers" in info
+        assert "name" in info
+
+    def test_degraded_mode_sensor_device_info(self) -> None:
+        """DegradedModeSensor.device_info must include identifiers and name."""
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+
+        sensor = HSEMDegradedModeSensor(config_entry, coord)
+        info = sensor.device_info
+
+        assert isinstance(info, dict)
+        assert "identifiers" in info
+        assert "name" in info
+
     # ------------------------------------------------------------------
     # HSEMReadOnlySensor
     # ------------------------------------------------------------------
@@ -1673,6 +1697,32 @@ class TestRemainingDiagnosticSensors:
         ]
         uids = [s.unique_id for s in sensors]
         assert len(uids) == len(set(uids)), f"Duplicate unique_ids: {uids}"
+
+    def test_all_12_diagnostic_sensors_have_device_info(self) -> None:
+        """All 12 coordinator-driven diagnostic sensors must expose valid device_info."""
+        config_entry = make_fake_config_entry()
+        coord = make_bare_coordinator(config_entry=config_entry)
+        sensors = [
+            HSEMDegradedModeSensor(config_entry, coord),
+            HSEMReadOnlySensor(config_entry, coord),
+            HSEMNextUpdateSensor(config_entry, coord),
+            HSEMLastUpdatedSensor(config_entry, coord),
+            HSEMUpdateIntervalSensor(config_entry, coord),
+            HSEMRecommendationIntervalSensor(config_entry, coord),
+            HSEMMissingEntitiesSensor(config_entry, coord),
+            HSEMHardwareWritesSensor(config_entry, coord),
+            HSEMNetConsumptionSensor(config_entry, coord),
+            HSEMBatterySoCSensor(config_entry, coord),
+            HSEMForceModeSensor(config_entry, coord),
+            HSEMEVChargingSensor(config_entry, coord),
+        ]
+        for s in sensors:
+            info = s.device_info
+            assert isinstance(info, dict), f"{type(s).__name__}: device_info not a dict"
+            assert "identifiers" in info, (
+                f"{type(s).__name__}: device_info missing identifiers"
+            )
+            assert "name" in info, f"{type(s).__name__}: device_info missing name"
 
 
 # ---------------------------------------------------------------------------
