@@ -176,6 +176,21 @@ class TestHSEMTimeEntityConstruction:
         entity = self._make_entity()
         assert entity.icon == "mdi:clock"
 
+    def test_device_info_has_identifiers_and_name(self) -> None:
+        """device_info must include identifiers and name."""
+        entity = self._make_entity()
+        info = entity.device_info
+        assert isinstance(info, dict)
+        assert "identifiers" in info
+        assert "name" in info
+
+    def test_device_info_identifier_contains_entry_id(self) -> None:
+        """device_info identifiers must include the config entry id."""
+        entity = self._make_entity()
+        identifiers = entity.device_info["identifiers"]
+        entry_ids = {t[1] for t in identifiers}
+        assert entity._config_entry.entry_id in entry_ids
+
 
 # ---------------------------------------------------------------------------
 # HSEMTimeEntity — async_set_value round-trip
