@@ -73,7 +73,9 @@ class HSEMForecastAccuracySensor(
         """
         HSEMCoordinatorEntity.__init__(self, coordinator)
         HSEMEntity.__init__(self, config_entry)
-        self._attr_unique_id = get_forecast_accuracy_sensor_unique_id()
+        self._attr_unique_id = get_forecast_accuracy_sensor_unique_id(
+            config_entry.entry_id
+        )
         self._attr_name = get_forecast_accuracy_sensor_name()
         self.entity_id = get_forecast_accuracy_sensor_entity_id()
 

@@ -1,7 +1,7 @@
 """Time entity description and ID map for the HSEM integration.
 
-Defines :class:`HSEMTimeEntityDescription` and the module-level
-``_TIME_ID_MAP`` dictionary that maps config-entry keys to
+Defines :class:`HSEMTimeEntityDescription` and the
+``build_time_id_map()`` function that maps config-entry keys to
 (unique_id, entity_id) tuples.
 """
 
@@ -36,41 +36,50 @@ from custom_components.hsem.utils.sensornames import (
     get_schedule_3_start_time_unique_id,
 )
 
-# Map from config-entry key → (unique_id, entity_id)
-_TIME_ID_MAP: dict[str, tuple[str, str]] = {
-    get_schedule_1_start_time_key(): (
-        get_schedule_1_start_time_unique_id(),
-        get_schedule_1_start_time_entity_id(),
-    ),
-    get_schedule_1_end_time_key(): (
-        get_schedule_1_end_time_unique_id(),
-        get_schedule_1_end_time_entity_id(),
-    ),
-    get_schedule_2_start_time_key(): (
-        get_schedule_2_start_time_unique_id(),
-        get_schedule_2_start_time_entity_id(),
-    ),
-    get_schedule_2_end_time_key(): (
-        get_schedule_2_end_time_unique_id(),
-        get_schedule_2_end_time_entity_id(),
-    ),
-    get_schedule_3_start_time_key(): (
-        get_schedule_3_start_time_unique_id(),
-        get_schedule_3_start_time_entity_id(),
-    ),
-    get_schedule_3_end_time_key(): (
-        get_schedule_3_end_time_unique_id(),
-        get_schedule_3_end_time_entity_id(),
-    ),
-    get_ev_deadline_time_key(): (
-        get_ev_deadline_time_unique_id(),
-        get_ev_deadline_time_entity_id(),
-    ),
-    get_ev_second_deadline_time_key(): (
-        get_ev_second_deadline_time_unique_id(),
-        get_ev_second_deadline_time_entity_id(),
-    ),
-}
+
+def build_time_id_map(entry_id: str) -> dict[str, tuple[str, str]]:
+    """Build the time ID map for a given config entry.
+
+    Args:
+        entry_id: The config entry ID for uniqueness across entries.
+
+    Returns:
+        A dict mapping config-entry keys to (unique_id, entity_id) tuples.
+    """
+    return {
+        get_schedule_1_start_time_key(): (
+            get_schedule_1_start_time_unique_id(entry_id),
+            get_schedule_1_start_time_entity_id(entry_id),
+        ),
+        get_schedule_1_end_time_key(): (
+            get_schedule_1_end_time_unique_id(entry_id),
+            get_schedule_1_end_time_entity_id(entry_id),
+        ),
+        get_schedule_2_start_time_key(): (
+            get_schedule_2_start_time_unique_id(entry_id),
+            get_schedule_2_start_time_entity_id(entry_id),
+        ),
+        get_schedule_2_end_time_key(): (
+            get_schedule_2_end_time_unique_id(entry_id),
+            get_schedule_2_end_time_entity_id(entry_id),
+        ),
+        get_schedule_3_start_time_key(): (
+            get_schedule_3_start_time_unique_id(entry_id),
+            get_schedule_3_start_time_entity_id(entry_id),
+        ),
+        get_schedule_3_end_time_key(): (
+            get_schedule_3_end_time_unique_id(entry_id),
+            get_schedule_3_end_time_entity_id(entry_id),
+        ),
+        get_ev_deadline_time_key(): (
+            get_ev_deadline_time_unique_id(entry_id),
+            get_ev_deadline_time_entity_id(entry_id),
+        ),
+        get_ev_second_deadline_time_key(): (
+            get_ev_second_deadline_time_unique_id(entry_id),
+            get_ev_second_deadline_time_entity_id(entry_id),
+        ),
+    }
 
 
 @dataclass(frozen=True)

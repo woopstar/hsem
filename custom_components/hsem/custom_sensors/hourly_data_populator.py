@@ -156,6 +156,7 @@ async def async_populate_avg_house_consumption(
     recommendations: list[HourlyRecommendation],
     cfg: SensorConfig,
     entity_id_cache: dict[str, str],
+    entry_id: str,
 ) -> bool:
     """Populate per-slot weighted average house consumption from the 1/3/7/14-day sensors.
 
@@ -193,10 +194,10 @@ async def async_populate_avg_house_consumption(
     for h in range(24):
         hour_end = (h + 1) % 24
 
-        uid_1d = get_energy_average_sensor_unique_id(h, hour_end, 1)
-        uid_3d = get_energy_average_sensor_unique_id(h, hour_end, 3)
-        uid_7d = get_energy_average_sensor_unique_id(h, hour_end, 7)
-        uid_14d = get_energy_average_sensor_unique_id(h, hour_end, 14)
+        uid_1d = get_energy_average_sensor_unique_id(entry_id, h, hour_end, 1)
+        uid_3d = get_energy_average_sensor_unique_id(entry_id, h, hour_end, 3)
+        uid_7d = get_energy_average_sensor_unique_id(entry_id, h, hour_end, 7)
+        uid_14d = get_energy_average_sensor_unique_id(entry_id, h, hour_end, 14)
 
         # Resolve entity IDs (cached)
         eid_1d = await _resolve_cached(sensor, entity_id_cache, uid_1d)
@@ -566,6 +567,7 @@ def populate_avg_house_consumption_from_snapshot(
     snapshot: StateSnapshot,
     cfg: SensorConfig,
     energy_average_entity_id_cache: dict[str, str],
+    entry_id: str,
 ) -> bool:
     """Populate per-slot house consumption averages from a pre-collected snapshot.
 
@@ -610,10 +612,10 @@ def populate_avg_house_consumption_from_snapshot(
     for h in range(24):
         hour_end = (h + 1) % 24
 
-        uid_1d = get_energy_average_sensor_unique_id(h, hour_end, 1)
-        uid_3d = get_energy_average_sensor_unique_id(h, hour_end, 3)
-        uid_7d = get_energy_average_sensor_unique_id(h, hour_end, 7)
-        uid_14d = get_energy_average_sensor_unique_id(h, hour_end, 14)
+        uid_1d = get_energy_average_sensor_unique_id(entry_id, h, hour_end, 1)
+        uid_3d = get_energy_average_sensor_unique_id(entry_id, h, hour_end, 3)
+        uid_7d = get_energy_average_sensor_unique_id(entry_id, h, hour_end, 7)
+        uid_14d = get_energy_average_sensor_unique_id(entry_id, h, hour_end, 14)
 
         log_planner(
             "debug",

@@ -14,8 +14,8 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 
 from custom_components.hsem.custom_switches.description import (
-    _SWITCH_ID_MAP,
     HSEMSwitchEntityDescription,
+    build_switch_id_map,
 )
 from custom_components.hsem.entity import HSEMEntity
 from custom_components.hsem.utils.misc import get_config_value
@@ -62,7 +62,8 @@ class HSEMSwitch(SwitchEntity, HSEMEntity):
         if isinstance(raw_name, str):
             self._attr_name = str(raw_name)
         # Resolve unique_id and entity_id from the centralized sensornames map.
-        unique_id, entity_id = _SWITCH_ID_MAP[description.key]
+        switch_id_map = build_switch_id_map(config_entry.entry_id)
+        unique_id, entity_id = switch_id_map[description.key]
         self._attr_unique_id = unique_id
         self.entity_id = entity_id
         self._attr_is_on = bool(get_config_value(self._config_entry, description.key))

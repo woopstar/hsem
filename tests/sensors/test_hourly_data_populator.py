@@ -162,7 +162,9 @@ class TestSnapshotPopulation:
         for h in range(24):
             hour_end = (h + 1) % 24
             for days, val in [(1, 1.0), (3, 1.0), (7, 1.0), (14, 1.0)]:
-                uid = get_energy_average_sensor_unique_id(h, hour_end, days)
+                uid = get_energy_average_sensor_unique_id(
+                    "test_entry_id", h, hour_end, days
+                )
                 eid = f"sensor.energy_avg_{h:02d}_{days}d"
                 eid_cache[uid] = eid
                 energy_average_values[eid] = float(val)
@@ -203,7 +205,7 @@ class TestSnapshotPopulation:
         ]
 
         result = populate_avg_house_consumption_from_snapshot(
-            recs, snapshot, cfg, eid_cache
+            recs, snapshot, cfg, eid_cache, entry_id="test_entry_id"
         )
 
         assert result is True
@@ -236,7 +238,9 @@ class TestSnapshotPopulation:
             )
             for h in range(24)
         ]
-        populate_avg_house_consumption_from_snapshot(recs2, snapshot, cfg, eid_cache)
+        populate_avg_house_consumption_from_snapshot(
+            recs2, snapshot, cfg, eid_cache, entry_id="test_entry_id"
+        )
         for r1, r2 in zip(recs, recs2, strict=False):
             assert r1.avg_house_consumption_kwh == pytest.approx(
                 r2.avg_house_consumption_kwh
@@ -294,7 +298,9 @@ class TestSnapshotPopulation:
                 (7, base_val * 1.10),
                 (14, base_val * 1.15),
             ]:
-                uid = get_energy_average_sensor_unique_id(h, hour_end, days)
+                uid = get_energy_average_sensor_unique_id(
+                    "test_entry_id", h, hour_end, days
+                )
                 eid = f"sensor.energy_avg_{h:02d}_{days}d"
                 eid_cache[uid] = eid
                 energy_average_values[eid] = float(val)
@@ -365,14 +371,18 @@ class TestSnapshotPopulation:
         ]
 
         tz = UTC
-        populate_avg_house_consumption_from_snapshot(recs1, snapshot, cfg, eid_cache)
+        populate_avg_house_consumption_from_snapshot(
+            recs1, snapshot, cfg, eid_cache, entry_id="test_entry_id"
+        )
         populate_price_and_solcast_from_snapshot(recs1, snapshot, cfg, tz)
 
         # Second population with identical data
         recs2 = [
             _make_rec(base + td(hours=h), base + td(hours=h + 1)) for h in range(24)
         ]
-        populate_avg_house_consumption_from_snapshot(recs2, snapshot, cfg, eid_cache)
+        populate_avg_house_consumption_from_snapshot(
+            recs2, snapshot, cfg, eid_cache, entry_id="test_entry_id"
+        )
         populate_price_and_solcast_from_snapshot(recs2, snapshot, cfg, tz)
 
         # Assert determinism

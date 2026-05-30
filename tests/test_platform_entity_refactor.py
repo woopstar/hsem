@@ -202,16 +202,19 @@ class TestSwitchUniqueId:
         )
 
         entity = _make_switch(key=get_read_only_switch_key())
-        assert entity.unique_id == get_read_only_switch_unique_id()
+        assert entity.unique_id == get_read_only_switch_unique_id("test_entry_id")
 
     def test_unique_id_all_switches(self) -> None:
         """Every switch key produces the unique_id from the sensornames getter."""
-        from custom_components.hsem.custom_switches.description import _SWITCH_ID_MAP
+        from custom_components.hsem.custom_switches.description import (
+            build_switch_id_map,
+        )
         from custom_components.hsem.switch import SWITCH_DESCRIPTIONS
 
+        switch_id_map = build_switch_id_map("test_entry_id")
         for desc in SWITCH_DESCRIPTIONS:
             entity = _make_switch(key=desc.key, name=str(desc.name))
-            expected_uid, _ = _SWITCH_ID_MAP[desc.key]
+            expected_uid, _ = switch_id_map[desc.key]
             assert entity.unique_id == expected_uid
 
     def test_unique_id_is_attr_not_property(self) -> None:

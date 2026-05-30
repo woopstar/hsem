@@ -332,6 +332,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 self._force_working_mode_entity,
                 self._tracked_entities,
                 self._avg_house_consumption_entity_id_cache,
+                entry_id=self._config_entry.entry_id,
             )
             self._listener_unsubs.extend(new_unsubs)
             self._live = self._snapshot.live
@@ -395,6 +396,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 self._snapshot,
                 cfg,
                 self._avg_house_consumption_entity_id_cache,
+                entry_id=self._config_entry.entry_id,
             )
             await async_logger(
                 self,

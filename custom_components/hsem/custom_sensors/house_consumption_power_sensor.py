@@ -116,7 +116,7 @@ class HSEMHouseConsumptionPowerSensor(RestoreEntity, SensorEntity, HSEMEntity):
         self._hour_start = hour_start
         self._hour_end = hour_end
         self._attr_unique_id = get_house_consumption_power_sensor_unique_id(
-            hour_start, hour_end
+            config_entry.entry_id, hour_start, hour_end
         )
         self.entity_id = get_house_consumption_power_sensor_entity_id(
             hour_start, hour_end
@@ -399,7 +399,7 @@ class HSEMHouseConsumptionPowerSensor(RestoreEntity, SensorEntity, HSEMEntity):
         ``IntegrationSensor`` to restore its accumulated state.
         """
         integral_sensor_unique_id = get_integral_sensor_unique_id(
-            self._hour_start, self._hour_end
+            self._config_entry.entry_id, self._hour_start, self._hour_end
         )
 
         # Per-runtime guard — skip if already created in this HA session.
@@ -451,7 +451,7 @@ class HSEMHouseConsumptionPowerSensor(RestoreEntity, SensorEntity, HSEMEntity):
         needed.
         """
         utility_meter_unique_id = get_utility_meter_sensor_unique_id(
-            self._hour_start, self._hour_end
+            self._config_entry.entry_id, self._hour_start, self._hour_end
         )
 
         # Per-runtime guard — skip if already created in this HA session.
@@ -517,7 +517,7 @@ class HSEMHouseConsumptionPowerSensor(RestoreEntity, SensorEntity, HSEMEntity):
         entity_id is derived deterministically — no registry lookup needed.
         """
         avg_energy_sensor_unique_id = get_energy_average_sensor_unique_id(
-            self._hour_start, self._hour_end, avg
+            self._config_entry.entry_id, self._hour_start, self._hour_end, avg
         )
 
         # Per-runtime guard — skip if already created in this HA session.

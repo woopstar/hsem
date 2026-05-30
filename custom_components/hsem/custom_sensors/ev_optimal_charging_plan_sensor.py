@@ -82,7 +82,9 @@ class HSEMEVOptimalChargingPlanSensor(
         HSEMEntity.__init__(self, config_entry)
 
         self._config_entry = config_entry
-        self._attr_unique_id = get_ev_optimal_charging_plan_sensor_unique_id()
+        self._attr_unique_id = get_ev_optimal_charging_plan_sensor_unique_id(
+            config_entry.entry_id
+        )
         self.entity_id = get_ev_optimal_charging_plan_sensor_entity_id()
         self._name = get_ev_optimal_charging_plan_sensor_name()
 

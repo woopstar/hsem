@@ -80,7 +80,7 @@ class HSEMBatterySoCSensor(
 
         self._config_entry = config_entry
 
-        self._attr_unique_id = get_battery_soc_sensor_unique_id()
+        self._attr_unique_id = get_battery_soc_sensor_unique_id(config_entry.entry_id)
         self.entity_id = get_battery_soc_sensor_entity_id()
         self._name = get_battery_soc_sensor_name()
 
