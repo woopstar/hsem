@@ -15,8 +15,8 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 
 from custom_components.hsem.custom_times.description import (
-    _TIME_ID_MAP,
     HSEMTimeEntityDescription,
+    build_time_id_map,
 )
 from custom_components.hsem.entity import HSEMEntity
 
@@ -63,7 +63,8 @@ class HSEMTimeEntity(TimeEntity, HSEMEntity):
         if isinstance(raw_name, str):
             self._attr_name = str(raw_name)
         # Resolve unique_id and entity_id from the centralized sensornames map.
-        unique_id, entity_id = _TIME_ID_MAP[description.key]
+        time_id_map = build_time_id_map(config_entry.entry_id)
+        unique_id, entity_id = time_id_map[description.key]
         self._attr_unique_id = unique_id
         self.entity_id = entity_id
         self._attr_native_value: time | None = self._parse_time(

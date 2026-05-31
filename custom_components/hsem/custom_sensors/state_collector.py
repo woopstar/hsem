@@ -62,6 +62,7 @@ async def async_collect_live_state(
     cfg: SensorConfig,
     force_working_mode_cache: str | None,
     tracked_entities: set[str],
+    entry_id: str = "",
 ) -> tuple[LiveState, str | None, list]:
     """Read all HA entity states and return a populated :class:`LiveState`.
 
@@ -378,14 +379,19 @@ async def async_collect_live_state(
 
     # --- EV planned load live state — primary EV ---
     if cfg.ev_planned_load_enabled:
-        _read_ev_planned_load_state(sensor, state, cfg, _read, is_second=False)
+        _read_ev_planned_load_state(
+            sensor, state, cfg, _read, is_second=False, entry_id=entry_id
+        )
 
-    # --- EV planned load live state — second EV ---
     if cfg.ev_second_planned_load_enabled:
-        _read_ev_planned_load_state(sensor, state, cfg, _read, is_second=True)
+        _read_ev_planned_load_state(
+            sensor, state, cfg, _read, is_second=True, entry_id=entry_id
+        )
 
     # --- Register state-change listeners for reactive entities ---
-    new_unsubs = await _register_listeners(sensor, cfg, state, tracked_entities)
+    new_unsubs = await _register_listeners(
+        sensor, cfg, state, tracked_entities, entry_id=entry_id
+    )
 
     return state, fwm_entity, new_unsubs
 
@@ -453,6 +459,7 @@ def _read_ev_planned_load_state(
     cfg: SensorConfig,
     _read: Callable[..., Any],
     is_second: bool,
+    entry_id: str,
 ) -> None:
     """Read EV planned load live state into ``state`` for primary or second EV.
 
@@ -582,6 +589,7 @@ async def _register_listeners(
     cfg: SensorConfig,
     state: LiveState,
     tracked_entities: set[str],
+    entry_id: str,
 ) -> list:
     """Register ``async_track_state_change_event`` for reactive entities.
 
@@ -596,14 +604,14 @@ async def _register_listeners(
     candidates = [
         cfg.ev.status_entity,
         cfg.ev.connected_entity,
-        get_ev_target_soc_number_entity_id(),
-        get_ev_smart_charging_switch_entity_id(),
-        get_ev_deadline_time_entity_id(),
+        get_ev_target_soc_number_entity_id(entry_id),
+        get_ev_smart_charging_switch_entity_id(entry_id),
+        get_ev_deadline_time_entity_id(entry_id),
         cfg.ev_second.status_entity,
         cfg.ev_second.connected_entity,
-        get_ev_second_target_soc_number_entity_id(),
-        get_ev_second_smart_charging_switch_entity_id(),
-        get_ev_second_deadline_time_entity_id(),
+        get_ev_second_target_soc_number_entity_id(entry_id),
+        get_ev_second_smart_charging_switch_entity_id(entry_id),
+        get_ev_second_deadline_time_entity_id(entry_id),
         state.force_working_mode,
     ]
 
@@ -633,6 +641,7 @@ async def async_collect_all_states(
     force_working_mode_cache: str | None,
     tracked_entities: set[str],
     energy_average_entity_id_cache: dict[str, str] | None = None,
+    entry_id: str = "",
 ) -> tuple[StateSnapshot, str | None, list]:
     """Collect **all** HA states once into an immutable :class:`StateSnapshot`.
 
@@ -657,7 +666,7 @@ async def async_collect_all_states(
     """
     # 1. Collect live entity states (battery, power, EV, etc.)
     live, fwm_entity, new_unsubs = await async_collect_live_state(
-        sensor, cfg, force_working_mode_cache, tracked_entities
+        sensor, cfg, force_working_mode_cache, tracked_entities, entry_id=entry_id
     )
 
     # 2. Pre-read energy average sensor values (24 hours × 4 periods)
@@ -673,7 +682,7 @@ async def async_collect_all_states(
     for h in range(24):
         hour_end = (h + 1) % 24
         for days, _uid_key in [(1, "1d"), (3, "3d"), (7, "7d"), (14, "14d")]:
-            uid = get_energy_average_sensor_unique_id(h, hour_end, days)
+            uid = get_energy_average_sensor_unique_id(entry_id, h, hour_end, days)
 
             eid = await _resolve_cached(sensor, avg_cache, uid)
 

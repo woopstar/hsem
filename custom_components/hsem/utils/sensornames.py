@@ -25,10 +25,11 @@ def get_integral_sensor_name(hour_start: int, hour_end: int) -> str:
     return f"House Consumption {hour_start:02d}-{hour_end:02d} Energy (Integral)"
 
 
-def get_integral_sensor_unique_id(hour_start: int, hour_end: int) -> str:
+def get_integral_sensor_unique_id(entry_id: str, hour_start: int, hour_end: int) -> str:
     """Generate a unique ID for the integral sensor.
 
     Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
         hour_start (int): Start hour of the time range.
         hour_end (int): End hour of the time range.
 
@@ -36,7 +37,7 @@ def get_integral_sensor_unique_id(hour_start: int, hour_end: int) -> str:
         str: Unique ID of the integral sensor.
 
     """
-    return f"{DOMAIN}_house_consumption_energy_integral_{hour_start:02d}_{hour_end:02d}"
+    return f"{DOMAIN}_{entry_id}_house_consumption_energy_integral_{hour_start:02d}_{hour_end:02d}"
 
 
 def get_integral_sensor_entity_id(hour_start: int, hour_end: int) -> str:
@@ -70,11 +71,12 @@ def get_energy_average_sensor_name(hour_start: int, hour_end: int, avg: int) -> 
 
 
 def get_energy_average_sensor_unique_id(
-    hour_start: int, hour_end: int, avg: int
+    entry_id: str, hour_start: int, hour_end: int, avg: int
 ) -> str:
     """Generate a unique ID for the energy average sensor.
 
     Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
         hour_start (int): Start hour of the time range.
         hour_end (int): End hour of the time range.
         avg (int): Averaging period in days.
@@ -83,9 +85,7 @@ def get_energy_average_sensor_unique_id(
         str: Unique ID of the energy average sensor.
 
     """
-    return (
-        f"{DOMAIN}_house_consumption_energy_avg_{hour_start:02d}_{hour_end:02d}_{avg}d"
-    )
+    return f"{DOMAIN}_{entry_id}_house_consumption_energy_avg_{hour_start:02d}_{hour_end:02d}_{avg}d"
 
 
 def get_energy_average_sensor_entity_id(
@@ -120,10 +120,13 @@ def get_utility_meter_sensor_name(hour_start: int, hour_end: int) -> str:
     return f"House Consumption {hour_start:02d}-{hour_end:02d} Energy (Utility Meter)"
 
 
-def get_utility_meter_sensor_unique_id(hour_start: int, hour_end: int) -> str:
+def get_utility_meter_sensor_unique_id(
+    entry_id: str, hour_start: int, hour_end: int
+) -> str:
     """Generate a unique ID for the utility meter sensor.
 
     Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
         hour_start (int): Start hour of the time range.
         hour_end (int): End hour of the time range.
 
@@ -131,7 +134,7 @@ def get_utility_meter_sensor_unique_id(hour_start: int, hour_end: int) -> str:
         str: Unique ID of the utility meter sensor.
 
     """
-    return f"{DOMAIN}_house_consumption_energy_{hour_start:02d}_{hour_end:02d}_utility_meter"
+    return f"{DOMAIN}_{entry_id}_house_consumption_energy_{hour_start:02d}_{hour_end:02d}_utility_meter"
 
 
 def get_utility_meter_sensor_entity_id(hour_start: int, hour_end: int) -> str:
@@ -163,10 +166,13 @@ def get_house_consumption_power_sensor_name(hour_start: int, hour_end: int) -> s
     return f"House Consumption {hour_start:02d}-{hour_end:02d} Hourly Power"
 
 
-def get_house_consumption_power_sensor_unique_id(hour_start: int, hour_end: int) -> str:
+def get_house_consumption_power_sensor_unique_id(
+    entry_id: str, hour_start: int, hour_end: int
+) -> str:
     """Generate a unique ID for the house consumption power sensor.
 
     Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
         hour_start (int): Start hour of the time range.
         hour_end (int): End hour of the time range.
 
@@ -174,7 +180,9 @@ def get_house_consumption_power_sensor_unique_id(hour_start: int, hour_end: int)
         str: Unique ID of the house consumption power sensor.
 
     """
-    return f"{DOMAIN}_house_consumption_power_{hour_start:02d}_{hour_end:02d}"
+    return (
+        f"{DOMAIN}_{entry_id}_house_consumption_power_{hour_start:02d}_{hour_end:02d}"
+    )
 
 
 def get_house_consumption_power_sensor_entity_id(hour_start: int, hour_end: int) -> str:
@@ -202,14 +210,17 @@ def get_working_mode_sensor_name() -> str:
     return "Working Mode Sensor"
 
 
-def get_working_mode_sensor_unique_id() -> str:
+def get_working_mode_sensor_unique_id(entry_id: str) -> str:
     """Generate a unique ID for the working mode sensor.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
 
     Returns:
         str: Unique ID of the working mode sensor.
 
     """
-    return f"{DOMAIN}_workingmode_sensor"
+    return f"{DOMAIN}_{entry_id}_workingmode_sensor"
 
 
 def get_working_mode_sensor_entity_id() -> str:
@@ -233,14 +244,17 @@ def get_degraded_mode_sensor_name() -> str:
     return "System Health"
 
 
-def get_degraded_mode_sensor_unique_id() -> str:
+def get_degraded_mode_sensor_unique_id(entry_id: str) -> str:
     """Return a unique ID for the degraded-mode sensor.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
 
     Returns:
         str: Unique ID.
 
     """
-    return f"{DOMAIN}_degraded_mode_sensor"
+    return f"{DOMAIN}_{entry_id}_degraded_mode_sensor"
 
 
 def get_degraded_mode_sensor_entity_id() -> str:
@@ -264,14 +278,17 @@ def get_read_only_sensor_name() -> str:
     return "Read-Only Mode"
 
 
-def get_read_only_sensor_unique_id() -> str:
+def get_read_only_sensor_unique_id(entry_id: str) -> str:
     """Return a unique ID for the read-only mode sensor.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
 
     Returns:
         str: Unique ID.
 
     """
-    return f"{DOMAIN}_read_only_sensor"
+    return f"{DOMAIN}_{entry_id}_read_only_sensor"
 
 
 def get_read_only_sensor_entity_id() -> str:
@@ -290,9 +307,13 @@ def get_next_update_sensor_name() -> str:
     return "Next Update"
 
 
-def get_next_update_sensor_unique_id() -> str:
-    """Return a unique ID for the next-update sensor."""
-    return f"{DOMAIN}_next_update_sensor"
+def get_next_update_sensor_unique_id(entry_id: str) -> str:
+    """Return a unique ID for the next-update sensor.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_next_update_sensor"
 
 
 def get_next_update_sensor_entity_id() -> str:
@@ -306,9 +327,13 @@ def get_missing_entities_sensor_name() -> str:
     return "Missing Input Entities"
 
 
-def get_missing_entities_sensor_unique_id() -> str:
-    """Return a unique ID for the missing-entities sensor."""
-    return f"{DOMAIN}_missing_entities_sensor"
+def get_missing_entities_sensor_unique_id(entry_id: str) -> str:
+    """Return a unique ID for the missing-entities sensor.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_missing_entities_sensor"
 
 
 def get_missing_entities_sensor_entity_id() -> str:
@@ -322,9 +347,13 @@ def get_hardware_writes_sensor_name() -> str:
     return "Hardware Writes"
 
 
-def get_hardware_writes_sensor_unique_id() -> str:
-    """Return a unique ID for the hardware-writes-blocked sensor."""
-    return f"{DOMAIN}_hardware_writes_sensor"
+def get_hardware_writes_sensor_unique_id(entry_id: str) -> str:
+    """Return a unique ID for the hardware-writes-blocked sensor.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_hardware_writes_sensor"
 
 
 def get_hardware_writes_sensor_entity_id() -> str:
@@ -338,9 +367,13 @@ def get_net_consumption_sensor_name() -> str:
     return "Net Consumption"
 
 
-def get_net_consumption_sensor_unique_id() -> str:
-    """Return a unique ID for the net-consumption sensor."""
-    return f"{DOMAIN}_net_consumption_sensor"
+def get_net_consumption_sensor_unique_id(entry_id: str) -> str:
+    """Return a unique ID for the net-consumption sensor.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_net_consumption_sensor"
 
 
 def get_net_consumption_sensor_entity_id() -> str:
@@ -354,9 +387,13 @@ def get_force_mode_sensor_name() -> str:
     return "Force Working Mode"
 
 
-def get_force_mode_sensor_unique_id() -> str:
-    """Return a unique ID for the force-working-mode sensor."""
-    return f"{DOMAIN}_force_mode_sensor"
+def get_force_mode_sensor_unique_id(entry_id: str) -> str:
+    """Return a unique ID for the force-working-mode sensor.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_force_mode_sensor"
 
 
 def get_force_mode_sensor_entity_id() -> str:
@@ -370,9 +407,13 @@ def get_update_interval_sensor_name() -> str:
     return "Update Interval"
 
 
-def get_update_interval_sensor_unique_id() -> str:
-    """Return a unique ID for the update-interval sensor."""
-    return f"{DOMAIN}_update_interval_sensor"
+def get_update_interval_sensor_unique_id(entry_id: str) -> str:
+    """Return a unique ID for the update-interval sensor.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_update_interval_sensor"
 
 
 def get_update_interval_sensor_entity_id() -> str:
@@ -386,9 +427,13 @@ def get_last_updated_sensor_name() -> str:
     return "Last Updated"
 
 
-def get_last_updated_sensor_unique_id() -> str:
-    """Return a unique ID for the last-updated sensor."""
-    return f"{DOMAIN}_last_updated_sensor"
+def get_last_updated_sensor_unique_id(entry_id: str) -> str:
+    """Return a unique ID for the last-updated sensor.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_last_updated_sensor"
 
 
 def get_last_updated_sensor_entity_id() -> str:
@@ -402,9 +447,13 @@ def get_battery_soc_sensor_name() -> str:
     return "Battery State of Charge"
 
 
-def get_battery_soc_sensor_unique_id() -> str:
-    """Return a unique ID for the battery-SoC sensor."""
-    return f"{DOMAIN}_battery_soc_sensor"
+def get_battery_soc_sensor_unique_id(entry_id: str) -> str:
+    """Return a unique ID for the battery-SoC sensor.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_battery_soc_sensor"
 
 
 def get_battery_soc_sensor_entity_id() -> str:
@@ -418,9 +467,13 @@ def get_recommendation_interval_sensor_name() -> str:
     return "Recommendation Interval"
 
 
-def get_recommendation_interval_sensor_unique_id() -> str:
-    """Return a unique ID for the recommendation-interval sensor."""
-    return f"{DOMAIN}_recommendation_interval_sensor"
+def get_recommendation_interval_sensor_unique_id(entry_id: str) -> str:
+    """Return a unique ID for the recommendation-interval sensor.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_recommendation_interval_sensor"
 
 
 def get_recommendation_interval_sensor_entity_id() -> str:
@@ -434,9 +487,13 @@ def get_ev_charging_sensor_name() -> str:
     return "EV Charging Active"
 
 
-def get_ev_charging_sensor_unique_id() -> str:
-    """Return a unique ID for the EV-charging sensor."""
-    return f"{DOMAIN}_ev_charging_sensor"
+def get_ev_charging_sensor_unique_id(entry_id: str) -> str:
+    """Return a unique ID for the EV-charging sensor.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_ev_charging_sensor"
 
 
 def get_ev_charging_sensor_entity_id() -> str:
@@ -450,9 +507,13 @@ def get_ev_optimal_charging_plan_sensor_name() -> str:
     return "EV Optimal Charging Plan"
 
 
-def get_ev_optimal_charging_plan_sensor_unique_id() -> str:
-    """Return a unique ID for the EV optimal charging plan sensor."""
-    return f"{DOMAIN}_ev_optimal_charging_plan"
+def get_ev_optimal_charging_plan_sensor_unique_id(entry_id: str) -> str:
+    """Return a unique ID for the EV optimal charging plan sensor.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_ev_optimal_charging_plan"
 
 
 def get_ev_optimal_charging_plan_sensor_entity_id() -> str:
@@ -466,9 +527,13 @@ def get_ev_second_optimal_charging_plan_sensor_name() -> str:
     return "EV 2 Optimal Charging Plan"
 
 
-def get_ev_second_optimal_charging_plan_sensor_unique_id() -> str:
-    """Return a unique ID for the second EV optimal charging plan sensor."""
-    return f"{DOMAIN}_ev_second_optimal_charging_plan"
+def get_ev_second_optimal_charging_plan_sensor_unique_id(entry_id: str) -> str:
+    """Return a unique ID for the second EV optimal charging plan sensor.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_ev_second_optimal_charging_plan"
 
 
 def get_ev_second_optimal_charging_plan_sensor_entity_id() -> str:
@@ -482,9 +547,13 @@ def get_plan_explanation_sensor_name() -> str:
     return "Plan Strategy"
 
 
-def get_plan_explanation_sensor_unique_id() -> str:
-    """Return a unique ID for the plan-explanation sensor."""
-    return f"{DOMAIN}_plan_explanation_sensor"
+def get_plan_explanation_sensor_unique_id(entry_id: str) -> str:
+    """Return a unique ID for the plan-explanation sensor.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_plan_explanation_sensor"
 
 
 def get_plan_explanation_sensor_entity_id() -> str:
@@ -535,9 +604,13 @@ def get_charge_efficiency_number_name() -> str:
     return "Battery Charge Efficiency"
 
 
-def get_charge_efficiency_number_unique_id() -> str:
-    """Return the unique_id for the charge efficiency number entity."""
-    return f"{DOMAIN}_battery_charge_efficiency"
+def get_charge_efficiency_number_unique_id(entry_id: str) -> str:
+    """Return the unique_id for the charge efficiency number entity.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_battery_charge_efficiency"
 
 
 def get_charge_efficiency_number_entity_id() -> str:
@@ -556,9 +629,13 @@ def get_discharge_efficiency_number_name() -> str:
     return "Battery Discharge Efficiency"
 
 
-def get_discharge_efficiency_number_unique_id() -> str:
-    """Return the unique_id for the discharge efficiency number entity."""
-    return f"{DOMAIN}_battery_discharge_efficiency"
+def get_discharge_efficiency_number_unique_id(entry_id: str) -> str:
+    """Return the unique_id for the discharge efficiency number entity.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_battery_discharge_efficiency"
 
 
 def get_discharge_efficiency_number_entity_id() -> str:
@@ -577,14 +654,22 @@ def get_ev_target_soc_number_name() -> str:
     return "EV Target SoC"
 
 
-def get_ev_target_soc_number_unique_id() -> str:
-    """Return the unique_id for the EV target SoC number entity."""
-    return f"{DOMAIN}_{get_ev_target_soc_number_key()}_number"
+def get_ev_target_soc_number_unique_id(entry_id: str) -> str:
+    """Return the unique_id for the EV target SoC number entity.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_{get_ev_target_soc_number_key()}_number"
 
 
-def get_ev_target_soc_number_entity_id() -> str:
-    """Return the entity_id for the EV target SoC number entity."""
-    return f"number.{s(get_ev_target_soc_number_unique_id())}"
+def get_ev_target_soc_number_entity_id(entry_id: str) -> str:
+    """Return the entity_id for the EV target SoC number entity.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"number.{s(get_ev_target_soc_number_unique_id(entry_id))}"
 
 
 # EV 2 Target SoC Number
@@ -598,14 +683,22 @@ def get_ev_second_target_soc_number_name() -> str:
     return "EV 2 Target SoC"
 
 
-def get_ev_second_target_soc_number_unique_id() -> str:
-    """Return the unique_id for the EV 2 target SoC number entity."""
-    return f"{DOMAIN}_{get_ev_second_target_soc_number_key()}_number"
+def get_ev_second_target_soc_number_unique_id(entry_id: str) -> str:
+    """Return the unique_id for the EV 2 target SoC number entity.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_{get_ev_second_target_soc_number_key()}_number"
 
 
-def get_ev_second_target_soc_number_entity_id() -> str:
-    """Return the entity_id for the EV 2 target SoC number entity."""
-    return f"number.{s(get_ev_second_target_soc_number_unique_id())}"
+def get_ev_second_target_soc_number_entity_id(entry_id: str) -> str:
+    """Return the entity_id for the EV 2 target SoC number entity.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"number.{s(get_ev_second_target_soc_number_unique_id(entry_id))}"
 
 
 # Applier Status Sensor
@@ -614,9 +707,13 @@ def get_applier_status_sensor_name() -> str:
     return "Inverter Apply Status"
 
 
-def get_applier_status_sensor_unique_id() -> str:
-    """Return a unique ID for the applier-status sensor."""
-    return f"{DOMAIN}_applier_status_sensor"
+def get_applier_status_sensor_unique_id(entry_id: str) -> str:
+    """Return a unique ID for the applier-status sensor.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_applier_status_sensor"
 
 
 def get_applier_status_sensor_entity_id() -> str:
@@ -630,9 +727,13 @@ def get_forecast_accuracy_sensor_name() -> str:
     return "Forecast Accuracy"
 
 
-def get_forecast_accuracy_sensor_unique_id() -> str:
-    """Return a unique ID for the forecast accuracy sensor."""
-    return f"{DOMAIN}_forecast_accuracy_sensor"
+def get_forecast_accuracy_sensor_unique_id(entry_id: str) -> str:
+    """Return a unique ID for the forecast accuracy sensor.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_forecast_accuracy_sensor"
 
 
 def get_forecast_accuracy_sensor_entity_id() -> str:
@@ -655,14 +756,22 @@ def get_read_only_switch_name() -> str:
     return "Read Only"
 
 
-def get_read_only_switch_unique_id() -> str:
-    """Return the unique_id for the read-only switch."""
-    return f"{DOMAIN}_{get_read_only_switch_key()}_switch"
+def get_read_only_switch_unique_id(entry_id: str) -> str:
+    """Return the unique_id for the read-only switch.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_{get_read_only_switch_key()}_switch"
 
 
-def get_read_only_switch_entity_id() -> str:
-    """Return the entity_id for the read-only switch."""
-    return f"switch.{s(get_read_only_switch_unique_id())}"
+def get_read_only_switch_entity_id(entry_id: str) -> str:
+    """Return the entity_id for the read-only switch.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"switch.{s(get_read_only_switch_unique_id(entry_id))}"
 
 
 def get_extended_attributes_switch_key() -> str:
@@ -675,14 +784,22 @@ def get_extended_attributes_switch_name() -> str:
     return "Extended Attributes"
 
 
-def get_extended_attributes_switch_unique_id() -> str:
-    """Return the unique_id for the extended-attributes switch."""
-    return f"{DOMAIN}_{get_extended_attributes_switch_key()}_switch"
+def get_extended_attributes_switch_unique_id(entry_id: str) -> str:
+    """Return the unique_id for the extended-attributes switch.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_{get_extended_attributes_switch_key()}_switch"
 
 
-def get_extended_attributes_switch_entity_id() -> str:
-    """Return the entity_id for the extended-attributes switch."""
-    return f"switch.{s(get_extended_attributes_switch_unique_id())}"
+def get_extended_attributes_switch_entity_id(entry_id: str) -> str:
+    """Return the entity_id for the extended-attributes switch.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"switch.{s(get_extended_attributes_switch_unique_id(entry_id))}"
 
 
 def get_verbose_logging_switch_key() -> str:
@@ -695,14 +812,22 @@ def get_verbose_logging_switch_name() -> str:
     return "Verbose Logging"
 
 
-def get_verbose_logging_switch_unique_id() -> str:
-    """Return the unique_id for the verbose-logging switch."""
-    return f"{DOMAIN}_{get_verbose_logging_switch_key()}_switch"
+def get_verbose_logging_switch_unique_id(entry_id: str) -> str:
+    """Return the unique_id for the verbose-logging switch.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_{get_verbose_logging_switch_key()}_switch"
 
 
-def get_verbose_logging_switch_entity_id() -> str:
-    """Return the entity_id for the verbose-logging switch."""
-    return f"switch.{s(get_verbose_logging_switch_unique_id())}"
+def get_verbose_logging_switch_entity_id(entry_id: str) -> str:
+    """Return the entity_id for the verbose-logging switch.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"switch.{s(get_verbose_logging_switch_unique_id(entry_id))}"
 
 
 def get_batteries_schedule_1_switch_key() -> str:
@@ -715,14 +840,22 @@ def get_batteries_schedule_1_switch_name() -> str:
     return "Batteries Discharge Schedule 1"
 
 
-def get_batteries_schedule_1_switch_unique_id() -> str:
-    """Return the unique_id for the batteries-schedule-1 switch."""
-    return f"{DOMAIN}_{get_batteries_schedule_1_switch_key()}_switch"
+def get_batteries_schedule_1_switch_unique_id(entry_id: str) -> str:
+    """Return the unique_id for the batteries-schedule-1 switch.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_{get_batteries_schedule_1_switch_key()}_switch"
 
 
-def get_batteries_schedule_1_switch_entity_id() -> str:
-    """Return the entity_id for the batteries-schedule-1 switch."""
-    return f"switch.{s(get_batteries_schedule_1_switch_unique_id())}"
+def get_batteries_schedule_1_switch_entity_id(entry_id: str) -> str:
+    """Return the entity_id for the batteries-schedule-1 switch.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"switch.{s(get_batteries_schedule_1_switch_unique_id(entry_id))}"
 
 
 def get_batteries_schedule_2_switch_key() -> str:
@@ -735,14 +868,22 @@ def get_batteries_schedule_2_switch_name() -> str:
     return "Batteries Discharge Schedule 2"
 
 
-def get_batteries_schedule_2_switch_unique_id() -> str:
-    """Return the unique_id for the batteries-schedule-2 switch."""
-    return f"{DOMAIN}_{get_batteries_schedule_2_switch_key()}_switch"
+def get_batteries_schedule_2_switch_unique_id(entry_id: str) -> str:
+    """Return the unique_id for the batteries-schedule-2 switch.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_{get_batteries_schedule_2_switch_key()}_switch"
 
 
-def get_batteries_schedule_2_switch_entity_id() -> str:
-    """Return the entity_id for the batteries-schedule-2 switch."""
-    return f"switch.{s(get_batteries_schedule_2_switch_unique_id())}"
+def get_batteries_schedule_2_switch_entity_id(entry_id: str) -> str:
+    """Return the entity_id for the batteries-schedule-2 switch.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"switch.{s(get_batteries_schedule_2_switch_unique_id(entry_id))}"
 
 
 def get_batteries_schedule_3_switch_key() -> str:
@@ -755,14 +896,22 @@ def get_batteries_schedule_3_switch_name() -> str:
     return "Batteries Discharge Schedule 3"
 
 
-def get_batteries_schedule_3_switch_unique_id() -> str:
-    """Return the unique_id for the batteries-schedule-3 switch."""
-    return f"{DOMAIN}_{get_batteries_schedule_3_switch_key()}_switch"
+def get_batteries_schedule_3_switch_unique_id(entry_id: str) -> str:
+    """Return the unique_id for the batteries-schedule-3 switch.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_{get_batteries_schedule_3_switch_key()}_switch"
 
 
-def get_batteries_schedule_3_switch_entity_id() -> str:
-    """Return the entity_id for the batteries-schedule-3 switch."""
-    return f"switch.{s(get_batteries_schedule_3_switch_unique_id())}"
+def get_batteries_schedule_3_switch_entity_id(entry_id: str) -> str:
+    """Return the entity_id for the batteries-schedule-3 switch.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"switch.{s(get_batteries_schedule_3_switch_unique_id(entry_id))}"
 
 
 def get_ev_force_discharge_switch_key() -> str:
@@ -775,14 +924,22 @@ def get_ev_force_discharge_switch_name() -> str:
     return "EV Charger Force Max Discharge Power"
 
 
-def get_ev_force_discharge_switch_unique_id() -> str:
-    """Return the unique_id for the EV-force-discharge switch."""
-    return f"{DOMAIN}_{get_ev_force_discharge_switch_key()}_switch"
+def get_ev_force_discharge_switch_unique_id(entry_id: str) -> str:
+    """Return the unique_id for the EV-force-discharge switch.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_{get_ev_force_discharge_switch_key()}_switch"
 
 
-def get_ev_force_discharge_switch_entity_id() -> str:
-    """Return the entity_id for the EV-force-discharge switch."""
-    return f"switch.{s(get_ev_force_discharge_switch_unique_id())}"
+def get_ev_force_discharge_switch_entity_id(entry_id: str) -> str:
+    """Return the entity_id for the EV-force-discharge switch.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"switch.{s(get_ev_force_discharge_switch_unique_id(entry_id))}"
 
 
 # ---------------------------------------------------------------------------
@@ -800,14 +957,22 @@ def get_ev_smart_charging_switch_name() -> str:
     return "EV Smart Charging"
 
 
-def get_ev_smart_charging_switch_unique_id() -> str:
-    """Return the unique_id for the primary EV smart charging switch."""
-    return f"{DOMAIN}_{get_ev_smart_charging_switch_key()}_switch"
+def get_ev_smart_charging_switch_unique_id(entry_id: str) -> str:
+    """Return the unique_id for the primary EV smart charging switch.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_{get_ev_smart_charging_switch_key()}_switch"
 
 
-def get_ev_smart_charging_switch_entity_id() -> str:
-    """Return the entity_id for the primary EV smart charging switch."""
-    return f"switch.{s(get_ev_smart_charging_switch_unique_id())}"
+def get_ev_smart_charging_switch_entity_id(entry_id: str) -> str:
+    """Return the entity_id for the primary EV smart charging switch.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"switch.{s(get_ev_smart_charging_switch_unique_id(entry_id))}"
 
 
 def get_ev_force_charge_now_switch_key() -> str:
@@ -820,14 +985,22 @@ def get_ev_force_charge_now_switch_name() -> str:
     return "EV Force Charge Now"
 
 
-def get_ev_force_charge_now_switch_unique_id() -> str:
-    """Return the unique_id for the primary EV force-charge-now switch."""
-    return f"{DOMAIN}_{get_ev_force_charge_now_switch_key()}_switch"
+def get_ev_force_charge_now_switch_unique_id(entry_id: str) -> str:
+    """Return the unique_id for the primary EV force-charge-now switch.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_{get_ev_force_charge_now_switch_key()}_switch"
 
 
-def get_ev_force_charge_now_switch_entity_id() -> str:
-    """Return the entity_id for the primary EV force-charge-now switch."""
-    return f"switch.{s(get_ev_force_charge_now_switch_unique_id())}"
+def get_ev_force_charge_now_switch_entity_id(entry_id: str) -> str:
+    """Return the entity_id for the primary EV force-charge-now switch.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"switch.{s(get_ev_force_charge_now_switch_unique_id(entry_id))}"
 
 
 def get_ev_second_smart_charging_switch_key() -> str:
@@ -840,14 +1013,22 @@ def get_ev_second_smart_charging_switch_name() -> str:
     return "EV 2 Smart Charging"
 
 
-def get_ev_second_smart_charging_switch_unique_id() -> str:
-    """Return the unique_id for the second EV smart charging switch."""
-    return f"{DOMAIN}_{get_ev_second_smart_charging_switch_key()}_switch"
+def get_ev_second_smart_charging_switch_unique_id(entry_id: str) -> str:
+    """Return the unique_id for the second EV smart charging switch.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_{get_ev_second_smart_charging_switch_key()}_switch"
 
 
-def get_ev_second_smart_charging_switch_entity_id() -> str:
-    """Return the entity_id for the second EV smart charging switch."""
-    return f"switch.{s(get_ev_second_smart_charging_switch_unique_id())}"
+def get_ev_second_smart_charging_switch_entity_id(entry_id: str) -> str:
+    """Return the entity_id for the second EV smart charging switch.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"switch.{s(get_ev_second_smart_charging_switch_unique_id(entry_id))}"
 
 
 def get_ev_second_force_charge_now_switch_key() -> str:
@@ -860,14 +1041,22 @@ def get_ev_second_force_charge_now_switch_name() -> str:
     return "EV 2 Force Charge Now"
 
 
-def get_ev_second_force_charge_now_switch_unique_id() -> str:
-    """Return the unique_id for the second EV force-charge-now switch."""
-    return f"{DOMAIN}_{get_ev_second_force_charge_now_switch_key()}_switch"
+def get_ev_second_force_charge_now_switch_unique_id(entry_id: str) -> str:
+    """Return the unique_id for the second EV force-charge-now switch.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_{get_ev_second_force_charge_now_switch_key()}_switch"
 
 
-def get_ev_second_force_charge_now_switch_entity_id() -> str:
-    """Return the entity_id for the second EV force-charge-now switch."""
-    return f"switch.{s(get_ev_second_force_charge_now_switch_unique_id())}"
+def get_ev_second_force_charge_now_switch_entity_id(entry_id: str) -> str:
+    """Return the entity_id for the second EV force-charge-now switch.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"switch.{s(get_ev_second_force_charge_now_switch_unique_id(entry_id))}"
 
 
 # ---------------------------------------------------------------------------
@@ -885,14 +1074,22 @@ def get_ev_deadline_time_name() -> str:
     return "EV Charge Deadline"
 
 
-def get_ev_deadline_time_unique_id() -> str:
-    """Return the unique ID for the EV charge deadline time entity."""
-    return f"{DOMAIN}_{get_ev_deadline_time_key()}_time"
+def get_ev_deadline_time_unique_id(entry_id: str) -> str:
+    """Return the unique ID for the EV charge deadline time entity.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_{get_ev_deadline_time_key()}_time"
 
 
-def get_ev_deadline_time_entity_id() -> str:
-    """Return the Home Assistant entity ID for the EV charge deadline time entity."""
-    return f"time.{s(get_ev_deadline_time_unique_id())}"
+def get_ev_deadline_time_entity_id(entry_id: str) -> str:
+    """Return the Home Assistant entity ID for the EV charge deadline time entity.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"time.{s(get_ev_deadline_time_unique_id(entry_id))}"
 
 
 def get_ev_second_deadline_time_key() -> str:
@@ -905,14 +1102,22 @@ def get_ev_second_deadline_time_name() -> str:
     return "EV 2 Charge Deadline"
 
 
-def get_ev_second_deadline_time_unique_id() -> str:
-    """Return the unique ID for the second EV charge deadline time entity."""
-    return f"{DOMAIN}_{get_ev_second_deadline_time_key()}_time"
+def get_ev_second_deadline_time_unique_id(entry_id: str) -> str:
+    """Return the unique ID for the second EV charge deadline time entity.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_{get_ev_second_deadline_time_key()}_time"
 
 
-def get_ev_second_deadline_time_entity_id() -> str:
-    """Return the Home Assistant entity ID for the second EV charge deadline time entity."""
-    return f"time.{s(get_ev_second_deadline_time_unique_id())}"
+def get_ev_second_deadline_time_entity_id(entry_id: str) -> str:
+    """Return the Home Assistant entity ID for the second EV charge deadline time entity.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"time.{s(get_ev_second_deadline_time_unique_id(entry_id))}"
 
 
 # ---------------------------------------------------------------------------
@@ -930,14 +1135,22 @@ def get_schedule_1_start_time_name() -> str:
     return "Batteries Discharge Schedule 1 Start"
 
 
-def get_schedule_1_start_time_unique_id() -> str:
-    """Return the unique_id for the schedule-1-start time entity."""
-    return f"{DOMAIN}_{get_schedule_1_start_time_key()}_time"
+def get_schedule_1_start_time_unique_id(entry_id: str) -> str:
+    """Return the unique_id for the schedule-1-start time entity.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_{get_schedule_1_start_time_key()}_time"
 
 
-def get_schedule_1_start_time_entity_id() -> str:
-    """Return the entity_id for the schedule-1-start time entity."""
-    return f"time.{s(get_schedule_1_start_time_unique_id())}"
+def get_schedule_1_start_time_entity_id(entry_id: str) -> str:
+    """Return the entity_id for the schedule-1-start time entity.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"time.{s(get_schedule_1_start_time_unique_id(entry_id))}"
 
 
 def get_schedule_1_end_time_key() -> str:
@@ -950,14 +1163,22 @@ def get_schedule_1_end_time_name() -> str:
     return "Batteries Discharge Schedule 1 End"
 
 
-def get_schedule_1_end_time_unique_id() -> str:
-    """Return the unique_id for the schedule-1-end time entity."""
-    return f"{DOMAIN}_{get_schedule_1_end_time_key()}_time"
+def get_schedule_1_end_time_unique_id(entry_id: str) -> str:
+    """Return the unique_id for the schedule-1-end time entity.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_{get_schedule_1_end_time_key()}_time"
 
 
-def get_schedule_1_end_time_entity_id() -> str:
-    """Return the entity_id for the schedule-1-end time entity."""
-    return f"time.{s(get_schedule_1_end_time_unique_id())}"
+def get_schedule_1_end_time_entity_id(entry_id: str) -> str:
+    """Return the entity_id for the schedule-1-end time entity.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"time.{s(get_schedule_1_end_time_unique_id(entry_id))}"
 
 
 def get_schedule_2_start_time_key() -> str:
@@ -970,14 +1191,22 @@ def get_schedule_2_start_time_name() -> str:
     return "Batteries Discharge Schedule 2 Start"
 
 
-def get_schedule_2_start_time_unique_id() -> str:
-    """Return the unique_id for the schedule-2-start time entity."""
-    return f"{DOMAIN}_{get_schedule_2_start_time_key()}_time"
+def get_schedule_2_start_time_unique_id(entry_id: str) -> str:
+    """Return the unique_id for the schedule-2-start time entity.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_{get_schedule_2_start_time_key()}_time"
 
 
-def get_schedule_2_start_time_entity_id() -> str:
-    """Return the entity_id for the schedule-2-start time entity."""
-    return f"time.{s(get_schedule_2_start_time_unique_id())}"
+def get_schedule_2_start_time_entity_id(entry_id: str) -> str:
+    """Return the entity_id for the schedule-2-start time entity.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"time.{s(get_schedule_2_start_time_unique_id(entry_id))}"
 
 
 def get_schedule_2_end_time_key() -> str:
@@ -990,14 +1219,22 @@ def get_schedule_2_end_time_name() -> str:
     return "Batteries Discharge Schedule 2 End"
 
 
-def get_schedule_2_end_time_unique_id() -> str:
-    """Return the unique_id for the schedule-2-end time entity."""
-    return f"{DOMAIN}_{get_schedule_2_end_time_key()}_time"
+def get_schedule_2_end_time_unique_id(entry_id: str) -> str:
+    """Return the unique_id for the schedule-2-end time entity.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_{get_schedule_2_end_time_key()}_time"
 
 
-def get_schedule_2_end_time_entity_id() -> str:
-    """Return the entity_id for the schedule-2-end time entity."""
-    return f"time.{s(get_schedule_2_end_time_unique_id())}"
+def get_schedule_2_end_time_entity_id(entry_id: str) -> str:
+    """Return the entity_id for the schedule-2-end time entity.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"time.{s(get_schedule_2_end_time_unique_id(entry_id))}"
 
 
 def get_schedule_3_start_time_key() -> str:
@@ -1010,14 +1247,22 @@ def get_schedule_3_start_time_name() -> str:
     return "Batteries Discharge Schedule 3 Start"
 
 
-def get_schedule_3_start_time_unique_id() -> str:
-    """Return the unique_id for the schedule-3-start time entity."""
-    return f"{DOMAIN}_{get_schedule_3_start_time_key()}_time"
+def get_schedule_3_start_time_unique_id(entry_id: str) -> str:
+    """Return the unique_id for the schedule-3-start time entity.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_{get_schedule_3_start_time_key()}_time"
 
 
-def get_schedule_3_start_time_entity_id() -> str:
-    """Return the entity_id for the schedule-3-start time entity."""
-    return f"time.{s(get_schedule_3_start_time_unique_id())}"
+def get_schedule_3_start_time_entity_id(entry_id: str) -> str:
+    """Return the entity_id for the schedule-3-start time entity.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"time.{s(get_schedule_3_start_time_unique_id(entry_id))}"
 
 
 def get_schedule_3_end_time_key() -> str:
@@ -1030,11 +1275,19 @@ def get_schedule_3_end_time_name() -> str:
     return "Batteries Discharge Schedule 3 End"
 
 
-def get_schedule_3_end_time_unique_id() -> str:
-    """Return the unique_id for the schedule-3-end time entity."""
-    return f"{DOMAIN}_{get_schedule_3_end_time_key()}_time"
+def get_schedule_3_end_time_unique_id(entry_id: str) -> str:
+    """Return the unique_id for the schedule-3-end time entity.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_{get_schedule_3_end_time_key()}_time"
 
 
-def get_schedule_3_end_time_entity_id() -> str:
-    """Return the entity_id for the schedule-3-end time entity."""
-    return f"time.{s(get_schedule_3_end_time_unique_id())}"
+def get_schedule_3_end_time_entity_id(entry_id: str) -> str:
+    """Return the entity_id for the schedule-3-end time entity.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"time.{s(get_schedule_3_end_time_unique_id(entry_id))}"

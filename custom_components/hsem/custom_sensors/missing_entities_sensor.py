@@ -73,7 +73,9 @@ class HSEMMissingEntitiesSensor(
 
         self._config_entry = config_entry
 
-        self._attr_unique_id = get_missing_entities_sensor_unique_id()
+        self._attr_unique_id = get_missing_entities_sensor_unique_id(
+            config_entry.entry_id
+        )
         self.entity_id = get_missing_entities_sensor_entity_id()
         self._name = get_missing_entities_sensor_name()
 

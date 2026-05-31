@@ -132,7 +132,7 @@ class TestPowerSensorMetadata:
 
     def test_unique_id_format(self) -> None:
         sensor, _ = _make_sensor(hour_start=7)
-        expected = get_house_consumption_power_sensor_unique_id(7, 8)
+        expected = get_house_consumption_power_sensor_unique_id("test_entry_id", 7, 8)
         assert sensor.unique_id == expected
 
 
@@ -496,7 +496,7 @@ class TestDerivedSensorLifecycle:
         fake_now = MagicMock()
         fake_now.hour = 6
         fake_now.isoformat.return_value = "2026-05-12T06:00:00"
-        integral_uid = get_integral_sensor_unique_id(6, 7)
+        integral_uid = get_integral_sensor_unique_id("test_entry_id", 6, 7)
 
         async def fake_fetch():
             sensor._hsem_house_consumption_power_state = 500.0
@@ -534,7 +534,7 @@ class TestDerivedSensorLifecycle:
         # _derived_sensors_created is empty — simulates fresh HA restart.
         assert len(sensor._derived_sensors_created) == 0
 
-        integral_uid = get_integral_sensor_unique_id(9, 10)
+        integral_uid = get_integral_sensor_unique_id("test_entry_id", 9, 10)
 
         fake_now = MagicMock()
         fake_now.hour = 5  # Outside active window — just tests derived sensor path
