@@ -117,7 +117,7 @@ class TestUpdateLoopLock:
         write_calls: list[str] = []
 
         class _WriteTrackingSensor(_StubSensor):
-            async def _async_run_update_cycle(self, event: Any = None) -> None:  # type: ignore[override]
+            async def _async_run_update_cycle(self, event: Any = None) -> None:  # type: ignore[override]  # intentional signature mismatch in test
                 self._cycle_call_count += 1
                 write_calls.append("write")
                 # Simulate async I/O latency so the second caller can arrive.

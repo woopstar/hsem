@@ -248,7 +248,7 @@ def make_bare_coordinator(
     coord._override_expiry = None
 
     # CoordinatorEntity support — some entity methods call this
-    coord.async_set_updated_data = MagicMock()  # type: ignore[method-assign]
+    coord.async_set_updated_data = MagicMock()  # type: ignore[method-assign]  # test monkey-patch
 
     return coord
 
@@ -732,7 +732,7 @@ class TestDryRunCycle:
         hass = make_fake_hass(_BASE_ENTITY_STATES)
         coord = make_bare_coordinator(hass=hass, config_entry=config_entry)
         # Patch instance method to avoid actual HA timer calls.
-        coord._set_update_interval = AsyncMock()  # type: ignore[method-assign]
+        coord._set_update_interval = AsyncMock()  # type: ignore[method-assign]  # test monkey-patch
 
         captured: list[CoordinatorData] = []
         coord.async_set_updated_data = lambda d: captured.append(d)  # type: ignore[assignment,method-assign]  # test monkey-patch
@@ -751,7 +751,7 @@ class TestDryRunCycle:
         config_entry = make_fake_config_entry({"hsem_read_only": True})
         hass = make_fake_hass(_BASE_ENTITY_STATES)
         coord = make_bare_coordinator(hass=hass, config_entry=config_entry)
-        coord._set_update_interval = AsyncMock()  # type: ignore[method-assign]
+        coord._set_update_interval = AsyncMock()  # type: ignore[method-assign]  # test monkey-patch
 
         captured: list[CoordinatorData] = []
         coord.async_set_updated_data = lambda d: captured.append(d)  # type: ignore[assignment,method-assign]  # test monkey-patch
@@ -770,8 +770,8 @@ class TestDryRunCycle:
         config_entry = make_fake_config_entry({"hsem_read_only": True})
         hass = make_fake_hass(_BASE_ENTITY_STATES)
         coord = make_bare_coordinator(hass=hass, config_entry=config_entry)
-        coord._set_update_interval = AsyncMock()  # type: ignore[method-assign]
-        coord.async_set_updated_data = MagicMock()  # type: ignore[method-assign]
+        coord._set_update_interval = AsyncMock()  # type: ignore[method-assign]  # test monkey-patch
+        coord.async_set_updated_data = MagicMock()  # type: ignore[method-assign]  # test monkey-patch
 
         with (
             _patch_all_ha_helpers(),
@@ -803,7 +803,7 @@ class TestDryRunCycle:
         config_entry = make_fake_config_entry({"hsem_read_only": True})
         hass = make_fake_hass(states)
         coord = make_bare_coordinator(hass=hass, config_entry=config_entry)
-        coord._set_update_interval = AsyncMock()  # type: ignore[method-assign]
+        coord._set_update_interval = AsyncMock()  # type: ignore[method-assign]  # test monkey-patch
 
         captured: list[CoordinatorData] = []
         coord.async_set_updated_data = lambda d: captured.append(d)  # type: ignore[assignment,method-assign]  # test monkey-patch
@@ -825,7 +825,7 @@ class TestDryRunCycle:
         config_entry = make_fake_config_entry({"hsem_read_only": True})
         hass = make_fake_hass(states)
         coord = make_bare_coordinator(hass=hass, config_entry=config_entry)
-        coord._set_update_interval = AsyncMock()  # type: ignore[method-assign]
+        coord._set_update_interval = AsyncMock()  # type: ignore[method-assign]  # test monkey-patch
 
         captured: list[CoordinatorData] = []
         coord.async_set_updated_data = lambda d: captured.append(d)  # type: ignore[assignment,method-assign]  # test monkey-patch
@@ -853,7 +853,7 @@ class TestDryRunCycle:
             await asyncio.sleep(0)
             await asyncio.sleep(0)
 
-        coord._async_run_update_cycle = _slow_cycle  # type: ignore[method-assign]
+        coord._async_run_update_cycle = _slow_cycle  # type: ignore[method-assign]  # test monkey-patch
 
         await asyncio.gather(
             coord._async_handle_update(),
@@ -869,7 +869,7 @@ class TestDryRunCycle:
         config_entry = make_fake_config_entry({"hsem_read_only": True})
         hass = make_fake_hass(_BASE_ENTITY_STATES)
         coord = make_bare_coordinator(hass=hass, config_entry=config_entry)
-        coord._set_update_interval = AsyncMock()  # type: ignore[method-assign]
+        coord._set_update_interval = AsyncMock()  # type: ignore[method-assign]  # test monkey-patch
 
         captured: list[CoordinatorData] = []
         coord.async_set_updated_data = lambda d: captured.append(d)  # type: ignore[assignment,method-assign]  # test monkey-patch
@@ -907,7 +907,7 @@ class TestEntityStateAfterCoordinatorPush:
         cfg.update_interval = 5
         cfg.batteries_purchase_price = 0.0
         cfg.batteries_expected_cycles = 6000
-        cfg.batteries_conversion_loss = 10  # type: ignore[attr-defined]
+        cfg.batteries_conversion_loss = 10  # type: ignore[attr-defined]  # mock attribute set in test
         cfg.export_electricity_min_price = 0.0
         cfg.electricity_price_update_interval = 15
 

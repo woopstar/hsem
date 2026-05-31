@@ -209,7 +209,7 @@ class TestSlotMeta:
     def test_slot_meta_is_frozen(self):
         meta = self.tsi.slots[0]
         with pytest.raises((AttributeError, TypeError)):
-            meta.hour = 99  # type: ignore[misc]
+            meta.hour = 99  # type: ignore[misc]  # test fixture override
 
 
 # ---------------------------------------------------------------------------

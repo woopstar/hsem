@@ -33,7 +33,7 @@ class TestParsePowerControlPct:
         assert _parse_power_control_pct(None) is None
 
     def test_integer_returns_none(self):
-        assert _parse_power_control_pct(100) is None  # type: ignore[arg-type]
+        assert _parse_power_control_pct(100) is None  # type: ignore[arg-type]  # test passes mock where real type expected
 
     def test_empty_string_returns_none(self):
         assert _parse_power_control_pct("") is None

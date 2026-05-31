@@ -51,11 +51,13 @@ class HSEMIntegrationSensor(IntegrationSensor, HSEMEntity):
         self.entity_id = e_id
 
     @property
+    @override
     def state_class(self) -> SensorStateClass:
         """Return TOTAL_INCREASING so the energy dashboard integrates correctly."""
         return SensorStateClass.TOTAL_INCREASING
 
     @property
+    @override
     def device_class(self) -> SensorDeviceClass:
         """Return ENERGY device class."""
         return SensorDeviceClass.ENERGY

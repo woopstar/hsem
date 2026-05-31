@@ -163,7 +163,7 @@ class TestEntityDescriptions:
         """Description must be immutable (frozen=True)."""
         desc = HSEMSwitchEntityDescription(key="k", name="N")
         with pytest.raises((AttributeError, TypeError)):
-            desc.description = "new"  # type: ignore[misc]
+            desc.description = "new"  # type: ignore[misc]  # test fixture override
 
     def test_time_description_has_description_field(self) -> None:
         desc = HSEMTimeEntityDescription(
@@ -182,7 +182,7 @@ class TestEntityDescriptions:
     def test_time_description_is_frozen(self) -> None:
         desc = HSEMTimeEntityDescription(key="k", name="N")
         with pytest.raises((AttributeError, TypeError)):
-            desc.default_value = "01:00:00"  # type: ignore[misc]
+            desc.default_value = "01:00:00"  # type: ignore[misc]  # test fixture override
 
 
 # ===========================================================================
@@ -254,45 +254,45 @@ class TestSwitchState:
     @pytest.mark.asyncio
     async def test_turn_on_updates_attr(self) -> None:
         entity = _make_switch(is_on=False)
-        entity.async_write_ha_state = MagicMock()  # type: ignore[method-assign]
+        entity.async_write_ha_state = MagicMock()  # type: ignore[method-assign]  # test monkey-patch
         await entity.async_turn_on()
         assert entity.is_on is True
 
     @pytest.mark.asyncio
     async def test_turn_off_updates_attr(self) -> None:
         entity = _make_switch(is_on=True)
-        entity.async_write_ha_state = MagicMock()  # type: ignore[method-assign]
+        entity.async_write_ha_state = MagicMock()  # type: ignore[method-assign]  # test monkey-patch
         await entity.async_turn_off()
         assert entity.is_on is False
 
     @pytest.mark.asyncio
     async def test_turn_on_persists_to_config_entry(self) -> None:
         entity = _make_switch(key="hsem_read_only", is_on=False)
-        entity.async_write_ha_state = MagicMock()  # type: ignore[method-assign]
+        entity.async_write_ha_state = MagicMock()  # type: ignore[method-assign]  # test monkey-patch
         await entity.async_turn_on()
-        entity.hass.config_entries.async_update_entry.assert_called_once()  # type: ignore[attr-defined]
-        opts = entity.hass.config_entries.async_update_entry.call_args[1]["options"]  # type: ignore[attr-defined]
+        entity.hass.config_entries.async_update_entry.assert_called_once()  # type: ignore[attr-defined]  # mock attribute set in test
+        opts = entity.hass.config_entries.async_update_entry.call_args[1]["options"]  # type: ignore[attr-defined]  # mock attribute set in test
         assert opts["hsem_read_only"] is True
 
     @pytest.mark.asyncio
     async def test_turn_off_persists_to_config_entry(self) -> None:
         entity = _make_switch(key="hsem_read_only", is_on=True)
-        entity.async_write_ha_state = MagicMock()  # type: ignore[method-assign]
+        entity.async_write_ha_state = MagicMock()  # type: ignore[method-assign]  # test monkey-patch
         await entity.async_turn_off()
-        opts = entity.hass.config_entries.async_update_entry.call_args[1]["options"]  # type: ignore[attr-defined]
+        opts = entity.hass.config_entries.async_update_entry.call_args[1]["options"]  # type: ignore[attr-defined]  # mock attribute set in test
         assert opts["hsem_read_only"] is False
 
     @pytest.mark.asyncio
     async def test_turn_on_calls_write_ha_state(self) -> None:
         entity = _make_switch()
-        entity.async_write_ha_state = MagicMock()  # type: ignore[method-assign]
+        entity.async_write_ha_state = MagicMock()  # type: ignore[method-assign]  # test monkey-patch
         await entity.async_turn_on()
         entity.async_write_ha_state.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_turn_off_calls_write_ha_state(self) -> None:
         entity = _make_switch()
-        entity.async_write_ha_state = MagicMock()  # type: ignore[method-assign]
+        entity.async_write_ha_state = MagicMock()  # type: ignore[method-assign]  # test monkey-patch
         await entity.async_turn_off()
         entity.async_write_ha_state.assert_called_once()
 
@@ -672,21 +672,21 @@ class TestSelectorBehavior:
     @pytest.mark.asyncio
     async def test_select_valid_option(self) -> None:
         entity = _make_selector(options=["auto", "mode_a", "mode_b"])
-        entity.async_write_ha_state = MagicMock()  # type: ignore[method-assign]
+        entity.async_write_ha_state = MagicMock()  # type: ignore[method-assign]  # test monkey-patch
         await entity.async_select_option("mode_a")
         assert entity.current_option == "mode_a"
 
     @pytest.mark.asyncio
     async def test_select_invalid_option_raises(self) -> None:
         entity = _make_selector(options=["auto", "mode_a"])
-        entity.async_write_ha_state = MagicMock()  # type: ignore[method-assign]
+        entity.async_write_ha_state = MagicMock()  # type: ignore[method-assign]  # test monkey-patch
         with pytest.raises(ValueError):
             await entity.async_select_option("not_a_valid_option")
 
     @pytest.mark.asyncio
     async def test_select_option_calls_write_ha_state(self) -> None:
         entity = _make_selector(options=["auto", "mode_x"])
-        entity.async_write_ha_state = MagicMock()  # type: ignore[method-assign]
+        entity.async_write_ha_state = MagicMock()  # type: ignore[method-assign]  # test monkey-patch
         await entity.async_select_option("mode_x")
         entity.async_write_ha_state.assert_called_once()
 

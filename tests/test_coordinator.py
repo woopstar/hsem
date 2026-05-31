@@ -283,7 +283,7 @@ class TestSinglePollGuarantee:
             HSEMWorkingModeSensor,
         )
 
-        assert HSEMWorkingModeSensor.should_poll.fget is not None  # type: ignore[attr-defined]
+        assert HSEMWorkingModeSensor.should_poll.fget is not None  # type: ignore[attr-defined]  # mock attribute set in test
         # Instantiate a minimal stub to call the property
         sensor = object.__new__(HSEMWorkingModeSensor)
         # Inject a minimal coordinator mock

@@ -373,7 +373,7 @@ class TestSensorConfigZeroWeightPreserved:
         zero_result = convert_to_int("0")
         assert zero_result == 0
         # The broken pattern:
-        broken = zero_result or 25  # type: ignore[operator]
+        broken = zero_result or 25  # type: ignore[operator]  # intentional None comparison in test
         assert broken == 25, "or-pattern incorrectly replaces real 0 with default"
         # The correct pattern:
         correct = zero_result if zero_result is not None else 25
