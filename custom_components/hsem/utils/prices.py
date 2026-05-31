@@ -82,18 +82,17 @@ class SlotPrice(NamedTuple):
     def is_missing_import(self) -> bool:
         """Return ``True`` if import price data is absent for this slot.
 
-        Uses the :data:`MISSING_SENTINEL` identity (IEEE 754 NaN) check.
+        Uses :func:`math.isnan` for an explicit IEEE 754 NaN check.
         """
-        # NaN != NaN is True by IEEE 754; this avoids importing math here.
-        return self.import_price != self.import_price  # noqa: PLR0124
+        return math.isnan(self.import_price)
 
     @property
     def is_missing_export(self) -> bool:
         """Return ``True`` if export price data is absent for this slot.
 
-        Uses the :data:`MISSING_SENTINEL` identity (IEEE 754 NaN) check.
+        Uses :func:`math.isnan` for an explicit IEEE 754 NaN check.
         """
-        return self.export_price != self.export_price  # noqa: PLR0124
+        return math.isnan(self.export_price)
 
     @property
     def has_any_missing(self) -> bool:
