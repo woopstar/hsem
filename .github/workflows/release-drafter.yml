@@ -10,14 +10,17 @@ on:
   pull_request:
     types: [opened, reopened, synchronize]
 
-permissions: read-all
+permissions:
+  contents: read
 
 jobs:
   update_release_draft:
     name: Update release draft
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
-    permissions: write-all
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - name: Checkout
         uses: actions/checkout@v6

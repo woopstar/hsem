@@ -6,17 +6,19 @@ name: Auto Label PRs from Conventional Commits
 on:
   pull_request:
     branches: [main]
-    types:
-      [opened, reopened, labeled, unlabeled]
+    types: [opened, reopened, labeled, unlabeled]
   workflow_dispatch:
 
-permissions: read-all
+permissions:
+  contents: read
 
 jobs:
   label:
     name: Assign PR Labels
     runs-on: ubuntu-latest
-    permissions: write-all
+    permissions:
+      contents: read
+      pull-requests: write
     if: github.event.pull_request.merged == false
     steps:
       - uses: actions/checkout@v6
