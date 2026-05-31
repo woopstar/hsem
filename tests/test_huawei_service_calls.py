@@ -241,7 +241,12 @@ class TestSetForcibleDischarge:
         """Passing a non-integer or out-of-range target_soc must raise ValueError."""
         sensor = _make_sensor(has_service=True)
         with pytest.raises(ValueError):
-            await async_set_forcible_discharge(sensor, "bat_dev", 150, 3000)  # > 100
+            await async_set_forcible_discharge(
+                sensor,
+                "bat_dev",
+                150,
+                3000,  # > 100  # NOSONAR
+            )
         with pytest.raises(ValueError):
             await async_set_forcible_discharge(sensor, "bat_dev", -1, 3000)  # < 0
         with pytest.raises(ValueError):
