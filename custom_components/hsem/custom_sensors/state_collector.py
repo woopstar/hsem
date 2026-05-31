@@ -90,7 +90,7 @@ async def async_collect_live_state(
     fwm_entity = force_working_mode_cache
     if fwm_entity is None:
         fwm_entity = await async_resolve_entity_id_from_unique_id(
-            sensor, get_force_working_mode_selector_key(), "select"
+            sensor, f"{get_force_working_mode_selector_key()}_{entry_id}", "select"
         )
     state.force_working_mode = fwm_entity
 

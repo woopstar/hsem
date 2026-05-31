@@ -386,7 +386,7 @@ async def async_set_number_value(self: Any, entity_id: str, value: float | int) 
     entity = self.hass.states.get(entity_id)
 
     if entity is None:
-        _LOGGER.error(f"Entity with id {entity_id} not found.")
+        _LOGGER.error("Entity with id %s not found", entity_id)
         return
 
     try:

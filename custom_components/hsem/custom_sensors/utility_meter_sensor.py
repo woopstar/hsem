@@ -6,7 +6,7 @@ per-hour energy meters appear on the HSEM device page.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, override
 
 from homeassistant.components.sensor.const import SensorDeviceClass, SensorStateClass
 from homeassistant.components.utility_meter.sensor import UtilityMeterSensor
@@ -52,10 +52,12 @@ class HSEMUtilityMeterSensor(UtilityMeterSensor, HSEMEntity):
         self.entity_id = e_id
 
     @property
+    @override
     def unique_id(self) -> str | None:
         return self._attr_unique_id
 
     @property  # type: ignore[misc]  # HA stub declares unit_of_measurement as @final
+    @override
     def unit_of_measurement(self) -> str:
         return UnitOfEnergy.KILO_WATT_HOUR
 
@@ -68,5 +70,6 @@ class HSEMUtilityMeterSensor(UtilityMeterSensor, HSEMEntity):
         return SensorStateClass.TOTAL
 
     @property
+    @override
     def should_poll(self) -> bool:
         return True

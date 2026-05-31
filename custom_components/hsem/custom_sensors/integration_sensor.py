@@ -6,7 +6,7 @@ metadata so that all derived energy sensors appear on the HSEM device page.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, override
 
 from homeassistant.components.integration.sensor import IntegrationSensor
 from homeassistant.components.sensor.const import SensorDeviceClass, SensorStateClass
@@ -61,9 +61,11 @@ class HSEMIntegrationSensor(IntegrationSensor, HSEMEntity):
         return SensorDeviceClass.ENERGY
 
     @property
+    @override
     def unique_id(self) -> str | None:
         return self._attr_unique_id
 
     @property
+    @override
     def should_poll(self) -> bool:
         return True

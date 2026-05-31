@@ -59,7 +59,9 @@ class HSEMSolcastLikelihoodSelector(SelectEntity, HSEMEntity):
         self.hass = hass
         self._config_entry = config_entry
         self.entity_description = description
-        self._attr_unique_id = get_solcast_likelihood_selector_key()
+        self._attr_unique_id = (
+            f"{get_solcast_likelihood_selector_key()}_{config_entry.entry_id}"
+        )
         self.entity_id = get_solcast_likelihood_selector_entity_id()
         self._attr_options = list(description.options or _OPTIONS)
         raw_name = description.name
