@@ -6,7 +6,8 @@ on:
   pull_request:
     branches: [main, dev]
 
-permissions: read-all
+permissions:
+  contents: read
 
 jobs:
   lint:

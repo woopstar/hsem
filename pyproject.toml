@@ -8,8 +8,43 @@ version = "1.0.0"
 description = "Home Solar Energy Manager - Energy optimization for home battery systems"
 readme = "README.md"
 license = {text = "MIT"}
-requires-python = ">=3.13"
-dependencies = []
+requires-python = ">=3.13.2"
+dependencies = [
+    "voluptuous>=0.15.2",
+    "homeassistant>=2026.2.3",
+    "scipy>=1.17.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+    "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7.1.0",
+    "pytest-socket>=0.8.0",
+    "pytest-timeout>=2.4.0",
+    "pyright>=1.1.409",
+    "vulture>=2.16",
+    "ruff>=0.15.15",
+    "black>=26.5.1",
+    "isort>=8.0.1",
+]
+lint = [
+    "ruff>=0.15.15",
+    "black>=26.5.1",
+    "isort>=8.0.1",
+]
+typing = [
+    "mypy>=2.1.0",
+]
+test = [
+    "pytest>=9.0.3",
+    "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7.1.0",
+    "pytest-socket>=0.8.0",
+    "pytest-timeout>=2.4.0",
+    "pyright>=1.1.409",
+    "vulture>=2.16",
+]
 
 [tool.ruff]
 line-length = 88

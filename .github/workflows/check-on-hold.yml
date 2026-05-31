@@ -10,7 +10,9 @@ on:
       - labeled
       - unlabeled
 
-permissions: read-all
+permissions:
+  contents: read
+  pull-requests: read
 
 jobs:
   fail-if-on-hold:
