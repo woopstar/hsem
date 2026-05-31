@@ -21,7 +21,7 @@ from custom_components.hsem.entity import HSEMEntity
 from custom_components.hsem.utils.misc import get_config_value
 
 
-class HSEMSwitch(SwitchEntity, HSEMEntity):
+class HSEMSwitch(HSEMEntity, SwitchEntity):
     """Boolean on/off control for HSEM integration settings.
 
     Each switch maps to a single key in the config entry options, so toggling

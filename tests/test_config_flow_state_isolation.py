@@ -42,22 +42,22 @@ def _make_flow() -> HSEMConfigFlow:
     """
     flow = HSEMConfigFlow.__new__(HSEMConfigFlow)
     # Call __init__ explicitly to exercise the real initialiser.
-    flow.__init__()  # type: ignore[misc]
+    flow.__init__()  # type: ignore[misc]  # test fixture override
 
     hass = MagicMock()
     hass.config_entries.async_entries.return_value = []
     flow.hass = hass
 
-    flow.async_set_unique_id = AsyncMock(return_value=None)  # type: ignore[method-assign]
-    flow._abort_if_unique_id_configured = MagicMock(return_value=None)  # type: ignore[method-assign]
-    flow.async_show_form = MagicMock(  # type: ignore[method-assign]
+    flow.async_set_unique_id = AsyncMock(return_value=None)  # type: ignore[method-assign]  # test monkey-patch
+    flow._abort_if_unique_id_configured = MagicMock(return_value=None)  # type: ignore[method-assign]  # test monkey-patch
+    flow.async_show_form = MagicMock(  # type: ignore[method-assign]  # test monkey-patch
         side_effect=lambda **kwargs: {
             "type": "form",
             "step_id": kwargs.get("step_id"),
             "errors": kwargs.get("errors", {}),
         }
     )
-    flow.async_create_entry = MagicMock(  # type: ignore[method-assign]
+    flow.async_create_entry = MagicMock(  # type: ignore[method-assign]  # test monkey-patch
         side_effect=lambda **kwargs: {
             "type": "create_entry",
             "title": kwargs.get("title"),
@@ -327,10 +327,10 @@ class TestAsyncStepUserPerInstanceState:
             ),
         ):
             # Patch the next-step on each instance independently.
-            flow_a.async_step_prices = AsyncMock(  # type: ignore[method-assign]
+            flow_a.async_step_prices = AsyncMock(  # type: ignore[method-assign]  # test monkey-patch
                 return_value={"type": "form", "step_id": "prices"}
             )
-            flow_b.async_step_prices = AsyncMock(  # type: ignore[method-assign]
+            flow_b.async_step_prices = AsyncMock(  # type: ignore[method-assign]  # test monkey-patch
                 return_value={"type": "form", "step_id": "prices"}
             )
 

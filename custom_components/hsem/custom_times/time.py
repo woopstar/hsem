@@ -21,7 +21,7 @@ from custom_components.hsem.custom_times.description import (
 from custom_components.hsem.entity import HSEMEntity
 
 
-class HSEMTimeEntity(TimeEntity, HSEMEntity):
+class HSEMTimeEntity(HSEMEntity, TimeEntity):
     """Time entity for an HSEM schedule slot (start or end time).
 
     Inherits from :class:`TimeEntity` so Home Assistant's platform dispatcher

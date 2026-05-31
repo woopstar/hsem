@@ -8,6 +8,7 @@ attributes, and recommendation interval settings.
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import UnitOfTime
 from homeassistant.helpers.selector import selector
 
 from custom_components.hsem.utils.misc import get_config_value
@@ -30,7 +31,7 @@ async def get_init_step_schema(config_entry: ConfigEntry | None) -> vol.Schema:
                         "min": 1,
                         "max": 59,
                         "step": 1,
-                        "unit_of_measurement": "min",
+                        "unit_of_measurement": UnitOfTime.MINUTES,
                         "mode": "slider",
                     }
                 }

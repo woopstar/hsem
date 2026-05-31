@@ -191,7 +191,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
         await self.async_set_unique_id(DOMAIN)
         self._abort_if_unique_id_configured()
 
-        # If user_input is not None, the user has submitted the form
+        # If user_input is not None, the user has submitted the form.
         if user_input is not None:
             errors = await validate_init_step_input(user_input)
             if not errors:
@@ -200,7 +200,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
 
         data_schema = await get_init_step_schema(None)
 
-        # Show the init form
+        # Show the init form.
         return self.async_show_form(
             step_id="user",
             data_schema=data_schema,
@@ -244,17 +244,17 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
         if user_input is not None:
             errors = await validate_months_input(self.hass, user_input)
             if not errors:
-                # Convert winter months to integers
+                # Convert winter months to integers.
                 winter_months = convert_months_to_int(
                     user_input.get("hsem_months_winter", [])
                 )
                 self._user_input.update(user_input)
 
-                # Calculate summer months as the complement of winter months
+                # Calculate summer months as the complement of winter months.
                 all_months = set(range(1, 13))
                 summer_months = sorted(list(all_months - set(winter_months)))
 
-                # Update both winter and summer months as integers
+                # Update both winter and summer months as integers.
                 self._user_input["hsem_months_winter"] = winter_months
                 self._user_input["hsem_months_summer"] = summer_months
 
@@ -307,12 +307,12 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
             if not errors:
                 self._user_input.update(user_input)
 
-                # Ensure that optional inverter_id is set to an empty string if not provided
+                # Ensure that optional inverter_id is set to an empty string if not provided.
                 self._user_input["hsem_huawei_solar_device_id_inverter_2"] = (
                     self._user_input.get("hsem_huawei_solar_device_id_inverter_2", "")
                 )
 
-                # Ensure that optional ev_charger_status is set to None if not provided
+                # Ensure that optional ev_charger_status is set to None if not provided.
                 self._user_input["hsem_ev_charger_status"] = self._user_input.get(
                     "hsem_ev_charger_status", None
                 )

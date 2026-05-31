@@ -378,7 +378,7 @@ class TestWorkingModeSensorTopLevelGate:
         """Build a minimal CoordinatorData-like object for gate testing."""
         cfg = _make_cfg(read_only=read_only)
         live = _make_live(degraded_mode=degraded_mode)
-        live.energi_data_service_export_price = 1.0  # type: ignore[attr-defined]
+        live.energi_data_service_export_price = 1.0  # type: ignore[attr-defined]  # mock attribute set in test
 
         data = MagicMock()
         data.cfg = cfg

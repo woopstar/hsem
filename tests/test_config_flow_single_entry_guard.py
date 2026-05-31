@@ -61,19 +61,19 @@ def _make_flow(*, already_configured: bool = False) -> HSEMConfigFlow:
     flow.hass = hass
 
     # async_set_unique_id: record the id but do nothing else.
-    flow.async_set_unique_id = AsyncMock(return_value=None)  # type: ignore[method-assign]
+    flow.async_set_unique_id = AsyncMock(return_value=None)  # type: ignore[method-assign]  # test monkey-patch
 
     if already_configured:
         # Simulate the real HA behaviour: raises AbortFlow("already_configured").
-        flow._abort_if_unique_id_configured = MagicMock(  # type: ignore[method-assign]
+        flow._abort_if_unique_id_configured = MagicMock(  # type: ignore[method-assign]  # test monkey-patch
             side_effect=AbortFlow("already_configured")
         )
     else:
         # No duplicate: the guard is a no-op.
-        flow._abort_if_unique_id_configured = MagicMock(return_value=None)  # type: ignore[method-assign]
+        flow._abort_if_unique_id_configured = MagicMock(return_value=None)  # type: ignore[method-assign]  # test monkey-patch
 
     # async_show_form: return a dict representing the form result.
-    flow.async_show_form = MagicMock(  # type: ignore[method-assign]
+    flow.async_show_form = MagicMock(  # type: ignore[method-assign]  # test monkey-patch
         side_effect=lambda **kwargs: {
             "type": "form",
             "step_id": kwargs.get("step_id"),
@@ -82,7 +82,7 @@ def _make_flow(*, already_configured: bool = False) -> HSEMConfigFlow:
     )
 
     # async_create_entry: return a dict representing the created entry.
-    flow.async_create_entry = MagicMock(  # type: ignore[method-assign]
+    flow.async_create_entry = MagicMock(  # type: ignore[method-assign]  # test monkey-patch
         side_effect=lambda **kwargs: {
             "type": "create_entry",
             "title": kwargs.get("title"),
@@ -112,7 +112,7 @@ class TestUniqueIdIsSetEarly:
         ):
             await flow.async_step_user(user_input=None)
 
-        flow.async_set_unique_id.assert_awaited_once_with(DOMAIN)  # type: ignore[attr-defined]
+        flow.async_set_unique_id.assert_awaited_once_with(DOMAIN)  # type: ignore[attr-defined]  # mock attribute set in test
 
     @pytest.mark.asyncio
     async def test_unique_id_is_called_before_abort_guard(self) -> None:
@@ -126,13 +126,13 @@ class TestUniqueIdIsSetEarly:
             call_order.append("abort_guard")
 
         flow = _make_flow()
-        flow.async_set_unique_id = AsyncMock(  # type: ignore[method-assign]
+        flow.async_set_unique_id = AsyncMock(  # type: ignore[method-assign]  # test monkey-patch
             side_effect=_set_unique_id_side_effect
         )
-        flow._abort_if_unique_id_configured = MagicMock(  # type: ignore[method-assign]
+        flow._abort_if_unique_id_configured = MagicMock(  # type: ignore[method-assign]  # test monkey-patch
             side_effect=_abort_guard_side_effect
         )
-        flow.async_show_form = MagicMock(  # type: ignore[method-assign]
+        flow.async_show_form = MagicMock(  # type: ignore[method-assign]  # test monkey-patch
             return_value={"type": "form", "step_id": "user", "errors": {}}
         )
 
@@ -152,10 +152,10 @@ class TestUniqueIdIsSetEarly:
             recorded_uid.append(uid)
 
         flow = _make_flow()
-        flow.async_set_unique_id = AsyncMock(  # type: ignore[method-assign]
+        flow.async_set_unique_id = AsyncMock(  # type: ignore[method-assign]  # test monkey-patch
             side_effect=_record_uid_side_effect
         )
-        flow.async_show_form = MagicMock(  # type: ignore[method-assign]
+        flow.async_show_form = MagicMock(  # type: ignore[method-assign]  # test monkey-patch
             return_value={"type": "form", "step_id": "user", "errors": {}}
         )
 
@@ -200,7 +200,7 @@ class TestFirstSetupProceeds:
         flow = _make_flow(already_configured=False)
         result = await flow.async_step_user(user_input=None)
 
-        errors: dict[str, str] = result["errors"]  # type: ignore[assignment]
+        errors: dict[str, str] = result["errors"]  # type: ignore[assignment]  # test fixture override
         assert "base" not in errors
 
 
@@ -230,7 +230,7 @@ class TestDuplicateFlowAbortsEarly:
         with pytest.raises(AbortFlow):
             await flow.async_step_user(user_input=None)
 
-        flow.async_show_form.assert_not_called()  # type: ignore[attr-defined]
+        flow.async_show_form.assert_not_called()  # type: ignore[attr-defined]  # mock attribute set in test
 
     @pytest.mark.asyncio
     async def test_duplicate_flow_aborts_before_user_input_is_processed(
@@ -253,7 +253,7 @@ class TestDuplicateFlowAbortsEarly:
         with pytest.raises(AbortFlow):
             await flow.async_step_user(user_input=None)
 
-        flow.async_set_unique_id.assert_awaited_once_with(DOMAIN)  # type: ignore[attr-defined]
+        flow.async_set_unique_id.assert_awaited_once_with(DOMAIN)  # type: ignore[attr-defined]  # mock attribute set in test
 
 
 # ---------------------------------------------------------------------------
@@ -275,7 +275,7 @@ class TestGuardMechanism:
         flow = _make_flow(already_configured=False)
         await flow.async_step_user(user_input=None)
 
-        flow.hass.config_entries.async_entries.assert_not_called()  # type: ignore[attr-defined]
+        flow.hass.config_entries.async_entries.assert_not_called()  # type: ignore[attr-defined]  # mock attribute set in test
 
     @pytest.mark.asyncio
     async def test_abort_guard_called_exactly_once_per_step(self) -> None:
@@ -283,4 +283,4 @@ class TestGuardMechanism:
         flow = _make_flow(already_configured=False)
         await flow.async_step_user(user_input=None)
 
-        flow._abort_if_unique_id_configured.assert_called_once()  # type: ignore[attr-defined]
+        flow._abort_if_unique_id_configured.assert_called_once()  # type: ignore[attr-defined]  # mock attribute set in test

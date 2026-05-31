@@ -78,7 +78,7 @@ class TestValidateEntityIdFormat:
         assert validate_entity_id_format("") is False
 
     def test_none(self):
-        assert validate_entity_id_format(None) is False  # type: ignore[arg-type]
+        assert validate_entity_id_format(None) is False  # type: ignore[arg-type]  # test passes mock where real type expected
 
     def test_special_chars(self):
         assert validate_entity_id_format("sensor.my-sensor!") is False

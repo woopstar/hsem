@@ -22,7 +22,7 @@ from custom_components.hsem.entity import HSEMEntity
 from custom_components.hsem.utils.misc import convert_to_float, get_config_value
 
 
-class HSEMBatteryEfficiencyNumber(NumberEntity, HSEMEntity):
+class HSEMBatteryEfficiencyNumber(HSEMEntity, NumberEntity):
     """Number entity for a battery-side efficiency percentage.
 
     Exposes a slider (50–100 %, step 1) that lets users adjust the

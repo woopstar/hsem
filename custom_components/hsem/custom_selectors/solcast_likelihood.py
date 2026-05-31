@@ -28,7 +28,7 @@ _DEFAULT = "pv_estimate"
 _CONFIG_KEY = "hsem_solcast_pv_forecast_forecast_likelihood"
 
 
-class HSEMSolcastLikelihoodSelector(SelectEntity, HSEMEntity):
+class HSEMSolcastLikelihoodSelector(HSEMEntity, SelectEntity):
     """Select entity for the Solcast PV forecast likelihood.
 
     Presents the three Solcast likelihood options.  Changing the selection

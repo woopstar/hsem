@@ -186,8 +186,8 @@ class TestSolarSurplusThresholdInChargeSchedules:
             end=time(9, 0),
         )
         # Pre-set discharge schedule metadata (normally done by apply_discharge_schedules)
-        sched._needed_capacity = 0.5  # type: ignore[attr-defined]
-        sched._avg_import_price = 0.20  # type: ignore[attr-defined]
+        sched._needed_capacity = 0.5  # type: ignore[attr-defined]  # mock attribute set in test
+        sched._avg_import_price = 0.20  # type: ignore[attr-defined]  # mock attribute set in test
 
         apply_charge_schedules(
             slots=slots,

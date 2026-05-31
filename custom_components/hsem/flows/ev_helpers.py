@@ -21,6 +21,7 @@ Public API
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import UnitOfPower
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.selector import selector
 
@@ -42,7 +43,7 @@ _DISCHARGE_POWER_SELECTOR = selector(
             "min": 50,
             "max": 5000,
             "step": 1,
-            "unit_of_measurement": "W",
+            "unit_of_measurement": UnitOfPower.WATT,
             "mode": "slider",
         }
     }

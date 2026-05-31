@@ -215,7 +215,7 @@ class TestHSEMTimeEntitySetValue:
     async def test_set_value_updates_native_value(self) -> None:
         """native_value reflects the time passed to async_set_value."""
         entity = self._make_entity()
-        entity.async_write_ha_state = MagicMock()  # type: ignore[method-assign]
+        entity.async_write_ha_state = MagicMock()  # type: ignore[method-assign]  # test monkey-patch
         new_time = time(17, 0, 0)
         await entity.async_set_value(new_time)
         assert entity.native_value == new_time
@@ -224,11 +224,11 @@ class TestHSEMTimeEntitySetValue:
     async def test_set_value_persists_to_config_entry(self) -> None:
         """Config entry is updated with the ISO string of the new time."""
         entity = self._make_entity()
-        entity.async_write_ha_state = MagicMock()  # type: ignore[method-assign]
+        entity.async_write_ha_state = MagicMock()  # type: ignore[method-assign]  # test monkey-patch
         new_time = time(21, 30, 0)
         await entity.async_set_value(new_time)
-        entity.hass.config_entries.async_update_entry.assert_called_once()  # type: ignore[attr-defined]
-        call_kwargs = entity.hass.config_entries.async_update_entry.call_args  # type: ignore[attr-defined]
+        entity.hass.config_entries.async_update_entry.assert_called_once()  # type: ignore[attr-defined]  # mock attribute set in test
+        call_kwargs = entity.hass.config_entries.async_update_entry.call_args  # type: ignore[attr-defined]  # mock attribute set in test
         updated_options = call_kwargs[1]["options"]
         assert (
             updated_options["hsem_batteries_enable_batteries_schedule_1_start"]
@@ -239,7 +239,7 @@ class TestHSEMTimeEntitySetValue:
     async def test_set_value_calls_async_write_ha_state(self) -> None:
         """async_write_ha_state is called after persisting to push the update to HA."""
         entity = self._make_entity()
-        entity.async_write_ha_state = MagicMock()  # type: ignore[method-assign]
+        entity.async_write_ha_state = MagicMock()  # type: ignore[method-assign]  # test monkey-patch
         await entity.async_set_value(time(8, 0, 0))
         entity.async_write_ha_state.assert_called_once()
 
@@ -247,7 +247,7 @@ class TestHSEMTimeEntitySetValue:
     async def test_set_value_multiple_times(self) -> None:
         """Multiple sequential calls each update native_value correctly."""
         entity = self._make_entity()
-        entity.async_write_ha_state = MagicMock()  # type: ignore[method-assign]
+        entity.async_write_ha_state = MagicMock()  # type: ignore[method-assign]  # test monkey-patch
 
         for hour in (9, 12, 23):
             new_time = time(hour, 0, 0)

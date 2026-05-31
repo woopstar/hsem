@@ -449,6 +449,7 @@ class HSEMWorkingModeSensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
     # Legacy compatibility
     # ------------------------------------------------------------------
 
+    @override
     async def async_update(self, event: Any | None = None) -> None:
         """Manually request a coordinator refresh.
 

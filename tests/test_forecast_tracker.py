@@ -205,9 +205,9 @@ class TestForecastTrackerLifecycle:
         assert (
             count == 2
         )  # slots 9-10 (ends 10:00) and 10-11 (ends 11:00) ended by 12:00
-        assert tracker.find_record(_slot_start(9)).finalised  # type: ignore[union-attr]
-        assert tracker.find_record(_slot_start(10)).finalised  # type: ignore[union-attr]
-        assert not tracker.find_record(_slot_start(13)).finalised  # type: ignore[union-attr]
+        assert tracker.find_record(_slot_start(9)).finalised  # type: ignore[union-attr]  # mock attribute on union type
+        assert tracker.find_record(_slot_start(10)).finalised  # type: ignore[union-attr]  # mock attribute on union type
+        assert not tracker.find_record(_slot_start(13)).finalised  # type: ignore[union-attr]  # mock attribute on union type
 
     def test_prune_exceeds_max(self) -> None:
         """Old records are pruned when the buffer exceeds max_slots."""

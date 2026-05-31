@@ -19,7 +19,7 @@ from custom_components.hsem.utils.sensornames import (
 )
 
 
-class HSEMWorkingModeSelector(SelectEntity, HSEMEntity):
+class HSEMWorkingModeSelector(HSEMEntity, SelectEntity):
     """Selector entity for forcing a specific working mode.
 
     Presents all working modes plus an ``"auto"`` option.  Inherits from
