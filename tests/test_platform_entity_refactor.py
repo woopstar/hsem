@@ -13,9 +13,8 @@ Verifies that the select, switch, and time platform entities:
 Unique-ID format contract (must never change):
   - Switch:  ``"hsem_<entry_id>_<key>_switch"``   e.g. ``"hsem_<entry_id>_hsem_read_only_switch"``
   - Time:    ``"hsem_<entry_id>_<key>_time"``     e.g. ``"hsem_<entry_id>_hsem_batteries_enable_batteries_schedule_1_start_time"``
-  - Select:  ``"<key>"``               e.g. ``"hsem_force_working_mode"``
-    (The key already carries the ``hsem_`` prefix, keeping it consistent with
-    the switch/time convention and compatible with state-collector lookups.)
+  - Select:  ``"<key>_<entry_id>"``               e.g. ``"hsem_force_working_mode_test_entry_id"``
+    (The key already carries the ``hsem_`` prefix; entry_id is appended for uniqueness.)
 """
 
 from __future__ import annotations
@@ -632,9 +631,9 @@ class TestSelectorUniqueId:
     """Selector unique_id must use the key directly (hsem_ prefix convention)."""
 
     def test_unique_id_is_key(self) -> None:
-        """unique_id must equal the description key exactly."""
+        """unique_id must include the description key and entry_id."""
         entity = _make_selector(key="hsem_force_working_mode")
-        assert entity.unique_id == "hsem_force_working_mode"
+        assert entity.unique_id == "hsem_force_working_mode_test_entry_id"
 
     def test_unique_id_includes_hsem_prefix(self) -> None:
         entity = _make_selector(key="hsem_force_working_mode")
@@ -642,13 +641,14 @@ class TestSelectorUniqueId:
         assert entity.unique_id.startswith("hsem_")
 
     def test_unique_id_equals_canonical_key(self) -> None:
-        """unique_id must equal the canonical key from sensornames, not a caller-supplied key."""
+        """unique_id must start with the canonical key from sensornames."""
         from custom_components.hsem.utils.sensornames import (
             get_force_working_mode_selector_key,
         )
 
         entity = _make_selector(key="hsem_force_working_mode")
-        assert entity.unique_id == get_force_working_mode_selector_key()
+        assert entity.unique_id is not None
+        assert entity.unique_id.startswith(get_force_working_mode_selector_key())
 
     def test_unique_id_is_attr_not_property(self) -> None:
         entity = _make_selector()
@@ -656,9 +656,9 @@ class TestSelectorUniqueId:
         assert entity._attr_unique_id == entity.unique_id
 
     def test_unique_id_format(self) -> None:
-        """unique_id must be the key string (e.g. 'hsem_force_working_mode')."""
+        """unique_id must be '<key>_<entry_id>' (e.g. 'hsem_force_working_mode_test_entry_id')."""
         entity = _make_selector(key="hsem_force_working_mode")
-        assert entity.unique_id == "hsem_force_working_mode"
+        assert entity.unique_id == "hsem_force_working_mode_test_entry_id"
 
 
 # ===========================================================================

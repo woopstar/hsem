@@ -261,16 +261,16 @@ class ForecastTracker:
 
         mae_pv: float = statistics.mean(
             r.mae_pv for r in finalised if r.mae_pv is not None
-        )  # type: ignore[misc]
+        )  # type: ignore[misc]  # statistics.mean rejects generator of optional float
         mae_load: float = statistics.mean(
             r.mae_load for r in finalised if r.mae_load is not None
-        )  # type: ignore[misc]
+        )  # type: ignore[misc]  # statistics.mean rejects generator of optional float
         bias_pv: float = statistics.mean(
             r.bias_pv for r in finalised if r.bias_pv is not None
-        )  # type: ignore[misc]
+        )  # type: ignore[misc]  # statistics.mean rejects generator of optional float
         bias_load: float = statistics.mean(
             r.bias_load for r in finalised if r.bias_load is not None
-        )  # type: ignore[misc]
+        )  # type: ignore[misc]  # statistics.mean rejects generator of optional float
 
         # RMSE
         rmse_pv = math.sqrt(

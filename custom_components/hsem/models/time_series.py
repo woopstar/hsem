@@ -281,11 +281,11 @@ class TimeSeriesIndex:
         for meta in self.slots:
             if _use_day_key:
                 day_hour_key = (meta.key.day_offset, meta.hour)
-                imp = import_prices.get(day_hour_key)  # type: ignore[call-overload]
-                exp = export_prices.get(day_hour_key)  # type: ignore[call-overload]
+                imp = import_prices.get(day_hour_key)  # type: ignore[call-overload]  # dict key is tuple|int; mypy sees overload ambiguity
+                exp = export_prices.get(day_hour_key)  # type: ignore[call-overload]  # dict key is tuple|int; mypy sees overload ambiguity
             else:
-                imp = import_prices.get(meta.hour)  # type: ignore[call-overload]
-                exp = export_prices.get(meta.hour)  # type: ignore[call-overload]
+                imp = import_prices.get(meta.hour)  # type: ignore[call-overload]  # dict key is tuple|int; mypy sees overload ambiguity
+                exp = export_prices.get(meta.hour)  # type: ignore[call-overload]  # dict key is tuple|int; mypy sees overload ambiguity
 
             if imp is None:
                 self.missing_slots.add(meta.key)
@@ -332,9 +332,9 @@ class TimeSeriesIndex:
         for meta in self.slots:
             if _use_day_key:
                 key = (meta.key.day_offset, meta.hour)
-                hourly_kwh = pv_by_hour.get(key)  # type: ignore[call-overload]
+                hourly_kwh = pv_by_hour.get(key)  # type: ignore[call-overload]  # dict key is tuple|int; mypy sees overload ambiguity
             else:
-                hourly_kwh = pv_by_hour.get(meta.hour)  # type: ignore[call-overload]
+                hourly_kwh = pv_by_hour.get(meta.hour)  # type: ignore[call-overload]  # dict key is tuple|int; mypy sees overload ambiguity
             if hourly_kwh is None:
                 self.missing_slots.add(meta.key)
                 self.missing_pv_slots.add(meta.key)
@@ -374,9 +374,9 @@ class TimeSeriesIndex:
         for meta in self.slots:
             if _use_day_key:
                 key = (meta.key.day_offset, meta.hour)
-                hourly_kwh = load_by_hour.get(key)  # type: ignore[call-overload]
+                hourly_kwh = load_by_hour.get(key)  # type: ignore[call-overload]  # dict key is tuple|int; mypy sees overload ambiguity
             else:
-                hourly_kwh = load_by_hour.get(meta.hour)  # type: ignore[call-overload]
+                hourly_kwh = load_by_hour.get(meta.hour)  # type: ignore[call-overload]  # dict key is tuple|int; mypy sees overload ambiguity
             if hourly_kwh is None:
                 self.missing_slots.add(meta.key)
                 aligned.append(MISSING_SENTINEL)

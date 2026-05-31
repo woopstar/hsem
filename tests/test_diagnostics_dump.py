@@ -16,6 +16,8 @@ import json
 
 import pytest
 
+from homeassistant.const import STATE_UNKNOWN
+
 from custom_components.hsem.models.planner_inputs import PlannerInput
 from custom_components.hsem.planner import run_planner
 from custom_components.hsem.utils.diagnostics import (
@@ -207,7 +209,7 @@ class TestBuildDiagnosticsDump:
         inp = _make_minimal_input()
         out = run_planner(inp)
         dump = build_diagnostics_dump(inp, out)
-        assert dump["hsem_version"] == "unknown"
+        assert dump["hsem_version"] == STATE_UNKNOWN
 
     def test_apply_result_is_none_when_not_provided(self) -> None:
         inp = _make_minimal_input()
