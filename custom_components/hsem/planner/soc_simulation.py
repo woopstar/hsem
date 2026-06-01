@@ -236,17 +236,12 @@ def simulate_soc(
             # the battery must release `net_demand / discharge_eff` kWh.
             # We cap to available capacity and per-slot limit then compute
             # what the house actually receives from that draw.
-            if ev_load > 1e-9:
-                # EV is charging — no battery discharge.  Everything from grid.
-                discharge = 0.0
-                house_grid_import = net_demand
-                grid_import = (
-                    house_grid_import + scheduled_charge / charge_eff + ev_load
-                )
-                grid_export = 0.0
-            elif slot.recommendation == Recommendations.BatteriesWaitMode.value:
-                # Slot explicitly marked as wait mode — preserve battery
-                # for more expensive slots later in the horizon.
+            if (
+                ev_load > 1e-9
+                or slot.recommendation == Recommendations.BatteriesWaitMode.value
+            ):
+                # EV is charging or slot is in wait mode — no battery discharge.
+                # Everything from grid.
                 discharge = 0.0
                 house_grid_import = net_demand
                 grid_import = (

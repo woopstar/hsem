@@ -55,7 +55,7 @@ SELECTOR_DESCRIPTIONS: tuple[SelectEntityDescription, ...] = (
 )
 
 
-async def async_setup_entry(
+async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
     hass: HomeAssistant,
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,

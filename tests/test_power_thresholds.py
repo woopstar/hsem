@@ -238,7 +238,6 @@ class TestNearZeroThresholdInOptimizationStrategy:
         """Run optimization strategy on a single unassigned summer slot."""
         now = _now(12)  # noon in June
         slot = _slot(hour=12, net_consumption=net_consumption)
-        warnings: list[str] = []
         apply_optimization_strategy(
             slots=[slot],
             now=now,
@@ -246,7 +245,6 @@ class TestNearZeroThresholdInOptimizationStrategy:
             usable_capacity=9.0,
             required_capacity=0.0,
             months_winter=[1, 2, 3, 4, 10, 11, 12],
-            warnings=warnings,
         )
         return slot.recommendation
 
@@ -289,7 +287,6 @@ class TestSolarChargingLoopThreshold:
         slots = [
             _slot(hour=h, net_consumption=nc) for h, nc in enumerate(net_consumptions)
         ]
-        warnings: list[str] = []
         apply_optimization_strategy(
             slots=slots,
             now=now,
@@ -297,7 +294,6 @@ class TestSolarChargingLoopThreshold:
             usable_capacity=5.0,
             required_capacity=0.0,
             months_winter=[1, 2, 3, 4, 10, 11, 12],
-            warnings=warnings,
         )
         return [s.recommendation for s in slots]
 

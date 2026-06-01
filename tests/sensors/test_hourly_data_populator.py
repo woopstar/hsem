@@ -370,11 +370,10 @@ class TestSnapshotPopulation:
             _make_rec(base + td(hours=h), base + td(hours=h + 1)) for h in range(24)
         ]
 
-        tz = UTC
         populate_avg_house_consumption_from_snapshot(
             recs1, snapshot, cfg, eid_cache, entry_id="test_entry_id"
         )
-        populate_price_and_solcast_from_snapshot(recs1, snapshot, cfg, tz)
+        populate_price_and_solcast_from_snapshot(recs1, snapshot, cfg)
 
         # Second population with identical data
         recs2 = [
@@ -383,7 +382,7 @@ class TestSnapshotPopulation:
         populate_avg_house_consumption_from_snapshot(
             recs2, snapshot, cfg, eid_cache, entry_id="test_entry_id"
         )
-        populate_price_and_solcast_from_snapshot(recs2, snapshot, cfg, tz)
+        populate_price_and_solcast_from_snapshot(recs2, snapshot, cfg)
 
         # Assert determinism
         for i, (r1, r2) in enumerate(zip(recs1, recs2, strict=False)):

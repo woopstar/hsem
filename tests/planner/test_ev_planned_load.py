@@ -915,7 +915,6 @@ class TestEvSolarSurplusRegression:
         assert planner_slot_10.ev_planned_load_kwh == pytest.approx(2.5, abs=0.01), (
             f"Planner slot 10 ev_planned_load_kwh should be 2.5, got {planner_slot_10.ev_planned_load_kwh}"
         )
-        # effective_net = house(1.0) + ev(2.5) - pv(3.5) = 0.0
         assert planner_slot_10.estimated_net_consumption_kwh == pytest.approx(
             0.0, abs=0.01
         ), (
@@ -1358,7 +1357,6 @@ class TestEvAcLoadAndSoCPath:
         assert ev_slots, "At least one slot should have EV planned load"
 
         for s in ev_slots:
-            # grid_import = house + ev_ac + battery_charge - battery_discharge
             expected_import = (
                 s.avg_house_consumption_kwh
                 + s.ev_planned_load_kwh
@@ -1417,9 +1415,7 @@ class TestEvAcLoadAndSoCPath:
         assert s.ev_planned_load_kwh == pytest.approx(10.0, abs=0.01), (
             f"ev_planned_load_kwh should be AC-side 10.0, got {s.ev_planned_load_kwh}"
         )
-        # net = house + ev_ac - pv = 0.5 + 10.0 - 0.0 = 10.5
         assert s.estimated_net_consumption_kwh == pytest.approx(10.5, abs=0.05)
-        # grid_import = house + ev_ac + battery_charge = 0.5 + 10.0 + 5.0 = 15.5
         assert s.grid_import_kwh == pytest.approx(15.5, abs=0.1)
 
     # ------------------------------------------------------------------
@@ -2201,7 +2197,6 @@ class TestEvLoadSemantics:
         assert ev_slots, "Expected at least one slot with EV planned load"
 
         for s in ev_slots:
-            # net = house + ev_load - pv = 5.0 + ev_load - 2.0
             expected_net = round(
                 s.avg_house_consumption_kwh
                 + s.ev_planned_load_kwh

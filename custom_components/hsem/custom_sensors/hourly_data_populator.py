@@ -14,7 +14,7 @@ side-effects beyond that.  No hardware writes occur here.
 
 from __future__ import annotations
 
-from datetime import datetime, tzinfo
+from datetime import datetime
 from typing import Any
 
 from homeassistant.exceptions import HomeAssistantError
@@ -40,7 +40,6 @@ async def async_populate_price_and_solcast(
     sensor: Any,  # TODO: tighten type
     recommendations: list[HourlyRecommendation],
     cfg: SensorConfig,
-    tz: tzinfo | None,
 ) -> None:
     """Populate import/export prices and Solcast PV estimates into recommendation slots.
 
@@ -52,7 +51,6 @@ async def async_populate_price_and_solcast(
         sensor: The ``HSEMWorkingModeSensor`` instance for HA access and logging.
         recommendations: Mutable list of recommendation slots to update.
         cfg: Current sensor configuration.
-        tz: Timezone (``tzinfo`` instance) for datetime normalization.
     """
     # ---------------------------------------------------------------------------
     # Price interval semantics
@@ -95,7 +93,6 @@ async def async_populate_price_and_solcast(
         "import_price",
         price_share,
         cfg.solcast_pv_forecast_forecast_likelihood,
-        tz,
     )
     # Import price — fallback to dedicated forecast sensor if configured
     if cfg.import_electricity_price_forecast_sensor:
@@ -106,7 +103,6 @@ async def async_populate_price_and_solcast(
             "import_price",
             price_share,
             cfg.solcast_pv_forecast_forecast_likelihood,
-            tz,
         )
     # Export price — read from primary sensor
     await _async_update_hourly_field(
@@ -116,7 +112,6 @@ async def async_populate_price_and_solcast(
         "export_price",
         price_share,
         cfg.solcast_pv_forecast_forecast_likelihood,
-        tz,
     )
     # Export price — fallback to dedicated forecast sensor if configured
     if cfg.export_electricity_price_forecast_sensor:
@@ -127,7 +122,6 @@ async def async_populate_price_and_solcast(
             "export_price",
             price_share,
             cfg.solcast_pv_forecast_forecast_likelihood,
-            tz,
         )
     # Solcast today
     await _async_update_hourly_field(
@@ -137,7 +131,6 @@ async def async_populate_price_and_solcast(
         "solcast_pv_estimate_kwh",
         solcast_share,
         cfg.solcast_pv_forecast_forecast_likelihood,
-        tz,
     )
     # Solcast tomorrow
     await _async_update_hourly_field(
@@ -147,7 +140,6 @@ async def async_populate_price_and_solcast(
         "solcast_pv_estimate_kwh",
         solcast_share,
         cfg.solcast_pv_forecast_forecast_likelihood,
-        tz,
     )
 
 
@@ -299,7 +291,6 @@ async def _async_update_hourly_field(
     field_name: str,
     share: float,
     solcast_likelihood_key: str,
-    tz: tzinfo | None,
 ) -> None:
     """Match sensor attribute data to recommendation slots and write one field.
 
@@ -310,7 +301,6 @@ async def _async_update_hourly_field(
         field_name: Attribute name on :class:`HourlyRecommendation` to set.
         share: Divisor applied to each raw value (accounts for sub-hourly slots).
         solcast_likelihood_key: Attribute key for Solcast PV estimate field.
-        tz: Local timezone (``tzinfo`` instance) for datetime normalization.
     """
     if sensor_id is None:
         return
@@ -402,7 +392,6 @@ def populate_price_and_solcast_from_snapshot(
     recommendations: list[HourlyRecommendation],
     snapshot: StateSnapshot,
     cfg: SensorConfig,
-    tz: tzinfo | None,
 ) -> None:
     """Populate prices and Solcast PV estimates using a pre-collected snapshot.
 
@@ -413,7 +402,6 @@ def populate_price_and_solcast_from_snapshot(
         recommendations: Mutable list of recommendation slots to update.
         snapshot: Pre-collected state snapshot.
         cfg: Current sensor configuration.
-        tz: Timezone for datetime normalization.
     """
     price_share = (
         cfg.electricity_price_update_interval / cfg.recommendation_interval_minutes
@@ -426,7 +414,6 @@ def populate_price_and_solcast_from_snapshot(
         "import_price",
         price_share,
         cfg.solcast_pv_forecast_forecast_likelihood,
-        tz,
     )
     if cfg.import_electricity_price_forecast_sensor:
         _update_hourly_field_from_attrs(
@@ -437,7 +424,6 @@ def populate_price_and_solcast_from_snapshot(
             "import_price",
             price_share,
             cfg.solcast_pv_forecast_forecast_likelihood,
-            tz,
         )
     _update_hourly_field_from_attrs(
         recommendations,
@@ -445,7 +431,6 @@ def populate_price_and_solcast_from_snapshot(
         "export_price",
         price_share,
         cfg.solcast_pv_forecast_forecast_likelihood,
-        tz,
     )
     if cfg.export_electricity_price_forecast_sensor:
         _update_hourly_field_from_attrs(
@@ -456,7 +441,6 @@ def populate_price_and_solcast_from_snapshot(
             "export_price",
             price_share,
             cfg.solcast_pv_forecast_forecast_likelihood,
-            tz,
         )
     _update_hourly_field_from_attrs(
         recommendations,
@@ -464,7 +448,6 @@ def populate_price_and_solcast_from_snapshot(
         "solcast_pv_estimate_kwh",
         solcast_share,
         cfg.solcast_pv_forecast_forecast_likelihood,
-        tz,
     )
     _update_hourly_field_from_attrs(
         recommendations,
@@ -472,7 +455,6 @@ def populate_price_and_solcast_from_snapshot(
         "solcast_pv_estimate_kwh",
         solcast_share,
         cfg.solcast_pv_forecast_forecast_likelihood,
-        tz,
     )
 
 
@@ -482,7 +464,6 @@ def _update_hourly_field_from_attrs(
     field_name: str,
     share: float,
     solcast_likelihood_key: str,
-    tz: tzinfo | None,
 ) -> None:
     """Match pre-read sensor attribute data to recommendation slots.
 
@@ -496,7 +477,6 @@ def _update_hourly_field_from_attrs(
         field_name: Attribute name on :class:`HourlyRecommendation` to set.
         share: Divisor applied to each raw value.
         solcast_likelihood_key: Attribute key for Solcast PV estimate field.
-        tz: Local timezone for datetime normalization.
     """
     if attributes is None:
         return

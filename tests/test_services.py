@@ -302,7 +302,6 @@ class TestSetTemporaryOverride:
             call = MagicMock()
             call.data = {"working_mode": mode}
             await async_handle_set_temporary_override(hass, call)
-            assert True  # No exception raised
 
     @pytest.mark.asyncio
     async def test_handles_select_service_error(self):

@@ -412,8 +412,8 @@ class TestSocPenalty:
             soc_low_penalty_weight=0.01,
             soc_high_penalty_weight=0.0,
         )
-        slot_5pct = _make_slot(estimated_battery_soc_pct=15.0)  # violation = 5
-        slot_10pct = _make_slot(estimated_battery_soc_pct=10.0)  # violation = 10
+        slot_5pct = _make_slot(estimated_battery_soc_pct=15.0)
+        slot_10pct = _make_slot(estimated_battery_soc_pct=10.0)
         bd5 = score_plan([slot_5pct], weights)
         bd10 = score_plan([slot_10pct], weights)
         assert bd10.soc_penalty == pytest.approx(bd5.soc_penalty * 4, rel=1e-5)

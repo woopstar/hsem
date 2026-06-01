@@ -440,7 +440,6 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 self._hourly_recommendations,
                 self._snapshot,
                 cfg,
-                now.tzinfo,
             )
 
             # -----------------------------------------------------------------------

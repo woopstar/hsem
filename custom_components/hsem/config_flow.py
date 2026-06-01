@@ -523,7 +523,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
                 return await self.async_step_weighted_values()
 
         data_schema = await get_batteries_excess_export_step_schema(
-            None, self._user_input, hass=self.hass
+            None, self._user_input, _hass=self.hass
         )
 
         return self.async_show_form(

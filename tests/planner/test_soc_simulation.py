@@ -42,7 +42,7 @@ _TZ = ZoneInfo("Europe/Copenhagen")
 # ---------------------------------------------------------------------------
 
 
-def _make_minimal_input(
+def _make_minimal_input(  # NOSONAR
     *,
     battery_soc_pct: float = 50.0,
     battery_rated_capacity_kwh: float = 10.0,
@@ -116,17 +116,13 @@ class TestUsableCapacity:
     def test_default_max_soc_matches_original_behaviour(self):
         """max_soc_pct=100 should give the same result as the old implementation."""
         usable, current = usable_capacity(10.0, 50.0, 10.0, 100.0)
-        # usable = 10 * (100 - 10) / 100 = 9.0
         assert usable == pytest.approx(9.0)
-        # current = 10 * 50% - 10 * 10% = 5.0 - 1.0 = 4.0
         assert current == pytest.approx(4.0)
 
     def test_max_soc_reduces_usable_range(self):
         """battery_max_soc_pct=80 should limit the usable range to 70%."""
         usable, current = usable_capacity(10.0, 50.0, 10.0, 80.0)
-        # usable = 10 * (80 - 10) / 100 = 7.0
         assert usable == pytest.approx(7.0)
-        # current = min(4.0, 7.0) = 4.0
         assert current == pytest.approx(4.0)
 
     def test_current_clamped_to_usable_when_soc_above_max(self):
@@ -155,7 +151,6 @@ class TestUsableCapacity:
     def test_max_soc_below_min_soc_gives_zero_usable(self):
         """If max_soc_pct < end_of_discharge_soc_pct, usable should be 0."""
         usable, current = usable_capacity(10.0, 50.0, 20.0, 10.0)
-        # effective_max_soc = max(10, 20) = 20; usable = 10*(20-20)/100 = 0
         assert usable == pytest.approx(0.0)
         assert current == pytest.approx(0.0)
 
@@ -622,7 +617,6 @@ class TestMaxSoCPct:
     def test_usable_range_reduced_by_max_soc_pct(self):
         """usable_kwh should be (max_soc_pct - min_soc_pct) / 100 * rated."""
         usable, _ = usable_capacity(10.0, 50.0, 10.0, 90.0)
-        # usable = 10 * (90 - 10) / 100 = 8.0
         assert usable == pytest.approx(8.0)
 
     def test_max_soc_pct_100_equals_no_limit(self):

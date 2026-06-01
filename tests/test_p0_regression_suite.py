@@ -763,7 +763,6 @@ class TestP008MagicThresholds:
             usable_capacity=9.0,
             required_capacity=0.0,
             months_winter=[1, 2, 3, 4, 10, 11, 12],
-            warnings=[],
         )
         assert slot.recommendation == Recommendations.BatteriesChargeSolar.value, (
             "A slot at the near-zero boundary must be classified as BatteriesChargeSolar"

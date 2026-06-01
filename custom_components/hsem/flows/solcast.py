@@ -14,7 +14,9 @@ from custom_components.hsem.utils.config_validator import async_validate_entity_
 from custom_components.hsem.utils.misc import get_config_value
 
 
-async def get_solcast_step_schema(config_entry: ConfigEntry | None) -> vol.Schema:
+async def get_solcast_step_schema(
+    config_entry: ConfigEntry | None,
+) -> vol.Schema:  # NOSONAR -- async required by HA config/options flow framework
     """Return the data schema for the 'solcast' step."""
     return vol.Schema(
         {

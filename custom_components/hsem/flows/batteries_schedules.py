@@ -33,13 +33,13 @@ async def get_batteries_schedules_step_schema(
     three fields: enabled (boolean), start (time), end (time).
     """
     schema_1 = await build_batteries_schedule_step_schema(
-        1, config_entry, hass=hass, user_input=user_input
+        1, config_entry, _hass=hass, _user_input=user_input
     )
     schema_2 = await build_batteries_schedule_step_schema(
-        2, config_entry, hass=hass, user_input=user_input
+        2, config_entry, _hass=hass, _user_input=user_input
     )
     schema_3 = await build_batteries_schedule_step_schema(
-        3, config_entry, hass=hass, user_input=user_input
+        3, config_entry, _hass=hass, _user_input=user_input
     )
     # Merge all three schemas into one
     merged = {}

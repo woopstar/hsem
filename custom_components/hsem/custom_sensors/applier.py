@@ -71,6 +71,31 @@ from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.workingmodes import WorkingModes
 
 
+def _should_force_export_for_ev(
+    ev: Any,
+    ev_cfg: Any,
+    live: LiveState,
+) -> bool:
+    """Return True if the EV needs charging and export should be forced."""
+    if not ev.is_connected:
+        return False
+    if (
+        isinstance(ev.soc_pct, (int, float))
+        and isinstance(ev.soc_target_pct, (int, float))
+        and ev.soc_pct < ev.soc_target_pct
+    ):
+        return True
+    if (
+        isinstance(ev.soc_pct, (int, float))
+        and ev_cfg.allow_charge_past_target_soc
+        and ev.soc_pct < 100
+        and live.huawei_batteries_soc_pct is not None
+        and live.huawei_batteries_soc_pct >= 99.0
+    ):
+        return True
+    return False
+
+
 async def async_apply_inverter_power_control(
     sensor: Any,  # TODO: tighten type
     cfg: SensorConfig,
@@ -130,45 +155,12 @@ async def async_apply_inverter_power_control(
     export_pct = 100 if export_price >= min_price else 0
 
     # Allow export if EV is connected and needs charging
-    if export_pct == 0:
-        ev1_cfg = cfg.ev
-        ev1 = live.ev
-        if ev1.is_connected:
-            if (
-                isinstance(ev1.soc_pct, (int, float))
-                and isinstance(ev1.soc_target_pct, (int, float))
-                and ev1.soc_pct < ev1.soc_target_pct
-            ):
-                export_pct = 100
-            elif (
-                isinstance(ev1.soc_pct, (int, float))
-                and ev1_cfg.allow_charge_past_target_soc
-                and ev1.soc_pct < 100
-                # Only force export when house battery is already full —
-                # otherwise the MILP should get the PV surplus for the battery.
-                and live.huawei_batteries_soc_pct is not None
-                and live.huawei_batteries_soc_pct >= 99.0
-            ):
-                export_pct = 100
-
-        ev2_cfg = cfg.ev_second
-        ev2 = live.ev_second
-        if ev2.is_connected:
-            if (
-                isinstance(ev2.soc_pct, (int, float))
-                and isinstance(ev2.soc_target_pct, (int, float))
-                and ev2.soc_pct < ev2.soc_target_pct
-            ):
-                export_pct = 100
-            elif (
-                isinstance(ev2.soc_pct, (int, float))
-                and ev2_cfg.allow_charge_past_target_soc
-                and ev2.soc_pct < 100
-                # Only force export when house battery is already full.
-                and live.huawei_batteries_soc_pct is not None
-                and live.huawei_batteries_soc_pct >= 99.0
-            ):
-                export_pct = 100
+    if export_pct == 0 and _should_force_export_for_ev(live.ev, cfg.ev, live):
+        export_pct = 100
+    if export_pct == 0 and _should_force_export_for_ev(
+        live.ev_second, cfg.ev_second, live
+    ):
+        export_pct = 100
 
     await async_logger(
         sensor,
@@ -188,9 +180,9 @@ async def async_apply_inverter_power_control(
             continue
 
         inv_entity = cfg.huawei_solar_inverter_active_power_control
-        reader_fn = lambda: _parse_power_control_pct(
-            sensor.hass.states.get(inv_entity).state
-            if inv_entity and sensor.hass.states.get(inv_entity) is not None
+        reader_fn = lambda inv=inv_entity: _parse_power_control_pct(
+            sensor.hass.states.get(inv).state
+            if inv and sensor.hass.states.get(inv) is not None
             else None
         )
 
@@ -333,16 +325,20 @@ async def async_apply_battery_settings(
         Recommendations.ForceExport.value,
     ):
         fc_state = live.huawei_batteries_forcible_charge_state or ""
-        if fc_state and fc_state.lower() not in (
-            "stopped",
-            STATE_UNAVAILABLE,
-            STATE_UNKNOWN,
-            "",
+        if (
+            fc_state
+            and fc_state.lower()
+            not in (
+                "stopped",
+                STATE_UNAVAILABLE,
+                STATE_UNKNOWN,
+                "",
+            )
+            and cfg.huawei_solar_device_id_batteries is not None
         ):
-            if cfg.huawei_solar_device_id_batteries is not None:
-                await async_stop_forcible_discharge(
-                    sensor, cfg.huawei_solar_device_id_batteries
-                )
+            await async_stop_forcible_discharge(
+                sensor, cfg.huawei_solar_device_id_batteries
+            )
 
     match recommendation:
         case Recommendations.ForceExport.value:
@@ -458,46 +454,46 @@ async def async_apply_battery_settings(
 
     # TOU periods — no read-back verification (TOU period state is complex JSON;
     # hash comparison is sufficient; single attempt only).
-    if working_mode == WorkingModes.TimeOfUse.value and tou_modes:
-        if generate_hash(str(tou_modes)) != generate_hash(
-            str(live.tou_periods.periods)
-        ):
-            tou_entity = cfg.huawei_solar_batteries_tou_charging_and_discharging_periods
-            battery_device_id = cfg.huawei_solar_device_id_batteries
-            if tou_entity is None or battery_device_id is None:
-                await async_logger(
-                    sensor,
-                    "TOU entity or battery device ID not configured; skipping write.",
-                    "warning",
-                )
-                return summary
-            result = await async_write_and_verify(
-                entity_id=tou_entity,
-                desired=generate_hash(str(tou_modes)),
-                writer=lambda: async_set_tou_periods(
-                    sensor, battery_device_id, tou_modes
-                ),
-                reader=lambda: generate_hash(
-                    str(
-                        sensor.hass.states.get(tou_entity).state
-                        if tou_entity and sensor.hass.states.get(tou_entity) is not None
-                        else ""
-                    )
-                ),
-                # TOU periods may take longer to propagate; skip equality check
-                # since we always write when the hash differs.
-                skip_if_equal=False,
-                max_retries=2,
+    if (
+        working_mode == WorkingModes.TimeOfUse.value
+        and tou_modes
+        and generate_hash(str(tou_modes))
+        != generate_hash(str(live.tou_periods.periods))
+    ):
+        tou_entity = cfg.huawei_solar_batteries_tou_charging_and_discharging_periods
+        battery_device_id = cfg.huawei_solar_device_id_batteries
+        if tou_entity is None or battery_device_id is None:
+            await async_logger(
+                sensor,
+                "TOU entity or battery device ID not configured; skipping write.",
+                "warning",
             )
-            summary.results.append(result)
-            if result.status == ApplyStatus.FAILED:
-                await async_logger(
-                    sensor,
-                    f"TOU period write FAILED for device {cfg.huawei_solar_device_id_batteries}. "
-                    "Blocking further battery writes this cycle.",
-                    "error",
+            return summary
+        result = await async_write_and_verify(
+            entity_id=tou_entity,
+            desired=generate_hash(str(tou_modes)),
+            writer=lambda: async_set_tou_periods(sensor, battery_device_id, tou_modes),
+            reader=lambda: generate_hash(
+                str(
+                    sensor.hass.states.get(tou_entity).state
+                    if tou_entity and sensor.hass.states.get(tou_entity) is not None
+                    else ""
                 )
-                return summary
+            ),
+            # TOU periods may take longer to propagate; skip equality check
+            # since we always write when the hash differs.
+            skip_if_equal=False,
+            max_retries=2,
+        )
+        summary.results.append(result)
+        if result.status == ApplyStatus.FAILED:
+            await async_logger(
+                sensor,
+                f"TOU period write FAILED for device {cfg.huawei_solar_device_id_batteries}. "
+                "Blocking further battery writes this cycle.",
+                "error",
+            )
+            return summary
 
     # Working mode
     if working_mode and live.huawei_batteries_working_mode != working_mode:
