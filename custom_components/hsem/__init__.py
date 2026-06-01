@@ -99,6 +99,26 @@ async def check_huawei_solar_version(hass: HomeAssistant) -> bool:
     return True
 
 
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Migrate old config entries to the current version.
+
+    Home Assistant 2025.x+ calls this function on the component module
+    (__init__.py) instead of the ConfigFlow handler.  We delegate to the
+    existing migration logic in :class:`HSEMConfigFlow`.
+    """
+    from custom_components.hsem.config_flow import HSEMConfigFlow
+
+    flow = HSEMConfigFlow()
+    result = await flow.async_migrate_entry(hass, entry)
+
+    # Ensure the entry's minor_version matches the handler as well.
+    target_minor = getattr(flow, "MINOR_VERSION", 1)
+    if entry.minor_version != target_minor:
+        hass.config_entries.async_update_entry(entry, minor_version=target_minor)
+
+    return result
+
+
 async def async_setup(hass: HomeAssistant, _config: dict[str, Any]) -> bool:
     """Set up the HSEM integration.
 

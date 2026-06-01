@@ -82,11 +82,11 @@ async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
         ),
         get_ev_target_soc_number_key(): (
             get_ev_target_soc_number_unique_id(config_entry.entry_id),
-            get_ev_target_soc_number_entity_id(config_entry.entry_id),
+            get_ev_target_soc_number_entity_id(),
         ),
         get_ev_second_target_soc_number_key(): (
             get_ev_second_target_soc_number_unique_id(config_entry.entry_id),
-            get_ev_second_target_soc_number_entity_id(config_entry.entry_id),
+            get_ev_second_target_soc_number_entity_id(),
         ),
     }
 

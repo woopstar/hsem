@@ -385,9 +385,7 @@ async def async_collect_live_state(
         _read_ev_planned_load_state(sensor, state, cfg, _read, is_second=True)
 
     # --- Register state-change listeners for reactive entities ---
-    new_unsubs = await _register_listeners(
-        sensor, cfg, state, tracked_entities, entry_id=entry_id
-    )
+    new_unsubs = await _register_listeners(sensor, cfg, state, tracked_entities)
 
     return state, fwm_entity, new_unsubs
 
@@ -584,7 +582,6 @@ async def _register_listeners(
     cfg: SensorConfig,
     state: LiveState,
     tracked_entities: set[str],
-    entry_id: str,
 ) -> list:
     """Register ``async_track_state_change_event`` for reactive entities.
 
@@ -599,14 +596,14 @@ async def _register_listeners(
     candidates = [
         cfg.ev.status_entity,
         cfg.ev.connected_entity,
-        get_ev_target_soc_number_entity_id(entry_id),
-        get_ev_smart_charging_switch_entity_id(entry_id),
-        get_ev_deadline_time_entity_id(entry_id),
+        get_ev_target_soc_number_entity_id(),
+        get_ev_smart_charging_switch_entity_id(),
+        get_ev_deadline_time_entity_id(),
         cfg.ev_second.status_entity,
         cfg.ev_second.connected_entity,
-        get_ev_second_target_soc_number_entity_id(entry_id),
-        get_ev_second_smart_charging_switch_entity_id(entry_id),
-        get_ev_second_deadline_time_entity_id(entry_id),
+        get_ev_second_target_soc_number_entity_id(),
+        get_ev_second_smart_charging_switch_entity_id(),
+        get_ev_second_deadline_time_entity_id(),
         state.force_working_mode,
     ]
 
