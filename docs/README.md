@@ -23,6 +23,7 @@
 | [EV Charge Plan Setup](ev-charge-plan-setup.md) | EV planned load configuration guide |
 | [Forecast Accuracy Tracking](forecast-accuracy-tracking.md) | Forecast vs actual tracking system |
 | [Huawei Entities](huawei_entities.md) | Canonical HA entity ID reference |
+| [Troubleshooting Guide](hsem-troubleshooting-guide.md) | Diagnose and fix common problems: missing data, wrong prices, write failures, battery behaviour |
 | [Quality Checks](quality-checks.md) | Static quality tools and CI configuration |
 
 ---
