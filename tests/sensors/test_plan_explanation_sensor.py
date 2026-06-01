@@ -76,21 +76,21 @@ _CONTEXT_ATTR_KEYS = {
 
 def _make_explanation(**kwargs: Any) -> PlanExplanation:
     """Return a PlanExplanation with sensible defaults overridable by kwargs."""
-    defaults = dict(
-        selected_strategy="charge_grid_discharge_peak",
-        summary="Battery charged from grid and discharged at peak.",
-        score=0.45,
-        estimated_total_cost=1.20,
-        price_spread=0.27,
-        peak_import_price=0.32,
-        off_peak_import_price=0.05,
-        forecast_pv_kwh=18.3,
-        forecast_net_consumption_kwh=7.4,
-        battery_soc_pct=50.0,
-        battery_soc_at_end_pct=20.0,
-        constraints=["summer_month"],
-        rejected_plans=[RejectedPlan("do_nothing", "Costs more idle.", 1.65)],
-    )
+    defaults = {
+        "selected_strategy": "charge_grid_discharge_peak",
+        "summary": "Battery charged from grid and discharged at peak.",
+        "score": 0.45,
+        "estimated_total_cost": 1.20,
+        "price_spread": 0.27,
+        "peak_import_price": 0.32,
+        "off_peak_import_price": 0.05,
+        "forecast_pv_kwh": 18.3,
+        "forecast_net_consumption_kwh": 7.4,
+        "battery_soc_pct": 50.0,
+        "battery_soc_at_end_pct": 20.0,
+        "constraints": ["summer_month"],
+        "rejected_plans": [RejectedPlan("do_nothing", "Costs more idle.", 1.65)],
+    }
     defaults.update(kwargs)
     return PlanExplanation(**defaults)  # type: ignore[arg-type]  # test helper: dict values are typed at runtime
 

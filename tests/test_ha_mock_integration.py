@@ -2539,7 +2539,7 @@ class TestEvFieldsEndToEnd:
         """When base_load_includes_ev=False, ev_planned_load_kwh must be > 0
         in HourlyRecommendation for charging slots after _apply_planner_output.
         """
-        coord, output = self._run_end_to_end(base_includes_ev=False)
+        coord, _ = self._run_end_to_end(base_includes_ev=False)
 
         total_injected = sum(
             r.ev_planned_load_kwh for r in coord._hourly_recommendations

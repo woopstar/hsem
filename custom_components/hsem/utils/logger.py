@@ -153,7 +153,9 @@ def close_hsem_logger_sync() -> None:
 
     Must be called from the executor during teardown.
     """
-    for handler in list(HSEM_LOGGER.handlers):
+    for handler in list(
+        HSEM_LOGGER.handlers
+    ):  # NOSONAR -- list() required for mutation safety during iteration
         handler.close()
         HSEM_LOGGER.removeHandler(handler)
 

@@ -314,7 +314,7 @@ class TestAlignHourlyPrices:
 
     def test_price_value_matches_input(self):
         imp = {h: float(h) for h in range(24)}
-        exp = {h: 0.0 for h in range(24)}
+        exp = dict.fromkeys(range(24), 0.0)
         ai, _ = self.tsi.align_hourly_prices(imp, exp)
         for h in range(24):
             for s in range(4):
@@ -330,7 +330,7 @@ class TestAlignHourlyPrices:
 
     def test_missing_hour_added_to_missing_slots(self):
         imp = {h: 0.10 for h in range(24) if h != 5}
-        exp = {h: 0.08 for h in range(24)}
+        exp = dict.fromkeys(range(24), 0.08)
         self.tsi.align_hourly_prices(imp, exp)
         missing_hours = self.tsi.missing_hours()
         assert 5 in missing_hours
@@ -354,12 +354,12 @@ class TestAlignHourlyPv:
         self.tsi = TimeSeriesIndex.from_now(now, interval_minutes=15, horizon_hours=24)
 
     def test_length_matches_slots(self):
-        pv = {h: 2.0 for h in range(24)}
+        pv = dict.fromkeys(range(24), 2.0)
         aligned = self.tsi.align_hourly_pv(pv)
         assert len(aligned) == len(self.tsi)
 
     def test_slot_value_is_quarter_of_hourly(self):
-        pv = {h: 4.0 for h in range(24)}
+        pv = dict.fromkeys(range(24), 4.0)
         aligned = self.tsi.align_hourly_pv(pv)
         for val in aligned:
             assert val == pytest.approx(1.0)  # 4.0 * 0.25
@@ -388,7 +388,7 @@ class TestAlignHourlyPv:
     def test_60min_slot_fraction_is_one(self):
         now = _cph(2024, 6, 15, 0)
         tsi = TimeSeriesIndex.from_now(now, interval_minutes=60, horizon_hours=24)
-        pv = {h: 3.6 for h in range(24)}
+        pv = dict.fromkeys(range(24), 3.6)
         aligned = tsi.align_hourly_pv(pv)
         for val in aligned:
             assert val == pytest.approx(3.6)
@@ -407,12 +407,12 @@ class TestAlignHourlyLoad:
         self.tsi = TimeSeriesIndex.from_now(now, interval_minutes=15, horizon_hours=24)
 
     def test_length_matches_slots(self):
-        load = {h: 0.5 for h in range(24)}
+        load = dict.fromkeys(range(24), 0.5)
         aligned = self.tsi.align_hourly_load(load)
         assert len(aligned) == len(self.tsi)
 
     def test_slot_value_is_quarter_of_hourly(self):
-        load = {h: 0.8 for h in range(24)}
+        load = dict.fromkeys(range(24), 0.8)
         aligned = self.tsi.align_hourly_load(load)
         for val in aligned:
             assert val == pytest.approx(0.2)  # 0.8 * 0.25
@@ -442,22 +442,22 @@ class TestAlignNetImportExport:
         self.tsi = TimeSeriesIndex.from_now(now, interval_minutes=15, horizon_hours=24)
 
     def test_lengths_match_slots(self):
-        imp = {h: 1.0 for h in range(24)}
-        exp = {h: 0.0 for h in range(24)}
+        imp = dict.fromkeys(range(24), 1.0)
+        exp = dict.fromkeys(range(24), 0.0)
         ai, ae = self.tsi.align_net_import_export(imp, exp)
         assert len(ai) == len(self.tsi)
         assert len(ae) == len(self.tsi)
 
     def test_values_scaled_to_slot_fraction(self):
-        imp = {h: 2.0 for h in range(24)}
-        exp = {h: 1.0 for h in range(24)}
+        imp = dict.fromkeys(range(24), 2.0)
+        exp = dict.fromkeys(range(24), 1.0)
         ai, ae = self.tsi.align_net_import_export(imp, exp)
         for i_val, e_val in zip(ai, ae):
             assert i_val == pytest.approx(0.5)  # 2.0 * 0.25
             assert e_val == pytest.approx(0.25)  # 1.0 * 0.25
 
     def test_missing_export_is_sentinel(self):
-        imp = {h: 0.5 for h in range(24)}
+        imp = dict.fromkeys(range(24), 0.5)
         exp = {h: 0.0 for h in range(24) if h != 20}
         _, ae = self.tsi.align_net_import_export(imp, exp)
         for s in range(4):
@@ -477,12 +477,12 @@ class TestAlignBatterySoc:
         self.tsi = TimeSeriesIndex.from_now(now, interval_minutes=15, horizon_hours=24)
 
     def test_length_matches_slots(self):
-        soc = {h: 80.0 for h in range(24)}
+        soc = dict.fromkeys(range(24), 80.0)
         aligned = self.tsi.align_battery_soc(soc)
         assert len(aligned) == len(self.tsi)
 
     def test_value_is_not_scaled(self):
-        soc = {h: 75.0 for h in range(24)}
+        soc = dict.fromkeys(range(24), 75.0)
         aligned = self.tsi.align_battery_soc(soc)
         for val in aligned:
             assert val == pytest.approx(75.0)
@@ -514,13 +514,13 @@ class TestMultiSeriesAlignment:
         now = _cph(2024, 6, 15, 0)
         tsi = TimeSeriesIndex.from_now(now, interval_minutes=15, horizon_hours=24)
 
-        imp_p = {h: 0.10 for h in range(24)}
-        exp_p = {h: 0.08 for h in range(24)}
-        pv = {h: 2.0 for h in range(24)}
-        load = {h: 0.5 for h in range(24)}
-        grid_imp = {h: 0.2 for h in range(24)}
-        grid_exp = {h: 0.0 for h in range(24)}
-        soc = {h: 60.0 for h in range(24)}
+        imp_p = dict.fromkeys(range(24), 0.10)
+        exp_p = dict.fromkeys(range(24), 0.08)
+        pv = dict.fromkeys(range(24), 2.0)
+        load = dict.fromkeys(range(24), 0.5)
+        grid_imp = dict.fromkeys(range(24), 0.2)
+        grid_exp = dict.fromkeys(range(24), 0.0)
+        soc = dict.fromkeys(range(24), 60.0)
 
         ai, ae = tsi.align_hourly_prices(imp_p, exp_p)
         apv = tsi.align_hourly_pv(pv)
@@ -544,7 +544,7 @@ class TestMultiSeriesAlignment:
 
         # hour 5 missing from prices
         imp_p = {h: 0.10 for h in range(24) if h != 5}
-        exp_p = {h: 0.08 for h in range(24)}
+        exp_p = dict.fromkeys(range(24), 0.08)
         # hour 10 missing from PV
         pv = {h: 2.0 for h in range(24) if h != 10}
 

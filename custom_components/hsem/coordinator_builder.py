@@ -157,6 +157,12 @@ def build_planner_input(
         for s in batteries_schedules
     ]
 
+    _cycles = convert_to_int(cfg.batteries_expected_cycles)
+    _w1d = convert_to_int(cfg.house_consumption_energy_weight_1d)
+    _w3d = convert_to_int(cfg.house_consumption_energy_weight_3d)
+    _w7d = convert_to_int(cfg.house_consumption_energy_weight_7d)
+    _w14d = convert_to_int(cfg.house_consumption_energy_weight_14d)
+
     return PlannerInput(
         now_iso=now.isoformat(),
         interval_minutes=cfg.recommendation_interval_minutes,
@@ -189,34 +195,13 @@ def build_planner_input(
         )
         or 95.0,
         battery_purchase_price=convert_to_float(cfg.batteries_purchase_price) or 0.0,
-        battery_expected_cycles=(
-            v
-            if (v := convert_to_int(cfg.batteries_expected_cycles)) is not None
-            else 6000
-        ),
+        battery_expected_cycles=_cycles if _cycles is not None else 6000,
         battery_cycle_cost_per_kwh=convert_to_float(cfg.batteries_cycle_cost) or 0.0,
         battery_capacity_loss_pct=cfg.batteries_capacity_loss_pct,
-        weight_1d=(
-            v
-            if (v := convert_to_int(cfg.house_consumption_energy_weight_1d)) is not None
-            else 25
-        ),
-        weight_3d=(
-            v
-            if (v := convert_to_int(cfg.house_consumption_energy_weight_3d)) is not None
-            else 30
-        ),
-        weight_7d=(
-            v
-            if (v := convert_to_int(cfg.house_consumption_energy_weight_7d)) is not None
-            else 30
-        ),
-        weight_14d=(
-            v
-            if (v := convert_to_int(cfg.house_consumption_energy_weight_14d))
-            is not None
-            else 15
-        ),
+        weight_1d=_w1d if _w1d is not None else 25,
+        weight_3d=_w3d if _w3d is not None else 30,
+        weight_7d=_w7d if _w7d is not None else 30,
+        weight_14d=_w14d if _w14d is not None else 15,
         consumption_averages=consumption_averages,
         price_points=price_points,
         solcast_slots=solcast_slots,
@@ -228,11 +213,7 @@ def build_planner_input(
         or 10.0,
         excess_export_price_threshold=calculate_recommended_threshold(
             purchase_price=convert_to_float(cfg.batteries_purchase_price) or 0.0,
-            expected_cycles=(
-                v
-                if (v := convert_to_int(cfg.batteries_expected_cycles)) is not None
-                else 6000
-            ),
+            expected_cycles=_cycles if _cycles is not None else 6000,
             usable_capacity=live.battery_usable_capacity_kwh,
         ),
         export_min_price=convert_to_float(cfg.export_electricity_min_price) or 0.0,

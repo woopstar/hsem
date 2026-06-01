@@ -612,7 +612,7 @@ class TestComparePlansKnownWinner:
                 batteries_discharged_kwh=3.0,
             )
         ]
-        bd_a, bd_b, winner = compare_plans(plan_a, plan_b, weights)
+        _, _, winner = compare_plans(plan_a, plan_b, weights)
         assert winner == "plan_a"
 
     def test_soc_penalty_favours_plan_within_bounds(self):
@@ -628,7 +628,7 @@ class TestComparePlansKnownWinner:
         )
         plan_a = [_make_slot(estimated_battery_soc_pct=50.0)]
         plan_b = [_make_slot(estimated_battery_soc_pct=5.0)]
-        bd_a, bd_b, winner = compare_plans(plan_a, plan_b, weights)
+        _, bd_b, winner = compare_plans(plan_a, plan_b, weights)
         assert winner == "plan_a"
         assert bd_b.soc_penalty > 0.0
 
@@ -645,7 +645,7 @@ class TestComparePlansKnownWinner:
         )
         plan_a = [_make_slot(grid_import_kwh=3.0)]
         plan_b = [_make_slot(grid_import_kwh=8.0)]
-        bd_a, bd_b, winner = compare_plans(
+        _, bd_b, winner = compare_plans(
             plan_a, plan_b, weights, slot_duration_hours=1.0
         )
         assert winner == "plan_a"

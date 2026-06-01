@@ -131,7 +131,7 @@ class TestHysteresis:
 
         candidates = [baseline, passive]
 
-        winner, rejected, hysteresis = select_best_candidate(
+        winner, _, hysteresis = select_best_candidate(
             candidates,
             now=_NOW,
             current_kwh=4.5,
@@ -172,7 +172,7 @@ class TestHysteresis:
 
         candidates = [baseline, passive]
 
-        winner, rejected, hysteresis = select_best_candidate(
+        winner, _, hysteresis = select_best_candidate(
             candidates,
             now=_NOW,
             current_kwh=4.5,
@@ -217,7 +217,7 @@ class TestHysteresis:
 
         candidates = [baseline, passive]
 
-        winner, rejected, hysteresis = select_best_candidate(
+        winner, _, hysteresis = select_best_candidate(
             candidates,
             now=_NOW,
             current_kwh=4.5,
@@ -259,7 +259,7 @@ class TestHysteresis:
 
         candidates = [baseline, passive]
 
-        winner, rejected, hysteresis = select_best_candidate(
+        winner, _, hysteresis = select_best_candidate(
             candidates,
             now=_NOW,
             current_kwh=4.5,
@@ -304,7 +304,7 @@ class TestHysteresis:
 
         candidates = [baseline, passive]
 
-        winner, rejected, hysteresis = select_best_candidate(
+        winner, _, hysteresis = select_best_candidate(
             candidates,
             now=_NOW,
             current_kwh=4.5,
@@ -346,7 +346,7 @@ class TestHysteresis:
         _run_soc_and_score(baseline, _CW)
         candidates = [baseline]
 
-        winner, rejected, hysteresis = select_best_candidate(
+        winner, _, hysteresis = select_best_candidate(
             candidates,
             now=_NOW,
             current_kwh=4.5,
@@ -385,7 +385,7 @@ class TestHysteresis:
         _run_soc_and_score(baseline, _CW)
         candidates = [baseline]
 
-        winner, rejected, hysteresis = select_best_candidate(
+        winner, _, hysteresis = select_best_candidate(
             candidates,
             now=_NOW,
             current_kwh=4.5,
@@ -425,7 +425,7 @@ class TestHysteresis:
 
         candidates = [baseline, passive]
 
-        winner, rejected, hysteresis = select_best_candidate(
+        winner, _, hysteresis = select_best_candidate(
             candidates,
             now=_NOW,
             current_kwh=4.5,

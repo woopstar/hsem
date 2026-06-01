@@ -232,8 +232,8 @@ class TestTimeSeriesIndexMultiDayAlignment:
     def test_align_prices_hour_only_keys_backward_compat(self):
         """Hour-only (legacy) keys still work — cyclical lookup, no day separation."""
         tsi = self._make_tsi()
-        imp = {h: 0.10 for h in range(24)}
-        exp = {h: 0.08 for h in range(24)}
+        imp = dict.fromkeys(range(24), 0.10)
+        exp = dict.fromkeys(range(24), 0.08)
 
         aligned_imp, aligned_exp = tsi.align_hourly_prices(imp, exp)
 

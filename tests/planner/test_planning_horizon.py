@@ -527,7 +527,7 @@ class TestTimeSeriesIndexMultiDayHelpers:
     def test_missing_future_day_price_hours_empty_when_full_data(self):
         """With complete 24h price data, no day+0 hours should be missing."""
         tsi = self._make_tsi(24)
-        prices = {h: 0.2 for h in range(24)}
+        prices = dict.fromkeys(range(24), 0.2)
         tsi.align_hourly_prices(prices, prices)
         # All today's hours provided, so today is complete
         assert tsi.missing_future_day_price_hours(0) == set()
@@ -557,7 +557,7 @@ class TestTimeSeriesIndexMultiDayHelpers:
     def test_tomorrow_helpers_delegate_to_day1(self):
         """missing_tomorrow_* helpers must equal missing_future_day_*(..., 1)."""
         tsi = self._make_tsi(48)
-        today_prices = {h: 0.2 for h in range(24)}
+        today_prices = dict.fromkeys(range(24), 0.2)
         tsi.align_hourly_prices(today_prices, today_prices)
         assert tsi.missing_tomorrow_price_hours() == tsi.missing_future_day_price_hours(
             1
