@@ -16,7 +16,7 @@ from custom_components.hsem.utils.misc import get_config_value
 
 async def get_init_step_schema(
     config_entry: ConfigEntry | None,
-) -> vol.Schema:  # NOSONAR -- async required by HA config/options flow framework
+) -> vol.Schema:  # NOSONAR
     """Return the data schema for the 'init' step."""
     return vol.Schema(
         {
@@ -101,7 +101,7 @@ async def get_init_step_schema(
 
 async def validate_init_step_input(
     user_input: dict,
-) -> dict[str, str]:  # NOSONAR -- async required by HA config/options flow framework
+) -> dict[str, str]:  # NOSONAR
     """Validate user input for the 'init' step."""
     errors = {}
 

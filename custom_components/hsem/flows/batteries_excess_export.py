@@ -17,7 +17,7 @@ from custom_components.hsem.utils.config_validator import merge_errors, validate
 from custom_components.hsem.utils.misc import get_config_value
 
 
-async def get_batteries_excess_export_step_schema(  # NOSONAR -- async required by HA config/options flow framework
+async def get_batteries_excess_export_step_schema(  # NOSONAR
     config_entry: ConfigEntry | None,
     _user_input: dict | None = None,
     _hass: HomeAssistant | None = None,
@@ -65,7 +65,7 @@ async def get_batteries_excess_export_step_schema(  # NOSONAR -- async required 
 
 async def validate_batteries_excess_export_input(
     user_input: dict,
-) -> dict[str, str]:  # NOSONAR -- async required by HA config/options flow framework
+) -> dict[str, str]:  # NOSONAR
     """Validate user input for batteries excess export configuration.
 
     The price threshold is auto-calculated at runtime from battery

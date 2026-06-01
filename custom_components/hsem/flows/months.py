@@ -20,7 +20,7 @@ def _month_options() -> list[str]:
 
 async def get_months_schema(
     config_entry: ConfigEntry | None,
-) -> vol.Schema:  # NOSONAR -- async required by HA config/options flow framework
+) -> vol.Schema:  # NOSONAR
     """Return the data schema for the 'months' step."""
 
     # Stored months are integers; the multi-select selector requires string
@@ -47,7 +47,7 @@ async def get_months_schema(
     )
 
 
-async def validate_months_input(  # NOSONAR -- async required by HA config/options flow framework
+async def validate_months_input(  # NOSONAR
     _hass: HomeAssistant, user_input: dict
 ) -> dict[str, str]:
     """Validate user input for the 'months' step."""

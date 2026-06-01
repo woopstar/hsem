@@ -50,7 +50,7 @@ _DISCHARGE_POWER_SELECTOR = selector(
 )
 
 
-async def build_ev_charger_schema(  # NOSONAR -- async required by HA config/options flow framework
+async def build_ev_charger_schema(  # NOSONAR
     config_entry: ConfigEntry | None,
     prefix: str,
     include_primary_fields: bool = False,

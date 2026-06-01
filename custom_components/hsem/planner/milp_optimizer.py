@@ -433,9 +433,7 @@ def solve_milp(
     # ed[t] is the battery-side removed energy (pre discharge loss).  The
     # house receives ed[t]*discharge_eff kWh.
     # ------------------------------------------------------------------
-    A_eq = np.zeros(
-        (m, n_vars)
-    )  # NOSONAR -- MILP notation (equality constraint matrix)
+    A_eq = np.zeros((m, n_vars))  # NOSONAR
     for t in range(m):
         A_eq[t, ec_off + t] = -1.0 / charge_eff  # -ec[t]/charge_eff
         A_eq[t, ed_off + t] = 1.0 * discharge_eff  # +ed[t]*discharge_eff
@@ -462,9 +460,7 @@ def solve_milp(
     # Cycle cost auxiliary rows: m[t] >= ec[t] and m[t] >= ed[t]
     #   → -m[t] + ec[t] <= 0  and  -m[t] + ed[t] <= 0
     cycle_rows = 2 * m
-    A_ub = np.zeros(
-        (soc_rows + mutex_rows + cycle_rows, n_vars)
-    )  # NOSONAR -- MILP notation (upper-bound constraint matrix)
+    A_ub = np.zeros((soc_rows + mutex_rows + cycle_rows, n_vars))  # NOSONAR
     b_ub = np.zeros(soc_rows + mutex_rows + cycle_rows)
 
     for t in range(m):

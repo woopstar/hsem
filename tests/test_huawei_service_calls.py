@@ -245,7 +245,7 @@ class TestSetForcibleDischarge:
                 sensor,
                 "bat_dev",
                 150,
-                3000,  # > 100  # NOSONAR
+                3000,  # > 100
             )
         with pytest.raises(ValueError):
             await async_set_forcible_discharge(sensor, "bat_dev", -1, 3000)  # < 0
