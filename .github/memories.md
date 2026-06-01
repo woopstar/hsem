@@ -79,16 +79,18 @@ assert result == pytest.approx(expected, rel=1e-6)
 
 ## MILP Variable Vector
 
-The MILP in `milp_optimizer.py` uses **6*n** LP variables (n = number of slots):
+The MILP in `milp_optimizer.py` uses **8*n** LP variables (n = number of future slots):
 
 ```
-Index range    Variable   Meaning
-[0 .. n-1]     ec[t]      Energy charged in slot t (kWh)
-[n .. 2n-1]    ed[t]      Energy discharged in slot t (kWh)
-[2n .. 3n-1]   gi[t]      Grid import in slot t (kWh)
-[3n .. 4n-1]   ge[t]      Grid export in slot t (kWh)
-[4n .. 5n-1]   pv[t]      PV surplus used in slot t (kWh)
-[5n .. 6n-1]   m[t]       max(ec[t], ed[t]) auxiliary variable for cycle cost
+Index range      Variable     Meaning
+[0 .. n-1]       ec[t]        Energy charged in slot t (kWh)
+[n .. 2n-1]      ed[t]        Energy discharged in slot t (kWh)
+[2n .. 3n-1]     gi[t]        Grid import in slot t (kWh)
+[3n .. 4n-1]     ge[t]        Grid export in slot t (kWh)
+[4n .. 5n-1]     pv[t]        PV surplus used in slot t (kWh)
+[5n .. 6n-1]     m[t]         max(ec[t], ed[t]) auxiliary variable for cycle cost
+[6n .. 7n-1]     s_max_pen[t] Penalty: kWh SoC exceeds usable_kwh
+[7n .. 8n-1]     s_min_pen[t] Penalty: kWh SoC drops below 0
 ```
 
 Cycle cost is counted as `α * m[t]` — **not** `α * (ec[t] + ed[t])`.
