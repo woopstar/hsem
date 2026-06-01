@@ -49,35 +49,35 @@ def build_time_id_map(entry_id: str) -> dict[str, tuple[str, str]]:
     return {
         get_schedule_1_start_time_key(): (
             get_schedule_1_start_time_unique_id(entry_id),
-            get_schedule_1_start_time_entity_id(entry_id),
+            get_schedule_1_start_time_entity_id(),
         ),
         get_schedule_1_end_time_key(): (
             get_schedule_1_end_time_unique_id(entry_id),
-            get_schedule_1_end_time_entity_id(entry_id),
+            get_schedule_1_end_time_entity_id(),
         ),
         get_schedule_2_start_time_key(): (
             get_schedule_2_start_time_unique_id(entry_id),
-            get_schedule_2_start_time_entity_id(entry_id),
+            get_schedule_2_start_time_entity_id(),
         ),
         get_schedule_2_end_time_key(): (
             get_schedule_2_end_time_unique_id(entry_id),
-            get_schedule_2_end_time_entity_id(entry_id),
+            get_schedule_2_end_time_entity_id(),
         ),
         get_schedule_3_start_time_key(): (
             get_schedule_3_start_time_unique_id(entry_id),
-            get_schedule_3_start_time_entity_id(entry_id),
+            get_schedule_3_start_time_entity_id(),
         ),
         get_schedule_3_end_time_key(): (
             get_schedule_3_end_time_unique_id(entry_id),
-            get_schedule_3_end_time_entity_id(entry_id),
+            get_schedule_3_end_time_entity_id(),
         ),
         get_ev_deadline_time_key(): (
             get_ev_deadline_time_unique_id(entry_id),
-            get_ev_deadline_time_entity_id(entry_id),
+            get_ev_deadline_time_entity_id(),
         ),
         get_ev_second_deadline_time_key(): (
             get_ev_second_deadline_time_unique_id(entry_id),
-            get_ev_second_deadline_time_entity_id(entry_id),
+            get_ev_second_deadline_time_entity_id(),
         ),
     }
 

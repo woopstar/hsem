@@ -58,47 +58,47 @@ def build_switch_id_map(entry_id: str) -> dict[str, tuple[str, str]]:
     return {
         get_read_only_switch_key(): (
             get_read_only_switch_unique_id(entry_id),
-            get_read_only_switch_entity_id(entry_id),
+            get_read_only_switch_entity_id(),
         ),
         get_extended_attributes_switch_key(): (
             get_extended_attributes_switch_unique_id(entry_id),
-            get_extended_attributes_switch_entity_id(entry_id),
+            get_extended_attributes_switch_entity_id(),
         ),
         get_verbose_logging_switch_key(): (
             get_verbose_logging_switch_unique_id(entry_id),
-            get_verbose_logging_switch_entity_id(entry_id),
+            get_verbose_logging_switch_entity_id(),
         ),
         get_batteries_schedule_1_switch_key(): (
             get_batteries_schedule_1_switch_unique_id(entry_id),
-            get_batteries_schedule_1_switch_entity_id(entry_id),
+            get_batteries_schedule_1_switch_entity_id(),
         ),
         get_batteries_schedule_2_switch_key(): (
             get_batteries_schedule_2_switch_unique_id(entry_id),
-            get_batteries_schedule_2_switch_entity_id(entry_id),
+            get_batteries_schedule_2_switch_entity_id(),
         ),
         get_batteries_schedule_3_switch_key(): (
             get_batteries_schedule_3_switch_unique_id(entry_id),
-            get_batteries_schedule_3_switch_entity_id(entry_id),
+            get_batteries_schedule_3_switch_entity_id(),
         ),
         get_ev_force_discharge_switch_key(): (
             get_ev_force_discharge_switch_unique_id(entry_id),
-            get_ev_force_discharge_switch_entity_id(entry_id),
+            get_ev_force_discharge_switch_entity_id(),
         ),
         get_ev_smart_charging_switch_key(): (
             get_ev_smart_charging_switch_unique_id(entry_id),
-            get_ev_smart_charging_switch_entity_id(entry_id),
+            get_ev_smart_charging_switch_entity_id(),
         ),
         get_ev_force_charge_now_switch_key(): (
             get_ev_force_charge_now_switch_unique_id(entry_id),
-            get_ev_force_charge_now_switch_entity_id(entry_id),
+            get_ev_force_charge_now_switch_entity_id(),
         ),
         get_ev_second_smart_charging_switch_key(): (
             get_ev_second_smart_charging_switch_unique_id(entry_id),
-            get_ev_second_smart_charging_switch_entity_id(entry_id),
+            get_ev_second_smart_charging_switch_entity_id(),
         ),
         get_ev_second_force_charge_now_switch_key(): (
             get_ev_second_force_charge_now_switch_unique_id(entry_id),
-            get_ev_second_force_charge_now_switch_entity_id(entry_id),
+            get_ev_second_force_charge_now_switch_entity_id(),
         ),
     }
 
