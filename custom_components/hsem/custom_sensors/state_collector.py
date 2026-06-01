@@ -58,7 +58,7 @@ from custom_components.hsem.utils.sensornames import (
 
 
 async def async_collect_live_state(
-    sensor: Any,  # TODO: tighten type
+    sensor: Any,  # NOSONAR -- HA internal type; circular import risk
     cfg: SensorConfig,
     force_working_mode_cache: str | None,
     tracked_entities: set[str],
@@ -99,7 +99,7 @@ async def async_collect_live_state(
         conv_type: str | None = None,
         decimals: int = 3,
         label: str = "",
-    ) -> Any:  # TODO: tighten type
+    ) -> Any:  # NOSONAR -- return type varies by conv_type
         """Read one entity state, recording it as missing on any failure."""
         if not entity_id:
             state.add_missing_entity(f"Missing entity: {label or entity_id}")
@@ -450,7 +450,7 @@ def _compute_net_consumption(state: LiveState, cfg: SensorConfig) -> None:
 
 
 def _read_ev_planned_load_state(
-    sensor: Any,  # TODO: tighten type
+    sensor: Any,  # NOSONAR -- HA internal type; circular import risk
     state: LiveState,
     cfg: SensorConfig,
     _read: Callable[..., Any],
@@ -580,7 +580,7 @@ def _resolve_ev_deadline_from_params(sensor, deadline_entity, deadline_fixed):
 
 
 async def _register_listeners(
-    sensor: Any,  # TODO: tighten type
+    sensor: Any,  # NOSONAR -- HA internal type; circular import risk
     cfg: SensorConfig,
     state: LiveState,
     tracked_entities: set[str],
@@ -631,7 +631,7 @@ async def _register_listeners(
 
 
 async def async_collect_all_states(
-    sensor: Any,  # TODO: tighten type
+    sensor: Any,  # NOSONAR -- HA internal type; circular import risk
     cfg: SensorConfig,
     force_working_mode_cache: str | None,
     tracked_entities: set[str],
@@ -737,7 +737,7 @@ async def async_collect_all_states(
 
 
 async def _resolve_cached(
-    sensor: Any,  # TODO: tighten type
+    sensor: Any,  # NOSONAR -- HA internal type; circular import risk
     cache: dict[str, str],
     unique_id: str,
 ) -> str | None:

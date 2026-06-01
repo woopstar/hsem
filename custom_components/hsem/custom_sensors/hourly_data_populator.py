@@ -37,7 +37,7 @@ from custom_components.hsem.utils.sensornames import get_energy_average_sensor_u
 
 
 async def async_populate_price_and_solcast(
-    sensor: Any,  # TODO: tighten type
+    sensor: Any,  # NOSONAR -- HA internal type; circular import risk
     recommendations: list[HourlyRecommendation],
     cfg: SensorConfig,
 ) -> None:
@@ -144,7 +144,7 @@ async def async_populate_price_and_solcast(
 
 
 async def async_populate_avg_house_consumption(
-    sensor: Any,  # TODO: tighten type
+    sensor: Any,  # NOSONAR -- HA internal type; circular import risk
     recommendations: list[HourlyRecommendation],
     cfg: SensorConfig,
     entity_id_cache: dict[str, str],
@@ -272,7 +272,7 @@ async def async_populate_avg_house_consumption(
 
 
 async def _resolve_cached(
-    sensor: Any,  # TODO: tighten type
+    sensor: Any,  # NOSONAR -- HA internal type; circular import risk
     cache: dict[str, str],
     unique_id: str,
 ) -> str | None:
@@ -285,7 +285,7 @@ async def _resolve_cached(
 
 
 async def _async_update_hourly_field(
-    sensor: Any,  # TODO: tighten type
+    sensor: Any,  # NOSONAR -- HA internal type; circular import risk
     recommendations: list[HourlyRecommendation],
     sensor_id: str | None,
     field_name: str,

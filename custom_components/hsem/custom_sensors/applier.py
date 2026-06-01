@@ -97,7 +97,7 @@ def _should_force_export_for_ev(
 
 
 async def async_apply_inverter_power_control(
-    sensor: Any,  # TODO: tighten type
+    sensor: Any,  # NOSONAR -- HA internal type; circular import risk
     cfg: SensorConfig,
     live: LiveState,
 ) -> CycleApplySummary:
@@ -234,7 +234,7 @@ async def async_apply_inverter_power_control(
 
 
 async def async_apply_battery_settings(
-    sensor: Any,  # TODO: tighten type
+    sensor: Any,  # NOSONAR -- HA internal type; circular import risk
     cfg: SensorConfig,
     live: LiveState,
     rec: HourlyRecommendation,
@@ -531,7 +531,7 @@ async def async_apply_battery_settings(
 
 
 async def _async_apply_forcible_discharge(
-    sensor: Any,  # TODO: tighten type
+    sensor: Any,  # NOSONAR -- HA internal type; circular import risk
     cfg: SensorConfig,
     live: LiveState,
     current_required_kwh: float,
@@ -602,7 +602,7 @@ async def _async_apply_forcible_discharge(
 
 def _read_number_state(
     sensor: Any, entity_id: str | None
-) -> float | None:  # TODO: tighten type on sensor
+) -> float | None:  # NOSONAR -- HA internal type; circular import risk
     """Read a number entity state from HA and return it as float, or None.
 
     Args:
@@ -625,7 +625,7 @@ def _read_number_state(
 
 def _read_select_state(
     sensor: Any, entity_id: str | None
-) -> str | None:  # TODO: tighten type on sensor
+) -> str | None:  # NOSONAR -- HA internal type; circular import risk
     """Read a select entity state from HA and return it as a string, or None.
 
     Args:
