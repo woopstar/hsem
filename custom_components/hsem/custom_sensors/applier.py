@@ -712,4 +712,5 @@ def _is_watt_limit(state: str | None) -> bool:
     ):
         return False
     # Look for a number immediately followed (with optional whitespace) by "w"
-    return bool(re.search(r"\d+\s*w", normalized))
+    # Single quantifier avoids polynomial backtracking from stacked greedy quantifiers
+    return bool(re.search(r"\d[\d\s]*w", normalized))
