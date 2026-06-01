@@ -2120,7 +2120,7 @@ class TestApplyPlannerOutputEvLoad:
         # Planner slots have zero microseconds
         slots = []
         for h in range(24):
-            t_start = midnight + timedelta(hours=h)  # microsecond=0
+            t_start = midnight + timedelta(hours=h)
             t_end = t_start + timedelta(hours=1)
             ev = 2.2 if h == 8 else 0.0
             slots.append(

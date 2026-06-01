@@ -85,7 +85,7 @@ class HysteresisResult:
     new_score: float = 0.0
 
 
-def select_best_candidate(
+def select_best_candidate(  # NOSONAR
     candidates: list[CandidatePlan],
     *,
     now: datetime,
@@ -323,8 +323,7 @@ def select_best_candidate(
             if prev_score is not None:
                 hysteresis_result.previous_score = prev_score
                 hysteresis_result.new_score = new_score
-                # Check if the new plan is enough better to justify a switch
-                improvement = prev_score - new_score  # positive = new is better
+                improvement = prev_score - new_score
 
                 # Absolute threshold check
                 if hysteresis_absolute > 1e-9 and improvement < hysteresis_absolute:

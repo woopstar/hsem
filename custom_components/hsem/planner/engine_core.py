@@ -265,7 +265,6 @@ def _schedule_slots(
         usable_kwh,
         rc,
         inp.months_winter,
-        warnings,
         export_min_price=inp.export_min_price,
     )
     log_planner(
@@ -334,7 +333,7 @@ def _compute_ev_charger_power(
         setattr(slots[idx], attr, ac_power_w)
 
 
-def _build_and_inject_for_ev(
+def _build_and_inject_for_ev(  # NOSONAR
     enabled: bool,
     connected: bool,
     smart: bool,
@@ -706,7 +705,6 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         usable_kwh,
         rc,
         inp.months_winter,
-        warnings=[],
         export_min_price=inp.export_min_price,
     )
     simulate_soc(

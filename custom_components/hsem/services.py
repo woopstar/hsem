@@ -236,7 +236,7 @@ async def async_handle_clear_override(
     _LOGGER.info("HSEM service: clear_override completed")
 
 
-async def async_handle_export_diagnostics(
+async def async_handle_export_diagnostics(  # NOSONAR -- HA service handler, called with await
     hass: HomeAssistant,
     call: ServiceCall,  # noqa: ARG001
 ) -> dict[str, Any]:
@@ -320,7 +320,9 @@ SERVICE_HANDLER_MAP: dict[str, tuple[vol.Schema, Any, SupportsResponse]] = {
 }
 
 
-async def async_register_services(hass: HomeAssistant) -> None:
+async def async_register_services(
+    hass: HomeAssistant,
+) -> None:  # NOSONAR -- called with await by __init__.py async_setup_entry
     """Register all HSEM services with Home Assistant.
 
     Called during :func:`~custom_components.hsem.__init__.async_setup_entry`.
@@ -345,7 +347,9 @@ async def async_register_services(hass: HomeAssistant) -> None:
             )
 
 
-async def async_unregister_services(hass: HomeAssistant) -> None:
+async def async_unregister_services(
+    hass: HomeAssistant,
+) -> None:  # NOSONAR -- called with await by __init__.py async_unload_entry
     """Remove all HSEM services from Home Assistant.
 
     Called during :func:`~custom_components.hsem.__init__.async_unload_entry`.

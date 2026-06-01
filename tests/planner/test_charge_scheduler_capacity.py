@@ -168,7 +168,6 @@ class TestGridChargePerOccurrenceBudgets:
         )
 
         total_charged = sum(s.batteries_charged_kwh for s in slots)
-        # Budget = min(needed=20, usable_kwh=10) = 10
         assert total_charged - 1e-9 < 10.0 + 1e-9, (
             f"Total charged ({total_charged:.3f}) must not exceed "
             f"usable_kwh ({10.0:.3f})"

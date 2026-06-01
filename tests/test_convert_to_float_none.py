@@ -466,7 +466,6 @@ class TestThresholdCalculationWithNoneInputs:
             expected_cycles=6_000,
             usable_capacity=10.0,
         )
-        # (48000 * 0.30) / (2 * 6000 * 10) = 14400 / 120000 = 0.12
         assert result == pytest.approx(0.12, abs=1e-3)
 
 
@@ -529,7 +528,6 @@ class TestFlowExpectedCyclesNullSafety:
             expected_cycles=cycles,
             usable_capacity=10.0,
         )
-        # (48000 * 0.30) / (2 * 6000 * 10) = 14400 / 120000 = 0.12
         assert result == pytest.approx(0.12, abs=1e-3)
 
 

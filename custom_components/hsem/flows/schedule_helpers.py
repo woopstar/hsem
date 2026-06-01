@@ -63,11 +63,11 @@ def resolve_usable_capacity_kwh(
     return 10.0
 
 
-async def build_batteries_schedule_step_schema(
+async def build_batteries_schedule_step_schema(  # NOSONAR -- async required by HA config/options flow framework
     schedule_number: int,
     config_entry: ConfigEntry | None,
-    hass: HomeAssistant | None = None,
-    user_input: dict | None = None,
+    _hass: HomeAssistant | None = None,
+    _user_input: dict | None = None,
 ) -> vol.Schema:
     """Return the voluptuous schema for a numbered battery schedule step.
 
@@ -77,8 +77,8 @@ async def build_batteries_schedule_step_schema(
     Args:
         schedule_number: Integer suffix (1, 2, or 3) identifying the schedule.
         config_entry: Active config entry; ``None`` for the initial config flow.
-        hass: Home Assistant instance; ``None`` when not yet available.
-        user_input: Optional dict of values from prior flow steps — used to
+        _hass: Home Assistant instance; ``None`` when not yet available.
+        _user_input: Optional dict of values from prior flow steps — used to
             resolve the rated-capacity entity during first-time setup.
 
     Returns:
@@ -105,7 +105,7 @@ async def build_batteries_schedule_step_schema(
     )
 
 
-async def validate_batteries_schedule_input(
+async def validate_batteries_schedule_input(  # NOSONAR -- async required by HA config/options flow framework
     schedule_number: int,
     user_input: dict,
 ) -> dict[str, str]:

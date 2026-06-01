@@ -67,7 +67,7 @@ from custom_components.hsem.custom_sensors.working_mode_sensor import (
 )
 
 
-async def async_setup_entry(
+async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
     hass: HomeAssistant,
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,

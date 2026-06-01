@@ -16,7 +16,7 @@ from custom_components.hsem.utils.config_validator import merge_errors, validate
 from custom_components.hsem.utils.misc import get_config_value
 
 
-async def get_battery_economics_step_schema(
+async def get_battery_economics_step_schema(  # NOSONAR -- async required by HA config/options flow framework
     config_entry: ConfigEntry | None,
 ) -> vol.Schema:
     """Return the data schema for the 'battery_economics' step.
@@ -123,7 +123,9 @@ async def get_battery_economics_step_schema(
     )
 
 
-async def validate_battery_economics_input(user_input: dict) -> dict[str, str]:
+async def validate_battery_economics_input(
+    user_input: dict,
+) -> dict[str, str]:  # NOSONAR -- async required by HA config/options flow framework
     """Validate user input for the 'battery_economics' step.
 
     Args:

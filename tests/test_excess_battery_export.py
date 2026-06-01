@@ -128,7 +128,6 @@ class TestCalculateRecommendedThreshold:
             expected_cycles=6_000,
             usable_capacity=10.0,
         )
-        # (48000 * 0.30) / (2 * 6000 * 10) = 0.120
         decimals = len(str(round(result, 3)).split(".")[-1])
         assert decimals <= 3
 

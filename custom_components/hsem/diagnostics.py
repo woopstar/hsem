@@ -36,7 +36,7 @@ from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 # ---------------------------------------------------------------------------
 
 
-async def async_get_config_entry_diagnostics(
+async def async_get_config_entry_diagnostics(  # NOSONAR -- HA diagnostics hook, called by HA framework
     hass: HomeAssistant,
     entry: ConfigEntry,
 ) -> dict:

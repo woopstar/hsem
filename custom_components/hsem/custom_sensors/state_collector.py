@@ -379,14 +379,10 @@ async def async_collect_live_state(
 
     # --- EV planned load live state — primary EV ---
     if cfg.ev_planned_load_enabled:
-        _read_ev_planned_load_state(
-            sensor, state, cfg, _read, is_second=False, entry_id=entry_id
-        )
+        _read_ev_planned_load_state(sensor, state, cfg, _read, is_second=False)
 
     if cfg.ev_second_planned_load_enabled:
-        _read_ev_planned_load_state(
-            sensor, state, cfg, _read, is_second=True, entry_id=entry_id
-        )
+        _read_ev_planned_load_state(sensor, state, cfg, _read, is_second=True)
 
     # --- Register state-change listeners for reactive entities ---
     new_unsubs = await _register_listeners(
@@ -459,7 +455,6 @@ def _read_ev_planned_load_state(
     cfg: SensorConfig,
     _read: Callable[..., Any],
     is_second: bool,
-    entry_id: str,
 ) -> None:
     """Read EV planned load live state into ``state`` for primary or second EV.
 

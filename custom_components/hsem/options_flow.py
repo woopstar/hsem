@@ -399,7 +399,7 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
                 return await self.async_step_weighted_values()
 
         data_schema = await get_batteries_excess_export_step_schema(
-            self._config_entry, hass=self.hass
+            self._config_entry, _hass=self.hass
         )
 
         return self.async_show_form(

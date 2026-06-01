@@ -23,7 +23,7 @@ async def get_batteries_schedule_2_step_schema(
 ) -> vol.Schema:
     """Return the data schema for the batteries_schedule_2 flow step."""
     return await build_batteries_schedule_step_schema(
-        2, config_entry, hass=hass, user_input=user_input
+        2, config_entry, _hass=hass, _user_input=user_input
     )
 
 

@@ -73,7 +73,7 @@ _TZ = ZoneInfo("Europe/Copenhagen")
 # ---------------------------------------------------------------------------
 
 
-def _make_uniform_input(
+def _make_uniform_input(  # NOSONAR
     *,
     import_price: float = 0.20,
     export_price: float = 0.05,
@@ -2006,9 +2006,7 @@ class TestPastSlotSocPenaltyExclusion:
         s.grid_import_kwh = 0.0
         s.grid_export_kwh = 0.0
         breakdown = score_plan([s], weights)
-        expected = (
-            weights.soc_low_penalty_weight * (10.0 - 5.0) ** 2
-        )  # 0.01 * 25 = 0.25
+        expected = weights.soc_low_penalty_weight * (10.0 - 5.0) ** 2
         assert breakdown.soc_penalty == pytest.approx(expected, abs=1e-9), (
             f"Future SoC violation must still be penalised; "
             f"expected {expected:.4f}, got {breakdown.soc_penalty:.4f}"

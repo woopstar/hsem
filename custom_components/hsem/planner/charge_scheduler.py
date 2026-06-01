@@ -208,7 +208,6 @@ def apply_charge_schedules(
             if charged < occurrence_budget:
                 grid_charged = _apply_grid_charge(
                     eligible,
-                    sched,
                     occurrence_budget,
                     charged,
                     max_charge_per_interval,
@@ -240,7 +239,6 @@ def apply_charge_schedules(
 
 def _apply_grid_charge(
     eligible: list[PlannedSlot],
-    sched: BatteryScheduleInput,
     needed: float,
     charged_so_far: float,
     max_charge_per_interval: float,
@@ -258,7 +256,6 @@ def _apply_grid_charge(
 
     Args:
         eligible: Pre-filtered candidate slots.
-        sched: The battery schedule being filled.
         needed: Total energy to charge in kWh.
         charged_so_far: Energy already charged by higher-priority sources.
         max_charge_per_interval: Maximum energy per slot in kWh.

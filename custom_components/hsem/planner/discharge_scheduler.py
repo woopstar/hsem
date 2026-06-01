@@ -460,7 +460,6 @@ def apply_optimization_strategy(
     usable_capacity: float,
     required_capacity: float,
     months_winter: list[int],
-    warnings: list[str],
     export_min_price: float = 0.0,
 ) -> None:
     """Apply seasonal optimization logic to remaining unassigned slots.
@@ -481,7 +480,6 @@ def apply_optimization_strategy(
         usable_capacity: Maximum usable battery energy in kWh.
         required_capacity: Energy required until next solar surplus (kWh).
         months_winter: List of month integers (1-12) treated as winter.
-        warnings: Mutable list for diagnostic messages (currently unused here).
         export_min_price: Minimum export price required to trigger
             ``ForceExport``.  Slots where export price is below this
             threshold are not marked for export even if export > import.
