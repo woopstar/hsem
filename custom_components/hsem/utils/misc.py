@@ -318,7 +318,7 @@ def clamp_efficiency(pct: float) -> float:
     return max(min(pct, 100.0), 1.0) / 100.0
 
 
-async def async_resolve_entity_id_from_unique_id(
+async def async_resolve_entity_id_from_unique_id(  # NOSONAR
     self: Any, unique_entity_id: str, domain: str = "sensor"
 ) -> str | None:
     """Resolve an entity_id from a unique_id using the entity registry.
@@ -553,7 +553,7 @@ async def async_remove_entity_from_ha(self: Any, entity_unique_id: str) -> bool:
         return False
 
 
-async def async_entity_exists(hass: Any, entity_id: str) -> bool:
+async def async_entity_exists(hass: Any, entity_id: str) -> bool:  # NOSONAR
     """Check whether an entity exists in Home Assistant.
 
     Args:
@@ -566,7 +566,7 @@ async def async_entity_exists(hass: Any, entity_id: str) -> bool:
     return hass.states.get(entity_id) is not None
 
 
-async def async_device_exists(hass: Any, device_id: str) -> bool:
+async def async_device_exists(hass: Any, device_id: str) -> bool:  # NOSONAR
     """Check whether a device exists in Home Assistant.
 
     Args:

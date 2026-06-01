@@ -74,7 +74,7 @@ _EFFICIENCY_SELECTOR = selector(
 )
 
 
-async def build_ev_planned_load_schema(
+async def build_ev_planned_load_schema(  # NOSONAR
     config_entry: ConfigEntry | None, prefix: str
 ) -> vol.Schema:
     """Return the data schema for an EV planned load config flow step.

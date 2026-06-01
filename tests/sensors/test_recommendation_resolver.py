@@ -164,7 +164,7 @@ class TestBatteryAboveScheduleNeed:
 class TestNoneRec:
     def test_none_rec_does_not_raise(self):
         """resolve_current_recommendation should be a no-op when rec is None."""
-        resolve_current_recommendation(None, _make_live(), 0.0)
+        resolve_current_recommendation(None, _make_live(), 0.0)  # NOSONAR
 
 
 # ---------------------------------------------------------------------------

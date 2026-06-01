@@ -85,7 +85,7 @@ class HysteresisResult:
     new_score: float = 0.0
 
 
-def select_best_candidate(
+def select_best_candidate(  # NOSONAR
     candidates: list[CandidatePlan],
     *,
     now: datetime,

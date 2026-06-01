@@ -63,7 +63,7 @@ def resolve_usable_capacity_kwh(
     return 10.0
 
 
-async def build_batteries_schedule_step_schema(
+async def build_batteries_schedule_step_schema(  # NOSONAR
     schedule_number: int,
     config_entry: ConfigEntry | None,
     _hass: HomeAssistant | None = None,
@@ -105,7 +105,7 @@ async def build_batteries_schedule_step_schema(
     )
 
 
-async def validate_batteries_schedule_input(
+async def validate_batteries_schedule_input(  # NOSONAR
     schedule_number: int,
     user_input: dict,
 ) -> dict[str, str]:

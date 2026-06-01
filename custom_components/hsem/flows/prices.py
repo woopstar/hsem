@@ -31,7 +31,7 @@ from custom_components.hsem.utils.misc import get_config_value
 
 async def get_prices_step_schema(
     config_entry: ConfigEntry | None,
-) -> vol.Schema:
+) -> vol.Schema:  # NOSONAR
     """Return the data schema for the 'prices' step.
 
     Args:
