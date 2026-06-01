@@ -28,10 +28,10 @@ For each slot ``t ∈ 0…n-1``:
 Objective (minimise)
 --------------------
 ``Σ_t [ p_imp[t]*gi[t] - p_exp[t]*ge[t] + α*m[t]
-       + γ*(ed[t]-ec[t]) + P_soc*s_max_pen[t] + P_soc*s_min_pen[t] ]``
+       + γ*(ed[t]-ec[t]) + p_soc*s_max_pen[t] + p_soc*s_min_pen[t] ]``
 
 where ``α`` = battery cycle cost/kWh, ``γ`` = terminal-SoC replacement
-price, ``P_soc = max(p_imp) * 100`` ensures penalties are only used when
+price, ``p_soc = max(p_imp) * 100`` ensures penalties are only used when
 forced (e.g., initial SoC outside bounds).
 
 Constraints
@@ -370,11 +370,11 @@ def solve_milp(
     # Apply time discount so the MILP objective matches the selector's
     # discounted score (distant savings are worth less).
     #
-    # Penalty cost P_soc ensures penalties are never used unless forced.
+    # Penalty cost p_soc ensures penalties are never used unless forced.
     # It must be much larger than the maximum possible import cost per kWh.
     # ------------------------------------------------------------------
     p_imp_max = float(np.max(p_imp)) if m > 0 else 0.1
-    P_soc = max(p_imp_max, 0.1) * 100.0
+    p_soc = max(p_imp_max, 0.1) * 100.0
 
     use_discount = time_discount_rate < 1.0 - 1e-9
     c_obj = np.zeros(n_vars)
@@ -412,8 +412,8 @@ def solve_milp(
         # Penalty costs: high enough that penalties are zero when SoC is
         # within bounds, but absorb violations when the initial SoC is
         # outside [0, usable_kwh] (e.g., overcharged battery).
-        c_obj[s_max_off + t] = P_soc * discount
-        c_obj[s_min_off + t] = P_soc * discount
+        c_obj[s_max_off + t] = p_soc * discount
+        c_obj[s_min_off + t] = p_soc * discount
 
     # ------------------------------------------------------------------
     # Equality constraints: energy balance per slot

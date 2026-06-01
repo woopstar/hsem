@@ -311,11 +311,11 @@ Lower: -soc[t] - s_min_pen[t] <= 0
 ### Penalty cost
 
 ```text
-P_soc = max(p_imp) * 100
+p_soc = max(p_imp) * 100
 ```
 
 The penalty cost is added to the objective:
-`P_soc * (s_max_pen[t] + s_min_pen[t])`.  It is high enough that the solver
+`p_soc * (s_max_pen[t] + s_min_pen[t])`.  It is high enough that the solver
 never uses penalties unless forced by an out-of-bounds initial SoC.
 
 ### Invariants

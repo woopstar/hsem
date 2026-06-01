@@ -451,7 +451,7 @@ def test_milp_solves_96_slot_horizon_under_100ms():
     elapsed = time_module.perf_counter() - t_start
 
     assert milp_result is not None, "MILP must solve the 96-slot horizon"
-    result, _diag = milp_result
+    _, _diag = milp_result
     assert elapsed < 0.10, (
         f"MILP took {elapsed * 1000:.1f} ms on 96 slots — must be under 100 ms"
     )
@@ -1164,7 +1164,7 @@ def test_milp_normal_start_zero_penalty():
     """Normal battery (current_kwh within bounds) must produce zero penalty.
 
     When the initial SoC is within [0, usable_kwh], the MILP must never use
-    penalty variables because P_soc >> max(p_imp).  The diagnostics must show
+    penalty variables because p_soc >> max(p_imp).  The diagnostics must show
     has_violations=False and total_violation_kwh=0.
     """
     slots = _make_arbitrage_slots([0, 1, 2, 3], [20, 21, 22, 23])
