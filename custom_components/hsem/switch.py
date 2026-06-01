@@ -27,63 +27,66 @@ from custom_components.hsem.utils.sensornames import (
     get_verbose_logging_switch_key,
 )
 
+_ICON_TOGGLE = "mdi:toggle-switch"
+_ICON_EV = "mdi:ev-station"
+
 # One description per switch.  Keys are sourced from sensornames.py so that
 # unique_ids and entity_ids are defined in one place.  Display names come
 # from translations via translation_key.
 SWITCH_DESCRIPTIONS: tuple[HSEMSwitchEntityDescription, ...] = (
     HSEMSwitchEntityDescription(
         key=get_read_only_switch_key(),
-        icon="mdi:toggle-switch",
+        icon=_ICON_TOGGLE,
         translation_key="read_only",
     ),
     HSEMSwitchEntityDescription(
         key=get_extended_attributes_switch_key(),
-        icon="mdi:toggle-switch",
+        icon=_ICON_TOGGLE,
         translation_key="extended_attributes",
     ),
     HSEMSwitchEntityDescription(
         key=get_verbose_logging_switch_key(),
-        icon="mdi:toggle-switch",
+        icon=_ICON_TOGGLE,
         translation_key="verbose_logging",
     ),
     HSEMSwitchEntityDescription(
         key=get_batteries_schedule_1_switch_key(),
-        icon="mdi:toggle-switch",
+        icon=_ICON_TOGGLE,
         translation_key="batteries_schedule_1",
     ),
     HSEMSwitchEntityDescription(
         key=get_batteries_schedule_2_switch_key(),
-        icon="mdi:toggle-switch",
+        icon=_ICON_TOGGLE,
         translation_key="batteries_schedule_2",
     ),
     HSEMSwitchEntityDescription(
         key=get_batteries_schedule_3_switch_key(),
-        icon="mdi:toggle-switch",
+        icon=_ICON_TOGGLE,
         translation_key="batteries_schedule_3",
     ),
     HSEMSwitchEntityDescription(
         key=get_ev_force_discharge_switch_key(),
-        icon="mdi:toggle-switch",
+        icon=_ICON_TOGGLE,
         translation_key="ev_force_discharge",
     ),
     HSEMSwitchEntityDescription(
         key=get_ev_smart_charging_switch_key(),
-        icon="mdi:ev-station",
+        icon=_ICON_EV,
         translation_key="ev_smart_charging",
     ),
     HSEMSwitchEntityDescription(
         key=get_ev_force_charge_now_switch_key(),
-        icon="mdi:ev-station",
+        icon=_ICON_EV,
         translation_key="ev_force_charge_now",
     ),
     HSEMSwitchEntityDescription(
         key=get_ev_second_smart_charging_switch_key(),
-        icon="mdi:ev-station",
+        icon=_ICON_EV,
         translation_key="ev_second_smart_charging",
     ),
     HSEMSwitchEntityDescription(
         key=get_ev_second_force_charge_now_switch_key(),
-        icon="mdi:ev-station",
+        icon=_ICON_EV,
         translation_key="ev_second_force_charge_now",
     ),
 )

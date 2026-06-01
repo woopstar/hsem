@@ -32,6 +32,8 @@ from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 # Public constants
 # ---------------------------------------------------------------------------
 
+_LOG_FMT = "%s — %s"
+
 #: Default seconds to wait between write and read-back.
 #: The inverter is polled every 5-10 s by HA, so the settle time must be
 #: long enough for at least one full poll cycle to complete.
@@ -205,7 +207,7 @@ async def async_write_and_verify(
             await writer()
         except Exception as exc:  # noqa: BLE001
             last_error = f"Write error on attempt {attempt}: {exc}"
-            _LOGGER.warning("%s — %s", entity_id, last_error)
+            _LOGGER.warning(_LOG_FMT, entity_id, last_error)
             # Wait before retrying even after a write error (device may recover).
             if attempt < max_retries:
                 await asyncio.sleep(settle_seconds)
@@ -220,7 +222,7 @@ async def async_write_and_verify(
             )
         except Exception as exc:  # noqa: BLE001
             last_error = f"Read-back error on attempt {attempt}: {exc}"
-            _LOGGER.warning("%s — %s", entity_id, last_error)
+            _LOGGER.warning(_LOG_FMT, entity_id, last_error)
             last_actual = None
             continue
 
@@ -250,7 +252,7 @@ async def async_write_and_verify(
         last_error = (
             f"Mismatch on attempt {attempt}: desired={desired}, actual={readback}"
         )
-        _LOGGER.warning("%s — %s", entity_id, last_error)
+        _LOGGER.warning(_LOG_FMT, entity_id, last_error)
 
     # ------------------------------------------------------------------
     # All retries exhausted

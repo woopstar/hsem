@@ -26,6 +26,8 @@ from custom_components.hsem.models.planner_inputs import (
     SolcastSlot,
 )
 
+_DEFAULT_SUMMER_ISO = "2024-06-15T00:00:00+02:00"
+
 # ---------------------------------------------------------------------------
 # Base 24-hour time-series helpers
 # ---------------------------------------------------------------------------
@@ -250,7 +252,7 @@ def _default_schedules() -> list[BatteryScheduleInput]:
 
 def make_summer_day_input(
     *,
-    now_iso: str = "2024-06-15T00:00:00+02:00",
+    now_iso: str = _DEFAULT_SUMMER_ISO,
     battery_soc_pct: float = 50.0,
     battery_rated_capacity_kwh: float = 10.0,
     battery_end_of_discharge_soc_pct: float = 10.0,
@@ -386,7 +388,7 @@ def make_winter_day_input(
 
 def make_flat_price_input(
     *,
-    now_iso: str = "2024-06-15T00:00:00+02:00",
+    now_iso: str = _DEFAULT_SUMMER_ISO,
     import_price: float = 0.20,
     export_price: float = 0.05,
     battery_soc_pct: float = 0.0,
@@ -443,7 +445,7 @@ def make_flat_price_input(
 
 def make_negative_price_input(
     *,
-    now_iso: str = "2024-06-15T00:00:00+02:00",
+    now_iso: str = _DEFAULT_SUMMER_ISO,
     negative_hours: list[int] | None = None,
     interval_minutes: int = 60,
 ) -> PlannerInput:
