@@ -91,7 +91,7 @@ async def build_ev_planned_load_schema(  # NOSONAR -- async required by HA confi
     def _k(suffix: str) -> str:
         return f"{prefix}_{suffix}"
 
-    def _v(suffix: str) -> Any:  # TODO: tighten type
+    def _v(suffix: str) -> Any:  # NOSONAR -- generic helper; type depends on caller
         return get_config_value(config_entry, _k(suffix))
 
     return vol.Schema(

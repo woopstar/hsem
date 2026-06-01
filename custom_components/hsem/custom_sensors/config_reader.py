@@ -32,7 +32,9 @@ from custom_components.hsem.utils.misc import (
 )
 
 
-def build_sensor_config(config_entry: Any) -> SensorConfig:  # TODO: tighten type
+def build_sensor_config(
+    config_entry: Any,
+) -> SensorConfig:  # NOSONAR -- HA ConfigEntry; circular import risk
     """Read all config-entry options and return a populated :class:`SensorConfig`.
 
     This is a pure synchronous function that reads from ``config_entry.options``
@@ -450,7 +452,9 @@ def build_battery_schedules(cfg: SensorConfig) -> list[BatterySchedule]:
 # ---------------------------------------------------------------------------
 
 
-def _optional_entity(value: Any) -> str | None:  # TODO: tighten type
+def _optional_entity(
+    value: Any,
+) -> str | None:  # NOSONAR -- generic helper; type depends on caller
     """Return None if value is vol.UNDEFINED or falsy, else the string."""
     if value is vol.UNDEFINED or not value:
         return None
