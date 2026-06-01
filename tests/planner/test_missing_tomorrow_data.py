@@ -285,7 +285,7 @@ class TestTimeSeriesIndexTomorrowHelpers:
 
         now = datetime(2024, 6, 15, 0, 0, tzinfo=_TZ)
         tsi = TimeSeriesIndex.from_now(now, interval_minutes=60, horizon_hours=48)
-        prices = {h: 0.20 for h in range(24)}
+        prices = dict.fromkeys(range(24), 0.20)
         tsi.align_hourly_prices(prices, prices)
         assert tsi.missing_tomorrow_price_hours() == set()
 
@@ -296,7 +296,7 @@ class TestTimeSeriesIndexTomorrowHelpers:
         now = datetime(2024, 6, 15, 0, 0, tzinfo=_TZ)
         tsi = TimeSeriesIndex.from_now(now, interval_minutes=60, horizon_hours=48)
         # Only provide prices for hours 0-11 (morning half)
-        prices = {h: 0.20 for h in range(12)}
+        prices = dict.fromkeys(range(12), 0.20)
         tsi.align_hourly_prices(prices, prices)
         missing = tsi.missing_tomorrow_price_hours()
         assert 12 in missing
@@ -311,7 +311,7 @@ class TestTimeSeriesIndexTomorrowHelpers:
         now = datetime(2024, 6, 15, 0, 0, tzinfo=_TZ)
         tsi = TimeSeriesIndex.from_now(now, interval_minutes=60, horizon_hours=48)
         # Only provide PV for night hours (no production expected anyway)
-        pv = {h: 0.0 for h in range(6)}  # only 00:00-05:00
+        pv = dict.fromkeys(range(6), 0.0)  # only 00:00-05:00
         tsi.align_hourly_pv(pv)
         missing = tsi.missing_tomorrow_pv_hours()
         # Hours 6-23 should be flagged as missing in tomorrow
@@ -326,8 +326,8 @@ class TestTimeSeriesIndexTomorrowHelpers:
         now = datetime(2024, 6, 15, 0, 0, tzinfo=_TZ)
         tsi = TimeSeriesIndex.from_now(now, interval_minutes=60, horizon_hours=48)
         # Full PV, partial prices
-        full_pv = {h: 0.5 for h in range(24)}
-        partial_prices = {h: 0.20 for h in range(12)}  # only 0-11
+        full_pv = dict.fromkeys(range(24), 0.5)
+        partial_prices = dict.fromkeys(range(12), 0.20)  # only 0-11
 
         tsi.align_hourly_prices(partial_prices, partial_prices)
         tsi.align_hourly_pv(full_pv)

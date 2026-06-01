@@ -62,7 +62,7 @@ class TestWindowHysteresis:
         slots = _make_slots(
             Recommendations.BatteriesChargeGrid.value,
         )
-        rec, start = apply_window_hysteresis(
+        rec, _ = apply_window_hysteresis(
             slots,
             _NOW,
             window_hysteresis_minutes=30,
@@ -82,7 +82,7 @@ class TestWindowHysteresis:
         slots = _make_slots(
             Recommendations.BatteriesChargeSolar.value,
         )
-        rec, start = apply_window_hysteresis(
+        rec, _ = apply_window_hysteresis(
             slots,
             _NOW,
             window_hysteresis_minutes=30,
@@ -98,7 +98,7 @@ class TestWindowHysteresis:
         slots = _make_slots(
             Recommendations.ForceBatteriesDischarge.value,
         )
-        rec, start = apply_window_hysteresis(
+        rec, _ = apply_window_hysteresis(
             slots,
             _NOW,
             window_hysteresis_minutes=30,
@@ -118,7 +118,7 @@ class TestWindowHysteresis:
         slots = _make_slots(
             Recommendations.BatteriesDischargeMode.value,
         )
-        rec, start = apply_window_hysteresis(
+        rec, _ = apply_window_hysteresis(
             slots,
             _NOW,
             window_hysteresis_minutes=30,
@@ -138,7 +138,7 @@ class TestWindowHysteresis:
         slots = _make_slots(
             Recommendations.BatteriesChargeGrid.value,
         )
-        rec, start = apply_window_hysteresis(
+        rec, _ = apply_window_hysteresis(
             slots,
             _NOW,
             window_hysteresis_minutes=30,
@@ -157,7 +157,7 @@ class TestWindowHysteresis:
         slots = _make_slots(
             Recommendations.ForceExport.value,
         )
-        rec, start = apply_window_hysteresis(
+        rec, _ = apply_window_hysteresis(
             slots,
             _NOW,
             window_hysteresis_minutes=15,
@@ -177,7 +177,7 @@ class TestWindowHysteresis:
         slots = _make_slots(
             Recommendations.BatteriesDischargeMode.value,
         )
-        rec, start = apply_window_hysteresis(
+        rec, _ = apply_window_hysteresis(
             slots,
             _NOW,
             window_hysteresis_minutes=10,
@@ -193,7 +193,7 @@ class TestWindowHysteresis:
         slots = _make_slots(
             Recommendations.BatteriesChargeGrid.value,
         )
-        rec, start = apply_window_hysteresis(
+        rec, _ = apply_window_hysteresis(
             slots,
             _NOW,
             window_hysteresis_minutes=5,
@@ -213,7 +213,7 @@ class TestWindowHysteresis:
         slots = _make_slots(
             Recommendations.BatteriesWaitMode.value,
         )
-        rec, start = apply_window_hysteresis(
+        rec, _ = apply_window_hysteresis(
             slots,
             _NOW,
             window_hysteresis_minutes=30,
@@ -229,7 +229,7 @@ class TestWindowHysteresis:
         slots = _make_slots(
             None,
         )
-        rec, start = apply_window_hysteresis(
+        rec, _ = apply_window_hysteresis(
             slots,
             _NOW,
             window_hysteresis_minutes=30,
@@ -243,7 +243,7 @@ class TestWindowHysteresis:
         slots = _make_slots(
             Recommendations.BatteriesChargeGrid.value,
         )
-        rec, start = apply_window_hysteresis(
+        rec, _ = apply_window_hysteresis(
             slots,
             _NOW,
             window_hysteresis_minutes=30,
@@ -263,7 +263,7 @@ class TestWindowHysteresis:
         slots = _make_slots(
             Recommendations.BatteriesDischargeMode.value,
         )
-        rec, start = apply_window_hysteresis(
+        rec, _ = apply_window_hysteresis(
             slots,
             _NOW,
             window_hysteresis_minutes=0,
@@ -283,7 +283,7 @@ class TestWindowHysteresis:
         slots = _make_slots(
             Recommendations.BatteriesDischargeMode.value,
         )
-        rec, start = apply_window_hysteresis(
+        rec, _ = apply_window_hysteresis(
             slots,
             _NOW,
             window_hysteresis_minutes=10,
@@ -299,7 +299,7 @@ class TestWindowHysteresis:
         slots = _make_slots(
             Recommendations.BatteriesDischargeMode.value,
         )
-        rec, start = apply_window_hysteresis(
+        rec, _ = apply_window_hysteresis(
             slots,
             _NOW,
             window_hysteresis_minutes=10,
@@ -319,7 +319,7 @@ class TestWindowHysteresis:
         slots = _make_slots(
             Recommendations.BatteriesDischargeMode.value,
         )
-        rec, start = apply_window_hysteresis(
+        _, start = apply_window_hysteresis(
             slots,
             _NOW,
             window_hysteresis_minutes=5,
@@ -336,7 +336,7 @@ class TestWindowHysteresis:
             Recommendations.BatteriesDischargeMode.value,
         )
         prev_start = _NOW - timedelta(minutes=2)
-        rec, start = apply_window_hysteresis(
+        _, start = apply_window_hysteresis(
             slots,
             _NOW,
             window_hysteresis_minutes=10,

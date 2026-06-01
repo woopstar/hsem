@@ -626,7 +626,7 @@ class TestDerivedSensorLifecycle:
     async def test_utility_meter_source_is_integral_not_power(self) -> None:
         """The utility meter must track the energy (integral) sensor, not the power
         sensor.  Source entity_id is now derived deterministically."""
-        sensor, added = _make_sensor(hour_start=20)
+        sensor, _ = _make_sensor(hour_start=20)
         _attach_hass(sensor)
 
         expected_source = get_integral_sensor_entity_id(20, 21)

@@ -77,4 +77,3 @@ def resolve_current_recommendation(
         > batteries_schedules_remaining_capacity_needed
     ):
         rec.recommendation = Recommendations.BatteriesDischargeMode.value
-        return

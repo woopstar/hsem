@@ -39,7 +39,7 @@ class TestComputeWeightedAverage:
         result_spiked, mask_spiked = _compute_weighted_average(
             spiked, normal, normal, normal, 50, 20, 15, 10
         )
-        result_normal, mask_normal = _compute_weighted_average(
+        result_normal, _ = _compute_weighted_average(
             normal, normal, normal, normal, 50, 20, 15, 10
         )
         # 1d should be flagged as outlier
@@ -51,7 +51,7 @@ class TestComputeWeightedAverage:
 
     def test_weights_summing_to_100(self):
         """Standard 25/30/30/15 weights should produce a sensible result."""
-        result, mask = _compute_weighted_average(2.0, 1.8, 1.7, 1.6, 25, 30, 30, 15)
+        result, _ = _compute_weighted_average(2.0, 1.8, 1.7, 1.6, 25, 30, 30, 15)
         # Should be between the min and max input values
         assert 1.6 <= result <= 2.0
 
@@ -106,7 +106,7 @@ class TestComputeWeightedAverage:
 
     def test_repeated_high_load_not_outlier(self):
         """When 1d, 3d, and 7d are all high (repeated load), none should be outlier."""
-        result, mask = _compute_weighted_average(2.0, 1.9, 1.8, 1.0, 25, 25, 25, 25)
+        _, mask = _compute_weighted_average(2.0, 1.9, 1.8, 1.0, 25, 25, 25, 25)
         # 1d, 3d, 7d are all elevated — this is a trend, not a spike
         # Median of [1.0, 1.8, 1.9, 2.0] = (1.8+1.9)/2 = 1.85
         # Upper fence: 1.85 * 1.5 = 2.775 — all values below

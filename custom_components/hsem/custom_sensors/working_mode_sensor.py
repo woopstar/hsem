@@ -291,10 +291,7 @@ class HSEMWorkingModeSensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
             "data_quality": data.data_quality.as_dict(),
         }
 
-        return {
-            key: value
-            for key, value in sorted({**attributes, **extended, **status}.items())
-        }
+        return dict(sorted({**attributes, **extended, **status}.items()))
 
     # ------------------------------------------------------------------
     # HA lifecycle

@@ -172,14 +172,14 @@ class TestExpandBasicCorrectness:
 
     def test_import_price_matches_input_value(self):
         imp = {h: float(h) for h in range(24)}
-        exp = {h: 0.0 for h in range(24)}
+        exp = dict.fromkeys(range(24), 0.0)
         slots = expand_hourly_prices_to_slots(self.now, imp, exp)
         for h in range(24):
             for s in range(4):
                 assert slots[h * 4 + s].import_price == pytest.approx(float(h))
 
     def test_export_price_matches_input_value(self):
-        imp = {h: 0.0 for h in range(24)}
+        imp = dict.fromkeys(range(24), 0.0)
         exp = {h: float(h) * 0.5 for h in range(24)}
         slots = expand_hourly_prices_to_slots(self.now, imp, exp)
         for h in range(24):
@@ -209,8 +209,8 @@ class TestNegativePrices:
         self.now = _cph(2024, 6, 15)
 
     def test_negative_export_price_preserved(self):
-        imp = {h: 0.10 for h in range(24)}
-        exp = {h: -0.05 for h in range(24)}
+        imp = dict.fromkeys(range(24), 0.10)
+        exp = dict.fromkeys(range(24), -0.05)
         slots = expand_hourly_prices_to_slots(self.now, imp, exp)
         for sp in slots:
             assert sp.export_price == pytest.approx(-0.05)
@@ -218,8 +218,8 @@ class TestNegativePrices:
 
     def test_negative_import_price_preserved(self):
         # Negative import prices can occur during renewable surplus events.
-        imp = {h: -0.02 for h in range(24)}
-        exp = {h: 0.0 for h in range(24)}
+        imp = dict.fromkeys(range(24), -0.02)
+        exp = dict.fromkeys(range(24), 0.0)
         slots = expand_hourly_prices_to_slots(self.now, imp, exp)
         for sp in slots:
             assert sp.import_price == pytest.approx(-0.02)
@@ -239,7 +239,7 @@ class TestNegativePrices:
             assert slots[s].export_price > 0
 
     def test_deeply_negative_export_price(self):
-        exp = {h: -999.99 for h in range(24)}
+        exp = dict.fromkeys(range(24), -999.99)
         slots = expand_hourly_prices_to_slots(self.now, {}, exp)
         # Import should be sentinel (not provided); export should be -999.99
         for sp in slots:
@@ -247,8 +247,8 @@ class TestNegativePrices:
             assert sp.export_price == pytest.approx(-999.99)
 
     def test_zero_price_preserved_as_zero(self):
-        imp = {h: 0.0 for h in range(24)}
-        exp = {h: 0.0 for h in range(24)}
+        imp = dict.fromkeys(range(24), 0.0)
+        exp = dict.fromkeys(range(24), 0.0)
         slots = expand_hourly_prices_to_slots(self.now, imp, exp)
         for sp in slots:
             assert sp.import_price == pytest.approx(0.0)
@@ -256,8 +256,8 @@ class TestNegativePrices:
             assert not sp.has_any_missing
 
     def test_negative_price_is_not_treated_as_missing(self):
-        imp = {h: -0.01 for h in range(24)}
-        exp = {h: -0.01 for h in range(24)}
+        imp = dict.fromkeys(range(24), -0.01)
+        exp = dict.fromkeys(range(24), -0.01)
         slots = expand_hourly_prices_to_slots(self.now, imp, exp)
         assert all(not sp.has_any_missing for sp in slots)
 
@@ -275,13 +275,13 @@ class TestMissingPriceHours:
 
     def test_missing_single_import_hour_produces_nan(self):
         imp = {h: 0.10 for h in range(24) if h != 12}
-        exp = {h: 0.08 for h in range(24)}
+        exp = dict.fromkeys(range(24), 0.08)
         slots = expand_hourly_prices_to_slots(self.now, imp, exp)
         for s in range(4):
             assert _is_sentinel(slots[12 * 4 + s].import_price)
 
     def test_missing_single_export_hour_produces_nan(self):
-        imp = {h: 0.10 for h in range(24)}
+        imp = dict.fromkeys(range(24), 0.10)
         exp = {h: 0.08 for h in range(24) if h != 7}
         slots = expand_hourly_prices_to_slots(self.now, imp, exp)
         for s in range(4):
@@ -299,12 +299,12 @@ class TestMissingPriceHours:
                 assert not _is_sentinel(slots[h * 4 + s].export_price)
 
     def test_empty_import_dict_all_nan(self):
-        exp = {h: 0.08 for h in range(24)}
+        exp = dict.fromkeys(range(24), 0.08)
         slots = expand_hourly_prices_to_slots(self.now, {}, exp)
         assert all(_is_sentinel(sp.import_price) for sp in slots)
 
     def test_empty_export_dict_all_nan(self):
-        imp = {h: 0.10 for h in range(24)}
+        imp = dict.fromkeys(range(24), 0.10)
         slots = expand_hourly_prices_to_slots(self.now, imp, {})
         assert all(_is_sentinel(sp.export_price) for sp in slots)
 
@@ -313,16 +313,16 @@ class TestMissingPriceHours:
         assert all(sp.has_any_missing for sp in slots)
 
     def test_missing_first_hour(self):
-        imp = {h: 0.10 for h in range(1, 24)}  # missing hour 0
-        exp = {h: 0.08 for h in range(1, 24)}
+        imp = dict.fromkeys(range(1, 24), 0.10)  # missing hour 0
+        exp = dict.fromkeys(range(1, 24), 0.08)
         slots = expand_hourly_prices_to_slots(self.now, imp, exp)
         for s in range(4):
             assert _is_sentinel(slots[s].import_price)
             assert _is_sentinel(slots[s].export_price)
 
     def test_missing_last_hour(self):
-        imp = {h: 0.10 for h in range(23)}  # missing hour 23
-        exp = {h: 0.08 for h in range(23)}
+        imp = dict.fromkeys(range(23), 0.10)  # missing hour 23
+        exp = dict.fromkeys(range(23), 0.08)
         slots = expand_hourly_prices_to_slots(self.now, imp, exp)
         for s in range(4):
             assert _is_sentinel(slots[23 * 4 + s].import_price)
@@ -367,14 +367,14 @@ class TestFillMissingPrices:
 
     def test_fill_missing_import_with_default(self):
         imp = {h: 0.10 for h in range(24) if h != 3}
-        exp = {h: 0.08 for h in range(24)}
+        exp = dict.fromkeys(range(24), 0.08)
         slots = expand_hourly_prices_to_slots(self.now, imp, exp)
         filled = fill_missing_prices(slots, import_fallback=0.50)
         for s in range(4):
             assert filled[3 * 4 + s].import_price == pytest.approx(0.50)
 
     def test_fill_missing_export_with_default(self):
-        imp = {h: 0.10 for h in range(24)}
+        imp = dict.fromkeys(range(24), 0.10)
         exp = {h: 0.08 for h in range(24) if h != 20}
         slots = expand_hourly_prices_to_slots(self.now, imp, exp)
         filled = fill_missing_prices(slots, export_fallback=0.0)
@@ -383,7 +383,7 @@ class TestFillMissingPrices:
 
     def test_fill_does_not_mutate_original(self):
         imp = {h: 0.10 for h in range(24) if h != 6}
-        exp = {h: 0.08 for h in range(24)}
+        exp = dict.fromkeys(range(24), 0.08)
         slots = expand_hourly_prices_to_slots(self.now, imp, exp)
         fill_missing_prices(slots, import_fallback=99.0)
         # Hour 6 is missing → original sentinel must be preserved (NaN)
@@ -437,12 +437,12 @@ class TestMissingPriceHoursHelper:
 
     def test_single_missing_import_hour_identified(self):
         imp = {h: 0.10 for h in range(24) if h != 9}
-        exp = {h: 0.08 for h in range(24)}
+        exp = dict.fromkeys(range(24), 0.08)
         slots = expand_hourly_prices_to_slots(self.now, imp, exp)
         assert 9 in missing_price_hours(slots)
 
     def test_single_missing_export_hour_identified(self):
-        imp = {h: 0.10 for h in range(24)}
+        imp = dict.fromkeys(range(24), 0.10)
         exp = {h: 0.08 for h in range(24) if h != 18}
         slots = expand_hourly_prices_to_slots(self.now, imp, exp)
         assert 18 in missing_price_hours(slots)
@@ -485,22 +485,22 @@ class TestPriceBroadcast:
     def test_import_price_not_divided_by_slot_count(self):
         # If each slot received price/4, the slot price for hour 8 = 0.40
         # would be 0.10 — verify it stays 0.40.
-        imp = {h: 0.40 for h in range(24)}
-        exp = {h: 0.20 for h in range(24)}
+        imp = dict.fromkeys(range(24), 0.40)
+        exp = dict.fromkeys(range(24), 0.20)
         slots = expand_hourly_prices_to_slots(self.now, imp, exp)
         for s in range(4):
             assert slots[8 * 4 + s].import_price == pytest.approx(0.40)
 
     def test_export_price_not_divided_by_slot_count(self):
-        imp = {h: 0.0 for h in range(24)}
-        exp = {h: 1.00 for h in range(24)}
+        imp = dict.fromkeys(range(24), 0.0)
+        exp = dict.fromkeys(range(24), 1.00)
         slots = expand_hourly_prices_to_slots(self.now, imp, exp)
         for sp in slots:
             assert sp.export_price == pytest.approx(1.00)
 
     def test_all_four_slots_in_hour_have_same_price_not_fractions(self):
-        imp = {h: 0.25 for h in range(24)}
-        exp = {h: 0.12 for h in range(24)}
+        imp = dict.fromkeys(range(24), 0.25)
+        exp = dict.fromkeys(range(24), 0.12)
         slots = expand_hourly_prices_to_slots(self.now, imp, exp)
         for h in range(24):
             prices = [slots[h * 4 + s].import_price for s in range(4)]
@@ -530,8 +530,8 @@ class TestVatCurrencyTransparency:
 
     def test_high_precision_price_preserved(self):
         # DKK prices often have 6 decimal places.
-        imp = {h: 1.234567 for h in range(24)}
-        exp = {h: 0.987654 for h in range(24)}
+        imp = dict.fromkeys(range(24), 1.234567)
+        exp = dict.fromkeys(range(24), 0.987654)
         slots = expand_hourly_prices_to_slots(self.now, imp, exp)
         for sp in slots:
             assert sp.import_price == pytest.approx(1.234567, rel=1e-6)
@@ -539,16 +539,16 @@ class TestVatCurrencyTransparency:
 
     def test_large_price_values_preserved(self):
         # Extreme price spike (e.g. 10 EUR/kWh = 74 DKK/kWh during energy crisis).
-        imp = {h: 74.0 for h in range(24)}
-        exp = {h: 55.0 for h in range(24)}
+        imp = dict.fromkeys(range(24), 74.0)
+        exp = dict.fromkeys(range(24), 55.0)
         slots = expand_hourly_prices_to_slots(self.now, imp, exp)
         for sp in slots:
             assert sp.import_price == pytest.approx(74.0)
             assert sp.export_price == pytest.approx(55.0)
 
     def test_small_fractional_price_preserved(self):
-        imp = {h: 0.000001 for h in range(24)}
-        exp = {h: 0.0 for h in range(24)}
+        imp = dict.fromkeys(range(24), 0.000001)
+        exp = dict.fromkeys(range(24), 0.0)
         slots = expand_hourly_prices_to_slots(self.now, imp, exp)
         for sp in slots:
             assert sp.import_price == pytest.approx(0.000001, rel=1e-5)
@@ -709,8 +709,8 @@ class TestIntegrationWithPopulatePrices:
             populate_prices,
         )
 
-        imp_raw = {h: 0.10 for h in range(24)}
-        exp_raw = {h: -0.05 for h in range(24)}
+        imp_raw = dict.fromkeys(range(24), 0.10)
+        exp_raw = dict.fromkeys(range(24), -0.05)
 
         price_points = [
             PricePoint(hour=h, import_price=imp_raw[h], export_price=exp_raw[h])

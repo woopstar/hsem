@@ -142,7 +142,7 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
 
                 # Calculate summer months as the complement of winter months
                 all_months = set(range(1, 13))
-                summer_months = sorted(list(all_months - set(winter_months)))
+                summer_months = sorted(all_months - set(winter_months))
 
                 # Update both winter and summer months as integers
                 self._user_input["hsem_months_winter"] = winter_months
