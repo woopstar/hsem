@@ -42,7 +42,7 @@ _TZ = ZoneInfo("Europe/Copenhagen")
 # ---------------------------------------------------------------------------
 
 
-def _make_minimal_input(  # NOSONAR
+def _make_minimal_input(
     *,
     battery_soc_pct: float = 50.0,
     battery_rated_capacity_kwh: float = 10.0,

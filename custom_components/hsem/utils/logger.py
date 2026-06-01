@@ -153,9 +153,7 @@ def close_hsem_logger_sync() -> None:
 
     Must be called from the executor during teardown.
     """
-    for handler in list(
-        HSEM_LOGGER.handlers
-    ):  # NOSONAR -- list() required for mutation safety during iteration
+    for handler in list(HSEM_LOGGER.handlers):  # NOSONAR -- mutation-safe iteration
         handler.close()
         HSEM_LOGGER.removeHandler(handler)
 
@@ -189,11 +187,7 @@ async def async_close_hsem_logger() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def async_logger(
-    self: Any, msg: str, level: str = "debug"
-) -> (
-    None
-):  # NOSONAR -- called with await by dozens of callers; body delegates to executor
+async def async_logger(self: Any, msg: str, level: str = "debug") -> None:
     """Emit *msg* through the HSEM file logger if verbose logging is on.
 
     The write is delegated to a ``ThreadPoolExecutor`` so that the

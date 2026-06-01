@@ -191,7 +191,7 @@ class TestTimeSeriesIndexMultiDayAlignment:
         exp = {(0, h): 0.08 for h in range(24)}
         exp.update({(1, h): 0.28 for h in range(24)})
 
-        aligned_imp, aligned_exp = tsi.align_hourly_prices(imp, exp)
+        aligned_imp, _ = tsi.align_hourly_prices(imp, exp)
 
         # First 24 slots (day_offset=0) must carry today's price.
         for i in range(24):
@@ -235,7 +235,7 @@ class TestTimeSeriesIndexMultiDayAlignment:
         imp = dict.fromkeys(range(24), 0.10)
         exp = dict.fromkeys(range(24), 0.08)
 
-        aligned_imp, aligned_exp = tsi.align_hourly_prices(imp, exp)
+        aligned_imp, _ = tsi.align_hourly_prices(imp, exp)
 
         # All 48 slots receive the same cyclical value.
         for i, val in enumerate(aligned_imp):

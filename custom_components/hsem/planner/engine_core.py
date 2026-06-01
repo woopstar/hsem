@@ -333,7 +333,7 @@ def _compute_ev_charger_power(
         setattr(slots[idx], attr, ac_power_w)
 
 
-def _build_and_inject_for_ev(  # NOSONAR
+def _build_and_inject_for_ev(
     enabled: bool,
     connected: bool,
     smart: bool,

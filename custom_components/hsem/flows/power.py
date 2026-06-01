@@ -16,7 +16,7 @@ from custom_components.hsem.utils.misc import get_config_value
 
 async def get_power_step_schema(
     config_entry: ConfigEntry | None,
-) -> vol.Schema:  # NOSONAR -- async required by HA config/options flow framework
+) -> vol.Schema:
     """Return the data schema for the 'power' step."""
     return vol.Schema(
         {

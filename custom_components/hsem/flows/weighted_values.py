@@ -15,7 +15,7 @@ from custom_components.hsem.utils.config_validator import validate_consumption_w
 from custom_components.hsem.utils.misc import get_config_value
 
 
-async def get_weighted_values_step_schema(  # NOSONAR -- async required by HA config/options flow framework
+async def get_weighted_values_step_schema(
     config_entry: ConfigEntry | None,
 ) -> vol.Schema:
     """Return the data schema for the 'weighted_values' step."""
@@ -91,7 +91,7 @@ async def get_weighted_values_step_schema(  # NOSONAR -- async required by HA co
 
 async def validate_weighted_values_input(
     user_input: dict,
-) -> dict[str, str]:  # NOSONAR -- async required by HA config/options flow framework
+) -> dict[str, str]:
     """Validate user input for the 'weighted_values' step."""
     required_fields = [
         "hsem_house_consumption_energy_weight_1d",

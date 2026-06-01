@@ -73,7 +73,7 @@ _TZ = ZoneInfo("Europe/Copenhagen")
 # ---------------------------------------------------------------------------
 
 
-def _make_uniform_input(  # NOSONAR
+def _make_uniform_input(
     *,
     import_price: float = 0.20,
     export_price: float = 0.05,
