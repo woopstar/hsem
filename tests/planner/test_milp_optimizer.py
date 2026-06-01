@@ -150,7 +150,7 @@ def test_milp_charges_in_cheap_slots_and_discharges_in_expensive():
         cheap, expensive, cheap_price=0.05, expensive_price=3.0
     )
 
-    result = solve_milp(
+    milp_result = solve_milp(
         slots,
         _NOW,
         current_kwh=0.0,
@@ -159,7 +159,10 @@ def test_milp_charges_in_cheap_slots_and_discharges_in_expensive():
         max_discharge_per_slot=5.0,
     )
 
-    assert result is not None, "MILP must return a solution on a clear arbitrage case"
+    assert milp_result is not None, (
+        "MILP must return a solution on a clear arbitrage case"
+    )
+    result, _diag = milp_result
 
     # At least some cheap-hour slots should be BatteriesChargeGrid
     charge_hours = {
@@ -193,7 +196,7 @@ def test_milp_cheaper_than_no_action_on_arbitrage_case():
         cheap, expensive, cheap_price=0.05, expensive_price=3.0
     )
 
-    milp_slots = solve_milp(
+    milp_result = solve_milp(
         slots,
         _NOW,
         current_kwh=0.0,
@@ -201,7 +204,8 @@ def test_milp_cheaper_than_no_action_on_arbitrage_case():
         max_charge_per_slot=5.0,
         max_discharge_per_slot=5.0,
     )
-    assert milp_slots is not None
+    assert milp_result is not None
+    milp_slots, _diag = milp_result
 
     # No-action baseline: clear all charge/discharge on a copy of the slots
     baseline_slots = _copy_slots(slots)
@@ -223,7 +227,7 @@ def test_milp_respects_soc_upper_bound():
     slots = _make_arbitrage_slots([0, 1, 2, 3, 4, 5], [], cheap_price=0.01)
     usable_kwh = 5.0
 
-    result = solve_milp(
+    milp_result = solve_milp(
         slots,
         _NOW,
         current_kwh=0.0,
@@ -231,7 +235,8 @@ def test_milp_respects_soc_upper_bound():
         max_charge_per_slot=3.0,
         max_discharge_per_slot=None,
     )
-    assert result is not None
+    assert milp_result is not None
+    result, _diag = milp_result
 
     # Run SoC simulation to get actual capacity values
     simulate_soc(
@@ -345,7 +350,7 @@ def test_milp_cycle_cost_matches_score_plan():
         ),
     ]
 
-    result = solve_milp(
+    milp_result = solve_milp(
         slots,
         _NOW,
         current_kwh=0.0,
@@ -354,7 +359,8 @@ def test_milp_cycle_cost_matches_score_plan():
         max_discharge_per_slot=max_discharge,
         cycle_cost_per_kwh=cycle_cost,
     )
-    assert result is not None, "MILP must return a solution"
+    assert milp_result is not None, "MILP must return a solution"
+    result, _diag = milp_result
 
     # Run SoC simulation to populate batteries_discharged_kwh
     simulate_soc(
@@ -434,7 +440,7 @@ def test_milp_solves_96_slot_horizon_under_100ms():
         slots_96.append(s)
 
     t_start = time_module.perf_counter()
-    result = solve_milp(
+    milp_result = solve_milp(
         slots_96,
         _NOW,
         current_kwh=5.0,
@@ -444,7 +450,8 @@ def test_milp_solves_96_slot_horizon_under_100ms():
     )
     elapsed = time_module.perf_counter() - t_start
 
-    assert result is not None, "MILP must solve the 96-slot horizon"
+    assert milp_result is not None, "MILP must solve the 96-slot horizon"
+    result, _diag = milp_result
     assert elapsed < 0.10, (
         f"MILP took {elapsed * 1000:.1f} ms on 96 slots — must be under 100 ms"
     )
@@ -785,7 +792,7 @@ def test_cycle_cost_obj_coefficients_sum_to_one_cycle_cost():
         cheap, expensive, cheap_price=0.05, expensive_price=2.00
     )
 
-    milp_slots = solve_milp(
+    milp_result = solve_milp(
         slots,
         _NOW,
         current_kwh=1.0,
@@ -796,7 +803,8 @@ def test_cycle_cost_obj_coefficients_sum_to_one_cycle_cost():
         charge_efficiency_pct=100.0,
         discharge_efficiency_pct=100.0,
     )
-    assert milp_slots is not None, "MILP must return a solution"
+    assert milp_result is not None, "MILP must return a solution"
+    milp_slots, _diag = milp_result
 
     # Score the MILP plan with the same cycle cost
     simulate_soc(
@@ -866,7 +874,7 @@ def test_milp_holds_energy_for_expensive_slot_via_terminal_soc():
         )
         slots.append(s)
 
-    milp_slots = solve_milp(
+    milp_result = solve_milp(
         slots,
         _NOW,
         current_kwh=5.0,
@@ -877,7 +885,8 @@ def test_milp_holds_energy_for_expensive_slot_via_terminal_soc():
         charge_efficiency_pct=100.0,
         discharge_efficiency_pct=100.0,
     )
-    assert milp_slots is not None
+    assert milp_result is not None
+    milp_slots, _diag = milp_result
 
     simulate_soc(
         milp_slots,
@@ -904,10 +913,10 @@ def test_milp_holds_energy_for_expensive_slot_via_terminal_soc():
 
 
 @_scipy_skip()
-def test_milp_n_vars_is_6m():
-    """n_vars should be 6*m (ec, ed, gi, ge, pv, m auxiliary for cycle cost)."""
+def test_milp_n_vars_is_8m():
+    """n_vars should be 8*m (ec, ed, gi, ge, pv, m, s_max_pen, s_min_pen)."""
     slots = _make_arbitrage_slots([0], [23])
-    result = solve_milp(
+    milp_result = solve_milp(
         slots,
         _NOW,
         current_kwh=1.0,
@@ -915,7 +924,8 @@ def test_milp_n_vars_is_6m():
         max_charge_per_slot=5.0,
         max_discharge_per_slot=5.0,
     )
-    assert result is not None, "MILP must return a solution"
+    assert milp_result is not None, "MILP must return a solution"
+    result, _diag = milp_result
     assert len(result) == 24, "Expected 24 slots output"
 
 
@@ -948,7 +958,7 @@ def test_milp_no_simultaneous_charge_discharge_at_negative_prices():
             s.avg_house_consumption_kwh - s.solcast_pv_estimate_kwh
         )
 
-    milp_slots = solve_milp(
+    milp_result = solve_milp(
         slots,
         _NOW,
         current_kwh=3.0,
@@ -961,8 +971,9 @@ def test_milp_no_simultaneous_charge_discharge_at_negative_prices():
     )
     # The LP may be infeasible with the clamped export prices (0.01)
     # and negative import prices (-0.05).  Skip the check in that case.
-    if milp_slots is None:
+    if milp_result is None:
         return
+    milp_slots, _diag = milp_result
 
     # Verify no slot has both charge and discharge above the minimum threshold.
     for s in milp_slots:
@@ -1000,7 +1011,7 @@ def test_milp_mutex_post_hoc_always_trivially_true():
             )
             slots.append(s)
 
-        milp_slots = solve_milp(
+        milp_result = solve_milp(
             slots,
             _NOW,
             current_kwh=3.0,
@@ -1011,8 +1022,9 @@ def test_milp_mutex_post_hoc_always_trivially_true():
             charge_efficiency_pct=100.0,
             discharge_efficiency_pct=100.0,
         )
-        if milp_slots is None:
+        if milp_result is None:
             continue  # skip infeasible random patterns
+        milp_slots, _diag = milp_result
 
         for s in milp_slots:
             is_charge = s.recommendation == Recommendations.BatteriesChargeGrid.value
@@ -1054,7 +1066,7 @@ def test_milp_soc_rises_after_cheap_charge_slot():
     initial_kwh = 0.0
     max_charge = 5.0
 
-    milp_slots = solve_milp(
+    milp_result = solve_milp(
         slots,
         _NOW,
         current_kwh=initial_kwh,
@@ -1065,7 +1077,8 @@ def test_milp_soc_rises_after_cheap_charge_slot():
         charge_efficiency_pct=100.0,
         discharge_efficiency_pct=100.0,
     )
-    assert milp_slots is not None, "MILP must solve the 4-slot problem"
+    assert milp_result is not None, "MILP must solve the 4-slot problem"
+    milp_slots, _diag = milp_result
 
     simulate_soc(
         milp_slots,
@@ -1088,3 +1101,144 @@ def test_milp_soc_rises_after_cheap_charge_slot():
         f"expected > {initial_kwh} — MILP charge may not be propagated "
         "through soc_simulation"
     )
+
+
+# ---------------------------------------------------------------------------
+# Penalty / soft constraint tests (issue #531)
+# ---------------------------------------------------------------------------
+
+
+@_scipy_skip()
+def test_milp_overcharged_start_discharges_with_penalty():
+    """Overcharged battery (current_kwh > usable_kwh) should cause the MILP
+    to discharge aggressively with penalty variables absorbing the excess.
+
+    With current_kwh=12 and usable_kwh=9, the battery starts 3 kWh above max.
+    The MILP must:
+    - Return a valid solution (not None)
+    - Discharge aggressively in early slots to bring SoC within bounds
+    - Have s_max_pen violations in early slots that decrease over time
+    """
+    slots = _make_arbitrage_slots([0, 1, 2, 3], [20, 21, 22, 23])
+
+    milp_result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=12.0,  # 3 kWh above usable_kwh=9.0
+        usable_kwh=9.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+        cycle_cost_per_kwh=0.01,
+    )
+
+    assert milp_result is not None, (
+        "MILP must return a solution even with overcharged battery"
+    )
+    milp_slots, diag = milp_result
+
+    # Check diagnostics
+    assert diag is not None
+    assert diag.get("has_violations", False), (
+        "Overcharged start must trigger s_max_pen violations"
+    )
+    total = diag.get("total_violation_kwh", 0.0)
+    assert total > 1e-6, f"Expected penalty > 0 for overcharged start, got {total}"
+
+    # Verify discharge happens in early slots
+    early_discharge_slots = [
+        s
+        for s in milp_slots[:4]
+        if s.recommendation
+        in (
+            Recommendations.BatteriesDischargeMode.value,
+            Recommendations.ForceBatteriesDischarge.value,
+        )
+    ]
+    assert len(early_discharge_slots) > 0, (
+        "Overcharged battery must discharge in early slots"
+    )
+
+
+@_scipy_skip()
+def test_milp_normal_start_zero_penalty():
+    """Normal battery (current_kwh within bounds) must produce zero penalty.
+
+    When the initial SoC is within [0, usable_kwh], the MILP must never use
+    penalty variables because P_soc >> max(p_imp).  The diagnostics must show
+    has_violations=False and total_violation_kwh=0.
+    """
+    slots = _make_arbitrage_slots([0, 1, 2, 3], [20, 21, 22, 23])
+
+    milp_result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=5.0,  # safely within bounds (0, 9)
+        usable_kwh=9.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+        cycle_cost_per_kwh=0.01,
+    )
+
+    assert milp_result is not None, "MILP must return a solution"
+    _milp_slots, diag = milp_result
+
+    assert not diag.get("has_violations", True), (
+        "Normal start must have no penalty violations"
+    )
+    total = diag.get("total_violation_kwh", 1.0)
+    assert total < 1e-6, f"Expected zero penalty, got {total}"
+
+    # Also verify the s_max_pen and s_min_pen lists are all ~0
+    s_max = diag.get("s_max_pen", [1.0])
+    s_min = diag.get("s_min_pen", [1.0])
+    assert all(abs(v) < 1e-6 for v in s_max), f"s_max_pen should be zero: {s_max}"
+    assert all(abs(v) < 1e-6 for v in s_min), f"s_min_pen should be zero: {s_min}"
+
+
+@_scipy_skip()
+def test_milp_extreme_overcharge_returns_plan_with_violations():
+    """Extremely overcharged battery (current_kwh >> usable_kwh) must still
+    return a valid plan with violations.
+
+    With current_kwh=18 and usable_kwh=9, the battery is 9 kWh above max.
+    The MILP must:
+    - Return a solution (not None)
+    - Have large penalties
+    - Discharge every slot until SoC is within bounds
+    """
+    slots = _make_arbitrage_slots([0, 1, 2, 3], [20, 21, 22, 23])
+
+    milp_result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=18.0,  # 9 kWh above usable_kwh=9.0
+        usable_kwh=9.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+        cycle_cost_per_kwh=0.01,
+    )
+
+    assert milp_result is not None, (
+        "MILP must return a solution even with extremely overcharged battery "
+        "(2x usable_kwh)"
+    )
+    milp_slots, diag = milp_result
+
+    # Must have violations
+    assert diag.get("has_violations", False), (
+        "Extreme overcharge must trigger violations"
+    )
+    total = diag.get("total_violation_kwh", 0.0)
+    assert total > 1e-6, f"Expected penalty > 0, got {total}"
+
+    # Must have discharge actions (to bring SoC down)
+    discharge_slots = [
+        s
+        for s in milp_slots
+        if s.recommendation
+        in (
+            Recommendations.BatteriesDischargeMode.value,
+            Recommendations.ForceBatteriesDischarge.value,
+        )
+    ]
+    assert len(discharge_slots) > 0, "Extremely overcharged battery must discharge"

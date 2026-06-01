@@ -1,97 +1,65 @@
 """MILP-based optimal battery charge/discharge scheduler.
 
-This module implements a **Mixed Integer Linear Program** that finds the
-globally cost-optimal charge/discharge schedule for the planning horizon.
+Finds the globally cost-optimal charge/discharge schedule via LP.
 It is the PRIMARY planner — heuristic candidates are disabled.
 
 Algorithm overview
 ------------------
-The scheduler is formulated as a **continuous LP** (not MILP) using the
-HiGHS solver via ``scipy.optimize.linprog``.  Binary charge/discharge flags
-are relaxed to continuous values in [0, 1] because the mutual-exclusion
-constraint together with the per-slot energy caps already prevents
-simultaneous charge + discharge in the optimal solution.
+Formulated as a **continuous LP** (not MILP) using the HiGHS solver
+via ``scipy.optimize.linprog``.  Binary charge/discharge flags are
+relaxed to continuous because the mutual-exclusion constraint already
+prevents simultaneous charge + discharge.
 
-Decision variables (flattened into a single vector ``x`` of length 6*n)
------------------------------------------------------------------------
+Decision variables (flattened into ``x`` of length 8*n)
+----------------------------------------------------------
 For each slot ``t ∈ 0…n-1``:
 
-- ``ec[t]``  — energy charged and *stored* in the battery this slot (kWh)
-- ``ed[t]``  — energy discharged *from* the battery this slot (kWh)
-- ``gi[t]``  — total grid import this slot (kWh)
-- ``ge[t]``  — total grid export this slot (kWh)
-- ``pv[t]``  — PV energy available after house consumption (kWh, fixed)
-- ``m[t]``   — auxiliary variable = max(ec[t], ed[t]) for cycle cost (kWh)
+- ``ec[t]`` — energy charged and *stored* in battery this slot (kWh)
+- ``ed[t]`` — energy discharged *from* battery this slot (kWh)
+- ``gi[t]`` — grid import this slot (kWh)
+- ``ge[t]`` — grid export this slot (kWh)
+- ``pv[t]`` — PV surplus after house consumption (kWh, fixed)
+- ``m[t]`` — max(ec[t], ed[t]) for cycle cost (kWh)
+- ``s_max_pen[t]`` — kWh SoC exceeds usable_kwh
+- ``s_min_pen[t]`` — kWh SoC drops below 0
 
-``soc[t]`` is derived from ``ec`` and ``ed`` via the forward recurrence and
-does not need to be an explicit variable.
+``soc[t]`` is derived from ``ec``/``ed`` via forward recurrence.
 
 Objective (minimise)
 --------------------
-``Σ_t [ p_imp[t] * gi[t] - p_exp[t] * ge[t] + α * m[t]
-       + γ * (ed[t] - ec[t]) ]``
+``Σ_t [ p_imp[t]*gi[t] - p_exp[t]*ge[t] + α*m[t]
+       + γ*(ed[t]-ec[t]) + P_soc*s_max_pen[t] + P_soc*s_min_pen[t] ]``
 
-where ``α`` = battery cycle cost per kWh and ``γ`` = terminal-SoC
-replacement price (opportunity cost of ending the horizon with less stored
-energy).  The cycle cost uses the auxiliary variable ``m[t]`` which is
-constrained to satisfy ``m[t] ≥ max(ec[t], ed[t])``, matching
-``cost_function.py``'s ``max(charge, discharge)`` counting.  The
-``cycle_cost_per_kwh`` already includes the 2× throughput factor in its
-denominator (``purchase_price / (2 × usable_kwh × expected_cycles)``),
-so one full round-trip (charge + discharge) correctly costs
-``2 × usable_kwh × cycle_cost_per_kwh = purchase_price / expected_cycles``.
+where ``α`` = battery cycle cost/kWh, ``γ`` = terminal-SoC replacement
+price, ``P_soc = max(p_imp) * 100`` ensures penalties are only used when
+forced (e.g., initial SoC outside bounds).
 
 Constraints
 -----------
-For each slot ``t``:
-
-1. **SoC forward recurrence** (equality):
-   ``soc[t] = soc[t-1] + ec[t] - ed[t]``
-   (internal SoC in kWh above the discharge floor)
-
-2. **SoC bounds** (inequality):
-   ``soc[t] ≥ 0``  and  ``soc[t] ≤ usable_kwh``
-
-3. **Charge limit** (inequality):
-   ``ec[t] ≤ max_charge_per_slot``
-
-4. **Discharge limit** (inequality):
-   ``ed[t] ≤ max_discharge_per_slot``  (relaxed to usable_kwh when unlimited)
-
-5. **Mutual exclusion** (inequality):
-   ``ec[t] / max_charge_per_slot + ed[t] / max_discharge_per_slot ≤ 1``
-   Prevents simultaneous charge + discharge without binary variables.
-
-6. **Energy balance** (equality):
-   ``gi[t] + pv_avail[t] + ed[t] * discharge_eff
-       = load[t] + ec[t] / charge_eff + ge[t]``
-
-   Where ``pv_avail[t]`` is the PV energy available after house consumption is
-   subtracted.  Because PV first serves the house load, the net residual PV
-   is what the battery or export can absorb.
-
-7. **Non-negativity**: All variables ≥ 0.
-
-Past slots (recommendation == TimePassed) are fixed at zero by using
-zero-capacity bounds and are excluded from the energy balance.
+1. SoC recurrence: ``soc[t] = soc[t-1] + ec[t] - ed[t]``
+2. SoC bounds (soft): ``soc[t] − s_max_pen ≤ usable_kwh``,
+   ``−soc[t] − s_min_pen ≤ 0``
+3. Charge limit: ``ec[t] ≤ max_charge_per_slot``
+4. Discharge limit: ``ed[t] ≤ max_discharge_per_slot``
+5. Mutual exclusion: ``ec[t]/mc + ed[t]/md ≤ 1``
+6. Energy balance:
+   ``gi + pv + ed·η_disch = load + ec/η_chg + ge``
+7. Non-negativity: all ≥ 0. Past slots fixed at zero.
 
 Solving
 -------
-``scipy.optimize.linprog(method='highs')`` is used.  For a 96-slot (48 h ×
-30 min) horizon this solves in well under 50 ms on commodity hardware.
-No extra dependencies beyond ``scipy`` (already a Home Assistant dependency).
+``scipy.optimize.linprog(method='highs')``.  96-slot horizon < 50 ms.
 
 Fallback
 --------
-If the solver fails (infeasible, numerical issue, or timeout), this module
-returns ``None``.  The engine falls back to the rule-based baseline.
+Returns ``None`` if solver crashes/times out; engine falls back to
+rule-based baseline.
 
 Design constraints
 ------------------
-- **Pure Python, no Home Assistant imports** — testable with plain pytest.
-- Only mutates the output ``recommendation`` / ``batteries_charged`` fields
-  on deep-copied slots; never touches the caller's baseline.
-- Respects the same SoC bounds and power limits as :mod:`soc_simulation`.
+- Pure Python, no Home Assistant imports — testable with plain pytest.
+- Only mutates ``recommendation``/``batteries_charged`` on deep-copied
+  slots; never touches the caller's baseline.
 """
 
 from __future__ import annotations
@@ -135,7 +103,7 @@ def solve_milp(
     *,
     export_min_price: float = 0.0,
     recommended_threshold: float = 0.0,
-) -> list[PlannedSlot] | None:
+) -> tuple[list[PlannedSlot], dict] | None:
     """Solve the LP and return a deep-copy slot list with MILP recommendations.
 
     The returned list is independent of *slots* — it is safe to mutate without
@@ -200,8 +168,13 @@ def solve_milp(
             and ``BatteriesDischargeMode`` (house-load only).  Defaults to 0.0.
 
     Returns:
-        A list of :class:`PlannedSlot` copies with MILP-derived recommendations,
-        or ``None`` if the solver fails or the problem is infeasible.
+        A tuple ``(slots, diagnostics)`` where:
+        - ``slots`` is a list of :class:`PlannedSlot` copies with MILP-derived
+          recommendations.
+        - ``diagnostics`` is a dict with keys ``"s_max_pen"``, ``"s_min_pen"``,
+          ``"has_violations"``, ``"total_violation_kwh"``.
+        Returns ``None`` if the solver fails (unrelated to constraint
+        violations — e.g., solver crash or numerical issue).
     """
     import copy
 
@@ -352,16 +325,23 @@ def solve_milp(
 
     # ------------------------------------------------------------------
     # Variable layout: x = [ec(0..m-1), ed(0..m-1), gi(0..m-1), ge(0..m-1),
-    #                       pv(0..m-1), m(0..m-1)]
-    # Offsets: ec_off=0, ed_off=m, gi_off=2m, ge_off=3m, pv_off=4m, m_off=5m
+    #                       pv(0..m-1), m(0..m-1),
+    #                       s_max_pen(0..m-1), s_min_pen(0..m-1)]
+    # Offsets: ec_off=0, ed_off=m, gi_off=2m, ge_off=3m, pv_off=4m, m_off=5m,
+    #          s_max_off=6m, s_min_off=7m
     # pv[t] is a FIXED variable bounded to [pv_avail[t], pv_avail[t]] — the
     # solar energy available after house consumption.  Making it explicit in
     # the LP (rather than netting it into b_eq) prevents infeasibility when
     # net_load is strongly negative and SoC constraints limit charge/export.
     # m[t] is the auxiliary variable for cycle cost: m[t] = max(ec[t], ed[t]).
+    # s_max_pen[t] and s_min_pen[t] are penalty variables that absorb SoC
+    # bound violations at a very high cost, ensuring the LP is never infeasible
+    # due to initial SoC being outside bounds.
     # ------------------------------------------------------------------
     ec_off, ed_off, gi_off, ge_off, pv_off, m_off = 0, m, 2 * m, 3 * m, 4 * m, 5 * m
-    n_vars = 6 * m
+    s_max_off = 6 * m
+    s_min_off = 7 * m
+    n_vars = 8 * m
 
     # Resolve charge/discharge efficiencies for the energy balance equation.
     # The MILP must account for real-world conversion losses so its solution
@@ -389,7 +369,13 @@ def solve_milp(
     #
     # Apply time discount so the MILP objective matches the selector's
     # discounted score (distant savings are worth less).
+    #
+    # Penalty cost P_soc ensures penalties are never used unless forced.
+    # It must be much larger than the maximum possible import cost per kWh.
     # ------------------------------------------------------------------
+    p_imp_max = float(np.max(p_imp)) if m > 0 else 0.1
+    P_soc = max(p_imp_max, 0.1) * 100.0
+
     use_discount = time_discount_rate < 1.0 - 1e-9
     c_obj = np.zeros(n_vars)
 
@@ -423,6 +409,12 @@ def solve_milp(
             c_obj[ec_off + t] -= replacement_price_per_kwh
             c_obj[ed_off + t] += replacement_price_per_kwh
 
+        # Penalty costs: high enough that penalties are zero when SoC is
+        # within bounds, but absorb violations when the initial SoC is
+        # outside [0, usable_kwh] (e.g., overcharged battery).
+        c_obj[s_max_off + t] = P_soc * discount
+        c_obj[s_min_off + t] = P_soc * discount
+
     # ------------------------------------------------------------------
     # Equality constraints: energy balance per slot
     # gi[t] + pv[t] + ed[t]*discharge_eff = base_load[t] + ec[t]/charge_eff + ge[t]
@@ -444,16 +436,18 @@ def solve_milp(
 
     # ------------------------------------------------------------------
     # Inequality constraints:
-    #   1. SoC recurrence: soc[t] = soc[0] + Σ_{k≤t} (t) (ec[k] − ed[k])
-    #      We need: soc[t] ≤ usable_kwh  →  Σ_{k≤t}(ec[k]−ed[k]) ≤ usable−soc0
-    #      And:    soc[t] ≥ 0          → -Σ_{k≤t}(ec[k]−ed[k]) ≤ soc0
+    #   1. SoC recurrence: soc[t] = soc[0] + Σ_{k≤t} (ec[k] − ed[k])
+    #      Upper (soft): Σ_{k≤t}(ec[k]−ed[k]) − s_max_pen[t] ≤ usable−soc0
+    #      Lower (soft): −Σ_{k≤t}(ec[k]−ed[k]) − s_min_pen[t] ≤ soc0
+    #      Penalty variables s_max_pen[t] and s_min_pen[t] absorb violations
+    #      at high cost, preventing infeasibility from out-of-bounds initial SoC.
     #   2. Mutual exclusion: ec[t]/max_charge + ed[t]/max_dis ≤ 1
     #   3. ec[t] ≤ max_charge_per_slot  (via bounds)
     #   4. ed[t] ≤ max_dis              (via bounds)
     # ------------------------------------------------------------------
     # We encode SoC bounds as inequality rows:
-    #   upper: cumsum(ec−ed)[t] ≤ (usable_kwh − current_kwh)
-    #   lower: −cumsum(ec−ed)[t] ≤ current_kwh
+    #   upper: cumsum(ec−ed)[t] − s_max_pen[t] ≤ (usable_kwh − current_kwh)
+    #   lower: −cumsum(ec−ed)[t] − s_min_pen[t] ≤ current_kwh
     soc_rows = 2 * m
     # Mutual exclusion rows: ec[t]/max_charge + ed[t]/max_dis <= 1
     mutex_rows = m
@@ -465,12 +459,16 @@ def solve_milp(
 
     for t in range(m):
         for k in range(t + 1):
-            # Upper SoC bound row
+            # Upper SoC bound row (soft)
             A_ub[t, ec_off + k] = 1.0
             A_ub[t, ed_off + k] = -1.0
-            # Lower SoC bound row
+            # Lower SoC bound row (soft)
             A_ub[m + t, ec_off + k] = -1.0
             A_ub[m + t, ed_off + k] = 1.0
+        # Penalty variable absorbs violation in upper bound
+        A_ub[t, s_max_off + t] = -1.0
+        # Penalty variable absorbs violation in lower bound
+        A_ub[m + t, s_min_off + t] = -1.0
         b_ub[t] = usable_kwh - current_kwh  # upper SoC headroom
         b_ub[m + t] = current_kwh  # lower SoC headroom
 
@@ -491,7 +489,9 @@ def solve_milp(
         b_ub[cycle_row_start + m + t] = 0.0
 
     # ------------------------------------------------------------------
-    # Variable bounds: all ≥ 0, charge/discharge capped by power limits
+    # Variable bounds: all ≥ 0, charge/discharge capped by power limits.
+    # Penalty variables are unbounded above (can absorb arbitrary
+    # violations) and non-negative (violations cannot be negative).
     # ------------------------------------------------------------------
     bounds = (
         [(0.0, max_charge_per_slot)] * m  # ec[t]
@@ -502,6 +502,8 @@ def solve_milp(
             (pv_avail[t], pv_avail[t]) for t in range(m)
         ]  # pv[t] fixed to actual surplus
         + [(0.0, None)] * m  # m[t] (auxiliary, unbounded above, ≥ 0)
+        + [(0.0, None)] * m  # s_max_pen[t] (penalty, ≥ 0)
+        + [(0.0, None)] * m  # s_min_pen[t] (penalty, ≥ 0)
     )
 
     # ------------------------------------------------------------------
@@ -595,10 +597,60 @@ def solve_milp(
                     slot_i
                 ].recommendation = Recommendations.BatteriesDischargeMode.value
 
+    # ------------------------------------------------------------------
+    # Extract penalty variable values and compute violation diagnostics
+    # ------------------------------------------------------------------
+    s_max_pen_sol = result.x[s_max_off : s_max_off + m]
+    s_min_pen_sol = result.x[s_min_off : s_min_off + m]
+
+    s_max_pen_list = [float(v) for v in s_max_pen_sol]
+    s_min_pen_list = [float(v) for v in s_min_pen_sol]
+    total_violation = sum(s_max_pen_list) + sum(s_min_pen_list)
+    has_violations = total_violation > 1e-6
+
+    if has_violations:
+        violating_slots: list[dict] = []
+        for t in range(m):
+            slot_i = future_idx[t]
+            s_start = slots[slot_i].start.isoformat()
+            if s_max_pen_list[t] > 1e-6:
+                violating_slots.append(
+                    {
+                        "slot": t,
+                        "time": s_start,
+                        "type": "s_max_pen",
+                        "kwh": round(s_max_pen_list[t], 4),
+                    }
+                )
+            if s_min_pen_list[t] > 1e-6:
+                violating_slots.append(
+                    {
+                        "slot": t,
+                        "time": s_start,
+                        "type": "s_min_pen",
+                        "kwh": round(s_min_pen_list[t], 4),
+                    }
+                )
+        log_planner(
+            "warning",
+            "[milp] SoC penalty violations detected: total=%.4f kWh, %d violating slots",
+            total_violation,
+            len(violating_slots),
+        )
+        for v in violating_slots:
+            log_planner(
+                "warning",
+                "[milp] Penalty slot %d (%s) %s: %.4f kWh",
+                v["slot"],
+                v["time"],
+                v["type"],
+                v["kwh"],
+            )
+
     log_planner(
         "debug",
         "[milp] LP solved: objective=%.4f  charge_slots=%d  discharge_slots=%d"
-        "  replacement_price=%s",
+        "  replacement_price=%s  penalty_total=%.4f  has_violations=%s",
         float(result.fun),
         sum(
             1
@@ -620,9 +672,18 @@ def solve_milp(
             if replacement_price_per_kwh is not None
             else "(none)"
         ),
+        total_violation,
+        has_violations,
     )
 
-    return out_slots
+    diagnostics: dict = {
+        "s_max_pen": s_max_pen_list,
+        "s_min_pen": s_min_pen_list,
+        "has_violations": has_violations,
+        "total_violation_kwh": round(total_violation, 4),
+    }
+
+    return out_slots, diagnostics
 
 
 def is_scipy_available() -> bool:

@@ -13,7 +13,10 @@ from datetime import datetime
 from custom_components.hsem.models.planner_inputs import PlannerInput
 from custom_components.hsem.models.planner_outputs import DataQuality, PlannerOutput
 from custom_components.hsem.models.time_series import TimeSeriesIndex
-from custom_components.hsem.planner.candidate_generator import generate_candidates
+from custom_components.hsem.planner.candidate_generator import (
+    CANDIDATE_MILP,
+    generate_candidates,
+)
 from custom_components.hsem.planner.candidate_selector import (
     replacement_price_from_next_discharge,
     select_best_candidate,
@@ -696,6 +699,18 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     candidates, winner, candidate_rejected, hysteresis_result = _select_candidate(
         slots, inp, now, current_kwh, usable_kwh, mcps, mdps, max_soc_kwh, rppk, cw, sdh
     )
+    # Surface MILP penalty violations in warnings if the winner used penalties
+    if (
+        winner.name == CANDIDATE_MILP
+        and winner.diagnostics is not None
+        and winner.diagnostics.get("has_violations", False)
+    ):
+        diag = winner.diagnostics
+        total = diag.get("total_violation_kwh", 0.0)
+        warnings.append(
+            f"MILP: SoC penalty violations detected (total={total:.4f} kWh). "
+            f"The plan may have been forced due to out-of-bounds initial SoC."
+        )
     # Step 5 — finalize plan from winner
     slots = winner.slots
     apply_optimization_strategy(

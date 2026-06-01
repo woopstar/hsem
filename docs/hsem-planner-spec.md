@@ -290,6 +290,44 @@ If a slot recommends forced discharge, force export, or discharge-only behavior,
 
 No recommendation may be energetically invisible.
 
+## MILP soft constraints (penalty approach)
+
+The MILP optimizer (`milp_optimizer.py`) uses **soft constraints** with penalty
+variables to prevent infeasibility when the initial SoC is outside bounds
+(e.g., overcharged battery).
+
+### Penalty variables
+
+- `s_max_pen[t]` — kWh by which SoC exceeds `usable_kwh` in slot `t`
+- `s_min_pen[t]` — kWh by which SoC drops below 0 in slot `t`
+
+### Soft SOC bounds
+
+```text
+Upper: soc[t] - s_max_pen[t] <= usable_kwh
+Lower: -soc[t] - s_min_pen[t] <= 0
+```
+
+### Penalty cost
+
+```text
+P_soc = max(p_imp) * 100
+```
+
+The penalty cost is added to the objective:
+`P_soc * (s_max_pen[t] + s_min_pen[t])`.  It is high enough that the solver
+never uses penalties unless forced by an out-of-bounds initial SoC.
+
+### Invariants
+
+- The MILP is **never** infeasible due to initial SoC boundary violations.
+- When `current_kwh` is within `[0, usable_kwh]`, all penalty values are zero.
+- When `current_kwh > usable_kwh`, `s_max_pen[0]` absorbs the excess and
+  decreases over time as the solver discharges.
+- Violations are logged at WARNING level.
+- The diagnostics dict (returned alongside the slot list) captures penalty
+  values for the engine to surface.
+
 ## Cost function
 
 The cost function returns **two distinct aggregates** for every plan

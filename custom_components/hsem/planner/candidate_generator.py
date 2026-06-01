@@ -147,12 +147,16 @@ class CandidatePlan:
             the SoC simulation runs.
         rejection_reason:
             Human-readable reason when ``is_valid`` is ``False``.
+        diagnostics:
+            Optional diagnostics dict from the candidate generator (e.g., MILP
+            penalty violations).  Set by the generator during candidate creation.
     """
 
     name: str
     slots: list[PlannedSlot]
     is_valid: bool = True
     rejection_reason: str = ""
+    diagnostics: dict | None = field(default=None, repr=False, compare=False)
     _cost: PlanCostBreakdown | None = field(default=None, repr=False, compare=False)
 
 
@@ -279,7 +283,7 @@ def generate_candidates(
         # user-configured extra margin.
         effective_cycle_cost = max(auto_cycle_cost, inp.battery_cycle_cost_per_kwh)
 
-        milp_slots = solve_milp(
+        milp_result = solve_milp(
             baseline_slots,
             now,
             current_kwh=current_kwh,
@@ -299,11 +303,19 @@ def generate_candidates(
                 capacity_loss_pct=inp.battery_capacity_loss_pct,
             ),
         )
-        if milp_slots is not None:
-            candidates.append(CandidatePlan(name=CANDIDATE_MILP, slots=milp_slots))
+        if milp_result is not None:
+            milp_slots, milp_diag = milp_result
+            candidates.append(
+                CandidatePlan(
+                    name=CANDIDATE_MILP, slots=milp_slots, diagnostics=milp_diag
+                )
+            )
             log_planner(
                 "debug",
-                "[gen] MILP candidate added (scipy available and solver succeeded)",
+                "[gen] MILP candidate added (scipy available and solver succeeded)"
+                "  penalty_violations=%s  total_violation=%.4f",
+                milp_diag.get("has_violations", False),
+                milp_diag.get("total_violation_kwh", 0.0),
             )
         else:
             log_planner(
