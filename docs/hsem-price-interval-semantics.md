@@ -21,7 +21,7 @@ be correctly scaled so the planner always sees the full currency/kWh rate.
 
 ## The `eds_share` conversion factor
 
-$$ \text{eds\_share} = \frac{\text{EDS interval}}{\text{Slot width}} $$
+$$ \text{eds_share} = \frac{\text{EDS interval}}{\text{Slot width}} $$
 
 | EDS interval | Slot width | `eds_share` | Effect |
 |---|---|---|---|

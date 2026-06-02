@@ -549,6 +549,7 @@ class TestHouseConsumptionSensorReadFailure:
         sensor.hass = MagicMock()
         sensor._hsem_house_consumption_power = "sensor.house_power"
         sensor._hsem_ev_charger_power = None
+        sensor._hsem_ev_second_charger_power = None
         sensor._missing_input_entities = False
 
         # Patch ha_get_entity_state_and_convert to raise EntityNotFoundError
@@ -573,6 +574,7 @@ class TestHouseConsumptionSensorReadFailure:
         sensor.hass = MagicMock()
         sensor._hsem_house_consumption_power = "sensor.house_power"
         sensor._hsem_ev_charger_power = None
+        sensor._hsem_ev_second_charger_power = None
         sensor._missing_input_entities = False
 
         with patch(
@@ -595,6 +597,7 @@ class TestHouseConsumptionSensorReadFailure:
         sensor.hass = MagicMock()
         sensor._hsem_house_consumption_power = "sensor.house_power"
         sensor._hsem_ev_charger_power = None
+        sensor._hsem_ev_second_charger_power = None
         sensor._missing_input_entities = True  # start dirty
 
         with (

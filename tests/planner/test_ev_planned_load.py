@@ -2857,6 +2857,130 @@ class TestEvChargerCalculatedPower:
         """Trickle-charge 15-min slot: (0.5 / 0.25) * 1000 = 2000 W."""
         assert round((0.5 / 0.25) * 1000) == 2000
 
+    def test_current_slot_uses_remaining_time(self):
+        """Mid-slot: power uses remaining time, not full slot width.
+
+        At 07:10 (5 min left in a 15-min slot), if ac_load_kwh = 0.78,
+        the power should be 0.78 / (5/60) * 1000 ≈ 9360 W, not
+        0.78 / 0.25 * 1000 = 3120 W.
+        """
+        from custom_components.hsem.models.planner_outputs import PlannedSlot
+        from custom_components.hsem.planner.engine_core import (
+            _compute_ev_charger_power,
+        )
+        from custom_components.hsem.planner.ev_planner import EVChargingSlot
+
+        tz = _UTC
+        slot_start = datetime(2024, 6, 15, 7, 0, tzinfo=tz)
+        slot_end = datetime(2024, 6, 15, 7, 15, tzinfo=tz)
+        now = datetime(2024, 6, 15, 7, 10, tzinfo=tz)  # 5 min left
+
+        slots = [PlannedSlot(start=slot_start, end=slot_end)]
+        slot_starts = [slot_start]
+
+        ev_slot = EVChargingSlot(
+            start=slot_start,
+            end=slot_end,
+            estimated_charged_kwh=0.75,
+            ac_load_kwh=0.78,  # scaled to 5 min by EV planner
+            solar_surplus_kwh=0.0,
+            import_needed_kwh=0.78,
+            import_price=1.0,
+            estimated_cost=0.78,
+        )
+        ev_plan = EVChargingPlan(
+            ev_connected=True,
+            state="charging",
+            charging_slots=[ev_slot],
+        )
+
+        _compute_ev_charger_power(slots, slot_starts, ev_plan, 15, now)
+
+        # Expected: 0.78 kWh / (5/60) h * 1000 = 9360 W
+        # Wrong (old behaviour): 0.78 / 0.25 * 1000 = 3120 W
+        expected = round((0.78 / (5 / 60)) * 1000)
+        assert slots[0].ev_charger_calculated_power == expected, (
+            f"Expected {expected} W (using 5 min remaining), "
+            f"got {slots[0].ev_charger_calculated_power} W"
+        )
+        assert slots[0].ev_charger_calculated_power > 5000, (
+            "Power should be >> 3120 W (old wrong value)"
+        )
+
+    def test_future_slot_uses_full_width(self):
+        """Future slot: power uses full slot width."""
+        from custom_components.hsem.models.planner_outputs import PlannedSlot
+        from custom_components.hsem.planner.engine_core import (
+            _compute_ev_charger_power,
+        )
+        from custom_components.hsem.planner.ev_planner import EVChargingSlot
+
+        tz = _UTC
+        slot_start = datetime(2024, 6, 15, 8, 0, tzinfo=tz)
+        slot_end = datetime(2024, 6, 15, 8, 15, tzinfo=tz)
+        now = datetime(2024, 6, 15, 7, 10, tzinfo=tz)  # before the slot
+
+        slots = [PlannedSlot(start=slot_start, end=slot_end)]
+        slot_starts = [slot_start]
+
+        ev_slot = EVChargingSlot(
+            start=slot_start,
+            end=slot_end,
+            estimated_charged_kwh=2.6,
+            ac_load_kwh=2.75,
+            solar_surplus_kwh=0.0,
+            import_needed_kwh=2.75,
+            import_price=1.0,
+            estimated_cost=2.75,
+        )
+        ev_plan = EVChargingPlan(
+            ev_connected=True,
+            state="charging",
+            charging_slots=[ev_slot],
+        )
+
+        _compute_ev_charger_power(slots, slot_starts, ev_plan, 15, now)
+
+        # Full-width: 2.75 / 0.25 * 1000 = 11000 W
+        expected = round((2.75 / 0.25) * 1000)
+        assert slots[0].ev_charger_calculated_power == expected
+
+    def test_remaining_time_minimum_guard(self):
+        """Minimum 1 s remaining-time guard prevents division by zero."""
+        from custom_components.hsem.models.planner_outputs import PlannedSlot
+        from custom_components.hsem.planner.engine_core import (
+            _compute_ev_charger_power,
+        )
+        from custom_components.hsem.planner.ev_planner import EVChargingSlot
+
+        tz = _UTC
+        slot_start = datetime(2024, 6, 15, 7, 0, tzinfo=tz)
+        slot_end = datetime(2024, 6, 15, 7, 15, tzinfo=tz)
+        now = datetime(2024, 6, 15, 7, 14, 59, 999999, tzinfo=tz)
+
+        slots = [PlannedSlot(start=slot_start, end=slot_end)]
+        slot_starts = [slot_start]
+
+        ev_slot = EVChargingSlot(
+            start=slot_start,
+            end=slot_end,
+            estimated_charged_kwh=0.03,
+            ac_load_kwh=0.03,
+            solar_surplus_kwh=0.0,
+            import_needed_kwh=0.03,
+            import_price=1.0,
+            estimated_cost=0.03,
+        )
+        ev_plan = EVChargingPlan(
+            ev_connected=True,
+            state="charging",
+            charging_slots=[ev_slot],
+        )
+
+        # Should not raise ZeroDivisionError.
+        _compute_ev_charger_power(slots, slot_starts, ev_plan, 15, now)
+        assert slots[0].ev_charger_calculated_power > 0
+
     def test_pass_3_skips_when_battery_not_full(self):
         """Pass 3 adds no slots when battery is below usable_kwh."""
         now = _dt(0)

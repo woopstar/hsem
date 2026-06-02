@@ -84,6 +84,8 @@ class HSEMHouseConsumptionPowerSensor(RestoreEntity, SensorEntity, HSEMEntity):
             "house_consumption_power_state",
             "ev_charger_power_entity",
             "ev_charger_power_state",
+            "ev_second_charger_power_entity",
+            "ev_second_charger_power_state",
             "house_power_includes_ev_charger_power",
             "hour_start",
             "hour_end",
@@ -112,6 +114,8 @@ class HSEMHouseConsumptionPowerSensor(RestoreEntity, SensorEntity, HSEMEntity):
         self._hsem_house_consumption_power_state = 0.0
         self._hsem_ev_charger_power = None
         self._hsem_ev_charger_power_state = 0.0
+        self._hsem_ev_second_charger_power = None
+        self._hsem_ev_second_charger_power_state = 0.0
         self._hsem_house_power_includes_ev_charger_power = None
         self._hour_start = hour_start
         self._hour_end = hour_end
@@ -184,6 +188,10 @@ class HSEMHouseConsumptionPowerSensor(RestoreEntity, SensorEntity, HSEMEntity):
             ),
             "ev_charger_power_entity": self._hsem_ev_charger_power,
             "ev_charger_power_state": round(self._hsem_ev_charger_power_state, 2),
+            "ev_second_charger_power_entity": self._hsem_ev_second_charger_power,
+            "ev_second_charger_power_state": round(
+                self._hsem_ev_second_charger_power_state, 2
+            ),
             "house_power_includes_ev_charger_power": self._hsem_house_power_includes_ev_charger_power,
             "hour_start": self._hour_start,
             "hour_end": self._hour_end,
@@ -257,6 +265,13 @@ class HSEMHouseConsumptionPowerSensor(RestoreEntity, SensorEntity, HSEMEntity):
         if self._hsem_ev_charger_power == vol.UNDEFINED:
             self._hsem_ev_charger_power = None
 
+        self._hsem_ev_second_charger_power = get_config_value(
+            self._config_entry, "hsem_ev_second_charger_power"
+        )
+
+        if self._hsem_ev_second_charger_power == vol.UNDEFINED:
+            self._hsem_ev_second_charger_power = None
+
         self._hsem_house_power_includes_ev_charger_power = get_config_value(
             self._config_entry, "hsem_house_power_includes_ev_charger_power"
         )
@@ -299,10 +314,14 @@ class HSEMHouseConsumptionPowerSensor(RestoreEntity, SensorEntity, HSEMEntity):
                 and isinstance(self._hsem_house_consumption_power_state, (int, float))
             ):
                 if self._hsem_house_power_includes_ev_charger_power:
+                    # Subtract both EV chargers from house consumption
+                    ev_total_power = (
+                        self._hsem_ev_charger_power_state
+                        + self._hsem_ev_second_charger_power_state
+                    )
                     self._state = round(
                         float(
-                            self._hsem_house_consumption_power_state
-                            - self._hsem_ev_charger_power_state
+                            self._hsem_house_consumption_power_state - ev_total_power
                         ),
                         2,
                     )
@@ -357,6 +376,19 @@ class HSEMHouseConsumptionPowerSensor(RestoreEntity, SensorEntity, HSEMEntity):
                 self._unsub_callbacks.append(unsub)
                 self._tracked_entities.add(self._hsem_ev_charger_power)
 
+        if self._hsem_ev_second_charger_power:
+            if self._hsem_ev_second_charger_power not in self._tracked_entities:
+                _LOGGER.debug(
+                    f"Starting to track state changes for {self._hsem_ev_second_charger_power}"
+                )
+                unsub = async_track_state_change_event(
+                    self.hass,
+                    [self._hsem_ev_second_charger_power],
+                    self._async_handle_update,
+                )
+                self._unsub_callbacks.append(unsub)
+                self._tracked_entities.add(self._hsem_ev_second_charger_power)
+
     async def _async_fetch_sensor_states(self) -> None:
         """Read live power values from the configured HA source entities."""
         # Update the state of the sensor for house consumption power
@@ -377,11 +409,22 @@ class HSEMHouseConsumptionPowerSensor(RestoreEntity, SensorEntity, HSEMEntity):
                 )
                 self._hsem_ev_charger_power_state = convert_to_float(raw_ev) or 0.0
 
+            # Update the state of the sensor for second EV charger power
+            if self._hsem_ev_second_charger_power:
+                raw_ev2 = ha_get_entity_state_and_convert(
+                    self, self._hsem_ev_second_charger_power, "float"
+                )
+                self._hsem_ev_second_charger_power_state = (
+                    convert_to_float(raw_ev2) or 0.0
+                )
+
         except (HomeAssistantError, ValueError, TypeError) as exc:
             _LOGGER.warning(
                 "Sensor read failed for entity_id=%s (operation=_async_fetch_sensor_states): "
                 "%s: %s",
-                self._hsem_house_consumption_power or self._hsem_ev_charger_power,
+                self._hsem_house_consumption_power
+                or self._hsem_ev_charger_power
+                or self._hsem_ev_second_charger_power,
                 type(exc).__name__,
                 repr(exc),
             )

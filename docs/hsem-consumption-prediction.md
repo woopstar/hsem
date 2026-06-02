@@ -11,7 +11,7 @@ suppression, and reliability weighting.
 HSEM predicts house load using a **multi-window weighted average** of historical
 consumption data. The prediction feeds the planner's net consumption calculation:
 
-$$ \text{net\_consumption}[t] = \text{load\_forecast}[t] + \text{ev\_load}[t] - \text{pv\_forecast}[t] $$
+$$ \text{net_consumption}[t] = \text{load_forecast}[t] + \text{ev_load}[t] - \text{pv_forecast}[t] $$
 
 Accurate load prediction is critical: over-prediction leads to unnecessary grid
 imports; under-prediction leads to insufficient battery charging for peak hours.
@@ -110,7 +110,7 @@ flagged as a spike:
 **Severity scaling:** The fraction of weight actually removed interpolates
 between 0 at the `_MIN` ratio and the maximum at the `_MAX` ratio:
 
-$$ \text{reduced\_fraction} = \frac{\text{ratio} - \text{ratio\_min}}{\text{ratio\_max} - \text{ratio\_min}} \cdot \text{max\_reduction} $$
+$$ \text{reduced_fraction} = \frac{\text{ratio} - \text{ratio_min}}{\text{ratio_max} - \text{ratio_min}} \cdot \text{max_reduction} $$
 
 ### Baseline capping
 
@@ -118,7 +118,7 @@ Short windows (1-day, 3-day) are also capped against a blended baseline:
 
 $$ \text{baseline} = 0.70 \cdot avg_7 + 0.30 \cdot avg_{14} $$
 
-$$ \text{capped\_value} = \text{clamp}(value, 0.80 \cdot \text{baseline}, 1.20 \cdot \text{baseline}) $$
+$$ \text{capped_value} = \text{clamp}(value, 0.80 \cdot \text{baseline}, 1.20 \cdot \text{baseline}) $$
 
 The 3-day uses slightly looser bounds (0.85 – 1.15) to avoid removing legitimate
 multi-day trends.
