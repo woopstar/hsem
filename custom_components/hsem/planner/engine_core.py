@@ -288,6 +288,7 @@ def _compute_ev_charger_power(
     slot_starts: list[datetime],
     ev_plan: EVChargingPlan | None,
     interval_minutes: int,
+    now: datetime,
     *,
     second: bool = False,
 ) -> None:
@@ -298,6 +299,11 @@ def _compute_ev_charger_power(
 
         AC power (W) = (ac_load_kwh / slot_hours) × 1000
 
+    For the **current** (partially elapsed) slot the divisor is the
+    remaining slot duration, not the full slot width, because the EV
+    planner already scales ``ac_load_kwh`` to the remaining minutes.
+    Using the full slot width would understate the required charge power.
+
     When the plan is ``None`` or empty the field stays at the default 0.0.
 
     Args:
@@ -305,6 +311,7 @@ def _compute_ev_charger_power(
         slot_starts: Slot start datetimes (same length as *slots*).
         ev_plan: EV charging plan (may be ``None``).
         interval_minutes: Slot width in minutes.
+        now: Current time (timezone-aware), used to detect the current slot.
         second: If ``True``, write to ``ev_second_charger_calculated_power``;
             otherwise write to ``ev_charger_calculated_power``.
     """
@@ -315,7 +322,7 @@ def _compute_ev_charger_power(
     from custom_components.hsem.utils.datetime_utils import utc_key
 
     slot_map = {utc_key(s): i for i, s in enumerate(slot_starts)}
-    hours_per_slot = interval_minutes / 60.0
+    full_hours = interval_minutes / 60.0
 
     for ev_slot in ev_plan.charging_slots:
         idx = slot_map.get(utc_key(ev_slot.start))
@@ -324,9 +331,18 @@ def _compute_ev_charger_power(
         if ev_slot.ac_load_kwh < 1e-9:
             continue
 
-        # AC-side power: ac_load_kwh (already includes charger efficiency)
-        # divided by slot duration in hours.
-        ac_power_w = round((ev_slot.ac_load_kwh / hours_per_slot) * 1000)
+        # For the current (partially elapsed) slot, the EV planner has
+        # already scaled ``ac_load_kwh`` to the *remaining* minutes.
+        # Divide by remaining hours to get the correct target power.
+        # For future slots the full slot width is used.
+        slot_end = slots[idx].end
+        if slots[idx].start <= now < slot_end:
+            remaining_min = max((slot_end - now).total_seconds() / 60.0, 0.0167)
+            slot_hours = remaining_min / 60.0
+        else:
+            slot_hours = full_hours
+
+        ac_power_w = round((ev_slot.ac_load_kwh / slot_hours) * 1000)
 
         attr = (
             "ev_second_charger_calculated_power"
@@ -631,8 +647,8 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     # per-slot energy targets.  The EVChargingSlot.estimated_charged_kwh is
     # battery-side (DC) kWh delivered to the EV.  The AC power the charger
     # must draw is larger by 1/eff to account for charger/cable losses.
-    _compute_ev_charger_power(slots, ss, ev_cp, inp.interval_minutes)
-    _compute_ev_charger_power(slots, ss, ev2_cp, inp.interval_minutes, second=True)
+    _compute_ev_charger_power(slots, ss, ev_cp, inp.interval_minutes, now)
+    _compute_ev_charger_power(slots, ss, ev2_cp, inp.interval_minutes, now, second=True)
     populate_net_consumption(slots)
     populate_estimated_cost(slots, export_min_price=inp.export_min_price)
     rt = calculate_recommended_threshold(

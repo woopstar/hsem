@@ -857,7 +857,7 @@ Three per-slot fields capture EV load intent precisely:
 | `ev_planned_load_kwh` | Extra EV AC load **added to net consumption** — only the portion not already in `avg_house_consumption`. Zero when `base_load_includes_ev = True`. |
 | `ev_accounted_load_kwh` | EV AC load **already included** in the house consumption sensor. Non-zero when `base_load_includes_ev = True`. Must not be added to net consumption again. |
 | `ev_total_planned_load_kwh` | Total planned EV AC load regardless of accounting mode: `ev_planned_load_kwh + ev_accounted_load_kwh`. Always non-zero when any EV charging is planned. |
-| `ev_charger_calculated_power` | Target AC power (W) for the primary EV charger during this slot. Computed from the EV planner's per-slot energy target: `round((ac_load_kwh / slot_hours) × 1000)`. Zero when no charging is planned. |
+| `ev_charger_calculated_power` | Target AC power (W) for the primary EV charger during this slot. Computed from the EV planner's per-slot energy target: `round((ac_load_kwh / slot_duration_hours) × 1000)`. For the **current** (partially elapsed) slot, `slot_duration_hours` is the remaining time (minimum 1 s), because the EV planner already scales `ac_load_kwh` to the remaining minutes. For future slots the full slot width is used. Zero when no charging is planned. |
 | `ev_second_charger_calculated_power` | Same as above, for the second EV. |
 
 When `base_load_includes_ev = False`:
@@ -978,11 +978,14 @@ The EV planner (`planner/ev_planner.py`) MUST satisfy these invariants:
     draws from the grid; all energy is solar-surplus with zero cost.
 
 12. **EV charger power field**: `ev_charger_calculated_power` is computed
-    from the EV planner's `ac_load_kwh` (AC-side energy) divided by slot
-    duration.  The field is zero when no EV charging is planned in that
-    slot.  It is purely a planner output — the applier must read this
-    value to throttle the go-e charger; the planner does not control
-    hardware directly.
+    from the EV planner's `ac_load_kwh` (AC-side energy) divided by the
+    slot duration in hours.  For the **current** (partially elapsed)
+    slot the divisor is the remaining slot time (minimum 1 s), because
+    the EV planner already scales `ac_load_kwh` to the remaining minutes.
+    Using the full slot width would understate the required charge power.
+    The field is zero when no EV charging is planned in that slot.  It is
+    purely a planner output — the applier must read this value to throttle
+    the go-e charger; the planner does not control hardware directly.
 
 ### Invariants for tests
 
