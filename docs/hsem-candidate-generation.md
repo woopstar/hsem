@@ -214,7 +214,7 @@ globally optimal charge/discharge schedule.
 
 ### Objective
 
-$$ \text{minimise} \sum_t [p_{\text{imp}}[t] \cdot gi[t] - p_{\text{exp}}[t] \cdot ge[t] + \alpha \cdot m[t] + \gamma \cdot (ed[t] - ec[t])] $$
+$$ \mathrm{minimise} \sum_t [p_{\mathrm{imp}}[t] \cdot gi[t] - p_{\mathrm{exp}}[t] \cdot ge[t] + \alpha \cdot m[t] + \gamma \cdot (ed[t] - ec[t])] $$
 
 Where:
 - $\alpha$ = battery cycle cost per kWh

@@ -11,7 +11,7 @@ suppression, and reliability weighting.
 HSEM predicts house load using a **multi-window weighted average** of historical
 consumption data. The prediction feeds the planner's net consumption calculation:
 
-$$ \text{net_consumption}[t] = \text{load_forecast}[t] + \text{ev_load}[t] - \text{pv_forecast}[t] $$
+$$ net\\_consumption[t] = load\\_forecast[t] + ev\\_load[t] - pv\\_forecast[t] $$
 
 Accurate load prediction is critical: over-prediction leads to unnecessary grid
 imports; under-prediction leads to insufficient battery charging for peak hours.
@@ -50,7 +50,7 @@ class HourlyConsumptionAverage:
 
 The raw forecast for hour `h` is:
 
-$$ \text{forecast}[h] = \frac{w_1 \cdot avg_1 + w_3 \cdot avg_3 + w_7 \cdot avg_7 + w_{14} \cdot avg_{14}}{w_1 + w_3 + w_7 + w_{14}} $$
+$$ \mathrm{forecast}[h] = \frac{w_1 \cdot avg_1 + w_3 \cdot avg_3 + w_7 \cdot avg_7 + w_{14} \cdot avg_{14}}{w_1 + w_3 + w_7 + w_{14}} $$
 
 Before this weighted average, the weights undergo three transformations:
 
@@ -69,7 +69,7 @@ Replaces the old ratio-based spike detection with the standard Tukey fence.
 For each clock-hour, the four window values form a set of four data points.
 The interquartile range (IQR) is computed, and values outside
 
-$$ [Q_1 - k \cdot \text{IQR}, Q_3 + k \cdot \text{IQR}] $$
+$$ [Q_1 - k \cdot \mathrm{IQR}, Q_3 + k \cdot \mathrm{IQR}] $$
 
 are flagged as outliers, where $k = 1.5$ (standard Tukey fence).
 
@@ -110,15 +110,15 @@ flagged as a spike:
 **Severity scaling:** The fraction of weight actually removed interpolates
 between 0 at the `_MIN` ratio and the maximum at the `_MAX` ratio:
 
-$$ \text{reduced_fraction} = \frac{\text{ratio} - \text{ratio_min}}{\text{ratio_max} - \text{ratio_min}} \cdot \text{max_reduction} $$
+$$ reduced\\_fraction = \frac{\mathrm{ratio} - ratio\\_min}{ratio\\_max - ratio\\_min} \cdot max\\_reduction $$
 
 ### Baseline capping
 
 Short windows (1-day, 3-day) are also capped against a blended baseline:
 
-$$ \text{baseline} = 0.70 \cdot avg_7 + 0.30 \cdot avg_{14} $$
+$$ \mathrm{baseline} = 0.70 \cdot avg_7 + 0.30 \cdot avg_{14} $$
 
-$$ \text{capped_value} = \text{clamp}(value, 0.80 \cdot \text{baseline}, 1.20 \cdot \text{baseline}) $$
+$$ capped\\_value = \mathrm{clamp}(value, 0.80 \cdot \mathrm{baseline}, 1.20 \cdot \mathrm{baseline}) $$
 
 The 3-day uses slightly looser bounds (0.85 – 1.15) to avoid removing legitimate
 multi-day trends.
@@ -130,7 +130,7 @@ multi-day trends.
 After spike suppression, each window's weight is further scaled by its
 agreement with the other windows:
 
-$$ w_i' = w_i \cdot \frac{1}{\epsilon + |avg_i - \text{median}|} $$
+$$ w_i' = w_i \cdot \frac{1}{\epsilon + |avg_i - \mathrm{median}|} $$
 
 Where $\epsilon = 0.05$ kWh (prevents division by zero and over-sensitivity).
 

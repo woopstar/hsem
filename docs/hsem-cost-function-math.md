@@ -92,9 +92,9 @@ $$ S = C_{total} + P_{soc} + P_{grid} + P_{override} + V_{terminal} $$
 ### SoC penalties (quadratic guard)
 
 $$ P_{soc} = \sum_{t \in slots} \begin{cases}
-w_{low} \cdot (soc_{min} - soc[t])^2 & \text{if } soc[t] < soc_{min} \\
-w_{high} \cdot (soc[t] - soc_{max})^2 & \text{if } soc[t] > soc_{max} \\
-0 & \text{otherwise}
+w_{low} \cdot (soc_{min} - soc[t])^2 & \mathrm{if } soc[t] < soc_{min} \\
+w_{high} \cdot (soc[t] - soc_{max})^2 & \mathrm{if } soc[t] > soc_{max} \\
+0 & \mathrm{otherwise}
 \end{cases} $$
 
 These are **soft guards** — the SoC simulation already hard-clamps at hardware
@@ -134,8 +134,8 @@ Where:
 **Sign convention:**
 
 $$\begin{aligned}
-\Delta E &< 0 \text{ (more energy at end)} \rightarrow V_{terminal} < 0 \text{ (credit)} \\
-\Delta E &> 0 \text{ (less energy at end)} \rightarrow V_{terminal} > 0 \text{ (penalty)}
+\Delta E &< 0 \mathrm{ (more energy at end)} \rightarrow V_{terminal} < 0 \mathrm{ (credit)} \\
+\Delta E &> 0 \mathrm{ (less energy at end)} \rightarrow V_{terminal} > 0 \mathrm{ (penalty)}
 \end{aligned}$$
 
 The replacement price uses the **minimum** future import price across the horizon
