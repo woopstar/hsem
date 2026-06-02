@@ -310,8 +310,9 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         for unsub in self._listener_unsubs:
             unsub()
         self._listener_unsubs.clear()
-        if self._midnight_unsub is not None:
-            self._midnight_unsub()
+        midnight = getattr(self, "_midnight_unsub", None)
+        if midnight is not None:
+            midnight()
             self._midnight_unsub = None
 
     async def async_options_updated(self) -> None:
