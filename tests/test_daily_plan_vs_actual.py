@@ -5,7 +5,8 @@ from __future__ import annotations
 import json
 import os
 import tempfile
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -24,12 +25,12 @@ class TestDailyMetrics:
     def test_defaults_are_zero(self) -> None:
         """All fields default to 0.0."""
         m = DailyMetrics()
-        assert m.grid_import_kwh == 0.0
-        assert m.grid_import_cost == 0.0
-        assert m.grid_export_kwh == 0.0
-        assert m.grid_export_rev == 0.0
-        assert m.battery_cycled_kwh == 0.0
-        assert m.pv_produced_kwh == 0.0
+        assert m.grid_import_kwh == pytest.approx(0.0)
+        assert m.grid_import_cost == pytest.approx(0.0)
+        assert m.grid_export_kwh == pytest.approx(0.0)
+        assert m.grid_export_rev == pytest.approx(0.0)
+        assert m.battery_cycled_kwh == pytest.approx(0.0)
+        assert m.pv_produced_kwh == pytest.approx(0.0)
 
     def test_as_dict_rounds(self) -> None:
         """as_dict returns rounded values."""
@@ -38,16 +39,16 @@ class TestDailyMetrics:
             grid_import_cost=2.345678,
         )
         d = m.as_dict()
-        assert d["grid_import_kwh"] == 1.235
-        assert d["grid_import_cost"] == 2.346
+        assert d["grid_import_kwh"] == pytest.approx(1.235)
+        assert d["grid_import_cost"] == pytest.approx(2.346)
 
     def test_from_dict(self) -> None:
         """from_dict restores values correctly."""
         d = {"grid_import_kwh": 5.0, "grid_import_cost": 10.5}
         m = DailyMetrics.from_dict(d)
-        assert m.grid_import_kwh == 5.0
-        assert m.grid_import_cost == 10.5
-        assert m.grid_export_kwh == 0.0  # missing key → default
+        assert m.grid_import_kwh == pytest.approx(5.0)
+        assert m.grid_import_cost == pytest.approx(10.5)
+        assert m.grid_export_kwh == pytest.approx(0.0)  # missing key → default
 
     def test_roundtrip(self) -> None:
         """Dict roundtrip preserves values."""
@@ -151,9 +152,9 @@ class TestDailyRecord:
         )
         d = record.as_dict()
         assert d["date"] == "2026-06-01"
-        assert d["actual"]["grid_import_kwh"] == 1.0
-        assert d["plan"]["grid_import_kwh"] == 0.5
-        assert d["diff"]["grid_import_kwh"] == 0.5
+        assert d["actual"]["grid_import_kwh"] == pytest.approx(1.0)
+        assert d["plan"]["grid_import_kwh"] == pytest.approx(0.5)
+        assert d["diff"]["grid_import_kwh"] == pytest.approx(0.5)
 
     def test_roundtrip(self) -> None:
         """Dict roundtrip preserves all values."""
@@ -221,12 +222,12 @@ class TestDailyPlanVsActualTracker:
         """Battery cycle tracking uses SoC delta converted to kWh."""
         tracker = DailyPlanVsActualTracker()
         tracker.accumulate_actual(soc_pct=50.0, rated_capacity_kwh=10.0)
-        assert tracker.last_soc_pct == 50.0
+        assert tracker.last_soc_pct == pytest.approx(50.0)
         # No delta yet — battery_cycled unchanged.
-        assert tracker.actual.battery_cycled_kwh == 0.0
+        assert tracker.actual.battery_cycled_kwh == pytest.approx(0.0)
 
         tracker.accumulate_actual(soc_pct=55.0, rated_capacity_kwh=10.0)
-        assert tracker.last_soc_pct == 55.0
+        assert tracker.last_soc_pct == pytest.approx(55.0)
         # Delta = |55 - 50| = 5 pct-points → 5 * 10 / 100 = 0.5 kWh
         assert tracker.actual.battery_cycled_kwh == pytest.approx(0.5)
 
@@ -257,8 +258,8 @@ class TestDailyPlanVsActualTracker:
 
         # Counters should be reset.
         assert tracker.today == "2026-06-02"
-        assert tracker.plan.grid_import_kwh == 0.0
-        assert tracker.actual.battery_cycled_kwh == 0.0
+        assert tracker.plan.grid_import_kwh == pytest.approx(0.0)
+        assert tracker.actual.battery_cycled_kwh == pytest.approx(0.0)
         assert tracker.last_soc_pct is None
 
         # History should contain the saved record.
@@ -276,8 +277,6 @@ class TestDailyPlanVsActualTracker:
 
     def test_get_yesterday_record(self) -> None:
         """get_yesterday_record returns the exact yesterday record."""
-        from datetime import timedelta
-
         yesterday = (date.today() - timedelta(days=1)).isoformat()
         tracker = DailyPlanVsActualTracker()
         record = DailyRecord(
@@ -387,8 +386,11 @@ class TestDailyPlanVsActualTracker:
 
     def test_load_missing_file(self) -> None:
         """Tracker handles missing history file gracefully."""
+        import tempfile as tf
+
+        nonexistent = str(Path(tf.gettempdir()) / "nonexistent_hsem_history_test.json")
         tracker = DailyPlanVsActualTracker(
-            history_file="/tmp/nonexistent_hsem_history.json",
+            history_file=nonexistent,
             max_history_days=90,
         )
         assert tracker.history == []

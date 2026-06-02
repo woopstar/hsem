@@ -1010,4 +1010,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             tracker.actual = DailyMetrics()
             tracker.plan = DailyMetrics()
             tracker.last_soc_pct = None
+            tracker._last_import_energy_kwh = None
+            tracker._last_export_energy_kwh = None
+            tracker._last_pv_energy_kwh = None
             self._daily_plan_last_accumulated = None

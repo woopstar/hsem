@@ -7,9 +7,12 @@ When not configured, it falls back to Riemann-sum estimates from
 instantaneous power sensors.
 """
 
+from typing import Any
+
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.selector import selector
 
 from custom_components.hsem.utils.misc import get_config_value
@@ -63,8 +66,8 @@ async def get_daily_tracking_step_schema(  # NOSONAR
 
 
 async def validate_daily_tracking_input(  # NOSONAR
-    hass,
-    user_input: dict,
+    _hass: HomeAssistant,
+    _user_input: dict[str, Any],
 ) -> dict[str, str]:
     """Validate user input for the 'daily_tracking' step.
 

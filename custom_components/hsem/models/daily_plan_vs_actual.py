@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -187,6 +188,11 @@ class DailyPlanVsActualTracker:
     last_soc_pct: float | None = None
     history: list[DailyRecord] = field(default_factory=list)
 
+    # Last-seen cumulative meter readings for delta calculation.
+    _last_import_energy_kwh: float | None = field(default=None, repr=False)
+    _last_export_energy_kwh: float | None = field(default=None, repr=False)
+    _last_pv_energy_kwh: float | None = field(default=None, repr=False)
+
     def __post_init__(self) -> None:
         """Set today's date if not already set and load existing history."""
         if not self.today:
@@ -224,6 +230,9 @@ class DailyPlanVsActualTracker:
         self.actual = DailyMetrics()
         self.plan = DailyMetrics()
         self.last_soc_pct = None
+        self._last_import_energy_kwh = None
+        self._last_export_energy_kwh = None
+        self._last_pv_energy_kwh = None
 
         return DayRolloverResult(
             record=today_record,
@@ -261,8 +270,34 @@ class DailyPlanVsActualTracker:
             import_price: Current import price (currency/kWh).
             export_price: Current export price (currency/kWh).
         """
+        # Grid import delta from cumulative meter (kWh).
+        if grid_import_energy_kwh is not None:
+            if self._last_import_energy_kwh is not None:
+                delta = grid_import_energy_kwh - self._last_import_energy_kwh
+                if delta > 0:
+                    self.actual.grid_import_kwh += delta
+                    self.actual.grid_import_cost += delta * import_price
+            self._last_import_energy_kwh = grid_import_energy_kwh
+
+        # Grid export delta from cumulative meter (kWh).
+        if grid_export_energy_kwh is not None:
+            if self._last_export_energy_kwh is not None:
+                delta = grid_export_energy_kwh - self._last_export_energy_kwh
+                if delta > 0:
+                    self.actual.grid_export_kwh += delta
+                    self.actual.grid_export_rev += delta * export_price
+            self._last_export_energy_kwh = grid_export_energy_kwh
+
+        # PV production delta from cumulative meter (kWh).
+        if pv_energy_kwh is not None:
+            if self._last_pv_energy_kwh is not None:
+                delta = pv_energy_kwh - self._last_pv_energy_kwh
+                if delta > 0:
+                    self.actual.pv_produced_kwh += delta
+            self._last_pv_energy_kwh = pv_energy_kwh
+
+        # Battery cycle tracking from SoC delta (pct → kWh).
         if soc_pct is not None and self.last_soc_pct is not None:
-            # Track battery cycles from SoC delta (pct → kWh).
             pct_change = abs(soc_pct - self.last_soc_pct)
             if rated_capacity_kwh > 0:
                 self.actual.battery_cycled_kwh += (
@@ -404,10 +439,8 @@ class DailyPlanVsActualTracker:
                 os.replace(tmp_path, str(path))
             except Exception:
                 # Clean up temp file on failure.
-                try:
+                with suppress(OSError):
                     os.unlink(tmp_path)
-                except OSError:
-                    pass
                 raise
             return True
         except OSError:
