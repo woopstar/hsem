@@ -371,6 +371,18 @@ async def async_collect_live_state(
         state.add_missing_entity("Missing entity: TOU periods")
     state.tou_periods = tou
 
+    # --- Daily plan-vs-actual — cumulative energy meter readings ---
+    # These are optional; the sensor falls back to Riemann sums if not configured.
+    state.grid_import_energy_kwh = convert_to_float(
+        _read(cfg.grid_import_energy_entity, "float", label="grid_import_energy")
+    )
+    state.grid_export_energy_kwh = convert_to_float(
+        _read(cfg.grid_export_energy_entity, "float", label="grid_export_energy")
+    )
+    state.pv_energy_kwh = convert_to_float(
+        _read(cfg.pv_energy_entity, "float", label="pv_energy")
+    )
+
     # --- Derived battery capacities ---
     _compute_battery_capacities(state)
 

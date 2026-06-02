@@ -373,6 +373,20 @@
         },
         "description": "Configure the weighted values for house consumption energy to estimate your average power usage. The system calculates the average consumption for each hour over 1, 3, 7, and 14 days. These averages are then weighted to provide a combined, weighted estimate. This approach helps to smooth out anomalies, such as unusually high consumption on a single day due to low prices, and provides a reliable prediction of your expected power usage in specific time intervals (e.g., between 16:00 and 17:00).",
         "title": "Weighted Values"
+      },
+      "daily_tracking": {
+        "data": {
+          "hsem_grid_import_energy_entity": "Grid Import Energy Sensor",
+          "hsem_grid_export_energy_entity": "Grid Export Energy Sensor",
+          "hsem_pv_energy_entity": "PV Production Energy Sensor"
+        },
+        "data_description": {
+          "hsem_grid_import_energy_entity": "Optional—cumulative grid import energy meter (kWh).",
+          "hsem_grid_export_energy_entity": "Optional—cumulative grid export energy meter (kWh).",
+          "hsem_pv_energy_entity": "Optional—cumulative PV production energy meter (kWh)."
+        },
+        "description": "Optionally map cumulative energy meters for the daily plan-vs-actual tracking sensor. When left empty, the sensor estimates actuals from instantaneous power readings.",
+        "title": "Daily Tracking"
       }
     }
   },
@@ -724,6 +738,20 @@
         },
         "description": "Configure the weighted values for house consumption energy to estimate your average power usage. The system calculates the average consumption for each hour over 1, 3, 7, and 14 days. These averages are then weighted to provide a combined, weighted estimate. This approach helps to smooth out anomalies, such as unusually high consumption on a single day due to low prices, and provides a reliable prediction of your expected power usage in specific time intervals (e.g., between 16:00 and 17:00).",
         "title": "Weighted Values"
+      },
+      "daily_tracking": {
+        "data": {
+          "hsem_grid_import_energy_entity": "Grid Import Energy Sensor",
+          "hsem_grid_export_energy_entity": "Grid Export Energy Sensor",
+          "hsem_pv_energy_entity": "PV Production Energy Sensor"
+        },
+        "data_description": {
+          "hsem_grid_import_energy_entity": "Optional—cumulative grid import energy meter (kWh).",
+          "hsem_grid_export_energy_entity": "Optional—cumulative grid export energy meter (kWh).",
+          "hsem_pv_energy_entity": "Optional—cumulative PV production energy meter (kWh)."
+        },
+        "description": "Optionally map cumulative energy meters for the daily plan-vs-actual tracking sensor. When left empty, the sensor estimates actuals from instantaneous power readings.",
+        "title": "Daily Tracking"
       }
     }
   },
@@ -779,6 +807,9 @@
       },
       "battery_soc": {
         "name": "Battery State of Charge"
+      },
+      "daily_plan_vs_actual": {
+        "name": "Daily Plan vs Actual"
       },
       "degraded_mode": {
         "name": "System Health"
