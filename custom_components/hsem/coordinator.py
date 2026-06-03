@@ -240,6 +240,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         # Daily plan-vs-actual tracker (diagnostic sensor with 90-day history).
         # The history file path is set in async_setup() once hass.config is available.
         self._daily_tracker: DailyPlanVsActualTracker = DailyPlanVsActualTracker()
+        self._daily_tracker_initialized: bool = False
         # Midnight timer unsubscribe handler for daily persistence.
         self._midnight_unsub: Callable[[], None] | None = None
         # Last slot end time accumulated from planner output (prevents double-counting).
@@ -262,22 +263,6 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         Call this once after the coordinator is created (from
         :func:`~custom_components.hsem.__init__.async_setup_entry`).
         """
-        # Initialise the daily tracker history file path.
-        config_dir = self.hass.config.config_dir
-        self._daily_tracker.history_file = str(
-            Path(config_dir) / "hsem_daily_history.json"
-        )
-        self._daily_tracker.load_history()
-
-        # Register a midnight timer to persist the day's record.
-        self._midnight_unsub = async_track_time_change(
-            self.hass,
-            self._async_handle_midnight,
-            hour=0,
-            minute=0,
-            second=0,
-        )
-
         # Run an immediate first cycle so entities have data before first render.
         await self._async_handle_update(None)
 
@@ -650,7 +635,13 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 # -----------------------------------------------------------------------
                 # Daily plan-vs-actual accumulation from planner output.
                 # -----------------------------------------------------------------------
-                self._accumulate_daily_plan_actuals(now, live, planner_output)
+                try:
+                    self._accumulate_daily_plan_actuals(now, live, planner_output)
+                except Exception:
+                    _LOGGER.exception(
+                        "Daily plan-vs-actual accumulation failed — "
+                        "continuing without updating daily metrics."
+                    )
 
         except Exception as exc:
             raise UpdateFailed(f"HSEM update cycle failed: {exc}") from exc
@@ -924,6 +915,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             live: Live HA entity state snapshot.
             output: Planner output with slot-level decisions.
         """
+        self._init_daily_tracker()
         tracker = self._daily_tracker
 
         # Check and handle day rollover first.
@@ -979,6 +971,39 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             import_price=live.import_electricity_price,
             export_price=live.export_electricity_price,
         )
+
+    def _init_daily_tracker(self) -> None:
+        """Lazily initialise the daily plan-vs-actual tracker.
+
+        Called once on the first access.  Registers the midnight timer
+        and loads the history file.  Failures are logged and leave the
+        tracker with an empty history file path so the sensor shows
+        'no data' rather than crashing the coordinator.
+        """
+        if getattr(self, "_daily_tracker_initialized", True):
+            return
+
+        try:
+            config_dir = self.hass.config.config_dir
+            self._daily_tracker.history_file = str(
+                Path(config_dir) / "hsem_daily_history.json"
+            )
+            self._daily_tracker.load_history()
+
+            self._midnight_unsub = async_track_time_change(
+                self.hass,
+                self._async_handle_midnight,
+                hour=0,
+                minute=0,
+                second=0,
+            )
+            self._daily_tracker_initialized = True
+        except Exception:
+            _LOGGER.exception(
+                "Failed to initialise daily tracker (plan-vs-actual "
+                "sensor will be unavailable)"
+            )
+            self._daily_tracker_initialized = True  # don't retry
 
     async def _async_handle_midnight(self, _now: datetime) -> None:
         """Handle the midnight timer — persist the day's record and reset.
