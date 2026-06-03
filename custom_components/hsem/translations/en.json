@@ -41,14 +41,12 @@
       "ev_planned_load": {
         "data": {
           "hsem_ev_planned_load_enabled": "Enable EV Planned Load Integration",
-          "hsem_ev_planned_load_smart_charging_entity": "Smart Charging Entity",
           "hsem_ev_planned_load_battery_capacity_kwh": "EV Battery Capacity (kWh)",
           "hsem_ev_planned_load_charger_power_kw": "EV Charger Power (kW)",
           "hsem_ev_planned_load_charger_efficiency": "EV Charger Efficiency"
         },
         "data_description": {
           "hsem_ev_planned_load_enabled": "Enable or disable planned EV charging load integration.",
-          "hsem_ev_planned_load_smart_charging_entity": "Optional entity that indicates whether smart charging is enabled for this EV.",
           "hsem_ev_planned_load_battery_capacity_kwh": "Nameplate battery capacity of the EV in kWh.",
           "hsem_ev_planned_load_charger_power_kw": "AC output power of the EV charger in kW.",
           "hsem_ev_planned_load_charger_efficiency": "Charger efficiency as a percentage (1-100). Default: 100."
@@ -59,14 +57,12 @@
       "ev_second_planned_load": {
         "data": {
           "hsem_ev_second_planned_load_enabled": "Enable EV 2 Planned Load Integration",
-          "hsem_ev_second_planned_load_smart_charging_entity": "Smart Charging Entity",
           "hsem_ev_second_planned_load_battery_capacity_kwh": "EV 2 Battery Capacity (kWh)",
           "hsem_ev_second_planned_load_charger_power_kw": "EV 2 Charger Power (kW)",
           "hsem_ev_second_planned_load_charger_efficiency": "EV 2 Charger Efficiency"
         },
         "data_description": {
           "hsem_ev_second_planned_load_enabled": "Enable or disable planned charging load integration for the second EV.",
-          "hsem_ev_second_planned_load_smart_charging_entity": "Optional entity that indicates whether smart charging is enabled for the second EV.",
           "hsem_ev_second_planned_load_battery_capacity_kwh": "Nameplate battery capacity of the second EV in kWh.",
           "hsem_ev_second_planned_load_charger_power_kw": "AC output power of the second EV charger in kW.",
           "hsem_ev_second_planned_load_charger_efficiency": "Second EV charger efficiency as a percentage (1-100). Default: 100."
@@ -428,14 +424,12 @@
       "ev_planned_load": {
         "data": {
           "hsem_ev_planned_load_enabled": "Enable EV Planned Load Integration",
-          "hsem_ev_planned_load_smart_charging_entity": "Smart Charging Entity",
           "hsem_ev_planned_load_battery_capacity_kwh": "EV Battery Capacity (kWh)",
           "hsem_ev_planned_load_charger_power_kw": "EV Charger Power (kW)",
           "hsem_ev_planned_load_charger_efficiency": "EV Charger Efficiency"
         },
         "data_description": {
           "hsem_ev_planned_load_enabled": "Enable or disable planned EV charging load integration.",
-          "hsem_ev_planned_load_smart_charging_entity": "Optional entity that indicates whether smart charging is enabled for this EV.",
           "hsem_ev_planned_load_battery_capacity_kwh": "Nameplate battery capacity of the EV in kWh.",
           "hsem_ev_planned_load_charger_power_kw": "AC output power of the EV charger in kW.",
           "hsem_ev_planned_load_charger_efficiency": "Charger efficiency as a percentage (1-100). Default: 100."
@@ -446,14 +440,12 @@
       "ev_second_planned_load": {
         "data": {
           "hsem_ev_second_planned_load_enabled": "Enable EV 2 Planned Load Integration",
-          "hsem_ev_second_planned_load_smart_charging_entity": "Smart Charging Entity",
           "hsem_ev_second_planned_load_battery_capacity_kwh": "EV 2 Battery Capacity (kWh)",
           "hsem_ev_second_planned_load_charger_power_kw": "EV 2 Charger Power (kW)",
           "hsem_ev_second_planned_load_charger_efficiency": "EV 2 Charger Efficiency"
         },
         "data_description": {
           "hsem_ev_second_planned_load_enabled": "Enable or disable planned charging load integration for the second EV.",
-          "hsem_ev_second_planned_load_smart_charging_entity": "Optional entity that indicates whether smart charging is enabled for the second EV.",
           "hsem_ev_second_planned_load_battery_capacity_kwh": "Nameplate battery capacity of the second EV in kWh.",
           "hsem_ev_second_planned_load_charger_power_kw": "AC output power of the second EV charger in kW.",
           "hsem_ev_second_planned_load_charger_efficiency": "Second EV charger efficiency as a percentage (1-100). Default: 100."
