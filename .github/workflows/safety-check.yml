@@ -16,7 +16,7 @@ jobs:
       contents: read
     steps:
       - name: Check out master
-        uses: actions/checkout@v6
+        uses: actions/checkout@v6.0.3
 
       - name: pyupio/safety-action
         uses: pyupio/safety-action@v1.0.1
