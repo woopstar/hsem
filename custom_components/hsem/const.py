@@ -61,11 +61,13 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_ev_second_force_charge_now": False,
     # EV planned load integration — primary EV (optional, disabled by default)
     "hsem_ev_planned_load_enabled": False,
+    "hsem_ev_planned_load_smart_charging_entity": vol.UNDEFINED,
     "hsem_ev_planned_load_battery_capacity_kwh": 0.0,
     "hsem_ev_planned_load_charger_power_kw": 0.0,
     "hsem_ev_planned_load_charger_efficiency": 100,
     # EV planned load integration — second EV (optional, disabled by default)
     "hsem_ev_second_planned_load_enabled": False,
+    "hsem_ev_second_planned_load_smart_charging_entity": vol.UNDEFINED,
     "hsem_ev_second_planned_load_battery_capacity_kwh": 0.0,
     "hsem_ev_second_planned_load_charger_power_kw": 0.0,
     "hsem_ev_second_planned_load_charger_efficiency": 100,
