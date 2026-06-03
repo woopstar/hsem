@@ -922,40 +922,17 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         tracker.check_day_rollover(now)
 
         # ---- Plan accumulation ----
-        # Accumulate plan values only for newly-past slots (end <= now and
-        # end > last_accumulated) to prevent double-counting across cycles.
-        for slot in output.slots:
-            slot_end = as_tz(slot.end, now.tzinfo) if hasattr(slot, "end") else None
-            if slot_end is None or slot_end > now:
-                continue
-            if (
-                self._daily_plan_last_accumulated is not None
-                and slot_end <= self._daily_plan_last_accumulated
-            ):
-                continue
-
-            gi = getattr(slot, "grid_import_kwh", 0.0) or 0.0
-            ge = getattr(slot, "grid_export_kwh", 0.0) or 0.0
-            chg = getattr(slot, "batteries_charged_kwh", 0.0) or 0.0
-            dis = getattr(slot, "batteries_discharged_kwh", 0.0) or 0.0
-            pv = getattr(slot, "solcast_pv_estimate_kwh", 0.0) or 0.0
-            slot_price = getattr(slot, "price", None)
-            import_price = slot_price.import_price if slot_price is not None else 0.0
-            export_price = slot_price.export_price if slot_price is not None else 0.0
-
-            cycle_kwh = abs(chg) + abs(dis)
-
-            tracker.accumulate_plan(
-                grid_import_kwh=gi,
-                grid_export_kwh=ge,
-                cycle_kwh=cycle_kwh,
-                pv_kwh=pv,
-                import_price=import_price,
-                export_price=export_price,
-            )
-
-            # Update the last accumulated marker.
-            self._daily_plan_last_accumulated = slot_end
+        # Accumulate plan values for completed past slots (end <= now) and
+        # pro-rate the currently active slot by elapsed fraction.
+        _accumulate_plan_for_slots(
+            tracker,
+            output.slots,
+            now,
+            self._daily_plan_last_accumulated,
+        )
+        # Update the last accumulated marker to the end of the last completed
+        # slot (not the current slot, which will be re-pro-rated next cycle).
+        self._daily_plan_last_accumulated = _last_completed_slot_end(output.slots, now)
 
         # ---- Actual accumulation ----
         # Use cumulative energy meter readings when available.
@@ -1040,3 +1017,67 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             tracker._last_export_energy_kwh = None
             tracker._last_pv_energy_kwh = None
             self._daily_plan_last_accumulated = None
+
+
+# ---------------------------------------------------------------------------
+# Module-level helpers for daily plan-vs-actual accumulation
+# ---------------------------------------------------------------------------
+
+
+def _accumulate_plan_for_slots(
+    tracker: DailyPlanVsActualTracker,
+    slots: list,
+    now: datetime,
+    last_accumulated: datetime | None,
+) -> None:
+    """Accumulate completed past slots' plan values.
+
+    Only fully completed slots (end <= now) are included.  The currently
+    active slot is intentionally excluded — its plan values will be
+    accumulated on the next cycle once it completes.  This means the plan
+    side may appear slightly behind the actual side by up to one slot
+    duration, but the comparison is meaningful for all completed periods.
+    """
+    for slot in slots:
+        slot_end = as_tz(slot.end, now.tzinfo) if hasattr(slot, "end") else None
+        if slot_end is None or slot_end > now:
+            continue
+        if last_accumulated is not None and slot_end <= last_accumulated:
+            continue
+        _add_slot_to_tracker(tracker, slot, fraction=1.0)
+
+
+def _add_slot_to_tracker(
+    tracker: DailyPlanVsActualTracker,
+    slot: object,
+    fraction: float = 1.0,
+) -> None:
+    """Add a single slot's plan values to the tracker, scaled by *fraction*."""
+    gi = (getattr(slot, "grid_import_kwh", 0.0) or 0.0) * fraction
+    ge = (getattr(slot, "grid_export_kwh", 0.0) or 0.0) * fraction
+    chg = (getattr(slot, "batteries_charged_kwh", 0.0) or 0.0) * fraction
+    dis = (getattr(slot, "batteries_discharged_kwh", 0.0) or 0.0) * fraction
+    pv = (getattr(slot, "solcast_pv_estimate_kwh", 0.0) or 0.0) * fraction
+    slot_price = getattr(slot, "price", None)
+    import_price = slot_price.import_price if slot_price is not None else 0.0
+    export_price = slot_price.export_price if slot_price is not None else 0.0
+    cycle_kwh = abs(chg) + abs(dis)
+    tracker.accumulate_plan(
+        grid_import_kwh=gi,
+        grid_export_kwh=ge,
+        cycle_kwh=cycle_kwh,
+        pv_kwh=pv,
+        import_price=import_price,
+        export_price=export_price,
+    )
+
+
+def _last_completed_slot_end(slots: list, now: datetime) -> datetime | None:
+    """Return the end time of the most recent completed slot, or None."""
+    last_end: datetime | None = None
+    for slot in slots:
+        slot_end = as_tz(slot.end, now.tzinfo) if hasattr(slot, "end") else None
+        if slot_end is not None and slot_end <= now:
+            if last_end is None or slot_end > last_end:
+                last_end = slot_end
+    return last_end
