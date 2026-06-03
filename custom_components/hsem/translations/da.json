@@ -184,7 +184,8 @@
           "hsem_huawei_solar_device_id_batteries": "Huawei-batterienhed",
           "hsem_huawei_solar_device_id_inverter_1": "Huawei-vekselretter 1 enhed",
           "hsem_huawei_solar_device_id_inverter_2": "Huawei-vekselretter 2 enhed",
-          "hsem_huawei_solar_inverter_active_power_control": "Huawei-vekselretter aktiv effektkontrolsensor"
+          "hsem_huawei_solar_inverter_active_power_control": "Huawei-vekselretter aktiv effektkontrolsensor",
+          "hsem_huawei_solar_batteries_forcible_charge": "Tvungen Opladning"
         },
         "data_description": {
           "hsem_batteries_charge_efficiency": "Angiv batteriets opladningseffektivitet som en procentdel (0â€“100). Energi lagret i batteriet = inputenergi Ã— denne faktor. Typiske lithium-batterier opnÃ¥r 95â€“98%. Standard: 98%.",
@@ -205,7 +206,8 @@
           "hsem_huawei_solar_device_id_batteries": "VÃ¦lg din Huawei-batterienhed.",
           "hsem_huawei_solar_device_id_inverter_1": "VÃ¦lg din primÃ¦re Huawei-vekselretterenhed.",
           "hsem_huawei_solar_device_id_inverter_2": "VÃ¦lg din sekundÃ¦re Huawei-vekselretterenhed, hvis relevant.",
-          "hsem_huawei_solar_inverter_active_power_control": "VÃ¦lg den sensor, der styrer aktiv effektudgang for din Huawei-vekselretter."
+          "hsem_huawei_solar_inverter_active_power_control": "VÃ¦lg den sensor, der styrer aktiv effektudgang for din Huawei-vekselretter.",
+          "hsem_huawei_solar_batteries_forcible_charge": "Vælg sensoren der angiver om tvungen opladning er aktiv."
         },
         "description": "Konfigurer arbejdstilstanden for Huawei-solcellebatterier.",
         "title": "Huawei Solar-sensorer"
@@ -216,14 +218,16 @@
           "hsem_batteries_expected_cycles": "Forventede battericyklusser",
           "hsem_batteries_cycle_cost": "Batteri-cyklusomkostning (EUR/kWh)",
           "hsem_batteries_charge_efficiency": "Batteri-opladningseffektivitet (%)",
-          "hsem_batteries_discharge_efficiency": "Batteri-afladningseffektivitet (%)"
+          "hsem_batteries_discharge_efficiency": "Batteri-afladningseffektivitet (%)",
+          "hsem_batteries_capacity_loss_pct": "Kapacitetstab (%)"
         },
         "data_description": {
           "hsem_batteries_purchase_price": "Indtast den samlede kÃ¸bspris for dit batterisystem i EUR. Bruges sammen med forventede cyklusser og brugbar kapacitet til at beregne afskrivningsomkostning pr. kWh.",
           "hsem_batteries_expected_cycles": "Indtast det forventede antal fulde opladnings-/afladningscyklusser i batteriets levetid. Bruges til at beregne afskrivningsomkostning pr. kWh. Typiske LiFePO4-batterier understÃ¸tter 4000â€“8000 cyklusser.",
           "hsem_batteries_cycle_cost": "Valgfri ekstra per-kWh-omkostning ved at cykle batteriet (EUR/kWh). TilfÃ¸jes oven pÃ¥ den automatisk beregnede afskrivningstÃ¦rskel. SÃ¦t til 0 for kun at stole pÃ¥ afskrivningsbeskyttelsen.",
           "hsem_batteries_charge_efficiency": "Angiv batteriets opladningseffektivitet som en procentdel (0â€“100). Energi lagret i batteriet = inputenergi Ã— denne faktor. Typiske lithium-batterier opnÃ¥r 95â€“98%. Standard: 98%.",
-          "hsem_batteries_discharge_efficiency": "Angiv batteriets afladningseffektivitet som en procentdel (0â€“100). Energi leveret til huset = fjernet batterienergi Ã— denne faktor. Typiske lithium-batterier opnÃ¥r 95â€“98%. Standard: 98%."
+          "hsem_batteries_discharge_efficiency": "Angiv batteriets afladningseffektivitet som en procentdel (0â€“100). Energi leveret til huset = fjernet batterienergi Ã— denne faktor. Typiske lithium-batterier opnÃ¥r 95â€“98%. Standard: 98%.",
+          "hsem_batteries_capacity_loss_pct": "Forventet kapacitetstab ved end-of-life for batteriet (0-100%)."
         },
         "description": "Konfigurer batteriÃ¸konomiske parametre, der pÃ¥virker afskrivningsberegninger og rundturseffektivitet.",
         "title": "BatteriÃ¸konomi"
@@ -323,6 +327,20 @@
         },
         "description": "Konfigurer vÃ¦gtede vÃ¦rdier for husets energiforbrug til at estimere dit gennemsnitlige strÃ¸mforbrug.",
         "title": "VÃ¦gtede vÃ¦rdier"
+      },
+      "daily_tracking": {
+        "data": {
+          "hsem_grid_import_energy_entity": "Netimport Energi Sensor",
+          "hsem_grid_export_energy_entity": "Neteexport Energi Sensor",
+          "hsem_pv_energy_entity": "Solcelleproduktion Energi Sensor"
+        },
+        "data_description": {
+          "hsem_grid_import_energy_entity": "Valgfri — akkumuleret netimport energimåler (kWh).",
+          "hsem_grid_export_energy_entity": "Valgfri — akkumuleret netexport energimåler (kWh).",
+          "hsem_pv_energy_entity": "Valgfri — akkumuleret solcelleproduktion energimåler (kWh)."
+        },
+        "description": "Kortlæg valgfrit akkumulerede energimålere til daglig plan-vs-faktisk sporing. Når de ikke er angivet, estimeres faktiske værdier fra øjeblikseffektaflæsninger.",
+        "title": "Daglig Sporing"
       }
     }
   },
@@ -349,19 +367,280 @@
       "start_time_equals_end_time": "Starttidspunkt og sluttidspunkt kan ikke vÃ¦re ens â€” dette skaber et nul-lÃ¦ngdevindue. Deaktiver tidsplanen i stedet."
     },
     "step": {
-      "batteries_excess_export": {},
-      "batteries_schedules": {},
-      "ev_planned_load": {},
-      "ev_second_planned_load": {},
-      "prices": {},
-      "ev": {},
-      "ev_second": {},
-      "huawei_solar": {},
-      "init": {},
-      "months": {},
-      "power": {},
-      "solcast": {},
-      "weighted_values": {}
+      "batteries_excess_export": {
+        "data": {
+          "hsem_batteries_enable_excess_export": "Enable Excess Battery Export",
+          "hsem_batteries_excess_export_discharge_buffer": "Discharge Buffer (%)"
+        },
+        "data_description": {
+          "hsem_batteries_enable_excess_export": "Enable or disable the excess battery export feature, which automatically exports excess battery capacity to the grid when economically beneficial.",
+          "hsem_batteries_excess_export_discharge_buffer": "Set the safety buffer percentage to maintain minimum battery reserves (0-50%). Default is 10% to ensure adequate capacity for unexpected demand."
+        },
+        "description": "Configure excess battery export settings to automatically sell excess energy to the grid when economically beneficial.",
+        "title": "Excess Battery Export"
+      },
+      "batteries_schedules": {
+        "data": {
+          "hsem_batteries_enable_batteries_schedule_1": "Enable Battery Schedule 1",
+          "hsem_batteries_enable_batteries_schedule_1_end": "Battery Schedule 1 End Time",
+          "hsem_batteries_enable_batteries_schedule_1_start": "Battery Schedule 1 Start Time",
+          "hsem_batteries_enable_batteries_schedule_2": "Enable Battery Schedule 2",
+          "hsem_batteries_enable_batteries_schedule_2_end": "Battery Schedule 2 End Time",
+          "hsem_batteries_enable_batteries_schedule_2_start": "Battery Schedule 2 Start Time",
+          "hsem_batteries_enable_batteries_schedule_3": "Enable Battery Schedule 3",
+          "hsem_batteries_enable_batteries_schedule_3_end": "Battery Schedule 3 End Time",
+          "hsem_batteries_enable_batteries_schedule_3_start": "Battery Schedule 3 Start Time"
+        },
+        "data_description": {
+          "hsem_batteries_enable_batteries_schedule_1": "Enable or disable the first battery discharge schedule.",
+          "hsem_batteries_enable_batteries_schedule_1_end": "Specify the end time for the first battery discharge schedule.",
+          "hsem_batteries_enable_batteries_schedule_1_start": "Specify the start time for the first battery discharge schedule.",
+          "hsem_batteries_enable_batteries_schedule_2": "Enable or disable the second battery discharge schedule.",
+          "hsem_batteries_enable_batteries_schedule_2_end": "Specify the end time for the second battery discharge schedule.",
+          "hsem_batteries_enable_batteries_schedule_2_start": "Specify the start time for the second battery discharge schedule.",
+          "hsem_batteries_enable_batteries_schedule_3": "Enable or disable the third battery discharge schedule.",
+          "hsem_batteries_enable_batteries_schedule_3_end": "Specify the end time for the third battery discharge schedule.",
+          "hsem_batteries_enable_batteries_schedule_3_start": "Specify the start time for the third battery discharge schedule."
+        },
+        "description": "Configure up to three battery discharge schedule windows, each with enable/disable toggle, start time, and end time. Schedules define when the battery may discharge to cover peak consumption or export to the grid.",
+        "title": "Battery Discharge Schedules"
+      },
+      "ev_planned_load": {
+        "data": {
+          "hsem_ev_planned_load_enabled": "Enable EV Planned Load Integration",
+          "hsem_ev_planned_load_battery_capacity_kwh": "EV Battery Capacity (kWh)",
+          "hsem_ev_planned_load_charger_power_kw": "EV Charger Power (kW)",
+          "hsem_ev_planned_load_charger_efficiency": "EV Charger Efficiency"
+        },
+        "data_description": {
+          "hsem_ev_planned_load_enabled": "Enable or disable planned EV charging load integration.",
+          "hsem_ev_planned_load_battery_capacity_kwh": "Nameplate battery capacity of the EV in kWh.",
+          "hsem_ev_planned_load_charger_power_kw": "AC output power of the EV charger in kW.",
+          "hsem_ev_planned_load_charger_efficiency": "Charger efficiency as a percentage (1-100). Default: 100."
+        },
+        "description": "Configure optional planned EV charging load integration. When enabled, HSEM accounts for upcoming EV charging demand per planner slot.",
+        "title": "EV Planned Load Integration"
+      },
+      "ev_second_planned_load": {
+        "data": {
+          "hsem_ev_second_planned_load_enabled": "Enable EV 2 Planned Load Integration",
+          "hsem_ev_second_planned_load_battery_capacity_kwh": "EV 2 Battery Capacity (kWh)",
+          "hsem_ev_second_planned_load_charger_power_kw": "EV 2 Charger Power (kW)",
+          "hsem_ev_second_planned_load_charger_efficiency": "EV 2 Charger Efficiency"
+        },
+        "data_description": {
+          "hsem_ev_second_planned_load_enabled": "Enable or disable planned charging load integration for the second EV.",
+          "hsem_ev_second_planned_load_battery_capacity_kwh": "Nameplate battery capacity of the second EV in kWh.",
+          "hsem_ev_second_planned_load_charger_power_kw": "AC output power of the second EV charger in kW.",
+          "hsem_ev_second_planned_load_charger_efficiency": "Second EV charger efficiency as a percentage (1-100). Default: 100."
+        },
+        "description": "Configure optional planned charging load integration for the second EV. Only shown when a second EV charger is enabled.",
+        "title": "EV 2 Planned Load Integration"
+      },
+      "prices": {
+        "data": {
+          "hsem_import_electricity_price_sensor": "Import Electricity Price Sensor",
+          "hsem_export_electricity_price_sensor": "Export Electricity Price Sensor",
+          "hsem_import_electricity_price_forecast_sensor": "Import Electricity Price Forecast Sensor (optional)",
+          "hsem_export_electricity_price_forecast_sensor": "Export Electricity Price Forecast Sensor (optional)",
+          "hsem_export_electricity_min_price": "Export Minimum Price Required",
+          "hsem_electricity_price_update_interval": "Electricity Price Update Interval (minutes)"
+        },
+        "data_description": {
+          "hsem_import_electricity_price_sensor": "Select the sensor that provides import electricity prices (e.g. Energi Data Service, Nordpool, Amber Electric).",
+          "hsem_export_electricity_price_sensor": "Select the sensor that provides export electricity prices.",
+          "hsem_import_electricity_price_forecast_sensor": "Optional: select a separate sensor for import price forecasts (used by Amber Electric and similar integrations).",
+          "hsem_export_electricity_price_forecast_sensor": "Optional: select a separate sensor for export price forecasts.",
+          "hsem_export_electricity_min_price": "Set the minimum export price. Exports below this price will be blocked.",
+          "hsem_electricity_price_update_interval": "How often your price sensor provides new data (15, 30, or 60 minutes)."
+        },
+        "description": "Configure your electricity price sensors for import and export pricing.",
+        "title": "Electricity Prices"
+      },
+      "ev": {
+        "data": {
+          "hsem_ev_allow_charge_past_target_soc": "Allow Charging Past Target SoC (Advanced)",
+          "hsem_ev_charger_force_max_discharge_power": "EV Charger Force Max Discharge Power",
+          "hsem_ev_charger_max_discharge_power": "EV Charger Max Discharge Power",
+          "hsem_ev_charger_power": "EV Charger Power Sensor",
+          "hsem_ev_charger_status": "EV Charger Status Sensor",
+          "hsem_ev_connected": "EV Connected Sensor",
+          "hsem_ev_second_enabled": "Enable Second EV Charger",
+          "hsem_ev_soc": "EV State of Charge (SoC) Sensor",
+          "hsem_house_power_includes_ev_charger_power": "House Power Includes EV Charger Power"
+        },
+        "data_description": {
+          "hsem_ev_allow_charge_past_target_soc": "Enable this option if you want to allow the system to continue charging the EV battery even after it has reached the target state of charge (SoC). This can be useful in scenarios where you want to ensure the EV is fully charged regardless of the target setting.",
+          "hsem_ev_charger_force_max_discharge_power": "Enable this if you want to force a specific maximum discharge power for the Huawei batteries while EV is charging.",
+          "hsem_ev_charger_max_discharge_power": "Set the maximum discharge power for the Huawei batteries while EV is charging.",
+          "hsem_ev_charger_power": "Select the sensor that measures the power consumption of your EV charger.",
+          "hsem_ev_charger_status": "Select the sensor or entity that indicates whether the EV charger is active (e.g., a switch or sensor).",
+          "hsem_ev_connected": "Select the sensor or entity that indicates whether the EV is connected to the charger.",
+          "hsem_ev_second_enabled": "Enable or disable the configuration for a second EV charger.",
+          "hsem_ev_soc": "Select the sensor that provides the current state of charge (SoC) of your EV battery.",
+          "hsem_house_power_includes_ev_charger_power": "Enable this if the house consumption power sensor already includes the EV charger power consumption."
+        },
+        "description": "Configure EV Charger settings for HSEM.",
+        "title": "EV Charger Settings (Optional)"
+      },
+      "ev_second": {
+        "data": {
+          "hsem_ev_second_allow_charge_past_target_soc": "Allow Charging Past Target SoC For Second EV (Advanced)",
+          "hsem_ev_second_charger_force_max_discharge_power": "Second EV Charger Force Max Discharge Power",
+          "hsem_ev_second_charger_max_discharge_power": "Second EV Charger Max Discharge Power",
+          "hsem_ev_second_charger_power": "Second EV Charger Power Sensor",
+          "hsem_ev_second_charger_status": "Second EV Charger Status Sensor",
+          "hsem_ev_second_connected": "Second EV Connected Sensor",
+          "hsem_ev_second_soc": "Second EV State of Charge (SoC) Sensor"
+        },
+        "data_description": {
+          "hsem_ev_second_allow_charge_past_target_soc": "Enable this option if you want to allow the system to continue charging the EV battery even after it has reached the target state of charge (SoC). This can be useful in scenarios where you want to ensure the EV is fully charged regardless of the target setting.",
+          "hsem_ev_second_charger_force_max_discharge_power": "Enable this if you want to force a specific maximum discharge power for the Huawei batteries while EV is charging.",
+          "hsem_ev_second_charger_max_discharge_power": "Set the maximum discharge power for the Huawei batteries while EV is charging.",
+          "hsem_ev_second_charger_power": "Select the sensor that measures the power consumption of your EV charger.",
+          "hsem_ev_second_charger_status": "Select the sensor or entity that indicates whether the EV charger is active (e.g., a switch or sensor).",
+          "hsem_ev_second_connected": "Select the sensor or entity that indicates whether the EV is connected to the charger.",
+          "hsem_ev_second_soc": "Select the sensor that provides the current state of charge (SoC) of your EV battery."
+        },
+        "description": "Configure Second EV Charger settings for HSEM.",
+        "title": "Second EV Charger Settings (Optional)"
+      },
+      "huawei_solar": {
+        "data": {
+          "hsem_batteries_charge_efficiency": "Battery Charge Efficiency (%)",
+          "hsem_batteries_cycle_cost": "Battery Cycle Cost (EUR/kWh)",
+          "hsem_batteries_discharge_efficiency": "Battery Discharge Efficiency (%)",
+          "hsem_batteries_expected_cycles": "Expected Battery Cycles",
+          "hsem_batteries_purchase_price": "Battery Purchase Price (EUR)",
+          "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Huawei Batteries Excess PV energy use in TOU",
+          "hsem_huawei_solar_batteries_forcible_charge": "Battery Forcible Charge State",
+          "hsem_huawei_solar_batteries_end_of_discharge_soc": "Huawei Batteries End of Discharge SOC (%)",
+          "hsem_huawei_solar_batteries_charging_cutoff_capacity": "Huawei Batteries Charging Cutoff Capacity (Max SoC %)",
+          "hsem_huawei_solar_batteries_grid_charge_cutoff_soc": "Huawei Batteries Grid Charge Cutoff SOC (%)",
+          "hsem_huawei_solar_batteries_maximum_charging_power": "Huawei Batteries Maximum Charging Power (W)",
+          "hsem_huawei_solar_batteries_maximum_discharging_power": "Huawei Batteries Maximum Discharging Power (W)",
+          "hsem_huawei_solar_batteries_rated_capacity": "Battery Max Capacity (Watt)",
+          "hsem_huawei_solar_batteries_state_of_capacity": "Huawei Batteries State of Capacity Sensor",
+          "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods": "Huawei Batteries TOU Charging and Discharging Periods",
+          "hsem_huawei_solar_batteries_working_mode": "Huawei Solar Batteries Working Mode Sensor",
+          "hsem_huawei_solar_device_id_batteries": "Huawei Batteries Device",
+          "hsem_huawei_solar_device_id_inverter_1": "Huawei Inverter 1 Device",
+          "hsem_huawei_solar_device_id_inverter_2": "Huawei Inverter 2 Device",
+          "hsem_huawei_solar_inverter_active_power_control": "Huawei Inverter Active Power Control Sensor"
+        },
+        "data_description": {
+          "hsem_batteries_charge_efficiency": "Specify the charge-side efficiency of your battery as a percentage (0–100). Energy stored in the battery equals the input energy multiplied by this factor. Typical lithium batteries achieve 95–98 %. Defaults to 98 %.",
+          "hsem_batteries_discharge_efficiency": "Specify the discharge-side efficiency of your battery as a percentage (0–100). Energy delivered to the house equals the battery energy removed multiplied by this factor. Typical lithium batteries achieve 95–98 %. Defaults to 98 %.",
+          "hsem_batteries_cycle_cost": "Optional extra per-kWh cost of cycling the battery (EUR/kWh). Added on top of the auto-calculated depreciation threshold. Set to 0 to rely solely on the depreciation guard. Example: 0.02 means the planner requires 2 cent extra spread per kWh cycled before approving grid charging.",
+          "hsem_batteries_expected_cycles": "Enter the expected number of full charge/discharge cycles over the battery's lifetime. Used to calculate depreciation cost per kWh and the recommended minimum export price threshold. Typical LiFePO4 batteries support 4000–8000 cycles.",
+          "hsem_batteries_purchase_price": "Enter the total purchase price of your battery system in EUR. Used together with expected cycles and usable capacity to calculate the depreciation cost per kWh and the recommended minimum export price threshold.",
+          "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Select the sensor that provides setting for excess PV energy use in TOU periods.",
+          "hsem_huawei_solar_batteries_forcible_charge": "Sensor showing current forcible charge/discharge state (e.g. Stopped, Discharging at 5000W for 60 minutes)",
+          "hsem_huawei_solar_batteries_end_of_discharge_soc": "Specify the end of discharge SOC percentage for your Huawei batteries. When the battery reaches this SOC level, it will stop discharging to prevent deep discharge and potential damage to the battery.",
+          "hsem_huawei_solar_batteries_charging_cutoff_capacity": "Select the entity that defines the maximum state of charge (SoC) the battery is allowed to reach during charging (register STORAGE_CHARGING_CUTOFF_CAPACITY). Typically 90–10 %. Used by the SoC simulation as the upper SoC ceiling so the planner never schedules charging beyond this limit.",
+          "hsem_huawei_solar_batteries_grid_charge_cutoff_soc": "Specify the grid charge cutoff SOC percentage for your Huawei batteries.",
+          "hsem_huawei_solar_batteries_maximum_charging_power": "Select the sensor that provides the maximum charging power for your Huawei batteries in kilowatts (W).",
+          "hsem_huawei_solar_batteries_maximum_discharging_power": "Select the sensor that provides the maximum discharging power for your Huawei batteries.",
+          "hsem_huawei_solar_batteries_rated_capacity": "Select the sensor that provides the total rated capacity of your Huawei batteries in watts (W).",
+          "hsem_huawei_solar_batteries_state_of_capacity": "Select the sensor that provides the state of charge (SOC) of your Huawei batteries.",
+          "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods": "Select the sensor that defines the Time-of-Use (TOU) charging and discharging periods for your Huawei batteries.",
+          "hsem_huawei_solar_batteries_working_mode": "Select the sensor that indicates the current working mode of your Huawei batteries.",
+          "hsem_huawei_solar_device_id_batteries": "Select your Huawei battery device.",
+          "hsem_huawei_solar_device_id_inverter_1": "Select your primary Huawei inverter device.",
+          "hsem_huawei_solar_device_id_inverter_2": "Select your secondary Huawei inverter device, if applicable.",
+          "hsem_huawei_solar_inverter_active_power_control": "Select the sensor that controls the active power output of your Huawei inverter."
+        },
+        "description": "Configure the working mode for Huawei solar batteries.",
+        "title": "Huawei Solar Sensors"
+      },
+      "init": {
+        "data": {
+          "device_name": "Name",
+          "hsem_extended_attributes": "Extended Attributes",
+          "hsem_read_only": "Read Only",
+          "hsem_recommendation_interval_length": "Recommendation Interval Length",
+          "hsem_recommendation_interval_minutes": "Recommendation Interval Minutes",
+          "hsem_update_interval": "Update interval",
+          "hsem_verbose_logging": "Verbose Logging"
+        },
+        "data_description": {
+          "device_name": "Enter a unique name for this device.",
+          "hsem_extended_attributes": "Enable this option to expose extra diagnostic attributes on the sensor entity.",
+          "hsem_read_only": "Enable this option to set the integration to read-only mode, preventing it from sending commands to devices.",
+          "hsem_recommendation_interval_length": "The length in minutes of each recommendation interval used to calculate optimal battery usage.",
+          "hsem_recommendation_interval_minutes": "The number of recommendation intervals to consider when calculating optimal battery usage.",
+          "hsem_update_interval": "The update interval in minutes for the working mode sensor.",
+          "hsem_verbose_logging": "Enable verbose debug logging for troubleshooting purposes."
+        },
+        "description": "Update the settings for HSEM",
+        "title": "Update Huawei Solar Energy Management"
+      },
+      "months": {
+        "data": {
+          "hsem_months_winter": "Months considered as Winter/Spring"
+        },
+        "data_description": {
+          "hsem_months_winter": "Select the months that should be considered as Winter/Spring for the seasonal working mode adjustments. You can select multiple months."
+        },
+        "description": "Configure the months that are considered as Winter/Spring. During these months, the system will prioritize charging the batteries from grid energy to ensure sufficient battery levels during periods of lower solar production. Remaining months will be considered as Summer/Autum months.",
+        "title": "Winter/Spring Months"
+      },
+      "power": {
+        "data": {
+          "hsem_house_consumption_power": "House Consumption Power Sensor",
+          "hsem_solar_production_power": "Solar Production Power Sensor"
+        },
+        "data_description": {
+          "hsem_house_consumption_power": "Select the sensor that measures your house's total power consumption.",
+          "hsem_solar_production_power": "Select the sensor that measures the power generated by your solar panels."
+        },
+        "description": "Select power sensors for HSEM.",
+        "title": "Power Sensors"
+      },
+      "solcast": {
+        "data": {
+          "hsem_solcast_pv_forecast_forecast_likelihood": "Solcast PV Forecast Preferred forecast likelihood to use",
+          "hsem_solcast_pv_forecast_forecast_today": "Solcast PV Forecast Today Sensor",
+          "hsem_solcast_pv_forecast_forecast_tomorrow": "Solcast PV Forecast Tomorrow Sensor"
+        },
+        "data_description": {
+          "hsem_solcast_pv_forecast_forecast_likelihood": "Select the preferred forecast likelihood to use for Solcast PV forecasts.",
+          "hsem_solcast_pv_forecast_forecast_today": "Select the sensor that provides today's PV production forecast from Solcast.",
+          "hsem_solcast_pv_forecast_forecast_tomorrow": "Select the sensor that provides tomorrow's PV production forecast from Solcast."
+        },
+        "description": "Select Solcast forecast sensors.",
+        "title": "Solcast Sensors"
+      },
+      "weighted_values": {
+        "data": {
+          "hsem_house_consumption_energy_weight_14d": "House Consumption Energy Weight 14 Days",
+          "hsem_house_consumption_energy_weight_1d": "House Consumption Energy Weight 1 Day",
+          "hsem_house_consumption_energy_weight_3d": "House Consumption Energy Weight 3 Days",
+          "hsem_house_consumption_energy_weight_7d": "House Consumption Energy Weight 7 Days"
+        },
+        "data_description": {
+          "hsem_house_consumption_energy_weight_14d": "Specify the weight percentage for the house consumption energy over the last 14 days.",
+          "hsem_house_consumption_energy_weight_1d": "Specify the weight percentage for the house consumption energy over the last 1 day.",
+          "hsem_house_consumption_energy_weight_3d": "Specify the weight percentage for the house consumption energy over the last 3 days.",
+          "hsem_house_consumption_energy_weight_7d": "Specify the weight percentage for the house consumption energy over the last 7 days."
+        },
+        "description": "Configure the weighted values for house consumption energy to estimate your average power usage. The system calculates the average consumption for each hour over 1, 3, 7, and 14 days. These averages are then weighted to provide a combined, weighted estimate. This approach helps to smooth out anomalies, such as unusually high consumption on a single day due to low prices, and provides a reliable prediction of your expected power usage in specific time intervals (e.g., between 16:00 and 17:00).",
+        "title": "Weighted Values"
+      },
+      "daily_tracking": {
+        "data": {
+          "hsem_grid_import_energy_entity": "Netimport Energi Sensor",
+          "hsem_grid_export_energy_entity": "Neteexport Energi Sensor",
+          "hsem_pv_energy_entity": "Solcelleproduktion Energi Sensor"
+        },
+        "data_description": {
+          "hsem_grid_import_energy_entity": "Valgfri — akkumuleret netimport energimåler (kWh).",
+          "hsem_grid_export_energy_entity": "Valgfri — akkumuleret netexport energimåler (kWh).",
+          "hsem_pv_energy_entity": "Valgfri — akkumuleret solcelleproduktion energimåler (kWh)."
+        },
+        "description": "Kortlæg valgfrit akkumulerede energimålere til daglig plan-vs-faktisk sporing.",
+        "title": "Daglig Sporing"
+      }
     }
   },
   "selector": {
@@ -397,6 +676,15 @@
         "pv_estimate": "50 % sandsynlighed",
         "pv_estimate10": "10 % sandsynlighed",
         "pv_estimate90": "90 % sandsynlighed"
+      }
+    },
+    "update_interval_length": {
+      "options": {
+        "12": "12 hours",
+        "24": "24 hours",
+        "36": "36 hours",
+        "48": "48 hours",
+        "72": "72 hours"
       }
     }
   },
@@ -482,6 +770,11 @@
       },
       "ev_second_deadline": {
         "name": "EV 2 Opladningsfrist"
+      }
+    },
+    "sensor": {
+      "daily_plan_vs_actual": {
+        "name": "Daglig Plan vs Faktisk"
       }
     }
   },
