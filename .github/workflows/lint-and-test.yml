@@ -14,7 +14,7 @@ jobs:
     name: Lint with tox
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.3
 
       - name: Set up Python 3.13
         uses: actions/setup-python@v6
@@ -39,7 +39,7 @@ jobs:
     name: Type check with tox
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.3
 
       - name: Set up Python 3.13
         uses: actions/setup-python@v6
@@ -64,7 +64,7 @@ jobs:
     name: Static quality checks with tox
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.3
 
       - name: Set up Python 3.13
         uses: actions/setup-python@v6
@@ -93,7 +93,7 @@ jobs:
         python-version: ["3.13"]
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.3
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v6
