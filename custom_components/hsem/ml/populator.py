@@ -193,21 +193,20 @@ async def populate_ml_house_consumption(
             predictor.group_count,
         )
 
-    # Populate recommendations with safety buffer for uncertain slots.
-    # The MILP receives `mean + safety_factor * std`, making the plan
-    # robust against consumption exceeding the point prediction.
+    # Populate recommendations with adaptive safety buffer.
+    # Each slot gets a buffer proportional to its uncertainty:
+    #   σ/μ < 0.1  → 0.0   (trust the prediction)
+    #   σ/μ < 0.3  → 0.5σ  (moderate buffer)
+    #   σ/μ ≥ 0.3  → 1.0σ  (sparse or variable data)
+    # Past slots use actual meter readings — zero uncertainty.
     #
-    # For past slots (start < now), use today's actual consumption
-    # from the energy sensor.  For future slots, use ML prediction.
-    #
-    # Set to 0.0 initially to isolate whether the cost increase is
-    # from the safety buffer or from the raw predictions themselves.
-    safety_factor = 0.0
-
     # Track stats for debug logging.
     total_mean = 0.0
     total_std = 0.0
     total_safe = 0.0
+    buffer_0 = 0
+    buffer_05 = 0
+    buffer_1 = 0
 
     # Read today's actual consumption for completed slots.
     today_actuals: dict[int, float] = {}
@@ -239,13 +238,23 @@ async def populate_ml_house_consumption(
             per_slot_kwh = round(today_actuals[slot_index], 4)
             actual_count += 1
         else:
-            # Future slot: ML prediction with safety buffer.
+            # Future slot: ML prediction with adaptive safety buffer.
             mean, std = predictor.predict_with_std(
                 slot_index, rec_day_offset, reference_time
             )
+            rel_uncertainty = std / mean if mean > 0 else 0.0
+            if rel_uncertainty < 0.1:
+                safety_factor = 0.0
+                buffer_0 += 1
+            elif rel_uncertainty < 0.3:
+                safety_factor = 0.5
+                buffer_05 += 1
+            else:
+                safety_factor = 1.0
+                buffer_1 += 1
             safe_kwh = mean + safety_factor * std
             total_mean += mean
-            total_std += std if std > 0 else 0.0
+            total_std += std
             total_safe += safe_kwh
             per_slot_kwh = round(safe_kwh, 4)
             predicted_count += 1
@@ -257,11 +266,13 @@ async def populate_ml_house_consumption(
 
     HSEM_LOGGER.info(
         "ML populator: populated %d slots (%d actuals, %d predicted,"
-        " safety ×%.1f std).",
+        " buffer ×0=%d, ×0.5=%d, ×1=%d).",
         len(recommendations),
         actual_count,
         predicted_count,
-        safety_factor,
+        buffer_0,
+        buffer_05,
+        buffer_1,
     )
     if predicted_count > 0:
         HSEM_LOGGER.info(
