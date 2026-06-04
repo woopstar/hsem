@@ -9,6 +9,7 @@ All fields are plain Python types; no Home Assistant imports are used.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import tempfile
@@ -194,17 +195,19 @@ class DailyPlanVsActualTracker:
     _last_pv_energy_kwh: float | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
-        """Set today's date if not already set and load existing history."""
+        """Set today's date if not already set.
+
+        History loading is deferred — call :meth:`load_history` explicitly
+        to avoid blocking I/O during dataclass construction.
+        """
         if not self.today:
             self.today = date.today().isoformat()
-        if self.history_file:
-            self.load_history()
 
     # ------------------------------------------------------------------
     # Midday counter reset
     # ------------------------------------------------------------------
 
-    def check_day_rollover(self, now: datetime) -> DayRolloverResult | None:
+    async def check_day_rollover(self, now: datetime) -> DayRolloverResult | None:
         """Check if the calendar day has changed and handle rollover.
 
         When the day changes, the current day's record is finalised and saved,
@@ -223,7 +226,7 @@ class DailyPlanVsActualTracker:
 
         # Day has changed — finalise and save yesterday's record.
         today_record = self._build_today_record()
-        saved = self._save_record_to_history(today_record)
+        saved = await self._save_record_to_history(today_record)
 
         # Reset counters for the new day.
         self.today = today_str
@@ -364,7 +367,7 @@ class DailyPlanVsActualTracker:
     # JSON persistence
     # ------------------------------------------------------------------
 
-    def load_history(self) -> None:
+    async def load_history(self) -> None:
         """Load history from the JSON file, if it exists.
 
         Handles corrupted files gracefully by starting with an empty history.
@@ -373,12 +376,8 @@ class DailyPlanVsActualTracker:
         if not path.exists():
             return
 
-        try:
-            with open(path, encoding="utf-8") as f:
-                data = json.load(f)
-        except (json.JSONDecodeError, OSError):
-            # Corrupted file — start fresh.
-            self.history = []
+        data = await asyncio.to_thread(self._read_history_file, path)
+        if data is None:
             return
 
         days = data.get("days", [])
@@ -386,7 +385,16 @@ class DailyPlanVsActualTracker:
             self.history = [DailyRecord.from_dict(d) for d in days]
             self._prune_history()
 
-    def _save_record_to_history(self, record: DailyRecord) -> bool:
+    @staticmethod
+    def _read_history_file(path: Path) -> dict[str, Any] | None:
+        """Read and parse the history JSON file (sync, offloaded to thread)."""
+        try:
+            with open(path, encoding="utf-8") as f:
+                return json.load(f)  # type: ignore[no-any-return]
+        except (json.JSONDecodeError, OSError):
+            return None
+
+    async def _save_record_to_history(self, record: DailyRecord) -> bool:
         """Append a record to the in-memory history, prune, and persist to disk.
 
         Uses atomic write (write to temp file, then rename) to protect against
@@ -401,14 +409,14 @@ class DailyPlanVsActualTracker:
         self.history.append(record)
         self._prune_history()
 
-        return self._write_history_file()
+        return await self._write_history_file()
 
     def _prune_history(self) -> None:
         """Keep only the most recent ``max_history_days`` records."""
         if len(self.history) > self.max_history_days:
             self.history = self.history[-self.max_history_days :]
 
-    def _write_history_file(self) -> bool:
+    async def _write_history_file(self) -> bool:
         """Write the history list to disk atomically.
 
         Returns:
@@ -425,6 +433,11 @@ class DailyPlanVsActualTracker:
         path = Path(self.history_file)
         path.parent.mkdir(parents=True, exist_ok=True)
 
+        return await asyncio.to_thread(self._write_history_file_sync, data, path)
+
+    @staticmethod
+    def _write_history_file_sync(data: dict[str, Any], path: Path) -> bool:
+        """Write the history list to disk atomically (sync, offloaded to thread)."""
         try:
             # Write to a temp file in the same directory, then atomically rename.
             fd, tmp_path = tempfile.mkstemp(
