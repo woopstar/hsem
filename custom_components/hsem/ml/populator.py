@@ -144,7 +144,15 @@ async def populate_ml_house_consumption(
     #
     # For past slots (start < now), use today's actual consumption
     # from the energy sensor.  For future slots, use ML prediction.
-    safety_factor = 1.0
+    #
+    # Set to 0.0 initially to isolate whether the cost increase is
+    # from the safety buffer or from the raw predictions themselves.
+    safety_factor = 0.0
+
+    # Track stats for debug logging.
+    total_mean = 0.0
+    total_std = 0.0
+    total_safe = 0.0
 
     # Read today's actual consumption for completed slots.
     today_actuals: dict[int, float] = {}
@@ -181,7 +189,11 @@ async def populate_ml_house_consumption(
             mean, std = predictor.predict_with_std(
                 slot_index, rec_day_offset, reference_time
             )
-            per_slot_kwh = round(mean + safety_factor * std, 4)
+            safe_kwh = mean + safety_factor * std
+            total_mean += mean
+            total_std += std if std > 0 else 0.0
+            total_safe += safe_kwh
+            per_slot_kwh = round(safe_kwh, 4)
             predicted_count += 1
         rec.avg_house_consumption_kwh = per_slot_kwh
         rec.avg_house_consumption_1d_kwh = per_slot_kwh
@@ -197,6 +209,15 @@ async def populate_ml_house_consumption(
         predicted_count,
         safety_factor,
     )
+    if predicted_count > 0:
+        HSEM_LOGGER.info(
+            "ML populator: future-slots total (mean=%.2f, std=%.2f,"
+            " safe=%.2f kWh over %d slots).",
+            total_mean,
+            total_std,
+            total_safe,
+            predicted_count,
+        )
     return True, predictor
 
 
