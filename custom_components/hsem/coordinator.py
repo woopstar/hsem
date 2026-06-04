@@ -922,17 +922,16 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         tracker.check_day_rollover(now)
 
         # ---- Plan accumulation ----
-        # Accumulate plan values for completed past slots (end <= now) and
-        # pro-rate the currently active slot by elapsed fraction.
-        _accumulate_plan_for_slots(
+        # Accumulate plan values for the current in-progress slot (and any
+        # completed slots that may have been missed).  The current slot's
+        # plan values are captured before the SoC simulation zeroes them
+        # on the next planner run.
+        self._daily_plan_last_accumulated = _accumulate_plan_for_slots(
             tracker,
             output.slots,
             now,
             self._daily_plan_last_accumulated,
         )
-        # Update the last accumulated marker to the end of the last completed
-        # slot (not the current slot, which will be re-pro-rated next cycle).
-        self._daily_plan_last_accumulated = _last_completed_slot_end(output.slots, now)
 
         # ---- Actual accumulation ----
         # Use cumulative energy meter readings when available.
@@ -1029,22 +1028,52 @@ def _accumulate_plan_for_slots(
     slots: list,
     now: datetime,
     last_accumulated: datetime | None,
-) -> None:
-    """Accumulate completed past slots' plan values.
+) -> datetime | None:
+    """Accumulate plan values for the current in-progress slot.
 
-    Only fully completed slots (end <= now) are included.  The currently
-    active slot is intentionally excluded — its plan values will be
-    accumulated on the next cycle once it completes.  This means the plan
-    side may appear slightly behind the actual side by up to one slot
-    duration, but the comparison is meaningful for all completed periods.
+    Accumulates the FULL plan value for each slot exactly once, on the
+    first cycle where the slot is the current in-progress slot
+    (``start <= now < end``).  This captures the plan as it was when
+    the slot started, before the SoC simulation zeroes the plan fields
+    for past slots on subsequent planner runs.
+
+    Completed past slots are also handled as a safety net for slots
+    that may become past between cycles (e.g. after a coordinator
+    restart).
+
+    Returns:
+        The accumulation marker (start of the current slot if it was
+        just accumulated, or the last_accumulated value unchanged).
     """
     for slot in slots:
+        slot_start = as_tz(slot.start, now.tzinfo) if hasattr(slot, "start") else None
         slot_end = as_tz(slot.end, now.tzinfo) if hasattr(slot, "end") else None
-        if slot_end is None or slot_end > now:
-            continue
-        if last_accumulated is not None and slot_end <= last_accumulated:
-            continue
-        _add_slot_to_tracker(tracker, slot, fraction=1.0)
+
+        # Current in-progress slot: accumulate full plan on first encounter.
+        if (
+            slot_start is not None
+            and slot_end is not None
+            and slot_start <= now < slot_end
+        ):
+            if last_accumulated is None or last_accumulated < slot_start:
+                _add_slot_to_tracker(tracker, slot, fraction=1.0)
+                return slot_start  # Mark this slot as accumulated
+            return last_accumulated  # Already accumulated this slot
+
+        # Safety net: completed past slots that may not have been
+        # accumulated yet.  Only active after the first cycle (when
+        # last_accumulated is not None) to avoid inflating plan values
+        # with stale zeroed fields from past slots on startup.
+        if last_accumulated is not None and slot_end is not None and slot_end <= now:
+            # Use slot_start in the skip-check because last_accumulated
+            # is now a slot-start marker (set by the current-slot branch).
+            if slot_start is not None and slot_start <= last_accumulated:
+                continue
+            _add_slot_to_tracker(tracker, slot, fraction=1.0)
+
+    # If no current slot was found, return the end of the last completed
+    # slot as the marker (prevents re-accumulation of past slots).
+    return _last_completed_slot_end(slots, now) or last_accumulated
 
 
 def _add_slot_to_tracker(
