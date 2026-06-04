@@ -536,17 +536,15 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 self._last_planner_input = planner_input
 
                 # Debug: log per-hour consumption total reaching the planner
-                # (after builder's *slots_per_hour scaling). Compare this with
-                # the legacy avg sensor values to verify ML vs legacy parity.
+                # (after builder's *slots_per_hour scaling).
                 total_1d = sum(
                     c.avg_1d for c in planner_input.consumption_averages if c.avg_1d > 0
                 )
                 await async_logger(
                     self,
-                    "[builder] consumption per-hour total reaching planner:"
-                    " avg_1d=%.2f kWh over %d hours",
-                    total_1d,
-                    len(planner_input.consumption_averages),
+                    f"[builder] consumption per-hour total reaching planner:"
+                    f" avg_1d={total_1d:.2f} kWh"
+                    f" over {len(planner_input.consumption_averages)} hours",
                 )
 
                 # Propagate the verbose-logging flag into the pure-Python
