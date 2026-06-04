@@ -298,18 +298,18 @@ class ConsumptionPredictor:
         """Solve weighted ridge regression: β = (XᵀWX + αI)⁻¹ XᵀWy."""
         k = X.shape[1]
         sqrt_w = np.sqrt(w)
-        Xw = X * sqrt_w[:, np.newaxis]
+        xw = X * sqrt_w[:, np.newaxis]
         yw = y * sqrt_w
 
-        XtWX = Xw.T @ Xw
-        ridge = XtWX + self._alpha * np.eye(k, dtype=np.float64)
-        XtWy = Xw.T @ yw
+        xtwx = xw.T @ xw
+        ridge = xtwx + self._alpha * np.eye(k, dtype=np.float64)
+        xtwy = xw.T @ yw
 
         try:
-            coef = np.linalg.solve(ridge, XtWy)
+            coef = np.linalg.solve(ridge, xtwy)
         except np.linalg.LinAlgError:
             ridge += self._alpha * np.eye(k, dtype=np.float64)
-            coef = np.linalg.solve(ridge, XtWy)
+            coef = np.linalg.solve(ridge, xtwy)
 
         self._intercept = 0.0
         self._coef = coef

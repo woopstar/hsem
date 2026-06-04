@@ -244,4 +244,4 @@ async def _read_temperature_history(
     if not raw_states:
         return {}
 
-    return {ts: val for ts, val in raw_states}
+    return dict(raw_states)

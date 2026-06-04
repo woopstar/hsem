@@ -29,7 +29,7 @@ class TestConsumptionPredictor:
 
     def test_untrained_returns_zero(self) -> None:
         p = _predictor(slots_per_day=96)
-        assert p.predict(0, 0) == 0.0
+        assert p.predict(0, 0) == pytest.approx(0.0)
         assert not p.trained
 
     def test_constant_history_converges(self) -> None:

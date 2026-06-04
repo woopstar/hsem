@@ -358,7 +358,7 @@ class HistoryReader:
         history: list[tuple[datetime, int, float]] = []
         for i in range(1, len(slot_ends)):
             _prev_key, prev_ts, prev_val = slot_ends[i - 1]
-            curr_key, curr_ts, curr_val = slot_ends[i]
+            _curr_key, _curr_ts, curr_val = slot_ends[i]
             delta_kwh = curr_val - prev_val
 
             # Skip negative deltas (accumulator resets) and zero deltas.
