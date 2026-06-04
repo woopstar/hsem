@@ -17,11 +17,14 @@ def _mk(d: int, s: int, e: float) -> tuple[datetime, int, float]:
 
 def _predictor(**kwargs):
     """Lazy import to avoid native module conflicts during collection."""
-    from custom_components.hsem.ml.consumption_predictor import (
-        ConsumptionPredictor,
-    )
+    try:
+        from custom_components.hsem.ml.consumption_predictor import (
+            ConsumptionPredictor,
+        )
 
-    return ConsumptionPredictor(**kwargs)
+        return ConsumptionPredictor(**kwargs)
+    except ImportError as exc:
+        pytest.skip(f"numpy not available in test environment: {exc}")
 
 
 class TestConsumptionPredictor:
