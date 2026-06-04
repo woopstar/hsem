@@ -210,9 +210,9 @@ No changes will be made to your battery or inverter until all required sensors a
   - Prevents counter-productive battery discharge when not beneficial.
 
 - **Weighted Consumption Forecasting**
-  - Hourly house consumption averages over 1, 3, 7, and 14 days.
-  - Weighted values smooth out anomalies and improve prediction accuracy.
-  - Modular sensor support for custom averaging.
+  - Legacy: Hourly averages over 1, 3, 7, and 14 days with IQR outlier detection.
+  - ML (optional): Ridge regression on recorder history with day-of-week, seasonality, and outdoor temperature.
+  - Both modes produce per-slot consumption forecasts for the planner.
 
 - **Solar Forecast Integration**
   - Solcast PV forecast sensors for today and tomorrow.
@@ -435,8 +435,12 @@ The Excess Battery Export feature automatically forces battery discharge to sell
 
 ## Weighted & Average Consumption Sensors
 
-HSEM uses a set of custom sensors to calculate **expected house consumption** for each hour of the day.
-These sensors track your energy usage over different time windows (1, 3, 7, and 14 days) and combine them using **IQR-based outlier detection, baseline capping, and reliability scaling** to produce a highly robust and realistic forecast.
+HSEM supports two modes for predicting house consumption:
+
+- **Legacy (default):** A set of custom sensors that calculate expected house consumption for each hour using weighted averages over 1, 3, 7, and 14-day windows with IQR outlier detection, baseline capping, and reliability scaling.
+- **ML mode (optional):** Ridge regression that queries the HA recorder directly — no custom sensors needed.  See [`docs/hsem-consumption-prediction.md`](docs/hsem-consumption-prediction.md) for details.
+
+The legacy mode is described below.  Both modes produce per-slot consumption forecasts consumed by the planner.
 
 ### **How it works**
 
