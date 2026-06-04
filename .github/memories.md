@@ -22,6 +22,14 @@ for the HSEM (Home Smart Energy Management) project. Read this before making any
 | `soc_simulation.py` | Simulates battery SoC forward through a slot plan |
 | `ev_planner.py` | EV-specific planning logic |
 
+### ML layer (`custom_components/hsem/ml/`)
+
+| File | Responsibility |
+|---|---|
+| `consumption_predictor.py` | Weighted ridge regression model with DOW + DOY + temperature features |
+| `history_reader.py` | Queries HA recorder for energy accumulator and instantaneous sensor history |
+| `populator.py` | Bridges ML predictions into `HourlyRecommendation` slots with safety buffer |
+
 ### Utils layer (`custom_components/hsem/utils/`)
 
 | File | Responsibility |

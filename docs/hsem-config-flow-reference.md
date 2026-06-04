@@ -9,11 +9,11 @@ This document describes every step in the HSEM configuration and options flows.
 The config flow is a multi-step wizard. Steps appear in this order:
 
 ```
-init → energidataservice → months → solcast → huawei_solar
-    → power → ev → [ev_second] → ev_planned_load
-    → [ev_second_planned_load] → batteries_schedule_1
-    → batteries_schedule_2 → batteries_schedule_3
+init → prices → months → solcast → huawei_solar
+    → battery_economics → power → ev → [ev_second] → ev_planned_load
+    → [ev_second_planned_load] → batteries_schedules
     → batteries_excess_export → weighted_values
+    → energy_and_ml
 ```
 
 ### Step: `init`
@@ -172,3 +172,17 @@ Consumption prediction weights and battery configuration.
 | Hysteresis % | `hsem_planner_hysteresis_percentage` | 5.0 % | Percentage threshold for plan switching |
 | Window hysteresis | `hsem_planner_window_hysteresis_minutes` | 0 | Window-level hysteresis hold time (0 = disabled) |
 | Extended attributes | `hsem_extended_attributes` | `False` | Expose extended sensor attributes |
+
+### Step: `energy_and_ml`
+
+Energy meter entities and ML consumption prediction (last step, creates entry).
+
+| Field | Key | Default | Description |
+|---|---|---|---|
+| Grid Import Energy | `hsem_grid_import_energy_entity` | — | Cumulative grid import meter (kWh). Also used as ML data source. |
+| Grid Export Energy | `hsem_grid_export_energy_entity` | — | Cumulative grid export meter (kWh). Used for net consumption. |
+| PV Energy | `hsem_pv_energy_entity` | — | Cumulative PV production meter (kWh). |
+| ML enabled | `hsem_ml_consumption_enabled` | `False` | Enable ridge regression predictor instead of rolling averages. |
+| ML history days | `hsem_ml_consumption_history_days` | 14 | Days of recorder history for ML training (7–90). |
+| Net consumption | `hsem_ml_consumption_net_consumption` | `False` | Subtract export from import for net house consumption. |
+| Temperature sensor | `hsem_ml_consumption_temperature_entity` | — | Outdoor (ambient) temperature in °C for weather-driven predictions. |

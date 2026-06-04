@@ -16,9 +16,55 @@ $$ net\\_consumption[t] = load\\_forecast[t] + ev\\_load[t] - pv\\_forecast[t] $
 Accurate load prediction is critical: over-prediction leads to unnecessary grid
 imports; under-prediction leads to insufficient battery charging for peak hours.
 
+HSEM supports two prediction modes, toggled via ``hsem_ml_consumption_enabled``:
+
+- **Legacy** (default): Four-window weighted average using HSEM custom sensors
+- **ML** (new): Ridge regression on recorder history with DOW + seasonality + temperature
+
 ---
 
-## Four-window weighted average
+## ML mode (ridge regression)
+
+When enabled, the ML predictor queries the HA recorder directly for historical
+energy data from the configured grid import/export sensors.  No custom sensor
+entities are required.
+
+### Model
+
+Weighted ridge regression on one-hot (DOW × slot) features with continuous
+features for day-of-year seasonality and optional outdoor temperature:
+
+- **672 categorical features**: one per (day_of_week, 15-min slot)
+- **2 seasonal features**: sin/cos of day-of-year
+- **1 temperature feature**: outdoor ambient temperature in °C (optional)
+
+Time-decay sample weights ``w = exp(-age / decay_days)`` give more influence
+to recent data.  L2 regularization (``α = 1.0``) handles data sparsity
+automatically — no hard fallback thresholds needed.
+
+### Safety buffer
+
+Each prediction includes a weighted standard deviation ``σ`` from the
+historical (DOW, slot) group.  The planner receives ``mean + 1.0 × σ``,
+making the MILP naturally build headroom in uncertain slots.
+
+### Today's actuals
+
+For slots that have already passed today, the predictor uses actual meter
+readings from the energy sensor instead of predictions.  This anchors
+the battery SoC simulation to reality.
+
+### Advantages over legacy mode
+
+- **15-min resolution**: matches Nord Pool spot market
+- **Day-of-week awareness**: Monday ≠ Saturday
+- **Seasonality**: winter mornings get higher predictions than summer
+- **Temperature**: cold/hot outdoor temps → higher heating/cooling load
+- **No custom sensors**: reads directly from recorder database
+
+---
+
+## Legacy mode (weighted average)
 
 Four overlapping historical windows are maintained per clock-hour (0–23):
 
