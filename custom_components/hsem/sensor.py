@@ -18,9 +18,6 @@ from custom_components.hsem.custom_sensors.applier_status_sensor import (
 from custom_components.hsem.custom_sensors.battery_soc_sensor import (
     HSEMBatterySoCSensor,
 )
-from custom_components.hsem.custom_sensors.daily_plan_vs_actual_sensor import (
-    HSEMDailyPlanVsActualSensor,
-)
 from custom_components.hsem.custom_sensors.degraded_mode_sensor import (
     HSEMDegradedModeSensor,
 )
@@ -116,9 +113,6 @@ async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
     # Plan-explanation sensor — exposes the active planner strategy and score.
     plan_explanation_sensor = HSEMPlanExplanationSensor(config_entry, coordinator)
 
-    # Daily plan-vs-actual sensor — exposes cumulative daily and historical metrics.
-    daily_plan_vs_actual_sensor = HSEMDailyPlanVsActualSensor(config_entry, coordinator)
-
     async_add_entities(
         [
             degraded_mode_sensor,
@@ -138,7 +132,6 @@ async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
             applier_status_sensor,
             plan_explanation_sensor,
             forecast_accuracy_sensor,
-            daily_plan_vs_actual_sensor,
             working_mode_sensor,
         ]
     )

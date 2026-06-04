@@ -398,17 +398,6 @@ def build_sensor_config(
         _s2_eff if _s2_eff is not None else 100.0
     )
 
-    # Daily plan-vs-actual tracking — optional cumulative energy meter entities.
-    cfg.grid_import_energy_entity = _optional_entity(
-        get_config_value(config_entry, "hsem_grid_import_energy_entity")
-    )
-    cfg.grid_export_energy_entity = _optional_entity(
-        get_config_value(config_entry, "hsem_grid_export_energy_entity")
-    )
-    cfg.pv_energy_entity = _optional_entity(
-        get_config_value(config_entry, "hsem_pv_energy_entity")
-    )
-
     # Consumption weights
     _w1d = convert_to_int(
         get_config_value(config_entry, "hsem_house_consumption_energy_weight_1d")
