@@ -534,6 +534,21 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 )
                 # Retain for diagnostics dumps (cleared on each cycle).
                 self._last_planner_input = planner_input
+
+                # Debug: log per-hour consumption total reaching the planner
+                # (after builder's *slots_per_hour scaling). Compare this with
+                # the legacy avg sensor values to verify ML vs legacy parity.
+                total_1d = sum(
+                    c.avg_1d for c in planner_input.consumption_averages if c.avg_1d > 0
+                )
+                await async_logger(
+                    self,
+                    "[builder] consumption per-hour total reaching planner:"
+                    " avg_1d=%.2f kWh over %d hours",
+                    total_1d,
+                    len(planner_input.consumption_averages),
+                )
+
                 # Propagate the verbose-logging flag into the pure-Python
                 # planner so detailed slot-level decisions appear in the
                 # standard Home Assistant log when the user enables
