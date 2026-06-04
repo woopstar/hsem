@@ -227,12 +227,6 @@ class SensorConfig:
     months_winter: list[int] = field(default_factory=list)
     months_summer: list[int] = field(default_factory=list)
 
-    # Daily plan-vs-actual tracking — optional cumulative energy meter entities.
-    # When not configured, the sensor falls back to Riemann sums from power sensors.
-    grid_import_energy_entity: str | None = None
-    grid_export_energy_entity: str | None = None
-    pv_energy_entity: str | None = None
-
     # Planner hysteresis — keep the active plan unless a new plan is
     # materially better (anti-flapping, issue #372).
     planner_hysteresis_enabled: bool = True

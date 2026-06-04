@@ -33,7 +33,6 @@ import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from pathlib import Path
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Event, HomeAssistant
@@ -55,10 +54,6 @@ from custom_components.hsem.custom_sensors.state_collector import (  # noqa: F40
     async_collect_all_states,
     build_battery_schedules,
     build_sensor_config,
-)
-from custom_components.hsem.models.daily_plan_vs_actual import (
-    DailyMetrics,
-    DailyPlanVsActualTracker,
 )
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.live_state import LiveState
@@ -237,14 +232,6 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
 
         # Forecast-vs-actual tracker (predicted-vs-actual tracking, issue #373).
         self._forecast_tracker: ForecastTracker = ForecastTracker(max_slots=192)
-        # Daily plan-vs-actual tracker (diagnostic sensor with 90-day history).
-        # The history file path is set in async_setup() once hass.config is available.
-        self._daily_tracker: DailyPlanVsActualTracker = DailyPlanVsActualTracker()
-        self._daily_tracker_initialized: bool = False
-        # Midnight timer unsubscribe handler for daily persistence.
-        self._midnight_unsub: Callable[[], None] | None = None
-        # Last slot end time accumulated from planner output (prevents double-counting).
-        self._daily_plan_last_accumulated: datetime | None = None
         # Timestamp of the last actual-energy accumulation cycle.
         self._last_accumulation_ts: datetime | None = None
         # Override expiry timestamp for timed manual overrides (issue #317).
@@ -295,10 +282,6 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         for unsub in self._listener_unsubs:
             unsub()
         self._listener_unsubs.clear()
-        midnight = getattr(self, "_midnight_unsub", None)
-        if midnight is not None:
-            midnight()
-            self._midnight_unsub = None
 
     async def async_options_updated(self) -> None:
         """Re-run the pipeline when the user saves new options."""
@@ -632,17 +615,6 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 # -----------------------------------------------------------------------
                 self._register_forecasts_from_planner(planner_output)
 
-                # -----------------------------------------------------------------------
-                # Daily plan-vs-actual accumulation from planner output.
-                # -----------------------------------------------------------------------
-                try:
-                    self._accumulate_daily_plan_actuals(now, live, planner_output)
-                except Exception:
-                    _LOGGER.exception(
-                        "Daily plan-vs-actual accumulation failed — "
-                        "continuing without updating daily metrics."
-                    )
-
         except Exception as exc:
             raise UpdateFailed(f"HSEM update cycle failed: {exc}") from exc
 
@@ -891,193 +863,3 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 pv_kwh=pv_forecast,
                 load_kwh=load_forecast,
             )
-
-    # ------------------------------------------------------------------
-    # Daily plan-vs-actual accumulation (issue #540)
-    # ------------------------------------------------------------------
-
-    def _accumulate_daily_plan_actuals(
-        self,
-        now: datetime,
-        live: LiveState,
-        output: PlannerOutput,
-    ) -> None:
-        """Accumulate plan and actual values into the daily tracker.
-
-        Plan side: sum planned import/export/cycle/PV from planner slots
-        whose end time has passed.
-
-        Actual side: use cumulative energy meter readings from live state,
-        falling back to SoC-based cycle tracking when meters are unavailable.
-
-        Args:
-            now: Current datetime (timezone-aware).
-            live: Live HA entity state snapshot.
-            output: Planner output with slot-level decisions.
-        """
-        self._init_daily_tracker()
-        tracker = self._daily_tracker
-
-        # Check and handle day rollover first.
-        tracker.check_day_rollover(now)
-
-        # ---- Plan accumulation ----
-        # Accumulate plan values for completed past slots (end <= now) and
-        # pro-rate the currently active slot by elapsed fraction.
-        _accumulate_plan_for_slots(
-            tracker,
-            output.slots,
-            now,
-            self._daily_plan_last_accumulated,
-        )
-        # Update the last accumulated marker to the end of the last completed
-        # slot (not the current slot, which will be re-pro-rated next cycle).
-        self._daily_plan_last_accumulated = _last_completed_slot_end(output.slots, now)
-
-        # ---- Actual accumulation ----
-        # Use cumulative energy meter readings when available.
-        # Battery cycle tracking uses SoC delta converted to kWh via rated capacity.
-        soc_pct = live.huawei_batteries_soc_pct
-        rated_cap_kwh = (live.huawei_batteries_rated_capacity_wh or 0.0) / 1000.0
-        tracker.accumulate_actual(
-            grid_import_energy_kwh=live.grid_import_energy_kwh,
-            grid_export_energy_kwh=live.grid_export_energy_kwh,
-            pv_energy_kwh=live.pv_energy_kwh,
-            soc_pct=soc_pct,
-            rated_capacity_kwh=rated_cap_kwh,
-            import_price=live.import_electricity_price,
-            export_price=live.export_electricity_price,
-        )
-
-    def _init_daily_tracker(self) -> None:
-        """Lazily initialise the daily plan-vs-actual tracker.
-
-        Called once on the first access.  Registers the midnight timer
-        and loads the history file.  Failures are logged and leave the
-        tracker with an empty history file path so the sensor shows
-        'no data' rather than crashing the coordinator.
-        """
-        if getattr(self, "_daily_tracker_initialized", True):
-            return
-
-        try:
-            config_dir = self.hass.config.config_dir
-            self._daily_tracker.history_file = str(
-                Path(config_dir) / "hsem_daily_history.json"
-            )
-            self._daily_tracker.load_history()
-
-            self._midnight_unsub = async_track_time_change(
-                self.hass,
-                self._async_handle_midnight,
-                hour=0,
-                minute=0,
-                second=0,
-            )
-            self._daily_tracker_initialized = True
-        except Exception:
-            _LOGGER.exception(
-                "Failed to initialise daily tracker (plan-vs-actual "
-                "sensor will be unavailable)"
-            )
-            self._daily_tracker_initialized = True  # don't retry
-
-    async def _async_handle_midnight(self, _now: datetime) -> None:
-        """Handle the midnight timer — persist the day's record and reset.
-
-        This is called by the HA time-change listener at 00:00:00 local time.
-        Saves yesterday's record, resets accumulators, and updates today's date
-        so the next update cycle does not double-save.
-
-        Args:
-            _now: The datetime at which the timer fired (unused).
-        """
-        tracker = self._daily_tracker
-        if tracker.history_file:
-            today_record = tracker._build_today_record()
-            saved = tracker._save_record_to_history(today_record)
-            if saved:
-                _LOGGER.info(
-                    "Daily plan-vs-actual record saved for %s",
-                    tracker.today,
-                )
-            else:
-                _LOGGER.warning(
-                    "Failed to save daily plan-vs-actual record for %s",
-                    tracker.today,
-                )
-
-            # Reset accumulators for the new day so check_day_rollover()
-            # does not double-save on the next cycle.
-            tracker.today = _now.date().isoformat()
-            tracker.actual = DailyMetrics()
-            tracker.plan = DailyMetrics()
-            tracker.last_soc_pct = None
-            tracker._last_import_energy_kwh = None
-            tracker._last_export_energy_kwh = None
-            tracker._last_pv_energy_kwh = None
-            self._daily_plan_last_accumulated = None
-
-
-# ---------------------------------------------------------------------------
-# Module-level helpers for daily plan-vs-actual accumulation
-# ---------------------------------------------------------------------------
-
-
-def _accumulate_plan_for_slots(
-    tracker: DailyPlanVsActualTracker,
-    slots: list,
-    now: datetime,
-    last_accumulated: datetime | None,
-) -> None:
-    """Accumulate completed past slots' plan values.
-
-    Only fully completed slots (end <= now) are included.  The currently
-    active slot is intentionally excluded — its plan values will be
-    accumulated on the next cycle once it completes.  This means the plan
-    side may appear slightly behind the actual side by up to one slot
-    duration, but the comparison is meaningful for all completed periods.
-    """
-    for slot in slots:
-        slot_end = as_tz(slot.end, now.tzinfo) if hasattr(slot, "end") else None
-        if slot_end is None or slot_end > now:
-            continue
-        if last_accumulated is not None and slot_end <= last_accumulated:
-            continue
-        _add_slot_to_tracker(tracker, slot, fraction=1.0)
-
-
-def _add_slot_to_tracker(
-    tracker: DailyPlanVsActualTracker,
-    slot: object,
-    fraction: float = 1.0,
-) -> None:
-    """Add a single slot's plan values to the tracker, scaled by *fraction*."""
-    gi = (getattr(slot, "grid_import_kwh", 0.0) or 0.0) * fraction
-    ge = (getattr(slot, "grid_export_kwh", 0.0) or 0.0) * fraction
-    chg = (getattr(slot, "batteries_charged_kwh", 0.0) or 0.0) * fraction
-    dis = (getattr(slot, "batteries_discharged_kwh", 0.0) or 0.0) * fraction
-    pv = (getattr(slot, "solcast_pv_estimate_kwh", 0.0) or 0.0) * fraction
-    slot_price = getattr(slot, "price", None)
-    import_price = slot_price.import_price if slot_price is not None else 0.0
-    export_price = slot_price.export_price if slot_price is not None else 0.0
-    cycle_kwh = abs(chg) + abs(dis)
-    tracker.accumulate_plan(
-        grid_import_kwh=gi,
-        grid_export_kwh=ge,
-        cycle_kwh=cycle_kwh,
-        pv_kwh=pv,
-        import_price=import_price,
-        export_price=export_price,
-    )
-
-
-def _last_completed_slot_end(slots: list, now: datetime) -> datetime | None:
-    """Return the end time of the most recent completed slot, or None."""
-    last_end: datetime | None = None
-    for slot in slots:
-        slot_end = as_tz(slot.end, now.tzinfo) if hasattr(slot, "end") else None
-        if slot_end is not None and slot_end <= now:
-            if last_end is None or slot_end > last_end:
-                last_end = slot_end
-    return last_end

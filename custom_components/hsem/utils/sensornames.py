@@ -1225,32 +1225,3 @@ def get_schedule_3_end_time_unique_id(entry_id: str) -> str:
 def get_schedule_3_end_time_entity_id() -> str:
     """Return the entity_id for the schedule-3-end time entity."""
     return f"time.{s(get_schedule_3_end_time_key())}"
-
-
-# ---------------------------------------------------------------------------
-# Daily Plan-vs-Actual diagnostic sensor
-# ---------------------------------------------------------------------------
-
-
-def get_daily_plan_vs_actual_sensor_key() -> str:
-    """Return the config key for the daily plan-vs-actual sensor."""
-    return "daily_plan_vs_actual"
-
-
-def get_daily_plan_vs_actual_sensor_name() -> str:
-    """Return the display name for the daily plan-vs-actual sensor."""
-    return "Daily Plan vs Actual"
-
-
-def get_daily_plan_vs_actual_sensor_unique_id(entry_id: str) -> str:
-    """Return the unique_id for the daily plan-vs-actual sensor.
-
-    Args:
-        entry_id: The config entry ID for uniqueness across entries.
-    """
-    return f"{DOMAIN}_{entry_id}_{get_daily_plan_vs_actual_sensor_key()}_sensor"
-
-
-def get_daily_plan_vs_actual_sensor_entity_id() -> str:
-    """Return the entity_id for the daily plan-vs-actual sensor."""
-    return f"sensor.{s(get_daily_plan_vs_actual_sensor_key())}"
