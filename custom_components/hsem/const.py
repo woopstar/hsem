@@ -120,6 +120,12 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_solcast_pv_forecast_forecast_tomorrow": "sensor.solcast_pv_forecast_forecast_tomorrow",
     "hsem_update_interval": 5,
     "hsem_verbose_logging": False,
+    # Daily plan-vs-actual tracking — optional energy meter entities.
+    # When not configured, the sensor falls back to Riemann-sum estimates
+    # from instantaneous power sensors.
+    "hsem_grid_import_energy_entity": vol.UNDEFINED,
+    "hsem_grid_export_energy_entity": vol.UNDEFINED,
+    "hsem_pv_energy_entity": vol.UNDEFINED,
 }
 
 # ---------------------------------------------------------------------------
