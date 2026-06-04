@@ -148,6 +148,12 @@ class LiveState:
     # TOU periods
     tou_periods: TouPeriodsState = field(default_factory=TouPeriodsState)
 
+    # Cumulative energy meter readings (kWh) for daily plan-vs-actual tracking.
+    # These are the raw cumulative meter values read from HA energy entities.
+    grid_import_energy_kwh: float | None = None
+    grid_export_energy_kwh: float | None = None
+    pv_energy_kwh: float | None = None
+
     # Electricity prices
     import_electricity_price: float = 0.0
     export_electricity_price: float = 0.0

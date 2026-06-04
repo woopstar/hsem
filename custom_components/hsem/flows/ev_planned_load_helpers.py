@@ -24,17 +24,9 @@ import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE, UnitOfEnergy, UnitOfPower
-from homeassistant.core import HomeAssistant
 from homeassistant.helpers.selector import selector
 
-from custom_components.hsem.utils.config_validator import (
-    async_validate_entity_ids,
-    merge_errors,
-)
 from custom_components.hsem.utils.misc import get_config_value
-
-# Entity domains accepted for EV connected binary sensor and smart charging flag.
-_BOOL_DOMAINS = ["binary_sensor", "input_boolean", "sensor", "switch"]
 
 # Shared number selectors — defined once for reuse across both EV steps.
 _CAPACITY_SELECTOR = selector(
@@ -100,10 +92,6 @@ async def build_ev_planned_load_schema(  # NOSONAR
                 _k("enabled"),
                 default=_v("enabled"),
             ): selector({"boolean": {}}),
-            vol.Optional(
-                _k("smart_charging_entity"),
-                default=_v("smart_charging_entity"),
-            ): selector({"entity": {"domain": _BOOL_DOMAINS}}),
             vol.Required(
                 _k("battery_capacity_kwh"),
                 default=_v("battery_capacity_kwh"),
@@ -121,7 +109,7 @@ async def build_ev_planned_load_schema(  # NOSONAR
 
 
 async def validate_ev_planned_load_schema_input(
-    hass: HomeAssistant, user_input: dict, prefix: str
+    user_input: dict, prefix: str
 ) -> dict[str, str]:
     """Validate user input for an EV planned load flow step.
 
@@ -129,7 +117,6 @@ async def validate_ev_planned_load_schema_input(
     is skipped — the planner ignores all EV planned load fields.
 
     Args:
-        hass: The Home Assistant instance.
         user_input: Submitted form data.
         prefix: Field-name prefix, e.g. ``"hsem_ev_planned_load"`` or
             ``"hsem_ev_second_planned_load"``.
@@ -140,11 +127,4 @@ async def validate_ev_planned_load_schema_input(
     if not user_input.get(f"{prefix}_enabled", False):
         return {}
 
-    errors: dict[str, str] = {}
-    # Validate optional smart charging entity if provided.
-    field = f"{prefix}_smart_charging_entity"
-    val = user_input.get(field)
-    if val and str(val).strip():
-        entity_errors = await async_validate_entity_ids(hass, {field: val}, [field])
-        merge_errors(errors, entity_errors)
-    return errors
+    return {}

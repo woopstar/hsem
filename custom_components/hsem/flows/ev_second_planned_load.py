@@ -28,7 +28,7 @@ async def get_ev_second_planned_load_step_schema(
 
 
 async def validate_ev_second_planned_load_input(
-    hass: HomeAssistant, user_input: dict
+    _hass: HomeAssistant, user_input: dict
 ) -> dict[str, str]:
     """Validate user input for the second EV planned load flow step."""
-    return await validate_ev_planned_load_schema_input(hass, user_input, _PREFIX)
+    return await validate_ev_planned_load_schema_input(user_input, _PREFIX)

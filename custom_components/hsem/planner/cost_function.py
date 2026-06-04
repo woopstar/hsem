@@ -442,10 +442,10 @@ def score_plan(
     considered past when ``slot.end <= now``.  When *now* is ``None`` the
     function falls back to checking
     ``slot.recommendation == Recommendations.TimePassed.value``, which is
-    the sentinel written by the SoC simulator on completed slots.  Either
-    way, including past slots in the SoC-guard penalty would generate a
-    false ``soc_low_penalty`` because the simulator zeros
-    ``estimated_battery_soc`` on past slots as a sentinel value.
+    the sentinel written by the slot-population step on completed slots.
+    Either way, including past slots in the SoC-guard penalty would
+    generate a false ``soc_low_penalty`` because the simulator zeros
+    ``estimated_battery_soc_pct`` on past slots as a sentinel value.
 
     Two aggregate numbers are returned (issue #413):
 
@@ -580,10 +580,13 @@ def score_plan(
 
     for slot in slots:
         # Skip past slots entirely.  The SoC simulation zeros
-        # estimated_battery_soc on past slots as a sentinel, which would
-        # falsely trigger the SoC-low penalty on every past slot.  All other
-        # energy-flow fields are also zeroed, so skipping past slots has no
-        # effect on import cost, cycle cost, or any other term.
+        # estimated_battery_soc_pct on past slots as a sentinel, which would
+        # falsely trigger the SoC-low penalty on every past slot.
+        # Energy-flow fields (grid_import_kwh, grid_export_kwh, etc.) are
+        # no longer zeroed for past slots (they are preserved for the daily
+        # plan-vs-actual tracker), but skipping past slots here has no
+        # effect on import cost, cycle cost, or any other term since they
+        # belong to a completed time period.
         #
         # Primary guard: slot.end <= now (time-based, no string coupling).
         # Fallback guard: recommendation == TimePassed (used when now is None,
