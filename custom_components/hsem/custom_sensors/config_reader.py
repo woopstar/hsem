@@ -409,6 +409,21 @@ def build_sensor_config(
         get_config_value(config_entry, "hsem_pv_energy_entity")
     )
 
+    # ML consumption prediction — toggle and settings
+    cfg.ml_consumption_enabled = bool(
+        get_config_value(config_entry, "hsem_ml_consumption_enabled")
+    )
+    _ml_hist_days = convert_to_int(
+        get_config_value(config_entry, "hsem_ml_consumption_history_days")
+    )
+    cfg.ml_consumption_history_days = _ml_hist_days if _ml_hist_days is not None else 14
+    cfg.ml_consumption_net_consumption = bool(
+        get_config_value(config_entry, "hsem_ml_consumption_net_consumption")
+    )
+    cfg.ml_consumption_temperature_entity = _optional_entity(
+        get_config_value(config_entry, "hsem_ml_consumption_temperature_entity")
+    )
+
     # Consumption weights
     _w1d = convert_to_int(
         get_config_value(config_entry, "hsem_house_consumption_energy_weight_1d")

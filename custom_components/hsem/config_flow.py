@@ -20,9 +20,9 @@ from custom_components.hsem.flows.battery_economics import (
     get_battery_economics_step_schema,
     validate_battery_economics_input,
 )
-from custom_components.hsem.flows.daily_tracking import (
-    get_daily_tracking_step_schema,
-    validate_daily_tracking_input,
+from custom_components.hsem.flows.energy_and_ml import (
+    get_energy_and_ml_step_schema,
+    validate_energy_and_ml_input,
 )
 from custom_components.hsem.flows.ev import get_ev_step_schema, validate_ev_step_input
 from custom_components.hsem.flows.ev_planned_load import (
@@ -550,7 +550,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
             errors = await validate_weighted_values_input(user_input)
             if not errors:
                 self._user_input.update(user_input)
-                return await self.async_step_daily_tracking()
+                return await self.async_step_energy_and_ml()
 
         data_schema = await get_weighted_values_step_schema(None)
 
@@ -561,17 +561,17 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
             last_step=False,
         )
 
-    async def async_step_daily_tracking(
+    async def async_step_energy_and_ml(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle the daily_tracking config flow step.
+        """Handle the energy_and_ml config flow step.
 
         Validates user input and creates the config entry.
         """
         errors = {}
 
         if user_input is not None:
-            errors = await validate_daily_tracking_input(self.hass, user_input)
+            errors = await validate_energy_and_ml_input(self.hass, user_input)
             if not errors:
                 self._user_input.update(user_input)
                 return self.async_create_entry(
@@ -579,10 +579,10 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
                     data=self._user_input,
                 )
 
-        data_schema = await get_daily_tracking_step_schema(None)
+        data_schema = await get_energy_and_ml_step_schema(None)
 
         return self.async_show_form(
-            step_id="daily_tracking",
+            step_id="energy_and_ml",
             data_schema=data_schema,
             errors=errors,
             last_step=True,

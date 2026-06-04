@@ -370,19 +370,27 @@
         "description": "Configure the weighted values for house consumption energy to estimate your average power usage. The system calculates the average consumption for each hour over 1, 3, 7, and 14 days. These averages are then weighted to provide a combined, weighted estimate. This approach helps to smooth out anomalies, such as unusually high consumption on a single day due to low prices, and provides a reliable prediction of your expected power usage in specific time intervals (e.g., between 16:00 and 17:00).",
         "title": "Weighted Values"
       },
-      "daily_tracking": {
+      "energy_and_ml": {
         "data": {
           "hsem_grid_import_energy_entity": "Grid Import Energy Sensor",
           "hsem_grid_export_energy_entity": "Grid Export Energy Sensor",
-          "hsem_pv_energy_entity": "PV Production Energy Sensor"
+          "hsem_pv_energy_entity": "PV Production Energy Sensor",
+          "hsem_ml_consumption_enabled": "Enable ML consumption prediction",
+          "hsem_ml_consumption_history_days": "ML history days",
+          "hsem_ml_consumption_net_consumption": "Use net consumption (import - export)",
+          "hsem_ml_consumption_temperature_entity": "Outdoor temperature sensor"
         },
         "data_description": {
-          "hsem_grid_import_energy_entity": "Optional—cumulative grid import energy meter (kWh).",
-          "hsem_grid_export_energy_entity": "Optional—cumulative grid export energy meter (kWh).",
-          "hsem_pv_energy_entity": "Optional—cumulative PV production energy meter (kWh)."
+          "hsem_grid_import_energy_entity": "Optional—cumulative grid import energy meter (kWh). Also used as ML data source.",
+          "hsem_grid_export_energy_entity": "Optional—cumulative grid export energy meter (kWh). Used for net consumption when ML is enabled.",
+          "hsem_pv_energy_entity": "Optional—cumulative PV production energy meter (kWh).",
+          "hsem_ml_consumption_enabled": "When enabled, the coordinator queries the HA recorder for historical energy data and uses ridge regression to predict per-slot house consumption instead of the legacy rolling-average sensor pipeline. Requires at least 14 days of recorder history.",
+          "hsem_ml_consumption_history_days": "Number of days of recorder history to use for ML training. More days = more stable predictions but slower to adapt to changes. Minimum 7, maximum 90.",
+          "hsem_ml_consumption_net_consumption": "When enabled, subtracts grid export from import per slot to estimate net house consumption. Useful when house load is not separately metered but can be inferred from grid flow.",
+          "hsem_ml_consumption_temperature_entity": "Optional—outdoor (ambient) temperature sensor in °C. Helps the ML model predict weather-driven load such as heating in winter and cooling in summer. Use an outdoor sensor, not an indoor thermostat."
         },
-        "description": "Optionally map cumulative energy meters for the daily plan-vs-actual tracking sensor. When left empty, the sensor estimates actuals from instantaneous power readings.",
-        "title": "Daily Tracking"
+        "description": "Configure energy meter entities for daily plan-vs-actual tracking and enable ML-based consumption prediction. The ML predictor uses recorded energy history and optional outdoor temperature to forecast per-slot house load.",
+        "title": "Energy & ML"
       }
     }
   },
@@ -731,19 +739,27 @@
         "description": "Configure the weighted values for house consumption energy to estimate your average power usage. The system calculates the average consumption for each hour over 1, 3, 7, and 14 days. These averages are then weighted to provide a combined, weighted estimate. This approach helps to smooth out anomalies, such as unusually high consumption on a single day due to low prices, and provides a reliable prediction of your expected power usage in specific time intervals (e.g., between 16:00 and 17:00).",
         "title": "Weighted Values"
       },
-      "daily_tracking": {
+      "energy_and_ml": {
         "data": {
           "hsem_grid_import_energy_entity": "Grid Import Energy Sensor",
           "hsem_grid_export_energy_entity": "Grid Export Energy Sensor",
-          "hsem_pv_energy_entity": "PV Production Energy Sensor"
+          "hsem_pv_energy_entity": "PV Production Energy Sensor",
+          "hsem_ml_consumption_enabled": "Enable ML consumption prediction",
+          "hsem_ml_consumption_history_days": "ML history days",
+          "hsem_ml_consumption_net_consumption": "Use net consumption (import - export)",
+          "hsem_ml_consumption_temperature_entity": "Outdoor temperature sensor"
         },
         "data_description": {
-          "hsem_grid_import_energy_entity": "Optional—cumulative grid import energy meter (kWh).",
-          "hsem_grid_export_energy_entity": "Optional—cumulative grid export energy meter (kWh).",
-          "hsem_pv_energy_entity": "Optional—cumulative PV production energy meter (kWh)."
+          "hsem_grid_import_energy_entity": "Optional—cumulative grid import energy meter (kWh). Also used as ML data source.",
+          "hsem_grid_export_energy_entity": "Optional—cumulative grid export energy meter (kWh). Used for net consumption when ML is enabled.",
+          "hsem_pv_energy_entity": "Optional—cumulative PV production energy meter (kWh).",
+          "hsem_ml_consumption_enabled": "When enabled, the coordinator queries the HA recorder for historical energy data and uses ridge regression to predict per-slot house consumption instead of the legacy rolling-average sensor pipeline. Requires at least 14 days of recorder history.",
+          "hsem_ml_consumption_history_days": "Number of days of recorder history to use for ML training. More days = more stable predictions but slower to adapt to changes. Minimum 7, maximum 90.",
+          "hsem_ml_consumption_net_consumption": "When enabled, subtracts grid export from import per slot to estimate net house consumption. Useful when house load is not separately metered but can be inferred from grid flow.",
+          "hsem_ml_consumption_temperature_entity": "Optional—outdoor (ambient) temperature sensor in °C. Helps the ML model predict weather-driven load such as heating in winter and cooling in summer. Use an outdoor sensor, not an indoor thermostat."
         },
-        "description": "Optionally map cumulative energy meters for the daily plan-vs-actual tracking sensor. When left empty, the sensor estimates actuals from instantaneous power readings.",
-        "title": "Daily Tracking"
+        "description": "Configure energy meter entities for daily plan-vs-actual tracking and enable ML-based consumption prediction. The ML predictor uses recorded energy history and optional outdoor temperature to forecast per-slot house load.",
+        "title": "Energy & ML"
       }
     }
   },
