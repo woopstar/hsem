@@ -12,7 +12,7 @@ but uses ML predictions instead of rolling-average sensor states.
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from homeassistant.core import HomeAssistant
 
@@ -21,6 +21,14 @@ from custom_components.hsem.ml.history_reader import HistoryReader
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.utils.logger import HSEM_LOGGER
+
+# Cache for full history fetch — avoids querying 90 days of recorder
+# data on every 1–5 minute coordinator cycle.
+_last_history_fetch: datetime | None = None
+_cached_history: list[tuple[datetime, int, float]] | None = None
+_last_temp_fetch: datetime | None = None
+_cached_temps: dict[datetime, float] | None = None
+_MIN_HISTORY_REFRESH = timedelta(minutes=60)
 
 
 async def populate_ml_house_consumption(
@@ -60,11 +68,37 @@ async def populate_ml_house_consumption(
 
     reader = HistoryReader(hass)
 
-    import_history = await reader.read_energy_history(
-        entity_id=cfg.grid_import_energy_entity,
-        days=min_days,
-        slot_minutes=slot_minutes,
+    # Full history fetch — cached for 60 minutes to avoid hammering the
+    # recorder database on every 1–5 minute coordinator cycle.
+    global _last_history_fetch, _cached_history
+    now_ts = datetime.now().astimezone()
+    cache_valid = (
+        _last_history_fetch is not None
+        and _cached_history is not None
+        and (now_ts - _last_history_fetch) < _MIN_HISTORY_REFRESH
     )
+
+    if cache_valid:
+        import_history = _cached_history
+        HSEM_LOGGER.debug(
+            "ML populator: using cached history (%d samples, age %.0f min).",
+            len(import_history),
+            (now_ts - _last_history_fetch).total_seconds() / 60,
+        )
+    else:
+        import_history = await reader.read_energy_history(
+            entity_id=cfg.grid_import_energy_entity,
+            days=min_days,
+            slot_minutes=slot_minutes,
+            max_days=min_days,
+        )
+        if import_history:
+            _cached_history = import_history
+            _last_history_fetch = now_ts
+            HSEM_LOGGER.debug(
+                "ML populator: fetched fresh history (%d samples).",
+                len(import_history),
+            )
 
     if not import_history:
         HSEM_LOGGER.info(
@@ -76,20 +110,26 @@ async def populate_ml_house_consumption(
         return False, None
 
     # Build per-slot consumption history.
+    # When using cached import, also skip the export fetch.
     if cfg.ml_consumption_net_consumption and cfg.grid_export_energy_entity:
-        export_history = await reader.read_energy_history(
-            entity_id=cfg.grid_export_energy_entity,
-            days=min_days,
-            slot_minutes=slot_minutes,
-        )
-        if export_history:
-            history = _compute_net_consumption(import_history, export_history)
-        else:
-            HSEM_LOGGER.info(
-                "ML populator: export history unavailable,"
-                " using import-only consumption."
-            )
+        if cache_valid:
+            # Use cached import directly — export fetch is also skipped.
             history = import_history
+        else:
+            export_history = await reader.read_energy_history(
+                entity_id=cfg.grid_export_energy_entity,
+                days=min_days,
+                slot_minutes=slot_minutes,
+                max_days=min_days,
+            )
+            if export_history:
+                history = _compute_net_consumption(import_history, export_history)
+            else:
+                HSEM_LOGGER.info(
+                    "ML populator: export history unavailable,"
+                    " using import-only consumption."
+                )
+                history = import_history
     else:
         history = import_history
 
@@ -111,12 +151,25 @@ async def populate_ml_house_consumption(
     # Read temperature history if configured.
     # Expects an outdoor (ambient) temperature sensor in °C.
     # Indoor thermostats will NOT help predict weather-driven load.
+    # Cached for 60 minutes (temperature changes slowly).
     temperatures: dict[datetime, float] | None = None
     if use_temp:
-        assert cfg.ml_consumption_temperature_entity is not None  # guarded by use_temp
-        temperatures = await _read_temperature_history(
-            reader, cfg.ml_consumption_temperature_entity, min_days
+        global _last_temp_fetch, _cached_temps
+        temp_cache_valid = (
+            _last_temp_fetch is not None
+            and _cached_temps is not None
+            and (now_ts - _last_temp_fetch) < _MIN_HISTORY_REFRESH
         )
+        if temp_cache_valid:
+            temperatures = _cached_temps
+        else:
+            assert cfg.ml_consumption_temperature_entity is not None
+            temperatures = await _read_temperature_history(
+                reader, cfg.ml_consumption_temperature_entity, min_days
+            )
+            if temperatures:
+                _cached_temps = temperatures
+                _last_temp_fetch = now_ts
 
     # Train — retrain gate skips fitting when no new data has arrived.
     was_fitted_before = predictor.trained
