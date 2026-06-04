@@ -636,7 +636,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 # Daily plan-vs-actual accumulation from planner output.
                 # -----------------------------------------------------------------------
                 try:
-                    self._accumulate_daily_plan_actuals(now, live, planner_output)
+                    await self._accumulate_daily_plan_actuals(now, live, planner_output)
                 except Exception:
                     _LOGGER.exception(
                         "Daily plan-vs-actual accumulation failed — "
@@ -896,7 +896,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
     # Daily plan-vs-actual accumulation (issue #540)
     # ------------------------------------------------------------------
 
-    def _accumulate_daily_plan_actuals(
+    async def _accumulate_daily_plan_actuals(
         self,
         now: datetime,
         live: LiveState,
@@ -915,11 +915,11 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             live: Live HA entity state snapshot.
             output: Planner output with slot-level decisions.
         """
-        self._init_daily_tracker()
+        await self._init_daily_tracker()
         tracker = self._daily_tracker
 
         # Check and handle day rollover first.
-        tracker.check_day_rollover(now)
+        await tracker.check_day_rollover(now)
 
         # ---- Plan accumulation ----
         # Accumulate plan values for the current in-progress slot (and any
@@ -948,7 +948,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             export_price=live.export_electricity_price,
         )
 
-    def _init_daily_tracker(self) -> None:
+    async def _init_daily_tracker(self) -> None:
         """Lazily initialise the daily plan-vs-actual tracker.
 
         Called once on the first access.  Registers the midnight timer
@@ -964,7 +964,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             self._daily_tracker.history_file = str(
                 Path(config_dir) / "hsem_daily_history.json"
             )
-            self._daily_tracker.load_history()
+            await self._daily_tracker.load_history()
 
             self._midnight_unsub = async_track_time_change(
                 self.hass,
@@ -994,7 +994,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         tracker = self._daily_tracker
         if tracker.history_file:
             today_record = tracker._build_today_record()
-            saved = tracker._save_record_to_history(today_record)
+            saved = await tracker._save_record_to_history(today_record)
             if saved:
                 _LOGGER.info(
                     "Daily plan-vs-actual record saved for %s",
