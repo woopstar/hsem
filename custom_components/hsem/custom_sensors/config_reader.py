@@ -413,6 +413,9 @@ def build_sensor_config(
     cfg.ml_consumption_enabled = bool(
         get_config_value(config_entry, "hsem_ml_consumption_enabled")
     )
+    cfg.ml_consumption_energy_entity = _optional_entity(
+        get_config_value(config_entry, "hsem_ml_consumption_energy_entity")
+    )
     _ml_hist_days = convert_to_int(
         get_config_value(config_entry, "hsem_ml_consumption_history_days")
     )

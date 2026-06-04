@@ -53,6 +53,12 @@ async def get_energy_and_ml_step_schema(  # NOSONAR
                     get_config_value(config_entry, "hsem_ml_consumption_enabled")
                 ),
             ): selector({"boolean": {}}),
+            vol.Optional(
+                "hsem_ml_consumption_energy_entity",
+                default=get_config_value(
+                    config_entry, "hsem_ml_consumption_energy_entity"
+                ),
+            ): selector({"entity": {"domain": "sensor"}}),
             vol.Required(
                 "hsem_ml_consumption_history_days",
                 default=get_config_value(

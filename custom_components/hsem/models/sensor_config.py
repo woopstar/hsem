@@ -235,6 +235,7 @@ class SensorConfig:
 
     # ML consumption prediction — toggle and settings
     ml_consumption_enabled: bool = False
+    ml_consumption_energy_entity: str | None = None
     ml_consumption_history_days: int = 14
     ml_consumption_net_consumption: bool = False
     ml_consumption_temperature_entity: str | None = None

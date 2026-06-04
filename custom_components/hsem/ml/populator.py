@@ -53,10 +53,12 @@ async def populate_ml_house_consumption(
     Returns:
         A ``(success, predictor)`` tuple.
     """
-    if not cfg.grid_import_energy_entity:
+    # Resolve energy entity: dedicated ML entity first, fall back to grid import.
+    energy_entity = cfg.ml_consumption_energy_entity or cfg.grid_import_energy_entity
+    if not energy_entity:
         HSEM_LOGGER.warning(
-            "ML populator: grid_import_energy_entity not configured. "
-            "Configure it in the daily-tracking step. "
+            "ML populator: no energy entity configured. "
+            "Set ml_consumption_energy_entity or grid_import_energy_entity. "
             "Falling back to legacy avg sensors."
         )
         return False, None
@@ -87,7 +89,7 @@ async def populate_ml_house_consumption(
         )
     else:
         import_history = await reader.read_energy_history(
-            entity_id=cfg.grid_import_energy_entity,
+            entity_id=energy_entity,
             days=min_days,
             slot_minutes=slot_minutes,
             max_days=min_days,
@@ -102,9 +104,9 @@ async def populate_ml_house_consumption(
 
     if not import_history:
         HSEM_LOGGER.info(
-            "ML populator: insufficient import history for %s (need %d days). "
+            "ML populator: insufficient history for %s (need %d days). "
             "Falling back to legacy avg sensors.",
-            cfg.grid_import_energy_entity,
+            energy_entity,
             min_days,
         )
         return False, None
@@ -209,22 +211,21 @@ async def populate_ml_house_consumption(
 
     # Read today's actual consumption for completed slots.
     today_actuals: dict[int, float] = {}
-    if cfg.grid_import_energy_entity:
-        today_actuals = await reader.read_today_actuals(
-            entity_id=cfg.grid_import_energy_entity,
+    today_actuals = await reader.read_today_actuals(
+        entity_id=energy_entity,
+        slot_minutes=slot_minutes,
+    )
+    if cfg.ml_consumption_net_consumption and cfg.grid_export_energy_entity:
+        export_actuals = await reader.read_today_actuals(
+            entity_id=cfg.grid_export_energy_entity,
             slot_minutes=slot_minutes,
         )
-        if cfg.ml_consumption_net_consumption and cfg.grid_export_energy_entity:
-            export_actuals = await reader.read_today_actuals(
-                entity_id=cfg.grid_export_energy_entity,
-                slot_minutes=slot_minutes,
+        # Subtract export from import per slot.
+        for slot_idx in list(today_actuals.keys()):
+            today_actuals[slot_idx] = max(
+                today_actuals[slot_idx] - export_actuals.get(slot_idx, 0.0),
+                0.01,
             )
-            # Subtract export from import per slot.
-            for slot_idx in list(today_actuals.keys()):
-                today_actuals[slot_idx] = max(
-                    today_actuals[slot_idx] - export_actuals.get(slot_idx, 0.0),
-                    0.01,
-                )
 
     actual_count = 0
     predicted_count = 0
