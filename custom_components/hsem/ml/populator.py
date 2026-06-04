@@ -94,7 +94,7 @@ async def populate_ml_house_consumption(
         history = import_history
 
     if not history:
-        HSEM_LOGGER.warning("ML populator: empty history after processing.")
+        HSEM_LOGGER.warning("ML populator: empty history after processing")
         return False, None
 
     # Create or reuse predictor.
