@@ -136,13 +136,14 @@ def simulate_soc(
         slot_start = as_tz(slot.start, now.tzinfo)
         slot_end = as_tz(slot.end, now.tzinfo)
 
-        # Past slots: zero out SoC fields and move on.
+        # Past slots: zero out SoC display fields only.
+        # Energy-flow fields (grid_import_kwh, grid_export_kwh,
+        # batteries_discharged_kwh, batteries_charged_kwh) are NOT zeroed
+        # here so that the daily plan-vs-actual tracker can still read the
+        # plan values for completed slots.
         if slot_end <= now:
             slot.estimated_battery_capacity_kwh = 0.0
             slot.estimated_battery_soc_pct = 0.0
-            slot.batteries_discharged_kwh = 0.0
-            slot.grid_import_kwh = 0.0
-            slot.grid_export_kwh = 0.0
             continue
 
         # For the current in-progress slot use current_kwh as the starting
