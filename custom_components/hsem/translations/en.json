@@ -905,6 +905,9 @@
       },
       "ev_second_force_charge_now": {
         "name": "EV 2 Force Charge Now"
+      },
+      "ml_consumption": {
+        "name": "ML consumption prediction"
       }
     },
     "select": {
