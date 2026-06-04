@@ -1,10 +1,25 @@
-"""Tests for the ridge-regression consumption predictor."""
+"""Tests for the ridge-regression consumption predictor.
 
+The ConsumptionPredictor has no Home Assistant dependencies (only numpy,
+math, and datetime).  We import it directly from the filesystem to avoid
+triggering the full HA import chain via custom_components/__init__.py.
+"""
+
+import sys
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import pytest
 
-from custom_components.hsem.ml.consumption_predictor import ConsumptionPredictor
+# Add the repository root to sys.path so we can import the ml module
+# without going through custom_components/__init__.py (which triggers
+# the full Home Assistant import chain including bcrypt).
+_repo_root = Path(__file__).resolve().parents[3]
+_hsem_root = _repo_root / "custom_components" / "hsem"
+if str(_hsem_root) not in sys.path:
+    sys.path.insert(0, str(_hsem_root))
+
+from ml.consumption_predictor import ConsumptionPredictor  # noqa: E402
 
 NOW = datetime(2026, 6, 4, 12, 0).astimezone()  # Thursday
 
