@@ -376,7 +376,7 @@
           "hsem_grid_export_energy_entity": "Grid Export Energy Sensor",
           "hsem_pv_energy_entity": "PV Production Energy Sensor",
           "hsem_ml_consumption_enabled": "Enable ML consumption prediction",
-          "hsem_ml_consumption_energy_entity": "House consumption energy sensor",
+          "hsem_ml_consumption_energy_entity": "House consumption energy sensor (excl. battery & EV)",
           "hsem_ml_consumption_history_days": "ML history days",
           "hsem_ml_consumption_net_consumption": "Use net consumption (import - export)",
           "hsem_ml_consumption_temperature_entity": "Outdoor temperature sensor"
@@ -386,7 +386,7 @@
           "hsem_grid_export_energy_entity": "Optional—cumulative grid export energy meter (kWh).",
           "hsem_pv_energy_entity": "Optional—cumulative PV production energy meter (kWh).",
           "hsem_ml_consumption_enabled": "When enabled, uses ridge regression on recorder history instead of rolling averages. Requires 14+ days of history.",
-          "hsem_ml_consumption_energy_entity": "Cumulative house consumption energy meter (kWh). Must exclude battery and EV charging. Falls back to grid import if not set.",
+          "hsem_ml_consumption_energy_entity": "Cumulative house consumption energy meter (kWh). Must exclude battery AND EV charging � use a sensor upstream of both. Falls back to grid import if not set.",
           "hsem_ml_consumption_history_days": "Days of recorder history for ML training (7–90).",
           "hsem_ml_consumption_net_consumption": "Subtract grid export from import for net house consumption.",
           "hsem_ml_consumption_temperature_entity": "Optional—outdoor temperature sensor in °C. Use an outdoor sensor, not an indoor thermostat."
@@ -747,7 +747,7 @@
           "hsem_grid_export_energy_entity": "Grid Export Energy Sensor",
           "hsem_pv_energy_entity": "PV Production Energy Sensor",
           "hsem_ml_consumption_enabled": "Enable ML consumption prediction",
-          "hsem_ml_consumption_energy_entity": "House consumption energy sensor",
+          "hsem_ml_consumption_energy_entity": "House consumption energy sensor (excl. battery & EV)",
           "hsem_ml_consumption_history_days": "ML history days",
           "hsem_ml_consumption_net_consumption": "Use net consumption (import - export)",
           "hsem_ml_consumption_temperature_entity": "Outdoor temperature sensor"
@@ -757,7 +757,7 @@
           "hsem_grid_export_energy_entity": "Optional—cumulative grid export energy meter (kWh).",
           "hsem_pv_energy_entity": "Optional—cumulative PV production energy meter (kWh).",
           "hsem_ml_consumption_enabled": "When enabled, uses ridge regression on recorder history instead of rolling averages. Requires 14+ days of history.",
-          "hsem_ml_consumption_energy_entity": "Cumulative house consumption energy meter (kWh). Must exclude battery and EV charging. Falls back to grid import if not set.",
+          "hsem_ml_consumption_energy_entity": "Cumulative house consumption energy meter (kWh). Must exclude battery AND EV charging � use a sensor upstream of both. Falls back to grid import if not set.",
           "hsem_ml_consumption_history_days": "Days of recorder history for ML training (7–90).",
           "hsem_ml_consumption_net_consumption": "Subtract grid export from import for net house consumption.",
           "hsem_ml_consumption_temperature_entity": "Optional—outdoor temperature sensor in °C. Use an outdoor sensor, not an indoor thermostat."
