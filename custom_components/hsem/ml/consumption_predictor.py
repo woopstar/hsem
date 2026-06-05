@@ -46,21 +46,25 @@ class ConsumptionPredictor:
         slots_per_day: int = 96,
         retrain_min_new_samples: int = 4,
         use_temperature: bool = False,
+        use_sequential: bool = False,
     ) -> None:
         self._decay_days = decay_days
         self._alpha = alpha
         self._slots_per_day = slots_per_day
         self._retrain_min_new = retrain_min_new_samples
         self._use_temperature = use_temperature
+        self._use_sequential = use_sequential
 
         # Feature layout:
         #   0 .. 6*S-1  = one-hot DOW×slot
         #   6*S, 6*S+1  = sin/cos day-of-year
         #   6*S+2       = temperature (if use_temperature)
+        #   6*S+3       = lag feature (prev slot energy, if use_sequential)
         self._n_onehot = 7 * slots_per_day
         self._doy_offset = self._n_onehot
         self._temp_offset = self._n_onehot + 2
-        self._n_features = self._temp_offset + (1 if use_temperature else 0)
+        self._lag_offset = self._temp_offset + (1 if use_temperature else 0)
+        self._n_features = self._lag_offset + (1 if use_sequential else 0)
 
         self._coef: np.ndarray | None = None
         self._intercept: float = 0.0
@@ -110,6 +114,9 @@ class ConsumptionPredictor:
         temps = temperatures or {}
         self._raw_groups.clear()
 
+        # For sequential mode: track previous slot's energy as lag feature.
+        prev_energy = 0.0
+
         valid = 0
         for ts, slot, energy in history:
             if slot < 0 or slot >= self._slots_per_day:
@@ -147,8 +154,13 @@ class ConsumptionPredictor:
                 temp_val = self._lookup_temperature(temps, slot_start)
                 X[valid, self._temp_offset] = temp_val
 
+            # Lag feature: previous slot's energy.
+            if self._use_sequential:
+                X[valid, self._lag_offset] = prev_energy
+
             y[valid] = energy
             w[valid] = math.exp(-age_days / max(self._decay_days, 0.5))
+            prev_energy = energy
             valid += 1
 
         if valid < 2:
@@ -233,6 +245,42 @@ class ConsumptionPredictor:
         std = self._weighted_std(group)
         return mean, min(std, mean * 0.5)  # Cap std at 50% of mean
 
+    def predict_sequential(
+        self,
+        day_offset: int = 0,
+        reference_time: datetime | None = None,
+        temperatures: dict[int, float] | None = None,
+    ) -> dict[int, float]:
+        """Predict all slots sequentially, feeding each prediction as lag input.
+
+        Slot 0 is predicted with prev_energy=0.  Slot 1 uses slot 0's
+        prediction as its lag feature, and so on.  This captures intra-day
+        momentum that independent per-slot predictions miss.
+        """
+        if self._coef is None:
+            return {}
+
+        if reference_time is None:
+            reference_time = datetime.now().astimezone()
+
+        target_date = reference_time.date() + timedelta(days=day_offset)
+        temps = temperatures or {}
+        prev = 0.0
+
+        result: dict[int, float] = {}
+        for s in range(self._slots_per_day):
+            slot_dt = datetime(
+                target_date.year,
+                target_date.month,
+                target_date.day,
+                tzinfo=reference_time.tzinfo,
+            ) + timedelta(minutes=s * (1440 // self._slots_per_day))
+            temp_val = temps.get(s)
+            pred = float(self._predict_from_features(slot_dt, s, temp_val, prev))
+            result[s] = pred
+            prev = pred
+        return result
+
     def predict_all_slots(
         self,
         day_offset: int = 0,
@@ -270,6 +318,7 @@ class ConsumptionPredictor:
         dt: datetime,
         slot: int,
         temperature: float | None,
+        prev_energy: float = 0.0,
     ) -> float:
         """Compute prediction from feature vector."""
         assert self._coef is not None, "_predict_from_features called before fit"
@@ -287,6 +336,9 @@ class ConsumptionPredictor:
 
         if self._use_temperature and temperature is not None:
             pred += float(self._coef[self._temp_offset]) * temperature
+
+        if self._use_sequential:
+            pred += float(self._coef[self._lag_offset]) * prev_energy
 
         return max(pred, 0.001)
 

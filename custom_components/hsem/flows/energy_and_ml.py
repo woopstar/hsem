@@ -83,6 +83,12 @@ async def get_energy_and_ml_step_schema(  # NOSONAR
                     )
                 ),
             ): selector({"boolean": {}}),
+            vol.Required(
+                "hsem_ml_consumption_sequential",
+                default=bool(
+                    get_config_value(config_entry, "hsem_ml_consumption_sequential")
+                ),
+            ): selector({"boolean": {}}),
             vol.Optional(
                 "hsem_ml_consumption_temperature_entity",
                 default=get_config_value(

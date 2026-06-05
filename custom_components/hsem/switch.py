@@ -24,6 +24,7 @@ from custom_components.hsem.utils.sensornames import (
     get_ev_smart_charging_switch_key,
     get_extended_attributes_switch_key,
     get_ml_consumption_switch_key,
+    get_ml_sequential_switch_key,
     get_read_only_switch_key,
     get_verbose_logging_switch_key,
 )
@@ -94,6 +95,11 @@ SWITCH_DESCRIPTIONS: tuple[HSEMSwitchEntityDescription, ...] = (
         key=get_ml_consumption_switch_key(),
         icon="mdi:brain",
         translation_key="ml_consumption",
+    ),
+    HSEMSwitchEntityDescription(
+        key=get_ml_sequential_switch_key(),
+        icon="mdi:arrow-decision",
+        translation_key="ml_sequential",
     ),
 )
 

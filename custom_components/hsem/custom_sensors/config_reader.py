@@ -423,6 +423,9 @@ def build_sensor_config(
     cfg.ml_consumption_net_consumption = bool(
         get_config_value(config_entry, "hsem_ml_consumption_net_consumption")
     )
+    cfg.ml_consumption_sequential = bool(
+        get_config_value(config_entry, "hsem_ml_consumption_sequential")
+    )
     cfg.ml_consumption_temperature_entity = _optional_entity(
         get_config_value(config_entry, "hsem_ml_consumption_temperature_entity")
     )

@@ -131,6 +131,7 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_ml_consumption_energy_entity": vol.UNDEFINED,
     "hsem_ml_consumption_history_days": 14,
     "hsem_ml_consumption_net_consumption": False,
+    "hsem_ml_consumption_sequential": False,
     "hsem_ml_consumption_temperature_entity": vol.UNDEFINED,
 }
 

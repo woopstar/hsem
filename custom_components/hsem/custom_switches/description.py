@@ -40,6 +40,9 @@ from custom_components.hsem.utils.sensornames import (
     get_ml_consumption_switch_entity_id,
     get_ml_consumption_switch_key,
     get_ml_consumption_switch_unique_id,
+    get_ml_sequential_switch_entity_id,
+    get_ml_sequential_switch_key,
+    get_ml_sequential_switch_unique_id,
     get_read_only_switch_entity_id,
     get_read_only_switch_key,
     get_read_only_switch_unique_id,
@@ -106,6 +109,10 @@ def build_switch_id_map(entry_id: str) -> dict[str, tuple[str, str]]:
         get_ml_consumption_switch_key(): (
             get_ml_consumption_switch_unique_id(entry_id),
             get_ml_consumption_switch_entity_id(),
+        ),
+        get_ml_sequential_switch_key(): (
+            get_ml_sequential_switch_unique_id(entry_id),
+            get_ml_sequential_switch_entity_id(),
         ),
     }
 

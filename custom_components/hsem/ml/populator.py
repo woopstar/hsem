@@ -148,6 +148,7 @@ async def populate_ml_house_consumption(
             alpha=1.0,
             slots_per_day=slots_per_day,
             use_temperature=use_temp,
+            use_sequential=cfg.ml_consumption_sequential,
         )
 
     # Read temperature history if configured.
@@ -229,6 +230,19 @@ async def populate_ml_house_consumption(
     actual_count = 0
     predicted_count = 0
 
+    # In sequential mode, precompute per-day predictions (each slot feeds
+    # its output as lag input to the next).  Independent mode predicts
+    # each slot separately.
+    seq_predictions: dict[int, dict[int, float]] = {}
+    if cfg.ml_consumption_sequential:
+        seen_day_offsets: set[int] = set()
+        for rec in recommendations:
+            seen_day_offsets.add((rec.start.date() - reference_time.date()).days)
+        for day_offset in sorted(seen_day_offsets):
+            seq_predictions[day_offset] = predictor.predict_sequential(
+                day_offset, reference_time
+            )
+
     for rec in recommendations:
         rec_day_offset = (rec.start.date() - reference_time.date()).days
         slot_index = (rec.start.hour * 60 + rec.start.minute) // slot_minutes
@@ -238,10 +252,26 @@ async def populate_ml_house_consumption(
             per_slot_kwh = round(today_actuals[slot_index], 4)
             actual_count += 1
         else:
-            # Future slot: ML prediction with adaptive safety buffer.
-            mean, std = predictor.predict_with_std(
-                slot_index, rec_day_offset, reference_time
-            )
+            # Future slot: ML prediction.
+            if seq_predictions:
+                # Sequential mode: use precomputed chained prediction.
+                day_preds = seq_predictions.get(rec_day_offset, {})
+                mean = day_preds.get(slot_index, 0.0)
+                # Safety buffer: use DOW-slot std from raw groups.
+                std = 0.0
+                if predictor.trained:
+                    target_date = reference_time.date() + timedelta(days=rec_day_offset)
+                    dow = target_date.weekday()
+                    group = predictor._raw_groups.get((dow, slot_index), [])
+                    if len(group) >= 2:
+                        std = predictor._weighted_std(group)
+                    elif mean > 0:
+                        std = mean * 0.2
+            else:
+                # Independent mode: predict each slot separately.
+                mean, std = predictor.predict_with_std(
+                    slot_index, rec_day_offset, reference_time
+                )
             rel_uncertainty = std / mean if mean > 0 else 0.0
             if rel_uncertainty < 0.1:
                 safety_factor = 0.0
