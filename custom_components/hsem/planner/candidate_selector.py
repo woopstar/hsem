@@ -431,14 +431,17 @@ def select_best_candidate(  # NOSONAR
                     f"({candidate_total:.4f} vs {winner_total:.4f})."
                 )
 
+        cost = getattr(candidate, "_cost", None)
         rejected.append(
             RejectedPlan(
                 name=candidate.name,
                 reason=reason,
-                # estimated_cost surfaces the selector score so dashboards
-                # and tests sort rejected plans the same way the selector
-                # ranked them.
-                estimated_cost=getattr(getattr(candidate, "_cost", None), "score", 0.0),
+                estimated_cost=getattr(cost, "score", 0.0),
+                import_cost=getattr(cost, "import_cost", 0.0),
+                export_revenue=getattr(cost, "export_revenue", 0.0),
+                conversion_loss=getattr(cost, "conversion_loss_cost", 0.0),
+                cycle_cost=getattr(cost, "cycle_cost", 0.0),
+                score=getattr(cost, "score", 0.0),
             )
         )
 

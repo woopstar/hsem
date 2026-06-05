@@ -129,11 +129,26 @@ class RejectedPlan:
         estimated_cost:
             Estimated total grid cost (local currency) under this plan.
             Positive = net import cost; negative = net export revenue.
+        import_cost:
+            Total grid import cost for the horizon.
+        export_revenue:
+            Grid export revenue (positive = earned).
+        conversion_loss:
+            Cost of round-trip conversion losses.
+        cycle_cost:
+            Battery depreciation cost for cycled kWh.
+        score:
+            Selector objective (lower = better).
     """
 
     name: str
     reason: str
     estimated_cost: float = 0.0
+    import_cost: float = 0.0
+    export_revenue: float = 0.0
+    conversion_loss: float = 0.0
+    cycle_cost: float = 0.0
+    score: float = 0.0
 
 
 @dataclass
@@ -237,6 +252,11 @@ class PlanExplanation:
                     "name": rp.name,
                     "reason": rp.reason,
                     "estimated_cost": round(rp.estimated_cost, 4),
+                    "import_cost": round(rp.import_cost, 4),
+                    "export_revenue": round(rp.export_revenue, 4),
+                    "conversion_loss": round(rp.conversion_loss, 4),
+                    "cycle_cost": round(rp.cycle_cost, 4),
+                    "score": round(rp.score, 4),
                 }
                 for rp in self.rejected_plans
             ],
