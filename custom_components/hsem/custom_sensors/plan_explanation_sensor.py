@@ -2,20 +2,24 @@
 
 State
 -----
-The sensor state is the ``selected_strategy`` string produced by the planner
-(e.g. ``"charge_grid_discharge_peak"``, ``"winter_wait"``,
-``"opportunistic_charge"``).  This makes it trivial to use in HA automations,
-conditional cards, and template sensors::
+The sensor state is the winning candidate name from the planner
+(e.g. ``"milp"``, ``"passive"``, ``"no_action"``), matching the
+``name`` field in ``rejected_plans`` for direct comparison::
 
     {{ states('sensor.hsem_plan_explanation_sensor') }}
     {{ state_attr('sensor.hsem_plan_explanation_sensor', 'score') }}
+    {{ state_attr('sensor.hsem_plan_explanation_sensor', 'rejected_plans') }}
+
+The ``selected_strategy`` attribute gives a human-readable description
+(e.g. ``"charge_grid_discharge_peak"``, ``"winter_wait"``).
 
 Attributes
 ----------
 All fields from :class:`~custom_components.hsem.models.planner_outputs.PlanExplanation`
 are exposed as individual state attributes so users can reference them directly
 via ``state_attr()`` without parsing a nested dict.  The ``rejected_plans`` list
-is included as-is (a list of dicts).
+includes per-candidate cost breakdowns (``import_cost``, ``export_revenue``,
+``conversion_loss``, ``cycle_cost``, ``score``) for comparison against the winner.
 
 Additional diagnostic attributes are merged from the coordinator snapshot:
 
@@ -79,11 +83,11 @@ class HSEMPlanExplanationSensor(
     SensorEntity,
     HSEMEntity,
 ):
-    """Diagnostic sensor exposing the active HSEM planner strategy.
+    """Diagnostic sensor exposing the winning plan and candidate scorecard.
 
-    State: ``selected_strategy`` string from :class:`PlanExplanation`.
-    Attributes: all other :class:`PlanExplanation` fields as flat key-value
-    pairs, plus ``rejected_plans`` as a list of dicts.
+    State: winning candidate name (e.g. ``"milp"``, ``"passive"``).
+    Attributes: full :class:`PlanExplanation` fields plus per-candidate
+    cost breakdowns in ``rejected_plans``.
     """
 
     _attr_icon = "mdi:chart-gantt"
