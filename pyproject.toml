@@ -8,10 +8,10 @@ version = "1.0.0"
 description = "Home Solar Energy Manager - Energy optimization for home battery systems"
 readme = "README.md"
 license = {text = "MIT"}
-requires-python = "==3.13.2"
+requires-python = "==3.14.2"
 dependencies = [
     "voluptuous==0.15.2",
-    "homeassistant==2026.2.3",
+    "homeassistant==2026.6.0",
     "scipy==1.17.1",
     "numpy==2.4.6"
 ]
@@ -49,7 +49,7 @@ test = [
 
 [tool.ruff]
 line-length = 88
-target-version = "py313"
+target-version = "py314"
 include = ["custom_components/**/*.py", "tests/**/*.py", "scripts/**/*.py"]
 exclude = [
     ".git",
@@ -135,7 +135,7 @@ markers = [
 ]
 
 [tool.mypy]
-python_version = "3.13.2"
+python_version = "3.14.2"
 warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
