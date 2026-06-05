@@ -37,16 +37,33 @@ features for day-of-year seasonality and optional outdoor temperature:
 - **672 categorical features**: one per (day_of_week, 15-min slot)
 - **2 seasonal features**: sin/cos of day-of-year
 - **1 temperature feature**: outdoor ambient temperature in °C (optional)
+- **1 lag feature**: previous slot's energy (optional, sequential mode)
 
 Time-decay sample weights ``w = exp(-age / decay_days)`` give more influence
 to recent data.  L2 regularization (``α = 1.0``) handles data sparsity
 automatically — no hard fallback thresholds needed.
 
-### Safety buffer
+### Sequential prediction (lag feature)
 
-Each prediction includes a weighted standard deviation ``σ`` from the
-historical (DOW, slot) group.  The planner receives ``mean + 1.0 × σ``,
-making the MILP naturally build headroom in uncertain slots.
+When the ``ML sequential prediction`` switch is enabled, the model adds a
+**previous-slot energy** feature.  During training, each observation includes
+the actual energy from the chronologically previous slot.  During prediction,
+slots are predicted in order: slot 0's output feeds as lag input to slot 1,
+and so on.  This captures intra-day momentum — a morning cooking spike at
+08:00 naturally elevates 08:15's prediction.
+
+Disabled by default.  Toggle via the switch entity on the HSEM device page.
+
+### Adaptive safety buffer
+
+Each slot gets a per-slot safety margin based on its prediction uncertainty:
+
+- **σ/μ < 0.1**: no buffer (prediction is reliable)
+- **σ/μ < 0.3**: 0.5σ buffer (moderate uncertainty)
+- **σ/μ ≥ 0.3**: 1.0σ buffer (sparse or variable data)
+
+The MILP sees ``mean + safety_factor × σ``, naturally building headroom in
+uncertain slots.  As more history accumulates, the buffer shrinks automatically.
 
 ### Today's actuals
 

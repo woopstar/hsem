@@ -185,4 +185,5 @@ Energy meter entities and ML consumption prediction (last step, creates entry).
 | ML enabled | `hsem_ml_consumption_enabled` | `False` | Enable ridge regression predictor instead of rolling averages. |
 | ML history days | `hsem_ml_consumption_history_days` | 14 | Days of recorder history for ML training (7–90). |
 | Net consumption | `hsem_ml_consumption_net_consumption` | `False` | Subtract export from import for net house consumption. |
+| Sequential prediction | `hsem_ml_consumption_sequential` | `False` | Feed each slot's prediction as lag input to the next (captures intra-day momentum). |
 | Temperature sensor | `hsem_ml_consumption_temperature_entity` | — | Outdoor (ambient) temperature in °C for weather-driven predictions. |
