@@ -395,15 +395,11 @@ def select_best_candidate(  # NOSONAR
     for candidate in candidates:
         if candidate is winner:
             continue
+        if candidate.name == CANDIDATE_NO_ACTION:
+            continue  # diagnostic floor — never shown in rejected plans
 
         if not candidate.is_valid:
             reason = candidate.rejection_reason
-        elif candidate.name == CANDIDATE_NO_ACTION:
-            reason = (
-                "Diagnostic floor only — excluded from winner selection. "
-                "The no_action candidate models a fully idle battery and "
-                "is never a realistic operating choice."
-            )
         else:
             winner_score = getattr(
                 getattr(winner, "_cost", None), "score", float("inf")
