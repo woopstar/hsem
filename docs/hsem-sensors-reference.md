@@ -52,13 +52,15 @@ and serves as the entry point for hardware writes.
 
 ## Plan explanation sensor
 
-Displays the planner's strategy rationale.
+Displays the planner's strategy rationale and per-candidate cost breakdown.
 
 **Entity:** `sensor.hsem_plan_explanation`
 
 | Key attribute | Description |
 |---|---|
-| `selected_strategy` | Short identifier (e.g. `grid_charge`, `solar_only`) |
+| **State** | Winning candidate name: `"milp"`, `"passive"`, `"no_action"` |
+| `selected_strategy` | Human-readable description (e.g. `"charge_grid_discharge_peak"`) |
+| `winner_name` | Winning candidate name (same as state) |
 | `summary` | One-sentence human-readable reason |
 | `score` | Estimated savings vs doing nothing (currency) |
 | `estimated_total_cost` | Net grid cost for the horizon |
@@ -68,7 +70,7 @@ Displays the planner's strategy rationale.
 | `forecast_net_consumption_kwh` | Total load − PV |
 | `battery_soc_pct` / `battery_soc_at_end_pct` | Starting and ending SoC |
 | `constraints` | Active flags (`winter_month`, `excess_export_enabled`, etc.) |
-| `rejected_plans` | Alternatives with name, reason, and cost |
+| `rejected_plans` | Alternatives with name, reason, and full cost breakdown (import_cost, export_revenue, conversion_loss, cycle_cost, score) |
 | `hysteresis_active` | Whether plan-level hysteresis was applied |
 | `hysteresis_reason` | Explanation of hysteresis decision |
 

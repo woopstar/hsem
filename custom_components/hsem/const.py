@@ -126,6 +126,13 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_grid_import_energy_entity": vol.UNDEFINED,
     "hsem_grid_export_energy_entity": vol.UNDEFINED,
     "hsem_pv_energy_entity": vol.UNDEFINED,
+    # ML consumption prediction — toggle and settings
+    "hsem_ml_consumption_enabled": False,
+    "hsem_ml_consumption_energy_entity": vol.UNDEFINED,
+    "hsem_ml_consumption_history_days": 14,
+    "hsem_ml_consumption_net_consumption": False,
+    "hsem_ml_consumption_sequential": False,
+    "hsem_ml_consumption_temperature_entity": vol.UNDEFINED,
 }
 
 # ---------------------------------------------------------------------------

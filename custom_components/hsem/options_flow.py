@@ -18,9 +18,9 @@ from custom_components.hsem.flows.battery_economics import (
     get_battery_economics_step_schema,
     validate_battery_economics_input,
 )
-from custom_components.hsem.flows.daily_tracking import (
-    get_daily_tracking_step_schema,
-    validate_daily_tracking_input,
+from custom_components.hsem.flows.energy_and_ml import (
+    get_energy_and_ml_step_schema,
+    validate_energy_and_ml_input,
 )
 from custom_components.hsem.flows.ev import get_ev_step_schema, validate_ev_step_input
 from custom_components.hsem.flows.ev_planned_load import (
@@ -427,7 +427,7 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
             if not errors:
                 self._user_input.update(user_input)
 
-                return await self.async_step_daily_tracking()
+                return await self.async_step_energy_and_ml()
 
         data_schema = await get_weighted_values_step_schema(self._config_entry)
 
@@ -438,17 +438,17 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
             last_step=False,
         )
 
-    async def async_step_daily_tracking(
+    async def async_step_energy_and_ml(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle the daily_tracking options step.
+        """Handle the energy_and_ml options step.
 
         Validates user input and creates the config entry.
         """
         errors = {}
 
         if user_input is not None:
-            errors = await validate_daily_tracking_input(self.hass, user_input)
+            errors = await validate_energy_and_ml_input(self.hass, user_input)
             if not errors:
                 self._user_input.update(user_input)
 
@@ -459,10 +459,10 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
                     data=self._user_input,
                 )
 
-        data_schema = await get_daily_tracking_step_schema(self._config_entry)
+        data_schema = await get_energy_and_ml_step_schema(self._config_entry)
 
         return self.async_show_form(
-            step_id="daily_tracking",
+            step_id="energy_and_ml",
             data_schema=data_schema,
             errors=errors,
             last_step=True,

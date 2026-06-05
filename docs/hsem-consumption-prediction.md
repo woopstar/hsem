@@ -16,9 +16,136 @@ $$ net\\_consumption[t] = load\\_forecast[t] + ev\\_load[t] - pv\\_forecast[t] $
 Accurate load prediction is critical: over-prediction leads to unnecessary grid
 imports; under-prediction leads to insufficient battery charging for peak hours.
 
+HSEM supports two prediction modes, toggled via ``hsem_ml_consumption_enabled``:
+
+- **Legacy** (default): Four-window weighted average using HSEM custom sensors
+- **ML** (new): Ridge regression on recorder history with DOW + seasonality + temperature
+
 ---
 
-## Four-window weighted average
+## ML mode (ridge regression)
+
+When enabled, the ML predictor queries the HA recorder directly for historical
+energy data from the configured energy sensor.  No custom sensor entities are required.
+
+### Model formulation
+
+Weighted ridge regression solves:
+
+$$
+\hat{\beta} = (X^\mathsf{T} W X + \alpha I)^{-1} X^\mathsf{T} W y
+$$
+
+where:
+
+- $X$ is the $n \times k$ design matrix ($n$ observations, $k$ features)
+- $W = \operatorname{diag}(w_1, \ldots, w_n)$ weights recent observations higher
+- $\alpha = 1.0$ is the L2 regularization strength
+- $y$ is the vector of observed per-slot energy (kWh)
+
+Time-decay sample weights:
+
+$$
+w_i = \exp\left(-\frac{a_i}{\tau}\right)
+$$
+
+where $a_i$ is the age of observation $i$ in days and $\tau$ is the decay
+half-life (default: half the configured history window).
+
+### Feature layout
+
+For 15-minute slots ($S = 96$):
+
+| Index range | Count | Feature | Description |
+|---|---|---|---|
+| $0 \ldots 6S-1$ | 672 | one-hot $(\text{DOW}, \text{slot})$ | Day-of-week × 15-min slot |
+| $6S$, $6S+1$ | 2 | $\sin(\text{DOY}), \cos(\text{DOY})$ | Day-of-year seasonality |
+| $6S+2$ | 1 | $T$ | Outdoor temperature (°C), optional |
+| $6S+3$ | 1 | $E_{t-1}$ | Previous slot energy (sequential mode only) |
+
+Total: 674 (without temperature + sequential), 675 (with temperature),
+676 (with both).
+
+### Prediction (independent mode)
+
+For a target slot $(\text{DOW} = d, \text{slot} = s)$ on day-of-year $\delta$:
+
+$$
+\hat{E}_{d,s} = \beta_{d,s} + \beta_{\sin} \cdot \sin\left(\frac{2\pi\delta}{365}\right)
++ \beta_{\cos} \cdot \cos\left(\frac{2\pi\delta}{365}\right)
++ \beta_T \cdot T + \beta_{\text{lag}} \cdot E_{t-1}
+$$
+
+where $\beta_{d,s}$ is the fitted coefficient for that (DOW, slot) pair.
+The intercept term is zero (absorbed by the one-hot encoding).
+
+### Prediction (sequential mode)
+
+When sequential prediction is enabled, slots within a day are predicted in
+order and each output is fed as the lag input to the next slot:
+
+$$
+\begin{aligned}
+\hat{E}_0 &= f(d, 0, \delta, T_0, 0) \\
+\hat{E}_1 &= f(d, 1, \delta, T_1, \hat{E}_0) \\
+\hat{E}_2 &= f(d, 2, \delta, T_2, \hat{E}_1) \\
+&\;\vdots
+\end{aligned}
+$$
+
+where $f(\cdot)$ is the prediction function above and $E_{-1} = 0$.
+This captures intra-day momentum — a cooking spike at 08:00 naturally
+elevates 08:15's prediction.
+
+### Fitting
+
+The normal equation is solved via Cholesky decomposition
+(``numpy.linalg.solve``).  For $k \leq 676$, this takes ~40 ms.
+A retrain gate skips the solve when fewer than 4 new samples have arrived
+since the last fit.  The predictor instance is cached on the coordinator
+across cycles.
+
+### Adaptive safety buffer
+
+Each slot gets a per-slot safety margin based on the weighted standard
+deviation of its (DOW, slot) group:
+
+$$
+\sigma_{d,s} = \sqrt{
+    \frac{\sum_i w_i (E_i - \bar{E}_w)^2}{\sum_i w_i}
+}
+$$
+
+where $\bar{E}_w$ is the time-decay weighted mean.  The buffer multiplies
+$\sigma$ by an adaptive factor based on relative uncertainty:
+
+| $\sigma / \mu$ | Safety factor | Meaning |
+|---|---|---|
+| $< 0.1$ | $0.0$ | Prediction is reliable — trust it |
+| $< 0.3$ | $0.5$ | Moderate uncertainty — small buffer |
+| $\geq 0.3$ | $1.0$ | Sparse or variable data — full buffer |
+
+The MILP receives $\mu + f \cdot \sigma$ as the consumption estimate,
+naturally building headroom in uncertain slots.  As history accumulates
+and $\sigma$ shrinks, the buffer converges to zero automatically.
+
+### Today's actuals
+
+For slots that have already passed today, the predictor uses actual meter
+readings from the energy sensor instead of predictions.  This anchors
+the battery SoC simulation to reality.
+
+### Advantages over legacy mode
+
+- **15-min resolution**: matches Nord Pool spot market
+- **Day-of-week awareness**: Monday ≠ Saturday
+- **Seasonality**: winter mornings get higher predictions than summer
+- **Temperature**: cold/hot outdoor temps → higher heating/cooling load
+- **No custom sensors**: reads directly from recorder database
+
+---
+
+## Legacy mode (weighted average)
 
 Four overlapping historical windows are maintained per clock-hour (0–23):
 
@@ -143,31 +270,51 @@ Weights are normalised after scaling so they still sum to the original total.
 
 ## Assumptions and limitations
 
+### ML mode limitations
+
+1. **Linear relationship**: The model assumes linear relationships between
+   features and consumption.  Non-linear effects (e.g. U-shaped heating/cooling
+   curve vs temperature) are approximated but not fully captured.
+
+2. **Minimum history**: Requires at least 14 days of recorder history for the
+   energy sensor.  Falls back to legacy mode below this threshold.
+
+3. **Single energy source**: The model predicts from one energy accumulator.
+   It cannot combine signals from multiple meters (e.g. import + solar).
+
+4. **No external events**: Holidays, parties, or unusual appliance usage are
+   not explicitly modeled — they appear as unexplained variance.
+
+### Legacy mode limitations
+
 1. **Stationarity**: The model assumes consumption patterns are relatively stable
-   over the 14-day window. Major lifestyle changes (new EV, heat pump, home
+   over the 14-day window.  Major lifestyle changes (new EV, heat pump, home
    renovation) require 14 days to be fully reflected.
 
-2. **Weather dependence**: The model has no weather inputs. Weather-driven
+2. **Weather dependence**: The model has no weather inputs.  Weather-driven
    consumption (AC, heating) appears as unexplained variance unless correlated
    with the same-day-previous-week pattern (7-day window).
 
 3. **No day-of-week distinction**: All windows are rolling and do not distinguish
-   weekdays from weekends. A Monday forecast uses the same weights as a Saturday
+   weekdays from weekends.  A Monday forecast uses the same weights as a Saturday
    forecast, relying on the 7-day window to capture the weekly rhythm.
 
 4. **Zero-consumption hours**: Hours with consistently zero consumption (e.g.
    night-time) produce zero forecasts, which is correct for most installations.
 
 5. **Outlier detection limitations**: With only four data points (1d, 3d, 7d, 14d)
-   per hour, the IQR method has limited statistical power. The spike caps act as
+   per hour, the IQR method has limited statistical power.  The spike caps act as
    a second line of defence.
 
 ---
 
-## Future improvements (Phase 1+)
+## Future improvements
 
-See `docs/hsem-adaptive-consumption-predictor.md` for the planned evolution:
+The ML mode (ridge regression) addresses several legacy limitations and is the
+forward path.  Remaining improvements include:
 
-- **Phase 1**: Exponential decay weighting (temporal discounting)
-- **Phase 2**: Kalman filter (EKF-based adaptive model)
-- **Phase 3**: Multi-modal decomposition (weather, solar, EV impacts)
+- **Prediction-vs-actual diagnostics**: Rolling MAE to measure model accuracy
+- **Multi-modal decomposition**: Separate models for weather-driven, EV-driven,
+  and baseline load
+- **Configurable alpha and decay**: Expose regularization and time-decay as
+  user-tunable parameters

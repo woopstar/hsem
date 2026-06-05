@@ -122,7 +122,16 @@ to a positive value, which is added on top.
 
 ### Consumption prediction
 
-HSEM predicts house load using a weighted average of historical consumption data.
+HSEM predicts house load for each slot.  Two modes are available (toggled via
+``hsem_ml_consumption_enabled``):
+
+- **Legacy (default):** Weighted average across four rolling windows (1d, 3d,
+  7d, 14d) with IQR outlier detection.  Requires HSEM custom sensor entities.
+- **ML (optional):** Ridge regression on recorder history with day-of-week,
+  day-of-year seasonality, and optional outdoor temperature.  No custom
+  sensors needed.
+
+Regardless of mode, the planner receives a per-hour ``HourlyConsumptionAverage``:
 
 | Field | Type | Description |
 |---|---|---|
@@ -1293,20 +1302,21 @@ Common constraint tags and their meaning:
 
 ## Known limitations
 
-### Consumption prediction is averaged, not model-based
+### Consumption prediction: legacy mode is averaged, not model-based
 
-The planner predicts house load from a weighted average of 1, 3, 7, and 14-day
-historical consumption per clock-hour. This works well for regular households
-but may under- or over-predict when:
+In legacy mode, the planner predicts house load from a weighted average of
+1, 3, 7, and 14-day historical consumption per clock-hour.  This works well
+for regular households but may under- or over-predict when:
 
 - An EV charges on an irregular schedule.
-- Seasonal load shifts (e.g. heating vs. cooling) haven't had time to appear in the lookback window.
+- Seasonal load shifts (e.g. heating vs. cooling) haven't had time to appear
+  in the lookback window.
 - Spike days (e.g. a party) pull the average up permanently.
 
-The IQR median-ratio outlier detection algorithm flags anomalous windows as
-outliers and redistributes their weight, mitigating both upward spikes and
-downward anomalies. A Kalman-filter-based predictor is planned as a future
-improvement.
+The IQR median-ratio outlier detection algorithm flags anomalous windows, and
+the ML mode (ridge regression with day-of-week, seasonality, and outdoor
+temperature) addresses several of these limitations.  See
+`docs/hsem-consumption-prediction.md`.
 
 ### Prices are assumed known for the full horizon
 

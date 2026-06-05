@@ -14,6 +14,18 @@ It contains:
 - Huawei entity wiring protocol
 - Logging and testing rules
 
+## HA Development Compliance (Read Before PR)
+
+**Always read `.rules/ha-development-rules.md` before creating a PR.**
+
+It contains the complete Home Assistant development compliance checklist:
+- Dependency management and requirement pinning
+- Async patterns, config flow, and voluptuous schemas
+- Translations, entity base classes, and device info
+- Style guidelines (import order, docstrings, logging, type hints)
+- PR scope rules and testing requirements
+- Quality gates: `tox -e lint`, `tox -e typing`, `tox -e quality`, `tox -e py313`
+
 ---
 
 ## Standard Issue-Solving Workflow

@@ -2,20 +2,24 @@
 
 State
 -----
-The sensor state is the ``selected_strategy`` string produced by the planner
-(e.g. ``"charge_grid_discharge_peak"``, ``"winter_wait"``,
-``"opportunistic_charge"``).  This makes it trivial to use in HA automations,
-conditional cards, and template sensors::
+The sensor state is the winning candidate name from the planner
+(e.g. ``"milp"``, ``"passive"``, ``"no_action"``), matching the
+``name`` field in ``rejected_plans`` for direct comparison::
 
     {{ states('sensor.hsem_plan_explanation_sensor') }}
     {{ state_attr('sensor.hsem_plan_explanation_sensor', 'score') }}
+    {{ state_attr('sensor.hsem_plan_explanation_sensor', 'rejected_plans') }}
+
+The ``selected_strategy`` attribute gives a human-readable description
+(e.g. ``"charge_grid_discharge_peak"``, ``"winter_wait"``).
 
 Attributes
 ----------
 All fields from :class:`~custom_components.hsem.models.planner_outputs.PlanExplanation`
 are exposed as individual state attributes so users can reference them directly
 via ``state_attr()`` without parsing a nested dict.  The ``rejected_plans`` list
-is included as-is (a list of dicts).
+includes per-candidate cost breakdowns (``import_cost``, ``export_revenue``,
+``conversion_loss``, ``cycle_cost``, ``score``) for comparison against the winner.
 
 Additional diagnostic attributes are merged from the coordinator snapshot:
 
@@ -26,7 +30,6 @@ Additional diagnostic attributes are merged from the coordinator snapshot:
 - ``current_slot_start`` / ``current_slot_end`` / ``current_slot_recommendation``
   — the active time-slot boundaries and its recommendation.
 - ``last_apply_status`` — outcome of the most recent hardware-write cycle.
-- ``hardware_writes_blocked`` — ``True`` when critical input data is missing.
 - ``data_quality_complete`` — ``True`` when all price and PV data is available.
 
 The sensor is a *diagnostic* entity (``EntityCategory.DIAGNOSTIC``) so it
@@ -50,7 +53,6 @@ from custom_components.hsem.coordinator import (
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.models.planner_outputs import PlanExplanation
 from custom_components.hsem.utils.datetime_utils import now as hsem_now
-from custom_components.hsem.utils.degraded_mode import hardware_writes_allowed
 from custom_components.hsem.utils.sensornames import (
     get_plan_explanation_sensor_entity_id,
     get_plan_explanation_sensor_name,
@@ -79,11 +81,11 @@ class HSEMPlanExplanationSensor(
     SensorEntity,
     HSEMEntity,
 ):
-    """Diagnostic sensor exposing the active HSEM planner strategy.
+    """Diagnostic sensor exposing the winning plan and candidate scorecard.
 
-    State: ``selected_strategy`` string from :class:`PlanExplanation`.
-    Attributes: all other :class:`PlanExplanation` fields as flat key-value
-    pairs, plus ``rejected_plans`` as a list of dicts.
+    State: winning candidate name (e.g. ``"milp"``, ``"passive"``).
+    Attributes: full :class:`PlanExplanation` fields plus per-candidate
+    cost breakdowns in ``rejected_plans``.
     """
 
     _attr_icon = "mdi:chart-gantt"
@@ -133,14 +135,16 @@ class HSEMPlanExplanationSensor(
     @property  # type: ignore[misc]  # HA stub declares state as @final
     @override
     def state(self) -> str:
-        """Return the currently active plan strategy.
+        """Return the winning candidate name (matches rejected_plans).
 
-        Returns ``"unknown"`` while waiting for the first coordinator cycle.
-        Falls back to the last restored state on HA restart.
+        Falls back to selected_strategy or restored state.
         """
         data: CoordinatorData | None = self.coordinator.data
         if data is None:
             return self._restored_state or _UNKNOWN_STRATEGY
+        winner = data.plan_explanation.winner_name
+        if winner:
+            return winner
         return data.plan_explanation.selected_strategy or _UNKNOWN_STRATEGY
 
     @property
@@ -169,7 +173,7 @@ class HSEMPlanExplanationSensor(
         Context attributes from the coordinator snapshot include:
         *planning_horizon_hours*, *planning_interval_minutes*, *forecast_mode*,
         *current_slot_start*, *current_slot_end*, *current_slot_recommendation*,
-        *last_apply_status*, *hardware_writes_blocked*, and *data_quality_complete*.
+        *last_apply_status*, and *data_quality_complete*.
         """
         data: CoordinatorData | None = self.coordinator.data
         explanation: PlanExplanation = (
@@ -179,7 +183,6 @@ class HSEMPlanExplanationSensor(
 
         if data is not None and data.cfg is not None and data.live is not None:
             cfg = data.cfg
-            live = data.live
             now = hsem_now()
 
             # Planner horizon and slot configuration
@@ -204,9 +207,6 @@ class HSEMPlanExplanationSensor(
             apply_summary = data.apply_summary
             d["last_apply_status"] = (
                 apply_summary.overall_status.value if apply_summary else None
-            )
-            d["hardware_writes_blocked"] = not hardware_writes_allowed(
-                live.degraded_mode
             )
 
             # Data quality summary

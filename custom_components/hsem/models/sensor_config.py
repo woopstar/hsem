@@ -233,6 +233,14 @@ class SensorConfig:
     grid_export_energy_entity: str | None = None
     pv_energy_entity: str | None = None
 
+    # ML consumption prediction — toggle and settings
+    ml_consumption_enabled: bool = False
+    ml_consumption_energy_entity: str | None = None
+    ml_consumption_history_days: int = 14
+    ml_consumption_net_consumption: bool = False
+    ml_consumption_sequential: bool = False
+    ml_consumption_temperature_entity: str | None = None
+
     # Planner hysteresis — keep the active plan unless a new plan is
     # materially better (anti-flapping, issue #372).
     planner_hysteresis_enabled: bool = True

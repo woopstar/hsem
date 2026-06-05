@@ -34,6 +34,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Event, HomeAssistant
@@ -91,6 +92,9 @@ from custom_components.hsem.utils.logger import (
 )
 from custom_components.hsem.utils.misc import get_config_value
 from custom_components.hsem.utils.recommendations import Recommendations
+
+if TYPE_CHECKING:
+    from custom_components.hsem.ml.consumption_predictor import ConsumptionPredictor
 
 # ---------------------------------------------------------------------------
 # Data payload exposed to subscriber entities
@@ -253,6 +257,10 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         # automatically and the planner resumes control.
         self._override_expiry: datetime | None = None
 
+        # ML consumption predictor — cached across cycles so the retrain
+        # gate can skip re-fitting when no new history has arrived.
+        self._ml_predictor: ConsumptionPredictor | None = None
+
     # ------------------------------------------------------------------
     # HA lifecycle
     # ------------------------------------------------------------------
@@ -401,26 +409,68 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             self._batteries_schedules = build_battery_schedules(cfg)
             self._batteries_schedules.sort(key=lambda x: x.start)
 
-            # 5. Populate weighted house-consumption averages from snapshot
-            #    (no HA state lookups — data was pre-collected in step 2).
-            #    The energy average sensors are HSEM's own RestoreEntity sensors.
-            #    On the very first cycle they may report "unknown" before the
-            #    restore completes.  When the populator fails, skip the planner
-            #    and retry on the next cycle with a shorter interval.
+            # 5. Populate weighted house-consumption averages.
+            #
+            # Two paths are available:
+            #   a) ML prediction — queries the HA recorder for historical
+            #      energy data and uses a per-(DOW, hour) time-decay model.
+            #   b) Legacy averaging sensors — reads HSEM's own 1d/3d/7d/14d
+            #      RestoreEntity rolling-average sensors (the default).
+            #
+            # The ML path is enabled via `hsem_ml_consumption_enabled`.
+            # When it fails (insufficient history, misconfigured, …), the
+            # coordinator transparently falls back to the legacy pipeline.
             set_planner_verbose(cfg.verbose_logging)
-            consumption_ok = populate_avg_house_consumption_from_snapshot(
-                self._hourly_recommendations,
-                self._snapshot,
-                cfg,
-                self._avg_house_consumption_entity_id_cache,
-                entry_id=self._config_entry.entry_id,
-            )
-            await async_logger(
-                self,
-                f"[avg] populate_avg_house_consumption_from_snapshot returned {consumption_ok}, "
-                f"cache has {len(self._avg_house_consumption_entity_id_cache)} entries, "
-                f"snapshot has {len(self._snapshot.energy_average_values)} energy_avg values",
-            )
+
+            if cfg.ml_consumption_enabled:
+                # ML consumption prediction from recorder history.
+                from custom_components.hsem.ml.populator import (
+                    populate_ml_house_consumption,
+                )
+
+                (
+                    consumption_ok,
+                    self._ml_predictor,
+                ) = await populate_ml_house_consumption(
+                    self.hass,
+                    self._hourly_recommendations,
+                    cfg,
+                    self._ml_predictor,
+                )
+                await async_logger(
+                    self,
+                    f"[ml] populate_ml_house_consumption returned {consumption_ok}",
+                )
+
+                if not consumption_ok:
+                    # Fallback: ML failed; try legacy avg sensors.
+                    await async_logger(
+                        self,
+                        "[ml] ML consumption failed"
+                        " — falling back to legacy avg sensors.",
+                    )
+                    consumption_ok = populate_avg_house_consumption_from_snapshot(
+                        self._hourly_recommendations,
+                        self._snapshot,
+                        cfg,
+                        self._avg_house_consumption_entity_id_cache,
+                        entry_id=self._config_entry.entry_id,
+                    )
+            else:
+                # Legacy averaging-sensor pipeline (default).
+                consumption_ok = populate_avg_house_consumption_from_snapshot(
+                    self._hourly_recommendations,
+                    self._snapshot,
+                    cfg,
+                    self._avg_house_consumption_entity_id_cache,
+                    entry_id=self._config_entry.entry_id,
+                )
+                await async_logger(
+                    self,
+                    f"[avg] populate_avg_house_consumption_from_snapshot returned {consumption_ok}, "
+                    f"cache has {len(self._avg_house_consumption_entity_id_cache)} entries, "
+                    f"snapshot has {len(self._snapshot.energy_average_values)} energy_avg values",
+                )
 
             # Adjust timer based on missing-entities or pending-consumption status.
             if live.missing_entities or not consumption_ok:
@@ -484,6 +534,19 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 )
                 # Retain for diagnostics dumps (cleared on each cycle).
                 self._last_planner_input = planner_input
+
+                # Debug: log per-hour consumption total reaching the planner
+                # (after builder's *slots_per_hour scaling).
+                total_1d = sum(
+                    c.avg_1d for c in planner_input.consumption_averages if c.avg_1d > 0
+                )
+                await async_logger(
+                    self,
+                    f"[builder] consumption per-hour total reaching planner:"
+                    f" avg_1d={total_1d:.2f} kWh"
+                    f" over {len(planner_input.consumption_averages)} hours",
+                )
+
                 # Propagate the verbose-logging flag into the pure-Python
                 # planner so detailed slot-level decisions appear in the
                 # standard Home Assistant log when the user enables
