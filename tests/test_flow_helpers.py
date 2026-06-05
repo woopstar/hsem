@@ -506,7 +506,7 @@ class TestSchemaRoundTrip:
         }
         # Should not raise
         result = schema(valid_input)
-        assert result[prefix] is True
+        assert result[prefix] is True  # pyright: ignore[reportIndexIssue]
 
     @pytest.mark.asyncio
     async def test_ev_primary_schema_accepts_valid_input(self):
@@ -523,7 +523,7 @@ class TestSchemaRoundTrip:
             "hsem_ev_allow_charge_past_target_soc": False,
         }
         result = schema(valid_input)
-        assert result["hsem_ev_charger_max_discharge_power"] == 2000
+        assert result["hsem_ev_charger_max_discharge_power"] == 2000  # pyright: ignore[reportIndexIssue]
 
     @pytest.mark.asyncio
     async def test_ev_secondary_schema_accepts_valid_input(self):
@@ -538,4 +538,4 @@ class TestSchemaRoundTrip:
             "hsem_ev_second_allow_charge_past_target_soc": True,
         }
         result = schema(valid_input)
-        assert result["hsem_ev_second_charger_max_discharge_power"] == 1500
+        assert result["hsem_ev_second_charger_max_discharge_power"] == 1500  # pyright: ignore[reportIndexIssue]
