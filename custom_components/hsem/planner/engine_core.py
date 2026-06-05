@@ -8,9 +8,9 @@ directly testable with plain ``pytest`` without a running HA instance.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
-from custom_components.hsem.models.planner_inputs import PlannerInput
+from custom_components.hsem.models.planner_inputs import EVConfig, PlannerInput
 from custom_components.hsem.models.planner_outputs import DataQuality, PlannerOutput
 from custom_components.hsem.models.time_series import TimeSeriesIndex
 from custom_components.hsem.planner.candidate_generator import (
@@ -464,6 +464,7 @@ def _select_candidate(
     rppk: float | None,
     cw: CostWeights,
     sdh: float,
+    ev_configs: list[EVConfig] | None = None,
 ) -> tuple:
     """Generate and select best candidate plan."""
     candidates = generate_candidates(
@@ -475,6 +476,7 @@ def _select_candidate(
         usable_kwh=usable_kwh,
         max_discharge_per_slot=mdps,
         replacement_price_per_kwh=rppk,
+        ev_configs=ev_configs,
     )
     winner, rejected, hyst = select_best_candidate(
         candidates,
@@ -506,6 +508,104 @@ def _select_candidate(
         f"applied={hyst.applied}" if hyst.applied else "inactive",
     )
     return candidates, winner, rejected, hyst
+
+
+def _build_ev_configs_for_milp(
+    inp: PlannerInput,
+    slots: list,
+    now: datetime,
+) -> list[EVConfig] | None:
+    """Build EVConfig list for the MILP from PlannerInput EV fields.
+
+    Maps the user-configured deadline (clamped by the one-midnight-crossing
+    horizon cap) to an LP slot index.  Returns ``None`` when no EVs are
+    active or neither EV has sufficient config to be optimised.
+    """
+
+    def _effective_deadline_dt(user_deadline: datetime | None) -> datetime:
+        """Replicate ev_planner._effective_deadline without HA import."""
+        horizon_cap = (now + timedelta(days=2)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        if user_deadline is None:
+            return horizon_cap
+        return min(user_deadline, horizon_cap)
+
+    configs: list[EVConfig] = []
+    future_slots = [i for i, s in enumerate(slots) if as_tz(s.end, now.tzinfo) > now]
+    if not future_slots:
+        return None
+
+    for ev_data in [
+        {
+            "enabled": inp.ev_planned_load_enabled,
+            "connected": inp.ev_planned_load_connected,
+            "smart": inp.ev_planned_load_smart_charging_enabled,
+            "soc_pct": inp.ev_planned_load_current_soc_pct,
+            "target_pct": inp.ev_planned_load_target_soc_pct,
+            "cap_kwh": inp.ev_planned_load_battery_capacity_kwh,
+            "pwr_kw": inp.ev_planned_load_charger_power_kw,
+            "eff_pct": inp.ev_planned_load_charger_efficiency_pct,
+            "deadline": inp.ev_planned_load_deadline,
+            "base_includes": inp.ev_planned_load_base_load_includes_ev,
+        },
+        {
+            "enabled": inp.ev_second_planned_load_enabled,
+            "connected": inp.ev_second_planned_load_connected,
+            "smart": inp.ev_second_planned_load_smart_charging_enabled,
+            "soc_pct": inp.ev_second_planned_load_current_soc_pct,
+            "target_pct": inp.ev_second_planned_load_target_soc_pct,
+            "cap_kwh": inp.ev_second_planned_load_battery_capacity_kwh,
+            "pwr_kw": inp.ev_second_planned_load_charger_power_kw,
+            "eff_pct": inp.ev_second_planned_load_charger_efficiency_pct,
+            "deadline": inp.ev_second_planned_load_deadline,
+            "base_includes": inp.ev_second_planned_load_base_load_includes_ev,
+        },
+    ]:
+        if not ev_data["enabled"]:
+            continue
+        if not ev_data["connected"] or not ev_data["smart"]:
+            continue
+        cap = ev_data["cap_kwh"]
+        pwr = ev_data["pwr_kw"]
+        if cap <= 1e-9 or pwr <= 1e-9:
+            continue
+        initial_kwh = (ev_data["soc_pct"] / 100.0) * cap
+        target_kwh = (ev_data["target_pct"] / 100.0) * cap
+        if target_kwh <= initial_kwh + 1e-9:
+            continue  # already at/above target
+
+        eff = max(ev_data["eff_pct"], 1.0) / 100.0
+        slot_hours = inp.interval_minutes / 60.0
+        max_dc = pwr * slot_hours * eff  # DC-side kWh per slot
+
+        # Map deadline to LP slot index (0..len(future_slots)-1)
+        eff_deadline = _effective_deadline_dt(ev_data["deadline"])
+        deadline_slot: int | None = None
+        for lp_t, slot_i in enumerate(future_slots):
+            s = slots[slot_i]
+            if as_tz(s.end, now.tzinfo) <= eff_deadline:
+                deadline_slot = lp_t
+            else:
+                break
+        if deadline_slot is None:
+            # No slot before deadline
+            continue
+
+        configs.append(
+            EVConfig(
+                enabled=True,
+                initial_soc_kwh=round(initial_kwh, 3),
+                target_kwh=round(target_kwh, 3),
+                capacity_kwh=round(cap, 3),
+                max_charge_per_slot=round(max_dc, 4),
+                charger_efficiency=round(eff, 4),
+                deadline_slot=deadline_slot,
+                base_load_includes_ev=bool(ev_data["base_includes"]),
+            )
+        )
+
+    return configs if configs else None
 
 
 def run_planner(inp: PlannerInput) -> PlannerOutput:
@@ -712,8 +812,21 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         mdps,
         discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
     )
+    # Build EV configs for MILP co-optimisation (when EVs are active)
+    ev_configs = _build_ev_configs_for_milp(inp, slots, now)
     candidates, winner, candidate_rejected, hysteresis_result = _select_candidate(
-        slots, inp, now, current_kwh, usable_kwh, mcps, mdps, max_soc_kwh, rppk, cw, sdh
+        slots,
+        inp,
+        now,
+        current_kwh,
+        usable_kwh,
+        mcps,
+        mdps,
+        max_soc_kwh,
+        rppk,
+        cw,
+        sdh,
+        ev_configs=ev_configs,
     )
     # Surface MILP penalty violations in warnings if the winner used penalties
     if (

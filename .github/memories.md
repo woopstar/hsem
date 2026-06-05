@@ -17,7 +17,7 @@ for the HSEM (Home Smart Energy Management) project. Read this before making any
 | `candidate_selector.py` | Picks the best candidate using time-discounted score |
 | `charge_scheduler.py` | Assigns charge recommendations to slots |
 | `discharge_scheduler.py` | Assigns discharge recommendations to slots; `concentrate_discharge_on_expensive_slots` uses **per-calendar-day** budget pools |
-| `milp_optimizer.py` | Solves the MILP LP problem — variable vector is `6*n` (ec, ed, gi, ge, pv, m) |
+| `milp_optimizer.py` | Solves the MILP LP problem — variable vector is 8*n base, growing to 8n + 2n·E + E with EV co-optimisation.  Accepts optional `EVConfig` list for EV integration. |
 | `cost_function.py` | Scores a candidate plan — source of truth for cost math |
 | `soc_simulation.py` | Simulates battery SoC forward through a slot plan |
 | `ev_planner.py` | EV-specific planning logic |
@@ -87,7 +87,9 @@ assert result == pytest.approx(expected, rel=1e-6)
 
 ## MILP Variable Vector
 
-The MILP in `milp_optimizer.py` uses **8*n** LP variables (n = number of future slots):
+The MILP in `milp_optimizer.py` uses **8*n** LP variables for battery-only (n = number of
+future slots).  When EV co-optimisation is active (one or more `EVConfig` objects passed),
+the vector grows to **8n + 2n·E + E** where E is the number of active EVs.
 
 ```
 Index range      Variable     Meaning
@@ -99,6 +101,11 @@ Index range      Variable     Meaning
 [5n .. 6n-1]     m[t]         max(ec[t], ed[t]) auxiliary variable for cycle cost
 [6n .. 7n-1]     s_max_pen[t] Penalty: kWh SoC exceeds usable_kwh
 [7n .. 8n-1]     s_min_pen[t] Penalty: kWh SoC drops below 0
+--- EV co-optimisation (when ev_configs is provided) ---
+[8n .. 9n-1]     ev0_c[t]     EV0 DC-side charge per slot (kWh)
+[9n .. 10n-1]    ev1_c[t]     EV1 DC-side charge per slot (kWh) (if second EV active)
+[10n]            ev0_pen      EV0 deadline target slack (kWh shortfall)
+[10n+1]          ev1_pen      EV1 deadline target slack (if second EV active)
 ```
 
 Cycle cost is counted as `α * m[t]` — **not** `α * (ec[t] + ed[t])`.
@@ -234,3 +241,27 @@ Always check `docs/huawei_entities.md` before looking elsewhere.
 - Never use `logging.getLogger(__name__)` directly in planner files.
 - `HSEM_LOGGER.propagate = False` keeps output out of `home-assistant.log`.
 - Log to `hsem.log` (10 MB × 5 files rotating) in HA config dir.
+
+---
+
+## File Organization — By Responsibility, Not By Theme
+
+AI agents naturally bucket related things together (e.g. "all planner inputs in one file").
+This is an anti-pattern.  **Organize files by responsibility — one file does one thing.**
+
+What this means per layer:
+
+- **`models/`**: One dataclass per file.  Exception: tightly-coupled nested types that are
+  never imported independently (e.g. `EVChargerConfig` lives in `sensor_config.py` because it
+  only exists as a field of `SensorConfig`).
+- **`planner/`**: One algorithm/strategy per file (already the case).
+- **`utils/`**: One problem domain per file — a group of closely related functions
+  (already the case with `prices.py`, `misc.py`, etc.).
+- **`custom_sensors/`**: One sensor/coordinator per file.
+
+Do **not** create files like `planner_inputs.py` (6 unrelated dataclasses) or
+`planner_outputs.py` (7 unrelated dataclasses).  Each dataclass is its own responsibility.
+
+**Why**: Smaller, focused files give AI agents exactly the context they need.
+Thematic bucketing loads irrelevant code into every prompt, reducing precision
+and causing edit collisions between unrelated classes.
