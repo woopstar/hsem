@@ -211,6 +211,7 @@ class PlanExplanation:
     """
 
     selected_strategy: str = STATE_UNKNOWN
+    winner_name: str = ""  # e.g. "milp", "passive" — matches rejected_plans
     summary: str = ""
     score: float = 0.0
     estimated_total_cost: float = 0.0
@@ -236,6 +237,7 @@ class PlanExplanation:
         """
         return {
             "selected_strategy": self.selected_strategy,
+            "winner_name": self.winner_name,
             "summary": self.summary,
             "score": round(self.score, 4),
             "estimated_total_cost": round(self.estimated_total_cost, 4),

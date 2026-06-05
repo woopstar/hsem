@@ -772,6 +772,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     bsoc_end = fut[-1].estimated_battery_soc_pct if fut else 0.0
     cw_out, dw_out = _derive_windows(slots)
     expl = _build_explanation(inp, slots, bsoc_end, now)
+    expl.winner_name = winner.name
     expl.hysteresis_active = hysteresis_result.applied
     expl.hysteresis_reason = hysteresis_result.reason
     expl.previous_plan_name = hysteresis_result.previous_plan_name

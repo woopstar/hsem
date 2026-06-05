@@ -133,14 +133,16 @@ class HSEMPlanExplanationSensor(
     @property  # type: ignore[misc]  # HA stub declares state as @final
     @override
     def state(self) -> str:
-        """Return the currently active plan strategy.
+        """Return the winning candidate name (matches rejected_plans).
 
-        Returns ``"unknown"`` while waiting for the first coordinator cycle.
-        Falls back to the last restored state on HA restart.
+        Falls back to selected_strategy or restored state.
         """
         data: CoordinatorData | None = self.coordinator.data
         if data is None:
             return self._restored_state or _UNKNOWN_STRATEGY
+        winner = data.plan_explanation.winner_name
+        if winner:
+            return winner
         return data.plan_explanation.selected_strategy or _UNKNOWN_STRATEGY
 
     @property
