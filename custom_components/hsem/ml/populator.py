@@ -81,6 +81,8 @@ async def populate_ml_house_consumption(
     )
 
     if cache_valid:
+        assert _cached_history is not None  # guarded by cache_valid
+        assert _last_history_fetch is not None  # guarded by cache_valid
         import_history = _cached_history
         HSEM_LOGGER.debug(
             "ML populator: using cached history (%d samples, age %.0f min).",
