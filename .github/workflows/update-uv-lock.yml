@@ -1,7 +1,10 @@
 name: Update uv.lock
 
 on:
-  pull_request_target:
+  push:
+    branches:
+      - main
+  pull_request:
     types: [opened, synchronize, reopened]
     paths:
       - "pyproject.toml"
