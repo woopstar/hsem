@@ -30,7 +30,6 @@ Additional diagnostic attributes are merged from the coordinator snapshot:
 - ``current_slot_start`` / ``current_slot_end`` / ``current_slot_recommendation``
   — the active time-slot boundaries and its recommendation.
 - ``last_apply_status`` — outcome of the most recent hardware-write cycle.
-- ``hardware_writes_blocked`` — ``True`` when critical input data is missing.
 - ``data_quality_complete`` — ``True`` when all price and PV data is available.
 
 The sensor is a *diagnostic* entity (``EntityCategory.DIAGNOSTIC``) so it
@@ -54,7 +53,6 @@ from custom_components.hsem.coordinator import (
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.models.planner_outputs import PlanExplanation
 from custom_components.hsem.utils.datetime_utils import now as hsem_now
-from custom_components.hsem.utils.degraded_mode import hardware_writes_allowed
 from custom_components.hsem.utils.sensornames import (
     get_plan_explanation_sensor_entity_id,
     get_plan_explanation_sensor_name,
@@ -175,7 +173,7 @@ class HSEMPlanExplanationSensor(
         Context attributes from the coordinator snapshot include:
         *planning_horizon_hours*, *planning_interval_minutes*, *forecast_mode*,
         *current_slot_start*, *current_slot_end*, *current_slot_recommendation*,
-        *last_apply_status*, *hardware_writes_blocked*, and *data_quality_complete*.
+        *last_apply_status*, and *data_quality_complete*.
         """
         data: CoordinatorData | None = self.coordinator.data
         explanation: PlanExplanation = (
@@ -185,7 +183,6 @@ class HSEMPlanExplanationSensor(
 
         if data is not None and data.cfg is not None and data.live is not None:
             cfg = data.cfg
-            live = data.live
             now = hsem_now()
 
             # Planner horizon and slot configuration
@@ -210,9 +207,6 @@ class HSEMPlanExplanationSensor(
             apply_summary = data.apply_summary
             d["last_apply_status"] = (
                 apply_summary.overall_status.value if apply_summary else None
-            )
-            d["hardware_writes_blocked"] = not hardware_writes_allowed(
-                live.degraded_mode
             )
 
             # Data quality summary
