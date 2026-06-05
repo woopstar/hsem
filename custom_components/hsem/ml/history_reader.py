@@ -136,7 +136,7 @@ class HistoryReader:
                 ts = state_obj.last_updated
                 value = float(state_obj.state)
                 readings.append((ts, value))
-            except (ValueError, TypeError, AttributeError):
+            except ValueError, TypeError, AttributeError:
                 continue
 
         if len(readings) < 2:
@@ -220,7 +220,7 @@ class HistoryReader:
                 ts = state_obj.last_updated
                 value = float(state_obj.state)
                 readings.append((ts, value))
-            except (ValueError, TypeError, AttributeError):
+            except ValueError, TypeError, AttributeError:
                 continue
 
         readings.sort(key=lambda x: x[0])
@@ -286,7 +286,7 @@ class HistoryReader:
                 ts = state_obj.last_updated
                 value = float(state_obj.state)
                 readings.append((ts, value))
-            except (ValueError, TypeError, AttributeError):
+            except ValueError, TypeError, AttributeError:
                 continue
 
         if len(readings) < 2:

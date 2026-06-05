@@ -352,7 +352,7 @@ async def _async_update_hourly_field(
                 try:
                     # Normalize to HA-local timezone, strip sub-minute precision
                     dt_key = normalize_datetime(dt_key).replace(minute=0, second=0)
-                except (ValueError, OSError):  # noqa: TRY302
+                except ValueError, OSError:  # noqa: TRY302
                     # Skip data points with unparseable or non-local timestamps
                     continue
 
@@ -517,12 +517,12 @@ def _update_hourly_field_from_attrs(
                 else:
                     try:
                         dt_key = datetime.fromisoformat(str(raw_time))
-                    except (ValueError, TypeError):
+                    except ValueError, TypeError:
                         continue
 
                 try:
                     dt_key = normalize_datetime(dt_key).replace(minute=0, second=0)
-                except (ValueError, OSError):
+                except ValueError, OSError:
                     continue
 
                 value = convert_to_float(data.get(kv["v"]))

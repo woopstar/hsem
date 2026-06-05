@@ -110,7 +110,7 @@ class HSEMUpdateIntervalSensor(
             if self._restored_state is not None:
                 try:
                     return int(self._restored_state)
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     pass
             return None
         return data.cfg.update_interval

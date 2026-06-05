@@ -111,7 +111,7 @@ class HSEMBatterySoCSensor(
             if self._restored_state is not None:
                 try:
                     return float(self._restored_state)
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     pass
             return None
         return data.live.huawei_batteries_soc_pct

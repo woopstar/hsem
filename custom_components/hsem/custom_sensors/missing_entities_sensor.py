@@ -106,7 +106,7 @@ class HSEMMissingEntitiesSensor(
             if self._restored_state is not None:
                 try:
                     return int(self._restored_state)
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     pass
             return 0
         return len(data.live.missing_entities_list)

@@ -114,7 +114,7 @@ class HSEMNetConsumptionSensor(
             if self._restored_state is not None:
                 try:
                     return float(self._restored_state)
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     pass
             return None
         return data.live.net_consumption_w

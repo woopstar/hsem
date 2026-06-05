@@ -69,7 +69,7 @@ async def async_set_grid_export_power_pct(
         )
         raise HomeAssistantError(f"Invalid input data: {err}") from err
 
-    except (ServiceNotFound, ServiceValidationError, HomeAssistantError):
+    except ServiceNotFound, ServiceValidationError, HomeAssistantError:
         # Service missing or HA rejected the call
         _LOGGER.exception(
             "HA error during set_maximum_feed_grid_power_percent "
@@ -132,7 +132,7 @@ async def async_set_grid_export_power_watt(
         )
         raise HomeAssistantError(f"Invalid input data: {err}") from err
 
-    except (ServiceNotFound, ServiceValidationError, HomeAssistantError):
+    except ServiceNotFound, ServiceValidationError, HomeAssistantError:
         # Service missing or HA rejected the call
         _LOGGER.exception(
             "HA error during set_maximum_feed_grid_power (device_id=%s, power_watt=%s)",
@@ -193,7 +193,7 @@ async def async_set_tou_periods(
         )
         raise HomeAssistantError(f"Invalid input data: {err}") from err
 
-    except (ServiceNotFound, ServiceValidationError, HomeAssistantError):
+    except ServiceNotFound, ServiceValidationError, HomeAssistantError:
         # Service missing or HA rejected the call
         _LOGGER.exception(
             "HA error during set_tou_periods (device_id=%s)",
@@ -266,7 +266,7 @@ async def async_set_forcible_discharge(
         )
         raise HomeAssistantError(f"Invalid input data: {err}") from err
 
-    except (ServiceNotFound, ServiceValidationError, HomeAssistantError):
+    except ServiceNotFound, ServiceValidationError, HomeAssistantError:
         # Service missing or HA rejected the call — propagate so callers can enter safe mode
         _LOGGER.exception(
             "HA error during forcible_discharge_soc "
@@ -300,7 +300,7 @@ async def async_stop_forcible_discharge(self: Any, device_id: str) -> None:
             blocking=True,
         )
         _LOGGER.debug("Stopped forcible charge/discharge for device_id %s", device_id)
-    except (ServiceNotFound, ServiceValidationError, HomeAssistantError):
+    except ServiceNotFound, ServiceValidationError, HomeAssistantError:
         _LOGGER.exception(
             "HA error during stop_forcible_charge (device_id=%s)", device_id
         )

@@ -180,12 +180,12 @@ def convert_to_float(state: Any) -> float | None:
             return None
         try:
             return float(stripped)
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             return None
 
     try:
         return float(state)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return None
 
 
@@ -209,12 +209,12 @@ def convert_to_int(state: Any) -> int | None:
             return None
         try:
             return int(float(stripped))
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             return None
 
     try:
         return int(state)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return None
 
 
@@ -400,7 +400,7 @@ async def async_set_number_value(self: Any, entity_id: str, value: float | int) 
             blocking=True,
         )
         _LOGGER.debug("Set value '%s' for number entity_id '%s'", value, entity_id)
-    except (ServiceNotFound, ServiceValidationError, HomeAssistantError):
+    except ServiceNotFound, ServiceValidationError, HomeAssistantError:
         _LOGGER.exception(
             "Failed to set value '%s' for number entity_id '%s' (operation=set_value)",
             value,
@@ -441,7 +441,7 @@ async def async_set_select_option(self: Any, entity_id: str, option: str) -> Non
             blocking=True,
         )
         _LOGGER.debug("Set option '%s' for entity_id '%s'", option, entity_id)
-    except (ServiceNotFound, ServiceValidationError, HomeAssistantError):
+    except ServiceNotFound, ServiceValidationError, HomeAssistantError:
         _LOGGER.exception(
             "Failed to set option '%s' for entity_id '%s' (operation=select_option)",
             option,
