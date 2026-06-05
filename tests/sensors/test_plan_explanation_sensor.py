@@ -46,6 +46,7 @@ from custom_components.hsem.utils.inverter_verify import (
 
 _EXPECTED_ATTR_KEYS = {
     "selected_strategy",
+    "winner_name",
     "summary",
     "score",
     "estimated_total_cost",
