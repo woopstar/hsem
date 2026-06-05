@@ -10,10 +10,10 @@ please refer to `AGENTS.md`.
 
 1. **Read AGENTS.md first** — Understand the project's constraints, security rules, and Home
    Assistant compliance requirements
-2. **Verify Python 3.13** — Ensure you're using Python 3.13 (see `.python-version`)
+2. **Verify Python 3.14** — Ensure you're using Python 3.14 (see `.python-version`)
 3. **Create a feature branch** — Use format: `feat/<issue-number>-<description>`
 4. **Make focused changes** — Solve one issue at a time
-5. **Run quality checks** — `tox -e lint`, `tox -e typing`, `tox -e quality`, `tox -e py313`
+5. **Run quality checks** — `tox -e lint`, `tox -e typing`, `tox -e quality`, `tox -e py314`
 6. **Submit PR for review** — Do not merge without explicit permission
 
 ## Core Principles
@@ -35,7 +35,7 @@ please refer to `AGENTS.md`.
    - Run `tox -e lint` before committing (isort + black + ruff format + ruff check)
    - Run `tox -e typing` after lint (mypy type checking)
    - Run `tox -e quality` after typing (pyright + vulture)
-   - Run `tox -e py313` to run tests with coverage before opening a PR
+   - Run `tox -e py314` to run tests with coverage before opening a PR
    - Include type hints for all public functions
    - Write docstrings for all public modules, classes, and functions
    - Write tests for new functionality
@@ -119,8 +119,8 @@ Quick checklist before opening a planner PR:
 ## Development Workflow
 
 ```bash
-# 1. Ensure you're on Python 3.13
-python --version  # Should show 3.13.x
+# 1. Ensure you're on Python 3.14
+python --version  # Should show 3.14.x
 
 # 2. Create a feature branch
 git checkout -b feat/<issue-number>-<description>
@@ -134,7 +134,7 @@ tox -e typing
 # 6. Quality checks (REQUIRED)
 tox -e quality
 # 7. Run tests (REQUIRED)
-tox -e py313
+tox -e py314
 
 # 8. Verify changes
 git status
@@ -196,7 +196,7 @@ mypy custom_components tests
 tox -e quality
 
 # Step 4: Run tests with coverage
-tox -e py313
+tox -e py314
 
 # Step 5: Verify no unintended changes
 git status
@@ -237,8 +237,8 @@ def calculate_consumption_prediction(
 
 ## Python Version and Style
 
-- **Target**: Python 3.13 (required - see `.python-version`)
-- **Syntax**: Use modern Python 3.13+ syntax (union operator `|`, walrus operator, etc.)
+- **Target**: Python 3.14 (required - see `.python-version`)
+- **Syntax**: Use modern Python 3.14+ syntax (union operator `|`, walrus operator, etc.)
 - **Style**: Follow PEP 8 and PEP 257 (enforced by ruff)
 - **Formatting**: Use f-strings for string formatting
 - **Paths**: Prefer `pathlib` over `os.path`
@@ -273,7 +273,7 @@ pytest tests/test_module.py::test_function_name
 
 ## What to Do
 
-✅ Focus on the specific issue assigned ✅ Use Python 3.13 and pass all ruff quality checks ✅ Write
+✅ Focus on the specific issue assigned ✅ Use Python 3.14 and pass all ruff quality checks ✅ Write
 clear, maintainable code with type hints ✅ Include tests for new features and behavior changes ✅
 Format and lint code before every commit (`ruff format .` then `ruff check . --fix`) ✅ Ask for
 clarification if requirements are unclear ✅ Document complex logic with comments ✅ Keep commits
@@ -281,8 +281,8 @@ atomic and focused ✅ Reference `AGENTS.md` for comprehensive rules
 
 ## What to Avoid
 
-❌ Submitting a PR without running `tox -e lint`, `tox -e typing`, `tox -e quality`, and `tox -e py313` first ❌ Ignoring lint warnings or errors
-❌ Using Python versions other than 3.13 ❌ Refactoring unrelated code ❌ Changing planner or safety
+❌ Submitting a PR without running `tox -e lint`, `tox -e typing`, `tox -e quality`, and `tox -e py314` first ❌ Ignoring lint warnings or errors
+❌ Using Python versions other than 3.14 ❌ Refactoring unrelated code ❌ Changing planner or safety
 features without explicit issue ❌ Reformatting code outside your changes ❌ Adding new dependencies
 without justification ❌ Changing logging levels or sensitive output ❌ Modifying configuration
 without issue requirement ❌ Committing secrets, API keys, or credentials ❌ Merging PRs without
@@ -300,7 +300,7 @@ explicit permission
 
 - **General rules and constraints**: See `AGENTS.md`
 - **Home Assistant requirements**: See `AGENTS.md` → **Home Assistant Compliance**
-- **Python version issues**: Ensure you're using Python 3.13 from `.python-version`
+- **Python version issues**: Ensure you're using Python 3.14 from `.python-version`
 - **Lint/format errors**: Run `tox -e lint` to auto-fix most issues (isort, black, ruff format, ruff check)
 - **Unclear requirements**: Stop and ask for clarification before implementing
 - **Design decisions**: Refer to `docs/` directory for architecture notes
