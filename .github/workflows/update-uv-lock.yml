@@ -1,0 +1,53 @@
+name: Update uv.lock
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "pyproject.toml"
+      - "requirements.txt"
+      - "requirements_test.txt"
+      - "requirements_lint.txt"
+      - "requirements_typing.txt"
+      - ".python-version"
+
+permissions:
+  contents: read
+
+jobs:
+  update-uv-lock:
+    name: Regenerate uv.lock
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v6.0.3
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
+      - name: Pull latest changes
+        run: git pull origin ${{ github.head_ref }} || true
+
+      - name: Regenerate uv.lock
+        run: uv lock
+
+      - name: Commit updated uv.lock
+        run: |
+          if ! git diff --quiet uv.lock; then
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git config user.name "GitHub Actions"
+            git add uv.lock
+            git commit -m "chore: regenerate uv.lock"
+            git push
+          else
+            echo "uv.lock is already up-to-date"
+          fi
