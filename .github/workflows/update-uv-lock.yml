@@ -34,9 +34,6 @@ jobs:
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
 
-      - name: Pull latest changes
-        run: git pull origin ${{ github.head_ref }} || true
-
       - name: Regenerate uv.lock
         run: uv lock
 
