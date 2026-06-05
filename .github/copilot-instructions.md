@@ -24,7 +24,7 @@ It contains the complete Home Assistant development compliance checklist:
 - Translations, entity base classes, and device info
 - Style guidelines (import order, docstrings, logging, type hints)
 - PR scope rules and testing requirements
-- Quality gates: `tox -e lint`, `tox -e typing`, `tox -e quality`, `tox -e py313`
+- Quality gates: `tox -e lint`, `tox -e typing`, `tox -e quality`, `tox -e py314`
 
 ---
 
@@ -51,7 +51,7 @@ When asked to solve a GitHub issue, always follow these steps in order:
    - `tox -e lint` — isort + black + ruff format + ruff check
    - `tox -e typing` — mypy type checking
    - `tox -e quality` — pyright + vulture
-   - `tox -e py313` — pytest with coverage
+   - `tox -e py314` — pytest with coverage
 10. **Report a summary** including:
    - Issue title
    - Branch name
@@ -155,7 +155,7 @@ These helpers exist — never re-implement them inline:
 - Run `tox -e lint` before every commit (isort + black + ruff format + ruff check in one command).
 - Run `tox -e typing` after lint — mypy type checking.
 - Run `tox -e quality` after typing (pyright + vulture static checks).
-- Run `tox -e py313` to run the full test suite with coverage before opening a PR.
+- Run `tox -e py314` to run the full test suite with coverage before opening a PR.
 
 ## Write Modular Code
 - Break code into modules and components for easy reuse.

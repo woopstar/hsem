@@ -42,7 +42,7 @@ class TestParseVersion:
         assert result == Version("1.5.0a1")
 
 
-def _v(version_str: str) -> "Version":
+def _v(version_str: str) -> Version:
     """Parse a version string and assert it is not None.
 
     Helper that wraps :func:`_parse_version` for ordering tests where the

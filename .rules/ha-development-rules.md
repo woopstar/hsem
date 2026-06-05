@@ -104,7 +104,7 @@ Branch naming: `<type>/<issue-number>-<slug>`
 tox -e lint      # isort + black + ruff format + ruff check
 tox -e typing    # mypy — 0 errors
 tox -e quality   # pyright + vulture — 0 errors
-tox -e py313     # pytest with coverage
+tox -e py314     # pytest with coverage
 ```
 
 ---

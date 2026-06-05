@@ -391,7 +391,7 @@ class DailyPlanVsActualTracker:
         try:
             with open(path, encoding="utf-8") as f:
                 return json.load(f)  # type: ignore[no-any-return]
-        except (json.JSONDecodeError, OSError):
+        except json.JSONDecodeError, OSError:
             return None
 
     async def _save_record_to_history(self, record: DailyRecord) -> bool:

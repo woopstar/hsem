@@ -238,7 +238,7 @@ def _parse_time_str(value: str) -> _datetime | None:
     """Parse a ``HH:MM:SS`` string into a :class:`datetime` or return ``None``."""
     try:
         return _datetime.strptime(value, _TIME_FORMAT)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return None
 
 
@@ -321,7 +321,7 @@ def validate_power_limits(
 
     try:
         w = float(value)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         errors[field] = "invalid_power_value"
         return errors
 
@@ -355,7 +355,7 @@ def validate_energy_limits(
 
     try:
         kwh = float(value)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         errors[field] = "invalid_energy_value"
         return errors
 
@@ -396,7 +396,7 @@ def validate_price(
 
     try:
         price = float(value)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         errors[field] = "invalid_price_value"
         return errors
 
@@ -432,7 +432,7 @@ def validate_consumption_weights(user_input: dict) -> dict[str, str]:
 
     try:
         total = sum(int(user_input.get(f, 0)) for f in fields)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         errors["base"] = "hsem_house_consumption_energy_weight_total"
         return errors
 

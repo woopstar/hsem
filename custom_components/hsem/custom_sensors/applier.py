@@ -619,7 +619,7 @@ def _read_number_state(
         return None
     try:
         return float(state.state)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return None
 
 
@@ -681,7 +681,7 @@ def _parse_power_control_pct(state: str | None) -> int | None:
     if match:
         try:
             return int(round(float(match.group(1))))
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             pass
     return None
 

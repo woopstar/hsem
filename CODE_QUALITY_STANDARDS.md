@@ -72,7 +72,7 @@ def predict_consumption(
     return sum(history) / len(history)
 ```
 
-### 4. **Python 3.13+ Features**
+### 4. **Python 3.14+ Features**
 
 Always use modern Python syntax:
 
@@ -85,7 +85,7 @@ Always use modern Python syntax:
 
 > **Note on Python version**: `pyproject.toml` sets `target-version = "py312"` for ruff/mypy to
 > ensure compatibility with Home Assistant’s supported Python version. The runtime itself uses
-> Python 3.13 (see `.python-version`).
+> Python 3.14 (see `.python-version`).
 
 ### 5. **No Technical Debt**
 
@@ -203,8 +203,8 @@ The following checks run on every PR:
 
 ## Python Version
 
-- **Runtime**: Python 3.13 — check `.python-version` for the exact patch version
-- **Lint / type-check target**: Python 3.13 — set via `target-version = "py313"` in `pyproject.toml`
+- **Runtime**: Python 3.14 — check `.python-version` for the exact patch version
+- **Lint / type-check target**: Python 3.14 — set via `target-version = "py314"` in `pyproject.toml`
   to maintain compatibility with Home Assistant’s supported Python range
 - Use `pyenv` or `asdf` to manage multiple Python versions locally
 
@@ -284,7 +284,7 @@ from typing import List, Dict
 def process(items: List[int]) -> Dict[str, int]:
     pass
 
-# ✅ Good (Python 3.13 style)
+# ✅ Good (Python 3.14 style)
 def process(items: list[int]) -> dict[str, int]:
     pass
 ```

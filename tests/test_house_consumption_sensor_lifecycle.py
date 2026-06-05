@@ -106,7 +106,7 @@ def _attach_hass(sensor: HSEMHouseConsumptionPowerSensor) -> MagicMock:
     hass.data = {}
     sensor.hass = hass
     # Suppress async_write_ha_state globally on the sensor to avoid HA bootstrap.
-    sensor.async_write_ha_state = MagicMock()  # type: ignore[method-assign]  # test monkey-patch
+    sensor.async_write_ha_state = MagicMock()  # type: ignore[method-assign,misc]  # test monkey-patch
     return hass
 
 

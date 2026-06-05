@@ -12,7 +12,6 @@ without pytest-socket interfering.
 """
 
 import asyncio
-import sys
 from collections.abc import Generator
 
 import pytest
@@ -31,14 +30,8 @@ def event_loop() -> Generator[asyncio.AbstractEventLoop]:
     # Briefly allow socket creation so the event loop can set up its self-pipe.
     pytest_socket.enable_socket()
     try:
-        if sys.platform == "win32":
-            # Use SelectorEventLoop to avoid ProactorEventLoop's more complex setup.
-            policy: asyncio.AbstractEventLoopPolicy = (
-                asyncio.WindowsSelectorEventLoopPolicy()
-            )
-        else:
-            policy = asyncio.DefaultEventLoopPolicy()
-        loop = policy.new_event_loop()
+        # Python 3.14+ has deprecated public event loop policies.
+        loop = asyncio.new_event_loop()
     finally:
         # Re-block sockets immediately after loop creation.
         pytest_socket.disable_socket(allow_unix_socket=True)

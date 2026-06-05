@@ -10,7 +10,7 @@
     "**/node_modules",
     "**/.*",
   ],
-  "pythonVersion": "3.13.2",
+  "pythonVersion": "3.14",
   "typeCheckingMode": "basic",
   "reportMissingImports": "warning",
   "reportMissingTypeStubs": "none",

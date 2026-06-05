@@ -113,7 +113,7 @@ class HSEMRecommendationIntervalSensor(
             if self._restored_state is not None:
                 try:
                     return int(self._restored_state)
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     pass
             return None
         return data.cfg.recommendation_interval_minutes
