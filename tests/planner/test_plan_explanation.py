@@ -38,6 +38,7 @@ from tests.planner.fixtures import (
 
 _EXPECTED_EXPLANATION_KEYS = {
     "selected_strategy",
+    "winner_name",
     "summary",
     "score",
     "estimated_total_cost",

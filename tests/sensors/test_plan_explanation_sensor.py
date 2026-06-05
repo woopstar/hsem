@@ -69,7 +69,6 @@ _CONTEXT_ATTR_KEYS = {
     "current_slot_end",
     "current_slot_recommendation",
     "last_apply_status",
-    "hardware_writes_blocked",
     "data_quality_complete",
 }
 
@@ -396,11 +395,6 @@ class TestSensorContextAttributes:
         """last_apply_status must reflect the apply_summary overall_status."""
         sensor = _make_sensor(_make_coordinator_data(has_context=True))
         assert sensor.extra_state_attributes["last_apply_status"] == "ok"
-
-    def test_hardware_writes_blocked(self):
-        """hardware_writes_blocked must be False when degraded mode is OK."""
-        sensor = _make_sensor(_make_coordinator_data(has_context=True))
-        assert sensor.extra_state_attributes["hardware_writes_blocked"] is False
 
     def test_data_quality_complete(self):
         """data_quality_complete must be True for a default DataQuality."""

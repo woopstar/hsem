@@ -775,7 +775,7 @@ class TestSelectBestCandidate:
         )
         rejected_names = {rp.name for rp in rejected}
         for candidate in candidates:
-            if candidate is not winner:
+            if candidate is not winner and candidate.name != CANDIDATE_NO_ACTION:
                 assert candidate.name in rejected_names
 
     def test_winner_has_lowest_cost_among_valid(self):
@@ -860,15 +860,13 @@ class TestSelectBestCandidate:
             cost_weights=cost_weights,
             slot_duration_hours=1.0,
         )
-        # no_action must never win — it is excluded from eligible selection
-        assert winner.name != CANDIDATE_NO_ACTION, (
-            f"no_action must never win; got {winner.name}"
-        )
-        # Verify no_action is in rejected with an exclusion reason
+        # no_action must never win — excluded from eligible selection
+        assert winner.name != CANDIDATE_NO_ACTION
+        # no_action is excluded from rejected plans (diagnostic floor, not a candidate)
         no_action_rejected = next(
             (r for r in rejected if r.name == CANDIDATE_NO_ACTION), None
         )
-        assert no_action_rejected is not None, "no_action must appear in rejected plans"
+        assert no_action_rejected is None, "no_action must not appear in rejected plans"
 
 
 # ===========================================================================
