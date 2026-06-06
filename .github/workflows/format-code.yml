@@ -36,7 +36,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip wheel
-          pip install tox
+          pip install tox==4.55.1
           pip install -r requirements_lint.txt
 
       - name: Pull latest changes
