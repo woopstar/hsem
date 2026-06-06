@@ -48,8 +48,10 @@ from custom_components.hsem.coordinator_builder import (
     build_planner_input,
     generate_recommendation_intervals,
 )
-from custom_components.hsem.custom_sensors.hourly_data_populator import (  # noqa: F401 — kept for backward compat (patched in tests)
+from custom_components.hsem.custom_sensors.hourly_data_populator.consumption import (
     populate_avg_house_consumption_from_snapshot,
+)
+from custom_components.hsem.custom_sensors.hourly_data_populator.prices_solcast import (
     populate_price_and_solcast_from_snapshot,
 )
 from custom_components.hsem.custom_sensors.state_collector import (  # noqa: F401 — kept for backward compat

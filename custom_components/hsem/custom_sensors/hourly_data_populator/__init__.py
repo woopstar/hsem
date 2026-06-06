@@ -32,24 +32,3 @@ async def _resolve_cached(
         if entity_id is not None:
             cache[unique_id] = entity_id
     return cache.get(unique_id)
-
-
-# ---------------------------------------------------------------------------
-# Re-export all public functions from sub-modules
-# ---------------------------------------------------------------------------
-
-from .consumption import (  # noqa: E402
-    async_populate_avg_house_consumption,
-    populate_avg_house_consumption_from_snapshot,
-)
-from .prices_solcast import (  # noqa: E402
-    async_populate_price_and_solcast,
-    populate_price_and_solcast_from_snapshot,
-)
-
-__all__ = [
-    "async_populate_avg_house_consumption",
-    "async_populate_price_and_solcast",
-    "populate_avg_house_consumption_from_snapshot",
-    "populate_price_and_solcast_from_snapshot",
-]

@@ -2,71 +2,12 @@
 
 Includes helpers for config value retrieval, hashing, efficiency
 clamping, battery power calculations, and cycle-cost thresholds.
-
-Functions that were previously defined here have been extracted into
-dedicated modules (``conversion.py``, ``ha_helpers.py``,
-``time_windows.py``) and are re-exported below for backward
-compatibility.
 """
 
 import hashlib
 from typing import Any
 
 from custom_components.hsem.const import DEFAULT_CONFIG_VALUES
-
-# ---------------------------------------------------------------------------
-# Re-exports — functions extracted to dedicated modules but kept available
-# here so that existing callers importing from ``utils.misc`` continue to
-# work without changes.
-# ---------------------------------------------------------------------------
-from custom_components.hsem.utils.conversion import (
-    convert_months_to_int,
-    convert_to_boolean,
-    convert_to_float,
-    convert_to_int,
-    convert_to_time,
-)
-from custom_components.hsem.utils.ha_helpers import (  # noqa: F401
-    EntityNotFoundError,
-    async_device_exists,
-    async_entity_exists,
-    async_remove_entity_from_ha,
-    async_resolve_entity_id_from_unique_id,
-    async_set_number_value,
-    async_set_select_option,
-    ha_get_entity_state_and_convert,
-)
-from custom_components.hsem.utils.time_windows import (
-    interval_ends_before_window_start,
-    is_time_in_window,
-    next_window_start_dt,
-)
-
-# Keep ``__all__`` tidy — only the functions actually defined *in this module*
-# plus the re-exported names are exposed.
-__all__ = [
-    "EntityNotFoundError",
-    "async_device_exists",
-    "async_entity_exists",
-    "async_remove_entity_from_ha",
-    "async_resolve_entity_id_from_unique_id",
-    "async_set_number_value",
-    "async_set_select_option",
-    "calculate_recommended_threshold",
-    "clamp_efficiency",
-    "convert_months_to_int",
-    "convert_to_boolean",
-    "convert_to_float",
-    "convert_to_int",
-    "convert_to_time",
-    "generate_hash",
-    "get_config_value",
-    "get_max_discharge_power",
-    "ha_get_entity_state_and_convert",
-    "interval_ends_before_window_start",
-    "is_time_in_window",
-    "next_window_start_dt",
-]
 
 
 def generate_hash(input_sensor: str) -> str:
