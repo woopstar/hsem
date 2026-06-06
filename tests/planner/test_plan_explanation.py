@@ -20,11 +20,9 @@ import pytest
 
 from homeassistant.const import STATE_UNKNOWN
 
-from custom_components.hsem.models.planner_outputs import (
-    PlanExplanation,
-    PlannerOutput,
-    RejectedPlan,
-)
+from custom_components.hsem.models.plan_explanation import PlanExplanation
+from custom_components.hsem.models.planner_output import PlannerOutput
+from custom_components.hsem.models.rejected_plan import RejectedPlan
 from custom_components.hsem.planner import run_planner
 from tests.planner.fixtures import (
     make_flat_price_input,

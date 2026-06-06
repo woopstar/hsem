@@ -15,13 +15,15 @@ from custom_components.hsem.custom_numbers.battery_efficiency import (
     HSEMBatteryEfficiencyNumber,
 )
 from custom_components.hsem.custom_numbers.ev_target_soc import HSEMEVTargetSocNumber
-from custom_components.hsem.utils.sensornames import (
+from custom_components.hsem.utils.sensornames.controls import (
     get_charge_efficiency_number_entity_id,
     get_charge_efficiency_number_key,
     get_charge_efficiency_number_unique_id,
     get_discharge_efficiency_number_entity_id,
     get_discharge_efficiency_number_key,
     get_discharge_efficiency_number_unique_id,
+)
+from custom_components.hsem.utils.sensornames.ev import (
     get_ev_second_target_soc_number_entity_id,
     get_ev_second_target_soc_number_key,
     get_ev_second_target_soc_number_unique_id,

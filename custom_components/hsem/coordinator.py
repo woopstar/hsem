@@ -48,8 +48,10 @@ from custom_components.hsem.coordinator_builder import (
     build_planner_input,
     generate_recommendation_intervals,
 )
-from custom_components.hsem.custom_sensors.hourly_data_populator import (  # noqa: F401 — kept for backward compat (patched in tests)
+from custom_components.hsem.custom_sensors.hourly_data_populator.consumption import (
     populate_avg_house_consumption_from_snapshot,
+)
+from custom_components.hsem.custom_sensors.hourly_data_populator.prices_solcast import (
     populate_price_and_solcast_from_snapshot,
 )
 from custom_components.hsem.custom_sensors.state_collector import (  # noqa: F401 — kept for backward compat
@@ -57,18 +59,16 @@ from custom_components.hsem.custom_sensors.state_collector import (  # noqa: F40
     build_battery_schedules,
     build_sensor_config,
 )
-from custom_components.hsem.models.daily_plan_vs_actual import (
-    DailyMetrics,
+from custom_components.hsem.models.daily_metrics import DailyMetrics
+from custom_components.hsem.models.daily_plan_vs_actual_tracker import (
     DailyPlanVsActualTracker,
 )
+from custom_components.hsem.models.data_quality import DataQuality
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.live_state import LiveState
-from custom_components.hsem.models.planner_inputs import PlannerInput
-from custom_components.hsem.models.planner_outputs import (
-    DataQuality,
-    PlanExplanation,
-    PlannerOutput,
-)
+from custom_components.hsem.models.plan_explanation import PlanExplanation
+from custom_components.hsem.models.planner_input import PlannerInput
+from custom_components.hsem.models.planner_output import PlannerOutput
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.models.state_snapshot import StateSnapshot
 from custom_components.hsem.planner import run_planner

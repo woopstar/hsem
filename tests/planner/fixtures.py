@@ -18,13 +18,13 @@ from __future__ import annotations
 
 from datetime import time
 
-from custom_components.hsem.models.planner_inputs import (
-    BatteryScheduleInput,
+from custom_components.hsem.models.battery_schedule_input import BatteryScheduleInput
+from custom_components.hsem.models.hourly_consumption_average import (
     HourlyConsumptionAverage,
-    PlannerInput,
-    PricePoint,
-    SolcastSlot,
 )
+from custom_components.hsem.models.planner_input import PlannerInput
+from custom_components.hsem.models.price_point import PricePoint
+from custom_components.hsem.models.solcast_slot import SolcastSlot
 
 _DEFAULT_SUMMER_ISO = "2024-06-15T00:00:00+02:00"
 

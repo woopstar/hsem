@@ -226,10 +226,8 @@ def make_bare_coordinator(
     coord._live = None
     coord._snapshot = None
 
-    from custom_components.hsem.models.planner_outputs import (
-        DataQuality,
-        PlanExplanation,
-    )
+    from custom_components.hsem.models.data_quality import DataQuality
+    from custom_components.hsem.models.plan_explanation import PlanExplanation
 
     coord._plan_explanation = PlanExplanation()
     coord._data_quality = DataQuality()
@@ -515,7 +513,9 @@ class TestMockStateReads:
 
     def test_float_conversion_from_fake_state(self) -> None:
         """ha_get_entity_state_and_convert must parse float from FakeState.state."""
-        from custom_components.hsem.utils.misc import ha_get_entity_state_and_convert
+        from custom_components.hsem.utils.ha_helpers import (
+            ha_get_entity_state_and_convert,
+        )
 
         hass = make_fake_hass({"sensor.soc": "65.5"})
         sensor_stub = MagicMock()
@@ -526,7 +526,7 @@ class TestMockStateReads:
 
     def test_missing_entity_raises_entity_not_found(self) -> None:
         """Reading a non-existent entity must raise EntityNotFoundError."""
-        from custom_components.hsem.utils.misc import (
+        from custom_components.hsem.utils.ha_helpers import (
             EntityNotFoundError,
             ha_get_entity_state_and_convert,
         )
@@ -540,7 +540,9 @@ class TestMockStateReads:
 
     def test_unavailable_state_returns_none(self) -> None:
         """An 'unavailable' state string must return None for float reads."""
-        from custom_components.hsem.utils.misc import ha_get_entity_state_and_convert
+        from custom_components.hsem.utils.ha_helpers import (
+            ha_get_entity_state_and_convert,
+        )
 
         hass = make_fake_hass({"sensor.soc": "unavailable"})
         sensor_stub = MagicMock()
@@ -551,7 +553,9 @@ class TestMockStateReads:
 
     def test_boolean_conversion_from_fake_state(self) -> None:
         """Boolean 'on'/'off' states must convert correctly."""
-        from custom_components.hsem.utils.misc import ha_get_entity_state_and_convert
+        from custom_components.hsem.utils.ha_helpers import (
+            ha_get_entity_state_and_convert,
+        )
 
         hass = make_fake_hass(
             {"binary_sensor.charging": "on", "binary_sensor.idle": "off"}
@@ -574,7 +578,9 @@ class TestMockStateReads:
 
     def test_string_conversion_from_fake_state(self) -> None:
         """String conversion must return the state value unchanged."""
-        from custom_components.hsem.utils.misc import ha_get_entity_state_and_convert
+        from custom_components.hsem.utils.ha_helpers import (
+            ha_get_entity_state_and_convert,
+        )
 
         hass = make_fake_hass({"select.mode": "TimeOfUse"})
         sensor_stub = MagicMock()
@@ -611,7 +617,7 @@ class TestMockServiceCalls:
     @pytest.mark.asyncio
     async def test_async_set_select_option_calls_ha_service(self) -> None:
         """async_set_select_option must call hass.services.async_call."""
-        from custom_components.hsem.utils.misc import async_set_select_option
+        from custom_components.hsem.utils.ha_helpers import async_set_select_option
 
         hass = make_fake_hass({"select.batteries_working_mode": "TimeOfUse"})
         sensor_stub = MagicMock()
@@ -631,7 +637,7 @@ class TestMockServiceCalls:
     @pytest.mark.asyncio
     async def test_async_set_number_value_calls_ha_service(self) -> None:
         """async_set_number_value must call hass.services.async_call."""
-        from custom_components.hsem.utils.misc import async_set_number_value
+        from custom_components.hsem.utils.ha_helpers import async_set_number_value
 
         hass = make_fake_hass({"number.batteries_maximum_charging_power": "5000"})
         sensor_stub = MagicMock()
@@ -1762,7 +1768,7 @@ def _patch_all_ha_helpers():
                 new_callable=MagicMock,
             ),
             patch(
-                "custom_components.hsem.utils.misc"
+                "custom_components.hsem.utils.ha_helpers"
                 ".async_resolve_entity_id_from_unique_id",
                 new_callable=AsyncMock,
                 return_value=None,
@@ -1777,11 +1783,11 @@ def _patch_all_ha_helpers():
                 ".populate_price_and_solcast_from_snapshot",
             ),
             patch(
-                "custom_components.hsem.utils.misc.async_set_select_option",
+                "custom_components.hsem.utils.ha_helpers.async_set_select_option",
                 new_callable=AsyncMock,
             ),
             patch(
-                "custom_components.hsem.utils.misc.async_set_number_value",
+                "custom_components.hsem.utils.ha_helpers.async_set_number_value",
                 new_callable=AsyncMock,
             ),
             patch(
@@ -1866,10 +1872,8 @@ class TestApplyPlannerOutputEvLoad:
             ev_total_by_hour: Mapping of hour → ev_total_planned_load_kwh.  When
                 omitted, defaults to ``ev_load + ev_accounted`` per slot.
         """
-        from custom_components.hsem.models.planner_outputs import (
-            PlannedSlot,
-            PlannerOutput,
-        )
+        from custom_components.hsem.models.planned_slot import PlannedSlot
+        from custom_components.hsem.models.planner_output import PlannerOutput
         from custom_components.hsem.utils.prices import SlotPrice
 
         if ev_accounted_by_hour is None:
@@ -1992,10 +1996,8 @@ class TestApplyPlannerOutputEvLoad:
         from custom_components.hsem.models.hourly_recommendation import (
             HourlyRecommendation,
         )
-        from custom_components.hsem.models.planner_outputs import (
-            PlannedSlot,
-            PlannerOutput,
-        )
+        from custom_components.hsem.models.planned_slot import PlannedSlot
+        from custom_components.hsem.models.planner_output import PlannerOutput
         from custom_components.hsem.utils.prices import SlotPrice
 
         tz_zone = ZoneInfo("Europe/Copenhagen")
@@ -2079,10 +2081,8 @@ class TestApplyPlannerOutputEvLoad:
         from custom_components.hsem.models.hourly_recommendation import (
             HourlyRecommendation,
         )
-        from custom_components.hsem.models.planner_outputs import (
-            PlannedSlot,
-            PlannerOutput,
-        )
+        from custom_components.hsem.models.planned_slot import PlannedSlot
+        from custom_components.hsem.models.planner_output import PlannerOutput
         from custom_components.hsem.utils.prices import SlotPrice
 
         midnight = datetime(2024, 6, 15, 0, 0, 0, tzinfo=UTC)
@@ -2159,10 +2159,8 @@ class TestApplyPlannerOutputEvLoad:
         from custom_components.hsem.models.hourly_recommendation import (
             HourlyRecommendation,
         )
-        from custom_components.hsem.models.planner_outputs import (
-            PlannedSlot,
-            PlannerOutput,
-        )
+        from custom_components.hsem.models.planned_slot import PlannedSlot
+        from custom_components.hsem.models.planner_output import PlannerOutput
         from custom_components.hsem.utils.logger import HSEM_LOGGER
         from custom_components.hsem.utils.prices import SlotPrice
 
@@ -2229,10 +2227,8 @@ class TestApplyPlannerOutputEvLoad:
         from custom_components.hsem.models.hourly_recommendation import (
             HourlyRecommendation,
         )
-        from custom_components.hsem.models.planner_outputs import (
-            PlannedSlot,
-            PlannerOutput,
-        )
+        from custom_components.hsem.models.planned_slot import PlannedSlot
+        from custom_components.hsem.models.planner_output import PlannerOutput
         from custom_components.hsem.utils.prices import SlotPrice
 
         midnight = datetime(2024, 6, 15, 0, 0, 0, tzinfo=UTC)
@@ -2443,15 +2439,15 @@ class TestEvFieldsEndToEnd:
         """Run planner + apply_planner_output and return (coordinator, output)."""
         from datetime import datetime, timedelta
 
+        from custom_components.hsem.models.hourly_consumption_average import (
+            HourlyConsumptionAverage,
+        )
         from custom_components.hsem.models.hourly_recommendation import (
             HourlyRecommendation,
         )
-        from custom_components.hsem.models.planner_inputs import (
-            HourlyConsumptionAverage,
-            PlannerInput,
-            PricePoint,
-            SolcastSlot,
-        )
+        from custom_components.hsem.models.planner_input import PlannerInput
+        from custom_components.hsem.models.price_point import PricePoint
+        from custom_components.hsem.models.solcast_slot import SolcastSlot
         from custom_components.hsem.planner import run_planner
 
         now_iso = "2024-06-15T06:00:00+00:00"

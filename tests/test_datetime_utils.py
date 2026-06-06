@@ -30,7 +30,8 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
-from custom_components.hsem.models.planner_outputs import PlannedSlot, PlannerOutput
+from custom_components.hsem.models.planned_slot import PlannedSlot
+from custom_components.hsem.models.planner_output import PlannerOutput
 
 # ---------------------------------------------------------------------------
 # Helpers – build lightweight planner/coordinator objects for testing
@@ -477,7 +478,7 @@ class TestEvPlannedLoadReachesRecommendation:
         dt_util.now() (ZoneInfo tzinfo) while the planner parses now_iso and
         creates slots with a fixed numeric offset.
         """
-        from custom_components.hsem.models.planner_outputs import PlannerOutput
+        from custom_components.hsem.models.planner_output import PlannerOutput
 
         tz_fixed = timezone(timedelta(hours=2))  # +02:00 — same as Copenhagen CEST
 
@@ -514,7 +515,7 @@ class TestEvPlannedLoadReachesRecommendation:
 
     def test_ev_load_with_microsecond_jitter_in_recs(self):
         """EV load must propagate even when rec.start carries non-zero microseconds."""
-        from custom_components.hsem.models.planner_outputs import PlannerOutput
+        from custom_components.hsem.models.planner_output import PlannerOutput
 
         midnight = datetime(2026, 5, 14, 0, 0, 0, tzinfo=_FIXED_LOCAL_TZ)
 
@@ -558,7 +559,7 @@ class TestEstimatedNetConsumptionIncludesEVLoad:
 
     def test_formula_correct(self):
         """1.5 + 3.0 - 0.5 = 4.0 as per issue spec."""
-        from custom_components.hsem.models.planner_outputs import PlannerOutput
+        from custom_components.hsem.models.planner_output import PlannerOutput
 
         avg_house_consumption_kwh = 1.5
         ev_planned_load_kwh = 3.0
@@ -601,7 +602,7 @@ class TestEstimatedNetConsumptionIncludesEVLoad:
 
     def test_zero_ev_load_net_consumption_is_consumption_minus_pv(self):
         """Without EV load: net = house - pv."""
-        from custom_components.hsem.models.planner_outputs import PlannerOutput
+        from custom_components.hsem.models.planner_output import PlannerOutput
 
         avg_house_consumption_kwh = 1.2
         solcast_pv_estimate_kwh = 0.8
@@ -645,7 +646,7 @@ class TestUnmatchedSlotLogsWarning:
         import io
         import logging
 
-        from custom_components.hsem.models.planner_outputs import PlannerOutput
+        from custom_components.hsem.models.planner_output import PlannerOutput
         from custom_components.hsem.utils.logger import HSEM_LOGGER
 
         midnight = datetime(2026, 5, 14, 0, 0, 0, tzinfo=UTC)
@@ -684,7 +685,7 @@ class TestUnmatchedSlotLogsWarning:
 
     def test_unmatched_rec_fields_remain_at_defaults(self):
         """An unmatched rec must not have its energy fields mutated."""
-        from custom_components.hsem.models.planner_outputs import PlannerOutput
+        from custom_components.hsem.models.planner_output import PlannerOutput
 
         midnight = datetime(2026, 5, 14, 0, 0, 0, tzinfo=UTC)
 

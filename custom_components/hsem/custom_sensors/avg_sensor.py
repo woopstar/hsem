@@ -26,8 +26,8 @@ from homeassistant.helpers.event import (
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from custom_components.hsem.entity import HSEMEntity
+from custom_components.hsem.utils.ha_helpers import ha_get_entity_state_and_convert
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
-from custom_components.hsem.utils.misc import ha_get_entity_state_and_convert
 
 
 class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):

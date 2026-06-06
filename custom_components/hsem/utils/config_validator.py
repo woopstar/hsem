@@ -21,10 +21,10 @@ import re
 from datetime import datetime as _datetime
 from typing import Any
 
-from custom_components.hsem.utils.misc import (
+from custom_components.hsem.utils.conversion import convert_months_to_int
+from custom_components.hsem.utils.ha_helpers import (
     async_device_exists,
     async_entity_exists,
-    convert_months_to_int,
 )
 
 # ---------------------------------------------------------------------------

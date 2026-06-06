@@ -11,14 +11,12 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from custom_components.hsem.models.planner_inputs import PlannerInput
-from custom_components.hsem.models.planner_outputs import (
-    ChargeWindow,
-    DischargeWindow,
-    PlanExplanation,
-    PlannedSlot,
-    RejectedPlan,
-)
+from custom_components.hsem.models.charge_window import ChargeWindow
+from custom_components.hsem.models.discharge_window import DischargeWindow
+from custom_components.hsem.models.plan_explanation import PlanExplanation
+from custom_components.hsem.models.planned_slot import PlannedSlot
+from custom_components.hsem.models.planner_input import PlannerInput
+from custom_components.hsem.models.rejected_plan import RejectedPlan
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import calculate_recommended_threshold

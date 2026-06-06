@@ -20,10 +20,10 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from custom_components.hsem.models.planner_inputs import PlannerInput
+from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.planner.engine_core import _parse_now
 from custom_components.hsem.planner.slot_population import build_slots
-from custom_components.hsem.utils.misc import (
+from custom_components.hsem.utils.time_windows import (
     interval_ends_before_window_start,
     next_window_start_dt,
 )
@@ -315,12 +315,14 @@ class TestPlannerRunsDstDays:
 
     def _base_input(self, now_iso: str) -> PlannerInput:
         """Return a minimal PlannerInput for a 24-hour summer-like day."""
-        from custom_components.hsem.models.planner_inputs import (
+        from custom_components.hsem.models.battery_schedule_input import (
             BatteryScheduleInput,
-            HourlyConsumptionAverage,
-            PricePoint,
-            SolcastSlot,
         )
+        from custom_components.hsem.models.hourly_consumption_average import (
+            HourlyConsumptionAverage,
+        )
+        from custom_components.hsem.models.price_point import PricePoint
+        from custom_components.hsem.models.solcast_slot import SolcastSlot
 
         prices = [
             PricePoint(hour=h, import_price=0.20, export_price=0.05) for h in range(24)

@@ -15,7 +15,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from custom_components.hsem.models.planner_outputs import PlannedSlot
+from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.planner.discharge_scheduler import (
     concentrate_discharge_on_expensive_slots,
 )

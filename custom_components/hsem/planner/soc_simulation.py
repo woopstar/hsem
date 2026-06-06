@@ -31,7 +31,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from custom_components.hsem.models.planner_outputs import PlannedSlot
+from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import clamp_efficiency

@@ -26,7 +26,7 @@ from custom_components.hsem.const import DOMAIN
 from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
 from custom_components.hsem.utils.diagnostics import build_diagnostics_dump
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
-from custom_components.hsem.utils.sensornames import (
+from custom_components.hsem.utils.sensornames.diagnostics import (
     get_force_working_mode_selector_entity_id,
 )
 

@@ -12,8 +12,8 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from custom_components.hsem.models.planner_inputs import BatteryScheduleInput
-from custom_components.hsem.models.planner_outputs import PlannedSlot
+from custom_components.hsem.models.battery_schedule_input import BatteryScheduleInput
+from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.planner.charge_scheduler import (
     apply_charge_schedules,
     apply_opportunistic_charge,

@@ -35,7 +35,7 @@ from custom_components.hsem.coordinator import (
     HSEMDataUpdateCoordinator,
 )
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
-from custom_components.hsem.utils.sensornames import (
+from custom_components.hsem.utils.sensornames.ev import (
     get_ev_optimal_charging_plan_sensor_entity_id,
     get_ev_optimal_charging_plan_sensor_name,
     get_ev_optimal_charging_plan_sensor_unique_id,

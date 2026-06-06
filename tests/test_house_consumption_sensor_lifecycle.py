@@ -46,7 +46,7 @@ from custom_components.hsem.custom_sensors.integration_sensor import (
 from custom_components.hsem.custom_sensors.utility_meter_sensor import (
     HSEMUtilityMeterSensor,
 )
-from custom_components.hsem.utils.sensornames import (
+from custom_components.hsem.utils.sensornames.energy import (
     get_house_consumption_power_sensor_unique_id,
     get_integral_sensor_entity_id,
     get_integral_sensor_unique_id,

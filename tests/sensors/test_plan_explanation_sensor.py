@@ -25,13 +25,11 @@ from custom_components.hsem.coordinator import CoordinatorData
 from custom_components.hsem.custom_sensors.plan_explanation_sensor import (
     HSEMPlanExplanationSensor,
 )
+from custom_components.hsem.models.data_quality import DataQuality
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.live_state import LiveState
-from custom_components.hsem.models.planner_outputs import (
-    DataQuality,
-    PlanExplanation,
-    RejectedPlan,
-)
+from custom_components.hsem.models.plan_explanation import PlanExplanation
+from custom_components.hsem.models.rejected_plan import RejectedPlan
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.utils.degraded_mode import DegradedMode
 from custom_components.hsem.utils.inverter_verify import (

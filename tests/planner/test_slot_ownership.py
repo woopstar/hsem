@@ -42,15 +42,15 @@ import pytest
 from custom_components.hsem.custom_sensors.recommendation_resolver import (
     resolve_current_recommendation,
 )
+from custom_components.hsem.models.hourly_consumption_average import (
+    HourlyConsumptionAverage,
+)
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.live_state import EVLiveState, LiveState
-from custom_components.hsem.models.planner_inputs import (
-    HourlyConsumptionAverage,
-    PlannerInput,
-    PricePoint,
-    SolcastSlot,
-)
-from custom_components.hsem.models.planner_outputs import PlannedSlot
+from custom_components.hsem.models.planned_slot import PlannedSlot
+from custom_components.hsem.models.planner_input import PlannerInput
+from custom_components.hsem.models.price_point import PricePoint
+from custom_components.hsem.models.solcast_slot import SolcastSlot
 from custom_components.hsem.planner import run_planner
 from custom_components.hsem.planner.candidate_generator import (
     CANDIDATE_BASELINE,

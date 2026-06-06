@@ -328,6 +328,58 @@ never uses penalties unless forced by an out-of-bounds initial SoC.
 - The diagnostics dict (returned alongside the slot list) captures penalty
   values for the engine to surface.
 
+### EV co-optimisation (MILP)
+
+When one or more `EVConfig` objects are passed to `solve_milp()`, the LP
+expands to co-optimise EV charging alongside the battery.  EV loads are no
+longer pre-computed by `ev_planner.py` and treated as fixed inputs; instead
+the MILP decides **when and how much each EV charges**.
+
+**EV variables** (per active EV):
+- `ev_c[t]` — DC-side energy delivered to the EV battery in slot `t` (kWh).
+  Bounded by `[0, ev.max_charge_per_slot]`.
+- `ev_pen` — single slack variable absorbing unmet deadline target (kWh).
+
+**EV constraints**:
+- SOC dynamics (cumulative, no discharge):
+  `ev_soc[t] = ev_initial + Σ_{k≤t} ev_c[k]`
+- SOC upper bound per slot: `ev_soc[t] ≤ ev_capacity`
+- Deadline soft goal: `ev_soc[D] + ev_pen ≥ ev_target` where `D` is the
+  LP-slot index of the effective deadline.
+- No discharge: `ev_c[t] ≥ 0` (via bounds).
+
+**Energy balance** includes EV AC load:
+```text
+gi + pv + ed·η_dis = base_load + ec/η_chg + ge + Σ ev_c/eff
+```
+where `base_load` is recomputed **without** pre-computed EV planned loads
+(only house consumption minus PV).
+
+**Objective** includes a high-cost deadline penalty:
+```text
+ev_penalty_cost = max(p_imp) * max(capacity, 1.0) * 100
+```
+ensuring the MILP always prefers meeting the target when physically possible.
+
+**Output**: the MILP writes EV decisions to `ev_planned_load_kwh`,
+`ev_accounted_load_kwh`, and `ev_total_planned_load_kwh` on the output slots.
+`estimated_net_consumption_kwh` and `estimated_cost_currency` are recomputed
+to reflect the new EV loads.
+
+#### Invariants
+
+- When `ev_configs=None`, behaviour is identical to the pre-#530 code
+  (backward compatible).
+- EV charge per slot never exceeds `ev.max_charge_per_slot`.
+- Cumulative EV SoC never exceeds `ev.capacity_kwh`.
+- When `ev.deadline_slot` is provided and the target is reachable, the
+  deadline penalty `ev_pen` is zero.
+- When the target is unreachable within the available slots, `ev_pen > 0`
+  absorbs the shortfall — the MILP never becomes infeasible due to EV
+  constraints.
+- EV diagnostics (total DC kWh delivered, deadline penalty, deadline met)
+  are included in the diagnostics dict under the `"ev"` key.
+
 ## Cost function
 
 The cost function returns **two distinct aggregates** for every plan

@@ -135,7 +135,7 @@ class TestSnapshotPopulation:
         """populate_avg_house_consumption_from_snapshot must fill slots from pre-read data."""
         from unittest.mock import MagicMock
 
-        from custom_components.hsem.custom_sensors.hourly_data_populator import (
+        from custom_components.hsem.custom_sensors.hourly_data_populator.consumption import (
             populate_avg_house_consumption_from_snapshot,
         )
         from custom_components.hsem.models.hourly_recommendation import (
@@ -144,7 +144,7 @@ class TestSnapshotPopulation:
         from custom_components.hsem.models.live_state import LiveState
         from custom_components.hsem.models.sensor_config import SensorConfig
         from custom_components.hsem.models.state_snapshot import StateSnapshot
-        from custom_components.hsem.utils.sensornames import (
+        from custom_components.hsem.utils.sensornames.energy import (
             get_energy_average_sensor_unique_id,
         )
 
@@ -258,8 +258,10 @@ class TestSnapshotPopulation:
         """
         from unittest.mock import MagicMock
 
-        from custom_components.hsem.custom_sensors.hourly_data_populator import (
+        from custom_components.hsem.custom_sensors.hourly_data_populator.consumption import (
             populate_avg_house_consumption_from_snapshot,
+        )
+        from custom_components.hsem.custom_sensors.hourly_data_populator.prices_solcast import (
             populate_price_and_solcast_from_snapshot,
         )
         from custom_components.hsem.models.hourly_recommendation import (
@@ -268,7 +270,7 @@ class TestSnapshotPopulation:
         from custom_components.hsem.models.live_state import LiveState
         from custom_components.hsem.models.sensor_config import SensorConfig
         from custom_components.hsem.models.state_snapshot import StateSnapshot
-        from custom_components.hsem.utils.sensornames import (
+        from custom_components.hsem.utils.sensornames.energy import (
             get_energy_average_sensor_unique_id,
         )
 

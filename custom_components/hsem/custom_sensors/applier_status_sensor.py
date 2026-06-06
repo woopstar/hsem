@@ -42,7 +42,7 @@ from custom_components.hsem.coordinator import (
 )
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.utils.inverter_verify import ApplyStatus
-from custom_components.hsem.utils.sensornames import (
+from custom_components.hsem.utils.sensornames.diagnostics import (
     get_applier_status_sensor_entity_id,
     get_applier_status_sensor_name,
     get_applier_status_sensor_unique_id,

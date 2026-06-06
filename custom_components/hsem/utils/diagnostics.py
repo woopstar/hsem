@@ -41,14 +41,14 @@ from typing import Any
 import homeassistant.util.dt as dt_util
 from homeassistant.const import STATE_UNKNOWN
 
-from custom_components.hsem.models.planner_inputs import (
-    BatteryScheduleInput,
+from custom_components.hsem.models.battery_schedule_input import BatteryScheduleInput
+from custom_components.hsem.models.hourly_consumption_average import (
     HourlyConsumptionAverage,
-    PlannerInput,
-    PricePoint,
-    SolcastSlot,
 )
-from custom_components.hsem.models.planner_outputs import PlannerOutput
+from custom_components.hsem.models.planner_input import PlannerInput
+from custom_components.hsem.models.planner_output import PlannerOutput
+from custom_components.hsem.models.price_point import PricePoint
+from custom_components.hsem.models.solcast_slot import SolcastSlot
 
 # ---------------------------------------------------------------------------
 # Redaction helpers

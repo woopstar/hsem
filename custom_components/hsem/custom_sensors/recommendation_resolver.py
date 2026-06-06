@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.live_state import LiveState
-from custom_components.hsem.utils.misc import convert_to_float
+from custom_components.hsem.utils.conversion import convert_to_float
 from custom_components.hsem.utils.recommendations import Recommendations
 
 

@@ -9,7 +9,7 @@ from dataclasses import dataclass
 
 from homeassistant.components.switch import SwitchEntityDescription
 
-from custom_components.hsem.utils.sensornames import (
+from custom_components.hsem.utils.sensornames.controls import (
     get_batteries_schedule_1_switch_entity_id,
     get_batteries_schedule_1_switch_key,
     get_batteries_schedule_1_switch_unique_id,
@@ -19,6 +19,17 @@ from custom_components.hsem.utils.sensornames import (
     get_batteries_schedule_3_switch_entity_id,
     get_batteries_schedule_3_switch_key,
     get_batteries_schedule_3_switch_unique_id,
+    get_extended_attributes_switch_entity_id,
+    get_extended_attributes_switch_key,
+    get_extended_attributes_switch_unique_id,
+    get_read_only_switch_entity_id,
+    get_read_only_switch_key,
+    get_read_only_switch_unique_id,
+    get_verbose_logging_switch_entity_id,
+    get_verbose_logging_switch_key,
+    get_verbose_logging_switch_unique_id,
+)
+from custom_components.hsem.utils.sensornames.ev import (
     get_ev_force_charge_now_switch_entity_id,
     get_ev_force_charge_now_switch_key,
     get_ev_force_charge_now_switch_unique_id,
@@ -34,21 +45,14 @@ from custom_components.hsem.utils.sensornames import (
     get_ev_smart_charging_switch_entity_id,
     get_ev_smart_charging_switch_key,
     get_ev_smart_charging_switch_unique_id,
-    get_extended_attributes_switch_entity_id,
-    get_extended_attributes_switch_key,
-    get_extended_attributes_switch_unique_id,
+)
+from custom_components.hsem.utils.sensornames.ml import (
     get_ml_consumption_switch_entity_id,
     get_ml_consumption_switch_key,
     get_ml_consumption_switch_unique_id,
     get_ml_sequential_switch_entity_id,
     get_ml_sequential_switch_key,
     get_ml_sequential_switch_unique_id,
-    get_read_only_switch_entity_id,
-    get_read_only_switch_key,
-    get_read_only_switch_unique_id,
-    get_verbose_logging_switch_entity_id,
-    get_verbose_logging_switch_key,
-    get_verbose_logging_switch_unique_id,
 )
 
 

@@ -195,7 +195,7 @@ class TestSwitchUniqueId:
 
     def test_unique_id_format(self) -> None:
         """unique_id must equal the canonical value from sensornames."""
-        from custom_components.hsem.utils.sensornames import (
+        from custom_components.hsem.utils.sensornames.controls import (
             get_read_only_switch_key,
             get_read_only_switch_unique_id,
         )
@@ -218,14 +218,16 @@ class TestSwitchUniqueId:
 
     def test_unique_id_is_attr_not_property(self) -> None:
         """unique_id must be set via _attr_unique_id, not a @property override."""
-        from custom_components.hsem.utils.sensornames import get_read_only_switch_key
+        from custom_components.hsem.utils.sensornames.controls import (
+            get_read_only_switch_key,
+        )
 
         entity = _make_switch(key=get_read_only_switch_key())
         assert hasattr(entity, "_attr_unique_id")
         assert entity._attr_unique_id == entity.unique_id
 
     def test_different_keys_produce_different_unique_ids(self) -> None:
-        from custom_components.hsem.utils.sensornames import (
+        from custom_components.hsem.utils.sensornames.controls import (
             get_read_only_switch_key,
             get_verbose_logging_switch_key,
         )
@@ -642,7 +644,7 @@ class TestSelectorUniqueId:
 
     def test_unique_id_equals_canonical_key(self) -> None:
         """unique_id must start with the canonical key from sensornames."""
-        from custom_components.hsem.utils.sensornames import (
+        from custom_components.hsem.utils.sensornames.diagnostics import (
             get_force_working_mode_selector_key,
         )
 

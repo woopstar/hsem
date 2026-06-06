@@ -41,7 +41,7 @@ from custom_components.hsem.services import (
     async_register_services,
     async_unregister_services,
 )
-from custom_components.hsem.utils.sensornames import (
+from custom_components.hsem.utils.sensornames.diagnostics import (
     get_force_working_mode_selector_entity_id,
 )
 

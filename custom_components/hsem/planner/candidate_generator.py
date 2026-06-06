@@ -42,8 +42,9 @@ import copy
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from custom_components.hsem.models.planner_inputs import PlannerInput
-from custom_components.hsem.models.planner_outputs import PlannedSlot
+from custom_components.hsem.models.ev_config import EVConfig
+from custom_components.hsem.models.planned_slot import PlannedSlot
+from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.planner.cost_function import PlanCostBreakdown
 from custom_components.hsem.planner.milp_optimizer import (
     CANDIDATE_MILP,
@@ -174,6 +175,7 @@ def generate_candidates(
     usable_kwh: float = 0.0,
     max_discharge_per_slot: float | None = None,
     replacement_price_per_kwh: float | None = None,
+    ev_configs: list[EVConfig] | None = None,
 ) -> list[CandidatePlan]:
     """Generate all candidate plans from the already-populated baseline slots.
 
@@ -209,6 +211,12 @@ def generate_candidates(
         replacement_price_per_kwh:
             Terminal-SoC replacement price (currency/kWh) passed through to the
             MILP optimizer.  ``None`` disables the terminal-SoC credit term.
+        ev_configs:
+            Optional list of :class:`EVConfig` objects (one per EV).  When
+            provided, the MILP co-optimises EV charging alongside the battery.
+            The engine computes the deadline slot mapping before passing the
+            configs here.  ``None`` means no EV co-optimisation
+            (backward-compatible behaviour).
 
     Returns:
         Ordered list of :class:`CandidatePlan` objects.  The baseline is
@@ -295,13 +303,16 @@ def generate_candidates(
             discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
             time_discount_rate=inp.time_discount_rate,
             replacement_price_per_kwh=replacement_price_per_kwh,
-            export_min_price=inp.export_min_price,
-            recommended_threshold=calculate_recommended_threshold(
-                purchase_price=inp.battery_purchase_price,
-                expected_cycles=inp.battery_expected_cycles,
-                usable_capacity=usable_kwh,
-                capacity_loss_pct=inp.battery_capacity_loss_pct,
+            min_export_price=max(
+                inp.export_min_price,
+                calculate_recommended_threshold(
+                    purchase_price=inp.battery_purchase_price,
+                    expected_cycles=inp.battery_expected_cycles,
+                    usable_capacity=usable_kwh,
+                    capacity_loss_pct=inp.battery_capacity_loss_pct,
+                ),
             ),
+            ev_configs=ev_configs,
         )
         if milp_result is not None:
             milp_slots, milp_diag = milp_result

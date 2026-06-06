@@ -60,7 +60,7 @@ from custom_components.hsem.flows.weighted_values import (
     get_weighted_values_step_schema,
     validate_weighted_values_input,
 )
-from custom_components.hsem.utils.misc import convert_months_to_int
+from custom_components.hsem.utils.conversion import convert_months_to_int
 
 
 class HSEMOptionsFlow(config_entries.OptionsFlow):

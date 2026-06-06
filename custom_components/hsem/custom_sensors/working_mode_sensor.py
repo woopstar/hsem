@@ -38,7 +38,7 @@ from custom_components.hsem.utils.degraded_mode import hardware_writes_allowed
 from custom_components.hsem.utils.inverter_verify import ApplyStatus, CycleApplySummary
 from custom_components.hsem.utils.logger import async_logger
 from custom_components.hsem.utils.misc import calculate_recommended_threshold
-from custom_components.hsem.utils.sensornames import (
+from custom_components.hsem.utils.sensornames.diagnostics import (
     get_working_mode_sensor_entity_id,
     get_working_mode_sensor_name,
     get_working_mode_sensor_unique_id,

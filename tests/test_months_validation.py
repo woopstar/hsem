@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from custom_components.hsem.flows.months import get_months_schema, validate_months_input
-from custom_components.hsem.utils.misc import convert_months_to_int
+from custom_components.hsem.utils.conversion import convert_months_to_int
 
 # Monkey-patch RotatingFileHandler to use NullHandler during tests
 original_rotating_handler = RotatingFileHandler

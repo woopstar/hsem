@@ -17,8 +17,8 @@ from datetime import time
 
 import pytest
 
-from custom_components.hsem.models.planner_inputs import BatteryScheduleInput
-from custom_components.hsem.models.planner_outputs import PlannerOutput
+from custom_components.hsem.models.battery_schedule_input import BatteryScheduleInput
+from custom_components.hsem.models.planner_output import PlannerOutput
 from custom_components.hsem.planner import run_planner
 from custom_components.hsem.utils.recommendations import Recommendations
 from tests.planner.fixtures import (

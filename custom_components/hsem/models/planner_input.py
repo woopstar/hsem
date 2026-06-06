@@ -1,97 +1,18 @@
-"""Pure-Python dataclasses for HSEM planner inputs.
-
-These dataclasses capture every value that the planner needs to compute
-charge/discharge schedules and hourly recommendations.  They carry *no*
-Home Assistant dependencies so they can be constructed and inspected in
-plain unit tests without a running HA instance.
-"""
+"""Dataclass for the complete set of inputs required to run the HSEM planner."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, time
+from datetime import datetime
 from typing import Any, cast
 
 from custom_components.hsem.const import DEFAULT_CONFIG_VALUES
-
-
-@dataclass
-class HourlyConsumptionAverage:
-    """Historical consumption averages for one clock-hour.
-
-    All values are in kWh for the full hour.
-
-    Attributes:
-        hour:
-            Wall-clock hour of the day (0-23).
-        day_offset:
-            Number of whole calendar days from the planning midnight (0 = today,
-            1 = tomorrow, …).  Defaults to 0 for backward compatibility with
-            callers that only pass 24 single-day entries.
-    """
-
-    hour: int  # 0-23
-    avg_1d: float = 0.0
-    avg_3d: float = 0.0
-    avg_7d: float = 0.0
-    avg_14d: float = 0.0
-    day_offset: int = 0
-
-
-@dataclass
-class PricePoint:
-    """An import or export electricity price for a single time slot.
-
-    Attributes:
-        hour:
-            0-based calendar hour (0-23).
-        import_price:
-            Import price in local currency/kWh (e.g. DKK/kWh).
-        export_price:
-            Export price in local currency/kWh.
-        day_offset:
-            Number of whole calendar days from the planning midnight (0 = today,
-            1 = tomorrow, …).  Defaults to 0 for backward compatibility with
-            callers that only pass 24 single-day entries.
-    """
-
-    hour: int  # 0-23
-    import_price: float = 0.0
-    export_price: float = 0.0
-    day_offset: int = 0
-
-
-@dataclass
-class SolcastSlot:
-    """Forecast PV production estimate for a single time slot.
-
-    Attributes:
-        hour:
-            0-based calendar hour (0-23).
-        pv_estimate:
-            PV energy estimate in kWh for the full slot duration.
-        day_offset:
-            Number of whole calendar days from the planning midnight (0 = today,
-            1 = tomorrow, …).  Defaults to 0 for backward compatibility with
-            callers that only pass 24 single-day entries.
-    """
-
-    hour: int  # 0-23
-    pv_estimate: float = 0.0
-    day_offset: int = 0
-
-
-@dataclass
-class BatteryScheduleInput:
-    """Configuration for one charge-into/discharge-from schedule window.
-
-    Mirrors the user-visible battery schedule options from the config flow
-    (``batteries_schedule_1/2/3``).
-    """
-
-    enabled: bool = False
-    start: time = time(0, 0)
-    end: time = time(1, 0)
+from custom_components.hsem.models.battery_schedule_input import BatteryScheduleInput
+from custom_components.hsem.models.hourly_consumption_average import (
+    HourlyConsumptionAverage,
+)
+from custom_components.hsem.models.price_point import PricePoint
+from custom_components.hsem.models.solcast_slot import SolcastSlot
 
 
 @dataclass

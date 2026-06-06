@@ -18,7 +18,7 @@ from homeassistant.core import HomeAssistant
 
 from custom_components.hsem.entity import HSEMEntity
 from custom_components.hsem.utils.misc import get_config_value
-from custom_components.hsem.utils.sensornames import (
+from custom_components.hsem.utils.sensornames.diagnostics import (
     get_solcast_likelihood_selector_entity_id,
     get_solcast_likelihood_selector_unique_id,
 )

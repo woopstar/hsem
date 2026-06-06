@@ -9,13 +9,7 @@ from dataclasses import dataclass
 
 from homeassistant.components.time import TimeEntityDescription
 
-from custom_components.hsem.utils.sensornames import (
-    get_ev_deadline_time_entity_id,
-    get_ev_deadline_time_key,
-    get_ev_deadline_time_unique_id,
-    get_ev_second_deadline_time_entity_id,
-    get_ev_second_deadline_time_key,
-    get_ev_second_deadline_time_unique_id,
+from custom_components.hsem.utils.sensornames.controls import (
     get_schedule_1_end_time_entity_id,
     get_schedule_1_end_time_key,
     get_schedule_1_end_time_unique_id,
@@ -34,6 +28,14 @@ from custom_components.hsem.utils.sensornames import (
     get_schedule_3_start_time_entity_id,
     get_schedule_3_start_time_key,
     get_schedule_3_start_time_unique_id,
+)
+from custom_components.hsem.utils.sensornames.ev import (
+    get_ev_deadline_time_entity_id,
+    get_ev_deadline_time_key,
+    get_ev_deadline_time_unique_id,
+    get_ev_second_deadline_time_entity_id,
+    get_ev_second_deadline_time_key,
+    get_ev_second_deadline_time_unique_id,
 )
 
 

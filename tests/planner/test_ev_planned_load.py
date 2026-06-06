@@ -18,12 +18,12 @@ from typing import Any
 
 import pytest
 
-from custom_components.hsem.models.planner_inputs import (
+from custom_components.hsem.models.hourly_consumption_average import (
     HourlyConsumptionAverage,
-    PlannerInput,
-    PricePoint,
-    SolcastSlot,
 )
+from custom_components.hsem.models.planner_input import PlannerInput
+from custom_components.hsem.models.price_point import PricePoint
+from custom_components.hsem.models.solcast_slot import SolcastSlot
 from custom_components.hsem.planner import run_planner
 from custom_components.hsem.planner.ev_planner import (
     EVChargingPlan,
@@ -2490,7 +2490,9 @@ class TestEvLoadDoesNotInflateChargeNeeded:
 
         from datetime import time as _time
 
-        from custom_components.hsem.models.planner_inputs import BatteryScheduleInput
+        from custom_components.hsem.models.battery_schedule_input import (
+            BatteryScheduleInput,
+        )
 
         discharge_schedule = BatteryScheduleInput(
             enabled=True,
@@ -2864,7 +2866,7 @@ class TestEvChargerCalculatedPower:
         the power should be 0.78 / (5/60) * 1000 ≈ 9360 W, not
         0.78 / 0.25 * 1000 = 3120 W.
         """
-        from custom_components.hsem.models.planner_outputs import PlannedSlot
+        from custom_components.hsem.models.planned_slot import PlannedSlot
         from custom_components.hsem.planner.engine_core import (
             _compute_ev_charger_power,
         )
@@ -2909,7 +2911,7 @@ class TestEvChargerCalculatedPower:
 
     def test_future_slot_uses_full_width(self):
         """Future slot: power uses full slot width."""
-        from custom_components.hsem.models.planner_outputs import PlannedSlot
+        from custom_components.hsem.models.planned_slot import PlannedSlot
         from custom_components.hsem.planner.engine_core import (
             _compute_ev_charger_power,
         )
@@ -2947,7 +2949,7 @@ class TestEvChargerCalculatedPower:
 
     def test_remaining_time_minimum_guard(self):
         """Minimum 1 s remaining-time guard prevents division by zero."""
-        from custom_components.hsem.models.planner_outputs import PlannedSlot
+        from custom_components.hsem.models.planned_slot import PlannedSlot
         from custom_components.hsem.planner.engine_core import (
             _compute_ev_charger_power,
         )

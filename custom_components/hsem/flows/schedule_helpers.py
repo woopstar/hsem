@@ -20,7 +20,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.selector import selector
 
 from custom_components.hsem.utils.config_validator import validate_time_window
-from custom_components.hsem.utils.misc import convert_to_float, get_config_value
+from custom_components.hsem.utils.conversion import convert_to_float
+from custom_components.hsem.utils.misc import get_config_value
 
 
 def resolve_usable_capacity_kwh(

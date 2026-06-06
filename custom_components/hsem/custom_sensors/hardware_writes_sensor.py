@@ -32,7 +32,7 @@ from custom_components.hsem.coordinator import (
 )
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.utils.degraded_mode import hardware_writes_allowed
-from custom_components.hsem.utils.sensornames import (
+from custom_components.hsem.utils.sensornames.diagnostics import (
     get_hardware_writes_sensor_entity_id,
     get_hardware_writes_sensor_name,
     get_hardware_writes_sensor_unique_id,
