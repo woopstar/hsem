@@ -20,7 +20,6 @@ import pytest
 from custom_components.hsem.models.ev_config import EVConfig
 from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.planner.milp_optimizer import is_scipy_available, solve_milp
-from custom_components.hsem.planner.soc_simulation import simulate_soc
 from custom_components.hsem.utils.prices import SlotPrice
 
 _TZ = ZoneInfo("Europe/Copenhagen")

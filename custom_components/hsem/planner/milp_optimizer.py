@@ -368,7 +368,7 @@ def solve_milp(
     # --- EV variable layout ---
     ev_var_offsets: list[int] = []  # start of ev_c[t] block per EV
     ev_pen_offsets: list[int] = []  # index of deadline penalty per EV
-    for ev_idx, ev in enumerate(active_evs):
+    for _ev_idx, _ev in enumerate(active_evs):
         ev_var_offsets.append(n_vars)
         n_vars += m  # ev_c[0..m-1] per EV
         ev_pen_offsets.append(n_vars)
@@ -829,7 +829,7 @@ def solve_milp(
     # --- EV diagnostics ---
     if active_evs:
         ev_diag: dict = {}
-        for ev_idx, ev in enumerate(active_evs):
+        for ev_idx, _ev in enumerate(active_evs):
             ev_off = ev_var_offsets[ev_idx]
             ev_c_sol = result.x[ev_off : ev_off + m]
             ev_total_dc = float(np.sum(ev_c_sol))

@@ -11,6 +11,8 @@ from custom_components.hsem.models.battery_schedule_input import BatterySchedule
 from custom_components.hsem.models.hourly_consumption_average import (
     HourlyConsumptionAverage,
 )
+from custom_components.hsem.models.price_point import PricePoint
+from custom_components.hsem.models.solcast_slot import SolcastSlot
 
 
 @dataclass

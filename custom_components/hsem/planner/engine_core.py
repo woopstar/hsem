@@ -538,51 +538,66 @@ def _build_ev_configs_for_milp(
     if not future_slots:
         return None
 
-    for ev_data in [
-        {
-            "enabled": inp.ev_planned_load_enabled,
-            "connected": inp.ev_planned_load_connected,
-            "smart": inp.ev_planned_load_smart_charging_enabled,
-            "soc_pct": inp.ev_planned_load_current_soc_pct,
-            "target_pct": inp.ev_planned_load_target_soc_pct,
-            "cap_kwh": inp.ev_planned_load_battery_capacity_kwh,
-            "pwr_kw": inp.ev_planned_load_charger_power_kw,
-            "eff_pct": inp.ev_planned_load_charger_efficiency_pct,
-            "deadline": inp.ev_planned_load_deadline,
-            "base_includes": inp.ev_planned_load_base_load_includes_ev,
-        },
-        {
-            "enabled": inp.ev_second_planned_load_enabled,
-            "connected": inp.ev_second_planned_load_connected,
-            "smart": inp.ev_second_planned_load_smart_charging_enabled,
-            "soc_pct": inp.ev_second_planned_load_current_soc_pct,
-            "target_pct": inp.ev_second_planned_load_target_soc_pct,
-            "cap_kwh": inp.ev_second_planned_load_battery_capacity_kwh,
-            "pwr_kw": inp.ev_second_planned_load_charger_power_kw,
-            "eff_pct": inp.ev_second_planned_load_charger_efficiency_pct,
-            "deadline": inp.ev_second_planned_load_deadline,
-            "base_includes": inp.ev_second_planned_load_base_load_includes_ev,
-        },
-    ]:
-        if not ev_data["enabled"]:
+    # Build config for each EV slot pair (primary, secondary)
+    ev_sources: list[
+        tuple[
+            bool, bool, bool, float, float, float, float, float, datetime | None, bool
+        ]
+    ] = [
+        (
+            inp.ev_planned_load_enabled,
+            inp.ev_planned_load_connected,
+            inp.ev_planned_load_smart_charging_enabled,
+            inp.ev_planned_load_current_soc_pct,
+            inp.ev_planned_load_target_soc_pct,
+            inp.ev_planned_load_battery_capacity_kwh,
+            inp.ev_planned_load_charger_power_kw,
+            inp.ev_planned_load_charger_efficiency_pct,
+            inp.ev_planned_load_deadline,
+            inp.ev_planned_load_base_load_includes_ev,
+        ),
+        (
+            inp.ev_second_planned_load_enabled,
+            inp.ev_second_planned_load_connected,
+            inp.ev_second_planned_load_smart_charging_enabled,
+            inp.ev_second_planned_load_current_soc_pct,
+            inp.ev_second_planned_load_target_soc_pct,
+            inp.ev_second_planned_load_battery_capacity_kwh,
+            inp.ev_second_planned_load_charger_power_kw,
+            inp.ev_second_planned_load_charger_efficiency_pct,
+            inp.ev_second_planned_load_deadline,
+            inp.ev_second_planned_load_base_load_includes_ev,
+        ),
+    ]
+    for (
+        enabled,
+        connected,
+        smart,
+        soc_pct,
+        target_pct,
+        cap,
+        pwr,
+        eff_pct,
+        deadline,
+        base_includes,
+    ) in ev_sources:
+        if not enabled:
             continue
-        if not ev_data["connected"] or not ev_data["smart"]:
+        if not connected or not smart:
             continue
-        cap = ev_data["cap_kwh"]
-        pwr = ev_data["pwr_kw"]
         if cap <= 1e-9 or pwr <= 1e-9:
             continue
-        initial_kwh = (ev_data["soc_pct"] / 100.0) * cap
-        target_kwh = (ev_data["target_pct"] / 100.0) * cap
+        initial_kwh = (soc_pct / 100.0) * cap
+        target_kwh = (target_pct / 100.0) * cap
         if target_kwh <= initial_kwh + 1e-9:
             continue  # already at/above target
 
-        eff = max(ev_data["eff_pct"], 1.0) / 100.0
+        eff = max(eff_pct, 1.0) / 100.0
         slot_hours = inp.interval_minutes / 60.0
         max_dc = pwr * slot_hours * eff  # DC-side kWh per slot
 
         # Map deadline to LP slot index (0..len(future_slots)-1)
-        eff_deadline = _effective_deadline_dt(ev_data["deadline"])
+        eff_deadline = _effective_deadline_dt(deadline)
         deadline_slot: int | None = None
         for lp_t, slot_i in enumerate(future_slots):
             s = slots[slot_i]
@@ -603,7 +618,7 @@ def _build_ev_configs_for_milp(
                 max_charge_per_slot=round(max_dc, 4),
                 charger_efficiency=round(eff, 4),
                 deadline_slot=deadline_slot,
-                base_load_includes_ev=bool(ev_data["base_includes"]),
+                base_load_includes_ev=base_includes,
             )
         )
 
