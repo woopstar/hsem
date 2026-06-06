@@ -8,6 +8,7 @@ import hashlib
 from typing import Any
 
 from custom_components.hsem.const import DEFAULT_CONFIG_VALUES
+from custom_components.hsem.utils.conversion import convert_months_to_int  # noqa: F401
 
 
 def generate_hash(input_sensor: str) -> str:
