@@ -899,7 +899,7 @@ class TestP009ExceptionHandling:
         sensor.entity_id = "sensor.hsem_test"
 
         with (
-            patch("custom_components.hsem.utils.misc._LOGGER"),
+            patch("custom_components.hsem.utils.ha_helpers._LOGGER"),
             pytest.raises(ServiceNotFound),
         ):
             await async_set_number_value(sensor, "number.inverter_charge_power", 2500)
@@ -923,7 +923,7 @@ class TestP009ExceptionHandling:
         sensor.entity_id = "sensor.hsem_test"
 
         with (
-            patch("custom_components.hsem.utils.misc._LOGGER"),
+            patch("custom_components.hsem.utils.ha_helpers._LOGGER"),
             pytest.raises(HomeAssistantError),
         ):
             await async_set_select_option(

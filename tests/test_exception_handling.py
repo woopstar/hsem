@@ -227,7 +227,7 @@ class TestAsyncSetNumberValueFailures:
         # Patch the logger to prevent ServiceNotFound.__str__ from calling
         # async_get_hass() outside the HA event loop during log formatting.
         with (
-            patch("custom_components.hsem.utils.misc._LOGGER"),
+            patch("custom_components.hsem.utils.ha_helpers._LOGGER"),
             pytest.raises(ServiceNotFound),
         ):
             await async_set_number_value(sensor, "number.charge_power", 3000)
@@ -286,7 +286,7 @@ class TestAsyncSetSelectOptionFailures:
         )
 
         with (
-            patch("custom_components.hsem.utils.misc._LOGGER"),
+            patch("custom_components.hsem.utils.ha_helpers._LOGGER"),
             pytest.raises(ServiceNotFound),
         ):
             await async_set_select_option(sensor, "select.working_mode", "TimeOfUse")

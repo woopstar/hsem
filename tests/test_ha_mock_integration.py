@@ -1768,7 +1768,7 @@ def _patch_all_ha_helpers():
                 new_callable=MagicMock,
             ),
             patch(
-                "custom_components.hsem.utils.misc"
+                "custom_components.hsem.utils.ha_helpers"
                 ".async_resolve_entity_id_from_unique_id",
                 new_callable=AsyncMock,
                 return_value=None,
@@ -1783,11 +1783,11 @@ def _patch_all_ha_helpers():
                 ".populate_price_and_solcast_from_snapshot",
             ),
             patch(
-                "custom_components.hsem.utils.misc.async_set_select_option",
+                "custom_components.hsem.utils.ha_helpers.async_set_select_option",
                 new_callable=AsyncMock,
             ),
             patch(
-                "custom_components.hsem.utils.misc.async_set_number_value",
+                "custom_components.hsem.utils.ha_helpers.async_set_number_value",
                 new_callable=AsyncMock,
             ),
             patch(
