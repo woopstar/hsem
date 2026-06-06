@@ -89,7 +89,7 @@ class TestP001MonthMatching:
 
     def test_convert_months_to_int_removes_false_positives(self) -> None:
         """``convert_months_to_int`` must return ints so membership is numeric."""
-        from custom_components.hsem.utils.misc import convert_months_to_int
+        from custom_components.hsem.utils.conversion import convert_months_to_int
 
         result = convert_months_to_int(["10", "11", "12"])
         assert 1 not in result, (
@@ -98,7 +98,7 @@ class TestP001MonthMatching:
 
     def test_january_only_matches_january(self) -> None:
         """Converting ['1'] must yield exactly [1]."""
-        from custom_components.hsem.utils.misc import convert_months_to_int
+        from custom_components.hsem.utils.conversion import convert_months_to_int
 
         result = convert_months_to_int(["1"])
         assert result == [1]
@@ -109,7 +109,7 @@ class TestP001MonthMatching:
 
     def test_all_winter_months_correct(self) -> None:
         """Standard winter set [1,2,3,4,10,11,12] must survive round-trip."""
-        from custom_components.hsem.utils.misc import convert_months_to_int
+        from custom_components.hsem.utils.conversion import convert_months_to_int
 
         raw = ["1", "2", "3", "4", "10", "11", "12"]
         result = convert_months_to_int(raw)
@@ -120,7 +120,7 @@ class TestP001MonthMatching:
 
     def test_summer_months_not_in_winter_set(self) -> None:
         """May through September must not appear in the default winter set."""
-        from custom_components.hsem.utils.misc import convert_months_to_int
+        from custom_components.hsem.utils.conversion import convert_months_to_int
 
         winter = convert_months_to_int(["1", "2", "3", "4", "10", "11", "12"])
         for month in range(5, 10):
@@ -128,14 +128,14 @@ class TestP001MonthMatching:
 
     def test_invalid_month_zero_raises(self) -> None:
         """Month 0 is out-of-range and must raise ``ValueError``."""
-        from custom_components.hsem.utils.misc import convert_months_to_int
+        from custom_components.hsem.utils.conversion import convert_months_to_int
 
         with pytest.raises(ValueError, match="Month must be between 1 and 12"):
             convert_months_to_int(["0"])
 
     def test_invalid_month_thirteen_raises(self) -> None:
         """Month 13 is out-of-range and must raise ``ValueError``."""
-        from custom_components.hsem.utils.misc import convert_months_to_int
+        from custom_components.hsem.utils.conversion import convert_months_to_int
 
         with pytest.raises(ValueError, match="Month must be between 1 and 12"):
             convert_months_to_int(["13"])
@@ -158,37 +158,39 @@ class TestP002MidnightRollover:
 
     def test_inside_cross_midnight_window(self) -> None:
         """01:00 is inside the 23:00-02:00 window."""
-        from custom_components.hsem.utils.misc import is_time_in_window
+        from custom_components.hsem.utils.time_windows import is_time_in_window
 
         assert is_time_in_window(time(1, 0), time(23, 0), time(2, 0)) is True
 
     def test_at_start_of_cross_midnight_window(self) -> None:
         """23:00 is the inclusive start of the 23:00-02:00 window."""
-        from custom_components.hsem.utils.misc import is_time_in_window
+        from custom_components.hsem.utils.time_windows import is_time_in_window
 
         assert is_time_in_window(time(23, 0), time(23, 0), time(2, 0)) is True
 
     def test_at_end_of_cross_midnight_window_is_exclusive(self) -> None:
         """02:00 is the exclusive end — must be False."""
-        from custom_components.hsem.utils.misc import is_time_in_window
+        from custom_components.hsem.utils.time_windows import is_time_in_window
 
         assert is_time_in_window(time(2, 0), time(23, 0), time(2, 0)) is False
 
     def test_before_cross_midnight_window(self) -> None:
         """21:00 is before the 23:00 start — must be False."""
-        from custom_components.hsem.utils.misc import is_time_in_window
+        from custom_components.hsem.utils.time_windows import is_time_in_window
 
         assert is_time_in_window(time(21, 0), time(23, 0), time(2, 0)) is False
 
     def test_after_cross_midnight_window(self) -> None:
         """03:00 is after the 02:00 end of the cross-midnight window."""
-        from custom_components.hsem.utils.misc import is_time_in_window
+        from custom_components.hsem.utils.time_windows import is_time_in_window
 
         assert is_time_in_window(time(3, 0), time(23, 0), time(2, 0)) is False
 
     def test_interval_ending_before_cross_midnight_window_start(self) -> None:
         """An interval ending at 22:00 is before a 23:00 cross-midnight window."""
-        from custom_components.hsem.utils.misc import interval_ends_before_window_start
+        from custom_components.hsem.utils.time_windows import (
+            interval_ends_before_window_start,
+        )
 
         now = _dt(21, 0)
         interval_end = _dt(22, 0)
@@ -196,7 +198,9 @@ class TestP002MidnightRollover:
 
     def test_interval_ending_inside_cross_midnight_window_is_not_before(self) -> None:
         """An interval ending at 23:30 is NOT before the 23:00 window start."""
-        from custom_components.hsem.utils.misc import interval_ends_before_window_start
+        from custom_components.hsem.utils.time_windows import (
+            interval_ends_before_window_start,
+        )
 
         now = _dt(21, 0)
         interval_end = _dt(23, 30)
@@ -206,7 +210,7 @@ class TestP002MidnightRollover:
 
     def test_same_day_window_still_works(self) -> None:
         """Ordinary same-day windows continue to work after the fix."""
-        from custom_components.hsem.utils.misc import is_time_in_window
+        from custom_components.hsem.utils.time_windows import is_time_in_window
 
         assert is_time_in_window(time(8, 0), time(7, 0), time(9, 0)) is True
         assert is_time_in_window(time(6, 59), time(7, 0), time(9, 0)) is False
@@ -230,7 +234,7 @@ class TestP003NextDayCharging:
 
     def test_evening_planning_resolves_morning_window_to_tomorrow(self) -> None:
         """At 22:00 a 07:00 window must resolve to the next calendar day."""
-        from custom_components.hsem.utils.misc import next_window_start_dt
+        from custom_components.hsem.utils.time_windows import next_window_start_dt
 
         now = _dt(22, 0)
         result = next_window_start_dt(now, time(7, 0))
@@ -241,7 +245,7 @@ class TestP003NextDayCharging:
 
     def test_result_is_always_strictly_after_now(self) -> None:
         """``next_window_start_dt`` must never return a past datetime."""
-        from custom_components.hsem.utils.misc import next_window_start_dt
+        from custom_components.hsem.utils.time_windows import next_window_start_dt
 
         for hour in (0, 6, 12, 18, 22, 23):
             now = _dt(hour, 0)
@@ -253,7 +257,7 @@ class TestP003NextDayCharging:
 
     def test_pre_morning_time_still_returns_today(self) -> None:
         """At 06:00 the 07:00 window is still today — must not advance to tomorrow."""
-        from custom_components.hsem.utils.misc import next_window_start_dt
+        from custom_components.hsem.utils.time_windows import next_window_start_dt
 
         now = _dt(6, 0)
         result = next_window_start_dt(now, time(7, 0))
@@ -267,7 +271,9 @@ class TestP003NextDayCharging:
         This is the P0-03 key scenario: planning a 02:00 grid charge at 22:00
         to cover morning peak use the following day.
         """
-        from custom_components.hsem.utils.misc import interval_ends_before_window_start
+        from custom_components.hsem.utils.time_windows import (
+            interval_ends_before_window_start,
+        )
 
         now = _dt(22, 0)
         charge_slot_end = _dt(3, 0, day_offset=1)  # 03:00 next day
@@ -279,7 +285,9 @@ class TestP003NextDayCharging:
 
     def test_slot_after_discharge_window_excluded(self) -> None:
         """A slot ending at 08:00 is NOT before the 07:00 window."""
-        from custom_components.hsem.utils.misc import interval_ends_before_window_start
+        from custom_components.hsem.utils.time_windows import (
+            interval_ends_before_window_start,
+        )
 
         now = _dt(22, 0)
         charge_slot_end = _dt(8, 0, day_offset=1)
@@ -404,33 +412,33 @@ class TestP005InvalidSensorValues:
 
     def test_unknown_returns_none_not_zero(self) -> None:
         """'unknown' is a sentinel — must not become 0."""
-        from custom_components.hsem.utils.misc import convert_to_float
+        from custom_components.hsem.utils.conversion import convert_to_float
 
         result = convert_to_float("unknown")
         assert result is None, f"Expected None, got {result!r}"
 
     def test_unavailable_returns_none_not_zero(self) -> None:
         """'unavailable' is a sentinel — must not become 0."""
-        from custom_components.hsem.utils.misc import convert_to_float
+        from custom_components.hsem.utils.conversion import convert_to_float
 
         result = convert_to_float("unavailable")
         assert result is None
 
     def test_empty_string_returns_none(self) -> None:
         """An empty string has no numeric meaning — must return None."""
-        from custom_components.hsem.utils.misc import convert_to_float
+        from custom_components.hsem.utils.conversion import convert_to_float
 
         assert convert_to_float("") is None
 
     def test_none_input_returns_none(self) -> None:
         """Python None must pass through as None."""
-        from custom_components.hsem.utils.misc import convert_to_float
+        from custom_components.hsem.utils.conversion import convert_to_float
 
         assert convert_to_float(None) is None
 
     def test_real_zero_is_not_none(self) -> None:
         """Numeric 0 / '0' is a valid measurement and must NOT become None."""
-        from custom_components.hsem.utils.misc import convert_to_float
+        from custom_components.hsem.utils.conversion import convert_to_float
 
         assert convert_to_float(0) == pytest.approx(0.0)
         assert convert_to_float("0") == pytest.approx(0.0)
@@ -438,20 +446,20 @@ class TestP005InvalidSensorValues:
 
     def test_valid_positive_float_round_trips(self) -> None:
         """A valid float string converts cleanly."""
-        from custom_components.hsem.utils.misc import convert_to_float
+        from custom_components.hsem.utils.conversion import convert_to_float
 
         assert convert_to_float("75.5") == pytest.approx(75.5)
 
     def test_valid_negative_float_round_trips(self) -> None:
         """Negative values (e.g. export power) must convert correctly."""
-        from custom_components.hsem.utils.misc import convert_to_float
+        from custom_components.hsem.utils.conversion import convert_to_float
 
         assert convert_to_float("-3.14") == pytest.approx(-3.14)
 
     def test_unavailable_soc_sets_missing_entities_flag(self) -> None:
         """A None battery SoC (from unavailable sensor) must set missing_entities."""
         from custom_components.hsem.models.live_state import LiveState
-        from custom_components.hsem.utils.misc import convert_to_float
+        from custom_components.hsem.utils.conversion import convert_to_float
 
         state = LiveState()
         soc = convert_to_float("unavailable")
@@ -465,7 +473,7 @@ class TestP005InvalidSensorValues:
     def test_zero_soc_does_not_set_missing_flag(self) -> None:
         """A valid 0% SoC is real data — must not trigger the missing-entity flag."""
         from custom_components.hsem.models.live_state import LiveState
-        from custom_components.hsem.utils.misc import convert_to_float
+        from custom_components.hsem.utils.conversion import convert_to_float
 
         state = LiveState()
         soc = convert_to_float("0")
@@ -790,13 +798,15 @@ class TestP009ExceptionHandling:
     def test_entity_not_found_error_is_homeassistant_error_subclass(self) -> None:
         """``EntityNotFoundError`` must be a subclass of ``HomeAssistantError``
         so it propagates through HA's own exception hierarchy."""
-        from custom_components.hsem.utils.misc import EntityNotFoundError
+        from custom_components.hsem.utils.ha_helpers import EntityNotFoundError
 
         assert issubclass(EntityNotFoundError, HomeAssistantError)
 
     def test_unknown_state_returns_none(self) -> None:
         """'unknown' entity state must return None for float reads."""
-        from custom_components.hsem.utils.misc import ha_get_entity_state_and_convert
+        from custom_components.hsem.utils.ha_helpers import (
+            ha_get_entity_state_and_convert,
+        )
 
         hass = MagicMock()
         state_mock = MagicMock()
@@ -812,7 +822,9 @@ class TestP009ExceptionHandling:
 
     def test_unavailable_state_returns_none(self) -> None:
         """'unavailable' entity state must return None for float reads."""
-        from custom_components.hsem.utils.misc import ha_get_entity_state_and_convert
+        from custom_components.hsem.utils.ha_helpers import (
+            ha_get_entity_state_and_convert,
+        )
 
         hass = MagicMock()
         state_mock = MagicMock()
@@ -828,7 +840,7 @@ class TestP009ExceptionHandling:
 
     def test_missing_entity_raises_entity_not_found(self) -> None:
         """A completely absent entity must raise ``EntityNotFoundError``."""
-        from custom_components.hsem.utils.misc import (
+        from custom_components.hsem.utils.ha_helpers import (
             EntityNotFoundError,
             ha_get_entity_state_and_convert,
         )
@@ -845,7 +857,9 @@ class TestP009ExceptionHandling:
 
     def test_valid_entity_state_converts_without_raising(self) -> None:
         """A valid numeric state must convert cleanly — no exception."""
-        from custom_components.hsem.utils.misc import ha_get_entity_state_and_convert
+        from custom_components.hsem.utils.ha_helpers import (
+            ha_get_entity_state_and_convert,
+        )
 
         hass = MagicMock()
         state_mock = MagicMock()
@@ -869,7 +883,7 @@ class TestP009ExceptionHandling:
         production module to prevent it from formatting the exception during
         logging before the re-raise.
         """
-        from custom_components.hsem.utils.misc import async_set_number_value
+        from custom_components.hsem.utils.ha_helpers import async_set_number_value
 
         hass = MagicMock()
         state_mock = MagicMock()
@@ -893,7 +907,7 @@ class TestP009ExceptionHandling:
     @pytest.mark.asyncio
     async def test_async_set_select_option_propagates_homeassistant_error(self) -> None:
         """``async_set_select_option`` must re-raise ``HomeAssistantError``."""
-        from custom_components.hsem.utils.misc import async_set_select_option
+        from custom_components.hsem.utils.ha_helpers import async_set_select_option
 
         hass = MagicMock()
         state_mock = MagicMock()

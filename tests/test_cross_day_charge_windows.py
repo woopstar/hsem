@@ -16,7 +16,7 @@ Acceptance criteria from issue #267:
 
 from datetime import UTC, datetime, time, timedelta
 
-from custom_components.hsem.utils.misc import (
+from custom_components.hsem.utils.time_windows import (
     interval_ends_before_window_start,
     next_window_start_dt,
 )

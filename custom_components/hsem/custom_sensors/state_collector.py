@@ -33,14 +33,16 @@ from custom_components.hsem.models.live_state import (
 )
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.models.state_snapshot import StateSnapshot
-from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER, async_logger
-from custom_components.hsem.utils.misc import (
-    async_resolve_entity_id_from_unique_id,
+from custom_components.hsem.utils.conversion import (
     convert_to_boolean,
     convert_to_float,
-    get_config_value,
+)
+from custom_components.hsem.utils.ha_helpers import (
+    async_resolve_entity_id_from_unique_id,
     ha_get_entity_state_and_convert,
 )
+from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER, async_logger
+from custom_components.hsem.utils.misc import get_config_value
 from custom_components.hsem.utils.sensornames import (
     get_energy_average_sensor_unique_id,
     get_ev_deadline_time_entity_id,

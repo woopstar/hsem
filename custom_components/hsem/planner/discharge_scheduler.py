@@ -17,11 +17,12 @@ from custom_components.hsem.models.battery_schedule_input import BatterySchedule
 from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import log_planner
-from custom_components.hsem.utils.misc import clamp_efficiency, next_window_start_dt
+from custom_components.hsem.utils.misc import clamp_efficiency
 from custom_components.hsem.utils.recommendations import (
     DISCHARGE_RECS as _DISCHARGE_RECS,
     Recommendations,
 )
+from custom_components.hsem.utils.time_windows import next_window_start_dt
 
 # ---------------------------------------------------------------------------
 # Discharge schedule detection

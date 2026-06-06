@@ -45,7 +45,12 @@ from custom_components.hsem.const import (
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.sensor_config import SensorConfig
+from custom_components.hsem.utils.conversion import convert_to_int
 from custom_components.hsem.utils.degraded_mode import hardware_writes_allowed
+from custom_components.hsem.utils.ha_helpers import (
+    async_set_number_value,
+    async_set_select_option,
+)
 from custom_components.hsem.utils.huawei import (
     async_set_forcible_discharge,
     async_set_grid_export_power_pct,
@@ -61,9 +66,6 @@ from custom_components.hsem.utils.inverter_verify import (
 )
 from custom_components.hsem.utils.logger import async_logger
 from custom_components.hsem.utils.misc import (
-    async_set_number_value,
-    async_set_select_option,
-    convert_to_int,
     generate_hash,
     get_max_discharge_power,
 )

@@ -63,7 +63,7 @@ from custom_components.hsem.flows.weighted_values import (
     validate_weighted_values_input,
 )
 from custom_components.hsem.options_flow import HSEMOptionsFlow
-from custom_components.hsem.utils.misc import convert_months_to_int
+from custom_components.hsem.utils.conversion import convert_months_to_int
 
 _LOGGER = logging.getLogger(__name__)
 

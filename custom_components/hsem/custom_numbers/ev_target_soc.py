@@ -19,7 +19,8 @@ from homeassistant.const import PERCENTAGE, EntityCategory
 from homeassistant.core import HomeAssistant
 
 from custom_components.hsem.entity import HSEMEntity
-from custom_components.hsem.utils.misc import convert_to_float, get_config_value
+from custom_components.hsem.utils.conversion import convert_to_float
+from custom_components.hsem.utils.misc import get_config_value
 
 
 class HSEMEVTargetSocNumber(HSEMEntity, NumberEntity):

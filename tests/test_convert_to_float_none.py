@@ -17,7 +17,7 @@ from __future__ import annotations
 import pytest
 
 from custom_components.hsem.models.live_state import LiveState
-from custom_components.hsem.utils.misc import convert_to_float, convert_to_int
+from custom_components.hsem.utils.conversion import convert_to_float, convert_to_int
 
 # ---------------------------------------------------------------------------
 # convert_to_float — return None for invalid / missing values

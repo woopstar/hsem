@@ -16,12 +16,12 @@ from custom_components.hsem.models.battery_schedule_input import BatterySchedule
 from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import log_planner
-from custom_components.hsem.utils.misc import next_window_start_dt
 from custom_components.hsem.utils.recommendations import (
     CHARGE_RECS as _CHARGE_RECS,
     DISCHARGE_RECS as _DISCHARGE_RECS,
     Recommendations,
 )
+from custom_components.hsem.utils.time_windows import next_window_start_dt
 
 # ---------------------------------------------------------------------------
 # Charge scheduling

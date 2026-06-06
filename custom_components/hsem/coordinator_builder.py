@@ -28,12 +28,9 @@ from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.price_point import PricePoint
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.models.solcast_slot import SolcastSlot
+from custom_components.hsem.utils.conversion import convert_to_float, convert_to_int
 from custom_components.hsem.utils.datetime_utils import now as hsem_now
-from custom_components.hsem.utils.misc import (
-    calculate_recommended_threshold,
-    convert_to_float,
-    convert_to_int,
-)
+from custom_components.hsem.utils.misc import calculate_recommended_threshold
 
 # ---------------------------------------------------------------------------
 # Public API

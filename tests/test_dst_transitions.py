@@ -23,7 +23,7 @@ import pytest
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.planner.engine_core import _parse_now
 from custom_components.hsem.planner.slot_population import build_slots
-from custom_components.hsem.utils.misc import (
+from custom_components.hsem.utils.time_windows import (
     interval_ends_before_window_start,
     next_window_start_dt,
 )

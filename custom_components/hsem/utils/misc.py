@@ -1,32 +1,72 @@
 """General-purpose utility functions for the HSEM custom integration.
 
-Includes helpers for config value retrieval, type conversion, entity
-resolution, service calls, and battery power calculations.
+Includes helpers for config value retrieval, hashing, efficiency
+clamping, battery power calculations, and cycle-cost thresholds.
+
+Functions that were previously defined here have been extracted into
+dedicated modules (``conversion.py``, ``ha_helpers.py``,
+``time_windows.py``) and are re-exported below for backward
+compatibility.
 """
 
 import hashlib
-from datetime import datetime, time, timedelta
-from typing import Any, cast
+from typing import Any
 
-from homeassistant.const import STATE_OFF, STATE_ON, STATE_UNAVAILABLE, STATE_UNKNOWN
-from homeassistant.exceptions import (
-    HomeAssistantError,
-    ServiceNotFound,
-    ServiceValidationError,
+from custom_components.hsem.const import DEFAULT_CONFIG_VALUES
+
+# ---------------------------------------------------------------------------
+# Re-exports — functions extracted to dedicated modules but kept available
+# here so that existing callers importing from ``utils.misc`` continue to
+# work without changes.
+# ---------------------------------------------------------------------------
+from custom_components.hsem.utils.conversion import (
+    convert_months_to_int,
+    convert_to_boolean,
+    convert_to_float,
+    convert_to_int,
+    convert_to_time,
 )
-from homeassistant.helpers import device_registry as dr, entity_registry as er
+from custom_components.hsem.utils.ha_helpers import (  # noqa: F401
+    EntityNotFoundError,
+    async_device_exists,
+    async_entity_exists,
+    async_remove_entity_from_ha,
+    async_resolve_entity_id_from_unique_id,
+    async_set_number_value,
+    async_set_select_option,
+    ha_get_entity_state_and_convert,
+)
+from custom_components.hsem.utils.time_windows import (
+    interval_ends_before_window_start,
+    is_time_in_window,
+    next_window_start_dt,
+)
 
-from custom_components.hsem.const import DEFAULT_CONFIG_VALUES, DOMAIN
-
-# Re-export async_logger from its dedicated module so that existing callers
-# importing it from utils.misc continue to work without changes.
-from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
-
-_entity_id_from_unique_id_cache: dict[tuple[str, str, str], str] = {}
-
-
-class EntityNotFoundError(HomeAssistantError):
-    """Exception raised when an entity is not found."""
+# Keep ``__all__`` tidy — only the functions actually defined *in this module*
+# plus the re-exported names are exposed.
+__all__ = [
+    "EntityNotFoundError",
+    "async_device_exists",
+    "async_entity_exists",
+    "async_remove_entity_from_ha",
+    "async_resolve_entity_id_from_unique_id",
+    "async_set_number_value",
+    "async_set_select_option",
+    "calculate_recommended_threshold",
+    "clamp_efficiency",
+    "convert_months_to_int",
+    "convert_to_boolean",
+    "convert_to_float",
+    "convert_to_int",
+    "convert_to_time",
+    "generate_hash",
+    "get_config_value",
+    "get_max_discharge_power",
+    "ha_get_entity_state_and_convert",
+    "interval_ends_before_window_start",
+    "is_time_in_window",
+    "next_window_start_dt",
+]
 
 
 def generate_hash(input_sensor: str) -> str:
@@ -69,240 +109,6 @@ def get_config_value(config_entry: Any | None, key: str) -> Any:
     return data
 
 
-def convert_to_time(time_value: str | time) -> time:
-    """Convert a string or ``datetime.time`` to a ``datetime.time`` object.
-
-    Args:
-        time_value: A time string in ``HH:MM:SS`` format or a ``datetime.time``.
-
-    Returns:
-        The converted ``datetime.time`` object.
-    """
-    if isinstance(time_value, time):
-        return time_value
-
-    if isinstance(time_value, str):
-        return datetime.strptime(time_value, "%H:%M:%S").time()
-
-    return time()
-
-
-def is_time_in_window(current: time, start: time, end: time) -> bool:
-    """Check whether *current* falls within the [start, end) window.
-
-    Handles windows that cross midnight (e.g. 23:00–02:00) correctly.
-
-    Args:
-        current: The time to test.
-        start: Start of the window (inclusive).
-        end: End of the window (exclusive).
-
-    Returns:
-        True if *current* is within the window, False otherwise.
-    """
-    if start <= end:
-        # Same-day window (e.g. 07:00–09:00)
-        return start <= current < end
-    # Cross-midnight window (e.g. 23:00–02:00)
-    return current >= start or current < end
-
-
-def next_window_start_dt(now: datetime, window_start: time) -> datetime:
-    """Return the next upcoming datetime when a discharge/charge window begins.
-
-    Anchors ``window_start`` to today's date and advances by one day when that
-    moment has already passed, so the returned datetime is always strictly in
-    the future relative to ``now``.
-
-    This enables cross-date-boundary charge planning: a 07:00 discharge
-    window configured for the next calendar day is correctly resolved when
-    it is currently, say, 22:00 on the previous day.
-
-    Args:
-        now: Current timezone-aware datetime.
-        window_start: Wall-clock start time of the discharge/charge window.
-
-    Returns:
-        Timezone-aware datetime of the next occurrence of *window_start*.
-    """
-    candidate = datetime.combine(now.date(), window_start).replace(tzinfo=now.tzinfo)
-    if candidate <= now:
-        candidate += timedelta(days=1)
-    return candidate
-
-
-def interval_ends_before_window_start(
-    interval_end: datetime,
-    window_start: time,
-    now: datetime,
-) -> bool:
-    """Return True when an *interval* ends strictly before a schedule *window* begins.
-
-    Resolves ``window_start`` to a timezone-aware :class:`datetime` on the
-    correct calendar date so that cross-midnight windows (e.g. a window that
-    starts at ``23:00`` today and ends at ``02:00`` tomorrow) are handled
-    without false positives.
-
-    Args:
-        interval_end: Timezone-aware end of the recommendation interval.
-        window_start: Wall-clock start time of the charge/discharge window.
-        now: Current timezone-aware datetime (used to anchor the date).
-
-    Returns:
-        True if the interval ends before the window starts.
-    """
-    return interval_end <= next_window_start_dt(now, window_start)
-
-
-def convert_to_float(state: Any) -> float | None:
-    """Resolve the input sensor state and cast it to a float.
-
-    Returns ``None`` for values that cannot be meaningfully interpreted as a
-    number: ``None``, the HA sentinel strings ``"unknown"`` / ``"unavailable"``,
-    empty strings, and anything that raises a conversion error.  A real numeric
-    ``0`` (or ``"0"``) is preserved as ``0.0``.
-
-    This distinction lets callers differentiate between *missing data* and
-    *real zero consumption*, which is critical for safe hardware decisions.
-
-    Args:
-        state: Raw sensor state value (string, int, float, or None).
-
-    Returns:
-        Parsed float value, or ``None`` when the state is absent or invalid.
-    """
-    if state is None:
-        return None
-
-    if isinstance(state, str):
-        stripped = state.strip()
-        if stripped == "" or stripped.lower() in (STATE_UNKNOWN, STATE_UNAVAILABLE):
-            return None
-        try:
-            return float(stripped)
-        except ValueError, TypeError:
-            return None
-
-    try:
-        return float(state)
-    except ValueError, TypeError:
-        return None
-
-
-def convert_to_int(state: Any) -> int | None:
-    """Cast *state* to an integer, distinguishing real zero from invalid input.
-
-    Returns:
-        ``int`` when *state* is a valid numeric value (including ``0``).
-        ``None`` when *state* is ``None``, a HA sentinel (``"unknown"``,
-        ``"unavailable"``), an empty string, or any non-numeric text.
-        This mirrors the behaviour of ``convert_to_float`` and ensures that
-        defective config values or missing sensor readings are visible to the
-        caller rather than silently replaced with ``0``.
-    """
-    if state is None:
-        return None
-
-    if isinstance(state, str):
-        stripped = state.strip().lower()
-        if stripped in (STATE_UNKNOWN, STATE_UNAVAILABLE, ""):
-            return None
-        try:
-            return int(float(stripped))
-        except ValueError, TypeError:
-            return None
-
-    try:
-        return int(state)
-    except ValueError, TypeError:
-        return None
-
-
-def convert_months_to_int(months: list) -> list[int]:
-    """Convert month values to integers.
-
-    Args:
-        months: List of month values (can be strings or integers)
-
-    Returns:
-        List of integer month values (1-12)
-
-    Raises:
-        ValueError: If any month is not a valid integer or outside range 1-12
-    """
-    result = []
-    for month in months:
-        try:
-            month_int = int(float(month))
-            if month_int < 1 or month_int > 12:
-                raise ValueError(f"Month must be between 1 and 12, got {month_int}")
-            result.append(month_int)
-        except (ValueError, TypeError) as e:
-            raise ValueError(f"Invalid month value: {month}. Error: {e}") from e
-    return result
-
-
-def convert_to_boolean(state: Any) -> bool:
-    """Resolve an input sensor state and cast it to a boolean.
-
-    Handles booleans, integers, and a wide range of string values
-    (``"on"``, ``"off"``, ``"charging"``, ``"connected"``, etc.).
-
-    Args:
-        state: The raw sensor state value.
-
-    Returns:
-        The resolved boolean value.  Returns False for unrecognised inputs.
-    """
-
-    if state is None:
-        return False
-
-    if isinstance(state, bool):
-        return state
-
-    if isinstance(state, int):
-        return state != 0
-
-    state_map = {
-        STATE_ON: True,
-        "true": True,
-        "1": True,
-        STATE_OFF: False,
-        "false": False,
-        "0": False,
-        "charging": True,
-        "not_charging": False,
-        "notcharging": False,
-        STATE_UNKNOWN: False,
-        "available": True,
-        STATE_UNAVAILABLE: False,
-        "ready": True,
-        "notready": False,
-        "not_ready": False,
-        "unready": False,
-        "disconnected": False,
-        "connected": True,
-        "locked": False,
-        "unlocked": True,
-        "paused": False,
-        "continue": True,
-        "in_progress": True,
-    }
-
-    # Convert the state to lowercase for case-insensitive comparison
-    if isinstance(state, str):
-        state_value_lower = state.lower()
-
-        # Check if the state is in the mapping and return the corresponding boolean
-        if state_value_lower in state_map:
-            return state_map[state_value_lower]
-        else:
-            return False
-
-    return False
-
-
 def clamp_efficiency(pct: float) -> float:
     """Convert an efficiency percentage (0-100) to a fraction (0.01-1.0).
 
@@ -316,268 +122,6 @@ def clamp_efficiency(pct: float) -> float:
         Efficiency as a fraction in [0.01, 1.0].
     """
     return max(min(pct, 100.0), 1.0) / 100.0
-
-
-async def async_resolve_entity_id_from_unique_id(  # NOSONAR
-    self: Any, unique_entity_id: str, domain: str = "sensor"
-) -> str | None:
-    """Resolve an entity_id from a unique_id using the entity registry.
-
-    Results are cached per (domain, unique_id) pair to avoid repeated
-    registry lookups.
-
-    Args:
-        self: The calling coordinator or component instance.
-        unique_entity_id: The unique ID of the entity to resolve.
-        domain: The Home Assistant domain (e.g. ``"sensor"``).
-
-    Returns:
-        The resolved entity_id, or None if not found.
-    """
-
-    global _entity_id_from_unique_id_cache
-
-    cache_key = (DOMAIN, domain, unique_entity_id)
-
-    if self.hass is None:
-        return None
-
-    # Check cache first
-    entity_id = _entity_id_from_unique_id_cache.get(cache_key)
-    if entity_id:
-        if self.hass.states.get(entity_id) is not None:
-            return cast(str, entity_id)
-        del _entity_id_from_unique_id_cache[cache_key]
-
-    # Get the entity registry
-    registry = er.async_get(self.hass)
-
-    # Fetch the entity_id from the unique_id
-    entry = registry.async_get_entity_id(domain, DOMAIN, unique_entity_id)
-
-    # Log the resolved entity_id for debugging purposes
-    if entry:
-        # Store in cache
-        _entity_id_from_unique_id_cache[cache_key] = entry
-
-        _LOGGER.debug(
-            "Resolved entity_id for unique_id %s: %s", unique_entity_id, entry
-        )
-        return cast(str, entry)
-    else:
-        _LOGGER.debug(
-            "Entity with unique_id %s not found in registry", unique_entity_id
-        )
-        return None
-
-
-async def async_set_number_value(self: Any, entity_id: str, value: float | int) -> None:
-    """Set the value of a Home Assistant number entity.
-
-    Args:
-        self: The calling coordinator or component instance.
-        entity_id: The entity_id of the number entity.
-        value: The numeric value to set.
-
-    Raises:
-        ServiceNotFound: If the ``number.set_value`` service is not registered.
-        HomeAssistantError: On any other HA-level write failure.
-    """
-    entity = self.hass.states.get(entity_id)
-
-    if entity is None:
-        _LOGGER.error("Entity with id %s not found", entity_id)
-        return
-
-    try:
-        await self.hass.services.async_call(
-            "number",
-            "set_value",
-            {
-                "entity_id": entity_id,
-                "value": value,
-            },
-            blocking=True,
-        )
-        _LOGGER.debug("Set value '%s' for number entity_id '%s'", value, entity_id)
-    except ServiceNotFound, ServiceValidationError, HomeAssistantError:
-        _LOGGER.exception(
-            "Failed to set value '%s' for number entity_id '%s' (operation=set_value)",
-            value,
-            entity_id,
-        )
-        raise
-
-
-async def async_set_select_option(self: Any, entity_id: str, option: str) -> None:
-    """Set the selected option of a Home Assistant select entity.
-
-    Args:
-        self: The calling coordinator or component instance.
-        entity_id: The entity_id of the select entity.
-        option: The option value to select.
-
-    Raises:
-        ServiceNotFound: If the ``select.select_option`` service is not registered.
-        HomeAssistantError: On any other HA-level write failure.
-    """
-
-    # Check if entity_id exists
-    entity = self.hass.states.get(entity_id)
-
-    if entity is None:
-        _LOGGER.error("Entity with id %s not found", entity_id)
-        return  # Exit the method if entity_id does not exist
-
-    try:
-        # Make the service call to set the option
-        await self.hass.services.async_call(
-            "select",
-            "select_option",
-            {
-                "entity_id": entity_id,
-                "option": option,
-            },
-            blocking=True,
-        )
-        _LOGGER.debug("Set option '%s' for entity_id '%s'", option, entity_id)
-    except ServiceNotFound, ServiceValidationError, HomeAssistantError:
-        _LOGGER.exception(
-            "Failed to set option '%s' for entity_id '%s' (operation=select_option)",
-            option,
-            entity_id,
-        )
-        raise
-
-
-def ha_get_entity_state_and_convert(
-    self: Any,
-    entity_id: str | None,
-    output_type: str | None = None,
-    float_precision: int = 2,
-) -> float | int | bool | str | None:
-    """Get an entity's state and convert it to the requested type.
-
-    Args:
-        self: The calling coordinator or component instance.
-        entity_id: The entity_id to query, or None.
-        output_type: The desired output type (``"float"``, ``"int"``,
-            ``"boolean"``, ``"string"``, or None for the raw state object).
-        float_precision: Number of decimal places when output_type is ``"float"``.
-
-    Returns:
-        The converted state value, or None if the entity is unavailable.
-
-    Raises:
-        EntityNotFoundError: If the entity is not found or state is unknown.
-        HomeAssistantError: If conversion fails.
-    """
-
-    if entity_id is None:
-        return None
-
-    if not self.hass.states.get(entity_id):
-        raise EntityNotFoundError(f"Entity '{entity_id}' not found in Home Assistant.")
-
-    state = self.hass.states.get(entity_id)
-
-    try:
-        if output_type is None:
-            if state.state == STATE_UNKNOWN:
-                raise EntityNotFoundError(f"Entity '{entity_id}' state unknown.")
-
-            return cast("float | int | bool | str | None", state)
-
-        if output_type.lower() == "float":
-            if state.state in (STATE_UNKNOWN, STATE_UNAVAILABLE):
-                return None
-            value = convert_to_float(state.state)
-            if value is None:
-                return None
-            return cast(float, round(value, float_precision))
-
-        if output_type.lower() == "int":
-            if state.state == STATE_UNKNOWN:
-                raise EntityNotFoundError(f"Entity '{entity_id}' state unknown.")
-            return convert_to_int(state.state)
-
-        if output_type.lower() == "boolean":
-            if state.state == STATE_UNKNOWN:
-                raise EntityNotFoundError(f"Entity '{entity_id}' state unknown.")
-
-            return convert_to_boolean(state.state)
-
-        if output_type.lower() == "string":
-            return str(state.state)
-
-        _LOGGER.error(
-            f"Unknown output type '{output_type}' for entity '{entity_id}'. Returning None."
-        )
-        return None
-
-    except (ValueError, TypeError, AttributeError) as e:
-        raise HomeAssistantError(
-            f"Error converting state of entity '{entity_id}' to type '{output_type}': {e}"
-        )
-
-
-async def async_remove_entity_from_ha(self: Any, entity_unique_id: str) -> bool:
-    """Remove an entity from Home Assistant by its unique ID.
-
-    Args:
-        self: The calling coordinator or component instance.
-        entity_unique_id: The unique ID of the entity to remove.
-
-    Returns:
-        True if the entity was found and removed, False otherwise.
-    """
-    # Check if the entity exists
-    entity_exists = await async_resolve_entity_id_from_unique_id(self, entity_unique_id)
-    if not entity_exists:
-        return False
-
-    # Get the entity registry
-    registry = er.async_get(self.hass)
-
-    # Fetch the entity ID for the unique ID
-    existing_entry = registry.async_get_entity_id("sensor", DOMAIN, entity_unique_id)
-
-    # Remove the entity if it exists in the registry
-    if existing_entry:
-        _LOGGER.debug(
-            f"Removing existing entity with unique ID '{entity_unique_id}' before re-adding."
-        )
-        registry.async_remove(existing_entry)
-        return True
-    else:
-        return False
-
-
-async def async_entity_exists(hass: Any, entity_id: str) -> bool:  # NOSONAR
-    """Check whether an entity exists in Home Assistant.
-
-    Args:
-        hass: The Home Assistant core instance.
-        entity_id: The entity_id to check.
-
-    Returns:
-        True if the entity exists, False otherwise.
-    """
-    return hass.states.get(entity_id) is not None
-
-
-async def async_device_exists(hass: Any, device_id: str) -> bool:  # NOSONAR
-    """Check whether a device exists in Home Assistant.
-
-    Args:
-        hass: The Home Assistant core instance.
-        device_id: The device ID to check.
-
-    Returns:
-        True if the device exists, False otherwise.
-    """
-    device_registry = dr.async_get(hass)
-    return device_registry.async_get(device_id) is not None
 
 
 def get_max_discharge_power(usable_capacity: int) -> int:

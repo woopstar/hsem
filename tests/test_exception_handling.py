@@ -27,7 +27,7 @@ from homeassistant.exceptions import (
     ServiceValidationError,
 )
 
-from custom_components.hsem.utils.misc import (
+from custom_components.hsem.utils.ha_helpers import (
     EntityNotFoundError,
     async_set_number_value,
     async_set_select_option,

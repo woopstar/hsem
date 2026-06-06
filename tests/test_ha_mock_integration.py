@@ -513,7 +513,9 @@ class TestMockStateReads:
 
     def test_float_conversion_from_fake_state(self) -> None:
         """ha_get_entity_state_and_convert must parse float from FakeState.state."""
-        from custom_components.hsem.utils.misc import ha_get_entity_state_and_convert
+        from custom_components.hsem.utils.ha_helpers import (
+            ha_get_entity_state_and_convert,
+        )
 
         hass = make_fake_hass({"sensor.soc": "65.5"})
         sensor_stub = MagicMock()
@@ -524,7 +526,7 @@ class TestMockStateReads:
 
     def test_missing_entity_raises_entity_not_found(self) -> None:
         """Reading a non-existent entity must raise EntityNotFoundError."""
-        from custom_components.hsem.utils.misc import (
+        from custom_components.hsem.utils.ha_helpers import (
             EntityNotFoundError,
             ha_get_entity_state_and_convert,
         )
@@ -538,7 +540,9 @@ class TestMockStateReads:
 
     def test_unavailable_state_returns_none(self) -> None:
         """An 'unavailable' state string must return None for float reads."""
-        from custom_components.hsem.utils.misc import ha_get_entity_state_and_convert
+        from custom_components.hsem.utils.ha_helpers import (
+            ha_get_entity_state_and_convert,
+        )
 
         hass = make_fake_hass({"sensor.soc": "unavailable"})
         sensor_stub = MagicMock()
@@ -549,7 +553,9 @@ class TestMockStateReads:
 
     def test_boolean_conversion_from_fake_state(self) -> None:
         """Boolean 'on'/'off' states must convert correctly."""
-        from custom_components.hsem.utils.misc import ha_get_entity_state_and_convert
+        from custom_components.hsem.utils.ha_helpers import (
+            ha_get_entity_state_and_convert,
+        )
 
         hass = make_fake_hass(
             {"binary_sensor.charging": "on", "binary_sensor.idle": "off"}
@@ -572,7 +578,9 @@ class TestMockStateReads:
 
     def test_string_conversion_from_fake_state(self) -> None:
         """String conversion must return the state value unchanged."""
-        from custom_components.hsem.utils.misc import ha_get_entity_state_and_convert
+        from custom_components.hsem.utils.ha_helpers import (
+            ha_get_entity_state_and_convert,
+        )
 
         hass = make_fake_hass({"select.mode": "TimeOfUse"})
         sensor_stub = MagicMock()
@@ -609,7 +617,7 @@ class TestMockServiceCalls:
     @pytest.mark.asyncio
     async def test_async_set_select_option_calls_ha_service(self) -> None:
         """async_set_select_option must call hass.services.async_call."""
-        from custom_components.hsem.utils.misc import async_set_select_option
+        from custom_components.hsem.utils.ha_helpers import async_set_select_option
 
         hass = make_fake_hass({"select.batteries_working_mode": "TimeOfUse"})
         sensor_stub = MagicMock()
@@ -629,7 +637,7 @@ class TestMockServiceCalls:
     @pytest.mark.asyncio
     async def test_async_set_number_value_calls_ha_service(self) -> None:
         """async_set_number_value must call hass.services.async_call."""
-        from custom_components.hsem.utils.misc import async_set_number_value
+        from custom_components.hsem.utils.ha_helpers import async_set_number_value
 
         hass = make_fake_hass({"number.batteries_maximum_charging_power": "5000"})
         sensor_stub = MagicMock()

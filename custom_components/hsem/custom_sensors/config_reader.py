@@ -22,14 +22,14 @@ from custom_components.hsem.models.sensor_config import (
     EVChargerConfig,
     SensorConfig,
 )
-from custom_components.hsem.utils.misc import (
+from custom_components.hsem.utils.conversion import (
     convert_months_to_int,
     convert_to_boolean,
     convert_to_float,
     convert_to_int,
     convert_to_time,
-    get_config_value,
 )
+from custom_components.hsem.utils.misc import get_config_value
 
 
 def build_sensor_config(
