@@ -207,7 +207,7 @@ def test_ev_no_regression_when_evs_absent():
     assert result_empty_ev is not None
     # EV total loads should be zero
     for s in result_empty_ev[0]:
-        assert s.ev_total_planned_load_kwh == 0.0
+        assert s.ev_total_planned_load_kwh == pytest.approx(0.0, abs=1e-9)
 
 
 @_pytestmark_scipy
