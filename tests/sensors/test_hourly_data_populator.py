@@ -144,7 +144,7 @@ class TestSnapshotPopulation:
         from custom_components.hsem.models.live_state import LiveState
         from custom_components.hsem.models.sensor_config import SensorConfig
         from custom_components.hsem.models.state_snapshot import StateSnapshot
-        from custom_components.hsem.utils.sensornames import (
+        from custom_components.hsem.utils.sensornames.energy import (
             get_energy_average_sensor_unique_id,
         )
 
@@ -268,7 +268,7 @@ class TestSnapshotPopulation:
         from custom_components.hsem.models.live_state import LiveState
         from custom_components.hsem.models.sensor_config import SensorConfig
         from custom_components.hsem.models.state_snapshot import StateSnapshot
-        from custom_components.hsem.utils.sensornames import (
+        from custom_components.hsem.utils.sensornames.energy import (
             get_energy_average_sensor_unique_id,
         )
 

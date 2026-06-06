@@ -43,15 +43,19 @@ from custom_components.hsem.utils.ha_helpers import (
 )
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER, async_logger
 from custom_components.hsem.utils.misc import get_config_value
-from custom_components.hsem.utils.sensornames import (
+from custom_components.hsem.utils.sensornames.diagnostics import (
+    get_force_working_mode_selector_key,
+)
+from custom_components.hsem.utils.sensornames.energy import (
     get_energy_average_sensor_unique_id,
+)
+from custom_components.hsem.utils.sensornames.ev import (
     get_ev_deadline_time_entity_id,
     get_ev_second_deadline_time_entity_id,
     get_ev_second_smart_charging_switch_entity_id,
     get_ev_second_target_soc_number_entity_id,
     get_ev_smart_charging_switch_entity_id,
     get_ev_target_soc_number_entity_id,
-    get_force_working_mode_selector_key,
 )
 
 # ---------------------------------------------------------------------------

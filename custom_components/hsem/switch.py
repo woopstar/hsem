@@ -13,20 +13,24 @@ from custom_components.hsem.custom_switches.description import (
     HSEMSwitchEntityDescription,
 )
 from custom_components.hsem.custom_switches.switch import HSEMSwitch
-from custom_components.hsem.utils.sensornames import (
+from custom_components.hsem.utils.sensornames.controls import (
     get_batteries_schedule_1_switch_key,
     get_batteries_schedule_2_switch_key,
     get_batteries_schedule_3_switch_key,
+    get_extended_attributes_switch_key,
+    get_read_only_switch_key,
+    get_verbose_logging_switch_key,
+)
+from custom_components.hsem.utils.sensornames.ev import (
     get_ev_force_charge_now_switch_key,
     get_ev_force_discharge_switch_key,
     get_ev_second_force_charge_now_switch_key,
     get_ev_second_smart_charging_switch_key,
     get_ev_smart_charging_switch_key,
-    get_extended_attributes_switch_key,
+)
+from custom_components.hsem.utils.sensornames.ml import (
     get_ml_consumption_switch_key,
     get_ml_sequential_switch_key,
-    get_read_only_switch_key,
-    get_verbose_logging_switch_key,
 )
 
 _ICON_TOGGLE = "mdi:toggle-switch"

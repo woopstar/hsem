@@ -36,7 +36,7 @@ from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.models.daily_plan_vs_actual_tracker import (
     DailyPlanVsActualTracker,
 )
-from custom_components.hsem.utils.sensornames import (
+from custom_components.hsem.utils.sensornames.diagnostics import (
     get_daily_plan_vs_actual_sensor_entity_id,
     get_daily_plan_vs_actual_sensor_name,
     get_daily_plan_vs_actual_sensor_unique_id,

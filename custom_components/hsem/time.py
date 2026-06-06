@@ -11,15 +11,17 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from custom_components.hsem.custom_times.description import HSEMTimeEntityDescription
 from custom_components.hsem.custom_times.time import HSEMTimeEntity
 from custom_components.hsem.utils.misc import get_config_value
-from custom_components.hsem.utils.sensornames import (
-    get_ev_deadline_time_key,
-    get_ev_second_deadline_time_key,
+from custom_components.hsem.utils.sensornames.controls import (
     get_schedule_1_end_time_key,
     get_schedule_1_start_time_key,
     get_schedule_2_end_time_key,
     get_schedule_2_start_time_key,
     get_schedule_3_end_time_key,
     get_schedule_3_start_time_key,
+)
+from custom_components.hsem.utils.sensornames.ev import (
+    get_ev_deadline_time_key,
+    get_ev_second_deadline_time_key,
 )
 
 _ICON_CLOCK = "mdi:clock"

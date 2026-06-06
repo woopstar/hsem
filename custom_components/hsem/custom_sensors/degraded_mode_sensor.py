@@ -45,7 +45,7 @@ from custom_components.hsem.utils.degraded_mode import (
     DegradedMode,
     hardware_writes_allowed,
 )
-from custom_components.hsem.utils.sensornames import (
+from custom_components.hsem.utils.sensornames.diagnostics import (
     get_degraded_mode_sensor_entity_id,
     get_degraded_mode_sensor_name,
     get_degraded_mode_sensor_unique_id,

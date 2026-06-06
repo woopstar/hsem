@@ -30,7 +30,7 @@ from custom_components.hsem.coordinator import (
     HSEMDataUpdateCoordinator,
 )
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
-from custom_components.hsem.utils.sensornames import (
+from custom_components.hsem.utils.sensornames.diagnostics import (
     get_missing_entities_sensor_entity_id,
     get_missing_entities_sensor_name,
     get_missing_entities_sensor_unique_id,

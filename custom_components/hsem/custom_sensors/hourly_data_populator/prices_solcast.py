@@ -17,7 +17,7 @@ from custom_components.hsem.utils.conversion import convert_to_float
 from custom_components.hsem.utils.datetime_utils import normalize_datetime
 from custom_components.hsem.utils.logger import async_logger
 
-from . import _resolve_cached  # noqa: F401 — shared helper, imported per package spec
+from . import _resolve_cached  # noqa: F401
 
 
 async def async_populate_price_and_solcast(

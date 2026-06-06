@@ -23,7 +23,9 @@ from custom_components.hsem.utils.ha_helpers import (
     ha_get_entity_state_and_convert,
 )
 from custom_components.hsem.utils.logger import async_logger, log_planner
-from custom_components.hsem.utils.sensornames import get_energy_average_sensor_unique_id
+from custom_components.hsem.utils.sensornames.energy import (
+    get_energy_average_sensor_unique_id,
+)
 
 from . import _resolve_cached  # noqa: F401 — shared helper from package __init__
 

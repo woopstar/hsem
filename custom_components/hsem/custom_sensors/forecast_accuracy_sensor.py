@@ -37,7 +37,7 @@ from custom_components.hsem.coordinator import (
 )
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.utils.forecast_tracker import ForecastTracker
-from custom_components.hsem.utils.sensornames import (
+from custom_components.hsem.utils.sensornames.diagnostics import (
     get_forecast_accuracy_sensor_entity_id,
     get_forecast_accuracy_sensor_name,
     get_forecast_accuracy_sensor_unique_id,

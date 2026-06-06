@@ -43,7 +43,7 @@ from custom_components.hsem.utils.conversion import convert_to_float
 from custom_components.hsem.utils.ha_helpers import ha_get_entity_state_and_convert
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 from custom_components.hsem.utils.misc import get_config_value
-from custom_components.hsem.utils.sensornames import (
+from custom_components.hsem.utils.sensornames.energy import (
     get_energy_average_sensor_entity_id,
     get_energy_average_sensor_name,
     get_energy_average_sensor_unique_id,

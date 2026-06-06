@@ -15,7 +15,7 @@ from custom_components.hsem.custom_selectors.solcast_likelihood import (
 )
 from custom_components.hsem.custom_selectors.working_mode import HSEMWorkingModeSelector
 from custom_components.hsem.utils.recommendations import Recommendations
-from custom_components.hsem.utils.sensornames import (
+from custom_components.hsem.utils.sensornames.diagnostics import (
     get_force_working_mode_selector_key,
     get_solcast_likelihood_selector_key,
 )
