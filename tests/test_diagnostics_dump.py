@@ -18,7 +18,7 @@ import pytest
 
 from homeassistant.const import STATE_UNKNOWN
 
-from custom_components.hsem.models.planner_inputs import PlannerInput
+from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.planner import run_planner
 from custom_components.hsem.utils.diagnostics import (
     _REDACTED,

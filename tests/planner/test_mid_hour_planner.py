@@ -28,13 +28,13 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from custom_components.hsem.models.planner_inputs import (
+from custom_components.hsem.models.hourly_consumption_average import (
     HourlyConsumptionAverage,
-    PlannerInput,
-    PricePoint,
-    SolcastSlot,
 )
-from custom_components.hsem.models.planner_outputs import PlannerOutput
+from custom_components.hsem.models.planner_input import PlannerInput
+from custom_components.hsem.models.planner_output import PlannerOutput
+from custom_components.hsem.models.price_point import PricePoint
+from custom_components.hsem.models.solcast_slot import SolcastSlot
 from custom_components.hsem.planner import run_planner
 from custom_components.hsem.utils.recommendations import Recommendations
 from tests.planner.fixtures import make_summer_day_input

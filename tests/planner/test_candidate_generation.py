@@ -22,8 +22,8 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from custom_components.hsem.models.planner_inputs import PlannerInput
-from custom_components.hsem.models.planner_outputs import PlannedSlot
+from custom_components.hsem.models.planned_slot import PlannedSlot
+from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.planner import run_planner
 from custom_components.hsem.planner.candidate_generator import (
     CANDIDATE_AGGRESSIVE,
@@ -948,7 +948,7 @@ class TestPlannerOutputCandidates:
         # The engine returns PlannerOutput(missing_inputs=..., warnings=...)
         # without a candidates key when build_slots returns [].
         # We achieve this by constructing a PlannerOutput directly.
-        from custom_components.hsem.models.planner_outputs import PlannerOutput
+        from custom_components.hsem.models.planner_output import PlannerOutput
 
         output = PlannerOutput(missing_inputs=["battery_rated_capacity_kwh"])
         assert output.candidates == []

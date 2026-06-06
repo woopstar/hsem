@@ -51,7 +51,7 @@ from custom_components.hsem.coordinator import (
     HSEMDataUpdateCoordinator,
 )
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
-from custom_components.hsem.models.planner_outputs import PlanExplanation
+from custom_components.hsem.models.plan_explanation import PlanExplanation
 from custom_components.hsem.utils.datetime_utils import now as hsem_now
 from custom_components.hsem.utils.sensornames import (
     get_plan_explanation_sensor_entity_id,

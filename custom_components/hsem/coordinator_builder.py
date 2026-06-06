@@ -18,16 +18,16 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+from custom_components.hsem.models.battery_schedule_input import BatteryScheduleInput
+from custom_components.hsem.models.hourly_consumption_average import (
+    HourlyConsumptionAverage,
+)
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.live_state import LiveState
-from custom_components.hsem.models.planner_inputs import (
-    BatteryScheduleInput,
-    HourlyConsumptionAverage,
-    PlannerInput,
-    PricePoint,
-    SolcastSlot,
-)
+from custom_components.hsem.models.planner_input import PlannerInput
+from custom_components.hsem.models.price_point import PricePoint
 from custom_components.hsem.models.sensor_config import SensorConfig
+from custom_components.hsem.models.solcast_slot import SolcastSlot
 from custom_components.hsem.utils.datetime_utils import now as hsem_now
 from custom_components.hsem.utils.misc import (
     calculate_recommended_threshold,

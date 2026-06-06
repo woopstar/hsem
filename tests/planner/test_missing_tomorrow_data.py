@@ -16,13 +16,13 @@ from __future__ import annotations
 
 from zoneinfo import ZoneInfo
 
-from custom_components.hsem.models.planner_inputs import (
+from custom_components.hsem.models.data_quality import DataQuality
+from custom_components.hsem.models.hourly_consumption_average import (
     HourlyConsumptionAverage,
-    PlannerInput,
-    PricePoint,
-    SolcastSlot,
 )
-from custom_components.hsem.models.planner_outputs import DataQuality
+from custom_components.hsem.models.planner_input import PlannerInput
+from custom_components.hsem.models.price_point import PricePoint
+from custom_components.hsem.models.solcast_slot import SolcastSlot
 from custom_components.hsem.models.time_series import TimeSeriesIndex
 from custom_components.hsem.planner import run_planner
 from custom_components.hsem.utils.degraded_mode import (

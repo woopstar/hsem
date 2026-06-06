@@ -35,7 +35,7 @@ import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from custom_components.hsem.models.planner_outputs import RejectedPlan
+from custom_components.hsem.models.rejected_plan import RejectedPlan
 from custom_components.hsem.planner.candidate_generator import (
     CANDIDATE_BASELINE,
     CANDIDATE_NO_ACTION,

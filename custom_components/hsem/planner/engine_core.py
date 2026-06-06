@@ -10,8 +10,10 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from custom_components.hsem.models.planner_inputs import EVConfig, PlannerInput
-from custom_components.hsem.models.planner_outputs import DataQuality, PlannerOutput
+from custom_components.hsem.models.data_quality import DataQuality
+from custom_components.hsem.models.ev_config import EVConfig
+from custom_components.hsem.models.planner_input import PlannerInput
+from custom_components.hsem.models.planner_output import PlannerOutput
 from custom_components.hsem.models.time_series import TimeSeriesIndex
 from custom_components.hsem.planner.candidate_generator import (
     CANDIDATE_MILP,

@@ -42,8 +42,9 @@ import copy
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from custom_components.hsem.models.planner_inputs import EVConfig, PlannerInput
-from custom_components.hsem.models.planner_outputs import PlannedSlot
+from custom_components.hsem.models.ev_config import EVConfig
+from custom_components.hsem.models.planned_slot import PlannedSlot
+from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.planner.cost_function import PlanCostBreakdown
 from custom_components.hsem.planner.milp_optimizer import (
     CANDIDATE_MILP,

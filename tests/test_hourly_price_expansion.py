@@ -654,11 +654,9 @@ class TestIntegrationWithPopulatePrices:
         """PlannedSlot prices from populate_prices equal SlotPrice values."""
         from datetime import timedelta
 
-        from custom_components.hsem.models.planner_inputs import (
-            PlannerInput,
-            PricePoint,
-        )
-        from custom_components.hsem.models.planner_outputs import PlannedSlot
+        from custom_components.hsem.models.planned_slot import PlannedSlot
+        from custom_components.hsem.models.planner_input import PlannerInput
+        from custom_components.hsem.models.price_point import PricePoint
         from custom_components.hsem.planner.slot_population import (
             build_time_series_index,
             populate_prices,
@@ -699,11 +697,9 @@ class TestIntegrationWithPopulatePrices:
         """Negative export prices must not be zeroed out by populate_prices."""
         from datetime import timedelta
 
-        from custom_components.hsem.models.planner_inputs import (
-            PlannerInput,
-            PricePoint,
-        )
-        from custom_components.hsem.models.planner_outputs import PlannedSlot
+        from custom_components.hsem.models.planned_slot import PlannedSlot
+        from custom_components.hsem.models.planner_input import PlannerInput
+        from custom_components.hsem.models.price_point import PricePoint
         from custom_components.hsem.planner.slot_population import (
             build_time_series_index,
             populate_prices,

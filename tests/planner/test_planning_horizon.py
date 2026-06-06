@@ -18,13 +18,13 @@ from __future__ import annotations
 from datetime import time
 from typing import Any, cast
 
-from custom_components.hsem.models.planner_inputs import (
-    BatteryScheduleInput,
+from custom_components.hsem.models.battery_schedule_input import BatteryScheduleInput
+from custom_components.hsem.models.hourly_consumption_average import (
     HourlyConsumptionAverage,
-    PlannerInput,
-    PricePoint,
-    SolcastSlot,
 )
+from custom_components.hsem.models.planner_input import PlannerInput
+from custom_components.hsem.models.price_point import PricePoint
+from custom_components.hsem.models.solcast_slot import SolcastSlot
 from custom_components.hsem.models.time_series import TimeSeriesIndex
 from custom_components.hsem.planner import run_planner
 

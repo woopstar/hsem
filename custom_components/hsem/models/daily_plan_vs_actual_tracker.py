@@ -1,10 +1,8 @@
-"""Daily plan-vs-actual tracking model.
+"""Daily plan-vs-actual tracker that accumulates metrics and manages 90-day JSON history.
 
-Provides :class:`DailyPlanVsActualTracker` — a pure-Python accumulator that
-tracks cumulative actual vs planned energy/cost metrics since midnight and
-manages a rolling 90-day JSON history file.
-
-All fields are plain Python types; no Home Assistant imports are used.
+This is a pure-Python tracker stored on the coordinator.  It accumulates plan and
+actual values each cycle, triggers midnight persistence, and resets counters for the
+new day.
 """
 
 from __future__ import annotations
@@ -19,148 +17,9 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-
-@dataclass
-class DailyMetrics:
-    """Cumulative energy and cost metrics for one tracking category.
-
-    All energy values are in kWh.  All cost values are in local currency.
-    """
-
-    grid_import_kwh: float = 0.0
-    grid_import_cost: float = 0.0
-    grid_export_kwh: float = 0.0
-    grid_export_rev: float = 0.0
-    battery_cycled_kwh: float = 0.0
-    pv_produced_kwh: float = 0.0
-
-    def as_dict(self) -> dict[str, float]:
-        """Return metrics as a plain dict for JSON serialisation."""
-        return {
-            "grid_import_kwh": round(self.grid_import_kwh, 3),
-            "grid_import_cost": round(self.grid_import_cost, 3),
-            "grid_export_kwh": round(self.grid_export_kwh, 3),
-            "grid_export_rev": round(self.grid_export_rev, 3),
-            "battery_cycled_kwh": round(self.battery_cycled_kwh, 3),
-            "pv_produced_kwh": round(self.pv_produced_kwh, 3),
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> DailyMetrics:
-        """Create from a deserialised JSON dict."""
-        return cls(
-            grid_import_kwh=float(data.get("grid_import_kwh", 0.0)),
-            grid_import_cost=float(data.get("grid_import_cost", 0.0)),
-            grid_export_kwh=float(data.get("grid_export_kwh", 0.0)),
-            grid_export_rev=float(data.get("grid_export_rev", 0.0)),
-            battery_cycled_kwh=float(data.get("battery_cycled_kwh", 0.0)),
-            pv_produced_kwh=float(data.get("pv_produced_kwh", 0.0)),
-        )
-
-
-@dataclass
-class DailyDiff:
-    """Difference metrics (actual minus plan)."""
-
-    grid_import_kwh: float = 0.0
-    grid_import_cost: float = 0.0
-    grid_export_kwh: float = 0.0
-    grid_export_rev: float = 0.0
-    battery_cycled_kwh: float = 0.0
-    pv_produced_kwh: float = 0.0
-    net_cost: float = 0.0
-
-    def as_dict(self) -> dict[str, float]:
-        """Return diff as a plain dict for JSON serialisation."""
-        return {
-            "grid_import_kwh": round(self.grid_import_kwh, 3),
-            "grid_import_cost": round(self.grid_import_cost, 3),
-            "grid_export_kwh": round(self.grid_export_kwh, 3),
-            "grid_export_rev": round(self.grid_export_rev, 3),
-            "battery_cycled_kwh": round(self.battery_cycled_kwh, 3),
-            "pv_produced_kwh": round(self.pv_produced_kwh, 3),
-            "net_cost": round(self.net_cost, 3),
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> DailyDiff:
-        """Create from a deserialised JSON dict."""
-        return cls(
-            grid_import_kwh=float(data.get("grid_import_kwh", 0.0)),
-            grid_import_cost=float(data.get("grid_import_cost", 0.0)),
-            grid_export_kwh=float(data.get("grid_export_kwh", 0.0)),
-            grid_export_rev=float(data.get("grid_export_rev", 0.0)),
-            battery_cycled_kwh=float(data.get("battery_cycled_kwh", 0.0)),
-            pv_produced_kwh=float(data.get("pv_produced_kwh", 0.0)),
-            net_cost=float(data.get("net_cost", 0.0)),
-        )
-
-
-@dataclass
-class DailyRecord:
-    """A single day's plan-vs-actual record.
-
-    Captures all metrics for one calendar day, including the diff between
-    actual and planned values.
-    """
-
-    date: str  # ISO-format date string (e.g. "2026-06-01")
-    actual: DailyMetrics = field(default_factory=DailyMetrics)
-    plan: DailyMetrics = field(default_factory=DailyMetrics)
-    diff: DailyDiff = field(default_factory=DailyDiff)
-
-    @property
-    def net_cost_actual(self) -> float:
-        """Return net cost for the day (import cost − export revenue)."""
-        return self.actual.grid_import_cost - self.actual.grid_export_rev
-
-    @property
-    def net_cost_plan(self) -> float:
-        """Return planned net cost for the day."""
-        return self.plan.grid_import_cost - self.plan.grid_export_rev
-
-    def compute_diff(self) -> None:
-        """Compute diff from actual and plan fields."""
-        self.diff.grid_import_kwh = (
-            self.actual.grid_import_kwh - self.plan.grid_import_kwh
-        )
-        self.diff.grid_import_cost = (
-            self.actual.grid_import_cost - self.plan.grid_import_cost
-        )
-        self.diff.grid_export_kwh = (
-            self.actual.grid_export_kwh - self.plan.grid_export_kwh
-        )
-        self.diff.grid_export_rev = (
-            self.actual.grid_export_rev - self.plan.grid_export_rev
-        )
-        self.diff.battery_cycled_kwh = (
-            self.actual.battery_cycled_kwh - self.plan.battery_cycled_kwh
-        )
-        self.diff.pv_produced_kwh = (
-            self.actual.pv_produced_kwh - self.plan.pv_produced_kwh
-        )
-        self.diff.net_cost = self.net_cost_actual - self.net_cost_plan
-
-    def as_dict(self) -> dict[str, Any]:
-        """Return record as a plain dict for JSON serialisation."""
-        self.compute_diff()
-        return {
-            "date": self.date,
-            "actual": self.actual.as_dict(),
-            "plan": self.plan.as_dict(),
-            "diff": self.diff.as_dict(),
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> DailyRecord:
-        """Create from a deserialised JSON dict."""
-        record = cls(
-            date=str(data.get("date", "")),
-            actual=DailyMetrics.from_dict(data.get("actual", {})),
-            plan=DailyMetrics.from_dict(data.get("plan", {})),
-            diff=DailyDiff.from_dict(data.get("diff", {})),
-        )
-        return record
+from custom_components.hsem.models.daily_metrics import DailyMetrics
+from custom_components.hsem.models.daily_record import DailyRecord
+from custom_components.hsem.models.day_rollover_result import DayRolloverResult
 
 
 @dataclass
@@ -480,16 +339,3 @@ class DailyPlanVsActualTracker:
             "history_total_days": len(self.history),
         }
         return attrs
-
-
-@dataclass
-class DayRolloverResult:
-    """Result of a day rollover check.
-
-    Attributes:
-        record: The :class:`DailyRecord` that was persisted.
-        saved: Whether the record was successfully written to disk.
-    """
-
-    record: DailyRecord
-    saved: bool = False

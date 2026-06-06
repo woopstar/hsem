@@ -1,97 +1,16 @@
-"""Pure-Python dataclasses for HSEM planner inputs.
-
-These dataclasses capture every value that the planner needs to compute
-charge/discharge schedules and hourly recommendations.  They carry *no*
-Home Assistant dependencies so they can be constructed and inspected in
-plain unit tests without a running HA instance.
-"""
+"""Dataclass for the complete set of inputs required to run the HSEM planner."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, time
+from datetime import datetime
 from typing import Any, cast
 
 from custom_components.hsem.const import DEFAULT_CONFIG_VALUES
-
-
-@dataclass
-class HourlyConsumptionAverage:
-    """Historical consumption averages for one clock-hour.
-
-    All values are in kWh for the full hour.
-
-    Attributes:
-        hour:
-            Wall-clock hour of the day (0-23).
-        day_offset:
-            Number of whole calendar days from the planning midnight (0 = today,
-            1 = tomorrow, …).  Defaults to 0 for backward compatibility with
-            callers that only pass 24 single-day entries.
-    """
-
-    hour: int  # 0-23
-    avg_1d: float = 0.0
-    avg_3d: float = 0.0
-    avg_7d: float = 0.0
-    avg_14d: float = 0.0
-    day_offset: int = 0
-
-
-@dataclass
-class PricePoint:
-    """An import or export electricity price for a single time slot.
-
-    Attributes:
-        hour:
-            0-based calendar hour (0-23).
-        import_price:
-            Import price in local currency/kWh (e.g. DKK/kWh).
-        export_price:
-            Export price in local currency/kWh.
-        day_offset:
-            Number of whole calendar days from the planning midnight (0 = today,
-            1 = tomorrow, …).  Defaults to 0 for backward compatibility with
-            callers that only pass 24 single-day entries.
-    """
-
-    hour: int  # 0-23
-    import_price: float = 0.0
-    export_price: float = 0.0
-    day_offset: int = 0
-
-
-@dataclass
-class SolcastSlot:
-    """Forecast PV production estimate for a single time slot.
-
-    Attributes:
-        hour:
-            0-based calendar hour (0-23).
-        pv_estimate:
-            PV energy estimate in kWh for the full slot duration.
-        day_offset:
-            Number of whole calendar days from the planning midnight (0 = today,
-            1 = tomorrow, …).  Defaults to 0 for backward compatibility with
-            callers that only pass 24 single-day entries.
-    """
-
-    hour: int  # 0-23
-    pv_estimate: float = 0.0
-    day_offset: int = 0
-
-
-@dataclass
-class BatteryScheduleInput:
-    """Configuration for one charge-into/discharge-from schedule window.
-
-    Mirrors the user-visible battery schedule options from the config flow
-    (``batteries_schedule_1/2/3``).
-    """
-
-    enabled: bool = False
-    start: time = time(0, 0)
-    end: time = time(1, 0)
+from custom_components.hsem.models.battery_schedule_input import BatteryScheduleInput
+from custom_components.hsem.models.hourly_consumption_average import (
+    HourlyConsumptionAverage,
+)
 
 
 @dataclass
@@ -308,43 +227,3 @@ class PlannerInput:
 
     # --- optional extra context that tests may inspect ---
     extra: dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class EVConfig:
-    """Configuration for one EV in the MILP optimizer.
-
-    The MILP treats each EV as a flexible load with a deadline target.
-    It co-optimises EV charging alongside battery charge/discharge and grid
-    import/export, allocating PV surplus and cheap grid slots across all
-    consumers simultaneously.
-
-    Attributes:
-        enabled: ``True`` when this EV should be optimised by the MILP.
-        initial_soc_kwh: EV battery energy at the start of the planning
-            horizon (kWh, ≥ 0).  This is SoC% × capacity / 100.
-        target_kwh: Desired EV battery energy by the deadline (kWh).
-        capacity_kwh: EV battery nameplate capacity in kWh.
-        max_charge_per_slot: Maximum DC-side energy deliverable per slot
-            (kWh).  Accounted for charger efficiency: the charger draws
-            ``max_charge_per_slot / charger_efficiency`` from AC.
-        charger_efficiency: Charger efficiency as a fraction (0.01–1.0).
-            ``ev_c[t] / charger_efficiency`` is the AC-side grid/PV draw.
-        deadline_slot: Index into the LP's future-slot list (0..m-1) of the
-            last slot that can be used to meet the target.  Slots beyond this
-            index may still charge but the target must be met by this slot.
-            ``None`` means no deadline (skip the deadline soft constraint).
-        base_load_includes_ev: When ``True``, EV charging power is already
-            captured in the house consumption sensor.  The MILP will mark
-            the EV load as accounted rather than planned (affects how the
-            results are written to ``PlannedSlot`` fields).
-    """
-
-    enabled: bool = False
-    initial_soc_kwh: float = 0.0
-    target_kwh: float = 0.0
-    capacity_kwh: float = 0.0
-    max_charge_per_slot: float = 0.0
-    charger_efficiency: float = 1.0
-    deadline_slot: int | None = None
-    base_load_includes_ev: bool = False

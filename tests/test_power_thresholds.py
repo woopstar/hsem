@@ -20,14 +20,14 @@ from custom_components.hsem.const import (
     NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH,
     SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH,
 )
-from custom_components.hsem.models.planner_inputs import (
-    BatteryScheduleInput,
+from custom_components.hsem.models.battery_schedule_input import BatteryScheduleInput
+from custom_components.hsem.models.hourly_consumption_average import (
     HourlyConsumptionAverage,
-    PlannerInput,
-    PricePoint,
-    SolcastSlot,
 )
-from custom_components.hsem.models.planner_outputs import PlannedSlot
+from custom_components.hsem.models.planned_slot import PlannedSlot
+from custom_components.hsem.models.planner_input import PlannerInput
+from custom_components.hsem.models.price_point import PricePoint
+from custom_components.hsem.models.solcast_slot import SolcastSlot
 from custom_components.hsem.planner import run_planner
 from custom_components.hsem.planner.charge_scheduler import apply_charge_schedules
 from custom_components.hsem.planner.discharge_scheduler import (

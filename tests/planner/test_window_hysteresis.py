@@ -33,7 +33,7 @@ def _make_slots(
     *recommendations: str | None,
 ) -> list:
     """Build a list of sequential PlannedSlots with the given recommendations."""
-    from custom_components.hsem.models.planner_outputs import PlannedSlot
+    from custom_components.hsem.models.planned_slot import PlannedSlot
 
     slots: list[PlannedSlot] = []
     for i, rec in enumerate(recommendations):

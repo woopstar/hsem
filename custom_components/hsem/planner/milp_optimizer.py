@@ -67,14 +67,14 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from custom_components.hsem.models.planner_inputs import EVConfig
+from custom_components.hsem.models.ev_config import EVConfig
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import clamp_efficiency
 from custom_components.hsem.utils.recommendations import Recommendations
 
 if TYPE_CHECKING:
-    from custom_components.hsem.models.planner_outputs import PlannedSlot
+    from custom_components.hsem.models.planned_slot import PlannedSlot
 
 
 # Name exported so the engine and tests can reference it without re-defining

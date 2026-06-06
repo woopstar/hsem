@@ -22,8 +22,8 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from custom_components.hsem.models.planner_inputs import PlannerInput
-from custom_components.hsem.models.planner_outputs import PlannedSlot
+from custom_components.hsem.models.planned_slot import PlannedSlot
+from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.planner import run_planner
 from custom_components.hsem.planner.candidate_generator import (
     CANDIDATE_MILP,

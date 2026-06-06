@@ -226,10 +226,8 @@ def make_bare_coordinator(
     coord._live = None
     coord._snapshot = None
 
-    from custom_components.hsem.models.planner_outputs import (
-        DataQuality,
-        PlanExplanation,
-    )
+    from custom_components.hsem.models.data_quality import DataQuality
+    from custom_components.hsem.models.plan_explanation import PlanExplanation
 
     coord._plan_explanation = PlanExplanation()
     coord._data_quality = DataQuality()
@@ -1866,10 +1864,8 @@ class TestApplyPlannerOutputEvLoad:
             ev_total_by_hour: Mapping of hour → ev_total_planned_load_kwh.  When
                 omitted, defaults to ``ev_load + ev_accounted`` per slot.
         """
-        from custom_components.hsem.models.planner_outputs import (
-            PlannedSlot,
-            PlannerOutput,
-        )
+        from custom_components.hsem.models.planned_slot import PlannedSlot
+        from custom_components.hsem.models.planner_output import PlannerOutput
         from custom_components.hsem.utils.prices import SlotPrice
 
         if ev_accounted_by_hour is None:
@@ -1992,10 +1988,8 @@ class TestApplyPlannerOutputEvLoad:
         from custom_components.hsem.models.hourly_recommendation import (
             HourlyRecommendation,
         )
-        from custom_components.hsem.models.planner_outputs import (
-            PlannedSlot,
-            PlannerOutput,
-        )
+        from custom_components.hsem.models.planned_slot import PlannedSlot
+        from custom_components.hsem.models.planner_output import PlannerOutput
         from custom_components.hsem.utils.prices import SlotPrice
 
         tz_zone = ZoneInfo("Europe/Copenhagen")
@@ -2079,10 +2073,8 @@ class TestApplyPlannerOutputEvLoad:
         from custom_components.hsem.models.hourly_recommendation import (
             HourlyRecommendation,
         )
-        from custom_components.hsem.models.planner_outputs import (
-            PlannedSlot,
-            PlannerOutput,
-        )
+        from custom_components.hsem.models.planned_slot import PlannedSlot
+        from custom_components.hsem.models.planner_output import PlannerOutput
         from custom_components.hsem.utils.prices import SlotPrice
 
         midnight = datetime(2024, 6, 15, 0, 0, 0, tzinfo=UTC)
@@ -2159,10 +2151,8 @@ class TestApplyPlannerOutputEvLoad:
         from custom_components.hsem.models.hourly_recommendation import (
             HourlyRecommendation,
         )
-        from custom_components.hsem.models.planner_outputs import (
-            PlannedSlot,
-            PlannerOutput,
-        )
+        from custom_components.hsem.models.planned_slot import PlannedSlot
+        from custom_components.hsem.models.planner_output import PlannerOutput
         from custom_components.hsem.utils.logger import HSEM_LOGGER
         from custom_components.hsem.utils.prices import SlotPrice
 
@@ -2229,10 +2219,8 @@ class TestApplyPlannerOutputEvLoad:
         from custom_components.hsem.models.hourly_recommendation import (
             HourlyRecommendation,
         )
-        from custom_components.hsem.models.planner_outputs import (
-            PlannedSlot,
-            PlannerOutput,
-        )
+        from custom_components.hsem.models.planned_slot import PlannedSlot
+        from custom_components.hsem.models.planner_output import PlannerOutput
         from custom_components.hsem.utils.prices import SlotPrice
 
         midnight = datetime(2024, 6, 15, 0, 0, 0, tzinfo=UTC)
@@ -2443,15 +2431,15 @@ class TestEvFieldsEndToEnd:
         """Run planner + apply_planner_output and return (coordinator, output)."""
         from datetime import datetime, timedelta
 
+        from custom_components.hsem.models.hourly_consumption_average import (
+            HourlyConsumptionAverage,
+        )
         from custom_components.hsem.models.hourly_recommendation import (
             HourlyRecommendation,
         )
-        from custom_components.hsem.models.planner_inputs import (
-            HourlyConsumptionAverage,
-            PlannerInput,
-            PricePoint,
-            SolcastSlot,
-        )
+        from custom_components.hsem.models.planner_input import PlannerInput
+        from custom_components.hsem.models.price_point import PricePoint
+        from custom_components.hsem.models.solcast_slot import SolcastSlot
         from custom_components.hsem.planner import run_planner
 
         now_iso = "2024-06-15T06:00:00+00:00"
