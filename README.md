@@ -72,6 +72,26 @@ The [Huawei Solar integration by wlcrs](https://github.com/wlcrs/huawei_solar) p
 
 ---
 
+## Removal
+
+1. In Home Assistant, go to **Settings** -> **Devices & Services**.
+2. Find the **HSEM** integration, click the menu icon (three dots), and select **Delete**.
+3. Restart Home Assistant.
+
+### If installed via HACS
+
+4. In HACS, go to **Integrations**, find HSEM, click the menu icon (three dots), and select **Remove**.
+5. Restart Home Assistant again.
+
+### If installed manually
+
+4. Delete the `custom_components/hsem` folder from your Home Assistant configuration directory.
+5. Restart Home Assistant.
+
+After removal, verify that no HSEM entities remain in **Settings** -> **Devices & Services** -> **Entities**.
+
+---
+
 ## Documentation
 
 - [FAQ](#frequently-asked-questions-faq)

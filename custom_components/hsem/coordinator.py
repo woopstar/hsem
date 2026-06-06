@@ -23,8 +23,8 @@ level.
 Usage
 -----
 The coordinator is created in :func:`custom_components.hsem.__init__.async_setup_entry`
-and stored in ``hass.data[DOMAIN][entry.entry_id]["coordinator"]``.  Each sensor
-platform retrieves it and passes it to the relevant entity constructors.
+and stored on ``entry.runtime_data.coordinator``.  Each sensor platform retrieves
+it from the config entry and passes it to the relevant entity constructors.
 """
 
 from __future__ import annotations
@@ -185,9 +185,9 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             _LOGGER,
             name="HSEM",
             # DataUpdateCoordinator manages an internal timer; we build our own
-            # interval timer below for dynamic interval support, so set a large
-            # fallback here to avoid double-polling.
-            update_interval=timedelta(hours=24),
+            # interval timer below for dynamic interval support, so set None to
+            # disable the built-in timer entirely (Bronze rule: appropriate-polling).
+            update_interval=None,
         )
         self._config_entry = config_entry
 

@@ -18,9 +18,10 @@ from typing import Any
 
 import voluptuous as vol
 
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import STATE_UNKNOWN
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 
 from custom_components.hsem.const import DOMAIN
 from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
@@ -79,21 +80,23 @@ SCHEMA_EXPORT_DIAGNOSTICS = vol.Schema({})
 
 
 def _get_coordinator(hass: HomeAssistant) -> HSEMDataUpdateCoordinator | None:
-    """Return the first available HSEM coordinator.
+    """Return the first available HSEM coordinator from any LOADED config entry.
 
     HSEM only supports a single config entry, but looking up by the first
-    entry is safer than assuming a fixed entry ID.
+    loaded entry is safer than assuming a fixed entry ID.  Uses
+    ``entry.runtime_data`` (Bronze rule: runtime-data).
 
     Args:
         hass: The Home Assistant instance.
 
     Returns:
-        The HSEM coordinator, or ``None`` if no entry is configured.
+        The HSEM coordinator, or ``None`` if no entry is configured/loaded.
     """
-    domain_data = hass.data.get(DOMAIN, {})
-    for entry_data in domain_data.values():
-        if isinstance(entry_data, dict):
-            coordinator = entry_data.get("coordinator")
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        if entry.state is not ConfigEntryState.LOADED:
+            continue
+        if entry.runtime_data and hasattr(entry.runtime_data, "coordinator"):
+            coordinator = entry.runtime_data.coordinator
             if isinstance(coordinator, HSEMDataUpdateCoordinator):
                 return coordinator
     return None
@@ -113,10 +116,13 @@ async def async_handle_force_recalculation(
     Args:
         hass: The Home Assistant instance.
         call: The service call (unused, schema is empty).
+
+    Raises:
+        ServiceValidationError: When the coordinator is not found.
     """
     coordinator = _get_coordinator(hass)
     if coordinator is None:
-        raise HomeAssistantError(
+        raise ServiceValidationError(
             "HSEM coordinator not found — integration may not be configured."
         )
     _LOGGER.info("HSEM service: force_recalculation called — triggering update cycle")
@@ -141,7 +147,7 @@ async def async_handle_set_temporary_override(
             and optional ``duration_minutes`` key.
 
     Raises:
-        HomeAssistantError: When the select entity cannot be found or the
+        ServiceValidationError: When the select entity cannot be found or the
             service call fails.
     """
     working_mode: str = call.data["working_mode"]
@@ -150,7 +156,7 @@ async def async_handle_set_temporary_override(
 
     # Verify the entity exists before making the service call.
     if hass.states.get(entity_id) is None:
-        raise HomeAssistantError(
+        raise ServiceValidationError(
             f"HSEM force working mode entity '{entity_id}' not found. "
             "Ensure the HSEM integration is fully configured."
         )
@@ -205,12 +211,12 @@ async def async_handle_clear_override(
         call: The service call (unused, schema is empty).
 
     Raises:
-        HomeAssistantError: When the select entity cannot be found.
+        ServiceValidationError: When the select entity cannot be found.
     """
     entity_id = get_force_working_mode_selector_entity_id()
 
     if hass.states.get(entity_id) is None:
-        raise HomeAssistantError(
+        raise ServiceValidationError(
             f"HSEM force working mode entity '{entity_id}' not found. "
             "Ensure the HSEM integration is fully configured."
         )
@@ -255,12 +261,12 @@ async def async_handle_export_diagnostics(  # NOSONAR
         A JSON-serialisable diagnostics dump dictionary.
 
     Raises:
-        HomeAssistantError: When no planner cycle has completed yet or the
-            coordinator is not found.
+        ServiceValidationError: When the coordinator is not found.
+        HomeAssistantError: When no planner cycle has completed yet.
     """
     coordinator = _get_coordinator(hass)
     if coordinator is None:
-        raise HomeAssistantError(
+        raise ServiceValidationError(
             "HSEM coordinator not found — integration may not be configured."
         )
 

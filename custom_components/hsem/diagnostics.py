@@ -26,7 +26,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
 
-from custom_components.hsem.const import DOMAIN
+from custom_components.hsem import HSEMConfigEntry
 from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
 from custom_components.hsem.utils.diagnostics import build_diagnostics_dump
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
@@ -38,7 +38,7 @@ from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 
 async def async_get_config_entry_diagnostics(  # NOSONAR -- HA diagnostics hook, called by HA framework
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: HSEMConfigEntry,
 ) -> dict:
     """Return a safe diagnostics dump for the given HSEM config entry.
 
@@ -53,8 +53,9 @@ async def async_get_config_entry_diagnostics(  # NOSONAR -- HA diagnostics hook,
     Returns:
         A JSON-serialisable dictionary that is safe to share publicly.
     """
-    domain_data = hass.data.get(DOMAIN, {}).get(entry.entry_id, {})
-    coordinator: HSEMDataUpdateCoordinator | None = domain_data.get("coordinator")
+    coordinator: HSEMDataUpdateCoordinator | None = (
+        entry.runtime_data.coordinator if entry.runtime_data else None
+    )
 
     if coordinator is None:
         _LOGGER.warning(

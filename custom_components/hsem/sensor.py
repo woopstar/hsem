@@ -6,11 +6,10 @@ sensors.  All sensors subscribe to the shared
 :class:`HSEMDataUpdateCoordinator` for periodic updates.
 """
 
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from custom_components.hsem.const import DOMAIN
+from custom_components.hsem import HSEMConfigEntry
 from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
 from custom_components.hsem.custom_sensors.applier_status_sensor import (
     HSEMApplierStatusSensor,
@@ -72,15 +71,13 @@ from custom_components.hsem.custom_sensors.working_mode_sensor import (
 
 async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
     hass: HomeAssistant,
-    config_entry: ConfigEntry,
+    config_entry: HSEMConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up HSEM sensors from a config entry."""
 
-    # Retrieve the coordinator created in async_setup_entry (__init__.py).
-    coordinator: HSEMDataUpdateCoordinator = hass.data[DOMAIN][config_entry.entry_id][
-        "coordinator"
-    ]
+    # Retrieve the coordinator from runtime_data (Bronze rule: runtime-data).
+    coordinator: HSEMDataUpdateCoordinator = config_entry.runtime_data.coordinator
 
     # Diagnostic sensors — all subscribe to coordinator updates.
     degraded_mode_sensor = HSEMDegradedModeSensor(config_entry, coordinator)

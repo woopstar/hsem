@@ -6,8 +6,9 @@
     },
     "error": {
       "device_not_found": "Den valgte enhed blev ikke fundet.",
-      "energy_out_of_range": "EnergivÃ¦rdien er uden for det tilladte omrÃ¥de.",
+      "energy_out_of_range": "Energiværdien er uden for det tilladte område.",
       "entity_not_found": "Den valgte enhed blev ikke fundet.",
+      "entity_unavailable": "Den valgte enhed er ikke tilgængelig i øjeblikket. Kontroller enheden eller tjenesten.",
       "hsem_house_consumption_energy_weight_total": "Summen af husets energivÃ¦gte skal vÃ¦re 100%.",
       "invalid_energy_value": "Ugyldig energivÃ¦rdi â€” indtast et tal.",
       "invalid_entity_id": "Ugyldigt enheds-ID-format. Forventet \"domÃ¦ne.objekt_id\" med smÃ¥ bogstaver, tal og understregninger.",
