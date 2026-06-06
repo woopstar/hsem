@@ -326,6 +326,11 @@ class TestConfigFlowErrorRecovery:
             "hsem_huawei_solar_batteries_state_of_capacity": "sensor.battery_soc",
         }
 
+        # Simulate an unavailable entity by returning a state with state="unavailable".
+        unavailable_state = MagicMock()
+        unavailable_state.state = "unavailable"
+        flow.hass.states.get.return_value = unavailable_state  # type: ignore[attr-defined]  # test monkey-patch
+
         with patch(
             "custom_components.hsem.config_flow.validate_energy_and_ml_input",
             new=AsyncMock(return_value={}),
@@ -334,8 +339,7 @@ class TestConfigFlowErrorRecovery:
                 user_input={"hsem_grid_import_energy_entity": "sensor.grid_import"}
             )
 
-        # When entities are unavailable (states.get returns None by default),
-        # the form is re-shown with connection errors.
+        # The form is re-shown with connection errors.
         assert result["type"] == "form"
         assert result["step_id"] == "energy_and_ml"
         errors = result.get("errors")
