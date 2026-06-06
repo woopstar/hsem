@@ -38,6 +38,7 @@ from custom_components.hsem.utils.conversion import (
     convert_to_float,
 )
 from custom_components.hsem.utils.ha_helpers import (
+    EntityNotFoundError,
     async_resolve_entity_id_from_unique_id,
     ha_get_entity_state_and_convert,
 )
@@ -582,8 +583,12 @@ def _resolve_ev_deadline_from_params(sensor, deadline_entity, deadline_fixed):
                 time_str = raw.state
             elif isinstance(raw, str):
                 time_str = raw
-        except Exception:
-            pass
+        except (EntityNotFoundError, HomeAssistantError) as exc:
+            _LOGGER.warning(
+                "Could not read EV deadline entity '%s': %s. Falling back to default.",
+                deadline_entity,
+                exc,
+            )
 
     if not time_str:
         time_str = deadline_fixed or "07:00"
