@@ -212,7 +212,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: HSEMConfigEntry) -> boo
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
     if unload_ok:
-        entry.runtime_data = None
+        entry.runtime_data = None  # type: ignore[assignment]  # HA convention: clear on unload
 
     # Close the HSEM dedicated log file handler.
     await async_close_hsem_logger()

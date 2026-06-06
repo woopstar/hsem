@@ -338,7 +338,8 @@ class TestConfigFlowErrorRecovery:
         # the form is re-shown with connection errors.
         assert result["type"] == "form"
         assert result["step_id"] == "energy_and_ml"
-        assert len(result["errors"]) > 0
+        errors = result.get("errors")
+        assert errors is not None and len(errors) > 0
 
 
 # ---------------------------------------------------------------------------
@@ -385,7 +386,7 @@ class TestConfigFlowEndToEnd:
         # Mock a valid entity state for connection test.
         state_mock = MagicMock()
         state_mock.state = "50"
-        flow.hass.states.get.return_value = state_mock
+        flow.hass.states.get.return_value = state_mock  # type: ignore[attr-defined]  # test monkey-patch
 
         with patch(
             "custom_components.hsem.config_flow.validate_energy_and_ml_input",
