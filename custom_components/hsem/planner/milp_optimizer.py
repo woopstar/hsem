@@ -103,8 +103,7 @@ def solve_milp(
     time_discount_rate: float = 1.0,
     replacement_price_per_kwh: float | None = None,
     *,
-    export_min_price: float = 0.0,
-    recommended_threshold: float = 0.0,
+    min_export_price: float = 0.0,
     ev_configs: list[EVConfig] | None = None,
 ) -> tuple[list[PlannedSlot], dict] | None:
     """Solve the LP and return a deep-copy slot list with MILP recommendations.
@@ -158,17 +157,18 @@ def solve_milp(
             opportunity cost of ending the horizon with less stored energy.
             Passed from the engine (computed from the next discharge window).
             ``None`` disables the terminal-SoC credit term.
-        export_min_price:
-            Minimum export price (local currency/kWh) below which the inverter
-            physically blocks export (``GRID_EXPORT_LIMIT_WATT``).  Sourced from
-            ``hsem_export_electricity_min_price``.  Export prices below this
-            threshold are clamped to 0 before the LP solves, because the
-            applier will prevent any export at those prices.  Defaults to 0.0.
-        recommended_threshold:
-            Recommended discharge price threshold (local currency/kWh) computed
-            by ``calculate_recommended_threshold()``.  Used in post-processing
-            to decide between ``ForceBatteriesDischarge`` (export is worthwhile)
-            and ``BatteriesDischargeMode`` (house-load only).  Defaults to 0.0.
+        min_export_price:
+            Minimum export price (local currency/kWh) for the combined
+            threshold below which export is not worthwhile.  Set by the
+            caller to ``max(export_min_price, recommended_threshold)``
+            where ``export_min_price`` is the inverter's physical block
+            threshold and ``recommended_threshold`` is the
+            depreciation-based discharge minimum.  Used for:
+            - Clamping export prices to 0 before the LP solves (export
+              below this price is physically blocked).
+            - Deciding between ``ForceBatteriesDischarge`` and
+              ``BatteriesDischargeMode`` in post-processing.
+            Defaults to 0.0.
         ev_configs:
             Optional list of :class:`EVConfig` objects (one per EV).  When
             provided, the MILP co-optimises EV charging alongside the battery.
@@ -256,7 +256,7 @@ def solve_milp(
 
     # Clamp export prices to reflect physical inverter behaviour:
     # 1. Negative prices → 0 (the inverter curtails PV rather than pay to export).
-    # 2. Prices below export_min_price → 0 (the applier sets the inverter to
+    # 2. Prices below min_export_price → 0 (the applier sets the inverter to
     #    GRID_EXPORT_LIMIT_WATT, blocking export entirely).
     #
     # The MILP cannot model curtailment (pv[t] is fixed), so flooring to 0 is
@@ -273,8 +273,8 @@ def solve_milp(
         )
     p_exp = np.maximum(p_exp, 0.0)
 
-    if export_min_price > 1e-9:
-        blocked = p_exp < export_min_price
+    if min_export_price > 1e-9:
+        blocked = p_exp < min_export_price
         n_blocked = int(np.sum(blocked))
         if n_blocked > 0:
             log_planner(
@@ -282,7 +282,7 @@ def solve_milp(
                 "[milp] Clamping %d export prices below min_price (%.4f) to 0 "
                 "(max clamped=%.4f)",
                 n_blocked,
-                export_min_price,
+                min_export_price,
                 float(np.max(p_exp[blocked])),
             )
         p_exp = np.where(blocked, 0.0, p_exp)
@@ -693,9 +693,7 @@ def solve_milp(
             # If the LP is exporting (ge > 0) in this slot, use
             # ForceBatteriesDischarge to signal that the battery should
             # cover house load AND export excess to grid.
-            if ge_kwh > _MIN_ACTION_KWH and p_exp[lp_t] >= max(
-                export_min_price, recommended_threshold
-            ):
+            if ge_kwh > _MIN_ACTION_KWH and p_exp[lp_t] >= min_export_price:
                 out_slots[
                     slot_i
                 ].recommendation = Recommendations.ForceBatteriesDischarge.value

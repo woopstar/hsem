@@ -303,12 +303,14 @@ def generate_candidates(
             discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
             time_discount_rate=inp.time_discount_rate,
             replacement_price_per_kwh=replacement_price_per_kwh,
-            export_min_price=inp.export_min_price,
-            recommended_threshold=calculate_recommended_threshold(
-                purchase_price=inp.battery_purchase_price,
-                expected_cycles=inp.battery_expected_cycles,
-                usable_capacity=usable_kwh,
-                capacity_loss_pct=inp.battery_capacity_loss_pct,
+            min_export_price=max(
+                inp.export_min_price,
+                calculate_recommended_threshold(
+                    purchase_price=inp.battery_purchase_price,
+                    expected_cycles=inp.battery_expected_cycles,
+                    usable_capacity=usable_kwh,
+                    capacity_loss_pct=inp.battery_capacity_loss_pct,
+                ),
             ),
             ev_configs=ev_configs,
         )
