@@ -566,13 +566,25 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
     ) -> ConfigFlowResult:
         """Handle the energy_and_ml config flow step.
 
-        Validates user input and creates the config entry.
+        Validates user input, tests connections to critical entities,
+        and creates the config entry.
         """
-        errors = {}
+        errors: dict[str, str] = {}
 
         if user_input is not None:
             errors = await validate_energy_and_ml_input(self.hass, user_input)
             if not errors:
+                # Test connections to critical entities before creating
+                # the entry (Bronze rule: test-before-configure).
+                connection_errors = await self._async_test_connections()
+                if connection_errors:
+                    return self.async_show_form(
+                        step_id="energy_and_ml",
+                        data_schema=await get_energy_and_ml_step_schema(None),
+                        errors=connection_errors,
+                        last_step=True,
+                    )
+
                 self._user_input.update(user_input)
                 return self.async_create_entry(
                     title=self._user_input.get("device_name", NAME),
@@ -587,6 +599,34 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
             errors=errors,
             last_step=True,
         )
+
+    async def _async_test_connections(self) -> dict[str, str]:
+        """Test that critical external entities return usable data."""
+        errors: dict[str, str] = {}
+
+        critical_entities: dict[str, str] = {
+            "hsem_import_electricity_price_sensor": "Import price sensor",
+            "hsem_export_electricity_price_sensor": "Export price sensor",
+            "hsem_huawei_solar_batteries_state_of_capacity": "Battery SoC sensor",
+        }
+
+        for field_key, label in critical_entities.items():
+            entity_id = self._user_input.get(field_key)
+            if not entity_id:
+                continue
+            state = self.hass.states.get(entity_id)
+            if state is None:
+                errors[field_key] = "entity_not_found"
+            elif state.state in ("unknown", "unavailable"):
+                _LOGGER.warning(
+                    "Connection test: %s (%s) is '%s'",
+                    label,
+                    entity_id,
+                    state.state,
+                )
+                errors[field_key] = "entity_unavailable"
+
+        return errors
 
     @staticmethod
     @callback

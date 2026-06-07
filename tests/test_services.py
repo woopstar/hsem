@@ -8,7 +8,7 @@ Acceptance criteria
    an update.
 4. ``export_diagnostics`` returns a structured diagnostics dump.
 5. All services validate input (voluptuous schemas).
-6. Services raise ``HomeAssistantError`` when the coordinator is unavailable.
+6. Services raise ``ServiceValidationError`` when the coordinator is unavailable.
 7. The force-mode select entity existence check traps missing entities.
 8. The schema for ``set_temporary_override`` rejects invalid working modes.
 """
@@ -20,7 +20,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import voluptuous as vol
 
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.config_entries import ConfigEntryState
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 
 from custom_components.hsem.const import DOMAIN
 from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
@@ -51,11 +52,20 @@ from custom_components.hsem.utils.sensornames.diagnostics import (
 
 
 def _make_hass(coordinator: MagicMock | None = None) -> MagicMock:
-    """Return a minimal mocked ``hass`` with an HSEM coordinator in domain data."""
+    """Return a minimal mocked ``hass`` with an HSEM coordinator in runtime_data."""
     hass = MagicMock()
-    hass.data = {DOMAIN: {}}
+    hass.data = {}
+
     if coordinator is not None:
-        hass.data[DOMAIN]["test_entry"] = {"coordinator": coordinator}
+        # Create a mock config entry with runtime_data
+        mock_entry = MagicMock()
+        mock_entry.state = ConfigEntryState.LOADED
+        mock_entry.runtime_data = MagicMock()
+        mock_entry.runtime_data.coordinator = coordinator
+        hass.config_entries.async_entries.return_value = [mock_entry]
+    else:
+        hass.config_entries.async_entries.return_value = []
+
     # Add a simple state machine that returns None by default.
     state_mock = MagicMock()
     state_mock.state = "auto"
@@ -63,7 +73,6 @@ def _make_hass(coordinator: MagicMock | None = None) -> MagicMock:
     hass.services.async_call = AsyncMock()
     hass.services.has_service.side_effect = lambda domain, _: domain == DOMAIN
     hass.services.async_remove = MagicMock()
-    hass.config_entries.async_entries.return_value = []
     return hass
 
 
@@ -232,10 +241,10 @@ class TestForceRecalculation:
 
     @pytest.mark.asyncio
     async def test_raises_when_no_coordinator(self):
-        """Must raise HomeAssistantError when no coordinator is found."""
+        """Must raise ServiceValidationError when no coordinator is found."""
         hass = _make_hass()  # No coordinator added
 
-        with pytest.raises(HomeAssistantError, match="HSEM coordinator not found"):
+        with pytest.raises(ServiceValidationError, match="HSEM coordinator not found"):
             await async_handle_force_recalculation(hass, MagicMock())
 
 
@@ -264,7 +273,7 @@ class TestSetTemporaryOverride:
 
     @pytest.mark.asyncio
     async def test_raises_when_entity_not_found(self):
-        """Must raise HomeAssistantError when select entity is missing."""
+        """Must raise ServiceValidationError when select entity is missing."""
         coordinator = _make_coordinator()
         hass = _make_hass(coordinator)
         # Simulate missing entity by returning None from states.get.
@@ -273,7 +282,7 @@ class TestSetTemporaryOverride:
         call = MagicMock()
         call.data = {"working_mode": "batteries_charge_grid"}
 
-        with pytest.raises(HomeAssistantError, match="force working mode entity"):
+        with pytest.raises(ServiceValidationError, match="force working mode entity"):
             await async_handle_set_temporary_override(hass, call)
 
         # The service call should NOT have been made.
@@ -455,11 +464,11 @@ class TestClearOverride:
 
     @pytest.mark.asyncio
     async def test_raises_when_entity_not_found(self):
-        """Must raise HomeAssistantError when select entity is missing."""
+        """Must raise ServiceValidationError when select entity is missing."""
         hass = _make_hass()
         hass.states.get.return_value = None
 
-        with pytest.raises(HomeAssistantError, match="force working mode entity"):
+        with pytest.raises(ServiceValidationError, match="force working mode entity"):
             await async_handle_clear_override(hass, MagicMock())
 
         hass.services.async_call.assert_not_called()
@@ -496,10 +505,10 @@ class TestExportDiagnostics:
 
     @pytest.mark.asyncio
     async def test_raises_when_no_coordinator(self):
-        """Must raise HomeAssistantError when no coordinator is found."""
+        """Must raise ServiceValidationError when no coordinator is found."""
         hass = _make_hass()  # No coordinator
 
-        with pytest.raises(HomeAssistantError, match="HSEM coordinator not found"):
+        with pytest.raises(ServiceValidationError, match="HSEM coordinator not found"):
             await async_handle_export_diagnostics(hass, MagicMock())
 
     @pytest.mark.asyncio

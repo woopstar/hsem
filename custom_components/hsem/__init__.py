@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import inspect
 import logging
+from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
@@ -13,19 +13,31 @@ import homeassistant.helpers.config_validation as cv
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import (
+    ConfigEntryAuthFailed,
+    ConfigEntryError,
+    ConfigEntryNotReady,
+)
 
 from custom_components.hsem.const import DOMAIN, MIN_HUAWEI_SOLAR_VERSION
 from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
-from custom_components.hsem.services import (
-    async_register_services,
-    async_unregister_services,
-)
+from custom_components.hsem.services import async_register_services
 from custom_components.hsem.utils.logger import (
     async_close_hsem_logger,
     async_init_hsem_logger,
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+@dataclass
+class HSEMRuntimeData:
+    """Runtime data stored on the config entry."""
+
+    coordinator: HSEMDataUpdateCoordinator
+
+
+type HSEMConfigEntry = ConfigEntry[HSEMRuntimeData]
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
@@ -134,33 +146,50 @@ async def async_setup(hass: HomeAssistant, _config: dict[str, Any]) -> bool:
         return False
 
     _LOGGER.debug("HSEM integration successfully initialized")
-    hass.data.setdefault(DOMAIN, {})
+
+    # Register services in async_setup so they are available even when no
+    # config entry is loaded (Bronze rule: action-setup).
+    await async_register_services(hass)
 
     return True
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_setup_entry(hass: HomeAssistant, entry: HSEMConfigEntry) -> bool:
     """Set up the HSEM integration from a config entry.
 
     Creates the shared :class:`HSEMDataUpdateCoordinator`, runs the first
-    update cycle, forwards platform setups, registers services, and adds
-    an options update listener.
+    update cycle, forwards platform setups, and adds an options update
+    listener.  Services are registered once in ``async_setup``.
     """
     if not await check_huawei_solar_version(hass):
-        return False
+        raise ConfigEntryError(
+            "Huawei Solar integration is not installed or version is too old"
+        )
 
     # Initialise the HSEM dedicated log file (hsem.log in the config dir).
     await async_init_hsem_logger(hass)
 
     # Create the shared DataUpdateCoordinator and run the first update cycle.
     coordinator = HSEMDataUpdateCoordinator(hass, entry)
-    hass.data[DOMAIN][entry.entry_id] = {"coordinator": coordinator}
-    await coordinator.async_setup()
+
+    try:
+        await coordinator.async_setup()
+    except ConfigEntryNotReady:
+        raise
+    except ConfigEntryAuthFailed:
+        raise
+    except ConfigEntryError:
+        raise
+    except (TimeoutError, ConnectionError, OSError) as exc:
+        raise ConfigEntryNotReady(
+            f"HSEM could not connect during initial setup: {exc}"
+        ) from exc
+    except Exception as exc:
+        raise ConfigEntryError(f"Unexpected error during HSEM setup: {exc}") from exc
+
+    entry.runtime_data = HSEMRuntimeData(coordinator=coordinator)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-
-    # Register HSEM services (force_recalculation, set_temporary_override, etc.).
-    await async_register_services(hass)
 
     # Add update listener for options.
     entry.async_on_unload(entry.add_update_listener(async_update_options))
@@ -169,25 +198,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: HSEMConfigEntry) -> bool:
     """Unload a config entry."""
     _LOGGER.debug("Unloading HSEM integration for %s", entry.entry_id)
 
     # Tear down the coordinator's timers before unloading platforms.
-    domain_data = hass.data.get(DOMAIN, {}).get(entry.entry_id, {})
-    coordinator: HSEMDataUpdateCoordinator | None = domain_data.get("coordinator")
+    coordinator: HSEMDataUpdateCoordinator | None = (
+        entry.runtime_data.coordinator if entry.runtime_data else None
+    )
     if coordinator is not None:
         await coordinator.async_teardown()
 
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
     if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id, None)
-
-    # Unregister HSEM services when the last entry is removed.
-    remaining = hass.data.get(DOMAIN, {})
-    if not remaining:
-        await async_unregister_services(hass)
+        entry.runtime_data = None  # type: ignore[assignment]  # HA convention: clear on unload
 
     # Close the HSEM dedicated log file handler.
     await async_close_hsem_logger()
@@ -195,26 +220,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return unload_ok
 
 
-async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
+async def async_update_options(hass: HomeAssistant, entry: HSEMConfigEntry) -> None:
     """Handle options update."""
     _LOGGER.debug("Options update triggered for HSEM: %s", entry.entry_id)
 
-    domain_data = hass.data.get(DOMAIN, {}).get(entry.entry_id)
-    if not isinstance(domain_data, dict):
+    if entry.runtime_data is None:
         return
 
     # Notify the coordinator so it re-reads config and re-runs the pipeline.
-    coordinator: HSEMDataUpdateCoordinator | None = domain_data.get("coordinator")
-    if coordinator is not None:
-        await coordinator.async_options_updated()
-        return
-
-    # Fallback: notify any legacy objects that expose async_options_updated.
-    for obj in domain_data.values():
-        method = getattr(obj, "async_options_updated", None)
-        if not callable(method):
-            continue
-
-        result = method(entry)  # May be None, sync, or coroutine.
-        if inspect.isawaitable(result):
-            await result
+    await entry.runtime_data.coordinator.async_options_updated()
