@@ -114,6 +114,15 @@ def solve_milp(
     - ``recommendation``  — one of ``BatteriesChargeGrid``, ``BatteriesDischargeMode``,
       ``ForceBatteriesDischarge``, or ``None`` (idle).
     - ``batteries_charged`` — energy entering the battery this slot (kWh).
+    - ``ev_planned_load_kwh`` — EV AC load that must be added to base consumption
+      (when ``ev_configs`` is provided and ``base_load_includes_ev`` is False).
+    - ``ev_accounted_load_kwh`` — EV AC load already captured in house consumption
+      (when ``ev_configs`` is provided and ``base_load_includes_ev`` is True).
+    - ``ev_total_planned_load_kwh`` — total EV AC load (sum of planned + accounted).
+    - ``ev_charger_calculated_power`` — target AC power (W) for the primary EV charger.
+    - ``ev_second_charger_calculated_power`` — target AC power (W) for the second EV.
+    - ``estimated_net_consumption_kwh`` — recomputed after EV decisions.
+    - ``estimated_cost_currency`` — recomputed after EV decisions.
 
     The SoC simulation (:func:`~soc_simulation.simulate_soc`) must be run
     by the caller **after** receiving these slots to populate
@@ -652,6 +661,8 @@ def solve_milp(
         out_slots[i].ev_planned_load_kwh = 0.0
         out_slots[i].ev_accounted_load_kwh = 0.0
         out_slots[i].ev_total_planned_load_kwh = 0.0
+        out_slots[i].ev_charger_calculated_power = 0.0
+        out_slots[i].ev_second_charger_calculated_power = 0.0
 
     # Write MILP-derived charge/discharge actions
     for lp_t, slot_i in enumerate(future_idx):
@@ -706,6 +717,13 @@ def solve_milp(
     # Write MILP-derived EV charging decisions to output slots
     # ------------------------------------------------------------------
     if active_evs:
+        # Pre-compute full slot hours for power calculation (same for all slots
+        # when interval is uniform).
+        first_future_slot = out_slots[future_idx[0]]
+        full_slot_hours = (
+            first_future_slot.end - first_future_slot.start
+        ).total_seconds() / 3600.0
+
         for ev_idx, ev in enumerate(active_evs):
             ev_off = ev_var_offsets[ev_idx]
             ev_c_sol = result.x[ev_off : ev_off + m]
@@ -721,6 +739,37 @@ def solve_milp(
                 else:
                     out_slots[slot_i].ev_planned_load_kwh += ac_load
                 out_slots[slot_i].ev_total_planned_load_kwh += ac_load
+
+                # Compute AC charger target power (W) for this EV in this slot.
+                # For the current (partially elapsed) slot, use remaining time
+                # instead of the full slot width so the charger ramps to meet
+                # the MILP's energy target within the available minutes.
+                slot_start = out_slots[slot_i].start
+                slot_end = out_slots[slot_i].end
+                if slot_start <= now < slot_end:
+                    remaining_hours = max(
+                        (slot_end - now).total_seconds() / 3600.0,
+                        1.0 / 3600.0,  # 1 s minimum guard
+                    )
+                    ac_power_w = round(
+                        (ev_dc_kwh / ev.charger_efficiency / remaining_hours) * 1000
+                    )
+                else:
+                    ac_power_w = round(
+                        (ev_dc_kwh / ev.charger_efficiency / full_slot_hours) * 1000
+                    )
+
+                # Write to the correct charger power field (additive across
+                # multiple EVs — max value wins, reflecting the higher demand).
+                if ev_idx == 0:
+                    out_slots[slot_i].ev_charger_calculated_power = max(
+                        ac_power_w, out_slots[slot_i].ev_charger_calculated_power
+                    )
+                else:
+                    out_slots[slot_i].ev_second_charger_calculated_power = max(
+                        ac_power_w,
+                        out_slots[slot_i].ev_second_charger_calculated_power,
+                    )
         # Recompute estimated_net_consumption_kwh and estimated_cost_currency
         # to reflect new EV loads
         for i in future_idx:

@@ -430,6 +430,126 @@ def test_cooptimization_uses_cheap_slots_for_ev():
     assert diag["ev"]["ev0"]["total_dc_kwh"] == pytest.approx(6.0, rel=0.05)
 
 
+@_pytestmark_scipy
+def test_ev_charger_calculated_power_from_milp():
+    """MILP writes correct ev_charger_calculated_power from its energy decisions.
+
+    EV needs 6 kWh over 3 slots (max 3 kWh/slot).  Each slot is 1 h wide.
+    Expected AC power per slot: 3.0 / 0.9 / 1.0 * 1000 = ~3333 W.
+    """
+    slots = _build_slots(6, start_hour=14, import_price=0.10, consumption_kwh=0.5)
+    ev = EVConfig(
+        enabled=True,
+        initial_soc_kwh=0.0,
+        target_kwh=6.0,
+        capacity_kwh=50.0,
+        max_charge_per_slot=3.0,
+        charger_efficiency=0.90,
+        deadline_slot=5,
+    )
+
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=10.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=None,
+        ev_configs=[ev],
+    )
+
+    assert result is not None
+    out_slots, _diag = result
+
+    # Expected: 3.0 kWh DC / 0.90 eff / 1.0 h * 1000 = 3333 W (rounded)
+    expected_power = round((3.0 / 0.90 / 1.0) * 1000)
+    ev_charging_slots = [s for s in out_slots if s.ev_total_planned_load_kwh > 1e-6]
+    assert len(ev_charging_slots) >= 2, "EV should charge in at least 2 slots"
+    for s in ev_charging_slots:
+        assert s.ev_charger_calculated_power == expected_power, (
+            f"Expected {expected_power} W, got {s.ev_charger_calculated_power}"
+        )
+
+
+@_pytestmark_scipy
+def test_ev_charger_power_zero_when_no_charge():
+    """ev_charger_calculated_power is 0 in slots where the MILP decided not to charge."""
+    slots = _build_slots(6, start_hour=14, import_price=0.10, consumption_kwh=0.5)
+    ev = EVConfig(
+        enabled=True,
+        initial_soc_kwh=0.0,
+        target_kwh=3.0,  # only need 3 kWh
+        capacity_kwh=50.0,
+        max_charge_per_slot=3.0,
+        charger_efficiency=0.90,
+        deadline_slot=5,
+    )
+
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=10.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=None,
+        ev_configs=[ev],
+    )
+
+    assert result is not None
+    out_slots, _diag = result
+
+    # At most one slot should charge (3 kWh is one slot's worth)
+    charging_count = sum(1 for s in out_slots if s.ev_total_planned_load_kwh > 1e-6)
+    zero_power_count = sum(1 for s in out_slots if s.ev_charger_calculated_power == 0.0)
+    assert charging_count >= 1, "EV should charge in at least 1 slot"
+    assert zero_power_count >= 4, (
+        f"Expected at least 4 slots with zero power, got {zero_power_count}"
+    )
+
+
+@_pytestmark_scipy
+def test_two_evs_charger_power_fields():
+    """When two EVs charge, each gets its own charger power field."""
+    slots = _build_slots(8, start_hour=14, import_price=0.10, consumption_kwh=0.5)
+    ev1 = EVConfig(
+        enabled=True,
+        initial_soc_kwh=0.0,
+        target_kwh=4.0,
+        capacity_kwh=50.0,
+        max_charge_per_slot=2.0,
+        charger_efficiency=0.90,
+        deadline_slot=7,
+    )
+    ev2 = EVConfig(
+        enabled=True,
+        initial_soc_kwh=0.0,
+        target_kwh=3.0,
+        capacity_kwh=40.0,
+        max_charge_per_slot=3.0,
+        charger_efficiency=0.85,
+        deadline_slot=7,
+    )
+
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=10.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=None,
+        ev_configs=[ev1, ev2],
+    )
+
+    assert result is not None
+    out_slots, _diag = result
+
+    # Both EVs should have non-zero power in at least some slots
+    has_ev1_power = any(s.ev_charger_calculated_power > 0 for s in out_slots)
+    has_ev2_power = any(s.ev_second_charger_calculated_power > 0 for s in out_slots)
+    assert has_ev1_power, "Primary EV should have non-zero charger power"
+    assert has_ev2_power, "Second EV should have non-zero charger power"
+
+
 # ---------------------------------------------------------------------------
 # Integration test: full planner with EV config
 # ---------------------------------------------------------------------------
