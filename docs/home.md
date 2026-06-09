@@ -148,7 +148,13 @@ Automatically exports excess battery capacity to the grid when profitable:
 2. **Identify excess** — any capacity above requirement is available for export.
 3. **Optimize timing** — export at peak price hours, respecting max discharge rate.
 4. **Differentiate energy source** — solar-charged energy exports at any positive price; grid-charged only exports if profit ≥ threshold.
-5. **Economic threshold** — calculated from battery depreciation: `Depreciation = (Purchase_Price × Capacity_Loss) / (2 × Expected_Cycles × Usable_Capacity)`
+5. **Economic threshold** — calculated from battery charging economics:
+
+$$
+\alpha = \frac{P \times \left(\frac{L_{pct}}{100}\right)}{2 \times N \times C_u}
+$$
+
+See [Battery Charging Economics](battery-charging-economics.md) for the full derivation.
 
 ### Example
 

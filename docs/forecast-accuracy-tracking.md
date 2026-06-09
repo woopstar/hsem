@@ -48,32 +48,26 @@ perfect.  The forecast accuracy tracking system:
 
 ## Architecture
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                        Coordinator Cycle                         │
-│                                                                  │
-│  1. async_collect_all_states()                                    │
-│     → LiveState with instantaneous power readings                │
-│                                                                  │
-│  2. Planner runs → PlannerOutput with slot forecasts             │
-│                                                                  │
-│  3. _accumulate_forecast_actuals(now, live)                      │
-│     → Reads elapsed time & power from LiveState                  │
-│     → compute_accumulated_energy(power, elapsed) → kWh           │
-│     → Accumulates into current slot's record                     │
-│     → finalise_past_records() for slots whose end time < now     │
-│                                                                  │
-│  4. _register_forecasts_from_planner(planner_output)              │
-│     → Copies solcast_pv_estimate_kwh and                          │
-│       avg_house_consumption_kwh into tracker records              │
-│                                                                  │
-│  5. CoordinatorData packaged and pushed to subscribers            │
-│                                                                  │
-│  6. HSEMForecastAccuracySensor reads tracker from coordinator     │
-│     → native_value = PV MAE (kWh)                                │
-│     → extra_state_attributes = all error metrics + latest slot   │
-│     → _forecast_tracker_data serialised into attributes          │
-└──────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    A[async_collect_all_states]
+    B[LiveState with instantaneous power readings]
+    C[Planner runs]
+    D[PlannerOutput with slot forecasts]
+    E[_accumulate_forecast_actuals now, live]
+    F[Read elapsed time and power from LiveState]
+    G[compute_accumulated_energy power, elapsed]
+    H[Accumulate kWh into current slot record]
+    I[finalise_past_records for slots whose end time is before now]
+    J[_register_forecasts_from_planner planner_output]
+    K[Copy solcast_pv_estimate_kwh and avg_house_consumption_kwh]
+    L[CoordinatorData packaged and pushed to subscribers]
+    M[HSEMForecastAccuracySensor reads tracker]
+    N[native_value is PV MAE in kWh]
+    O[extra_state_attributes include error metrics and latest slot]
+    P[_forecast_tracker_data serialized into attributes]
+
+    A --> B --> C --> D --> E --> F --> G --> H --> I --> J --> K --> L --> M --> N --> O --> P
 ```
 
 ### File layout

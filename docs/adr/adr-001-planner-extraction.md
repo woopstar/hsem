@@ -34,16 +34,14 @@ on the Python standard library (plus `scipy` for the optional MILP solver).
 
 ### Architecture boundary
 
-```
-HA integration layer (coordinator, sensors, services, flows)
-    │
-    │  PlannerInput (dataclass) ── pure data, no HA objects
-    ▼
-Pure-Python planner engine (planner/, models/)
-    │
-    │  PlannerOutput (dataclass) ── pure data, no HA objects
-    ▼
-HA integration layer (coordinator → sensors → hardware writes)
+```mermaid
+flowchart TD
+    A[HA integration layer\ncoordinator, sensors, services, flows]
+    B[Pure-Python planner engine\nplanner, models]
+    C[HA integration layer\ncoordinator to sensors to hardware writes]
+
+    A -->|PlannerInput dataclass\npure data, no HA objects| B
+    B -->|PlannerOutput dataclass\npure data, no HA objects| C
 ```
 
 - **`models/planner_inputs.py`** and **`models/planner_outputs.py`** define the
