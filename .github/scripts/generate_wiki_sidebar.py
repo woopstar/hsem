@@ -61,7 +61,9 @@ def discover_adrs(docs_dir: str) -> list[tuple[str, str]]:
     adrs: list[tuple[str, str]] = []
     for f in sorted(adr_dir.glob("adr-*.md")):
         name = f.stem  # e.g. "adr-001-planner-extraction"
-        path = f"adr/{name}"
+        # GitHub wiki page URLs are flat even when files are stored in
+        # subdirectories in the wiki git repository.
+        path = name
         adrs.append((name, path))
 
     return adrs
@@ -88,7 +90,7 @@ def generate_sidebar(rows: list[tuple[str, str]], adrs: list[tuple[str, str]]) -
         lines.append("")
         lines.append("## Architecture Decision Records")
         lines.append("")
-        lines.append("- [ADR Index](adr/index)")
+        lines.append("- [ADR Index](architecture-decision-records)")
         for name, path in adrs:
             lines.append(f"- [{name}]({path})")
 
