@@ -9,7 +9,7 @@
 | Document | Description |
 |---|---|
 | [Home](home.md) | User-facing overview: features, FAQ, working modes, battery schedules, excess export, consumption sensors |
-| [Battery Depreciation Guide](battery-depreciation.md) | How to calculate the minimum charging price for a battery schedule |
+| [Battery Charging Economics](battery-charging-economics.md) | How to calculate the minimum charging price for a battery schedule |
 | [Architecture Overview](architecture-overview.md) | System context, layered architecture, module map, planning pipeline |
 | [Planner Specification](planner-spec.md) | **Normative** — all planner invariants, rules, and constraints |
 | [Planner Technical Guide](planner-guide.md) | How the planner works with worked examples |
@@ -18,13 +18,13 @@
 | [Candidate Generation](candidate-generation.md) | How candidates are generated, assumptions, partial-SoC, MILP |
 | [Consumption Prediction](consumption-prediction.md) | Weighted-average model, IQR outlier detection, spike suppression |
 | [Safety Modes](safety-modes.md) | Degraded mode, read-only gate, write-verify applier, runtime resolver |
-| [Price Interval Semantics](price-interval-semantics.md) | EDS price scaling, eds_share conversion factor |
+| [Price Scaling](price-scaling.md) | EDS price scaling, eds_share conversion factor |
 | [Services Reference](services-reference.md) | All 4 HSEM services with examples |
 | [Sensors Reference](sensors-reference.md) | Complete entity reference: all sensor, select, switch, number, and time entities |
 | [Dashboard Setup](dashboard-setup.md) | Step-by-step ApexCharts dashboard with full YAML, layout reference, and troubleshooting |
 | [Config Flow Reference](config-flow-reference.md) | Every config/options flow step and field |
 | [EV Charge Plan Setup](ev-charge-plan-setup.md) | EV planned load configuration guide |
-| [EV Charging Plan Template](ev-charging-plan-template.md) | Legacy Home Assistant template sensor for cost-optimal EV charging |
+| [EV Optimal Charging Template](ev-optimal-charging-template.md) | Legacy Home Assistant template sensor for cost-optimal EV charging |
 | [Forecast Accuracy Tracking](forecast-accuracy-tracking.md) | Forecast vs actual tracking system |
 | [Huawei Entities](huawei_entities.md) | Canonical HA entity ID reference |
 | [Troubleshooting Guide](troubleshooting-guide.md) | Diagnose and fix common problems: missing data, wrong prices, write failures, battery behaviour |
