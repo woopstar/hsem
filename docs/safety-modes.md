@@ -146,39 +146,21 @@ planner output with live sensor readings:
 
 ## Safety gate interactions
 
-```
-                   ┌──────────────┐
-                   │ State        │
-                   │ Collection   │
-                   └──────┬───────┘
-                          │
-                          ▼
-              ┌───────────────────────┐
-              │ Degraded mode         │
-              │ classification        │
-              └──────┬────────────────┘
-                     │
-          ┌──────────┴──────────┐
-          │                     │
-          ▼                     ▼
-    ┌───────────┐        ┌───────────┐
-    │ Error     │        │ OK /      │
-    │ mode      │        │ Degraded  │
-    └─────┬─────┘        └─────┬─────┘
-          │                    │
-          ▼                    ▼
-    ┌───────────┐        ┌───────────┐
-    │ Writes    │        │ Check     │
-    │ BLOCKED  │        │ read-only │
-    └───────────┘        │ & dry-run │
-                         └─────┬─────┘
-                               │
-                    ┌──────────┴──────────┐
-                    │                     │
-                    ▼                     ▼
-              ┌───────────┐        ┌───────────┐
-              │ Read-only │        │ Allowed   │
-              │ BLOCKED   │        │ → Write +│
-              └───────────┘        │   Verify  │
-                                   └───────────┘
+```mermaid
+flowchart TD
+    A[State collection]
+    B[Degraded mode classification]
+    C{Health state}
+    D[Error mode]
+    E[OK or Degraded]
+    F[Writes blocked]
+    G{Read-only or dry-run?}
+    H[Read-only blocked]
+    I[Write and verify allowed]
+
+    A --> B --> C
+    C -->|Error| D --> F
+    C -->|OK or Degraded| E --> G
+    G -->|Yes| H
+    G -->|No| I
 ```

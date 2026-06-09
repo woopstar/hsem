@@ -26,6 +26,7 @@ Measures how much of the battery's total capacity is used during a cycle. A 70% 
 ### Simplified Model
 
 This model calculates depreciation per kWh assuming:
+
 - Full cycles (100% DoD).
 - Uniform capacity loss (degeneration) over the battery's lifetime.
 - No operational inefficiencies (e.g., energy conversion losses).
@@ -34,18 +35,21 @@ This model calculates depreciation per kWh assuming:
 
 ## Formula
 
-```
-Depreciation per kWh = (Purchase Price × Capacity Loss) / (Number of Cycles × Battery Capacity)
-```
+Let:
 
-Where:
+| Symbol | Parameter | Description |
+|---|---|---|
+| $P$ | Purchase price | Total battery system cost (in your currency) |
+| $L$ | Capacity loss | Maximum capacity reduction over lifetime as a fraction, e.g. $0.30$ for 30% |
+| $N$ | Number of cycles | Total expected complete charge/discharge cycles |
+| $C$ | Battery capacity | Total usable energy storage in kWh |
+| $D$ | Depreciation per kWh | Battery wear cost per kWh |
 
-| Parameter | Description |
-|---|---|
-| **Purchase Price** | Total battery system cost (in your currency) |
-| **Capacity Loss** | Maximum capacity reduction over lifetime (percentage, as decimal) |
-| **Number of Cycles** | Total expected complete charge/discharge cycles |
-| **Battery Capacity** | Total usable energy storage (in kWh) |
+The simplified depreciation per kWh is:
+
+$$
+D = \frac{P \times L}{N \times C}
+$$
 
 ---
 
@@ -54,15 +58,17 @@ Where:
 Parameters for a LiFePO4 battery system:
 
 - **Purchase Price**: 48,000 DKK
-- **Capacity Loss**: 30% (0.30)
+- **Capacity Loss**: 30% ($L = 0.30$)
 - **Number of Cycles**: 6,000 full cycles
 - **Battery Capacity**: 10 kWh
 
-```
-Depreciation per kWh = (48,000 × 0.30) / (6,000 × 10)
-                     = 14,400 / 60,000
-                     = 0.24 DKK/kWh
-```
+$$
+\begin{aligned}
+D &= \frac{48{,}000 \times 0.30}{6{,}000 \times 10} \\
+  &= \frac{14{,}400}{60{,}000} \\
+  &= 0.24\ \text{DKK/kWh}
+\end{aligned}
+$$
 
 Each kWh stored and discharged through the battery costs **0.24 DKK** in wear and tear.
 
@@ -70,9 +76,17 @@ Each kWh stored and discharged through the battery costs **0.24 DKK** in wear an
 
 ## Practical Implication
 
-To make charging economically viable, the price difference between charging and discharging must exceed the depreciation cost. For example:
+To make charging economically viable, the price difference between charging and discharging must exceed the depreciation cost:
 
-- If charging electricity costs 1.00 DKK/kWh, the discharge price must be at least **1.24 DKK/kWh** to offset depreciation.
+$$
+\text{Discharge price} - \text{Charge price} \ge D
+$$
+
+For example, if charging electricity costs 1.00 DKK/kWh:
+
+$$
+\text{Minimum discharge price} = 1.00 + 0.24 = 1.24\ \text{DKK/kWh}
+$$
 
 ---
 
@@ -90,14 +104,25 @@ To make charging economically viable, the price difference between charging and 
 
 ## HSEM Integration
 
-HSEM uses this formula in the **Excess Battery Export** feature and battery schedule economics. The recommended threshold is calculated automatically during configuration using the battery purchase price, expected cycles, and usable capacity you provide.
+HSEM uses a round-trip cycle-cost formula in the **Excess Battery Export** feature and battery schedule economics. The recommended threshold is calculated automatically during configuration using the battery purchase price, expected cycles, capacity loss, usable capacity, efficiency, and grid-fee inputs you provide.
 
-**Formula used by HSEM:**
-```
-Depreciation = (Purchase_Price × Capacity_Loss_Pct / 100) / (2 × Expected_Cycles × Usable_Capacity)
-```
+Let:
 
-Note the **2× denominator** — this accounts for both charge and discharge halves of a full cycle, and is the canonical formula used throughout HSEM's planner and cost function.
+| Symbol | Parameter | Description |
+|---|---|---|
+| $P$ | Purchase price | Battery system purchase price |
+| $L_{pct}$ | Capacity loss percent | Lifetime capacity loss percentage |
+| $N$ | Expected cycles | Expected full-cycle lifetime |
+| $C_u$ | Usable capacity | Usable battery capacity in kWh |
+| $\alpha$ | Cycle cost per kWh | HSEM battery wear cost per kWh |
+
+The canonical HSEM cycle-cost formula is:
+
+$$
+\alpha = \frac{P \times \left(\frac{L_{pct}}{100}\right)}{2 \times N \times C_u}
+$$
+
+The **$2 \times$ denominator is mandatory**. It accounts for one full round-trip: a complete charge and discharge moves $2 \times C_u$ kWh of throughput per cycle.
 
 ---
 
