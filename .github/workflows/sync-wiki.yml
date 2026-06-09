@@ -1,0 +1,54 @@
+name: Sync docs to Wiki
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - ".github/scripts/generate_wiki_sidebar.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wiki-sync
+  cancel-in-progress: true
+
+jobs:
+  sync-wiki:
+    name: Sync docs/ → Wiki
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.3
+
+      - name: Prepare wiki content
+        run: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          STAGING=".github/wiki-staging"
+
+          rm -rf "$STAGING"
+          mkdir -p "$STAGING"
+
+          # Copy all .md files and subdirectories from docs/ to staging
+          rsync -av --include='*/' --include='*.md' --exclude='*' docs/ "$STAGING/"
+
+          # Rename home.md to Home.md for the wiki landing page
+          if [ -f "$STAGING/home.md" ]; then
+            mv "$STAGING/home.md" "$STAGING/Home.md"
+          fi
+
+          # Generate _Sidebar.md from the docs/README.md table-of-contents
+          python3 .github/scripts/generate_wiki_sidebar.py \
+            docs/README.md > "$STAGING/_Sidebar.md"
+
+          echo "Staging contents:"
+          find "$STAGING" -type f | sort
+
+      - name: Publish to wiki
+        uses: spenserblack/actions-wiki@v0.3.0
+        with:
+          path: .github/wiki-staging

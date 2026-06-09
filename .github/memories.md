@@ -131,7 +131,7 @@ cycle_cost_per_kwh = (purchase_price × capacity_loss_pct / 100)
 The `2x` denominator accounts for one full round-trip (charge + discharge = 2 × usable_kwh throughput per cycle).
 `capacity_loss_pct` (configurable via `hsem_batteries_capacity_loss_pct`, default 30 %) accounts for the
 fraction of battery value consumed over its lifetime.
-Do **not** remove or change this factor without updating `docs/hsem-planner-spec.md`.
+Do **not** remove or change this factor without updating `docs/planner-spec.md`.
 
 ---
 
