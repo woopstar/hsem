@@ -98,7 +98,7 @@ $$
     && \text{discharge-side conversion loss cost} \\
     - & \gamma \cdot \bigl( ec[t] - ed[t] \bigr)
     && \text{terminal-SoC replacement credit} \\
-    + & p_{\mathrm{soc}} \cdot \bigl( \mathrm{s\_max\_pen}[t] + \mathrm{s\_min\_pen}[t] \bigr)
+    + & p_{\mathrm{soc}} \cdot \bigl( \operatorname{s\_max\_pen}[t] + \operatorname{s\_min\_pen}[t] \bigr)
     && \text{SoC soft-constraint penalties}
 \bigg] \\
 \end{aligned}
@@ -107,7 +107,7 @@ $$
 Plus EV deadline penalties (undiscounted — deadline is a hard commitment):
 
 $$
-\sum_{v=1}^{E} p_{\mathrm{ev\_pen}}^{(v)} \cdot \mathrm{ev\_pen}_v
+\sum_{v=1}^{E} p_{\mathrm{ev\_pen}}^{(v)} \cdot \operatorname{ev\_pen}_v
 $$
 
 Where:
@@ -134,12 +134,12 @@ For each slot $t$:
 
 $$
 gi[t] + pv[t] + ed[t] \cdot \eta_{\mathrm{dis}} =
-\mathrm{base\_load}[t] + \frac{ec[t]}{\eta_{\mathrm{chg}}} + ge[t] + \sum_{v=1}^{E} \frac{\mathrm{ev\_c}_v[t]}{\eta_{\mathrm{charger}}^{(v)}}
+\operatorname{base\_load}[t] + \frac{ec[t]}{\eta_{\mathrm{chg}}} + ge[t] + \sum_{v=1}^{E} \frac{\operatorname{ev\_c}_v[t]}{\eta_{\mathrm{charger}}^{(v)}}
 $$
 
-- `base_load[t]` = $\max(\mathrm{net\_load}[t], 0)$ — demand the grid/battery must satisfy (kWh)
+- `base_load[t]` = $\max(\operatorname{net\_load}[t], 0)$ — demand the grid/battery must satisfy (kWh)
 - `net_load[t]` = `avg_house_consumption[t] - solcast_pv_estimate[t]` (when EV co-optimisation active)
-- `pv_avail[t]` = $\max(-\mathrm{net\_load}[t], 0)$ — PV surplus fixed to the `pv[t]` variable bounds
+- `pv_avail[t]` = $\max(-\operatorname{net\_load}[t], 0)$ — PV surplus fixed to the `pv[t]` variable bounds
 - EV charger efficiency re-scales DC-side charge to AC grid/PV load
 
 ### Inequality constraints
@@ -147,19 +147,19 @@ $$
 **SoC upper bound (soft):**
 
 $$
-\sum_{k=0}^{t} \bigl( ec[k] - ed[k] \bigr) - \mathrm{s\_max\_pen}[t] \leq C_u - soc_0
+\sum_{k=0}^{t} \bigl( ec[k] - ed[k] \bigr) - \operatorname{s\_max\_pen}[t] \leq C_u - soc_0
 $$
 
 **SoC lower bound (soft):**
 
 $$
--\sum_{k=0}^{t} \bigl( ec[k] - ed[k] \bigr) - \mathrm{s\_min\_pen}[t] \leq soc_0
+-\sum_{k=0}^{t} \bigl( ec[k] - ed[k] \bigr) - \operatorname{s\_min\_pen}[t] \leq soc_0
 $$
 
 **Mutual exclusion — no simultaneous charge + discharge:**
 
 $$
-\frac{ec[t]}{\mathrm{max\_charge}} + \frac{ed[t]}{\mathrm{max\_discharge}} \leq 1
+\frac{ec[t]}{\operatorname{max\_charge}} + \frac{ed[t]}{\operatorname{max\_discharge}} \leq 1
 $$
 
 **Cycle cost auxiliary — forcing $m[t] \geq ec[t]$ and $m[t] \geq ed[t]$:**
@@ -174,13 +174,13 @@ $$
 **EV cumulative SoC upper bound (per EV v):**
 
 $$
-\sum_{k=0}^{t} \mathrm{ev\_c}_v[k] \leq \mathrm{capacity}_v - \mathrm{initial\_soc}_v
+\sum_{k=0}^{t} \operatorname{ev\_c}_v[k] \leq \operatorname{capacity}_v - \operatorname{initial\_soc}_v
 $$
 
 **EV deadline target (soft, per EV v):**
 
 $$
-\mathrm{initial\_soc}_v + \sum_{k=0}^{D_v} \mathrm{ev\_c}_v[k] + \mathrm{ev\_pen}_v \geq \mathrm{target}_v
+\operatorname{initial\_soc}_v + \sum_{k=0}^{D_v} \operatorname{ev\_c}_v[k] + \operatorname{ev\_pen}_v \geq \operatorname{target}_v
 $$
 
 Where $D_v$ is the deadline slot index for EV v.
