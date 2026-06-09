@@ -346,6 +346,13 @@ def _compute_ev_charger_power(
 
         ac_power_w = round((ev_slot.ac_load_kwh / slot_hours) * 1000)
 
+        # Cap at the charger's rated AC power — the EV planner may allocate
+        # a full slot's worth of energy to a slot with only a few minutes
+        # remaining.  The charger physically cannot exceed its nameplate.
+        if ev_plan.charger_power_kw > 1e-9:
+            max_ac_power_w = round(ev_plan.charger_power_kw * 1000)
+            ac_power_w = min(ac_power_w, max_ac_power_w)
+
         attr = (
             "ev_second_charger_calculated_power"
             if second

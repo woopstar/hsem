@@ -744,6 +744,15 @@ def solve_milp(
                 # For the current (partially elapsed) slot, use remaining time
                 # instead of the full slot width so the charger ramps to meet
                 # the MILP's energy target within the available minutes.
+                #
+                # Cap at the charger's rated AC power — the MILP treats all
+                # slots as full-width, so it may allocate max_charge_per_slot
+                # to a slot with only a few minutes remaining.  The charger
+                # physically cannot exceed its nameplate rating.
+                max_ac_power_w = round(
+                    (ev.max_charge_per_slot / ev.charger_efficiency / full_slot_hours)
+                    * 1000
+                )
                 slot_start = out_slots[slot_i].start
                 slot_end = out_slots[slot_i].end
                 if slot_start <= now < slot_end:
@@ -758,6 +767,7 @@ def solve_milp(
                     ac_power_w = round(
                         (ev_dc_kwh / ev.charger_efficiency / full_slot_hours) * 1000
                     )
+                ac_power_w = min(ac_power_w, max_ac_power_w)
 
                 # Write to the correct charger power field (additive across
                 # multiple EVs — max value wins, reflecting the higher demand).

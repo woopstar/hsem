@@ -98,7 +98,7 @@ $$
     && \text{discharge-side conversion loss cost} \\
     - & \gamma \cdot \bigl( ec[t] - ed[t] \bigr)
     && \text{terminal-SoC replacement credit} \\
-    + & p_{\mathrm{soc}} \cdot \bigl( s\_max\_pen[t] + s\_min\_pen[t] \bigr)
+    + & p_{\mathrm{soc}} \cdot \bigl( \mathrm{s\_max\_pen}[t] + \mathrm{s\_min\_pen}[t] \bigr)
     && \text{SoC soft-constraint penalties}
 \bigg] \\
 \end{aligned}
@@ -107,7 +107,7 @@ $$
 Plus EV deadline penalties (undiscounted — deadline is a hard commitment):
 
 $$
-\sum_{v=1}^{E} p_{\mathrm{ev\_pen}}^{(v)} \cdot ev\_pen_v
+\sum_{v=1}^{E} p_{\mathrm{ev\_pen}}^{(v)} \cdot \mathrm{ev\_pen}_v
 $$
 
 Where:
@@ -134,7 +134,7 @@ For each slot $t$:
 
 $$
 gi[t] + pv[t] + ed[t] \cdot \eta_{\mathrm{dis}} =
-\mathrm{base\_load}[t] + \frac{ec[t]}{\eta_{\mathrm{chg}}} + ge[t] + \sum_{v=1}^{E} \frac{ev\_c_v[t]}{\eta_{\mathrm{charger}}^{(v)}}
+\mathrm{base\_load}[t] + \frac{ec[t]}{\eta_{\mathrm{chg}}} + ge[t] + \sum_{v=1}^{E} \frac{\mathrm{ev\_c}_v[t]}{\eta_{\mathrm{charger}}^{(v)}}
 $$
 
 - `base_load[t]` = $\max(\mathrm{net\_load}[t], 0)$ — demand the grid/battery must satisfy (kWh)
@@ -174,13 +174,13 @@ $$
 **EV cumulative SoC upper bound (per EV v):**
 
 $$
-\sum_{k=0}^{t} ev\_c_v[k] \leq \mathrm{capacity}_v - \mathrm{initial\_soc}_v
+\sum_{k=0}^{t} \mathrm{ev\_c}_v[k] \leq \mathrm{capacity}_v - \mathrm{initial\_soc}_v
 $$
 
 **EV deadline target (soft, per EV v):**
 
 $$
-\mathrm{initial\_soc}_v + \sum_{k=0}^{D_v} ev\_c_v[k] + ev\_pen_v \geq \mathrm{target}_v
+\mathrm{initial\_soc}_v + \sum_{k=0}^{D_v} \mathrm{ev\_c}_v[k] + \mathrm{ev\_pen}_v \geq \mathrm{target}_v
 $$
 
 Where $D_v$ is the deadline slot index for EV v.
