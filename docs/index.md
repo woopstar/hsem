@@ -15,7 +15,8 @@
 | [Planner Technical Guide](planner-guide.md) | How the planner works with worked examples |
 | [Cost Function Math](cost-function-math.md) | Complete mathematical formulation of the 8-term cost function |
 | [Energy Accounting](energy-accounting.md) | Physical energy flow model, SoC simulation, efficiency math |
-| [Candidate Generation](candidate-generation.md) | How candidates are generated, assumptions, partial-SoC, MILP |
+| [Candidate Generation](candidate-generation.md) | How candidates are generated, assumptions, partial-SoC |
+| [MILP Optimization](milp-optimization.md) | Full LP formulation, variable layout, constraints, and solver pipeline |
 | [Consumption Prediction](consumption-prediction.md) | Weighted-average model, IQR outlier detection, spike suppression |
 | [Safety Modes](safety-modes.md) | Degraded mode, read-only gate, write-verify applier, runtime resolver |
 | [Price Scaling](price-scaling.md) | EDS price scaling, eds_share conversion factor |
