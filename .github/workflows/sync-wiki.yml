@@ -41,9 +41,9 @@ jobs:
             mv "$STAGING/home.md" "$STAGING/Home.md"
           fi
 
-          # Generate _Sidebar.md from the docs/README.md table-of-contents
+          # Generate _Sidebar.md from the docs/index.md table-of-contents
           python3 .github/scripts/generate_wiki_sidebar.py \
-            docs/README.md > "$STAGING/_Sidebar.md"
+            docs/index.md > "$STAGING/_Sidebar.md"
 
           echo "Staging contents:"
           find "$STAGING" -type f | sort

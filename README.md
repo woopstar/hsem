@@ -104,7 +104,7 @@ Full documentation is available on the **[HSEM Wiki](https://github.com/woopstar
 - **[Sensors Reference](https://github.com/woopstar/hsem/wiki/sensors-reference)** — Complete entity reference: all sensor, select, switch, number, and time entities
 - **[Dashboard Setup](docs/dashboard-setup.md)** — ApexCharts dashboard with full YAML, layout reference, and setup instructions
 - **[Troubleshooting Guide](https://github.com/woopstar/hsem/wiki/troubleshooting-guide)** — Diagnose and fix common problems
-- **[All Documentation](docs/README.md)** — Full index of all documentation files
+- **[All Documentation](docs/index.md)** — Full index of all documentation files
 
 ---
 
