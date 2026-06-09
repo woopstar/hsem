@@ -59,11 +59,8 @@ def discover_adrs(docs_dir: str) -> list[tuple[str, str]]:
         return []
 
     adrs: list[tuple[str, str]] = []
-    for f in sorted(adr_dir.glob("ADR-*.md")):
-        # Guard against case-insensitive filesystems matching unrelated files
-        if not f.name.startswith("ADR-"):
-            continue
-        name = f.stem  # e.g. "ADR-001-planner-extraction"
+    for f in sorted(adr_dir.glob("adr-*.md")):
+        name = f.stem  # e.g. "adr-001-planner-extraction"
         path = f"adr/{name}"
         adrs.append((name, path))
 
