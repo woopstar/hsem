@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Generate _Sidebar.md for the GitHub wiki from docs/README.md table of contents."""
+"""Generate _Sidebar.md for the GitHub wiki from docs/index.md table of contents."""
 
 import re
 import sys
 from pathlib import Path
 
 
-def extract_table_rows(readme_path: str) -> list[tuple[str, str]]:
-    """Extract (doc_name, description) pairs from the first markdown table in the README."""
-    text = Path(readme_path).read_text(encoding="utf-8")
+def extract_table_rows(index_path: str) -> list[tuple[str, str]]:
+    """Extract (doc_name, description) pairs from the first markdown table in the index."""
+    text = Path(index_path).read_text(encoding="utf-8")
 
     rows: list[tuple[str, str]] = []
     in_table = False
@@ -101,15 +101,15 @@ def generate_sidebar(rows: list[tuple[str, str]], adrs: list[tuple[str, str]]) -
 def main() -> None:
     if len(sys.argv) < 2:
         print(
-            "Usage: generate_wiki_sidebar.py <path-to-docs/README.md>",
+            "Usage: generate_wiki_sidebar.py <path-to-docs/index.md>",
             file=sys.stderr,
         )
         sys.exit(1)
 
-    readme_path = sys.argv[1]
-    docs_dir = str(Path(readme_path).parent)
+    index_path = sys.argv[1]
+    docs_dir = str(Path(index_path).parent)
 
-    rows = extract_table_rows(readme_path)
+    rows = extract_table_rows(index_path)
     adrs = discover_adrs(docs_dir)
     sidebar = generate_sidebar(rows, adrs)
     print(sidebar)
