@@ -46,7 +46,7 @@
 
 | Friendly name | Entity ID | Unit | Used by HSEM |
 |---|---|---|---|
-| Active power control | `sensor.inverter_active_power_control` | — | ✅ `hsem_huawei_solar_inverter_active_power_control` |
+| Active power control | `sensor.inverter_active_power_control` | — | ✅ `hsem_huawei_solar_inverter_active_power_control` (optional — not available on EMMA installations) |
 | Locking status | `sensor.inverter_locking_status` | — | — |
 | Max active power | `sensor.inverter_max_active_power` | W | — |
 | Monthly yield | `sensor.inverter_monthly_yield` | kWh | — |
@@ -115,3 +115,18 @@
 | Power factor | `sensor.power_meter_power_factor` | — | — |
 | Reactive energy | `sensor.power_meter_reactive_energy` | kvarh | — |
 | Reactive power | `sensor.power_meter_reactive_power` | var | — |
+
+---
+
+## EMMA
+
+In installations where an EMMA (Energy Management Assistant) is the primary device, the inverter is subordinate to EMMA.  Active power control is managed by EMMA rather than the inverter, so `sensor.inverter_active_power_control` **does not exist** on EMMA-based setups.
+
+### number entities
+
+| Friendly name | Entity ID | Unit | Used by HSEM |
+|---|---|---|---|
+| Maximum feed grid power (%) | `number.emma_*_maximum_feed_grid_power_percent` | % | — (planned) |
+| Maximum feed grid power (W) | `number.emma_*_maximum_feed_grid_power_watt` | W | — (planned) |
+
+> **Note**: Full EMMA-aware export control (routing `set_maximum_feed_grid_power_percent` / `set_maximum_feed_grid_power` service calls to the EMMA device) is planned for a future HSEM release.  In the meantime, EMMA users can complete HSEM setup by leaving the `hsem_huawei_solar_inverter_active_power_control` field unconfigured.  HSEM will operate with battery charge/discharge control but without grid-export management.

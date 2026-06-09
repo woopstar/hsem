@@ -131,6 +131,15 @@ async def async_apply_inverter_power_control(
     """
     summary = CycleApplySummary()
 
+    # Skip when the active power control entity is not configured (e.g. EMMA-based
+    # installations where sensor.inverter_active_power_control does not exist).
+    if not cfg.huawei_solar_inverter_active_power_control:
+        await async_logger(
+            sensor,
+            "async_apply_inverter_power_control: skipped — no APC sensor configured",
+        )
+        return summary
+
     # Defense-in-depth: block writes if read_only or degraded mode is Error.
     if cfg.read_only:
         await async_logger(
