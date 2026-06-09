@@ -60,6 +60,9 @@ def discover_adrs(docs_dir: str) -> list[tuple[str, str]]:
 
     adrs: list[tuple[str, str]] = []
     for f in sorted(adr_dir.glob("ADR-*.md")):
+        # Guard against case-insensitive filesystems matching unrelated files
+        if not f.name.startswith("ADR-"):
+            continue
         name = f.stem  # e.g. "ADR-001-planner-extraction"
         path = f"adr/{name}"
         adrs.append((name, path))
@@ -88,7 +91,7 @@ def generate_sidebar(rows: list[tuple[str, str]], adrs: list[tuple[str, str]]) -
         lines.append("")
         lines.append("## Architecture Decision Records")
         lines.append("")
-        lines.append("- [ADR Index](adr/README)")
+        lines.append("- [ADR Index](adr/index)")
         for name, path in adrs:
             lines.append(f"- [{name}]({path})")
 
