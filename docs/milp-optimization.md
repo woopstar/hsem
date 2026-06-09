@@ -147,13 +147,13 @@ $$
 **SoC upper bound (soft):**
 
 $$
-\sum_{k=0}^{t} \bigl( ec[k] - ed[k] \bigr) - s\_max\_pen[t] \leq C_u - soc_0
+\sum_{k=0}^{t} \bigl( ec[k] - ed[k] \bigr) - \mathrm{s\_max\_pen}[t] \leq C_u - soc_0
 $$
 
 **SoC lower bound (soft):**
 
 $$
--\sum_{k=0}^{t} \bigl( ec[k] - ed[k] \bigr) - s\_min\_pen[t] \leq soc_0
+-\sum_{k=0}^{t} \bigl( ec[k] - ed[k] \bigr) - \mathrm{s\_min\_pen}[t] \leq soc_0
 $$
 
 **Mutual exclusion — no simultaneous charge + discharge:**
