@@ -202,7 +202,9 @@
           "hsem_huawei_solar_device_id_batteries": "Huawei Batteries Device",
           "hsem_huawei_solar_device_id_inverter_1": "Huawei Inverter 1 Device",
           "hsem_huawei_solar_device_id_inverter_2": "Huawei Inverter 2 Device",
-          "hsem_huawei_solar_inverter_active_power_control": "Huawei Inverter Active Power Control Sensor"
+          "hsem_huawei_solar_inverter_active_power_control": "Huawei Inverter Active Power Control Sensor",
+          "hsem_huawei_solar_device_id_emma": "Huawei EMMA Device (optional)",
+          "hsem_huawei_solar_emma_active_power_control": "Huawei EMMA Active Power Control Number (optional)"
         },
         "data_description": {
           "hsem_batteries_charge_efficiency": "Specify the charge-side efficiency of your battery as a percentage (0–100). Energy stored in the battery equals the input energy multiplied by this factor. Typical lithium batteries achieve 95–98 %. Defaults to 98 %.",
@@ -224,7 +226,9 @@
           "hsem_huawei_solar_device_id_batteries": "Select your Huawei battery device.",
           "hsem_huawei_solar_device_id_inverter_1": "Select your primary Huawei inverter device.",
           "hsem_huawei_solar_device_id_inverter_2": "Select your secondary Huawei inverter device, if applicable.",
-          "hsem_huawei_solar_inverter_active_power_control": "Select the sensor that controls the active power output of your Huawei inverter."
+          "hsem_huawei_solar_inverter_active_power_control": "Select the sensor that controls the active power output of your Huawei inverter.",
+          "hsem_huawei_solar_device_id_emma": "Select your EMMA device if your installation uses an EMMA (Energy Management Assistant). Required for export control on EMMA-based setups.",
+          "hsem_huawei_solar_emma_active_power_control": "Select the EMMA number entity that controls the maximum feed grid power percentage (e.g. number.emma_*_maximum_feed_grid_power_percent). Only needed for EMMA-based installations."
         },
         "description": "Configure the working mode for Huawei solar batteries.",
         "title": "Huawei Solar Sensors"
@@ -598,7 +602,9 @@
           "hsem_huawei_solar_device_id_batteries": "Huawei Batteries Device",
           "hsem_huawei_solar_device_id_inverter_1": "Huawei Inverter 1 Device",
           "hsem_huawei_solar_device_id_inverter_2": "Huawei Inverter 2 Device",
-          "hsem_huawei_solar_inverter_active_power_control": "Huawei Inverter Active Power Control Sensor"
+          "hsem_huawei_solar_inverter_active_power_control": "Huawei Inverter Active Power Control Sensor",
+          "hsem_huawei_solar_device_id_emma": "Huawei EMMA Device (optional)",
+          "hsem_huawei_solar_emma_active_power_control": "Huawei EMMA Active Power Control Number (optional)"
         },
         "data_description": {
           "hsem_batteries_charge_efficiency": "Specify the charge-side efficiency of your battery as a percentage (0–100). Energy stored in the battery equals the input energy multiplied by this factor. Typical lithium batteries achieve 95–98 %. Defaults to 98 %.",
@@ -620,7 +626,9 @@
           "hsem_huawei_solar_device_id_batteries": "Select your Huawei battery device.",
           "hsem_huawei_solar_device_id_inverter_1": "Select your primary Huawei inverter device.",
           "hsem_huawei_solar_device_id_inverter_2": "Select your secondary Huawei inverter device, if applicable.",
-          "hsem_huawei_solar_inverter_active_power_control": "Select the sensor that controls the active power output of your Huawei inverter."
+          "hsem_huawei_solar_inverter_active_power_control": "Select the sensor that controls the active power output of your Huawei inverter.",
+          "hsem_huawei_solar_device_id_emma": "Select your EMMA device if your installation uses an EMMA (Energy Management Assistant). Required for export control on EMMA-based setups.",
+          "hsem_huawei_solar_emma_active_power_control": "Select the EMMA number entity that controls the maximum feed grid power percentage (e.g. number.emma_*_maximum_feed_grid_power_percent). Only needed for EMMA-based installations."
         },
         "description": "Configure the working mode for Huawei solar batteries.",
         "title": "Huawei Solar Sensors"

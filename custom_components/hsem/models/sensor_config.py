@@ -81,6 +81,7 @@ class SensorConfig:
         huawei_solar_batteries_tou_charging_and_discharging_periods: Entity ID for TOU periods.
         huawei_solar_batteries_excess_pv_energy_use_in_tou: Entity ID for excess PV use select.
         huawei_solar_inverter_active_power_control: Entity ID for export power control.
+        huawei_solar_emma_active_power_control: Entity ID for EMMA active power control number entity (optional, EMMA-based installations only).
         huawei_solar_batteries_rated_capacity: Entity ID for rated battery capacity sensor.
 
         house_consumption_power: Entity ID for house power meter.
@@ -141,6 +142,7 @@ class SensorConfig:
     huawei_solar_device_id_inverter_1: str | None = None
     huawei_solar_device_id_inverter_2: str | None = None
     huawei_solar_device_id_batteries: str | None = None
+    huawei_solar_device_id_emma: str | None = None
 
     # Huawei Solar entity IDs
     huawei_solar_batteries_working_mode: str | None = None
@@ -154,6 +156,7 @@ class SensorConfig:
     huawei_solar_batteries_excess_pv_energy_use_in_tou: str | None = None
     huawei_solar_batteries_forcible_charge: str | None = None
     huawei_solar_inverter_active_power_control: str | None = None
+    huawei_solar_emma_active_power_control: str | None = None
     huawei_solar_batteries_rated_capacity: str | None = None
 
     # Power meters

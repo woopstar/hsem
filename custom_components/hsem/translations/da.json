@@ -6,9 +6,9 @@
     },
     "error": {
       "device_not_found": "Den valgte enhed blev ikke fundet.",
-      "energy_out_of_range": "Energiv\u00e6rdien er uden for det tilladte omr\u00e5de.",
+      "energy_out_of_range": "Energiværdien er uden for det tilladte område.",
       "entity_not_found": "Den valgte enhed blev ikke fundet.",
-      "entity_unavailable": "Den valgte enhed er ikke tilg\u00e6ngelig i \u00f8jeblikket. Kontroller enheden eller tjenesten.",
+      "entity_unavailable": "Den valgte enhed er ikke tilgængelig i øjeblikket. Kontroller enheden eller tjenesten.",
       "hsem_house_consumption_energy_weight_total": "Summen af husets energivÃ¦gte skal vÃ¦re 100%.",
       "invalid_energy_value": "Ugyldig energivÃ¦rdi â€” indtast et tal.",
       "invalid_entity_id": "Ugyldigt enheds-ID-format. Forventet \"domÃ¦ne.objekt_id\" med smÃ¥ bogstaver, tal og understregninger.",
@@ -186,7 +186,9 @@
           "hsem_huawei_solar_device_id_inverter_1": "Huawei-vekselretter 1 enhed",
           "hsem_huawei_solar_device_id_inverter_2": "Huawei-vekselretter 2 enhed",
           "hsem_huawei_solar_inverter_active_power_control": "Huawei-vekselretter aktiv effektkontrolsensor",
-          "hsem_huawei_solar_batteries_forcible_charge": "Tvungen Opladning"
+          "hsem_huawei_solar_batteries_forcible_charge": "Tvungen Opladning",
+          "hsem_huawei_solar_device_id_emma": "Huawei EMMA-enhed (valgfri)",
+          "hsem_huawei_solar_emma_active_power_control": "Huawei EMMA aktiv effektkontrolnummer (valgfri)"
         },
         "data_description": {
           "hsem_batteries_charge_efficiency": "Angiv batteriets opladningseffektivitet som en procentdel (0â€“100). Energi lagret i batteriet = inputenergi Ã— denne faktor. Typiske lithium-batterier opnÃ¥r 95â€“98%. Standard: 98%.",
@@ -208,7 +210,9 @@
           "hsem_huawei_solar_device_id_inverter_1": "VÃ¦lg din primÃ¦re Huawei-vekselretterenhed.",
           "hsem_huawei_solar_device_id_inverter_2": "VÃ¦lg din sekundÃ¦re Huawei-vekselretterenhed, hvis relevant.",
           "hsem_huawei_solar_inverter_active_power_control": "VÃ¦lg den sensor, der styrer aktiv effektudgang for din Huawei-vekselretter.",
-          "hsem_huawei_solar_batteries_forcible_charge": "Vælg sensoren der angiver om tvungen opladning er aktiv."
+          "hsem_huawei_solar_batteries_forcible_charge": "Vælg sensoren der angiver om tvungen opladning er aktiv.",
+          "hsem_huawei_solar_device_id_emma": "Vælg din EMMA-enhed, hvis din installation bruger en EMMA (Energy Management Assistant). Påkrævet for eksportkontrol på EMMA-baserede opsætninger.",
+          "hsem_huawei_solar_emma_active_power_control": "Vælg EMMA-nummerentiteten, der styrer den maksimale feed grid power-procent (f.eks. number.emma_*_maximum_feed_grid_power_percent). Kun nødvendigt for EMMA-baserede installationer."
         },
         "description": "Konfigurer arbejdstilstanden for Huawei-solcellebatterier.",
         "title": "Huawei Solar-sensorer"
@@ -348,9 +352,9 @@
   "options": {
     "error": {
       "device_not_found": "Den valgte enhed blev ikke fundet.",
-      "energy_out_of_range": "Energiv\u00e6rdien er uden for det tilladte omr\u00e5de.",
+      "energy_out_of_range": "Energiværdien er uden for det tilladte område.",
       "entity_not_found": "Den valgte enhed blev ikke fundet.",
-      "entity_unavailable": "Den valgte enhed er ikke tilg\u00e6ngelig i \u00f8jeblikket. Kontroller enheden eller tjenesten.",
+      "entity_unavailable": "Den valgte enhed er ikke tilgængelig i øjeblikket. Kontroller enheden eller tjenesten.",
       "hsem_house_consumption_energy_weight_total": "Summen af husets energivÃ¦gte skal vÃ¦re 100%.",
       "invalid_energy_value": "Ugyldig energivÃ¦rdi â€” indtast et tal.",
       "invalid_entity_id": "Ugyldigt enheds-ID-format. Forventet \"domÃ¦ne.objekt_id\" med smÃ¥ bogstaver, tal og understregninger.",
@@ -528,7 +532,9 @@
           "hsem_huawei_solar_device_id_batteries": "Huawei Batteries Device",
           "hsem_huawei_solar_device_id_inverter_1": "Huawei Inverter 1 Device",
           "hsem_huawei_solar_device_id_inverter_2": "Huawei Inverter 2 Device",
-          "hsem_huawei_solar_inverter_active_power_control": "Huawei Inverter Active Power Control Sensor"
+          "hsem_huawei_solar_inverter_active_power_control": "Huawei Inverter Active Power Control Sensor",
+          "hsem_huawei_solar_device_id_emma": "Huawei EMMA-enhed (valgfri)",
+          "hsem_huawei_solar_emma_active_power_control": "Huawei EMMA aktiv effektkontrolnummer (valgfri)"
         },
         "data_description": {
           "hsem_batteries_charge_efficiency": "Specify the charge-side efficiency of your battery as a percentage (0–100). Energy stored in the battery equals the input energy multiplied by this factor. Typical lithium batteries achieve 95–98 %. Defaults to 98 %.",
@@ -550,7 +556,9 @@
           "hsem_huawei_solar_device_id_batteries": "Select your Huawei battery device.",
           "hsem_huawei_solar_device_id_inverter_1": "Select your primary Huawei inverter device.",
           "hsem_huawei_solar_device_id_inverter_2": "Select your secondary Huawei inverter device, if applicable.",
-          "hsem_huawei_solar_inverter_active_power_control": "Select the sensor that controls the active power output of your Huawei inverter."
+          "hsem_huawei_solar_inverter_active_power_control": "Select the sensor that controls the active power output of your Huawei inverter.",
+          "hsem_huawei_solar_device_id_emma": "Vælg din EMMA-enhed, hvis din installation bruger en EMMA (Energy Management Assistant). Påkrævet for eksportkontrol på EMMA-baserede opsætninger.",
+          "hsem_huawei_solar_emma_active_power_control": "Vælg EMMA-nummerentiteten, der styrer den maksimale feed grid power-procent (f.eks. number.emma_*_maximum_feed_grid_power_percent). Kun nødvendigt for EMMA-baserede installationer."
         },
         "description": "Configure the working mode for Huawei solar batteries.",
         "title": "Huawei Solar Sensors"

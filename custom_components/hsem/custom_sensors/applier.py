@@ -131,12 +131,18 @@ async def async_apply_inverter_power_control(
     """
     summary = CycleApplySummary()
 
-    # Skip when the active power control entity is not configured (e.g. EMMA-based
-    # installations where sensor.inverter_active_power_control does not exist).
-    if not cfg.huawei_solar_inverter_active_power_control:
+    # Determine which export-control entity is available.  EMMA-based
+    # installations use the EMMA number entity; standard installations use
+    # the inverter active-power-control sensor.
+    has_emma = bool(
+        cfg.huawei_solar_device_id_emma and cfg.huawei_solar_emma_active_power_control
+    )
+    has_apc = bool(cfg.huawei_solar_inverter_active_power_control)
+
+    if not has_emma and not has_apc:
         await async_logger(
             sensor,
-            "async_apply_inverter_power_control: skipped — no APC sensor configured",
+            "async_apply_inverter_power_control: skipped — no APC sensor or EMMA configured",
         )
         return summary
 
@@ -183,30 +189,56 @@ async def async_apply_inverter_power_control(
     current_pct = _parse_power_control_pct(live.huawei_inverter_active_power_control)
     current_is_watt = _is_watt_limit(live.huawei_inverter_active_power_control)
 
-    for inv_id in [
-        cfg.huawei_solar_device_id_inverter_1,
-        cfg.huawei_solar_device_id_inverter_2,
-    ]:
-        if inv_id is None:
-            continue
-
+    # Build the list of (device_id, reader_fn) pairs.
+    # EMMA: target the EMMA device with a number-entity reader.
+    # Standard: target inverter devices with the APC-sensor reader.
+    devices: list[tuple[str, Any]] = []
+    if has_emma:
+        emma_entity = cfg.huawei_solar_emma_active_power_control
+        emma_reader = lambda e=emma_entity: _read_number_state(sensor, e)
+        devices.append((cfg.huawei_solar_device_id_emma, emma_reader))  # type: ignore[arg-type]  # str | None narrowed by has_emma
+    else:
         inv_entity = cfg.huawei_solar_inverter_active_power_control
-        reader_fn = lambda inv=inv_entity: _parse_power_control_pct(
+        inv_reader = lambda inv=inv_entity: _parse_power_control_pct(
             sensor.hass.states.get(inv).state
             if inv and sensor.hass.states.get(inv) is not None
             else None
         )
+        for inv_id in [
+            cfg.huawei_solar_device_id_inverter_1,
+            cfg.huawei_solar_device_id_inverter_2,
+        ]:
+            if inv_id is not None:
+                devices.append((inv_id, inv_reader))
 
-        if export_pct == 0:
+    for dev_id, reader_fn in devices:
+        if has_emma:
+            # EMMA: always use percentage-based writes.  The EMMA number entity
+            # stores a percentage, so the reader returns a float (0–100).
+            # Skip the pre-flight idempotency check for EMMA — the
+            # write-and-verify function handles its own pre-flight read.
+            desired = export_pct
+            writer = lambda _id=dev_id, _pct=export_pct: (  # type: ignore[misc]
+                async_set_grid_export_power_pct(sensor, _id, _pct)
+            )
+            result = await async_write_and_verify(
+                entity_id=cfg.huawei_solar_emma_active_power_control
+                or f"emma_device:{dev_id}",
+                desired=desired,
+                writer=writer,
+                reader=reader_fn,
+            )
+        elif export_pct == 0:
             # Block export → set a soft floor at GRID_EXPORT_LIMIT_WATT.
             desired = GRID_EXPORT_LIMIT_WATT
             if current_pct is not None and current_is_watt and current_pct == desired:
                 continue  # already at the watt limit
 
             result = await async_write_and_verify(
-                entity_id=inv_entity or f"inverter:{inv_id}",
+                entity_id=cfg.huawei_solar_inverter_active_power_control
+                or f"inverter:{dev_id}",
                 desired=desired,
-                writer=lambda _id=inv_id, _w=desired: async_set_grid_export_power_watt(  # type: ignore[misc]  # mypy cannot infer lambda types with default parameters
+                writer=lambda _id=dev_id, _w=desired: async_set_grid_export_power_watt(  # type: ignore[misc]
                     sensor, _id, _w
                 ),
                 reader=reader_fn,
@@ -221,9 +253,10 @@ async def async_apply_inverter_power_control(
                 continue  # already at unlimited / 100 %
 
             result = await async_write_and_verify(
-                entity_id=inv_entity or f"inverter:{inv_id}",
+                entity_id=cfg.huawei_solar_inverter_active_power_control
+                or f"inverter:{dev_id}",
                 desired=export_pct,
-                writer=lambda _id=inv_id, _pct=export_pct: (  # type: ignore[misc]  # mypy cannot infer lambda types with default parameters
+                writer=lambda _id=dev_id, _pct=export_pct: (  # type: ignore[misc]
                     async_set_grid_export_power_pct(sensor, _id, _pct)
                 ),
                 reader=reader_fn,
@@ -232,10 +265,10 @@ async def async_apply_inverter_power_control(
         summary.results.append(result)
 
         if result.status == ApplyStatus.FAILED:
-            mode = "W" if export_pct == 0 else "%"
+            mode = "%" if has_emma else ("W" if export_pct == 0 else "%")
             await async_logger(
                 sensor,
-                f"Export power {mode} write FAILED for inverter {inv_id} after all retries. "
+                f"Export power {mode} write FAILED for device {dev_id} after all retries. "
                 f"Blocking further writes this cycle.",
                 "error",
             )

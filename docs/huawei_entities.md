@@ -126,7 +126,7 @@ In installations where an EMMA (Energy Management Assistant) is the primary devi
 
 | Friendly name | Entity ID | Unit | Used by HSEM |
 |---|---|---|---|
-| Maximum feed grid power (%) | `number.emma_*_maximum_feed_grid_power_percent` | % | — (planned) |
-| Maximum feed grid power (W) | `number.emma_*_maximum_feed_grid_power_watt` | W | — (planned) |
+| Maximum feed grid power (%) | `number.emma_*_maximum_feed_grid_power_percent` | % | ✅ `hsem_huawei_solar_emma_active_power_control` |
+| Maximum feed grid power (W) | `number.emma_*_maximum_feed_grid_power_watt` | W | — |
 
-> **Note**: Full EMMA-aware export control (routing `set_maximum_feed_grid_power_percent` / `set_maximum_feed_grid_power` service calls to the EMMA device) is planned for a future HSEM release.  In the meantime, EMMA users can complete HSEM setup by leaving the `hsem_huawei_solar_inverter_active_power_control` field unconfigured.  HSEM will operate with battery charge/discharge control but without grid-export management.
+> **Note**: HSEM now supports EMMA-based installations.  Configure your EMMA device (`hsem_huawei_solar_device_id_emma`) and the maximum feed grid power percentage number entity (`hsem_huawei_solar_emma_active_power_control`) in the config flow, and HSEM will route export control service calls to the EMMA device automatically.
