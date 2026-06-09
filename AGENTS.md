@@ -100,16 +100,16 @@ as part of the same PR that wires it into HSEM.
 ## Planner Specification (Mandatory Reference)
 
 The canonical definition of how the HSEM planner must behave is in
-**`docs/hsem-planner-spec.md`**.
+**`docs/planner-spec.md`**.
 
 The agent MUST:
 
-1. **Read `docs/hsem-planner-spec.md` before touching any planner code** — engine, cost function,
+1. **Read `docs/planner-spec.md` before touching any planner code** — engine, cost function,
    SoC simulation, candidate generation, slot population, or safety gates.
 2. **Verify that every planner change is consistent with the spec** — energy balance per slot,
    SoC bounds, cost function formula, terminal-SoC accounting, candidate invariants, and safety
    gate behaviour must all match the spec exactly.
-3. **Update `docs/hsem-planner-spec.md`** whenever a change intentionally alters planner
+3. **Update `docs/planner-spec.md`** whenever a change intentionally alters planner
    semantics (goals, formulas, invariants, or safety gates).  The spec and the implementation
    must never be allowed to diverge silently.
 4. **Add or update tests** that cover the invariants listed under *Invariants for tests* in the

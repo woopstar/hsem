@@ -99,6 +99,6 @@ How are the negative consequences addressed?
 
 ## Relationship to other documentation
 
-- **`docs/hsem-planner-spec.md`** — the canonical planner specification. ADRs explain *why* design decisions were made; the spec documents *what* the planner must do.
-- **`docs/hsem-architecture-overview.md`** — high-level architecture overview. ADRs provide the reasoning behind the architecture.
+- **`docs/planner-spec.md`** — the canonical planner specification. ADRs explain *why* design decisions were made; the spec documents *what* the planner must do.
+- **`docs/architecture-overview.md`** — high-level architecture overview. ADRs provide the reasoning behind the architecture.
 - **`.github/memories.md`** — repository memory for AI agents. Key ADR conclusions are reflected there.

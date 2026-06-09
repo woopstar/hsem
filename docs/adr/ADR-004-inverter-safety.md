@@ -170,7 +170,7 @@ Applied **only to the current slot** immediately before hardware writes. Overrid
 
 ## Related
 
-- `docs/hsem-safety-modes.md` — detailed description of all four layers
+- `docs/safety-modes.md` — detailed description of all four layers
 - `utils/degraded_mode.py` — health classification implementation
 - `utils/inverter_verify.py` — write-verify applier implementation
 - `custom_sensors/recommendation_resolver.py` — runtime resolver implementation

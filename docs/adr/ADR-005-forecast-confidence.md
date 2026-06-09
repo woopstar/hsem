@@ -149,8 +149,8 @@ Run the planner multiple times with different PV scenarios (e.g., p10/p50/p90 fr
 
 - ADR-001: Planner Extraction (forecast tracker is a pure-Python utility)
 - `docs/forecast-accuracy-tracking.md` — Full technical guide
-- `docs/hsem-planner-spec.md` — Multi-day planning horizon (confidence decay section)
-- `docs/hsem-energy-accounting.md` — PV confidence decay formula
+- `docs/planner-spec.md` — Multi-day planning horizon (confidence decay section)
+- `docs/energy-accounting.md` — PV confidence decay formula
 - `utils/forecast_tracker.py` — Implementation
 - `custom_sensors/forecast_accuracy_sensor.py` — HA sensor wrapper
 - Issue #373 — Forecast accuracy tracking (origin)

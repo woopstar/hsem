@@ -4,7 +4,7 @@ This guide explains how the HSEM (Home Assistant Solar Energy Management) planne
 It covers inputs, outputs, the cost function, safety modes, and worked examples for five
 common scenarios a real installation will encounter.
 
-> **See also:** `docs/hsem-planner-spec.md` — the normative specification that governs
+> **See also:** `docs/planner-spec.md` — the normative specification that governs
 > all planner invariants and implementation rules.
 
 ---
@@ -166,7 +166,7 @@ Each `PricePoint` carries:
 Prices sourced from Energi Data Service (EDS) are normalised through the
 `eds_share` pipeline before reaching the planner so the engine always receives
 the full hourly rate, regardless of the EDS update interval (15 min or 60 min).
-See [Price interval semantics](hsem-planner-spec.md#price-interval-semantics) in the spec.
+See [Price interval semantics](planner-spec.md#price-interval-semantics) in the spec.
 
 ### PV forecast
 
@@ -1316,7 +1316,7 @@ for regular households but may under- or over-predict when:
 The IQR median-ratio outlier detection algorithm flags anomalous windows, and
 the ML mode (ridge regression with day-of-week, seasonality, and outdoor
 temperature) addresses several of these limitations.  See
-`docs/hsem-consumption-prediction.md`.
+`docs/consumption-prediction.md`.
 
 ### Prices are assumed known for the full horizon
 
