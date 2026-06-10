@@ -58,5 +58,4 @@ async def validate_power_step_input(
             "hsem_house_consumption_power",
             "hsem_solar_production_power",
         ],
-        optional_fields=["hsem_main_fuse_amps"],
     )
