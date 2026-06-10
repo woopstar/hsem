@@ -380,6 +380,45 @@ to reflect the new EV loads.
 - EV diagnostics (total DC kWh delivered, deadline penalty, deadline met)
   are included in the diagnostics dict under the `"ev"` key.
 
+### Grid import power limit (main fuse / tariff protection)
+
+When `main_fuse_amps` is provided and > 0, the MILP adds a **soft**
+constraint on total grid import power per slot:
+
+```text
+max_grid_import_per_slot_kwh = main_fuse_amps * 230 * 3 / 1000 * (interval_minutes / 60)
+```
+
+This assumes balanced three-phase load at 230 V phase-to-neutral.
+
+**Penalty approach** (soft constraint):
+- A penalty variable `gi_pen[t]` is added for each future slot.
+- Constraint: `gi[t] - gi_pen[t] ≤ max_grid_import_per_slot_kwh`
+- Penalty cost: `P_fuse * gi_pen[t]` where `P_fuse = max(p_imp) * 100`
+  (same magnitude as existing SoC penalties).
+- The solver only exceeds the fuse limit when physically unavoidable
+  (e.g., house base load alone exceeds the fuse rating).
+
+**Diagnostics**:
+- `total_fuse_violation_kwh` in the returned diagnostics dict.
+- `has_violations` set to `True` when any fuse violation exists.
+- Each violating slot is logged at WARNING level with slot timestamp,
+  required import, limit, and excess kWh.
+
+**When disabled** (`main_fuse_amps` is `None` or 0): no constraint is
+added — behaviour is identical to the pre-#567 code.
+
+#### Invariants
+
+- When `main_fuse_amps` is `None` or 0, the MILP produces identical
+  results to the pre-#567 code (backward compatible).
+- When house load is within the fuse limit, `gi_pen[t]` is zero for all
+  slots.
+- When house load alone exceeds the fuse limit, `gi_pen[t] > 0` absorbs
+  the excess — the MILP never becomes infeasible due to fuse constraints.
+- When battery + EV + house load would exceed the fuse, the MILP
+  throttles charging to stay within the limit.
+
 ## Cost function
 
 The cost function returns **two distinct aggregates** for every plan

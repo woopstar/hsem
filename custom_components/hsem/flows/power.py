@@ -28,6 +28,13 @@ async def get_power_step_schema(
                 "hsem_solar_production_power",
                 default=get_config_value(config_entry, "hsem_solar_production_power"),
             ): selector({"entity": {"domain": "sensor"}}),
+            vol.Optional(
+                "hsem_main_fuse_amps",
+                default=get_config_value(config_entry, "hsem_main_fuse_amps"),
+            ): vol.All(
+                vol.Coerce(int),
+                vol.Range(min=0, max=125),
+            ),
         }
     )
 
@@ -43,4 +50,5 @@ async def validate_power_step_input(
             "hsem_house_consumption_power",
             "hsem_solar_production_power",
         ],
+        optional_fields=["hsem_main_fuse_amps"],
     )

@@ -313,6 +313,7 @@ def generate_candidates(
                 ),
             ),
             ev_configs=ev_configs,
+            main_fuse_amps=inp.main_fuse_amps,
         )
         if milp_result is not None:
             milp_slots, milp_diag = milp_result

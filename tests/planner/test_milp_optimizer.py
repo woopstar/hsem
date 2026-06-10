@@ -22,6 +22,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from custom_components.hsem.models.ev_config import EVConfig
 from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.planner import run_planner
@@ -1242,3 +1243,245 @@ def test_milp_extreme_overcharge_returns_plan_with_violations():
         )
     ]
     assert len(discharge_slots) > 0, "Extremely overcharged battery must discharge"
+
+
+# ---------------------------------------------------------------------------
+# Main fuse / tariff protection tests (issue #567)
+# ---------------------------------------------------------------------------
+
+
+@_scipy_skip()
+def test_main_fuse_none_no_constraint():
+    """When main_fuse_amps is None, behaviour is identical to current."""
+    slots = _make_arbitrage_slots([0, 1, 2, 3], [20, 21, 22, 23])
+
+    result_none = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=9.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+        main_fuse_amps=None,
+    )
+    result_no_param = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=9.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+    )
+
+    assert result_none is not None
+    assert result_no_param is not None
+    slots_none, diag_none = result_none
+    slots_no_param, diag_no_param = result_no_param
+
+    # Recommendations should be identical
+    for i in range(len(slots_none)):
+        assert slots_none[i].recommendation == slots_no_param[i].recommendation, (
+            f"Slot {i}: recommendation differs when main_fuse_amps=None"
+        )
+    # Diagnostics should have no fuse violations
+    assert diag_none.get("total_fuse_violation_kwh", 1.0) == pytest.approx(0.0)
+
+
+@_scipy_skip()
+def test_main_fuse_zero_no_constraint():
+    """When main_fuse_amps=0, behaviour is identical to current."""
+    slots = _make_arbitrage_slots([0, 1, 2, 3], [20, 21, 22, 23])
+
+    result_zero = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=9.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+        main_fuse_amps=0.0,
+    )
+    result_no_param = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=9.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+    )
+
+    assert result_zero is not None
+    assert result_no_param is not None
+    slots_zero, diag_zero = result_zero
+    slots_no_param, diag_no_param = result_no_param
+
+    for i in range(len(slots_zero)):
+        assert slots_zero[i].recommendation == slots_no_param[i].recommendation, (
+            f"Slot {i}: recommendation differs when main_fuse_amps=0"
+        )
+    assert diag_zero.get("total_fuse_violation_kwh", 1.0) == pytest.approx(0.0)
+
+
+@_scipy_skip()
+def test_main_fuse_normal_load_within_limit():
+    """Normal load within fuse limit → zero penalty, plan unchanged.
+
+    25 A fuse → max 25*230*3/1000 = 17.25 kW per hour = 4.3125 kWh per 15-min slot.
+    With 0.5 kWh house load per slot, the fuse limit is never approached.
+    """
+    slots = _make_arbitrage_slots([0, 1, 2, 3], [20, 21, 22, 23])
+
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=9.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+        main_fuse_amps=25.0,
+    )
+
+    assert result is not None
+    _milp_slots, diag = result
+
+    # No fuse violations expected — 0.5 kWh house load is well within 25 A limit
+    assert diag.get("total_fuse_violation_kwh", 1.0) == pytest.approx(0.0)
+    assert not diag.get("has_violations", True)
+
+
+@_scipy_skip()
+def test_main_fuse_house_load_exceeds_fuse_penalty_fires():
+    """House load alone exceeds fuse → penalty fires, plan still returned.
+
+    With a 1 A fuse (tiny), max per slot = 1*230*3/1000*1 = 0.69 kWh.
+    House load of 0.5 kWh per slot plus battery charging would exceed this.
+    The MILP must still return a plan with violations flagged.
+    """
+    slots = _make_arbitrage_slots([0, 1, 2, 3], [20, 21, 22, 23])
+
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=9.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+        main_fuse_amps=1.0,  # very restrictive
+    )
+
+    assert result is not None, (
+        "MILP must return a plan even when house load exceeds fuse rating"
+    )
+    _milp_slots, diag = result
+
+    # Fuse violations should be flagged
+    fuse_violation = diag.get("total_fuse_violation_kwh", 0.0)
+    assert fuse_violation > 1e-6, (
+        f"Expected fuse violations with 1 A fuse, got {fuse_violation}"
+    )
+    assert diag.get("has_violations", False), (
+        "has_violations must be True when fuse violations exist"
+    )
+
+
+@_scipy_skip()
+def test_main_fuse_battery_ev_exceed_fuse_throttles_charging():
+    """Battery + EV + house load would exceed fuse → MILP throttles charging.
+
+    With a 10 A fuse, max per slot = 10*230*3/1000*1 = 6.9 kWh.
+    House load 0.5 kWh + max charge 5.0 kWh = 5.5 kWh < 6.9 kWh (OK).
+    But with EV adding 3.0 kWh, total = 8.5 kWh > 6.9 kWh.
+    The MILP must throttle either battery or EV charging to stay within limit.
+    """
+    slots = [
+        _make_slot(hour=h, import_price=0.05, consumption_kwh=0.5) for h in range(8)
+    ]
+
+    ev_cfg = EVConfig(
+        enabled=True,
+        capacity_kwh=50.0,
+        initial_soc_kwh=0.0,
+        target_kwh=10.0,
+        max_charge_per_slot=3.0,
+        charger_efficiency=0.95,
+        deadline_slot=7,
+    )
+
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=9.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+        main_fuse_amps=10.0,
+        ev_configs=[ev_cfg],
+    )
+
+    assert result is not None, "MILP must return a plan"
+    milp_slots, diag = result
+
+    # Check that total grid import per slot never exceeds the fuse limit
+    # (allowing for penalty absorption)
+    max_per_slot_kwh = 10.0 * 230.0 * 3.0 / 1000.0 * 1.0  # 6.9 kWh
+    for s in milp_slots:
+        # Grid import is not directly on the slot after MILP — it's computed
+        # by soc_simulation.  Instead, check that the fuse violation is small.
+        pass
+
+    # The fuse violation should be zero or very small because the MILP
+    # can throttle charging to stay within the limit
+    fuse_violation = diag.get("total_fuse_violation_kwh", 1.0)
+    assert fuse_violation < 0.01, (
+        f"Fuse violation should be near-zero when MILP can throttle, got {fuse_violation}"
+    )
+
+
+@_scipy_skip()
+def test_main_fuse_diagnostics_contains_fuse_violation_kwh():
+    """Verify total_fuse_violation_kwh is present in diagnostics dict."""
+    slots = _make_arbitrage_slots([0, 1, 2, 3], [20, 21, 22, 23])
+
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=9.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+        main_fuse_amps=25.0,
+    )
+
+    assert result is not None
+    _milp_slots, diag = result
+
+    assert "total_fuse_violation_kwh" in diag, (
+        "Diagnostics must contain total_fuse_violation_kwh key"
+    )
+    assert isinstance(diag["total_fuse_violation_kwh"], float), (
+        "total_fuse_violation_kwh must be a float"
+    )
+
+
+@_scipy_skip()
+def test_main_fuse_has_violations_flag():
+    """Verify has_violations flag is set when fuse violations exist."""
+    slots = _make_arbitrage_slots([0, 1, 2, 3], [20, 21, 22, 23])
+
+    # With a very restrictive fuse, violations should occur
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=9.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+        main_fuse_amps=1.0,
+    )
+
+    assert result is not None
+    _milp_slots, diag = result
+
+    assert diag.get("has_violations", False), (
+        "has_violations must be True when fuse violations exist"
+    )

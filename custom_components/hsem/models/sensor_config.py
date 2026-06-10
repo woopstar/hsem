@@ -160,6 +160,9 @@ class SensorConfig:
     house_consumption_power: str | None = None
     solar_production_power: str | None = None
     house_power_includes_ev_charger_power: bool = False
+    #: Main fuse/breaker rating in amps (0 = disabled).  The MILP optimizer
+    #: uses this as a soft constraint on total grid import power.
+    main_fuse_amps: int = 0
 
     # Solcast
     solcast_pv_forecast_forecast_today: str | None = None

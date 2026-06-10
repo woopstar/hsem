@@ -860,10 +860,18 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     ):
         diag = winner.diagnostics
         total = diag.get("total_violation_kwh", 0.0)
-        warnings.append(
-            f"MILP: SoC penalty violations detected (total={total:.4f} kWh). "
-            f"The plan may have been forced due to out-of-bounds initial SoC."
-        )
+        fuse_total = diag.get("total_fuse_violation_kwh", 0.0)
+        parts: list[str] = []
+        if total > 1e-9:
+            parts.append(f"SoC penalty={total:.4f} kWh")
+        if fuse_total > 1e-9:
+            parts.append(f"fuse excess={fuse_total:.4f} kWh")
+        if parts:
+            warnings.append(
+                f"MILP: Penalty violations detected ({', '.join(parts)}). "
+                f"The plan may have been forced due to out-of-bounds initial SoC "
+                f"or main fuse limit."
+            )
     # Step 5 — finalize plan from winner
     slots = winner.slots
     apply_optimization_strategy(
