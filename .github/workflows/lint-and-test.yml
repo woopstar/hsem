@@ -2,9 +2,10 @@ name: Lint and Test
 
 on:
   push:
-    branches: [main, dev]
+    branches:
+      - main
   pull_request:
-    branches: [main, dev]
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: read

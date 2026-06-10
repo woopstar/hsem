@@ -896,6 +896,34 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         charge_efficiency_pct=inp.battery_charge_efficiency_pct,
         discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
     )
+
+    # Post-hoc main fuse check — runs regardless of which candidate won.
+    # Compares each future slot's simulated grid import against the fuse
+    # rating so fuse protection is not dependent on the MILP candidate.
+    if inp.main_fuse_amps is not None and inp.main_fuse_amps > 0:
+        sdh = inp.interval_minutes / 60.0
+        max_per_slot_kwh = inp.main_fuse_amps * 230.0 * 3.0 / 1000.0 * sdh
+        total_fuse_excess = 0.0
+        for s in slots:
+            if s.grid_import_kwh > max_per_slot_kwh + 1e-9:
+                excess = s.grid_import_kwh - max_per_slot_kwh
+                total_fuse_excess += excess
+                log_planner(
+                    "warning",
+                    "[core] Main fuse violation in slot %s: "
+                    "grid_import=%.3f kWh  limit=%.3f kWh  excess=%.3f kWh",
+                    s.start.isoformat(),
+                    s.grid_import_kwh,
+                    max_per_slot_kwh,
+                    excess,
+                )
+        if total_fuse_excess > 1e-9:
+            warnings.append(
+                f"Main fuse ({inp.main_fuse_amps:.0f} A) exceeded in plan: "
+                f"total excess={total_fuse_excess:.4f} kWh "
+                f"(limit={max_per_slot_kwh:.3f} kWh/slot)."
+            )
+
     _EV_KEEP = frozenset(
         {
             Recommendations.BatteriesChargeGrid.value,
