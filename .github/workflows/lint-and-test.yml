@@ -36,7 +36,9 @@ jobs:
             tox-${{ runner.os }}-
 
       - name: Install tox with uv support
-        run: uv pip install --system --only-binary :all: tox==4.55.1 tox-uv==1.35.2
+        run: >-
+          uv pip install --system --only-binary ':all:'
+          tox==4.55.1 tox-uv==1.35.2
 
       - name: Format and lint with tox
         run: tox -e lint
@@ -66,7 +68,9 @@ jobs:
             tox-${{ runner.os }}-
 
       - name: Install tox with uv support
-        run: uv pip install --system --only-binary :all: tox==4.55.1 tox-uv==1.35.2
+        run: >-
+          uv pip install --system --only-binary ':all:'
+          tox==4.55.1 tox-uv==1.35.2
 
       - name: Type check with tox
         run: tox -e typing
@@ -96,7 +100,9 @@ jobs:
             tox-${{ runner.os }}-
 
       - name: Install tox with uv support
-        run: uv pip install --system --only-binary :all: tox==4.55.1 tox-uv==1.35.2
+        run: >-
+          uv pip install --system --only-binary ':all:'
+          tox==4.55.1 tox-uv==1.35.2
 
       - name: Run quality checks with tox
         run: tox -e quality
@@ -130,7 +136,9 @@ jobs:
             tox-${{ runner.os }}-
 
       - name: Install tox with uv support
-        run: uv pip install --system --only-binary :all: tox==4.55.1 tox-uv==1.35.2
+        run: >-
+          uv pip install --system --only-binary ':all:'
+          tox==4.55.1 tox-uv==1.35.2
 
       - name: Run tests with tox
         run: tox -e py314
