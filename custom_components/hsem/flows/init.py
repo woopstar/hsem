@@ -64,6 +64,7 @@ async def get_init_step_schema(
                     "select": {
                         "multiple": False,
                         "translation_key": "update_interval_minutes",
+                        "unit_of_measurement": UnitOfTime.MINUTES,
                         "mode": "list",
                         "options": [
                             "15",
@@ -84,13 +85,13 @@ async def get_init_step_schema(
                     "select": {
                         "multiple": False,
                         "translation_key": "update_interval_length",
+                        "unit_of_measurement": UnitOfTime.HOURS,
                         "mode": "list",
                         "options": [
                             "12",
                             "24",
                             "36",
                             "48",
-                            "72",
                         ],
                     }
                 }

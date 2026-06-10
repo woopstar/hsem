@@ -18,6 +18,7 @@ from __future__ import annotations
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.selector import selector
 
@@ -98,6 +99,7 @@ async def get_prices_step_schema(
                     "select": {
                         "multiple": False,
                         "translation_key": "update_interval_minutes",
+                        "unit_of_measurement": UnitOfTime.MINUTES,
                         "mode": "list",
                         "options": [
                             "15",
