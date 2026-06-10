@@ -7,6 +7,7 @@ consumption power and solar production power.
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import UnitOfElectricCurrent
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.selector import selector
 
@@ -31,9 +32,16 @@ async def get_power_step_schema(
             vol.Optional(
                 "hsem_main_fuse_amps",
                 default=get_config_value(config_entry, "hsem_main_fuse_amps"),
-            ): vol.All(
-                vol.Coerce(int),
-                vol.Range(min=0, max=125),
+            ): selector(
+                {
+                    "number": {
+                        "min": 0,
+                        "max": 125,
+                        "step": 1,
+                        "mode": "slider",
+                        "unit_of_measurement": UnitOfElectricCurrent.AMPERE,
+                    }
+                }
             ),
         }
     )
