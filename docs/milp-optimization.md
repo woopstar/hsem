@@ -78,6 +78,28 @@ where `E` is the number of active EVs.
 
 The EV charger AC load entering the energy balance equation is `evN_c[t] / charger_efficiency`.
 
+### Fuse constraint extension (issue #567)
+
+When `main_fuse_amps > 0`, the variable vector expands further:
+
+$$
+\text{total variables} = 8n + n \cdot E + E + n
+$$
+
+| Offset | Variable | Name | Description | Bounds |
+|---|---|---|---|---|
+| after EV vars | `gi_pen[t]` | `gi_pen_off` | Grid import fuse penalty — kWh exceeding the main fuse rating | `[0, ∞)` |
+
+The max grid import per slot is converted from amps to kWh/slot:
+
+$$
+\operatorname{max\_grid\_import} = \frac{\operatorname{amps} \times 230 \times 3}{1000} \times \frac{\operatorname{interval\_minutes}}{60}
+$$
+
+This assumes balanced three-phase load at 230 V phase-to-neutral.
+
+The penalty uses the same high coefficient as SoC penalties (`max(p_imp) × 100`), ensuring the solver only exceeds the fuse limit when physically unavoidable (e.g. house base load alone exceeds the rating). When `main_fuse_amps` is `None` or 0, no variables or constraints are added — behaviour is unchanged.
+
 ---
 
 ## Objective function
@@ -99,7 +121,9 @@ $$
     - & \gamma \cdot \bigl( ec[t] - ed[t] \bigr)
     && \text{terminal-SoC replacement credit} \\
     + & p_{\mathrm{soc}} \cdot \bigl( \operatorname{s\_max\_pen}[t] + \operatorname{s\_min\_pen}[t] \bigr)
-    && \text{SoC soft-constraint penalties}
+    && \text{SoC soft-constraint penalties} \\
+    + & p_{\mathrm{fuse}} \cdot \operatorname{gi\_pen}[t]
+    && \text{Main fuse grid-import penalty}
 \bigg] \\
 \end{aligned}
 $$
@@ -122,6 +146,7 @@ Where:
 | $\epsilon_{\mathrm{dis}}$ | Discharge-side loss fraction: $\epsilon_{\mathrm{dis}} = 1 - \eta_{\mathrm{dis}}$ |
 | $\gamma$ | Terminal-SoC replacement price (currency/kWh), from the engine |
 | $p_{\mathrm{soc}}$ | SoC penalty cost: $\max(p_{\mathrm{imp}}) \times 100$ |
+| $p_{\mathrm{fuse}}$ | Fuse penalty cost: $\max(p_{\mathrm{imp}}) \times 100$ (same magnitude as SoC) |
 | $p_{\mathrm{ev\_pen}}^{(v)}$ | EV deadline penalty for EV v: $\max(p_{\mathrm{imp}}) \cdot \mathrm{capacity} \cdot 100$ |
 
 ---
@@ -182,6 +207,16 @@ $$
 $$
 \operatorname{initial\_soc}_v + \sum_{k=0}^{D_v} \operatorname{ev\_c}_v[k] + \operatorname{ev\_pen}_v \geq \operatorname{target}_v
 $$
+
+**Main fuse grid import limit (soft):**
+
+For each slot $t$, when `main_fuse_amps > 0`:
+
+$$
+gi[t] - \operatorname{gi\_pen}[t] \leq \frac{\operatorname{amps} \times 230 \times 3}{1000} \times \frac{\operatorname{interval\_minutes}}{60}
+$$
+
+The penalty variable `gi_pen[t]` absorbs any excess at high cost (`p_fuse`), preventing infeasibility when house base load alone exceeds the fuse rating. When `main_fuse_amps` is `None` or 0, this constraint is not added.
 
 Where $D_v$ is the deadline slot index for EV v.
 
