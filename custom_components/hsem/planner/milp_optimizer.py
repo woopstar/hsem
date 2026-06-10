@@ -105,6 +105,7 @@ def solve_milp(
     *,
     min_export_price: float = 0.0,
     ev_configs: list[EVConfig] | None = None,
+    main_fuse_amps: float | None = None,
 ) -> tuple[list[PlannedSlot], dict] | None:
     """Solve the LP and return a deep-copy slot list with MILP recommendations.
 
@@ -186,6 +187,13 @@ def solve_milp(
             slots is ignored for EV-enabled slots (the MILP decides allocation).
             ``None`` (default) uses pre-computed ``ev_planned_load_kwh`` as
             fixed inputs (backward-compatible behaviour).
+        main_fuse_amps:
+            Main fuse/breaker rating in amps.  When provided and > 0, a soft
+            constraint limits total grid import power per slot to
+            ``main_fuse_amps * 230 * 3 / 1000 * (interval_minutes / 60)`` kWh.
+            A penalty variable ``gi_pen[t]`` absorbs any excess, preventing
+            infeasibility when house base load alone exceeds the fuse rating.
+            ``None`` or 0 disables the constraint (identical to current behaviour).
 
     Returns:
         A tuple ``(slots, diagnostics)`` where:
@@ -384,6 +392,33 @@ def solve_milp(
         n_vars += 1  # single penalty per EV
     num_evs = len(active_evs)
 
+    # --- Fuse constraint variables ---
+    # When main_fuse_amps is provided and > 0, add gi_pen[t] penalty
+    # variables that absorb grid import exceeding the fuse rating.
+    fuse_active = main_fuse_amps is not None and main_fuse_amps > 1e-9
+    if fuse_active:
+        gi_pen_off = n_vars
+        n_vars += m  # gi_pen[0..m-1] per slot
+        # Calculate max grid import per slot in kWh
+        # Formula: amps * 230V * 3 phases / 1000 (kW) * (interval_minutes / 60) (hours)
+        # We derive interval_minutes from the first slot's duration
+        first_slot = slots[future_idx[0]]
+        interval_minutes = (first_slot.end - first_slot.start).total_seconds() / 60.0
+        assert main_fuse_amps is not None  # guarded by fuse_active
+        max_grid_import_per_slot_kwh = (
+            main_fuse_amps * 230.0 * 3.0 / 1000.0 * (interval_minutes / 60.0)
+        )
+        log_planner(
+            "debug",
+            "[milp] Main fuse constraint active: %d A → max %.3f kWh/slot "
+            "(interval=%.0f min)",
+            main_fuse_amps,
+            max_grid_import_per_slot_kwh,
+            interval_minutes,
+        )
+    else:
+        max_grid_import_per_slot_kwh = 0.0
+
     # Resolve charge/discharge efficiencies for the energy balance equation.
     # The MILP must account for real-world conversion losses so its solution
     # matches the cost function's total_cost (which includes conversion loss
@@ -466,6 +501,20 @@ def solve_milp(
             # rather than miss the deadline target.
             ev_penalty_cost = max(p_imp_max, 0.1) * max(ev.capacity_kwh, 1.0) * 100.0
             c_obj[ev_pen_offsets[ev_idx]] = ev_penalty_cost
+
+    # --- Fuse penalty cost (same magnitude as SOC penalties) ---
+    # P_fuse = max(p_imp) * 100 — high enough that the solver only exceeds
+    # the fuse limit when physically unavoidable.
+    if fuse_active:
+        p_fuse = max(p_imp_max, 0.1) * 100.0
+        for t in range(m):
+            discount = 1.0
+            if use_discount:
+                slot = slots[future_idx[t]]
+                slot_mid = slot.start + (slot.end - slot.start) / 2
+                hours_ahead = max((slot_mid - now).total_seconds() / 3600.0, 0.0)
+                discount = time_discount_rate**hours_ahead
+            c_obj[gi_pen_off + t] = p_fuse * discount
 
     # ------------------------------------------------------------------
     # Equality constraints: energy balance per slot
@@ -596,6 +645,25 @@ def solve_milp(
                 ev_row += 1
 
     # ------------------------------------------------------------------
+    # Fuse constraint (soft): gi[t] - gi_pen[t] ≤ max_grid_import_per_slot_kwh
+    # The penalty variable gi_pen[t] absorbs any excess at high cost,
+    # preventing infeasibility when house base load alone exceeds the fuse.
+    # ------------------------------------------------------------------
+    fuse_rows = m if fuse_active else 0
+    if fuse_active:
+        existing_rows = soc_rows + mutex_rows + cycle_rows + ev_total_rows
+        A_ub_old = A_ub
+        b_ub_old = b_ub
+        A_ub = np.zeros((existing_rows + fuse_rows, n_vars))
+        b_ub = np.zeros(existing_rows + fuse_rows)
+        A_ub[:existing_rows, :] = A_ub_old
+        b_ub[:existing_rows] = b_ub_old
+        for t in range(m):
+            A_ub[existing_rows + t, gi_off + t] = 1.0
+            A_ub[existing_rows + t, gi_pen_off + t] = -1.0
+            b_ub[existing_rows + t] = max_grid_import_per_slot_kwh
+
+    # ------------------------------------------------------------------
     # Variable bounds: all ≥ 0, charge/discharge capped by power limits.
     # Penalty variables are unbounded above (can absorb arbitrary
     # violations) and non-negative (violations cannot be negative).
@@ -618,6 +686,9 @@ def solve_milp(
         bounds += [(0.0, ev.max_charge_per_slot)] * m
         # ev deadline penalty: [0, unbounded)
         bounds.append((0.0, None))
+    # --- Fuse penalty bounds ---
+    if fuse_active:
+        bounds += [(0.0, None)] * m  # gi_pen[t] (penalty, ≥ 0)
 
     # ------------------------------------------------------------------
     # Solve using HiGHS
@@ -845,6 +916,35 @@ def solve_milp(
                 v["kwh"],
             )
 
+    # --- Extract fuse penalty values ---
+    total_fuse_violation_kwh = 0.0
+    if fuse_active:
+        gi_pen_sol = result.x[gi_pen_off : gi_pen_off + m]
+        gi_pen_list = [float(v) for v in gi_pen_sol]
+        total_fuse_violation_kwh = sum(gi_pen_list)
+        if total_fuse_violation_kwh > 1e-6:
+            has_violations = True
+            for t in range(m):
+                if gi_pen_list[t] > 1e-6:
+                    slot_i = future_idx[t]
+                    s_start = slots[slot_i].start.isoformat()
+                    gi_val = float(result.x[gi_off + t])
+                    log_planner(
+                        "warning",
+                        "[milp] Fuse violation slot %d (%s): "
+                        "grid_import=%.3f kWh  limit=%.3f kWh  excess=%.3f kWh",
+                        t,
+                        s_start,
+                        gi_val,
+                        max_grid_import_per_slot_kwh,
+                        gi_pen_list[t],
+                    )
+            log_planner(
+                "warning",
+                "[milp] Main fuse violations detected: total=%.4f kWh excess",
+                total_fuse_violation_kwh,
+            )
+
     log_planner(
         "debug",
         "[milp] LP solved: objective=%.4f  charge_slots=%d  discharge_slots=%d"
@@ -881,6 +981,7 @@ def solve_milp(
         "s_min_pen": s_min_pen_list,
         "has_violations": has_violations,
         "total_violation_kwh": round(total_violation, 4),
+        "total_fuse_violation_kwh": round(total_fuse_violation_kwh, 4),
     }
 
     # --- EV diagnostics ---

@@ -61,7 +61,10 @@ from custom_components.hsem.planner.slot_population import (
 from custom_components.hsem.planner.soc_simulation import simulate_soc
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import log_planner
-from custom_components.hsem.utils.misc import calculate_recommended_threshold
+from custom_components.hsem.utils.misc import (
+    calculate_recommended_threshold,
+    clamp_efficiency,
+)
 from custom_components.hsem.utils.recommendations import Recommendations
 
 
@@ -860,10 +863,18 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     ):
         diag = winner.diagnostics
         total = diag.get("total_violation_kwh", 0.0)
-        warnings.append(
-            f"MILP: SoC penalty violations detected (total={total:.4f} kWh). "
-            f"The plan may have been forced due to out-of-bounds initial SoC."
-        )
+        fuse_total = diag.get("total_fuse_violation_kwh", 0.0)
+        parts: list[str] = []
+        if total > 1e-9:
+            parts.append(f"SoC penalty={total:.4f} kWh")
+        if fuse_total > 1e-9:
+            parts.append(f"fuse excess={fuse_total:.4f} kWh")
+        if parts:
+            warnings.append(
+                f"MILP: Penalty violations detected ({', '.join(parts)}). "
+                f"The plan may have been forced due to out-of-bounds initial SoC "
+                f"or main fuse limit."
+            )
     # Step 5 — finalize plan from winner
     slots = winner.slots
     apply_optimization_strategy(
@@ -888,6 +899,66 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         charge_efficiency_pct=inp.battery_charge_efficiency_pct,
         discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
     )
+
+    # Post-hoc main fuse check — runs regardless of which candidate won.
+    # If any slot exceeds the fuse rating, throttle EV charger power and
+    # battery charge energy to bring total grid import within the limit.
+    if inp.main_fuse_amps is not None and inp.main_fuse_amps > 0:
+        slot_hours = inp.interval_minutes / 60.0
+        max_per_slot_kwh = inp.main_fuse_amps * 230.0 * 3.0 / 1000.0 * slot_hours
+
+        for s in slots:
+            if s.grid_import_kwh <= max_per_slot_kwh + 1e-9:
+                continue
+
+            excess_kwh = s.grid_import_kwh - max_per_slot_kwh
+            excess_power_w = round((excess_kwh / slot_hours) * 1000.0)
+
+            # Step 1 — throttle EV charger power first.
+            for attr in (
+                "ev_charger_calculated_power",
+                "ev_second_charger_calculated_power",
+            ):
+                ev_w = round(getattr(s, attr))
+                if ev_w > 0 and excess_power_w > 0:
+                    cut = min(ev_w, excess_power_w)
+                    setattr(s, attr, ev_w - cut)
+                    excess_power_w -= cut
+
+            # Step 2 — throttle battery charging with remaining excess.
+            if excess_power_w > 0 and s.batteries_charged_kwh > 1e-9:
+                chg_eff = clamp_efficiency(inp.battery_charge_efficiency_pct)
+                excess_ac_kwh = (excess_power_w / 1000.0) * slot_hours
+                dc_cut = excess_ac_kwh * chg_eff
+                s.batteries_charged_kwh = round(
+                    max(0.0, s.batteries_charged_kwh - dc_cut), 3
+                )
+
+                # If we zeroed battery charging, clear the recommendation
+                # so the applier does not enable TOU charge for this slot.
+                if s.batteries_charged_kwh < 1e-6:
+                    s.recommendation = None
+
+                excess_power_w = 0
+
+            if excess_power_w > 0:
+                log_planner(
+                    "warning",
+                    "[core] Main fuse violation in slot %s: "
+                    "grid_import=%.3f kWh  limit=%.3f kWh  "
+                    "unresolved_excess=%d W",
+                    s.start.isoformat(),
+                    s.grid_import_kwh,
+                    max_per_slot_kwh,
+                    excess_power_w,
+                )
+                warnings.append(
+                    f"Main fuse ({inp.main_fuse_amps:.0f} A) exceeded in slot "
+                    f"{s.start.isoformat()}: "
+                    f"{excess_kwh:.3f} kWh above limit "
+                    f"(EV/battery throttling insufficient)."
+                )
+
     _EV_KEEP = frozenset(
         {
             Recommendations.BatteriesChargeGrid.value,

@@ -78,6 +78,28 @@ where `E` is the number of active EVs.
 
 The EV charger AC load entering the energy balance equation is `evN_c[t] / charger_efficiency`.
 
+### Fuse constraint extension (issue #567)
+
+When `main_fuse_amps > 0`, the variable vector expands further:
+
+$$
+\text{total variables} = 8n + n \cdot E + E + n
+$$
+
+| Offset | Variable | Name | Description | Bounds |
+|---|---|---|---|---|
+| after EV vars | `gi_pen[t]` | `gi_pen_off` | Grid import fuse penalty — kWh exceeding the main fuse rating | `[0, ∞)` |
+
+The max grid import per slot is converted from amps to kWh/slot:
+
+$$
+\operatorname{max\_grid\_import} = \frac{\operatorname{amps} \times 230 \times 3}{1000} \times \frac{\operatorname{interval\_minutes}}{60}
+$$
+
+This assumes balanced three-phase load at 230 V phase-to-neutral.
+
+The penalty uses the same high coefficient as SoC penalties (`max(p_imp) × 100`), ensuring the solver only exceeds the fuse limit when physically unavoidable (e.g. house base load alone exceeds the rating). When `main_fuse_amps` is `None` or 0, no variables or constraints are added — behaviour is unchanged.
+
 ---
 
 ## Objective function
@@ -98,8 +120,10 @@ $$
     && \text{discharge-side conversion loss cost} \\
     - & \gamma \cdot \bigl( ec[t] - ed[t] \bigr)
     && \text{terminal-SoC replacement credit} \\
-    + & p_{\mathrm{soc}} \cdot \bigl( \mathrm{s\_max\_pen}[t] + \mathrm{s\_min\_pen}[t] \bigr)
-    && \text{SoC soft-constraint penalties}
+    + & p_{\mathrm{soc}} \cdot \bigl( \operatorname{s\_max\_pen}[t] + \operatorname{s\_min\_pen}[t] \bigr)
+    && \text{SoC soft-constraint penalties} \\
+    + & p_{\mathrm{fuse}} \cdot \operatorname{gi\_pen}[t]
+    && \text{Main fuse grid-import penalty}
 \bigg] \\
 \end{aligned}
 $$
@@ -107,7 +131,7 @@ $$
 Plus EV deadline penalties (undiscounted — deadline is a hard commitment):
 
 $$
-\sum_{v=1}^{E} p_{\mathrm{ev\_pen}}^{(v)} \cdot \mathrm{ev\_pen}_v
+\sum_{v=1}^{E} p_{\mathrm{ev\_pen}}^{(v)} \cdot \operatorname{ev\_pen}_v
 $$
 
 Where:
@@ -122,6 +146,7 @@ Where:
 | $\epsilon_{\mathrm{dis}}$ | Discharge-side loss fraction: $\epsilon_{\mathrm{dis}} = 1 - \eta_{\mathrm{dis}}$ |
 | $\gamma$ | Terminal-SoC replacement price (currency/kWh), from the engine |
 | $p_{\mathrm{soc}}$ | SoC penalty cost: $\max(p_{\mathrm{imp}}) \times 100$ |
+| $p_{\mathrm{fuse}}$ | Fuse penalty cost: $\max(p_{\mathrm{imp}}) \times 100$ (same magnitude as SoC) |
 | $p_{\mathrm{ev\_pen}}^{(v)}$ | EV deadline penalty for EV v: $\max(p_{\mathrm{imp}}) \cdot \mathrm{capacity} \cdot 100$ |
 
 ---
@@ -134,12 +159,12 @@ For each slot $t$:
 
 $$
 gi[t] + pv[t] + ed[t] \cdot \eta_{\mathrm{dis}} =
-\mathrm{base\_load}[t] + \frac{ec[t]}{\eta_{\mathrm{chg}}} + ge[t] + \sum_{v=1}^{E} \frac{\mathrm{ev\_c}_v[t]}{\eta_{\mathrm{charger}}^{(v)}}
+\operatorname{base\_load}[t] + \frac{ec[t]}{\eta_{\mathrm{chg}}} + ge[t] + \sum_{v=1}^{E} \frac{\operatorname{ev\_c}_v[t]}{\eta_{\mathrm{charger}}^{(v)}}
 $$
 
-- `base_load[t]` = $\max(\mathrm{net\_load}[t], 0)$ — demand the grid/battery must satisfy (kWh)
+- `base_load[t]` = $\max(\operatorname{net\_load}[t], 0)$ — demand the grid/battery must satisfy (kWh)
 - `net_load[t]` = `avg_house_consumption[t] - solcast_pv_estimate[t]` (when EV co-optimisation active)
-- `pv_avail[t]` = $\max(-\mathrm{net\_load}[t], 0)$ — PV surplus fixed to the `pv[t]` variable bounds
+- `pv_avail[t]` = $\max(-\operatorname{net\_load}[t], 0)$ — PV surplus fixed to the `pv[t]` variable bounds
 - EV charger efficiency re-scales DC-side charge to AC grid/PV load
 
 ### Inequality constraints
@@ -147,19 +172,19 @@ $$
 **SoC upper bound (soft):**
 
 $$
-\sum_{k=0}^{t} \bigl( ec[k] - ed[k] \bigr) - \mathrm{s\_max\_pen}[t] \leq C_u - soc_0
+\sum_{k=0}^{t} \bigl( ec[k] - ed[k] \bigr) - \operatorname{s\_max\_pen}[t] \leq C_u - soc_0
 $$
 
 **SoC lower bound (soft):**
 
 $$
--\sum_{k=0}^{t} \bigl( ec[k] - ed[k] \bigr) - \mathrm{s\_min\_pen}[t] \leq soc_0
+-\sum_{k=0}^{t} \bigl( ec[k] - ed[k] \bigr) - \operatorname{s\_min\_pen}[t] \leq soc_0
 $$
 
 **Mutual exclusion — no simultaneous charge + discharge:**
 
 $$
-\frac{ec[t]}{\mathrm{max\_charge}} + \frac{ed[t]}{\mathrm{max\_discharge}} \leq 1
+\frac{ec[t]}{\operatorname{max\_charge}} + \frac{ed[t]}{\operatorname{max\_discharge}} \leq 1
 $$
 
 **Cycle cost auxiliary — forcing $m[t] \geq ec[t]$ and $m[t] \geq ed[t]$:**
@@ -174,14 +199,24 @@ $$
 **EV cumulative SoC upper bound (per EV v):**
 
 $$
-\sum_{k=0}^{t} \mathrm{ev\_c}_v[k] \leq \mathrm{capacity}_v - \mathrm{initial\_soc}_v
+\sum_{k=0}^{t} \operatorname{ev\_c}_v[k] \leq \operatorname{capacity}_v - \operatorname{initial\_soc}_v
 $$
 
 **EV deadline target (soft, per EV v):**
 
 $$
-\mathrm{initial\_soc}_v + \sum_{k=0}^{D_v} \mathrm{ev\_c}_v[k] + \mathrm{ev\_pen}_v \geq \mathrm{target}_v
+\operatorname{initial\_soc}_v + \sum_{k=0}^{D_v} \operatorname{ev\_c}_v[k] + \operatorname{ev\_pen}_v \geq \operatorname{target}_v
 $$
+
+**Main fuse grid import limit (soft):**
+
+For each slot $t$, when `main_fuse_amps > 0`:
+
+$$
+gi[t] - \operatorname{gi\_pen}[t] \leq \frac{\operatorname{amps} \times 230 \times 3}{1000} \times \frac{\operatorname{interval\_minutes}}{60}
+$$
+
+The penalty variable `gi_pen[t]` absorbs any excess at high cost (`p_fuse`), preventing infeasibility when house base load alone exceeds the fuse rating. When `main_fuse_amps` is `None` or 0, this constraint is not added.
 
 Where $D_v$ is the deadline slot index for EV v.
 

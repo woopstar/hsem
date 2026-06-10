@@ -177,6 +177,8 @@ def build_sensor_config(
     cfg.house_power_includes_ev_charger_power = convert_to_boolean(
         get_config_value(config_entry, "hsem_house_power_includes_ev_charger_power")
     )
+    _main_fuse = convert_to_int(get_config_value(config_entry, "hsem_main_fuse_amps"))
+    cfg.main_fuse_amps = _main_fuse if _main_fuse is not None else 0
 
     # Solcast
     cfg.solcast_pv_forecast_forecast_today = get_config_value(

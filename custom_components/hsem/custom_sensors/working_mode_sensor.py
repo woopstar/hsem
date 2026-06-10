@@ -275,6 +275,7 @@ class HSEMWorkingModeSensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
             "months_summer": cfg.months_summer,
             "batteries_enable_excess_export": cfg.batteries_enable_excess_export,
             "batteries_excess_export_discharge_buffer": cfg.batteries_excess_export_discharge_buffer,
+            "main_fuse_amps": cfg.main_fuse_amps,
         }
 
         apply_summary = data.apply_summary

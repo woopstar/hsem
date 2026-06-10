@@ -214,6 +214,7 @@ def build_planner_input(
             usable_capacity=live.battery_usable_capacity_kwh,
         ),
         export_min_price=convert_to_float(cfg.export_electricity_min_price) or 0.0,
+        main_fuse_amps=(float(cfg.main_fuse_amps) if cfg.main_fuse_amps > 0 else None),
         months_winter=list(cfg.months_winter or []),
         house_power_includes_ev=bool(cfg.house_power_includes_ev_charger_power),
         live_net_consumption_w=convert_to_float(live.net_consumption_w) or 0.0,

@@ -2,9 +2,10 @@ name: Lint and Test
 
 on:
   push:
-    branches: [main, dev]
+    branches:
+      - main
   pull_request:
-    branches: [main, dev]
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: read
@@ -21,16 +22,21 @@ jobs:
         with:
           python-version: "3.14"
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.14"
+
       - name: Cache tox environments
         uses: actions/cache@v5
         with:
           path: .tox
-          key: tox-lint-${{ hashFiles('requirements.txt', 'requirements_lint.txt') }}
+          key: tox-${{ runner.os }}-${{ hashFiles('requirements*.txt') }}
           restore-keys: |
-            tox-lint-
+            tox-${{ runner.os }}-
 
-      - name: Install tox
-        run: python -m pip install tox==4.55.1
+      - name: Install tox with uv support
+        run: python -m pip install --only-binary ':all:' tox==4.55.1 tox-uv==1.35.2
 
       - name: Format and lint with tox
         run: tox -e lint
@@ -50,12 +56,12 @@ jobs:
         uses: actions/cache@v5
         with:
           path: .tox
-          key: tox-typing-${{ hashFiles('requirements.txt', 'requirements_typing.txt') }}
+          key: tox-${{ runner.os }}-${{ hashFiles('requirements*.txt') }}
           restore-keys: |
-            tox-typing-
+            tox-${{ runner.os }}-
 
-      - name: Install tox
-        run: python -m pip install tox==4.55.1
+      - name: Install tox with uv support
+        run: python -m pip install --only-binary ':all:' tox==4.55.1 tox-uv==1.35.2
 
       - name: Type check with tox
         run: tox -e typing
@@ -75,12 +81,12 @@ jobs:
         uses: actions/cache@v5
         with:
           path: .tox
-          key: tox-quality-${{ hashFiles('requirements.txt', 'requirements_test.txt') }}
+          key: tox-${{ runner.os }}-${{ hashFiles('requirements*.txt') }}
           restore-keys: |
-            tox-quality-
+            tox-${{ runner.os }}-
 
-      - name: Install tox
-        run: python -m pip install tox==4.55.1
+      - name: Install tox with uv support
+        run: python -m pip install --only-binary ':all:' tox==4.55.1 tox-uv==1.35.2
 
       - name: Run quality checks with tox
         run: tox -e quality
@@ -104,12 +110,12 @@ jobs:
         uses: actions/cache@v5
         with:
           path: .tox
-          key: tox-test-${{ hashFiles('requirements.txt', 'requirements_test.txt') }}
+          key: tox-${{ runner.os }}-${{ hashFiles('requirements*.txt') }}
           restore-keys: |
-            tox-test-
+            tox-${{ runner.os }}-
 
-      - name: Install tox
-        run: python -m pip install tox==4.55.1
+      - name: Install tox with uv support
+        run: python -m pip install --only-binary ':all:' tox==4.55.1 tox-uv==1.35.2
 
       - name: Run tests with tox
         run: tox -e py314
