@@ -1419,18 +1419,10 @@ def test_main_fuse_battery_ev_exceed_fuse_throttles_charging():
     )
 
     assert result is not None, "MILP must return a plan"
-    milp_slots, diag = result
-
-    # Check that total grid import per slot never exceeds the fuse limit
-    # (allowing for penalty absorption)
-    max_per_slot_kwh = 10.0 * 230.0 * 3.0 / 1000.0 * 1.0  # 6.9 kWh
-    for s in milp_slots:
-        # Grid import is not directly on the slot after MILP — it's computed
-        # by soc_simulation.  Instead, check that the fuse violation is small.
-        pass
+    _milp_slots, diag = result
 
     # The fuse violation should be zero or very small because the MILP
-    # can throttle charging to stay within the limit
+    # can throttle charging to stay within the limit.
     fuse_violation = diag.get("total_fuse_violation_kwh", 1.0)
     assert fuse_violation < 0.01, (
         f"Fuse violation should be near-zero when MILP can throttle, got {fuse_violation}"
