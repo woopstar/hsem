@@ -404,8 +404,9 @@ def solve_milp(
         # We derive interval_minutes from the first slot's duration
         first_slot = slots[future_idx[0]]
         interval_minutes = (first_slot.end - first_slot.start).total_seconds() / 60.0
+        _amps: float = main_fuse_amps  # type: float[type-narrowing]
         max_grid_import_per_slot_kwh = (
-            main_fuse_amps * 230.0 * 3.0 / 1000.0 * (interval_minutes / 60.0)
+            _amps * 230.0 * 3.0 / 1000.0 * (interval_minutes / 60.0)
         )
         log_planner(
             "debug",

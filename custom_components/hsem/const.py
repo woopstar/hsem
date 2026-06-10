@@ -94,7 +94,7 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_house_consumption_energy_weight_7d": 30,
     "hsem_house_consumption_power": "sensor.power_house_load",
     "hsem_house_power_includes_ev_charger_power": True,
-    "hsem_main_fuse_amps": 0,
+    "hsem_main_fuse_amps": 25,
     "hsem_huawei_solar_batteries_charging_cutoff_capacity": "number.batteries_end_of_charge_soc",
     "hsem_huawei_solar_batteries_end_of_discharge_soc": "number.batteries_end_of_discharge_soc",
     "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "select.batteries_excess_pv_energy_use_in_tou",
