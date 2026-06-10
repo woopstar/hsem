@@ -1276,7 +1276,7 @@ def test_main_fuse_none_no_constraint():
     assert result_none is not None
     assert result_no_param is not None
     slots_none, diag_none = result_none
-    slots_no_param, diag_no_param = result_no_param
+    slots_no_param, _diag_no_param = result_no_param
 
     # Recommendations should be identical
     for i in range(len(slots_none)):
@@ -1313,7 +1313,7 @@ def test_main_fuse_zero_no_constraint():
     assert result_zero is not None
     assert result_no_param is not None
     slots_zero, diag_zero = result_zero
-    slots_no_param, diag_no_param = result_no_param
+    slots_no_param, _diag_no_param = result_no_param
 
     for i in range(len(slots_zero)):
         assert slots_zero[i].recommendation == slots_no_param[i].recommendation, (
