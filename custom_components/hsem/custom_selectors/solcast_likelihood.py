@@ -76,6 +76,27 @@ class HSEMSolcastLikelihoodSelector(HSEMEntity, SelectEntity):
         self._attr_current_option = str(stored) if stored in _OPTIONS else _DEFAULT
 
     @override
+    async def async_added_to_hass(self) -> None:
+        """Register a config-entry update listener.
+
+        When the user changes a setting via the config/options flow, the
+        entity re-reads its value from the config entry so the UI stays
+        in sync.
+        """
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            self._config_entry.add_update_listener(self._async_handle_config_update)
+        )
+
+    async def _async_handle_config_update(
+        self, hass: HomeAssistant, entry: ConfigEntry
+    ) -> None:
+        """Re-read the current option from the updated config entry."""
+        stored = get_config_value(entry, _CONFIG_KEY)
+        self._attr_current_option = str(stored) if stored in _OPTIONS else _DEFAULT
+        self.async_write_ha_state()
+
+    @override
     async def async_select_option(self, option: str) -> None:
         """Handle the user selecting a new option.
 

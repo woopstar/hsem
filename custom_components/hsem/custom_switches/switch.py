@@ -68,6 +68,26 @@ class HSEMSwitch(HSEMEntity, SwitchEntity):
         self.entity_id = entity_id
         self._attr_is_on = bool(get_config_value(self._config_entry, description.key))
 
+    @override
+    async def async_added_to_hass(self) -> None:
+        """Register a config-entry update listener.
+
+        When the user changes a setting via the config/options flow, the
+        entity re-reads its value from the config entry so the UI stays
+        in sync.
+        """
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            self._config_entry.add_update_listener(self._async_handle_config_update)
+        )
+
+    async def _async_handle_config_update(
+        self, hass: HomeAssistant, entry: ConfigEntry
+    ) -> None:
+        """Re-read the current on/off state from the updated config entry."""
+        self._attr_is_on = bool(get_config_value(entry, self.entity_description.key))
+        self.async_write_ha_state()
+
     @property
     @override
     def extra_state_attributes(self) -> dict[str, Any]:
