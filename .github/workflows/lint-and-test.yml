@@ -133,7 +133,7 @@ jobs:
           echo "All tests passed (failures=$FAILURES errors=$ERRORS)"
 
       - name: Upload coverage artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: coverage
           path: ./coverage.xml
