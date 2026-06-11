@@ -44,13 +44,15 @@
           "hsem_ev_planned_load_enabled": "Aktiver EV-planlagt belastningsintegration",
           "hsem_ev_planned_load_battery_capacity_kwh": "EV batterikapacitet (kWh)",
           "hsem_ev_planned_load_charger_power_kw": "EV lader-effekt (kW)",
-          "hsem_ev_planned_load_charger_efficiency": "EV lader-efficiens"
+          "hsem_ev_planned_load_charger_efficiency": "EV lader-efficiens",
+          "hsem_ev_planned_load_charger_min_power_w": "EV lader minimumseffekt (W)"
         },
         "data_description": {
           "hsem_ev_planned_load_enabled": "Aktiver eller deaktiver planlagt EV-opladningsbelastningsintegration.",
           "hsem_ev_planned_load_battery_capacity_kwh": "EV-batteriets nominelle kapacitet i kWh.",
           "hsem_ev_planned_load_charger_power_kw": "AC-udgangseffekt for EV-laderen i kW.",
-          "hsem_ev_planned_load_charger_efficiency": "Laderefficiens i procent (1-100). Standard: 100."
+          "hsem_ev_planned_load_charger_efficiency": "Laderefficiens i procent (1-100). Standard: 100.",
+          "hsem_ev_planned_load_charger_min_power_w": "Minimum AC-effekt (W) som EV-laderen skal bruge for at starte opladning. Under dette niveau vil laderen ikke fungere. Standard: 1380 W (230 V × 6 A)."
         },
         "description": "Konfigurer valgfri planlagt EV-opladningsbelastningsintegration. NÃ¥r aktiveret, tager HSEM hÃ¸jde for kommende EV-opladningsbehov pr. planslot.",
         "title": "EV-planlagt belastningsintegration"
@@ -60,13 +62,15 @@
           "hsem_ev_second_planned_load_enabled": "Aktiver EV 2-planlagt belastningsintegration",
           "hsem_ev_second_planned_load_battery_capacity_kwh": "EV 2 batterikapacitet (kWh)",
           "hsem_ev_second_planned_load_charger_power_kw": "EV 2 lader-effekt (kW)",
-          "hsem_ev_second_planned_load_charger_efficiency": "EV 2 lader-efficiens"
+          "hsem_ev_second_planned_load_charger_efficiency": "EV 2 lader-efficiens",
+          "hsem_ev_second_planned_load_charger_min_power_w": "EV 2 lader minimumseffekt (W)"
         },
         "data_description": {
           "hsem_ev_second_planned_load_enabled": "Aktiver eller deaktiver planlagt opladningsbelastningsintegration for den anden EV.",
           "hsem_ev_second_planned_load_battery_capacity_kwh": "Nominel batterikapacitet for den anden EV i kWh.",
           "hsem_ev_second_planned_load_charger_power_kw": "AC-udgangseffekt for den anden EV-lader i kW.",
-          "hsem_ev_second_planned_load_charger_efficiency": "Anden EV-lader-efficiens i procent (1-100). Standard: 100."
+          "hsem_ev_second_planned_load_charger_efficiency": "Anden EV-lader-efficiens i procent (1-100). Standard: 100.",
+          "hsem_ev_second_planned_load_charger_min_power_w": "Minimum AC-effekt (W) som den anden EV-lader skal bruge for at starte opladning. Standard: 1380 W (230 V × 6 A)."
         },
         "description": "Konfigurer valgfri planlagt opladningsbelastningsintegration for den anden EV. Vises kun, nÃ¥r en anden EV-lader er aktiveret.",
         "title": "EV 2-planlagt belastningsintegration"
@@ -411,35 +415,39 @@
       },
       "ev_planned_load": {
         "data": {
-          "hsem_ev_planned_load_enabled": "Enable EV Planned Load Integration",
-          "hsem_ev_planned_load_battery_capacity_kwh": "EV Battery Capacity (kWh)",
-          "hsem_ev_planned_load_charger_power_kw": "EV Charger Power (kW)",
-          "hsem_ev_planned_load_charger_efficiency": "EV Charger Efficiency"
+          "hsem_ev_planned_load_enabled": "Aktiver EV-planlagt belastningsintegration",
+          "hsem_ev_planned_load_battery_capacity_kwh": "EV batterikapacitet (kWh)",
+          "hsem_ev_planned_load_charger_power_kw": "EV lader-effekt (kW)",
+          "hsem_ev_planned_load_charger_efficiency": "EV lader-efficiens",
+          "hsem_ev_planned_load_charger_min_power_w": "EV lader minimumseffekt (W)"
         },
         "data_description": {
-          "hsem_ev_planned_load_enabled": "Enable or disable planned EV charging load integration.",
-          "hsem_ev_planned_load_battery_capacity_kwh": "Nameplate battery capacity of the EV in kWh.",
-          "hsem_ev_planned_load_charger_power_kw": "AC output power of the EV charger in kW.",
-          "hsem_ev_planned_load_charger_efficiency": "Charger efficiency as a percentage (1-100). Default: 100."
+          "hsem_ev_planned_load_enabled": "Aktiver eller deaktiver planlagt EV-opladningsbelastningsintegration.",
+          "hsem_ev_planned_load_battery_capacity_kwh": "EV-batteriets nominelle kapacitet i kWh.",
+          "hsem_ev_planned_load_charger_power_kw": "AC-udgangseffekt for EV-laderen i kW.",
+          "hsem_ev_planned_load_charger_efficiency": "Laderefficiens i procent (1-100). Standard: 100.",
+          "hsem_ev_planned_load_charger_min_power_w": "Minimum AC-effekt (W) som EV-laderen skal bruge for at starte opladning. Standard: 1380 W (230 V × 6 A)."
         },
-        "description": "Configure optional planned EV charging load integration. When enabled, HSEM accounts for upcoming EV charging demand per planner slot.",
-        "title": "EV Planned Load Integration"
+        "description": "Konfigurer valgfri planlagt EV-opladningsbelastningsintegration. Når aktiveret, tager HSEM højde for kommende EV-opladningsbehov pr. planslot.",
+        "title": "EV-planlagt belastningsintegration"
       },
       "ev_second_planned_load": {
         "data": {
-          "hsem_ev_second_planned_load_enabled": "Enable EV 2 Planned Load Integration",
-          "hsem_ev_second_planned_load_battery_capacity_kwh": "EV 2 Battery Capacity (kWh)",
-          "hsem_ev_second_planned_load_charger_power_kw": "EV 2 Charger Power (kW)",
-          "hsem_ev_second_planned_load_charger_efficiency": "EV 2 Charger Efficiency"
+          "hsem_ev_second_planned_load_enabled": "Aktiver EV 2-planlagt belastningsintegration",
+          "hsem_ev_second_planned_load_battery_capacity_kwh": "EV 2 batterikapacitet (kWh)",
+          "hsem_ev_second_planned_load_charger_power_kw": "EV 2 lader-effekt (kW)",
+          "hsem_ev_second_planned_load_charger_efficiency": "EV 2 lader-efficiens",
+          "hsem_ev_second_planned_load_charger_min_power_w": "EV 2 lader minimumseffekt (W)"
         },
         "data_description": {
-          "hsem_ev_second_planned_load_enabled": "Enable or disable planned charging load integration for the second EV.",
-          "hsem_ev_second_planned_load_battery_capacity_kwh": "Nameplate battery capacity of the second EV in kWh.",
-          "hsem_ev_second_planned_load_charger_power_kw": "AC output power of the second EV charger in kW.",
-          "hsem_ev_second_planned_load_charger_efficiency": "Second EV charger efficiency as a percentage (1-100). Default: 100."
+          "hsem_ev_second_planned_load_enabled": "Aktiver eller deaktiver planlagt opladningsbelastningsintegration for den anden EV.",
+          "hsem_ev_second_planned_load_battery_capacity_kwh": "Nominel batterikapacitet for den anden EV i kWh.",
+          "hsem_ev_second_planned_load_charger_power_kw": "AC-udgangseffekt for den anden EV-lader i kW.",
+          "hsem_ev_second_planned_load_charger_efficiency": "Anden EV-lader-efficiens i procent (1-100). Standard: 100.",
+          "hsem_ev_second_planned_load_charger_min_power_w": "Minimum AC-effekt (W) som den anden EV-lader skal bruge for at starte opladning. Standard: 1380 W (230 V × 6 A)."
         },
-        "description": "Configure optional planned charging load integration for the second EV. Only shown when a second EV charger is enabled.",
-        "title": "EV 2 Planned Load Integration"
+        "description": "Konfigurer valgfri planlagt opladningsbelastningsintegration for den anden EV. Vises kun, når en anden EV-lader er aktiveret.",
+        "title": "EV 2-planlagt belastningsintegration"
       },
       "prices": {
         "data": {
