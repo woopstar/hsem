@@ -472,6 +472,49 @@ def test_ev_charger_calculated_power_from_milp():
 
 
 @_pytestmark_scipy
+def test_ev_charger_power_capped_at_max_ac_power():
+    """Charger power never exceeds the charger's rated AC power.
+
+    The MILP treats all slots as full-width, so it may allocate
+    max_charge_per_slot to the current slot even when only a few
+    minutes remain.  The power formula must cap at the charger's
+    nameplate rating.
+
+    With max_charge_per_slot=3.0 kWh DC, charger_eff=0.90, 1 h slots:
+    max AC power = 3.0 / 0.90 / 1.0 * 1000 = 3333 W.
+    """
+    slots = _build_slots(6, start_hour=14, import_price=0.10, consumption_kwh=0.5)
+    ev = EVConfig(
+        enabled=True,
+        initial_soc_kwh=0.0,
+        target_kwh=6.0,
+        capacity_kwh=50.0,
+        max_charge_per_slot=3.0,
+        charger_efficiency=0.90,
+        deadline_slot=5,
+    )
+
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=10.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=None,
+        ev_configs=[ev],
+    )
+
+    assert result is not None
+    out_slots, _diag = result
+
+    max_ac_power = round((3.0 / 0.90 / 1.0) * 1000)
+    for s in out_slots:
+        assert s.ev_charger_calculated_power <= max_ac_power, (
+            f"Power {s.ev_charger_calculated_power} W exceeds max {max_ac_power} W"
+        )
+
+
+@_pytestmark_scipy
 def test_ev_charger_power_zero_when_no_charge():
     """ev_charger_calculated_power is 0 in slots where the MILP decided not to charge."""
     slots = _build_slots(6, start_hour=14, import_price=0.10, consumption_kwh=0.5)

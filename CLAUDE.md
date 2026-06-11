@@ -89,7 +89,7 @@ When implementing a utility or helper function:
 
 ## Planner Specification Compliance (Mandatory)
 
-**Before touching any planner code**, read `docs/hsem-planner-spec.md` — it is the single source
+**Before touching any planner code**, read `docs/planner-spec.md` — it is the single source
 of truth for planner semantics.
 
 Rules:
@@ -106,7 +106,7 @@ Rules:
 
 Quick checklist before opening a planner PR:
 
-- [ ] `docs/hsem-planner-spec.md` read and understood
+- [ ] `docs/planner-spec.md` read and understood
 - [ ] Energy balance holds for every slot
 - [ ] SoC stays within configured bounds
 - [ ] `winner.cost == final_output.cost` (no post-selection mutation)

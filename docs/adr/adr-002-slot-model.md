@@ -180,5 +180,5 @@ from that single number.
 - ADR-001: Planner Extraction (slot model is the core data type passing through
   the extracted planner boundary)
 - ADR-003: Cost Scoring (cost function reads every energy field from the slot)
-- `docs/hsem-planner-spec.md` — Slot definition in Core concepts
+- `docs/planner-spec.md` — Slot definition in Core concepts
 - `models/planner_outputs.py` — `PlannedSlot` implementation

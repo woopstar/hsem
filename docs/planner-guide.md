@@ -4,7 +4,7 @@ This guide explains how the HSEM (Home Assistant Solar Energy Management) planne
 It covers inputs, outputs, the cost function, safety modes, and worked examples for five
 common scenarios a real installation will encounter.
 
-> **See also:** `docs/hsem-planner-spec.md` — the normative specification that governs
+> **See also:** `docs/planner-spec.md` — the normative specification that governs
 > all planner invariants and implementation rules.
 
 ---
@@ -166,7 +166,7 @@ Each `PricePoint` carries:
 Prices sourced from Energi Data Service (EDS) are normalised through the
 `eds_share` pipeline before reaching the planner so the engine always receives
 the full hourly rate, regardless of the EDS update interval (15 min or 60 min).
-See [Price interval semantics](hsem-planner-spec.md#price-interval-semantics) in the spec.
+See [Price interval semantics](planner-spec.md#price-interval-semantics) in the spec.
 
 ### PV forecast
 
@@ -220,6 +220,24 @@ The pre-charge window ends at `schedule.start` and is sized to fill the battery 
 |---|---|---|
 | `months_winter` | `[1,2,3,4,10,11,12]` | Months classified as winter |
 | `house_power_includes_ev` | `True` | Whether the house consumption sensor already includes EV charger power |
+
+### Main fuse / tariff protection
+
+| Field | Default | Description |
+|---|---|---|
+| `main_fuse_amps` | `0` (disabled) | Main fuse/breaker rating in amps (e.g., 25, 35). When set, the MILP optimizer respects this limit as a soft constraint on total grid import power per slot. Set to 0 to disable. |
+
+The MILP uses a **soft** (penalty-based) constraint so the solver never becomes
+infeasible — if house base load alone exceeds the fuse rating, the plan is still
+returned with the violation flagged.  The formula for converting amps to kWh/slot is:
+
+```text
+max_grid_import_per_slot_kwh = main_fuse_amps × 230 V × 3 phases / 1000 × (interval_minutes / 60)
+```
+
+This assumes balanced three-phase load at 230 V phase-to-neutral.  When the
+constraint is active, the MILP will throttle battery and EV charging to stay
+within the fuse limit whenever possible.
 
 ### EV planned load — primary EV
 
@@ -1316,7 +1334,7 @@ for regular households but may under- or over-predict when:
 The IQR median-ratio outlier detection algorithm flags anomalous windows, and
 the ML mode (ridge regression with day-of-week, seasonality, and outdoor
 temperature) addresses several of these limitations.  See
-`docs/hsem-consumption-prediction.md`.
+`docs/consumption-prediction.md`.
 
 ### Prices are assumed known for the full horizon
 

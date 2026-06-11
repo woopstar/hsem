@@ -1,0 +1,345 @@
+# HSEM MILP Optimization
+
+The MILP solver (`planner/milp_optimizer.py`) finds the globally optimal battery charge/discharge schedule using scipy's HiGHS linear programming solver. It is the **primary planner** — heuristic candidates are generated alongside it for benchmarking and fallback, but when scipy is available the MILP solution is preferred.
+
+---
+
+## Pipeline
+
+```mermaid
+flowchart TD
+    A[Engine passes slots with populated prices / PV / consumption]
+    B[Identify future active slot indices past vs fixed-zero]
+    C[Build per-slot data arrays: p_imp, p_exp, net_load, base_load, pv_avail]
+    D{EV configs provided?}
+    E[Rebuild net_load without pre-computed EV planned loads]
+    F[Keep fixed EV planned load in net_load]
+    G[Build objective vector c_obj: import cost, export revenue, cycle cost, conversion loss, terminal-SoC credit, SoC penalties, EV deadline penalties, EV charge-past-target benefit]
+    H[Build equality constraints A_eq: energy balance per slot inc. EV charger load]
+    I[Build inequality constraints A_ub: SoC recurrence soft bounds, mutual exclusion, cycle cost auxiliary m >= ec/ed, EV cumulative SOC, EV deadline target, EV surplus-only]
+    J[Build variable bounds: ec, ed capped; pv fixed to actual surplus; penalties >= 0]
+    K[linprog method = highs, timeout = 2s]
+    L{Solution found?}
+    M[Decode solution: ec, ed, gi, ge, pv, m, penalties, EV charging]
+    N[Write recommendations to output slots BatteriesChargeGrid, BatteriesChargeSolar, BatteriesDischargeMode, ForceBatteriesDischarge]
+    O[Compute penalty violation diagnostics]
+    P[Return slots and diagnostics]
+    Q[Return None: solver failed or no future slots]
+
+    A --> B --> C --> D
+    D -->|Yes| E --> G
+    D -->|No| F --> G
+    G --> H --> I --> J --> K --> L
+    L -->|Yes| M --> N --> O --> P
+    L -->|No| Q
+```
+
+---
+
+## Variable layout
+
+### Base battery variables (8 × n slots)
+
+For each slot `t ∈ 0…n-1` the LP variable vector `x` contains eight decision variables:
+
+| Offset | Variable | Name | Description | Bounds |
+|---|---|---|---|---|
+| `0` | `ec[t]` | `ec_off` | Energy charged and stored in battery this slot (kWh) | `[0, max_charge_per_slot]` |
+| `n` | `ed[t]` | `ed_off` | Energy discharged from battery this slot (kWh) | `[0, max_discharge_per_slot]` |
+| `2n` | `gi[t]` | `gi_off` | Grid import this slot (kWh) | `[0, ∞)` |
+| `3n` | `ge[t]` | `ge_off` | Grid export this slot (kWh) | `[0, ∞)` |
+| `4n` | `pv[t]` | `pv_off` | PV surplus available in slot t (kWh) | `[pv_avail[t], pv_avail[t]]` (fixed) |
+| `5n` | `m[t]` | `m_off` | Auxiliary variable ≥ max(ec[t], ed[t]) for cycle cost (kWh) | `[0, ∞)` |
+| `6n` | `s_max_pen[t]` | `s_max_off` | SoC upper penalty — kWh by which state of charge exceeds `usable_kwh` | `[0, ∞)` |
+| `7n` | `s_min_pen[t]` | `s_min_off` | SoC lower penalty — kWh by which state of charge drops below 0 | `[0, ∞)` |
+
+The state of charge `soc[t]` is **not an explicit variable** — it is derived from the forward recurrence:
+
+$$
+soc[t] = soc[0] + \sum_{k=0}^{t} \bigl( ec[k] - ed[k] \bigr)
+$$
+
+Penalty variables `s_max_pen` and `s_min_pen` prevent infeasibility when the initial SoC lies outside `[0, usable_kwh]`. Their objective coefficient is extremely high (`max(p_imp) × 100`), so they are only used when the initial state is physically out of bounds.
+
+### EV co-optimization extension
+
+When one or more active EVs are provided, the variable vector expands to:
+
+$$
+\text{total variables} = 8n + n \cdot E + E
+$$
+
+where `E` is the number of active EVs.
+
+| Offset | Variable | Name | Description | Bounds |
+|---|---|---|---|---|
+| `8n + i·n` | `evN_c[t]` | EV N DC-side charge per slot (kWh) | `[0, evN.max_charge_per_slot]` |
+| `8n + E·n + i` | `evN_pen` | EV N deadline target slack (kWh shortfall) | `[0, ∞)` |
+
+The EV charger AC load entering the energy balance equation is `evN_c[t] / charger_efficiency`.
+
+When an EV's `charge_past_target` flag is `True` (EV already at user-configured target SoC, `allow_charge_past_target_soc` enabled, SoC < 100 %):
+- The deadline constraint is **suppressed** (`deadline_slot = None`) — no grid import pressure
+- The **surplus-only constraint** is added (see Constraints below)
+- A **tiny tiebreaker benefit** is added to the objective (see Objective function below)
+
+### Fuse constraint extension (issue #567)
+
+When `main_fuse_amps > 0`, the variable vector expands further:
+
+$$
+\text{total variables} = 8n + n \cdot E + E + n
+$$
+
+| Offset | Variable | Name | Description | Bounds |
+|---|---|---|---|---|
+| after EV vars | `gi_pen[t]` | `gi_pen_off` | Grid import fuse penalty — kWh exceeding the main fuse rating | `[0, ∞)` |
+
+The max grid import per slot is converted from amps to kWh/slot:
+
+$$
+\operatorname{max\_grid\_import} = \frac{\operatorname{amps} \times 230 \times 3}{1000} \times \frac{\operatorname{interval\_minutes}}{60}
+$$
+
+This assumes balanced three-phase load at 230 V phase-to-neutral.
+
+The penalty uses the same high coefficient as SoC penalties (`max(p_imp) × 100`), ensuring the solver only exceeds the fuse limit when physically unavoidable (e.g. house base load alone exceeds the rating). When `main_fuse_amps` is `None` or 0, no variables or constraints are added — behaviour is unchanged.
+
+---
+
+## Objective function
+
+$$
+\begin{aligned}
+\mathrm{minimise} \quad
+\sum_{t} \delta_t \cdot \bigg[
+    & p_{\mathrm{imp}}[t] \cdot gi[t]
+    && \text{grid import cost} \\
+    - & p_{\mathrm{exp}}[t] \cdot ge[t]
+    && \text{export revenue} \\
+    + & \alpha \cdot m[t]
+    && \text{battery cycle cost (depreciation)} \\
+    + & \epsilon_{\mathrm{chg}} \cdot p_{\mathrm{imp}}[t] \cdot ec[t]
+    && \text{charge-side conversion loss cost} \\
+    + & \epsilon_{\mathrm{dis}} \cdot p_{\mathrm{imp}}[t] \cdot ed[t]
+    && \text{discharge-side conversion loss cost} \\
+    - & \gamma \cdot \bigl( ec[t] - ed[t] \bigr)
+    && \text{terminal-SoC replacement credit} \\
+    + & p_{\mathrm{soc}} \cdot \bigl( \operatorname{s\_max\_pen}[t] + \operatorname{s\_min\_pen}[t] \bigr)
+    && \text{SoC soft-constraint penalties} \\
+    + & p_{\mathrm{fuse}} \cdot \operatorname{gi\_pen}[t]
+    && \text{Main fuse grid-import penalty}
+\bigg] \\
+\end{aligned}
+$$
+
+Plus EV deadline penalties (undiscounted — deadline is a hard commitment):
+
+$$
+\sum_{v=1}^{E} p_{\mathrm{ev\_pen}}^{(v)} \cdot \operatorname{ev\_pen}_v
+$$
+
+Where:
+
+| Symbol | Description |
+|---|---|
+| $\delta_t$ | Time discount per slot: $\delta_t = r^{\Delta t}$ where $\Delta t$ is hours from now |
+| $p_{\mathrm{imp}}[t]$ | Grid import price (currency/kWh) |
+| $p_{\mathrm{exp}}[t]$ | Grid export price (currency/kWh), clamped to 0 when below `min_export_price` |
+| $\alpha$ | Battery cycle cost per kWh: $\alpha = \frac{P \cdot L_{pct}/100}{2 \cdot N \cdot C_u}$ |
+| $\epsilon_{\mathrm{chg}}$ | Charge-side loss fraction: $\epsilon_{\mathrm{chg}} = 1 - \eta_{\mathrm{chg}}$ |
+| $\epsilon_{\mathrm{dis}}$ | Discharge-side loss fraction: $\epsilon_{\mathrm{dis}} = 1 - \eta_{\mathrm{dis}}$ |
+| $\gamma$ | Terminal-SoC replacement price (currency/kWh), from the engine |
+| $p_{\mathrm{soc}}$ | SoC penalty cost: $\max(p_{\mathrm{imp}}) \times 100$ |
+| $p_{\mathrm{fuse}}$ | Fuse penalty cost: $\max(p_{\mathrm{imp}}) \times 100$ (same magnitude as SoC) |
+| $p_{\mathrm{ev\_pen}}^{(v)}$ | EV deadline penalty for EV v: $\max(p_{\mathrm{imp}}) \cdot \mathrm{capacity} \cdot 100$ |
+| $\beta_{\mathrm{ev}}$ | EV charge-past-target tiebreaker benefit: $0.0001$ per kWh AC (tiny — only wins when nothing else wants the surplus) |
+
+Plus EV charge-past-target benefit (discounted, per charge-past-target EV $v$):
+
+$$
+-\sum_{v \in \mathrm{past\_target}} \sum_{t} \delta_t \cdot \frac{\beta_{\mathrm{ev}}}{\eta_{\mathrm{charger}}^{(v)}} \cdot \operatorname{ev\_c}_v[t]
+$$
+
+This benefit is deliberately tiny ($0.0001$ per kWh AC) — it only acts as a tiebreaker when the battery is full and export prices are near zero or negative. It must **not** compete with house battery charging (worth $p_{\mathrm{imp}}$) or export at good prices (worth $p_{\mathrm{exp}}$).
+
+---
+
+## Constraints
+
+### Equality constraint — energy balance per slot
+
+For each slot $t$:
+
+$$
+gi[t] + pv[t] + ed[t] \cdot \eta_{\mathrm{dis}} =
+\operatorname{base\_load}[t] + \frac{ec[t]}{\eta_{\mathrm{chg}}} + ge[t] + \sum_{v=1}^{E} \frac{\operatorname{ev\_c}_v[t]}{\eta_{\mathrm{charger}}^{(v)}}
+$$
+
+- `base_load[t]` = $\max(\operatorname{net\_load}[t], 0)$ — demand the grid/battery must satisfy (kWh)
+- `net_load[t]` = `avg_house_consumption[t] - solcast_pv_estimate[t]` (when EV co-optimisation active)
+- `pv_avail[t]` = $\max(-\operatorname{net\_load}[t], 0)$ — PV surplus fixed to the `pv[t]` variable bounds
+- EV charger efficiency re-scales DC-side charge to AC grid/PV load
+
+### Inequality constraints
+
+**SoC upper bound (soft):**
+
+$$
+\sum_{k=0}^{t} \bigl( ec[k] - ed[k] \bigr) - \operatorname{s\_max\_pen}[t] \leq C_u - soc_0
+$$
+
+**SoC lower bound (soft):**
+
+$$
+-\sum_{k=0}^{t} \bigl( ec[k] - ed[k] \bigr) - \operatorname{s\_min\_pen}[t] \leq soc_0
+$$
+
+**Mutual exclusion — no simultaneous charge + discharge:**
+
+$$
+\frac{ec[t]}{\operatorname{max\_charge}} + \frac{ed[t]}{\operatorname{max\_discharge}} \leq 1
+$$
+
+**Cycle cost auxiliary — forcing $m[t] \geq ec[t]$ and $m[t] \geq ed[t]$:**
+
+$$
+-m[t] + ec[t] \leq 0
+$$
+$$
+-m[t] + ed[t] \leq 0
+$$
+
+**EV cumulative SoC upper bound (per EV v):**
+
+$$
+\sum_{k=0}^{t} \operatorname{ev\_c}_v[k] \leq \operatorname{capacity}_v - \operatorname{initial\_soc}_v
+$$
+
+**EV deadline target (soft, per EV v):**
+
+$$
+\operatorname{initial\_soc}_v + \sum_{k=0}^{D_v} \operatorname{ev\_c}_v[k] + \operatorname{ev\_pen}_v \geq \operatorname{target}_v
+$$
+
+**EV surplus-only constraint (per charge-past-target EV v, per slot t):**
+
+$$
+\frac{\operatorname{ev\_c}_v[t]}{\eta_{\mathrm{charger}}^{(v)}} \leq \max\bigl(0,\; \operatorname{pv\_avail}[t] - \operatorname{base\_load}[t]\bigr)
+$$
+
+This constraint ensures charge-past-target EVs only consume **genuine PV surplus** — never battery discharge or grid import.  It is only added for EVs where `charge_past_target` is `True` (EV already at user-configured target SoC but `allow_charge_past_target_soc` is enabled and SoC < 100 %).
+
+**Main fuse grid import limit (soft):**
+
+For each slot $t$, when `main_fuse_amps > 0`:
+
+$$
+gi[t] - \operatorname{gi\_pen}[t] \leq \frac{\operatorname{amps} \times 230 \times 3}{1000} \times \frac{\operatorname{interval\_minutes}}{60}
+$$
+
+The penalty variable `gi_pen[t]` absorbs any excess at high cost (`p_fuse`), preventing infeasibility when house base load alone exceeds the fuse rating. When `main_fuse_amps` is `None` or 0, this constraint is not added.
+
+Where $D_v$ is the deadline slot index for EV v.
+
+---
+
+## Post-processing
+
+After solving, the solution is decoded into slot recommendations:
+
+```mermaid
+flowchart TD
+    A[LP solution: ec, ed, gi, ge]
+    B{ec > threshold AND ed > threshold?}
+    C[Numerical tolerance conflict: resolve by net profit]
+    D{Round-trip profitable?}
+    E[Keep ec, zero ed]
+    F[Zero both]
+    G{ec > threshold?}
+    H{PV surplus available?}
+    I[BatteriesChargeSolar]
+    J[BatteriesChargeGrid]
+    K{ed > threshold?}
+    L{Grid export > 0 AND price >= min_export_price?}
+    M[ForceBatteriesDischarge]
+    N[BatteriesDischargeMode]
+    O[Write EV charge decisions]
+    P[Recompute estimated_net_consumption and estimated_cost per slot]
+    Q[Compute penalty violation diagnostics]
+
+    A --> B
+    B -->|Yes| C --> D
+    D -->|Yes| E --> G
+    D -->|No| F --> G
+    B -->|No| G
+    G -->|Yes| H
+    H -->|Yes| I --> O
+    H -->|No| J --> O
+    G -->|No| K
+    K -->|Yes| L
+    L -->|Yes| M --> O
+    L -->|No| N --> O
+    K -->|No| O
+    O --> P --> Q
+```
+
+### EV charging fields written to slots
+
+| Field | Source |
+|---|---|
+| `ev_planned_load_kwh` | AC load added when `base_load_includes_ev` is `False` |
+| `ev_accounted_load_kwh` | AC load when already captured in house consumption |
+| `ev_total_planned_load_kwh` | Total AC load (sum of planned + accounted) |
+| `ev_charger_calculated_power` | Target AC power (W) for primary EV |
+| `ev_second_charger_calculated_power` | Target AC power (W) for second EV |
+
+### Engine-level post-processing (after winner selection)
+
+After the MILP (or baseline) winner is selected, the engine runs a final pass over all slots to ensure consistency:
+
+1. **Power recomputation**: `ev_charger_calculated_power` is recomputed from the actual per-slot EV AC load (`ev_planned_load_kwh + ev_accounted_load_kwh`).  For the current (partially elapsed) slot the remaining time is used as the divisor.  This ensures the power field always matches the load, even when the baseline candidate wins (bypassing the MILP's own power calculation).
+
+2. **Minimum power floor**: If the computed AC power is below `charger_min_power_w` (default 1380 W = 230 V × 6 A), the charger physically cannot start.  The slot's EV fields are zeroed out:
+   - `ev_charger_calculated_power = 0`
+   - `ev_planned_load_kwh = 0`, `ev_accounted_load_kwh = 0`, `ev_total_planned_load_kwh = 0`
+   - `recommendation` cleared if it was `ev_smart_charging`
+   - `estimated_net_consumption_kwh` and `estimated_cost_currency` recomputed without EV load
+
+3. **EV plan rebuild**: When the MILP wins, the `EVChargingPlan` objects (used by the `ev_optimal_charging_plan` sensor) are rebuilt from the winning slots via `rebuild_ev_plan_from_slots()`.  This ensures the sensor displays the MILP's actual decisions, not the EV planner's pre-MILP estimate.
+
+---
+
+## Assumptions
+
+- **Linear relaxation**: Binary charge/discharge flags are relaxed to continuous because the mutual-exclusion constraint and per-slot power caps already prevent simultaneous charge + discharge in the optimal solution.
+- **Deterministic inputs**: All forecasts (prices, PV, load) are treated as known with certainty — no stochastic programming.
+- **Cycle cost proxy**: The `m[t] = max(ec[t], ed[t])` formulation counts the larger of charge or discharge per slot, matching the 2× denominator in the cycle cost formula.
+- **Time discount**: The objective uses exponential discounting with `time_discount_rate^hours_ahead` to match the selector's discounted score.
+- **Export price clamping**: Negative export prices and prices below `min_export_price` are clamped to 0 before solving, reflecting physical inverter behaviour.
+- **Terminal-SoC credit**: Undiscounted in the objective, matching the cost function's `terminal_soc_value`.
+
+---
+
+## Solver configuration
+
+| Parameter | Value | Rationale |
+|---|---|---|
+| Method | `highs` | scipy's HiGHS is the only supported LP method |
+| Timeout | 2.0 s | Covers 192-slot (768+ variable) problems where preprocessing reaches 200-400 ms |
+| `pv[t]` bounds | `(pv_avail[t], pv_avail[t])` | Fixed — PV surplus is not chosen by the LP |
+
+---
+
+## Fallback
+
+If `scipy` is unavailable, `usable_kwh ≤ 0`, or the solver fails (crash, timeout, or non-success status), `solve_milp()` returns `None`. The engine silently drops the MILP candidate and the heuristic candidates compete as normal. Pickup is be measured via the `hsem_plan_origin` metric: `milp` when the LP succeeds, `rule_based` otherwise.
+
+---
+
+## Related
+
+- [HSEM Planner Specification](planner-spec.md)
+- [Cost Function Math](cost-function-math.md)
+- [Energy Accounting](energy-accounting.md)
+- [Candidate Generation](candidate-generation.md)

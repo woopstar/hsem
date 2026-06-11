@@ -44,13 +44,15 @@
           "hsem_ev_planned_load_enabled": "Aktiver EV-planlagt belastningsintegration",
           "hsem_ev_planned_load_battery_capacity_kwh": "EV batterikapacitet (kWh)",
           "hsem_ev_planned_load_charger_power_kw": "EV lader-effekt (kW)",
-          "hsem_ev_planned_load_charger_efficiency": "EV lader-efficiens"
+          "hsem_ev_planned_load_charger_efficiency": "EV lader-efficiens",
+          "hsem_ev_planned_load_charger_min_power_w": "EV lader minimumseffekt (W)"
         },
         "data_description": {
           "hsem_ev_planned_load_enabled": "Aktiver eller deaktiver planlagt EV-opladningsbelastningsintegration.",
           "hsem_ev_planned_load_battery_capacity_kwh": "EV-batteriets nominelle kapacitet i kWh.",
           "hsem_ev_planned_load_charger_power_kw": "AC-udgangseffekt for EV-laderen i kW.",
-          "hsem_ev_planned_load_charger_efficiency": "Laderefficiens i procent (1-100). Standard: 100."
+          "hsem_ev_planned_load_charger_efficiency": "Laderefficiens i procent (1-100). Standard: 100.",
+          "hsem_ev_planned_load_charger_min_power_w": "Minimum AC-effekt (W) som EV-laderen skal bruge for at starte opladning. Under dette niveau vil laderen ikke fungere. Standard: 1380 W (230 V × 6 A)."
         },
         "description": "Konfigurer valgfri planlagt EV-opladningsbelastningsintegration. NÃ¥r aktiveret, tager HSEM hÃ¸jde for kommende EV-opladningsbehov pr. planslot.",
         "title": "EV-planlagt belastningsintegration"
@@ -60,13 +62,15 @@
           "hsem_ev_second_planned_load_enabled": "Aktiver EV 2-planlagt belastningsintegration",
           "hsem_ev_second_planned_load_battery_capacity_kwh": "EV 2 batterikapacitet (kWh)",
           "hsem_ev_second_planned_load_charger_power_kw": "EV 2 lader-effekt (kW)",
-          "hsem_ev_second_planned_load_charger_efficiency": "EV 2 lader-efficiens"
+          "hsem_ev_second_planned_load_charger_efficiency": "EV 2 lader-efficiens",
+          "hsem_ev_second_planned_load_charger_min_power_w": "EV 2 lader minimumseffekt (W)"
         },
         "data_description": {
           "hsem_ev_second_planned_load_enabled": "Aktiver eller deaktiver planlagt opladningsbelastningsintegration for den anden EV.",
           "hsem_ev_second_planned_load_battery_capacity_kwh": "Nominel batterikapacitet for den anden EV i kWh.",
           "hsem_ev_second_planned_load_charger_power_kw": "AC-udgangseffekt for den anden EV-lader i kW.",
-          "hsem_ev_second_planned_load_charger_efficiency": "Anden EV-lader-efficiens i procent (1-100). Standard: 100."
+          "hsem_ev_second_planned_load_charger_efficiency": "Anden EV-lader-efficiens i procent (1-100). Standard: 100.",
+          "hsem_ev_second_planned_load_charger_min_power_w": "Minimum AC-effekt (W) som den anden EV-lader skal bruge for at starte opladning. Standard: 1380 W (230 V × 6 A)."
         },
         "description": "Konfigurer valgfri planlagt opladningsbelastningsintegration for den anden EV. Vises kun, nÃ¥r en anden EV-lader er aktiveret.",
         "title": "EV 2-planlagt belastningsintegration"
@@ -272,13 +276,15 @@
       "power": {
         "data": {
           "hsem_house_consumption_power": "Husets forbrugseffektsensor",
+          "hsem_main_fuse_amps": "Hovedsikring (Ampere)",
           "hsem_solar_production_power": "Solproduktionseffektsensor"
         },
         "data_description": {
-          "hsem_house_consumption_power": "VÃ¦lg den sensor, der mÃ¥ler husets samlede strÃ¸mforbrug.",
-          "hsem_solar_production_power": "VÃ¦lg den sensor, der mÃ¥ler strÃ¸mmen genereret af dine solpaneler."
+          "hsem_house_consumption_power": "Vælg den sensor, der måler husets samlede strømforbrug.",
+          "hsem_main_fuse_amps": "Husets hovedsikringsstørrelse i ampere (25, 35, osv.).  MILP-optimeringsværktøjet respekterer denne grænse ved planlægning af batteri- og elbilopladning.  Sæt til 0 for at deaktivere.",
+          "hsem_solar_production_power": "Vælg den sensor, der måler strømmen genereret af dine solpaneler."
         },
-        "description": "VÃ¦lg effektsensorer til HSEM.",
+        "description": "Vælg effektsensorer til HSEM.",
         "title": "Effektsensorer"
       },
       "solcast": {
@@ -288,11 +294,11 @@
           "hsem_solcast_pv_forecast_forecast_tomorrow": "Solcast PV-prognose i morgen sensor"
         },
         "data_description": {
-          "hsem_solcast_pv_forecast_forecast_likelihood": "VÃ¦lg den foretrukne prognosesandsynlighed for Solcast PV-prognoser.",
-          "hsem_solcast_pv_forecast_forecast_today": "VÃ¦lg den sensor, der leverer dagens PV-produktionsprognose fra Solcast.",
-          "hsem_solcast_pv_forecast_forecast_tomorrow": "VÃ¦lg den sensor, der leverer morgendagens PV-produktionsprognose fra Solcast."
+          "hsem_solcast_pv_forecast_forecast_likelihood": "Vælg den foretrukne prognosesandsynlighed for Solcast PV-prognoser.",
+          "hsem_solcast_pv_forecast_forecast_today": "Vælg den sensor, der leverer dagens PV-produktionsprognose fra Solcast.",
+          "hsem_solcast_pv_forecast_forecast_tomorrow": "Vælg den sensor, der leverer morgendagens PV-produktionsprognose fra Solcast."
         },
-        "description": "VÃ¦lg Solcast-prognosesensorer.",
+        "description": "Vælg Solcast-prognosesensorer.",
         "title": "Solcast-sensorer"
       },
       "user": {
@@ -413,35 +419,39 @@
       },
       "ev_planned_load": {
         "data": {
-          "hsem_ev_planned_load_enabled": "Enable EV Planned Load Integration",
-          "hsem_ev_planned_load_battery_capacity_kwh": "EV Battery Capacity (kWh)",
-          "hsem_ev_planned_load_charger_power_kw": "EV Charger Power (kW)",
-          "hsem_ev_planned_load_charger_efficiency": "EV Charger Efficiency"
+          "hsem_ev_planned_load_enabled": "Aktiver EV-planlagt belastningsintegration",
+          "hsem_ev_planned_load_battery_capacity_kwh": "EV batterikapacitet (kWh)",
+          "hsem_ev_planned_load_charger_power_kw": "EV lader-effekt (kW)",
+          "hsem_ev_planned_load_charger_efficiency": "EV lader-efficiens",
+          "hsem_ev_planned_load_charger_min_power_w": "EV lader minimumseffekt (W)"
         },
         "data_description": {
-          "hsem_ev_planned_load_enabled": "Enable or disable planned EV charging load integration.",
-          "hsem_ev_planned_load_battery_capacity_kwh": "Nameplate battery capacity of the EV in kWh.",
-          "hsem_ev_planned_load_charger_power_kw": "AC output power of the EV charger in kW.",
-          "hsem_ev_planned_load_charger_efficiency": "Charger efficiency as a percentage (1-100). Default: 100."
+          "hsem_ev_planned_load_enabled": "Aktiver eller deaktiver planlagt EV-opladningsbelastningsintegration.",
+          "hsem_ev_planned_load_battery_capacity_kwh": "EV-batteriets nominelle kapacitet i kWh.",
+          "hsem_ev_planned_load_charger_power_kw": "AC-udgangseffekt for EV-laderen i kW.",
+          "hsem_ev_planned_load_charger_efficiency": "Laderefficiens i procent (1-100). Standard: 100.",
+          "hsem_ev_planned_load_charger_min_power_w": "Minimum AC-effekt (W) som EV-laderen skal bruge for at starte opladning. Standard: 1380 W (230 V × 6 A)."
         },
-        "description": "Configure optional planned EV charging load integration. When enabled, HSEM accounts for upcoming EV charging demand per planner slot.",
-        "title": "EV Planned Load Integration"
+        "description": "Konfigurer valgfri planlagt EV-opladningsbelastningsintegration. Når aktiveret, tager HSEM højde for kommende EV-opladningsbehov pr. planslot.",
+        "title": "EV-planlagt belastningsintegration"
       },
       "ev_second_planned_load": {
         "data": {
-          "hsem_ev_second_planned_load_enabled": "Enable EV 2 Planned Load Integration",
-          "hsem_ev_second_planned_load_battery_capacity_kwh": "EV 2 Battery Capacity (kWh)",
-          "hsem_ev_second_planned_load_charger_power_kw": "EV 2 Charger Power (kW)",
-          "hsem_ev_second_planned_load_charger_efficiency": "EV 2 Charger Efficiency"
+          "hsem_ev_second_planned_load_enabled": "Aktiver EV 2-planlagt belastningsintegration",
+          "hsem_ev_second_planned_load_battery_capacity_kwh": "EV 2 batterikapacitet (kWh)",
+          "hsem_ev_second_planned_load_charger_power_kw": "EV 2 lader-effekt (kW)",
+          "hsem_ev_second_planned_load_charger_efficiency": "EV 2 lader-efficiens",
+          "hsem_ev_second_planned_load_charger_min_power_w": "EV 2 lader minimumseffekt (W)"
         },
         "data_description": {
-          "hsem_ev_second_planned_load_enabled": "Enable or disable planned charging load integration for the second EV.",
-          "hsem_ev_second_planned_load_battery_capacity_kwh": "Nameplate battery capacity of the second EV in kWh.",
-          "hsem_ev_second_planned_load_charger_power_kw": "AC output power of the second EV charger in kW.",
-          "hsem_ev_second_planned_load_charger_efficiency": "Second EV charger efficiency as a percentage (1-100). Default: 100."
+          "hsem_ev_second_planned_load_enabled": "Aktiver eller deaktiver planlagt opladningsbelastningsintegration for den anden EV.",
+          "hsem_ev_second_planned_load_battery_capacity_kwh": "Nominel batterikapacitet for den anden EV i kWh.",
+          "hsem_ev_second_planned_load_charger_power_kw": "AC-udgangseffekt for den anden EV-lader i kW.",
+          "hsem_ev_second_planned_load_charger_efficiency": "Anden EV-lader-efficiens i procent (1-100). Standard: 100.",
+          "hsem_ev_second_planned_load_charger_min_power_w": "Minimum AC-effekt (W) som den anden EV-lader skal bruge for at starte opladning. Standard: 1380 W (230 V × 6 A)."
         },
-        "description": "Configure optional planned charging load integration for the second EV. Only shown when a second EV charger is enabled.",
-        "title": "EV 2 Planned Load Integration"
+        "description": "Konfigurer valgfri planlagt opladningsbelastningsintegration for den anden EV. Vises kun, når en anden EV-lader er aktiveret.",
+        "title": "EV 2-planlagt belastningsintegration"
       },
       "prices": {
         "data": {
@@ -598,10 +608,12 @@
       "power": {
         "data": {
           "hsem_house_consumption_power": "House Consumption Power Sensor",
+          "hsem_main_fuse_amps": "Main Fuse Rating (Amps)",
           "hsem_solar_production_power": "Solar Production Power Sensor"
         },
         "data_description": {
           "hsem_house_consumption_power": "Select the sensor that measures your house's total power consumption.",
+          "hsem_main_fuse_amps": "Your house's main fuse/breaker rating in amps (25, 35, etc.).  The MILP optimizer will respect this limit when scheduling battery and EV charging.  Set to 0 to disable.",
           "hsem_solar_production_power": "Select the sensor that measures the power generated by your solar panels."
         },
         "description": "Select power sensors for HSEM.",

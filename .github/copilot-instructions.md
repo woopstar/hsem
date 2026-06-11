@@ -69,11 +69,11 @@ When asked to solve a GitHub issue, always follow these steps in order:
       content (newlines become `∙` characters; backticks become `\x5c` escapes).
 
 ## Planner Specification Rule (Mandatory)
-- **Always read `docs/hsem-planner-spec.md` before touching any planner code** — engine, cost
+- **Always read `docs/planner-spec.md` before touching any planner code** — engine, cost
   function, SoC simulation, candidate generation, slot population, or safety gates.
 - **Every planner change must satisfy all spec invariants**: energy balance per slot, SoC bounds,
   cost identity (`winner.cost == final_output.cost`), terminal-SoC accounting, and safety gates.
-- **Update `docs/hsem-planner-spec.md`** when a change intentionally alters planner semantics.
+- **Update `docs/planner-spec.md`** when a change intentionally alters planner semantics.
   Spec and implementation must never diverge silently.
 - **Add or update tests** covering the affected invariants for every planner change.
 - A planner PR is not done until: spec is consistent, invariant tests pass, and lint is clean.
@@ -82,9 +82,9 @@ When asked to solve a GitHub issue, always follow these steps in order:
 ## Documentation Update Rule (Mandatory)
 - **All documentation that describes the changed behaviour must be updated in the same PR.**
   This includes, but is not limited to:
-  - `docs/hsem-planner-guide.md` — planner inputs, outputs, cost function, scenarios
-  - `docs/hsem-planner-spec.md` — specification invariants and formulas
-  - `docs/hsem-config-flow-reference.md` — config/options flow step tables
+  - `docs/planner-guide.md` — planner inputs, outputs, cost function, scenarios
+  - `docs/planner-spec.md` — specification invariants and formulas
+  - `docs/config-flow-reference.md` — config/options flow step tables
   - `docs/ev-charge-plan-setup.md` — EV planned load setup guide
   - `.github/memories.md` — canonical patterns, module map, open issues
   - `README.md` — user-facing feature descriptions and links

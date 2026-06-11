@@ -199,50 +199,8 @@ and cycle cost.
 The MILP solver (`planner/milp_optimizer.py`) uses scipy's HiGHS to find the
 globally optimal charge/discharge schedule.
 
-### Variable vector
-
-6 × n variables for n slots:
-
-| Index range | Variable | Meaning |
-|---|---|---|
-| `[0..n-1]` | `ec[t]` | Energy charged in slot t (kWh) |
-| `[n..2n-1]` | `ed[t]` | Energy discharged in slot t (kWh) |
-| `[2n..3n-1]` | `gi[t]` | Grid import in slot t (kWh) |
-| `[3n..4n-1]` | `ge[t]` | Grid export in slot t (kWh) |
-| `[4n..5n-1]` | `pv[t]` | PV surplus used in slot t (kWh) |
-| `[5n..6n-1]` | `m[t]` | `max(ec[t], ed[t])` auxiliary for cycle cost |
-
-### Objective
-
-$$ \mathrm{minimise} \sum_t [p_{\mathrm{imp}}[t] \cdot gi[t] - p_{\mathrm{exp}}[t] \cdot ge[t] + \alpha \cdot m[t] + \gamma \cdot (ed[t] - ec[t])] $$
-
-Where:
-- $\alpha$ = battery cycle cost per kWh
-- $\gamma$ = terminal-SoC replacement price
-- `m[t] ≥ ec[t]` and `m[t] ≥ ed[t]` (max constraint)
-
-### Constraints
-
-For each slot t:
-
-1. **SoC forward recurrence**: $soc[t] = soc[t-1] + ec[t] - ed[t]$
-2. **SoC bounds**: $0 \leq soc[t] \leq usable_{kwh}$
-3. **Charge limit**: $ec[t] \leq max\_charge\_per\_slot$
-4. **Discharge limit**: $ed[t] \leq max\_discharge\_per\_slot$
-5. **Mutual exclusion**: $ec[t] / max\_charge + ed[t] / max\_discharge \leq 1$
-6. **Energy balance**: $gi[t] + pv[t] + ed[t] \cdot \eta_{dis} = load[t] + ec[t] / \eta_{chg} + ge[t]$
-7. **Non-negativity**: All variables ≥ 0
-
-### Assumptions
-
-- **Linear relaxation**: Binary charge/discharge flags are relaxed to continuous
-  because the mutual-exclusion constraint and per-slot caps already prevent
-  simultaneous charge+discharge in the optimal solution.
-- **Deterministic inputs**: All forecasts (prices, PV, load) are treated as
-  known with certainty (no stochastic programming).
-- **Cycle cost proxy**: The `m[t] = max(ec[t], ed[t])` formulation counts
-  the larger of charge or discharge per slot, matching the 2× denominator
-  in the cycle cost formula.
+See [MILP Optimization](milp-optimization.md) for the full LP formulation,
+variable layout, constraints, solver pipeline, and post-processing flow.
 
 ### Fallback
 

@@ -19,6 +19,7 @@ from custom_components.hsem.custom_times.description import (
     build_time_id_map,
 )
 from custom_components.hsem.entity import HSEMEntity
+from custom_components.hsem.utils.misc import get_config_value
 
 
 class HSEMTimeEntity(HSEMEntity, TimeEntity):
@@ -70,6 +71,27 @@ class HSEMTimeEntity(HSEMEntity, TimeEntity):
         self._attr_native_value: time | None = self._parse_time(
             description.default_value
         )
+
+    @override
+    async def async_added_to_hass(self) -> None:
+        """Register a config-entry update listener.
+
+        When the user changes a setting via the config/options flow, the
+        entity re-reads its value from the config entry so the UI stays
+        in sync.
+        """
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            self._config_entry.add_update_listener(self._async_handle_config_update)
+        )
+
+    async def _async_handle_config_update(
+        self, hass: HomeAssistant, entry: ConfigEntry
+    ) -> None:
+        """Re-read the current time value from the updated config entry."""
+        stored = str(get_config_value(entry, self.entity_description.key))
+        self._attr_native_value = self._parse_time(stored)
+        self.async_write_ha_state()
 
     # ------------------------------------------------------------------
     # Helpers

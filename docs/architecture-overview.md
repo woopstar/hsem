@@ -20,42 +20,36 @@
 
 ## System context
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        Home Assistant                                │
-│                                                                      │
-│  ┌──────────────────────────────────────────────────────────────┐   │
-│  │                    HSEM Integration                            │   │
-│  │                                                                │   │
-│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────────┐  │   │
-│  │  │ Sensors  │  │ Select   │  │ Switches │  │ Services     │  │   │
-│  │  │ (20+)    │  │ (1)      │  │ (5+)     │  │ (4)          │  │   │
-│  │  └────┬─────┘  └────┬─────┘  └────┬─────┘  └──────┬───────┘  │   │
-│  │       │              │             │               │          │   │
-│  │  ┌────▼──────────────▼─────────────▼───────────────▼───────┐  │   │
-│  │  │                  Coordinator                             │  │   │
-│  │  │         (HSEMDataUpdateCoordinator)                      │  │   │
-│  │  │   - Config reload  - State collection  - Planner run    │  │   │
-│  │  │   - Forecast tracking  - Recommendation resolution      │  │   │
-│  │  └────────────────────────┬────────────────────────────────┘  │   │
-│  │                           │                                    │   │
-│  │  ┌────────────────────────▼────────────────────────────────┐  │   │
-│  │  │              Pure-Python Planner Engine                   │  │   │
-│  │  │   - Slot population  - Scheduling  - Candidate gen      │  │   │
-│  │  │   - SoC simulation  - Cost scoring  - EV planning       │  │   │
-│  │  │   - MILP optimisation  - Hysteresis                     │  │   │
-│  │  └─────────────────────────────────────────────────────────┘  │   │
-│  └────────────────────────────────────────────────────────────────┘   │
-│                                                                      │
-│  ┌────────────────────────────────────────────────────────────────┐   │
-│  │              External Integrations                              │   │
-│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────────┐  │   │
-│  │  │ Huawei   │  │ Solcast  │  │ Energi   │  │ EV charger   │  │   │
-│  │  │ Solar    │  │ Solar    │  │ Data     │  │ (generic)    │  │   │
-│  │  │ Inverter │  │ Forecast │  │ Service  │  │              │  │   │
-│  │  └──────────┘  └──────────┘  └──────────┘  └──────────────┘  │   │
-│  └────────────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    subgraph HA[Home Assistant]
+        subgraph HSEM[HSEM Integration]
+            Sensors[Sensors\n20+]
+            Select[Select\n1]
+            Switches[Switches\n5+]
+            Services[Services\n4]
+            Coordinator[HSEMDataUpdateCoordinator\nConfig reload, state collection, planner run\nForecast tracking, recommendation resolution]
+            Planner[Pure-Python Planner Engine\nSlot population, scheduling, candidate generation\nSoC simulation, cost scoring, EV planning\nMILP optimisation, hysteresis]
+
+            Sensors --> Coordinator
+            Select --> Coordinator
+            Switches --> Coordinator
+            Services --> Coordinator
+            Coordinator --> Planner
+        end
+
+        subgraph External[External Integrations]
+            Huawei[Huawei Solar\nInverter and battery]
+            Solcast[Solcast Solar\nPV forecast]
+            Prices[Electricity Prices\nEnergi Data Service, Nordpool, etc.]
+            EV[EV charger\nGeneric]
+        end
+
+        Huawei --> HSEM
+        Solcast --> HSEM
+        Prices --> HSEM
+        EV --> HSEM
+    end
 ```
 
 ### External dependencies
@@ -164,48 +158,47 @@ HA-dependent sensor entities that consume coordinator data.
 
 The coordinator runs this pipeline every update cycle (default: every 5 minutes):
 
-```
-1. Reload config from ConfigEntry
-       │
-2. Collect live HA entity states (state_collector)
-       │
-3. Build SensorConfig from config entry
-       │
-4. Generate recommendation time-slots
-       │
-5. Build battery-schedule objects
-       │
-6. Populate weighted house-consumption averages
-       │
-7. Populate electricity prices and Solcast PV estimates
-       │
-8. Run pure-Python planner engine:
-   │
-   ├─ 8a. Build time-series index
-   ├─ 8b. Build empty slots
-   ├─ 8c. Populate prices, PV, consumption
-   ├─ 8d. Mark time-passed slots
-   ├─ 8e. Populate battery capacity
-   ├─ 8f. Populate net consumption (pass 1 — without EV)
-   ├─ 8g. Apply discharge schedules
-   ├─ 8h. Apply charge schedules + arbitrage
-   ├─ 8i. Apply excess export
-   ├─ 8j. Apply seasonal optimisation
-   ├─ 8k. Build EV charging plan (from net surplus)
-   ├─ 8l. Populate net consumption (pass 2 — with EV)
-   ├─ 8m. Generate 8+ candidate plans
-   ├─ 8n. Simulate SoC for each candidate
-   ├─ 8o. Score all candidates
-   ├─ 8p. Apply plan-level hysteresis
-   ├─ 8q. Select best candidate
-   ├─ 8r. Apply EV load labelling (layer 2)
-   └─ 8s. Build explanation
-       │
-9. Resolve current slot recommendation (runtime resolver)
-       │
-10. Accumulate forecast vs actual data
-       │
-11. Package CoordinatorData and notify subscribers
+```mermaid
+flowchart TD
+    A[Reload config from ConfigEntry]
+    B[Collect live HA entity states\nstate_collector]
+    C[Build SensorConfig from config entry]
+    D[Generate recommendation time-slots]
+    E[Build battery-schedule objects]
+    F[Populate weighted house-consumption averages]
+    G[Populate electricity prices and Solcast PV estimates]
+
+    subgraph Planner[Run pure-Python planner engine]
+        H1[Build time-series index]
+        H2[Build empty slots]
+        H3[Populate prices, PV, consumption]
+        H4[Mark time-passed slots]
+        H5[Populate battery capacity]
+        H6[Populate net consumption\npass 1 without EV]
+        H7[Apply discharge schedules]
+        H8[Apply charge schedules and arbitrage]
+        H9[Apply excess export]
+        H10[Apply seasonal optimisation]
+        H11[Build EV charging plan\nfrom net surplus]
+        H12[Populate net consumption\npass 2 with EV]
+        H13[Generate 8+ candidate plans]
+        H14[Simulate SoC for each candidate]
+        H15[Score all candidates]
+        H16[Apply plan-level hysteresis]
+        H17[Select best candidate]
+        H18[Apply EV load labelling\nlayer 2]
+        H19[Build explanation]
+
+        H1 --> H2 --> H3 --> H4 --> H5 --> H6 --> H7 --> H8 --> H9 --> H10
+        H10 --> H11 --> H12 --> H13 --> H14 --> H15 --> H16 --> H17 --> H18 --> H19
+    end
+
+    I[Resolve current slot recommendation\nruntime resolver]
+    J[Accumulate forecast vs actual data]
+    K[Package CoordinatorData and notify subscribers]
+
+    A --> B --> C --> D --> E --> F --> G --> H1
+    H19 --> I --> J --> K
 ```
 
 ---
@@ -262,36 +255,76 @@ Plus explicit read-only and dry-run modes that also block hardware writes.
 
 ## Dependency graph
 
-```
-homeassistant/
-  └── __init__.py ─────────────────────────────► config_flow.py, options_flow.py
-      │                                              │
-      ├── coordinator.py ────────────────────────────┤
-      │   │                                          │
-      │   ├── coordinator_builder.py                 │
-      │   ├── custom_sensors/config_reader.py        │
-      │   ├── custom_sensors/state_collector.py      │
-      │   ├── custom_sensors/hourly_data_populator.py│
-      │   ├── custom_sensors/recommendation_resolver.py
-      │   ├── planner/ ├── engine_core.py            │
-      │   │            ├── slot_population.py        │
-      │   │            ├── charge_scheduler.py       │
-      │   │            ├── discharge_scheduler.py    │
-      │   │            ├── candidate_generator.py    │
-      │   │            ├── candidate_selector.py     │
-      │   │            ├── cost_function.py          │
-      │   │            ├── soc_simulation.py         │
-      │   │            ├── milp_optimizer.py         │
-      │   │            ├── ev_planner.py             │
-      │   │            └── engine_explanation.py     │
-      │   ├── utils/ (recommendations, misc, etc.)   │
-      │   └── models/ (planner_inputs, outputs, etc.)│
-      │                                              │
-      ├── sensor.py ─────► custom_sensors/*.py       │
-      ├── select.py                                  │
-      ├── switch.py                                  │
-      └── services.py ───► coordinator.py            │
-                           utils/diagnostics.py      │
+```mermaid
+flowchart TD
+    Init[__init__.py]
+    Config[config_flow.py]
+    Options[options_flow.py]
+    Coordinator[coordinator.py]
+    Builder[coordinator_builder.py]
+    ConfigReader[custom_sensors/config_reader.py]
+    StateCollector[custom_sensors/state_collector.py]
+    HourlyPopulator[custom_sensors/hourly_data_populator.py]
+    Resolver[custom_sensors/recommendation_resolver.py]
+    Sensor[sensor.py]
+    Select[select.py]
+    Switch[switch.py]
+    Services[services.py]
+    Diagnostics[utils/diagnostics.py]
+
+    subgraph Planner[planner]
+        Engine[engine_core.py]
+        SlotPopulation[slot_population.py]
+        Charge[charge_scheduler.py]
+        Discharge[discharge_scheduler.py]
+        Candidates[candidate_generator.py]
+        Selector[candidate_selector.py]
+        Cost[cost_function.py]
+        SoC[soc_simulation.py]
+        MILP[milp_optimizer.py]
+        EVPlanner[ev_planner.py]
+        Explanation[engine_explanation.py]
+    end
+
+    subgraph Shared[shared pure/helper modules]
+        Utils[utils]
+        Models[models]
+    end
+
+    Init --> Config
+    Init --> Options
+    Init --> Coordinator
+    Init --> Sensor
+    Init --> Select
+    Init --> Switch
+    Init --> Services
+
+    Coordinator --> Builder
+    Coordinator --> ConfigReader
+    Coordinator --> StateCollector
+    Coordinator --> HourlyPopulator
+    Coordinator --> Resolver
+    Coordinator --> Engine
+    Coordinator --> Utils
+    Coordinator --> Models
+
+    Sensor --> ConfigReader
+    Sensor --> StateCollector
+    Services --> Coordinator
+    Services --> Diagnostics
+
+    Engine --> SlotPopulation
+    Engine --> Charge
+    Engine --> Discharge
+    Engine --> Candidates
+    Engine --> Selector
+    Engine --> Cost
+    Engine --> SoC
+    Engine --> MILP
+    Engine --> EVPlanner
+    Engine --> Explanation
+    Engine --> Models
+    Engine --> Utils
 ```
 
 All planner modules (`planner/`, `models/`, `utils/recommendations.py`,

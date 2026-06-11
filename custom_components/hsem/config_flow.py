@@ -117,10 +117,12 @@ _V2_NEW_KEY_DEFAULTS: dict[str, Any] = {
     "hsem_ev_planned_load_battery_capacity_kwh": 0.0,
     "hsem_ev_planned_load_charger_power_kw": 0.0,
     "hsem_ev_planned_load_charger_efficiency": 100,
+    "hsem_ev_planned_load_charger_min_power_w": 1380,
     "hsem_ev_second_planned_load_enabled": False,
     "hsem_ev_second_planned_load_battery_capacity_kwh": 0.0,
     "hsem_ev_second_planned_load_charger_power_kw": 0.0,
     "hsem_ev_second_planned_load_charger_efficiency": 100,
+    "hsem_ev_second_planned_load_charger_min_power_w": 1380,
     # Planner hysteresis
     "hsem_planner_hysteresis_enabled": True,
     "hsem_planner_hysteresis_absolute": 0.0,

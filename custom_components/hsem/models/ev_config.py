@@ -25,6 +25,10 @@ class EVConfig:
             ``max_charge_per_slot / charger_efficiency`` from AC.
         charger_efficiency: Charger efficiency as a fraction (0.01–1.0).
             ``ev_c[t] / charger_efficiency`` is the AC-side grid/PV draw.
+        charger_min_power_w: Minimum AC power (W) the charger needs to start.
+            When the per-slot AC power falls below this threshold the
+            charger will not operate — zero out those allocations.
+            Default 1380 W (230 V × 6 A single-phase).
         deadline_slot: Index into the LP's future-slot list (0..m-1) of the
             last slot that can be used to meet the target.  Slots beyond this
             index may still charge but the target must be met by this slot.
@@ -41,5 +45,12 @@ class EVConfig:
     capacity_kwh: float = 0.0
     max_charge_per_slot: float = 0.0
     charger_efficiency: float = 1.0
+    charger_min_power_w: float = 1380.0
     deadline_slot: int | None = None
     base_load_includes_ev: bool = False
+    #: When True, the EV is already at its user-configured target SoC and
+    #: is only included so the MILP can allocate surplus PV that would
+    #: otherwise be exported at low/negative prices.  In this mode the
+    #: deadline constraint is suppressed and EV charging is valued at the
+    #: import price in the objective (avoided future import cost).
+    charge_past_target: bool = False

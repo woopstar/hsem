@@ -10,7 +10,7 @@ An Architecture Decision Record is a short document that captures an important a
 
 | Convention | Rule |
 |---|---|
-| **Naming** | `ADR-NNN-title-with-hyphens.md` |
+| **Naming** | `adr-NNN-title-with-hyphens.md` |
 | **Status** | `Accepted` (retrospective decisions are marked as such) |
 | **Scope** | One decision per ADR — no multi-decision records |
 | **Layout** | Context → Decision → Consequences → Alternatives Considered → Related |
@@ -20,15 +20,15 @@ An Architecture Decision Record is a short document that captures an important a
 
 | ADR | Title | Area | Status |
 |---|---|---|---|
-| [ADR-001](ADR-001-planner-extraction.md) | Pure-Python Planner Extraction | Architecture, planner layer | Accepted |
-| [ADR-002](ADR-002-slot-model.md) | Slot Model | Planner engine, data model | Accepted |
-| [ADR-003](ADR-003-cost-scoring.md) | Cost Scoring Architecture | Cost function, candidate selection | Accepted |
-| [ADR-004](ADR-004-inverter-safety.md) | Inverter Safety — Layered Hardware Write Protection | Safety, hardware interface | Accepted |
-| [ADR-005](ADR-005-forecast-confidence.md) | Forecast Confidence | Forecast handling, diagnostics | Accepted |
+| [ADR-001](adr-001-planner-extraction.md) | Pure-Python Planner Extraction | Architecture, planner layer | Accepted |
+| [ADR-002](adr-002-slot-model.md) | Slot Model | Planner engine, data model | Accepted |
+| [ADR-003](adr-003-cost-scoring.md) | Cost Scoring Architecture | Cost function, candidate selection | Accepted |
+| [ADR-004](adr-004-inverter-safety.md) | Inverter Safety — Layered Hardware Write Protection | Safety, hardware interface | Accepted |
+| [ADR-005](adr-005-forecast-confidence.md) | Forecast Confidence | Forecast handling, diagnostics | Accepted |
 
 ## How to add a new ADR
 
-1. Determine the next ADR number (find the highest `ADR-NNN` in this directory and increment).
+1. Determine the next ADR number (find the highest `adr-NNN` in this directory and increment).
 2. Use the template below.
 3. Ensure the new ADR links to related ADRs and implementation files.
 4. Add it to the index table above.
@@ -99,6 +99,6 @@ How are the negative consequences addressed?
 
 ## Relationship to other documentation
 
-- **`docs/hsem-planner-spec.md`** — the canonical planner specification. ADRs explain *why* design decisions were made; the spec documents *what* the planner must do.
-- **`docs/hsem-architecture-overview.md`** — high-level architecture overview. ADRs provide the reasoning behind the architecture.
+- **`docs/planner-spec.md`** — the canonical planner specification. ADRs explain *why* design decisions were made; the spec documents *what* the planner must do.
+- **`docs/architecture-overview.md`** — high-level architecture overview. ADRs provide the reasoning behind the architecture.
 - **`.github/memories.md`** — repository memory for AI agents. Key ADR conclusions are reflected there.

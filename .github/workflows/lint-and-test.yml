@@ -2,9 +2,10 @@ name: Lint and Test
 
 on:
   push:
-    branches: [main, dev]
+    branches:
+      - main
   pull_request:
-    branches: [main, dev]
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: read
@@ -21,16 +22,21 @@ jobs:
         with:
           python-version: "3.14"
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.14"
+
       - name: Cache tox environments
         uses: actions/cache@v5
         with:
           path: .tox
-          key: tox-lint-${{ hashFiles('requirements.txt', 'requirements_lint.txt') }}
+          key: tox-${{ runner.os }}-${{ hashFiles('requirements*.txt') }}
           restore-keys: |
-            tox-lint-
+            tox-${{ runner.os }}-
 
-      - name: Install tox
-        run: python -m pip install tox==4.55.1
+      - name: Install tox with uv support
+        run: python -m pip install --only-binary ':all:' tox==4.55.1 tox-uv==1.35.2
 
       - name: Format and lint with tox
         run: tox -e lint
@@ -50,12 +56,12 @@ jobs:
         uses: actions/cache@v5
         with:
           path: .tox
-          key: tox-typing-${{ hashFiles('requirements.txt', 'requirements_typing.txt') }}
+          key: tox-${{ runner.os }}-${{ hashFiles('requirements*.txt') }}
           restore-keys: |
-            tox-typing-
+            tox-${{ runner.os }}-
 
-      - name: Install tox
-        run: python -m pip install tox==4.55.1
+      - name: Install tox with uv support
+        run: python -m pip install --only-binary ':all:' tox==4.55.1 tox-uv==1.35.2
 
       - name: Type check with tox
         run: tox -e typing
@@ -75,48 +81,76 @@ jobs:
         uses: actions/cache@v5
         with:
           path: .tox
-          key: tox-quality-${{ hashFiles('requirements.txt', 'requirements_test.txt') }}
+          key: tox-${{ runner.os }}-${{ hashFiles('requirements*.txt') }}
           restore-keys: |
-            tox-quality-
+            tox-${{ runner.os }}-
 
-      - name: Install tox
-        run: python -m pip install tox==4.55.1
+      - name: Install tox with uv support
+        run: python -m pip install --only-binary ':all:' tox==4.55.1 tox-uv==1.35.2
 
       - name: Run quality checks with tox
         run: tox -e quality
 
   tests:
-    name: Tests with tox (Python ${{ matrix.python-version }})
+    name: Tests with tox
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.14"]
-
     steps:
       - uses: actions/checkout@v6.0.3
 
-      - name: Set up Python ${{ matrix.python-version }}
+      - name: Set up Python 3.14
         uses: actions/setup-python@v6
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.14"
 
       - name: Cache tox environments
         uses: actions/cache@v5
         with:
           path: .tox
-          key: tox-test-${{ hashFiles('requirements.txt', 'requirements_test.txt') }}
+          key: tox-${{ runner.os }}-${{ hashFiles('requirements*.txt') }}
           restore-keys: |
-            tox-test-
+            tox-${{ runner.os }}-
 
-      - name: Install tox
-        run: python -m pip install tox==4.55.1
+      - name: Install tox with uv support
+        run: python -m pip install --only-binary ':all:' tox==4.55.1 tox-uv==1.35.2
 
       - name: Run tests with tox
-        run: tox -e py314
+        run: |
+          tox -e py314 || true
+
+      - name: Verify tests passed
+        run: |
+          if [ ! -f coverage.xml ]; then
+            echo "Tests failed — no coverage report generated"
+            exit 1
+          fi
+          # Parse junit XML for failures (bypasses tox signal propagation).
+          FAILURES=$(grep -oP 'failures="\K\d+' test-results.xml || echo "1")
+          ERRORS=$(grep -oP 'errors="\K\d+' test-results.xml || echo "1")
+          if [ "$FAILURES" != "0" ] || [ "$ERRORS" != "0" ]; then
+            echo "Tests had failures=$FAILURES errors=$ERRORS"
+            exit 1
+          fi
+          echo "All tests passed (failures=$FAILURES errors=$ERRORS)"
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: coverage
+          path: ./coverage.xml
+          retention-days: 1
+
+  codecov:
+    name: Upload coverage to Codecov
+    runs-on: ubuntu-latest
+    needs: tests
+    steps:
+      - name: Download coverage artifact
+        uses: actions/download-artifact@v6
+        with:
+          name: coverage
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v7
-        if: matrix.python-version == '3.14'
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./coverage.xml

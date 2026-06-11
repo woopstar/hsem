@@ -33,26 +33,18 @@ $$ eds\\_share = \frac{\mathrm{EDS interval}}{\mathrm{Slot width}} $$
 
 ## Scaling pipeline
 
-```
-EDS raw price: P (currency/kWh, full hourly rate)
-        │
-        ▼
-HourlyDataPopulator._async_update_hourly_field
-        │
-        │  Per-slot stored value = P / eds_share
-        │  (each 15-min slot gets 1/4 of the hourly rate)
-        ▼
-Recommendation slot storage
-(HourlyRecommendation objects)
-        │
-        ▼
-coordinator._build_planner_input
-        │
-        │  Planner sees: (P / eds_share) * eds_share = P
-        │  (exact inverse — the planner always receives the original rate)
-        ▼
-Planner engine (PricePoint[])
-    import_price = P (full currency/kWh)
+```mermaid
+flowchart TD
+    A[EDS raw price P\nfull hourly currency per kWh]
+    B[HourlyDataPopulator._async_update_hourly_field]
+    C[Recommendation slot storage\nHourlyRecommendation objects]
+    D[coordinator._build_planner_input]
+    E[Planner engine PricePoint\nimport_price = P]
+
+    A --> B
+    B -->|Per-slot stored value = P / eds_share| C
+    C --> D
+    D -->|Planner input value = stored value × eds_share = P| E
 ```
 
 ### What this is NOT

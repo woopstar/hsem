@@ -4,7 +4,7 @@ This guide explains how to configure the **EV Planned Load** feature in HSEM so 
 the home battery planner correctly accounts for upcoming EV charging demand before
 deciding how to use solar surplus and battery capacity.
 
-> **See also:** `docs/hsem-planner-guide.md` — the technical reference explaining how
+> **See also:** `docs/planner-guide.md` — the technical reference explaining how
 > the EV planner integrates with the home battery planner, the net-load formula, and the
 > solar surplus bug fix.
 
