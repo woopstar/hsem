@@ -27,12 +27,10 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Cache tox and pip
+      - name: Cache tox environments
         uses: actions/cache@v5
         with:
-          path: |
-            .tox
-            ~/.cache/pip
+          path: .tox
           key: tox-${{ runner.os }}-${{ hashFiles('requirements*.txt') }}
           restore-keys: |
             tox-${{ runner.os }}-
@@ -54,12 +52,10 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Cache tox and pip
+      - name: Cache tox environments
         uses: actions/cache@v5
         with:
-          path: |
-            .tox
-            ~/.cache/pip
+          path: .tox
           key: tox-${{ runner.os }}-${{ hashFiles('requirements*.txt') }}
           restore-keys: |
             tox-${{ runner.os }}-
@@ -81,12 +77,10 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Cache tox and pip
+      - name: Cache tox environments
         uses: actions/cache@v5
         with:
-          path: |
-            .tox
-            ~/.cache/pip
+          path: .tox
           key: tox-${{ runner.os }}-${{ hashFiles('requirements*.txt') }}
           restore-keys: |
             tox-${{ runner.os }}-
@@ -108,12 +102,10 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Cache tox and pip
+      - name: Cache tox environments
         uses: actions/cache@v5
         with:
-          path: |
-            .tox
-            ~/.cache/pip
+          path: .tox
           key: tox-${{ runner.os }}-${{ hashFiles('requirements*.txt') }}
           restore-keys: |
             tox-${{ runner.os }}-
@@ -131,7 +123,14 @@ jobs:
             echo "Tests failed — no coverage report generated"
             exit 1
           fi
-          echo "Tests passed (coverage report found)"
+          # Parse junit XML for failures (bypasses tox signal propagation).
+          FAILURES=$(grep -oP 'failures="\K\d+' test-results.xml || echo "1")
+          ERRORS=$(grep -oP 'errors="\K\d+' test-results.xml || echo "1")
+          if [ "$FAILURES" != "0" ] || [ "$ERRORS" != "0" ]; then
+            echo "Tests had failures=$FAILURES errors=$ERRORS"
+            exit 1
+          fi
+          echo "All tests passed (failures=$FAILURES errors=$ERRORS)"
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v5
