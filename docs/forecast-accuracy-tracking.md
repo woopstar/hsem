@@ -134,11 +134,11 @@ of 15-minute slots.  Older records are automatically pruned.
 
 ### Energy accumulation
 
-Instantaneous power readings (Watts) are converted to energy (kWh) using:
+$$
+E = P \times \frac{\Delta t}{3600} \times \frac{1}{1000}
+$$
 
-```text
-energy_kwh = power_w × (elapsed_seconds / 3600.0) / 1000.0
-```
+where $P$ is instantaneous power in watts and $\Delta t$ is elapsed seconds.
 
 The helper function `compute_accumulated_energy(power_w, elapsed_seconds)`
 handles this conversion.  Elapsed time is computed as the difference between
@@ -154,17 +154,17 @@ across all finalised records:
 
 ### MAE — Mean Absolute Error
 
-```text
-MAE = (1/n) × Σ |forecast_kwh − actual_kwh|
-```
+$$
+\mathrm{MAE} = \frac{1}{n} \sum_{i=1}^{n} \left| \mathrm{forecast}_i - \mathrm{actual}_i \right|
+$$
 
 Units: kWh.  Averages the absolute deviation.  Lower is better.
 
 ### Bias (signed error)
 
-```text
-Bias = (1/n) × Σ (forecast_kwh − actual_kwh)
-```
+$$
+\mathrm{Bias} = \frac{1}{n} \sum_{i=1}^{n} \left( \mathrm{forecast}_i - \mathrm{actual}_i \right)
+$$
 
 Units: kWh.  Positive bias = systematic over-forecast (predicted more than
 actually occurred).  Negative bias = under-forecast.  Zero bias means the
@@ -172,21 +172,21 @@ forecast is accurate on average (but may have large cancellations).
 
 ### RMSE — Root Mean Squared Error
 
-```text
-RMSE = √( (1/n) × Σ (forecast_kwh − actual_kwh)² )
-```
+$$
+\mathrm{RMSE} = \sqrt{ \frac{1}{n} \sum_{i=1}^{n} \left( \mathrm{forecast}_i - \mathrm{actual}_i \right)^2 }
+$$
 
 Units: kWh.  Penalises large errors more heavily than MAE.  Useful for
 detecting occasional big misses.
 
 ### MAPE — Mean Absolute Percentage Error
 
-```text
-MAPE = (1/n) × Σ ( |forecast_kwh − actual_kwh| / |actual_kwh| ) × 100
-```
+$$
+\mathrm{MAPE} = \frac{1}{n} \sum_{i=1}^{n} \frac{ \left| \mathrm{forecast}_i - \mathrm{actual}_i \right| }{ \left| \mathrm{actual}_i \right| } \times 100
+$$
 
 Units: percent.  Makes errors comparable across different power levels.
-Returns `None` when all actual values are zero (division by zero guard).
+Returns ``None`` when all actual values are zero (division by zero guard).
 
 ### Exposure via `as_dict()`
 

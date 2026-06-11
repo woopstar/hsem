@@ -25,16 +25,19 @@ init → prices → months → solcast → huawei_solar
 | Read-only mode | `hsem_read_only` | `False` | Block all hardware writes when enabled |
 | Verbose logging | `hsem_verbose_logging` | `False` | Enable debug-level planner logging |
 
-### Step: `energidataservice`
+### Step: `prices`
 
-Electricity price sensor configuration.
+Generic electricity price sensor configuration. Provider-agnostic — supports
+Energi Data Service, Nordpool, Amber Electric, and any other price source.
 
 | Field | Key | Default | Description |
 |---|---|---|---|
-| Import price sensor | `hsem_energi_data_service_import` | `sensor.energi_data_service` | HA entity for import price |
-| Export price sensor | `hsem_energi_data_service_export` | `sensor.energi_data_service_produktion` | HA entity for export price |
-| EDS update interval | `hsem_energi_data_service_update_interval` | 15 minutes | How often EDS publishes prices (15 or 60) |
-| Export min price | `hsem_energi_data_service_export_min_price` | 0.0 | Below this, inverter throttles export to zero |
+| Import price sensor | `hsem_import_electricity_price_sensor` | `sensor.energi_data_service` | HA entity for import price |
+| Export price sensor | `hsem_export_electricity_price_sensor` | `sensor.energi_data_service_produktion` | HA entity for export price |
+| Import price forecast sensor | `hsem_import_electricity_price_forecast_sensor` | — | Optional dedicated import forecast sensor |
+| Export price forecast sensor | `hsem_export_electricity_price_forecast_sensor` | — | Optional dedicated export forecast sensor |
+| Export min price | `hsem_export_electricity_min_price` | 0.0 | Below this, inverter throttles export to zero |
+| Price update interval | `hsem_electricity_price_update_interval` | 15 minutes | How often the price source publishes (15, 30, or 60) |
 
 ### Step: `months`
 
@@ -108,8 +111,15 @@ Primary EV charger configuration.
 | EV charger status | `hsem_ev_charger_status` | — | Charger status sensor entity |
 | EV charger power | `hsem_ev_charger_power` | — | Charger power sensor entity |
 | EV SoC sensor | `hsem_ev_soc` | — | EV battery SoC sensor |
-| EV SoC target | `hsem_ev_soc_target` | — | EV target SoC entity |
+| EV SoC target | `hsem_ev_soc_target` | 80 % | EV target SoC |
 | EV connected sensor | `hsem_ev_connected` | — | Binary sensor for EV plugged in |
+| Allow charge past target | `hsem_ev_allow_charge_past_target_soc` | `False` | Allow solar-only charging beyond target SoC |
+| Force max discharge power | `hsem_ev_charger_force_max_discharge_power` | `False` | Force maximum discharge power during discharge slots |
+| Max discharge power | `hsem_ev_charger_max_discharge_power` | 0 | Maximum discharge power cap (W) |
+
+### Step: `ev_second`
+
+Second EV charger configuration (identical fields to primary EV step; only shown when second EV enabled).
 
 ### Step: `ev_planned_load`
 
@@ -121,12 +131,18 @@ Primary EV planned load integration (optional, default disabled).
 | Battery capacity | `hsem_ev_planned_load_battery_capacity_kwh` | 0.0 | EV battery nameplate capacity (kWh) |
 | Charger power | `hsem_ev_planned_load_charger_power_kw` | 0.0 | Charger AC output (kW) |
 | Charger efficiency | `hsem_ev_planned_load_charger_efficiency` | 100 % | Charger efficiency |
+| Charger min power | `hsem_ev_planned_load_charger_min_power_w` | 1380 W | Minimum charger power for physical operation |
 
 Target SoC and deadline are configured outside this step:
-- **Target SoC**: via the basic EV charger sensor (`hsem_ev_soc_target`)
+- **Target SoC**: via the number entity `number.hsem_ev_target_soc`
 - **Deadline**: via the HSEM time entity `time.hsem_ev_deadline_time`
 - **Smart charging**: via the HSEM switch `switch.hsem_ev_smart_charging`
+- **Force charge now**: via the HSEM switch `switch.hsem_ev_force_charge_now`
+- **Allow charge past target**: via `hsem_ev_allow_charge_past_target_soc` in the EV charger step
 
+### Step: `ev_second_planned_load`
+
+Second EV planned load integration (identical fields; only shown when second EV enabled).
 
 ### Step: `batteries_schedule_1/2/3`
 
@@ -153,7 +169,7 @@ Excess battery export configuration.
 
 ### Step: `weighted_values`
 
-Consumption prediction weights and battery configuration.
+Consumption prediction weight configuration.
 
 | Field | Key | Default | Description |
 |---|---|---|---|
@@ -161,17 +177,9 @@ Consumption prediction weights and battery configuration.
 | Weight 3-day | `hsem_house_consumption_energy_weight_3d` | 30 % | Weight for 3-day average |
 | Weight 7-day | `hsem_house_consumption_energy_weight_7d` | 30 % | Weight for 7-day average |
 | Weight 14-day | `hsem_house_consumption_energy_weight_14d` | 15 % | Weight for 14-day average |
-| Charge efficiency | `hsem_batteries_charge_efficiency` | 95 % | Battery charge efficiency |
-| Discharge efficiency | `hsem_batteries_discharge_efficiency` | 95 % | Battery discharge efficiency |
-| Purchase price | `hsem_batteries_purchase_price` | 0.0 | Battery purchase price for cycle cost |
-| Expected cycles | `hsem_batteries_expected_cycles` | 6000 | Expected lifetime cycles |
-| Cycle cost | `hsem_batteries_cycle_cost` | 0.0 | Explicit cycle cost (auto-derived when 0) |
-| Planning horizon | `hsem_recommendation_interval_length` | 48 hours | How far to plan ahead |
-| Slot width | `hsem_recommendation_interval_minutes` | 15 minutes | Width of each planning slot |
-| Hysteresis enabled | `hsem_planner_hysteresis_enabled` | `True` | Enable plan-level hysteresis |
-| Hysteresis % | `hsem_planner_hysteresis_percentage` | 5.0 % | Percentage threshold for plan switching |
-| Window hysteresis | `hsem_planner_window_hysteresis_minutes` | 0 | Window-level hysteresis hold time (0 = disabled) |
-| Extended attributes | `hsem_extended_attributes` | `False` | Expose extended sensor attributes |
+
+Battery parameters and planner settings in this step duplicate their primary-step
+counterparts and are kept for backward compatibility during migration.
 
 ### Step: `energy_and_ml`
 

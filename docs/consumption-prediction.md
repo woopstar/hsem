@@ -39,7 +39,7 @@ $$
 where:
 
 - $X$ is the $n \times k$ design matrix ($n$ observations, $k$ features)
-- $W = \operatorname{diag}(w_1, \ldots, w_n)$ weights recent observations higher
+- $W = \mathrm{diag}(w_1, \ldots, w_n)$ weights recent observations higher
 - $\alpha = 1.0$ is the L2 regularization strength
 - $y$ is the vector of observed per-slot energy (kWh)
 

@@ -18,8 +18,9 @@ deciding how to use solar surplus and battery capacity.
 4. [Field reference](#field-reference)
 5. [Double-counting — when to enable base_load_includes_ev](#double-counting)
 6. [Second EV](#second-ev)
-7. [Sensor entities](#sensor-entities)
-8. [Troubleshooting](#troubleshooting)
+7. [How the EV planner works](#how-the-ev-planner-works)
+8. [Sensor entities](#sensor-entities)
+9. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -69,7 +70,7 @@ Go to **Settings → Devices & Services → HSEM → Configure** to open the opt
 The EV charge plan step appears after the EV charger setup steps:
 
 ```
-init → energidataservice → months → solcast
+init → prices → months → solcast
      → huawei_solar → power
      → ev (force-discharge charger) → [ev_second]
      → ev_planned_load               ← you are here
@@ -90,7 +91,7 @@ At minimum you must:
 - Select your **EV Battery SoC Sensor**
 
 All other fields have sensible defaults (target SoC 80 %, deadline 07:00, efficiency
-100 %).
+100 %, min charger power 1380 W).
 
 ---
 
@@ -109,6 +110,7 @@ All other fields have sensible defaults (target SoC 80 %, deadline 07:00, effici
 | **EV Battery Capacity (kWh)** | Yes | `0` | EV battery nameplate capacity. Range 1–200 kWh, step 0.5 kWh. |
 | **EV Charger Power (kW)** | Yes | `0` | AC output power of the charger. Range 0.1–50 kW, step 0.1 kW. |
 | **EV Charger Efficiency** | Yes | `100` % | Fraction of AC energy delivered to the EV battery. Most AC chargers are 95–100 %. Range 50–100 %, step 1 %. |
+| **Charger Min Power (W)** | Yes | `1380` | Minimum AC power required for the charger to physically operate (230 V × 6 A). Below this, the slot is zeroed out by engine post-processing. Range 0–22000 W, step 10 W. |
 | **Base House Load Already Includes EV** | Yes | `off` | See [Double-counting](#double-counting). |
 | **EV Actual Charging Power Sensor (optional)** | Optional | — | Sensor for real-time EV charge power. Used for diagnostics only — not fed into the planner. |
 
@@ -125,19 +127,32 @@ You do **not** need to set it separately.
 
 **How your CT clamp position determines the setting in the EV step:**
 
-```
-Scenario A — CT clamp UPSTREAM of the EVSE (includes EV power):
-  house_consumption_sensor = lights + appliances + EV charger
-  → Set hsem_house_power_includes_ev_charger_power = True
-  → base_load_includes_ev is auto-derived as True
-  → HSEM does NOT add ev_planned_load_kwh again
+```mermaid
+flowchart TD
+    A{Where is your CT clamp?}
+    B[Scenario A — upstream of charger]
+    C[Scenario B — downstream of charger]
+    D[Set includes_ev = True\nHSEM does NOT add EV load again]
+    E[Set includes_ev = False\nHSEM adds EV load to net consumption]
 
-Scenario B — CT clamp DOWNSTREAM of the EVSE (excludes EV power):
-  house_consumption_sensor = lights + appliances only
-  → Set hsem_house_power_includes_ev_charger_power = False
-  → base_load_includes_ev is auto-derived as False
-  → HSEM adds ev_planned_load_kwh to net consumption
+    A -->|Measures house + EV| B --> D
+    A -->|Measures house only| C --> E
 ```
+
+### Net load formula
+
+The planner's net load with EV is:
+
+$$
+\mathrm{net\_load}[t] = \mathrm{house\_load}[t] - \mathrm{pv}[t] + \left\{
+\begin{array}{ll}
+0 & \text{if } \mathrm{base\_load\_includes\_ev} \\
+\mathrm{ev\_load}[t] & \text{otherwise}
+\end{array}
+\right.
+$$
+
+### Quick test
 
 If you are unsure, plug the EV in and watch the house consumption sensor. If it rises
 by the charger power when charging starts, set `hsem_house_power_includes_ev_charger_power`
@@ -153,6 +168,49 @@ All fields are the same; just use the second car's sensors and config values.
 
 The two EV plans are independent. Their per-slot loads are **summed** into
 `ev_planned_load_kwh` on each planner slot before net consumption is calculated.
+
+---
+
+## How the EV planner works
+
+```mermaid
+flowchart TD
+    A[Read EV state: SoC, connected, deadline, target]
+    B{EV connected AND\nsmart charging enabled?}
+    C[Calculate energy needed:\ncapacity × (target% − current%)]
+    D[Sensor shows not_connected\nor smart_charging_disabled]
+    E{Energy needed > 0?}
+    F[Sort candidate slots before deadline\nby cheapest import price]
+    G[Allocate solar surplus slots first]
+    H[Fill remaining need with\ncheapest grid import slots]
+    I[Inject per-slot EV AC load\ninto planner net consumption]
+    J[Battery planner runs with\nreduced net surplus]
+    K[MILP co-optimises EV charging\nwith battery schedule]
+    L[Post-processing: minimum power floor\nand power recomputation]
+
+    A --> B
+    B -->|No| D
+    B -->|Yes| C --> E
+    E -->|No| D
+    E -->|Yes| F --> G --> H --> I --> J --> K --> L
+```
+
+### Inputs
+
+| Input | Source | Description |
+|---|---|---|
+| Current EV SoC | `hsem_ev_soc` sensor | Percentage (0–100 %) |
+| Target SoC | `hsem_ev_soc_target` entity or 80 % default | Target percentage |
+| Deadline | `time.hsem_ev_deadline` entity or `"07:00"` | Time-of-day by which EV must be charged |
+| Battery capacity | `hsem_ev_planned_load_battery_capacity_kwh` | Nameplate kWh |
+| Charger AC power | `hsem_ev_planned_load_charger_power_kw` | AC kW output |
+| Charger efficiency | `hsem_ev_planned_load_charger_efficiency` | Percent (50–100) |
+| Charger min power | `hsem_ev_planned_load_charger_min_power_w` | Watts (default 1380) |
+| Connected sensor | `hsem_ev_connected` binary sensor | Plug status |
+| Smart charging switch | `switch.hsem_ev_smart_charging` | Enable/disable |
+| Force charge now | `switch.hsem_ev_force_charge_now` | Immediate charge |
+| Allow past target | `hsem_ev_allow_charge_past_target_soc` | Solar-only surplus charging past target |
+| Base load includes EV | `hsem_house_power_includes_ev_charger_power` | CT clamp position |
 
 ---
 
@@ -246,6 +304,13 @@ This was a bug fixed in PR #397. The EV planner was computing solar surplus from
 raw `pv - house_load` fields.
 
 If you are on a version before this fix, update HSEM.
+
+### EV charging slots show zero power
+
+The engine post-processing applies a **minimum power floor** (default 1380 W, configurable
+via `hsem_ev_planned_load_charger_min_power_w`). If the computed AC power for a slot is
+below this threshold, the slot's EV fields are zeroed out because the charger physically
+cannot operate below 6 A (230 V × 6 A = 1380 W).
 
 ### Deadline is in the past
 

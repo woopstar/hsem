@@ -98,7 +98,7 @@ $$
 The max grid import per slot is converted from amps to kWh/slot:
 
 $$
-\operatorname{max\_grid\_import} = \frac{\operatorname{amps} \times 230 \times 3}{1000} \times \frac{\operatorname{interval\_minutes}}{60}
+\mathrm{max\_grid\_import} = \frac{\mathrm{amps} \times 230 \times 3}{1000} \times \frac{\mathrm{interval\_minutes}}{60}
 $$
 
 This assumes balanced three-phase load at 230 V phase-to-neutral.
@@ -125,9 +125,9 @@ $$
     && \text{discharge-side conversion loss cost} \\
     - & \gamma \cdot \bigl( ec[t] - ed[t] \bigr)
     && \text{terminal-SoC replacement credit} \\
-    + & p_{\mathrm{soc}} \cdot \bigl( \operatorname{s\_max\_pen}[t] + \operatorname{s\_min\_pen}[t] \bigr)
+    + & p_{\mathrm{soc}} \cdot \bigl( \mathrm{s\_max\_pen}[t] + \mathrm{s\_min\_pen}[t] \bigr)
     && \text{SoC soft-constraint penalties} \\
-    + & p_{\mathrm{fuse}} \cdot \operatorname{gi\_pen}[t]
+    + & p_{\mathrm{fuse}} \cdot \mathrm{gi\_pen}[t]
     && \text{Main fuse grid-import penalty}
 \bigg] \\
 \end{aligned}
@@ -136,7 +136,7 @@ $$
 Plus EV deadline penalties (undiscounted — deadline is a hard commitment):
 
 $$
-\sum_{v=1}^{E} p_{\mathrm{ev\_pen}}^{(v)} \cdot \operatorname{ev\_pen}_v
+\sum_{v=1}^{E} p_{\mathrm{ev\_pen}}^{(v)} \cdot \mathrm{ev\_pen}_v
 $$
 
 Where:
@@ -158,7 +158,7 @@ Where:
 Plus EV charge-past-target benefit (discounted, per charge-past-target EV $v$):
 
 $$
--\sum_{v \in \mathrm{past\_target}} \sum_{t} \delta_t \cdot \frac{\beta_{\mathrm{ev}}}{\eta_{\mathrm{charger}}^{(v)}} \cdot \operatorname{ev\_c}_v[t]
+-\sum_{v \in \mathrm{past\_target}} \sum_{t} \delta_t \cdot \frac{\beta_{\mathrm{ev}}}{\eta_{\mathrm{charger}}^{(v)}} \cdot \mathrm{ev\_c}_v[t]
 $$
 
 This benefit is deliberately tiny ($0.0001$ per kWh AC) — it only acts as a tiebreaker when the battery is full and export prices are near zero or negative. It must **not** compete with house battery charging (worth $p_{\mathrm{imp}}$) or export at good prices (worth $p_{\mathrm{exp}}$).
@@ -186,19 +186,19 @@ $$
 **SoC upper bound (soft):**
 
 $$
-\sum_{k=0}^{t} \bigl( ec[k] - ed[k] \bigr) - \operatorname{s\_max\_pen}[t] \leq C_u - soc_0
+\sum_{k=0}^{t} \bigl( ec[k] - ed[k] \bigr) - \mathrm{s\_max\_pen}[t] \leq C_u - soc_0
 $$
 
 **SoC lower bound (soft):**
 
 $$
--\sum_{k=0}^{t} \bigl( ec[k] - ed[k] \bigr) - \operatorname{s\_min\_pen}[t] \leq soc_0
+-\sum_{k=0}^{t} \bigl( ec[k] - ed[k] \bigr) - \mathrm{s\_min\_pen}[t] \leq soc_0
 $$
 
 **Mutual exclusion — no simultaneous charge + discharge:**
 
 $$
-\frac{ec[t]}{\operatorname{max\_charge}} + \frac{ed[t]}{\operatorname{max\_discharge}} \leq 1
+\frac{ec[t]}{\mathrm{max\_charge}} + \frac{ed[t]}{\mathrm{max\_discharge}} \leq 1
 $$
 
 **Cycle cost auxiliary — forcing $m[t] \geq ec[t]$ and $m[t] \geq ed[t]$:**
@@ -213,19 +213,19 @@ $$
 **EV cumulative SoC upper bound (per EV v):**
 
 $$
-\sum_{k=0}^{t} \operatorname{ev\_c}_v[k] \leq \operatorname{capacity}_v - \operatorname{initial\_soc}_v
+\sum_{k=0}^{t} \mathrm{ev\_c}_v[k] \leq \mathrm{capacity}_v - \mathrm{initial\_soc}_v
 $$
 
 **EV deadline target (soft, per EV v):**
 
 $$
-\operatorname{initial\_soc}_v + \sum_{k=0}^{D_v} \operatorname{ev\_c}_v[k] + \operatorname{ev\_pen}_v \geq \operatorname{target}_v
+\mathrm{initial\_soc}_v + \sum_{k=0}^{D_v} \mathrm{ev\_c}_v[k] + \mathrm{ev\_pen}_v \geq \mathrm{target}_v
 $$
 
 **EV surplus-only constraint (per charge-past-target EV v, per slot t):**
 
 $$
-\frac{\operatorname{ev\_c}_v[t]}{\eta_{\mathrm{charger}}^{(v)}} \leq \max\bigl(0,\; \operatorname{pv\_avail}[t] - \operatorname{base\_load}[t]\bigr)
+\frac{\mathrm{ev\_c}_v[t]}{\eta_{\mathrm{charger}}^{(v)}} \leq \max\bigl(0,\; \mathrm{pv\_avail}[t] - \mathrm{base\_load}[t]\bigr)
 $$
 
 This constraint ensures charge-past-target EVs only consume **genuine PV surplus** — never battery discharge or grid import.  It is only added for EVs where `charge_past_target` is `True` (EV already at user-configured target SoC but `allow_charge_past_target_soc` is enabled and SoC < 100 %).
@@ -235,7 +235,7 @@ This constraint ensures charge-past-target EVs only consume **genuine PV surplus
 For each slot $t$, when `main_fuse_amps > 0`:
 
 $$
-gi[t] - \operatorname{gi\_pen}[t] \leq \frac{\operatorname{amps} \times 230 \times 3}{1000} \times \frac{\operatorname{interval\_minutes}}{60}
+gi[t] - \mathrm{gi\_pen}[t] \leq \frac{\mathrm{amps} \times 230 \times 3}{1000} \times \frac{\mathrm{interval\_minutes}}{60}
 $$
 
 The penalty variable `gi_pen[t]` absorbs any excess at high cost (`p_fuse`), preventing infeasibility when house base load alone exceeds the fuse rating. When `main_fuse_amps` is `None` or 0, this constraint is not added.

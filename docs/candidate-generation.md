@@ -10,10 +10,8 @@ the candidate set, and the mathematical models behind each strategy.
 1. [Why multiple candidates?](#why-multiple-candidates)
 2. [Candidate list](#candidate-list)
 3. [Assumptions behind each candidate](#assumptions-behind-each-candidate)
-4. [Partial-SoC candidates (BatPred-inspired)](#partial-soc-candidates)
-5. [MILP global optimisation](#milp-global-optimisation)
-6. [Candidate deduplication](#candidate-deduplication)
-7. [Hysteresis](#hysteresis)
+4. [MILP global optimisation](#milp-global-optimisation)
+5. [Hysteresis](#hysteresis)
 
 ---
 
@@ -32,19 +30,31 @@ independent strategies and picking the cheapest valid one, the planner:
 
 ## Candidate list
 
-The generator (`planner/candidate_generator.py`) produces these candidates:
+The generator (`planner/candidate_generator.py`) operates in **MILP-only mode**.
+The MILP finds the globally optimal solution; heuristic candidates are disabled
+because the MILP consistently dominates them. Only diagnostic baselines remain
+alongside the MILP:
 
 | # | Name | Strategy |
 |---|---|---|
-| 1 | `baseline` | Current HSEM scheduling output (discharge → charge → excess export → optimisation) |
-| 2 | `no_action` | Battery completely idle — no forced charge or discharge |
-| 3 | `passive` | Solar charging only where PV surplus exists; no grid charge or forced discharge |
-| 4 | `grid_charge` | Grid-charge slots kept; solar charging removed |
-| 5 | `solar_only` | Only solar-charge slots kept; grid charging cleared |
-| 6 | `discharge_only` | Discharge slots kept; all charge slots cleared |
-| 7 | `aggressive` | Cheapest N slots forced to grid-charge; most expensive M slots forced to discharge |
-| 8 | `milp` | Globally-optimal LP solution (when scipy is available) |
-| 9–14 | `soc_plan_25/50/75/100/125/full` | Partial-SoC candidates charging different fractions of discharge-window need |
+| 1 | `no_action` | Battery completely idle — no forced charge or discharge |
+| 2 | `passive` | Solar charging only where PV surplus exists; no grid charge or forced discharge |
+| 3 | `milp` | Globally-optimal LP solution (when scipy is available) |
+
+### Historical candidates (disabled)
+
+The following candidates were previously generated but are now commented out
+in MILP-only mode. They remain documented for reference and may be re-enabled
+as diagnostic tools:
+
+| Name | Strategy |
+|---|---|
+| `baseline` | Current HSEM scheduling output (discharge → charge → excess export → optimisation) |
+| `grid_charge` | Grid-charge slots kept; solar charging removed |
+| `solar_only` | Only solar-charge slots kept; grid charging cleared |
+| `discharge_only` | Discharge slots kept; all charge slots cleared |
+| `aggressive` | Cheapest N slots forced to grid-charge; most expensive M slots forced to discharge |
+| `soc_plan_25/50/75/100/125/full` | Partial-SoC candidates charging different fractions of discharge-window need |
 
 ---
 
@@ -79,152 +89,28 @@ without any grid-based scheduling.
 - Battery fills from PV, never from grid
 - Battery never discharges unless native inverter logic does so
 
-### `grid_charge`
-
-**Assumption:** Buying grid energy at a low price, storing it, and using it
-during a high-price period is profitable after accounting for round-trip losses,
-cycle cost, and the minimum price spread.
-
-**Purpose:** Tests whether the price spread available in the horizon justifies
-the round-trip cost of grid charging.
-
-**Mathematical model:**
-- Grid-charge slots kept from the scheduler's output
-- Solar charging cleared
-- Discharge slots kept (to recover the stored energy)
-- Effectively: "charge from grid when cheap, discharge when expensive,
-  ignore solar charging"
-
-### `solar_only`
-
-**Assumption:** Solar energy is always cheaper than any grid import, and the
-battery should prioritise storing PV surplus over grid charging.
-
-**Purpose:** Tests whether PV surplus alone can satisfy the discharge-window
-demand without incurring grid-import costs.
-
-**Mathematical model:**
-- Solar-charge slots kept
-- Grid charging cleared
-- Discharge slots kept when needed
-- Effectively: "store every kWh of PV surplus, use it during expensive slots"
-
-### `discharge_only`
-
-**Assumption:** The battery has enough stored energy from previous cycles to
-cover the discharge demand without any additional charging within the horizon.
-
-**Purpose:** Tests whether the existing SoC is sufficient to ride through
-the horizon without recharging.
-
-**Mathematical model:**
-- Discharge slots kept
-- All charge slots cleared
-- Battery only discharges, never charges
-- Useful when SoC is high and horizon is short
-
-### `aggressive`
-
-**Assumption:** The most extreme price spread in the horizon should be fully
-exploited by charging at the cheapest N slots and discharging at the most
-expensive M slots, ignoring schedules.
-
-**Purpose:** Upper-bound test — what is the maximum arbitrage value if we
-ignore schedule constraints?
-
-**Mathematical model:**
-- N dynamically computed from battery headroom: `N = ceil(usable_headroom_kwh / max_charge_per_slot)`
-- M dynamically computed from usable energy: `M = ceil(current_kwh_above_floor / max_discharge_per_slot)`
-- N cheapest import slots set to `batteries_charge_grid`
-- M most expensive import slots set to `batteries_discharge_mode`
-- Scales with horizon length and battery capacity (fix for issue #416 Bug 2)
-
----
-
-## Partial-SoC candidates
-
-Introduced as a BatPred-inspired improvement (issue #445 fix), partial-SoC candidates
-charge different fractions of the energy needed for upcoming discharge windows.
-This lets the selector find the optimal charge level — charging exactly what's
-needed, not filling to 100 % every time.
-
-### Charge fractions
-
-| Candidate | Fraction | Meaning |
-|---|---|---|
-| `soc_plan_25` | 0.25 | Charge 25 % of the discharge-window need |
-| `soc_plan_50` | 0.50 | Charge 50 % |
-| `soc_plan_75` | 0.75 | Charge 75 % |
-| `soc_plan_100` | 1.00 | Charge exactly what's needed |
-| `soc_plan_125` | 1.25 | Charge 125 % (safety margin) |
-| `soc_plan_full` | 2.00 | Fill to maximum usable capacity |
-
-### Energy needed calculation
-
-```python
-energy_needed = sum(
-    discharge_energy for each discharge window in the horizon
-) - current_kwh_above_floor
-
-charge_target = energy_needed * fraction
-```
-
-### When partial-SoC helps
-
-Partial charging avoids the **cycle-cost overhead** of filling the battery
-completely when the discharge demand is small. Consider:
-
-- Discharge window needs 3 kWh
-- Battery is at 50 % of 10 kWh usable (5 kWh above floor)
-- Full charge (soc_plan_full) would charge 5 more kWh, incurring 5 kWh × cycle_cost
-- soc_plan_100 charges exactly 0 kWh (already have enough)
-- soc_plan_25 / 50 / 75 may be suboptimal here because existing SoC already
-  exceeds the need — the candidates converge to the same plan
-
-When SoC is low and discharge need is large, partial-SoC candidates let the
-selector find the precise charge level that minimises the sum of import cost
-and cycle cost.
-
-### Assumptions
-
-- Discharge-window energy can be predicted from schedule configuration
-- Cycle cost is proportional to throughput
-- The optimal charge level is somewhere between 25 % and 100 % of the
-  discharge-window need (not necessarily full)
-
 ---
 
 ## MILP global optimisation
 
 The MILP solver (`planner/milp_optimizer.py`) uses scipy's HiGHS to find the
-globally optimal charge/discharge schedule.
+globally optimal charge/discharge schedule. This is the **primary planner** —
+the MILP solution is preferred over all heuristic candidates.
 
 See [MILP Optimization](milp-optimization.md) for the full LP formulation,
 variable layout, constraints, solver pipeline, and post-processing flow.
 
+### EV co-optimisation
+
+When one or more active EVs are provided, the MILP co-optimises EV charging
+alongside the battery schedule. EV charging variables are added to the LP
+variable vector and the energy balance equation includes EV charger load.
+
 ### Fallback
 
 If `scipy` is unavailable or the solver fails (infeasible / numerical issue),
-the MILP candidate is silently dropped and the rule-based candidates compete
-as normal.
-
----
-
-## Candidate deduplication
-
-When generating partial-SoC candidates, targets within 0.05 kWh of each other
-are deduplicated to prevent near-identical plans from polluting the candidate list:
-
-```python
-DUPLICATE_THRESHOLD_KWH = 0.05
-filtered = [targets[0]]
-for t in sorted(targets)[1:]:
-    if t - filtered[-1] >= DUPLICATE_THRESHOLD_KWH:
-        filtered.append(t)
-```
-
-This is especially important when `current_kwh` is low and all partial-SoC
-fractions collapse to the same charge target.
+the MILP candidate is silently dropped and the remaining candidates
+(`no_action`, `passive`) compete as normal.
 
 ---
 
