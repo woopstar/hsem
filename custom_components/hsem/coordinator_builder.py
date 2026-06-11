@@ -245,6 +245,10 @@ def build_planner_input(
             cfg.ev_planned_load_charger_efficiency_pct
         )
         or 100.0,
+        ev_planned_load_charger_min_power_w=convert_to_float(
+            cfg.ev_planned_load_charger_min_power_w
+        )
+        or 1380.0,
         ev_planned_load_deadline=live.ev_planned_load_deadline,
         ev_planned_load_base_load_includes_ev=bool(
             cfg.house_power_includes_ev_charger_power
@@ -278,6 +282,10 @@ def build_planner_input(
             cfg.ev_second_planned_load_charger_efficiency_pct
         )
         or 100.0,
+        ev_second_planned_load_charger_min_power_w=convert_to_float(
+            cfg.ev_second_planned_load_charger_min_power_w
+        )
+        or 1380.0,
         ev_second_planned_load_deadline=live.ev_second_planned_load_deadline,
         ev_second_planned_load_base_load_includes_ev=bool(
             cfg.house_power_includes_ev_charger_power

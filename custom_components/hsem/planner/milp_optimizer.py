@@ -502,6 +502,36 @@ def solve_milp(
             ev_penalty_cost = max(p_imp_max, 0.1) * max(ev.capacity_kwh, 1.0) * 100.0
             c_obj[ev_pen_offsets[ev_idx]] = ev_penalty_cost
 
+    # --- EV charge-past-target benefit ---
+    # When an EV is already at its user-configured target SoC but
+    # charge_past_target is enabled, give EV charging a tiny benefit
+    # (0.0001 per kWh AC) so the MILP prefers diverting surplus PV to
+    # the EV over exporting it when nothing else wants the surplus.
+    #
+    # The benefit is deliberately tiny — it must NOT compete with:
+    # - House battery charging (worth p_imp via avoided future import)
+    # - Export at good prices (worth p_exp)
+    # It only acts as a tiebreaker: when the battery is full and export
+    # prices are low/negative, the EV gets the surplus instead of
+    # exporting it for near-zero revenue.
+    #
+    # Using a larger benefit (e.g. p_exp) would make the MILP prefer
+    # EV over battery charging when both compete for surplus — wrong
+    # when the battery is at 5 % and the EV is already above target.
+    for ev_idx, ev in enumerate(active_evs):
+        if ev.charge_past_target:
+            ev_off = ev_var_offsets[ev_idx]
+            for t in range(m):
+                discount = 1.0
+                if use_discount:
+                    slot = slots[future_idx[t]]
+                    slot_mid = slot.start + (slot.end - slot.start) / 2
+                    hours_ahead = max((slot_mid - now).total_seconds() / 3600.0, 0.0)
+                    discount = time_discount_rate**hours_ahead
+                # Tiny tiebreaker benefit (0.0001 per kWh AC).
+                # Negative coefficient = reduces objective = benefit.
+                c_obj[ev_off + t] -= (0.0001 / ev.charger_efficiency) * discount
+
     # --- Fuse penalty cost (same magnitude as SOC penalties) ---
     # P_fuse = max(p_imp) * 100 — high enough that the solver only exceeds
     # the fuse limit when physically unavoidable.
@@ -603,7 +633,9 @@ def solve_milp(
         for ev in active_evs
         if ev.deadline_slot is not None and ev.target_kwh > ev.initial_soc_kwh + 1e-9
     )
-    ev_total_rows = ev_soc_rows + ev_deadline_rows
+    # Surplus-only rows: for charge-past-target EVs, ev_c[t]/eff ≤ max(0, pv[t] - base_load[t])
+    ev_surplus_rows = sum(1 for ev in active_evs if ev.charge_past_target) * m
+    ev_total_rows = ev_soc_rows + ev_deadline_rows + ev_surplus_rows
 
     if ev_total_rows > 0:
         # Extend A_ub and b_ub to accommodate EV rows
@@ -643,6 +675,17 @@ def solve_milp(
                 A_ub[ev_row, ev_pen_offsets[ev_idx]] = -1.0
                 b_ub[ev_row] = ev.initial_soc_kwh - ev.target_kwh
                 ev_row += 1
+
+            # Surplus-only constraint for charge-past-target EVs:
+            # ev_c[t] / charger_eff ≤ max(0, pv[t] - base_load[t])
+            # This ensures past-target charging ONLY uses genuine PV
+            # surplus — never battery discharge or grid import.
+            if ev.charge_past_target:
+                for t in range(m):
+                    surplus_kwh = max(pv_avail[t] - base_load[t], 0.0)
+                    A_ub[ev_row + t, ev_off + t] = 1.0 / ev.charger_efficiency
+                    b_ub[ev_row + t] = surplus_kwh
+                ev_row += m
 
     # ------------------------------------------------------------------
     # Fuse constraint (soft): gi[t] - gi_pen[t] ≤ max_grid_import_per_slot_kwh
@@ -839,6 +882,17 @@ def solve_milp(
                         (ev_dc_kwh / ev.charger_efficiency / full_slot_hours) * 1000
                     )
                 ac_power_w = min(ac_power_w, max_ac_power_w)
+
+                # Floor at the charger's minimum operating power — if the
+                # target power is below the minimum the charger needs to
+                # start, it will never deliver any energy.  Zero out the
+                # field so the applier does not attempt to throttle below
+                # the minimum.
+                if (
+                    ev.charger_min_power_w > 1e-9
+                    and ac_power_w < ev.charger_min_power_w
+                ):
+                    ac_power_w = 0
 
                 # Write to the correct charger power field (additive across
                 # multiple EVs — max value wins, reflecting the higher demand).

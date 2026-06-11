@@ -185,6 +185,7 @@ class PlannerInput:
     ev_planned_load_battery_capacity_kwh: float = 0.0
     ev_planned_load_charger_power_kw: float = 0.0
     ev_planned_load_charger_efficiency_pct: float = 100.0
+    ev_planned_load_charger_min_power_w: float = 1380.0
     ev_planned_load_deadline: datetime | None = None
     ev_planned_load_base_load_includes_ev: bool = False
     #: When True, the EV may continue charging past its target SoC using
@@ -202,6 +203,7 @@ class PlannerInput:
     ev_second_planned_load_battery_capacity_kwh: float = 0.0
     ev_second_planned_load_charger_power_kw: float = 0.0
     ev_second_planned_load_charger_efficiency_pct: float = 100.0
+    ev_second_planned_load_charger_min_power_w: float = 1380.0
     ev_second_planned_load_deadline: datetime | None = None
     ev_second_planned_load_base_load_includes_ev: bool = False
     #: Same as ev_planned_allow_charge_past_target_soc, for the second EV.
