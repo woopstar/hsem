@@ -25,6 +25,7 @@
 | [Dashboard Setup](dashboard-setup.md) | Step-by-step ApexCharts dashboard with full YAML, layout reference, and troubleshooting |
 | [Config Flow Reference](config-flow-reference.md) | Every config/options flow step and field |
 | [EV Charge Plan Setup](ev-charge-plan-setup.md) | EV planned load configuration guide |
+| [EV Surplus Charging Automation](ev-surplus-charging-automation.md) | Wire your physical EV charger (go-e, Easee, Zaptec) to follow HSEM surplus recommendations |
 | [EV Optimal Charging Template](ev-optimal-charging-template.md) | Legacy Home Assistant template sensor for cost-optimal EV charging |
 | [Forecast Accuracy Tracking](forecast-accuracy-tracking.md) | Forecast vs actual tracking system |
 | [Huawei Entities](huawei_entities.md) | Canonical HA entity ID reference |
