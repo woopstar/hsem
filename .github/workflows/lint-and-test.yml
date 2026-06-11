@@ -145,7 +145,7 @@ jobs:
     needs: tests
     steps:
       - name: Download coverage artifact
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: coverage
 
