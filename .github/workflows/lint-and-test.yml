@@ -27,10 +27,12 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Cache tox environments
+      - name: Cache tox and pip
         uses: actions/cache@v5
         with:
-          path: .tox
+          path: |
+            .tox
+            ~/.cache/pip
           key: tox-${{ runner.os }}-${{ hashFiles('requirements*.txt') }}
           restore-keys: |
             tox-${{ runner.os }}-
@@ -52,10 +54,12 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Cache tox environments
+      - name: Cache tox and pip
         uses: actions/cache@v5
         with:
-          path: .tox
+          path: |
+            .tox
+            ~/.cache/pip
           key: tox-${{ runner.os }}-${{ hashFiles('requirements*.txt') }}
           restore-keys: |
             tox-${{ runner.os }}-
@@ -77,10 +81,12 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Cache tox environments
+      - name: Cache tox and pip
         uses: actions/cache@v5
         with:
-          path: .tox
+          path: |
+            .tox
+            ~/.cache/pip
           key: tox-${{ runner.os }}-${{ hashFiles('requirements*.txt') }}
           restore-keys: |
             tox-${{ runner.os }}-
@@ -102,10 +108,12 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Cache tox environments
+      - name: Cache tox and pip
         uses: actions/cache@v5
         with:
-          path: .tox
+          path: |
+            .tox
+            ~/.cache/pip
           key: tox-${{ runner.os }}-${{ hashFiles('requirements*.txt') }}
           restore-keys: |
             tox-${{ runner.os }}-
