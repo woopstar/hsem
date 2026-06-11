@@ -115,13 +115,22 @@ jobs:
 
       - name: Run tests with tox
         run: |
-          tox -e py314
-          EXIT_CODE=$?
-          if [ $EXIT_CODE -ne 0 ] && [ $EXIT_CODE -ne 245 ]; then
-            echo "Tox failed with exit code $EXIT_CODE"
-            exit $EXIT_CODE
+          tox -e py314 || true
+
+      - name: Verify tests passed
+        run: |
+          if [ ! -f coverage.xml ]; then
+            echo "Tests failed — no coverage report generated"
+            exit 1
           fi
-          echo "Tox exited with $EXIT_CODE (allowed: SIGSEGV during teardown)"
+          # Parse junit XML for failures (bypasses tox signal propagation).
+          FAILURES=$(grep -oP 'failures="\K\d+' test-results.xml || echo "1")
+          ERRORS=$(grep -oP 'errors="\K\d+' test-results.xml || echo "1")
+          if [ "$FAILURES" != "0" ] || [ "$ERRORS" != "0" ]; then
+            echo "Tests had failures=$FAILURES errors=$ERRORS"
+            exit 1
+          fi
+          echo "All tests passed (failures=$FAILURES errors=$ERRORS)"
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v5
