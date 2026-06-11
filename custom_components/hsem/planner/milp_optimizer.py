@@ -779,6 +779,19 @@ def solve_milp(
         out_slots[i].ev_second_charger_calculated_power = 0.0
 
     # Write MILP-derived charge/discharge actions
+    # Pre-compute which slots have EV charging — when both battery and
+    # EV charge in the same slot, the battery must use BatteriesChargeGrid
+    # (not BatteriesChargeSolar) because the EV will consume the solar
+    # surplus, leaving nothing for the battery.
+    ev_charging_slots: set[int] = set()
+    if active_evs:
+        for ev_idx in range(len(active_evs)):
+            ev_off = ev_var_offsets[ev_idx]
+            ev_c_sol = result.x[ev_off : ev_off + m]
+            for lp_t in range(m):
+                if float(ev_c_sol[lp_t]) >= _MIN_ACTION_KWH:
+                    ev_charging_slots.add(lp_t)
+
     for lp_t, slot_i in enumerate(future_idx):
         ec_kwh = float(ec_sol[lp_t])
         ed_kwh = float(ed_sol[lp_t])
@@ -804,8 +817,11 @@ def solve_milp(
 
         if ec_kwh > _MIN_ACTION_KWH:
             # Use BatteriesChargeSolar when PV surplus is available,
-            # BatteriesChargeGrid otherwise.
-            if pv_avail[lp_t] > _MIN_ACTION_KWH:
+            # BatteriesChargeGrid otherwise.  When EV is also charging
+            # in this slot, always use BatteriesChargeGrid — the EV
+            # will consume the solar surplus, so the battery must draw
+            # from grid to actually receive the energy the MILP allocated.
+            if pv_avail[lp_t] > _MIN_ACTION_KWH and lp_t not in ev_charging_slots:
                 out_slots[
                     slot_i
                 ].recommendation = Recommendations.BatteriesChargeSolar.value

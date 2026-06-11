@@ -1129,6 +1129,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     _EV_KEEP = frozenset(
         {
             Recommendations.BatteriesChargeGrid.value,
+            Recommendations.BatteriesChargeSolar.value,
             Recommendations.ForceBatteriesDischarge.value,
             Recommendations.ForceExport.value,
             Recommendations.TimePassed.value,
