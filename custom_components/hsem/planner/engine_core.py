@@ -641,17 +641,17 @@ def _build_ev_configs_for_milp(
         # never imports from grid to meet a target that is already
         # satisfied — it only charges from free/cheap surplus.
         at_or_above_target = target_kwh <= initial_kwh + 1e-9
+        deadline_slot: int | None = None
+        charge_past_target = False
         if at_or_above_target:
             if not allow_past_target or soc_pct >= 100:
                 continue  # fully charged or past-target not allowed
             # Charge-past-target mode: allow up to 100 %, no deadline pressure.
             target_kwh = cap
-            deadline_slot = None
             charge_past_target = True
         else:
             # Normal mode: map deadline to LP slot index.
             eff_deadline = _effective_deadline_dt(deadline)
-            deadline_slot: int | None = None
             for lp_t, slot_i in enumerate(future_slots):
                 s = slots[slot_i]
                 if as_tz(s.end, now.tzinfo) <= eff_deadline:

@@ -2997,6 +2997,7 @@ class TestEvChargerCalculatedPower:
             battery_capacity_kwh=100.0,
             charger_power_kw=11.0,
             charger_efficiency_pct=100.0,
+            charger_min_power_w=0.0,  # disable guard for Pass 3 test
             allow_charge_past_target_soc=True,
             slot_predicted_battery_kwh=[6.0] * 24,
             usable_battery_kwh=14.25,
@@ -3021,6 +3022,7 @@ class TestEvChargerCalculatedPower:
             battery_capacity_kwh=100.0,
             charger_power_kw=11.0,
             charger_efficiency_pct=100.0,
+            charger_min_power_w=0.0,  # disable guard for Pass 3 test
             allow_charge_past_target_soc=True,
             slot_predicted_battery_kwh=[14.25] * 24,
             usable_battery_kwh=14.25,
