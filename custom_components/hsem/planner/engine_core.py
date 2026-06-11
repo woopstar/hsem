@@ -180,6 +180,70 @@ def _populate_slots(
     return dq, warnings, missing_inputs
 
 
+def _inject_live_data_into_current_slot(
+    slots: list,
+    inp: PlannerInput,
+    now: datetime,
+) -> None:
+    """Replace forecast PV and consumption in the current slot with live measurements.
+
+    The current (partially-elapsed) slot's ``solcast_pv_estimate_kwh`` and
+    ``avg_house_consumption_kwh`` are overwritten with values derived from
+    live power sensors.  This ensures the MILP and all candidates use
+    measured (not forecast) data for the slot that is already in progress.
+
+    The live power in Watts is converted to kWh by multiplying by the
+    slot's full duration in hours.  This gives the *projected* full-slot
+    energy if the current power level were sustained for the entire slot.
+    The MILP's energy balance constraint then correctly accounts for the
+    remaining portion of the slot.
+
+    Args:
+        slots: Fully populated slot list (after ``_populate_slots``).
+        inp: Planner input containing live power readings.
+        now: Timezone-aware current datetime.
+    """
+    slot_hours = inp.interval_minutes / 60.0
+
+    for slot in slots:
+        s_start = as_tz(slot.start, now.tzinfo)
+        s_end = as_tz(slot.end, now.tzinfo)
+        if s_start <= now < s_end:
+            # Convert live Watts to projected full-slot kWh.
+            if inp.live_solar_production_w > 1e-9:
+                live_pv_kwh = (inp.live_solar_production_w / 1000.0) * slot_hours
+                log_planner(
+                    "debug",
+                    "[core] _inject_live_data  slot=%s  "
+                    "pv: forecast=%.3f → live=%.3f kWh",
+                    slot.start.isoformat(),
+                    slot.solcast_pv_estimate_kwh,
+                    live_pv_kwh,
+                )
+                slot.solcast_pv_estimate_kwh = round(live_pv_kwh, 3)
+
+            if inp.live_house_consumption_w > 1e-9:
+                live_load_kwh = (inp.live_house_consumption_w / 1000.0) * slot_hours
+                log_planner(
+                    "debug",
+                    "[core] _inject_live_data  slot=%s  "
+                    "load: forecast=%.3f → live=%.3f kWh",
+                    slot.start.isoformat(),
+                    slot.avg_house_consumption_kwh,
+                    live_load_kwh,
+                )
+                slot.avg_house_consumption_kwh = round(live_load_kwh, 3)
+
+            # Also update the sub-window averages so they stay consistent
+            # with the main average (used by spike detection in
+            # populate_consumption).
+            slot.avg_house_consumption_1d_kwh = slot.avg_house_consumption_kwh
+            slot.avg_house_consumption_3d_kwh = slot.avg_house_consumption_kwh
+            slot.avg_house_consumption_7d_kwh = slot.avg_house_consumption_kwh
+            slot.avg_house_consumption_14d_kwh = slot.avg_house_consumption_kwh
+            break
+
+
 def _schedule_slots(
     slots: list,
     inp: PlannerInput,
@@ -739,6 +803,9 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         len(warnings),
         len(missing_inputs),
     )
+    # Step 1b — inject live solar and consumption into the current slot
+    _inject_live_data_into_current_slot(slots, inp, now)
+
     # Step 2 — EV planned load injection
     ev_cp: EVChargingPlan | None = None
     ev2_cp: EVChargingPlan | None = None
