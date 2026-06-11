@@ -120,9 +120,26 @@ jobs:
       - name: Run tests with tox
         run: tox -e py314
 
+      - name: Upload coverage artifact
+        if: matrix.python-version == '3.14'
+        uses: actions/upload-artifact@v5
+        with:
+          name: coverage
+          path: ./coverage.xml
+          retention-days: 1
+
+  codecov:
+    name: Upload coverage to Codecov
+    runs-on: ubuntu-latest
+    needs: tests
+    steps:
+      - name: Download coverage artifact
+        uses: actions/download-artifact@v6
+        with:
+          name: coverage
+
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v7
-        if: matrix.python-version == '3.14'
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./coverage.xml
