@@ -374,6 +374,12 @@ def build_sensor_config(
     cfg.ev_planned_load_charger_efficiency_pct = (
         _chg_eff if _chg_eff is not None else 100.0
     )
+    _min_pwr = convert_to_float(
+        get_config_value(config_entry, "hsem_ev_planned_load_charger_min_power_w")
+    )
+    cfg.ev_planned_load_charger_min_power_w = (
+        _min_pwr if _min_pwr is not None else 1380.0
+    )
 
     # Second EV planned load integration
     cfg.ev_second_planned_load_enabled = convert_to_boolean(
@@ -398,6 +404,14 @@ def build_sensor_config(
     )
     cfg.ev_second_planned_load_charger_efficiency_pct = (
         _s2_eff if _s2_eff is not None else 100.0
+    )
+    _s2_min = convert_to_float(
+        get_config_value(
+            config_entry, "hsem_ev_second_planned_load_charger_min_power_w"
+        )
+    )
+    cfg.ev_second_planned_load_charger_min_power_w = (
+        _s2_min if _s2_min is not None else 1380.0
     )
 
     # Daily plan-vs-actual tracking — optional cumulative energy meter entities.

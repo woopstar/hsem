@@ -65,6 +65,18 @@ _EFFICIENCY_SELECTOR = selector(
     }
 )
 
+_MIN_POWER_W_SELECTOR = selector(
+    {
+        "number": {
+            "min": 0,
+            "max": 22000,
+            "step": 10,
+            "unit_of_measurement": UnitOfPower.WATT,
+            "mode": "box",
+        }
+    }
+)
+
 
 async def build_ev_planned_load_schema(  # NOSONAR
     config_entry: ConfigEntry | None, prefix: str
@@ -104,6 +116,10 @@ async def build_ev_planned_load_schema(  # NOSONAR
                 _k("charger_efficiency"),
                 default=_v("charger_efficiency"),
             ): _EFFICIENCY_SELECTOR,
+            vol.Required(
+                _k("charger_min_power_w"),
+                default=_v("charger_min_power_w"),
+            ): _MIN_POWER_W_SELECTOR,
         }
     )
 

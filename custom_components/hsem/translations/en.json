@@ -44,13 +44,15 @@
           "hsem_ev_planned_load_enabled": "Enable EV Planned Load Integration",
           "hsem_ev_planned_load_battery_capacity_kwh": "EV Battery Capacity (kWh)",
           "hsem_ev_planned_load_charger_power_kw": "EV Charger Power (kW)",
-          "hsem_ev_planned_load_charger_efficiency": "EV Charger Efficiency"
+          "hsem_ev_planned_load_charger_efficiency": "EV Charger Efficiency",
+          "hsem_ev_planned_load_charger_min_power_w": "EV Charger Minimum Power (W)"
         },
         "data_description": {
           "hsem_ev_planned_load_enabled": "Enable or disable planned EV charging load integration.",
           "hsem_ev_planned_load_battery_capacity_kwh": "Nameplate battery capacity of the EV in kWh.",
           "hsem_ev_planned_load_charger_power_kw": "AC output power of the EV charger in kW.",
-          "hsem_ev_planned_load_charger_efficiency": "Charger efficiency as a percentage (1-100). Default: 100."
+          "hsem_ev_planned_load_charger_efficiency": "Charger efficiency as a percentage (1-100). Default: 100.",
+          "hsem_ev_planned_load_charger_min_power_w": "Minimum AC power (W) the EV charger needs to start charging. Below this the charger will not operate. Default: 1380 W (230 V × 6 A)."
         },
         "description": "Configure optional planned EV charging load integration. When enabled, HSEM accounts for upcoming EV charging demand per planner slot.",
         "title": "EV Planned Load Integration"
@@ -60,13 +62,15 @@
           "hsem_ev_second_planned_load_enabled": "Enable EV 2 Planned Load Integration",
           "hsem_ev_second_planned_load_battery_capacity_kwh": "EV 2 Battery Capacity (kWh)",
           "hsem_ev_second_planned_load_charger_power_kw": "EV 2 Charger Power (kW)",
-          "hsem_ev_second_planned_load_charger_efficiency": "EV 2 Charger Efficiency"
+          "hsem_ev_second_planned_load_charger_efficiency": "EV 2 Charger Efficiency",
+          "hsem_ev_second_planned_load_charger_min_power_w": "EV 2 Charger Minimum Power (W)"
         },
         "data_description": {
           "hsem_ev_second_planned_load_enabled": "Enable or disable planned charging load integration for the second EV.",
           "hsem_ev_second_planned_load_battery_capacity_kwh": "Nameplate battery capacity of the second EV in kWh.",
           "hsem_ev_second_planned_load_charger_power_kw": "AC output power of the second EV charger in kW.",
-          "hsem_ev_second_planned_load_charger_efficiency": "Second EV charger efficiency as a percentage (1-100). Default: 100."
+          "hsem_ev_second_planned_load_charger_efficiency": "Second EV charger efficiency as a percentage (1-100). Default: 100.",
+          "hsem_ev_second_planned_load_charger_min_power_w": "Minimum AC power (W) the second EV charger needs to start charging. Default: 1380 W (230 V × 6 A)."
         },
         "description": "Configure optional planned charging load integration for the second EV. Only shown when a second EV charger is enabled.",
         "title": "EV 2 Planned Load Integration"
@@ -442,13 +446,15 @@
           "hsem_ev_planned_load_enabled": "Enable EV Planned Load Integration",
           "hsem_ev_planned_load_battery_capacity_kwh": "EV Battery Capacity (kWh)",
           "hsem_ev_planned_load_charger_power_kw": "EV Charger Power (kW)",
-          "hsem_ev_planned_load_charger_efficiency": "EV Charger Efficiency"
+          "hsem_ev_planned_load_charger_efficiency": "EV Charger Efficiency",
+          "hsem_ev_planned_load_charger_min_power_w": "EV Charger Minimum Power (W)"
         },
         "data_description": {
           "hsem_ev_planned_load_enabled": "Enable or disable planned EV charging load integration.",
           "hsem_ev_planned_load_battery_capacity_kwh": "Nameplate battery capacity of the EV in kWh.",
           "hsem_ev_planned_load_charger_power_kw": "AC output power of the EV charger in kW.",
-          "hsem_ev_planned_load_charger_efficiency": "Charger efficiency as a percentage (1-100). Default: 100."
+          "hsem_ev_planned_load_charger_efficiency": "Charger efficiency as a percentage (1-100). Default: 100.",
+          "hsem_ev_planned_load_charger_min_power_w": "Minimum AC power (W) the EV charger needs to start charging. Below this the charger will not operate. Default: 1380 W (230 V × 6 A)."
         },
         "description": "Configure optional planned EV charging load integration. When enabled, HSEM accounts for upcoming EV charging demand per planner slot.",
         "title": "EV Planned Load Integration"
@@ -458,13 +464,15 @@
           "hsem_ev_second_planned_load_enabled": "Enable EV 2 Planned Load Integration",
           "hsem_ev_second_planned_load_battery_capacity_kwh": "EV 2 Battery Capacity (kWh)",
           "hsem_ev_second_planned_load_charger_power_kw": "EV 2 Charger Power (kW)",
-          "hsem_ev_second_planned_load_charger_efficiency": "EV 2 Charger Efficiency"
+          "hsem_ev_second_planned_load_charger_efficiency": "EV 2 Charger Efficiency",
+          "hsem_ev_second_planned_load_charger_min_power_w": "EV 2 Charger Minimum Power (W)"
         },
         "data_description": {
           "hsem_ev_second_planned_load_enabled": "Enable or disable planned charging load integration for the second EV.",
           "hsem_ev_second_planned_load_battery_capacity_kwh": "Nameplate battery capacity of the second EV in kWh.",
           "hsem_ev_second_planned_load_charger_power_kw": "AC output power of the second EV charger in kW.",
-          "hsem_ev_second_planned_load_charger_efficiency": "Second EV charger efficiency as a percentage (1-100). Default: 100."
+          "hsem_ev_second_planned_load_charger_efficiency": "Second EV charger efficiency as a percentage (1-100). Default: 100.",
+          "hsem_ev_second_planned_load_charger_min_power_w": "Minimum AC power (W) the second EV charger needs to start charging. Default: 1380 W (230 V × 6 A)."
         },
         "description": "Configure optional planned charging load integration for the second EV. Only shown when a second EV charger is enabled.",
         "title": "EV 2 Planned Load Integration"

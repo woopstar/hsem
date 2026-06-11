@@ -1061,22 +1061,39 @@ The EV planner (`planner/ev_planner.py`) MUST satisfy these invariants:
     three EV load fields must be `0.0` and the home battery planner output
     must be identical to the non-EV case.
 
-11. **Charge past target SoC (Pass 3)**: When `allow_charge_past_target_soc`
-    is enabled and the EV has reached its target SoC but is below 100 %, a
-    third pass scans remaining PV-surplus slots.  The EV only receives
-    stranded surplus — slots where the house battery is **predicted to be
-    full** (from the cumulative net consumption trajectory).  Pass 3 never
-    draws from the grid; all energy is solar-surplus with zero cost.
+11. **Charge past target SoC (Pass 3 / MILP)**: When `allow_charge_past_target_soc`
+    is enabled and the EV has reached its target SoC but is below 100 %, the
+    EV can receive surplus PV that would otherwise be exported at low/negative
+    prices.
+
+    - **EV planner Pass 3** (fallback): scans remaining PV-surplus slots where
+      the house battery is predicted to be full.  All energy is solar-surplus
+      with zero grid cost.
+    - **MILP** (primary): when the MILP wins, it co-optimises the EV alongside
+      the battery.  The EV is included with `charge_past_target=True`:
+      `target_kwh = capacity_kwh`, `deadline_slot = None` (no grid import
+      pressure), a surplus-only constraint (`ev_c/eff ≤ pv − base_load`), and
+      a tiny tiebreaker benefit (0.0001/kWh AC) so the EV only takes surplus
+      when nothing else wants it (battery full, export prices near zero).
+
+    The MILP's decisions replace the EV planner's when the MILP wins.
+    When the MILP fails or is unavailable, the EV planner's Pass 3 slots
+    are used as a fallback.
 
 12. **EV charger power field**: `ev_charger_calculated_power` is computed
-    from the EV planner's `ac_load_kwh` (AC-side energy) divided by the
-    slot duration in hours.  For the **current** (partially elapsed)
-    slot the divisor is the remaining slot time (minimum 1 s), because
-    the EV planner already scales `ac_load_kwh` to the remaining minutes.
-    Using the full slot width would understate the required charge power.
-    The field is zero when no EV charging is planned in that slot.  It is
-    purely a planner output — the applier must read this value to throttle
-    the go-e charger; the planner does not control hardware directly.
+    from the per-slot EV AC load (`ev_planned_load_kwh + ev_accounted_load_kwh`)
+    divided by the slot duration in hours.  For the **current** (partially
+    elapsed) slot the divisor is the remaining slot time (minimum 1 s).
+
+    The computation runs **after** the winner is selected (MILP or baseline),
+    ensuring the power field is always consistent with the actual slot load.
+    If the computed power is below `charger_min_power_w` (default 1380 W),
+    the charger physically cannot start — the slot's EV fields are zeroed out
+    (power, load, recommendation, net consumption, cost).
+
+    The field is purely a planner output — the applier must read this value
+    to throttle the go-e charger; the planner does not control hardware
+    directly.
 
 ### Invariants for tests
 

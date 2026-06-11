@@ -98,6 +98,8 @@ class EVPlannerInput:
         battery_capacity_kwh: EV battery nameplate capacity in kWh.
         charger_power_kw: Charger output power in kW.
         charger_efficiency_pct: Charger efficiency as a percentage (0–100).
+        charger_min_power_w: Minimum AC power (W) the charger needs to start.
+            Below this the charger will not operate. Default 1380 W.
         deadline: Timezone-aware datetime by which charging must be complete.
         base_load_includes_ev: True when the house consumption sensor already
             includes EV charging power.  When True, planned EV load must not
@@ -128,6 +130,7 @@ class EVPlannerInput:
     battery_capacity_kwh: float = 0.0
     charger_power_kw: float = 0.0
     charger_efficiency_pct: float = 100.0
+    charger_min_power_w: float = 1380.0
     deadline: datetime | None = None
     base_load_includes_ev: bool = False
     allow_charge_past_target_soc: bool = False
@@ -148,6 +151,7 @@ class EVChargingPlan:
         target_soc_pct: Target SoC.
         battery_capacity_kwh: EV battery capacity.
         charger_power_kw: Charger rated power.
+        charger_min_power_w: Minimum AC power (W) the charger needs to start.
         total_kwh_needed: Total energy needed to reach target.
         deadline: Planning deadline.
         charging_slots: Selected slots with per-slot details.
@@ -163,6 +167,7 @@ class EVChargingPlan:
     target_soc_pct: float = 80.0
     battery_capacity_kwh: float = 0.0
     charger_power_kw: float = 0.0
+    charger_min_power_w: float = 1380.0
     total_kwh_needed: float = 0.0
     deadline: datetime | None = None
     charging_slots: list[EVChargingSlot] = field(default_factory=list)
@@ -370,6 +375,7 @@ def build_ev_charging_plan(
         target_soc_pct=inp.target_soc_pct,
         battery_capacity_kwh=inp.battery_capacity_kwh,
         charger_power_kw=inp.charger_power_kw,
+        charger_min_power_w=inp.charger_min_power_w,
     )
 
     # --- Guard states ---
@@ -496,6 +502,17 @@ def build_ev_charging_plan(
         )
         allocated = min(max_charge, remaining_energy)
         if allocated < 1e-9:
+            continue
+
+        # Check minimum charger power — if the AC power for this slot
+        # falls below the charger's minimum operating power, the charger
+        # physically cannot start and the energy would not be delivered.
+        # Skip the slot so the planner doesn't waste PV surplus or cheap
+        # grid slots on allocations that can never be realised.
+        eff = max(inp.charger_efficiency_pct, 1.0) / 100.0
+        slot_hours = avail_min / 60.0
+        ac_power_w = (allocated / eff) / slot_hours * 1000.0
+        if ac_power_w < inp.charger_min_power_w - 1e-9:
             continue
 
         # ``allocated`` is battery-side kWh delivered to the EV.
@@ -649,7 +666,13 @@ def build_ev_charging_plan(
                 )
                 continue
 
+            # Check minimum charger power for Pass 3 too.
             eff = max(inp.charger_efficiency_pct, 1.0) / 100.0
+            slot_hours = slot_min / 60.0
+            ac_power_w = (allocated / eff) / slot_hours * 1000.0
+            if ac_power_w < inp.charger_min_power_w - 1e-9:
+                continue
+
             ac_load = allocated / eff
 
             log_planner(
@@ -762,3 +785,98 @@ def apply_ev_planned_load_to_slots(
             # than the kWh arriving in the EV battery.  The += operator ensures
             # multiple EVs sharing the same slot are summed, not overwritten.
             slot_ev_planned_load_kwh[idx] += ev_slot.ac_load_kwh
+
+
+def rebuild_ev_plan_from_slots(
+    original_plan: EVChargingPlan,
+    slots: list,
+    now: datetime,
+    charger_efficiency_pct: float = 100.0,
+) -> EVChargingPlan:
+    """Rebuild an EVChargingPlan from MILP-decided slot fields.
+
+    When the MILP wins, its per-slot EV decisions (written to
+    ``PlannedSlot.ev_planned_load_kwh`` and related fields) replace the
+    EV planner's original charging plan.  This function scans the winning
+    slots and produces an updated :class:`EVChargingPlan` that the sensor
+    can display, so the user sees what the system *actually* plans to do
+    rather than the EV planner's pre-MILP estimate.
+
+    The original plan provides metadata (SoC, target, capacity, etc.) that
+    the MILP does not recompute.
+
+    Args:
+        original_plan: The EV planner's original plan (for metadata).
+        slots: The winning slot list with MILP-populated EV fields.
+        now: Current time (timezone-aware), used to detect the current slot.
+        charger_efficiency_pct: Charger efficiency (0–100 %) for converting
+            AC load back to DC-side delivered energy.
+
+    Returns:
+        A new :class:`EVChargingPlan` with ``charging_slots`` derived from
+        the MILP's slot decisions.
+    """
+    from custom_components.hsem.utils.datetime_utils import as_tz
+
+    eff = max(charger_efficiency_pct, 1.0) / 100.0
+    charging_slots: list[EVChargingSlot] = []
+    planned_load_by_slot: dict[str, float] = {}
+    current_slot_planned_load_kwh: float = 0.0
+    total_charged_kwh: float = 0.0
+
+    for s in slots:
+        ac_load = getattr(s, "ev_planned_load_kwh", 0.0) + getattr(
+            s, "ev_accounted_load_kwh", 0.0
+        )
+        if ac_load < 1e-9:
+            continue
+
+        # Convert AC load back to DC-side delivered energy for display.
+        dc_kwh = ac_load * eff
+        total_charged_kwh += dc_kwh
+
+        ev_slot = EVChargingSlot(
+            start=s.start,
+            end=s.end,
+            estimated_charged_kwh=round(dc_kwh, 3),
+            ac_load_kwh=round(ac_load, 3),
+            solar_surplus_kwh=0.0,  # MILP doesn't track this split
+            import_needed_kwh=0.0,  # MILP doesn't track this split
+            import_price=getattr(getattr(s, "price", None), "import_price", 0.0),
+            estimated_cost=round(
+                ac_load * getattr(getattr(s, "price", None), "import_price", 0.0), 4
+            ),
+        )
+        charging_slots.append(ev_slot)
+        planned_load_by_slot[s.start.isoformat()] = dc_kwh
+
+        # Detect current slot
+        s_start_tz = as_tz(s.start, now.tzinfo)
+        s_end_tz = as_tz(s.end, now.tzinfo)
+        if s_start_tz <= now < s_end_tz:
+            current_slot_planned_load_kwh = dc_kwh
+
+    # Determine state
+    if charging_slots:
+        state = "charging" if current_slot_planned_load_kwh > 1e-9 else "waiting"
+    elif original_plan.state == "fully_charged":
+        state = "fully_charged"
+    else:
+        state = original_plan.state
+
+    return EVChargingPlan(
+        state=state,
+        ev_connected=original_plan.ev_connected,
+        base_load_includes_ev=original_plan.base_load_includes_ev,
+        current_soc_pct=original_plan.current_soc_pct,
+        target_soc_pct=original_plan.target_soc_pct,
+        battery_capacity_kwh=original_plan.battery_capacity_kwh,
+        charger_power_kw=original_plan.charger_power_kw,
+        charger_min_power_w=original_plan.charger_min_power_w,
+        total_kwh_needed=round(total_charged_kwh, 3),
+        deadline=original_plan.deadline,
+        charging_slots=charging_slots,
+        planned_load_by_slot=planned_load_by_slot,
+        current_slot_planned_load_kwh=round(current_slot_planned_load_kwh, 3),
+        data_quality=original_plan.data_quality,
+    )

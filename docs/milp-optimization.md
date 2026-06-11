@@ -14,9 +14,9 @@ flowchart TD
     D{EV configs provided?}
     E[Rebuild net_load without pre-computed EV planned loads]
     F[Keep fixed EV planned load in net_load]
-    G[Build objective vector c_obj: import cost, export revenue, cycle cost, conversion loss, terminal-SoC credit, SoC penalties]
+    G[Build objective vector c_obj: import cost, export revenue, cycle cost, conversion loss, terminal-SoC credit, SoC penalties, EV deadline penalties, EV charge-past-target benefit]
     H[Build equality constraints A_eq: energy balance per slot inc. EV charger load]
-    I[Build inequality constraints A_ub: SoC recurrence soft bounds, mutual exclusion, cycle cost auxiliary m >= ec/ed, EV cumulative SOC, EV deadline target]
+    I[Build inequality constraints A_ub: SoC recurrence soft bounds, mutual exclusion, cycle cost auxiliary m >= ec/ed, EV cumulative SOC, EV deadline target, EV surplus-only]
     J[Build variable bounds: ec, ed capped; pv fixed to actual surplus; penalties >= 0]
     K[linprog method = highs, timeout = 2s]
     L{Solution found?}
@@ -77,6 +77,11 @@ where `E` is the number of active EVs.
 | `8n + E·n + i` | `evN_pen` | EV N deadline target slack (kWh shortfall) | `[0, ∞)` |
 
 The EV charger AC load entering the energy balance equation is `evN_c[t] / charger_efficiency`.
+
+When an EV's `charge_past_target` flag is `True` (EV already at user-configured target SoC, `allow_charge_past_target_soc` enabled, SoC < 100 %):
+- The deadline constraint is **suppressed** (`deadline_slot = None`) — no grid import pressure
+- The **surplus-only constraint** is added (see Constraints below)
+- A **tiny tiebreaker benefit** is added to the objective (see Objective function below)
 
 ### Fuse constraint extension (issue #567)
 
@@ -148,6 +153,15 @@ Where:
 | $p_{\mathrm{soc}}$ | SoC penalty cost: $\max(p_{\mathrm{imp}}) \times 100$ |
 | $p_{\mathrm{fuse}}$ | Fuse penalty cost: $\max(p_{\mathrm{imp}}) \times 100$ (same magnitude as SoC) |
 | $p_{\mathrm{ev\_pen}}^{(v)}$ | EV deadline penalty for EV v: $\max(p_{\mathrm{imp}}) \cdot \mathrm{capacity} \cdot 100$ |
+| $\beta_{\mathrm{ev}}$ | EV charge-past-target tiebreaker benefit: $0.0001$ per kWh AC (tiny — only wins when nothing else wants the surplus) |
+
+Plus EV charge-past-target benefit (discounted, per charge-past-target EV $v$):
+
+$$
+-\sum_{v \in \mathrm{past\_target}} \sum_{t} \delta_t \cdot \frac{\beta_{\mathrm{ev}}}{\eta_{\mathrm{charger}}^{(v)}} \cdot \operatorname{ev\_c}_v[t]
+$$
+
+This benefit is deliberately tiny ($0.0001$ per kWh AC) — it only acts as a tiebreaker when the battery is full and export prices are near zero or negative. It must **not** compete with house battery charging (worth $p_{\mathrm{imp}}$) or export at good prices (worth $p_{\mathrm{exp}}$).
 
 ---
 
@@ -207,6 +221,14 @@ $$
 $$
 \operatorname{initial\_soc}_v + \sum_{k=0}^{D_v} \operatorname{ev\_c}_v[k] + \operatorname{ev\_pen}_v \geq \operatorname{target}_v
 $$
+
+**EV surplus-only constraint (per charge-past-target EV v, per slot t):**
+
+$$
+\frac{\operatorname{ev\_c}_v[t]}{\eta_{\mathrm{charger}}^{(v)}} \leq \max\bigl(0,\; \operatorname{pv\_avail}[t] - \operatorname{base\_load}[t]\bigr)
+$$
+
+This constraint ensures charge-past-target EVs only consume **genuine PV surplus** — never battery discharge or grid import.  It is only added for EVs where `charge_past_target` is `True` (EV already at user-configured target SoC but `allow_charge_past_target_soc` is enabled and SoC < 100 %).
 
 **Main fuse grid import limit (soft):**
 
@@ -271,6 +293,20 @@ flowchart TD
 | `ev_total_planned_load_kwh` | Total AC load (sum of planned + accounted) |
 | `ev_charger_calculated_power` | Target AC power (W) for primary EV |
 | `ev_second_charger_calculated_power` | Target AC power (W) for second EV |
+
+### Engine-level post-processing (after winner selection)
+
+After the MILP (or baseline) winner is selected, the engine runs a final pass over all slots to ensure consistency:
+
+1. **Power recomputation**: `ev_charger_calculated_power` is recomputed from the actual per-slot EV AC load (`ev_planned_load_kwh + ev_accounted_load_kwh`).  For the current (partially elapsed) slot the remaining time is used as the divisor.  This ensures the power field always matches the load, even when the baseline candidate wins (bypassing the MILP's own power calculation).
+
+2. **Minimum power floor**: If the computed AC power is below `charger_min_power_w` (default 1380 W = 230 V × 6 A), the charger physically cannot start.  The slot's EV fields are zeroed out:
+   - `ev_charger_calculated_power = 0`
+   - `ev_planned_load_kwh = 0`, `ev_accounted_load_kwh = 0`, `ev_total_planned_load_kwh = 0`
+   - `recommendation` cleared if it was `ev_smart_charging`
+   - `estimated_net_consumption_kwh` and `estimated_cost_currency` recomputed without EV load
+
+3. **EV plan rebuild**: When the MILP wins, the `EVChargingPlan` objects (used by the `ev_optimal_charging_plan` sensor) are rebuilt from the winning slots via `rebuild_ev_plan_from_slots()`.  This ensures the sensor displays the MILP's actual decisions, not the EV planner's pre-MILP estimate.
 
 ---
 
