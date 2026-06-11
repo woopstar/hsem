@@ -168,6 +168,18 @@ class PlannerInput:
     #: in Pass 3 (charge-past-target on surplus PV).
     live_net_consumption_w: float = 0.0
 
+    #: Live solar production power in Watts from the inverter's input power
+    #: sensor.  Injected into the current slot's solcast_pv_estimate_kwh so
+    #: the MILP and all candidates use measured (not forecast) PV for the
+    #: partially-elapsed slot.
+    live_solar_production_w: float = 0.0
+
+    #: Live house consumption power in Watts from the house power meter.
+    #: Injected into the current slot's avg_house_consumption_kwh so the
+    #: MILP and all candidates use measured (not forecast) load for the
+    #: partially-elapsed slot.
+    live_house_consumption_w: float = 0.0
+
     # --- time discount for selector score ---
     #: Per-hour exponential discount factor applied to the selector score
     #: (not to total_cost).  A value of 1.0 disables the discount entirely.
