@@ -11,10 +11,10 @@ HSEM exposes these entity types:
 
 | Type | Count | Description |
 |---|---|---|
-| **Sensor** | ~20+ | Read-only state, plan, and diagnostic entities |
-| **Select** | 2 | Working-mode override and Solcast likelihood selector |
-| **Switch** | 6+ | Toggle entities for schedules and configuration |
-| **Time** | 6 | Start/end time inputs for battery schedules |
+| **Sensor** | ~20 | Read-only state, plan, and diagnostic entities |
+| **Select** | 2 | Force working mode override and Solcast likelihood selector |
+| **Switch** | 13 | Toggle entities for schedules, EV settings, and ML options |
+| **Time** | 8 | Start/end time inputs for battery schedules and EV deadlines |
 | **Number** | 4 | Charge/discharge efficiency and EV target SoC inputs |
 
 ---
@@ -110,6 +110,7 @@ Each entry in the `hourly_recommendations` list is a dictionary with these keys:
 | `estimated_battery_soc_pct` | float | Simulated absolute SoC at slot end (0–100 %) |
 | `grid_import_kwh` | float | Energy imported from grid (kWh) |
 | `grid_export_kwh` | float | Energy exported to grid (kWh) |
+| `is_ev_surplus_only_slot` | bool | Slot restricted to EV surplus-only charging |
 
 ### Extended attributes (when enabled)
 
@@ -266,6 +267,17 @@ Diagnostic sensors displaying the EV charging plan details.
 
 ---
 
+## Daily plan-vs-actual sensor
+
+Diagnostic sensor tracking daily cumulative plan-vs-actual energy deviations.
+
+**Entity:** `sensor.hsem_daily_plan_vs_actual`
+
+Tracks planned kWh vs actual kWh for import, export, PV, consumption, and battery
+throughput on a per-calendar-day basis using cumulative energy meter readings.
+
+---
+
 ## EV charging active sensor
 
 Boolean sensor indicating whether any EV is actively drawing power.
@@ -297,18 +309,23 @@ Snapshot of the battery state of charge.
 |---|---|---|---|
 | `sensor.hsem_applier_status_sensor` | Inverter Apply Status | Hardware write success/failure | `ok`, `unverified`, `failed`, `skipped` |
 | `sensor.hsem_battery_soc_sensor` | Battery State of Charge | Battery SoC snapshot | Percentage (0–100) |
+| `sensor.hsem_daily_plan_vs_actual` | Daily Plan vs Actual | Daily energy plan-vs-actual tracking | Dict with cumulative metrics |
 | `sensor.hsem_degraded_mode_sensor` | System Health | Overall system health | `ok`, `degraded`, `error` |
 | `sensor.hsem_ev_charging_sensor` | EV Charging Active | Any EV actively charging | `on`, `off` |
+| `sensor.hsem_ev_optimal_charging_plan` | EV Optimal Charging Plan | Primary EV plan state | `charging`, `waiting`, etc. |
+| `sensor.hsem_ev_second_optimal_charging_plan` | EV Second Optimal Charging Plan | Second EV plan state | `charging`, `waiting`, etc. |
 | `sensor.hsem_force_mode_sensor` | Force Working Mode | Override active indicator | `auto` or override mode name |
+| `sensor.hsem_forecast_accuracy` | Forecast Accuracy | PV & load forecast-vs-actual | PV MAE (kWh) |
 | `sensor.hsem_hardware_writes_sensor` | Hardware Writes | Writes allowed/blocked by safety gate | `allowed`, `blocked` |
 | `sensor.hsem_read_only_sensor` | Read-Only Mode | Read-only mode indicator | `on`, `off` |
-| `sensor.hsem_house_consumption_power_sensor_*_*` | House Consumption Power | House load for a time range | Watts (W) |
 | `sensor.hsem_net_consumption_sensor` | Net Consumption | Net load (house minus solar) | Watts (W) |
 | `sensor.hsem_last_updated_sensor` | Last Updated | Last coordinator cycle timestamp | ISO-8601 timestamp |
 | `sensor.hsem_next_update_sensor` | Next Update | Next scheduled coordinator cycle | ISO-8601 timestamp |
 | `sensor.hsem_missing_entities_sensor` | Missing Input Entities | Count of missing input entities | Integer |
+| `sensor.hsem_plan_explanation` | Plan Explanation | Planner strategy and cost breakdown | Winning candidate name |
 | `sensor.hsem_recommendation_interval_sensor` | Recommendation Interval | Slot width and horizon info | Minutes |
 | `sensor.hsem_update_interval_sensor` | Update Interval | Current polling interval | Minutes |
+| `sensor.hsem_working_mode` | Working Mode | Active battery recommendation | Working mode state |
 
 ---
 
@@ -345,9 +362,16 @@ This setting is also configurable in the options flow.
 | `switch.hsem_read_only` | Block all hardware writes |
 | `switch.hsem_extended_attributes` | Enable extended diagnostic attributes |
 | `switch.hsem_verbose_logging` | Enable verbose logging |
-| `switch.hsem_batteries_schedule_1` | Toggle battery schedule 1 |
-| `switch.hsem_batteries_schedule_2` | Toggle battery schedule 2 |
-| `switch.hsem_batteries_schedule_3` | Toggle battery schedule 3 |
+| `switch.hsem_batteries_enable_batteries_schedule_1` | Toggle battery schedule 1 |
+| `switch.hsem_batteries_enable_batteries_schedule_2` | Toggle battery schedule 2 |
+| `switch.hsem_batteries_enable_batteries_schedule_3` | Toggle battery schedule 3 |
+| `switch.hsem_ev_force_discharge` | Force EV maximum discharge power |
+| `switch.hsem_ev_smart_charging` | Enable smart EV charging scheduling |
+| `switch.hsem_ev_force_charge_now` | Force immediate EV charging |
+| `switch.hsem_ev_second_smart_charging` | Enable smart charging for second EV |
+| `switch.hsem_ev_second_force_charge_now` | Force immediate second EV charging |
+| `switch.hsem_ml_consumption` | Enable ML-based consumption prediction |
+| `switch.hsem_ml_sequential` | Enable sequential (intra-day momentum) ML mode |
 
 ---
 
@@ -372,6 +396,8 @@ This setting is also configurable in the options flow.
 | `time.hsem_batteries_schedule_2_end` | Schedule 2 end time |
 | `time.hsem_batteries_schedule_3_start` | Schedule 3 start time |
 | `time.hsem_batteries_schedule_3_end` | Schedule 3 end time |
+| `time.hsem_ev_deadline` | Primary EV charge deadline |
+| `time.hsem_ev_second_deadline` | Second EV charge deadline |
 
 ---
 

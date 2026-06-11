@@ -2,16 +2,20 @@
 
 This document describes the static quality tools available in HSEM and how to run them locally.
 
+---
+
 ## Tools
 
 | Tool | Purpose | Config |
 |------|---------|--------|
 | **Pyright** | Type checking (CI-friendly Pylance equivalent) | `pyrightconfig.json` |
 | **Vulture** | Dead-code and unused-symbol detection | `vulture_whitelist.py` |
-| **mypy** | Legacy type checking | `pyproject.toml [tool.mypy]` |
+| **mypy** | Type checking | `pyproject.toml [tool.mypy]` |
 | **ruff** | Linting and formatting | `pyproject.toml [tool.ruff]` |
 | **black** | Code formatting | `tox.ini [testenv:lint]` |
 | **isort** | Import sorting | `tox.ini [testenv:lint]` |
+
+---
 
 ## Local Commands
 
@@ -19,6 +23,15 @@ This document describes the static quality tools available in HSEM and how to ru
 
 ```bash
 tox -e lint
+```
+
+This runs isort, black, ruff format, and ruff check in sequence. All four must pass
+before a PR can be opened.
+
+### Run mypy type checking
+
+```bash
+tox -e typing
 ```
 
 ### Run Pyright type checker
@@ -45,11 +58,29 @@ unused because they are called dynamically by HA.
 tox -e quality
 ```
 
-### Run tests
+### Run tests with coverage
 
 ```bash
-pytest tests/
+tox -e py314
 ```
+
+This runs `pytest` with coverage reporting. The `py314` tox environment runs on Python 3.14
+and includes HA test dependencies.
+
+### QA pipeline quick reference
+
+```mermaid
+flowchart TD
+    A[Code Changes] --> B[tox -e lint]
+    B --> C[tox -e typing]
+    C --> D[tox -e quality]
+    D --> E[tox -e py314]
+    E --> F{All pass?}
+    F -->|Yes| G[Open PR]
+    F -->|No| H[Fix issues] --> B
+```
+
+---
 
 ## Pyright Configuration
 
@@ -81,6 +112,8 @@ not bugs in HSEM:
    Tests use partial mocks, `MagicMock`, and stub objects that don't have full type
    annotations.  These are safe and intentional.
 
+---
+
 ## Vulture Whitelist
 
 `vulture_whitelist.py` documents all HA dynamic entry points.  **Before deleting any function
@@ -93,6 +126,8 @@ that Vulture flags**, check whether it belongs to one of these categories:
 - Entity properties used by HA: `device_info`, `native_value`, `is_on`, etc.
 
 If in doubt, **add to the whitelist** rather than deleting.
+
+---
 
 ## CI Integration
 
