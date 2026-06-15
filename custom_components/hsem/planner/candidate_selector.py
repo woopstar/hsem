@@ -215,7 +215,7 @@ def select_best_candidate(  # NOSONAR
             months_winter,
             export_min_price=export_min_price,
         )
-    
+
     # --- Step 1 & 2: simulate and validate each candidate ---------------
     for candidate in candidates:
         simulate_soc(

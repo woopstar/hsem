@@ -34,7 +34,6 @@ from custom_components.hsem.planner.discharge_scheduler import (
     apply_excess_export,
     apply_optimization_strategy,
     calculate_required_battery_until_solar,
-    concentrate_discharge_on_expensive_slots,
 )
 from custom_components.hsem.planner.engine_explanation import (
     _build_explanation,
@@ -59,7 +58,6 @@ from custom_components.hsem.planner.slot_population import (
     populate_solcast,
     usable_capacity,
 )
-from custom_components.hsem.planner.soc_simulation import simulate_soc
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import (
@@ -956,7 +954,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     )
     # Note: concentrate_discharge_on_expensive_slots() is now applied per-candidate
     # in the selector before scoring, so we don't run it on the baseline here.
-    
+
     # Build EV configs for MILP co-optimisation (when EVs are active)
     ev_configs = _build_ev_configs_for_milp(inp, slots, now)
     candidates, winner, candidate_rejected, hysteresis_result = _select_candidate(
