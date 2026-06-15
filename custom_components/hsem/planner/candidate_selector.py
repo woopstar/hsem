@@ -38,6 +38,7 @@ from datetime import datetime, timedelta
 from custom_components.hsem.models.rejected_plan import RejectedPlan
 from custom_components.hsem.planner.candidate_generator import (
     CANDIDATE_BASELINE,
+    CANDIDATE_MILP,
     CANDIDATE_NO_ACTION,
     CandidatePlan,
 )
@@ -196,6 +197,12 @@ def select_best_candidate(  # NOSONAR
     if months_winter is None:
         months_winter = []
     for candidate in candidates:
+        # Skip MILP candidate — the solver already determines the optimal
+        # recommendations.  Applying the optimization strategy here would
+        # overwrite the LP's optimal plan (e.g., filling idle None slots
+        # with BatteriesDischargeMode for summer months).
+        if candidate.name == CANDIDATE_MILP:
+            continue
         # Concentrate discharge on expensive slots (per-candidate)
         concentrate_discharge_on_expensive_slots(
             candidate.slots,
