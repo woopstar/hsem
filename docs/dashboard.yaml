@@ -1,0 +1,2302 @@
+views:
+  - title: HSEM
+    badges: []
+    sections:
+      # ═══════════════════════════════════════════════════════════
+      # SECTION 1 — SYSTEM STATUS OVERVIEW
+      # ═══════════════════════════════════════════════════════════
+      - type: grid
+        cards:
+          - type: heading
+            heading: System Status
+            heading_style: title
+            grid_options:
+              columns: full
+              rows: 1
+          - type: tile
+            entity: sensor.hsem_degraded_mode_sensor
+            name: System Health
+            icon: mdi:heart-pulse
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 3
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: tile
+            entity: sensor.hsem_workingmode_sensor
+            name: Working Mode
+            icon: mdi:chart-timeline-variant
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 4
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: tile
+            entity: sensor.hsem_force_mode_sensor
+            name: Force Mode
+            icon: mdi:hand-pointing-right
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 2
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: tile
+            entity: sensor.hsem_read_only_sensor
+            name: Read-Only
+            icon: mdi:lock
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 2
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: tile
+            entity: sensor.hsem_hardware_writes_sensor
+            name: HW Writes
+            icon: mdi:pencil
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 2
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: tile
+            entity: sensor.hsem_applier_status_sensor
+            name: Inverter Apply
+            icon: mdi:swap-horizontal
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 3
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: tile
+            entity: sensor.hsem_missing_entities_sensor
+            name: Missing Inputs
+            icon: mdi:alert-circle-outline
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 3
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: tile
+            entity: sensor.hsem_ev_charging_sensor
+            name: EV Charging Active
+            icon: mdi:ev-station
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 3
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: custom:mushroom-template-card
+            primary: "{{ state_attr('sensor.hsem_workingmode_sensor', 'degraded_mode') }}"
+            secondary: Degraded Mode
+            icon: mdi:alert
+            icon_color: >
+              {% set d = state_attr('sensor.hsem_workingmode_sensor', 'degraded_mode') %}
+              {% if d == 'ok' %}green{% elif d == 'degraded' %}orange{% else %}red{% endif %}
+            grid_options:
+              columns: 3
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: custom:mushroom-template-card
+            primary: "{{ state_attr('sensor.hsem_workingmode_sensor', 'batteries_current_capacity') }} kWh"
+            secondary: "Current / Usable: {{ state_attr('sensor.hsem_workingmode_sensor', 'batteries_usable_capacity') }} kWh"
+            icon: mdi:battery
+            icon_color: yellow
+            grid_options:
+              columns: 4
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: custom:mushroom-template-card
+            primary: "{{ state_attr('sensor.hsem_workingmode_sensor', 'net_consumption') }} W"
+            secondary: "Solar: {{ state_attr('sensor.hsem_workingmode_sensor', 'solar_production_power_state') }} W"
+            icon: mdi:transmission-tower
+            icon_color: blue
+            grid_options:
+              columns: 4
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: custom:mushroom-template-card
+            primary: "{{ state_attr('sensor.hsem_workingmode_sensor', 'import_electricity_price_state') }}"
+            secondary: "Import / Export: {{ state_attr('sensor.hsem_workingmode_sensor', 'export_electricity_price_state') }}"
+            icon: mdi:currency-eur
+            icon_color: green
+            grid_options:
+              columns: 4
+              rows: 1
+            tap_action:
+              action: more-info
+        column_span: 2
+
+      # ═══════════════════════════════════════════════════════════
+      # SECTION 2 — WORKING MODE TIMELINE (48h)
+      # ═══════════════════════════════════════════════════════════
+      - type: grid
+        cards:
+          - type: heading
+            heading: Working Mode Timeline (48h)
+            heading_style: title
+            grid_options:
+              columns: full
+              rows: 1
+          - type: custom:apexcharts-card
+            update_interval: 5m
+            experimental:
+              disable_config_validation: true
+            grid_options:
+              columns: full
+            graph_span: 48h
+            span:
+              start: day
+            now:
+              show: true
+              color: red
+              label: Now
+            apex_config:
+              chart:
+                height: 160
+              stroke:
+                curve: stepline
+              legend:
+                show: true
+                position: bottom
+                fontSize: 11px
+              xaxis:
+                labels:
+                  format: HH
+                  rotate: -45
+                  rotateAlways: true
+                  hideOverlappingLabels: true
+                  style:
+                    fontSize: 10
+                    fontWeight: 500
+              yaxis:
+                show: false
+                min: 0
+                max: 1
+                tickAmount: 1
+            series:
+              - name: Charge From Grid
+                entity: sensor.hsem_workingmode_sensor
+                attribute: hourly_recommendations
+                type: area
+                opacity: 1
+                show:
+                  legend_value: false
+                data_generator: >
+                  const rows =
+                  (Array.isArray(entity.attributes.hourly_recommendations) ?
+                  entity.attributes.hourly_recommendations : [])
+                    .slice()
+                    .sort((a,b) => new Date(a.start) - new Date(b.start));
+                  const out = []; rows.forEach(({ start, end, recommendation })
+                  => {
+                    const s = new Date(start).getTime();
+                    const e = new Date(end).getTime();
+                    const on = recommendation === 'batteries_charge_grid' ? 1 : null;
+                    out.push([s, on], [e, on]);
+                  }); return out;
+                color: "#ef4444"
+              - name: Charge From Solar
+                entity: sensor.hsem_workingmode_sensor
+                attribute: hourly_recommendations
+                type: area
+                opacity: 1
+                show:
+                  legend_value: false
+                data_generator: >
+                  const rows =
+                  (Array.isArray(entity.attributes.hourly_recommendations) ?
+                  entity.attributes.hourly_recommendations : [])
+                    .slice()
+                    .sort((a,b) => new Date(a.start) - new Date(b.start));
+                  const out = []; rows.forEach(({ start, end, recommendation })
+                  => {
+                    const s = new Date(start).getTime();
+                    const e = new Date(end).getTime();
+                    const on = recommendation === 'batteries_charge_solar' ? 1 : null;
+                    out.push([s, on], [e, on]);
+                  }); return out;
+                color: "#22c55e"
+              - name: Discharge
+                entity: sensor.hsem_workingmode_sensor
+                attribute: hourly_recommendations
+                type: area
+                opacity: 1
+                show:
+                  legend_value: false
+                data_generator: >
+                  const rows =
+                  (Array.isArray(entity.attributes.hourly_recommendations) ?
+                  entity.attributes.hourly_recommendations : [])
+                    .slice()
+                    .sort((a,b) => new Date(a.start) - new Date(b.start));
+                  const out = []; rows.forEach(({ start, end, recommendation })
+                  => {
+                    const s = new Date(start).getTime();
+                    const e = new Date(end).getTime();
+                    const on = recommendation === 'batteries_discharge_mode' ? 1 : null;
+                    out.push([s, on], [e, on]);
+                  }); return out;
+                color: "#f97316"
+              - name: Wait
+                entity: sensor.hsem_workingmode_sensor
+                attribute: hourly_recommendations
+                type: area
+                opacity: 1
+                show:
+                  legend_value: false
+                data_generator: >
+                  const rows =
+                  (Array.isArray(entity.attributes.hourly_recommendations) ?
+                  entity.attributes.hourly_recommendations : [])
+                    .slice()
+                    .sort((a,b) => new Date(a.start) - new Date(b.start));
+                  const out = []; rows.forEach(({ start, end, recommendation })
+                  => {
+                    const s = new Date(start).getTime();
+                    const e = new Date(end).getTime();
+                    const on = recommendation === 'batteries_wait_mode' ? 1 : null;
+                    out.push([s, on], [e, on]);
+                  }); return out;
+                color: "#8b5cf6"
+              - name: EV Smart Charging
+                entity: sensor.hsem_workingmode_sensor
+                attribute: hourly_recommendations
+                type: area
+                opacity: 1
+                show:
+                  legend_value: false
+                data_generator: >
+                  const rows =
+                  (Array.isArray(entity.attributes.hourly_recommendations) ?
+                  entity.attributes.hourly_recommendations : [])
+                    .slice()
+                    .sort((a,b) => new Date(a.start) - new Date(b.start));
+                  const out = []; rows.forEach(({ start, end, recommendation })
+                  => {
+                    const s = new Date(start).getTime();
+                    const e = new Date(end).getTime();
+                    const on = recommendation === 'ev_smart_charging' ? 1 : null;
+                    out.push([s, on], [e, on]);
+                  }); return out;
+                color: "#06b6d4"
+              - name: Force Discharge
+                entity: sensor.hsem_workingmode_sensor
+                attribute: hourly_recommendations
+                type: area
+                opacity: 1
+                show:
+                  legend_value: false
+                data_generator: >
+                  const rows =
+                  (Array.isArray(entity.attributes.hourly_recommendations) ?
+                  entity.attributes.hourly_recommendations : [])
+                    .slice()
+                    .sort((a,b) => new Date(a.start) - new Date(b.start));
+                  const out = []; rows.forEach(({ start, end, recommendation })
+                  => {
+                    const s = new Date(start).getTime();
+                    const e = new Date(end).getTime();
+                    const on = recommendation === 'force_batteries_discharge' ? 1 : null;
+                    out.push([s, on], [e, on]);
+                  }); return out;
+                color: "#ec4899"
+              - name: Time Passed
+                entity: sensor.hsem_workingmode_sensor
+                attribute: hourly_recommendations
+                type: area
+                opacity: 1
+                show:
+                  legend_value: false
+                data_generator: >
+                  const rows =
+                  (Array.isArray(entity.attributes.hourly_recommendations) ?
+                  entity.attributes.hourly_recommendations : [])
+                    .slice()
+                    .sort((a,b) => new Date(a.start) - new Date(b.start));
+                  const out = []; rows.forEach(({ start, end, recommendation })
+                  => {
+                    const s = new Date(start).getTime();
+                    const e = new Date(end).getTime();
+                    const on = recommendation === 'time_passed' ? 1 : null;
+                    out.push([s, on], [e, on]);
+                  }); return out;
+                color: "#64748b"
+        column_span: 2
+
+      # ═══════════════════════════════════════════════════════════
+      # SECTION 3 — PLANNING & INTELLIGENCE
+      # ═══════════════════════════════════════════════════════════
+      - type: grid
+        cards:
+          - type: heading
+            heading: Planning & Intelligence
+            heading_style: title
+            grid_options:
+              columns: full
+              rows: 1
+          - type: tile
+            entity: sensor.hsem_plan_explanation_sensor
+            name: Plan Strategy
+            icon: mdi:brain
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 4
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: tile
+            entity: sensor.hsem_forecast_accuracy_sensor
+            name: Forecast Accuracy
+            icon: mdi:chart-line
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 4
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: tile
+            entity: sensor.daily_plan_vs_actual
+            name: Plan vs Actual
+            icon: mdi:scale-balance
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 4
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: tile
+            entity: sensor.hsem_next_update_sensor
+            name: Next Update
+            icon: mdi:timer-sand
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 4
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: tile
+            entity: sensor.hsem_last_updated_sensor
+            name: Last Updated
+            icon: mdi:clock-check
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 4
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: tile
+            entity: sensor.hsem_update_interval_sensor
+            name: Update Interval
+            icon: mdi:timer-sync
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 4
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: tile
+            entity: sensor.hsem_recommendation_interval_sensor
+            name: Recomm. Interval
+            icon: mdi:timer-music
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 4
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: custom:mushroom-template-card
+            primary: "Spread: {{ state_attr('sensor.hsem_plan_explanation_sensor', 'price_spread') }}"
+            secondary: "Peak: {{ state_attr('sensor.hsem_plan_explanation_sensor', 'peak_import_price') }} / Off: {{ state_attr('sensor.hsem_plan_explanation_sensor', 'off_peak_import_price') }}"
+            icon: mdi:swap-horizontal-bold
+            icon_color: >
+              {% set s = state_attr('sensor.hsem_plan_explanation_sensor', 'price_spread') | float(0) %}
+              {% if s > 0.01 %}green{% else %}grey{% endif %}
+            grid_options:
+              columns: 4
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: custom:apexcharts-card
+            update_interval: 5m
+            experimental:
+              disable_config_validation: true
+            header:
+              show: true
+              title: Rejected Plans — Costs
+            graph_span: 48h
+            apex_config:
+              chart:
+                height: 200
+              legend:
+                show: true
+                position: bottom
+                fontSize: 11px
+              xaxis:
+                type: category
+                labels:
+                  style:
+                    fontSize: 10
+              yaxis:
+                decimalsInFloat: 4
+                title:
+                  text: Currency
+              plotOptions:
+                bar:
+                  horizontal: true
+            series:
+              - name: Total Cost
+                entity: sensor.hsem_plan_explanation_sensor
+                attribute: rejected_plans
+                type: bar
+                color: "#8b5cf6"
+                float_precision: 4
+                show:
+                  legend_value: false
+                data_generator: >
+                  const plans = Array.isArray(entity.attributes.rejected_plans) ?
+                    entity.attributes.rejected_plans : [];
+                  const out = [];
+                  plans.forEach(p => {
+                    if (p.estimated_cost !== undefined) out.push({x: p.name, y: p.estimated_cost});
+                  });
+                  return out;
+              - name: Score (lower=better)
+                entity: sensor.hsem_plan_explanation_sensor
+                attribute: rejected_plans
+                type: bar
+                color: "#f97316"
+                float_precision: 4
+                show:
+                  legend_value: false
+                data_generator: >
+                  const plans = Array.isArray(entity.attributes.rejected_plans) ?
+                    entity.attributes.rejected_plans : [];
+                  const out = [];
+                  plans.forEach(p => {
+                    if (p.score !== undefined) out.push({x: p.name, y: p.score});
+                  });
+                  return out;
+            grid_options:
+              columns: full
+              rows: 1
+        column_span: 2
+
+      # ═══════════════════════════════════════════════════════════
+      # SECTION 4b — DAILY PLAN vs ACTUAL HISTORY
+      # ═══════════════════════════════════════════════════════════
+      - type: grid
+        cards:
+          - type: heading
+            heading: Daily Plan vs Actual — 30 Day History
+            heading_style: title
+            grid_options:
+              columns: full
+              rows: 1
+          - type: custom:apexcharts-card
+            update_interval: 5m
+            header:
+              show: true
+              title: Net Cost per Day — Last 30 Days
+            graph_span: 30d
+            apex_config:
+              chart:
+                height: 220
+              stroke:
+                curve: stepline
+                width: 1
+              markers:
+                size: 3
+              legend:
+                show: true
+                position: bottom
+                fontSize: 11px
+              xaxis:
+                type: datetime
+                labels:
+                  format: dd MMM
+                  datetimeUTC: false
+                  rotate: -45
+                  rotateAlways: true
+                  hideOverlappingLabels: true
+                  style:
+                    fontSize: 10
+              yaxis:
+                decimalsInFloat: 2
+                title:
+                  text: Currency
+            series:
+              - name: Plan
+                entity: sensor.daily_plan_vs_actual
+                attribute: history
+                type: line
+                color: "#3b82f6"
+                float_precision: 2
+                show:
+                  legend_value: false
+                data_generator: >
+                  const days = Array.isArray(entity.attributes.history) ?
+                    entity.attributes.history.slice().reverse() : [];
+                  const out = [];
+                  days.forEach(d => {
+                    if (!d || !d.plan || !d.date) return;
+                    const ts = new Date(d.date + 'T12:00:00').getTime();
+                    const planNet = (d.plan.grid_import_cost || 0) - (d.plan.grid_export_rev || 0);
+                    out.push([ts, planNet]);
+                  });
+                  return out;
+              - name: Actual
+                entity: sensor.daily_plan_vs_actual
+                attribute: history
+                type: line
+                color: "#f97316"
+                float_precision: 2
+                show:
+                  legend_value: false
+                data_generator: >
+                  const days = Array.isArray(entity.attributes.history) ?
+                    entity.attributes.history.slice().reverse() : [];
+                  const out = [];
+                  days.forEach(d => {
+                    if (!d || !d.actual || !d.date) return;
+                    const ts = new Date(d.date + 'T12:00:00').getTime();
+                    const actualNet = (d.actual.grid_import_cost || 0) - (d.actual.grid_export_rev || 0);
+                    out.push([ts, actualNet]);
+                  });
+                  return out;
+              - name: Diff
+                entity: sensor.daily_plan_vs_actual
+                attribute: history
+                type: column
+                color: "#22c55e"
+                float_precision: 2
+                opacity: 0.6
+                show:
+                  legend_value: true
+                data_generator: >
+                  const days = Array.isArray(entity.attributes.history) ?
+                    entity.attributes.history.slice().reverse() : [];
+                  const out = [];
+                  days.forEach(d => {
+                    if (!d || !d.plan || !d.actual || !d.date) return;
+                    const ts = new Date(d.date + 'T12:00:00').getTime();
+                    const planNet = (d.plan.grid_import_cost || 0) - (d.plan.grid_export_rev || 0);
+                    const actualNet = (d.actual.grid_import_cost || 0) - (d.actual.grid_export_rev || 0);
+                    out.push([ts, actualNet - planNet]);
+                  });
+                  return out;
+          - type: custom:mushroom-template-card
+            primary: "Today: {{ state_attr('sensor.daily_plan_vs_actual', 'today').actual.grid_import_cost }} / {{ state_attr('sensor.daily_plan_vs_actual', 'today').plan.grid_import_cost }}"
+            secondary: "Actual/Plan Import Cost"
+            icon: mdi:currency-eur
+            icon_color: blue
+            grid_options:
+              columns: 6
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: custom:mushroom-template-card
+            primary: "{{ state_attr('sensor.daily_plan_vs_actual', 'history') | length }} days"
+            secondary: "History Window"
+            icon: mdi:calendar-range
+            icon_color: purple
+            grid_options:
+              columns: 6
+              rows: 1
+            tap_action:
+              action: more-info
+        column_span: 2
+
+      # ═══════════════════════════════════════════════════════════
+      # SECTION 4c — FORECAST ACCURACY INSIGHTS
+      # ═══════════════════════════════════════════════════════════
+      - type: grid
+        cards:
+          - type: heading
+            heading: PV & Load Forecast Accuracy
+            heading_style: title
+            grid_options:
+              columns: full
+              rows: 1
+          - type: custom:mushroom-template-card
+            primary: "PV MAE: {{ state_attr('sensor.hsem_forecast_accuracy_sensor', 'mae_pv_kwh') }} kWh"
+            secondary: "RMSE: {{ state_attr('sensor.hsem_forecast_accuracy_sensor', 'rmse_pv_kwh') }} kWh"
+            icon: mdi:solar-power
+            icon_color: orange
+            grid_options:
+              columns: 3
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: custom:mushroom-template-card
+            primary: "PV Bias: {{ state_attr('sensor.hsem_forecast_accuracy_sensor', 'bias_pv_kwh') }} kWh"
+            secondary: "MAPE: {{ state_attr('sensor.hsem_forecast_accuracy_sensor', 'mape_pv_pct') }}%"
+            icon: mdi:chart-bell-curve
+            icon_color: >
+              {% set b = state_attr('sensor.hsem_forecast_accuracy_sensor', 'bias_pv_kwh') | float(0) %}
+              {% if b | abs < 0.1 %}green{% elif b > 0 %}orange{% else %}blue{% endif %}
+            grid_options:
+              columns: 3
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: custom:mushroom-template-card
+            primary: "Load MAE: {{ state_attr('sensor.hsem_forecast_accuracy_sensor', 'mae_load_kwh') }} kWh"
+            secondary: "RMSE: {{ state_attr('sensor.hsem_forecast_accuracy_sensor', 'rmse_load_kwh') }} kWh"
+            icon: mdi:home-lightning-bolt
+            icon_color: blue
+            grid_options:
+              columns: 3
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: custom:mushroom-template-card
+            primary: "Load Bias: {{ state_attr('sensor.hsem_forecast_accuracy_sensor', 'bias_load_kwh') }} kWh"
+            secondary: "MAPE: {{ state_attr('sensor.hsem_forecast_accuracy_sensor', 'mape_load_pct') }}%"
+            icon: mdi:chart-bell-curve
+            icon_color: >
+              {% set b = state_attr('sensor.hsem_forecast_accuracy_sensor', 'bias_load_kwh') | float(0) %}
+              {% if b | abs < 0.1 %}green{% elif b > 0 %}orange{% else %}blue{% endif %}
+            grid_options:
+              columns: 3
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: custom:mushroom-template-card
+            primary: "Slots: {{ state_attr('sensor.hsem_forecast_accuracy_sensor', 'finalised_slots') }}"
+            secondary: "Window: {{ state_attr('sensor.hsem_forecast_accuracy_sensor', 'window_slots') }}"
+            icon: mdi:counter
+            icon_color: grey
+            grid_options:
+              columns: 3
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: custom:mushroom-template-card
+            primary: >
+              PV: {{ state_attr('sensor.hsem_forecast_accuracy_sensor', 'latest_pv_forecast_kwh') }} &rarr;
+              {{ state_attr('sensor.hsem_forecast_accuracy_sensor', 'latest_pv_actual_kwh') }} kWh
+            secondary: "Latest Slot (Forecast &rarr; Actual)"
+            icon: mdi:swap-horizontal
+            icon_color: yellow
+            grid_options:
+              columns: 3
+              rows: 1
+            tap_action:
+              action: more-info
+        column_span: 2
+
+      # ═══════════════════════════════════════════════════════════
+      # SECTION 4d — LIVE POWER FLOW
+      # ═══════════════════════════════════════════════════════════
+      - type: grid
+        cards:
+          - type: heading
+            heading: Live Power Flow
+            heading_style: title
+            grid_options:
+              columns: full
+              rows: 1
+          - type: custom:mushroom-template-card
+            primary: "{{ state_attr('sensor.hsem_workingmode_sensor', 'solar_production_power_state') }} W"
+            secondary: Solar Production
+            icon: mdi:solar-power
+            icon_color: orange
+            grid_options:
+              columns: 3
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: custom:mushroom-template-card
+            primary: "{{ state_attr('sensor.hsem_workingmode_sensor', 'house_consumption_power_state') }} W"
+            secondary: House Consumption
+            icon: mdi:home-lightning-bolt
+            icon_color: blue
+            grid_options:
+              columns: 3
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: custom:mushroom-template-card
+            primary: "{{ state_attr('sensor.hsem_workingmode_sensor', 'net_consumption') }} W"
+            secondary: Net (Grid) Consumption
+            icon: mdi:transmission-tower
+            icon_color: >
+              {% set n = state_attr('sensor.hsem_workingmode_sensor', 'net_consumption') | float(0) %}
+              {% if n > 0 %}red{% else %}green{% endif %}
+            grid_options:
+              columns: 3
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: custom:mushroom-template-card
+            primary: "{{ state_attr('sensor.hsem_workingmode_sensor', 'net_consumption_with_ev') }} W"
+            secondary: Net (incl. EV)
+            icon: mdi:ev-station
+            icon_color: >
+              {% set n = state_attr('sensor.hsem_workingmode_sensor', 'net_consumption_with_ev') | float(0) %}
+              {% if n > 0 %}red{% else %}green{% endif %}
+            grid_options:
+              columns: 3
+              rows: 1
+            tap_action:
+              action: more-info
+        column_span: 2
+
+      # ═══════════════════════════════════════════════════════════
+      # SECTION 4e — HUAWEI SOLAR INVERTER STATE
+      # ═══════════════════════════════════════════════════════════
+      - type: grid
+        cards:
+          - type: heading
+            heading: Huawei Solar — Inverter & Battery Status
+            heading_style: title
+            grid_options:
+              columns: full
+              rows: 1
+          - type: custom:mushroom-template-card
+            primary: "{{ state_attr('sensor.hsem_workingmode_sensor', 'huawei_solar_batteries_working_mode_state') }}"
+            secondary: Battery Working Mode
+            icon: mdi:battery-sync
+            icon_color: blue
+            grid_options:
+              columns: 3
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: custom:mushroom-template-card
+            primary: "{{ state_attr('sensor.hsem_workingmode_sensor', 'huawei_solar_inverter_active_power_control_state_state') }}"
+            secondary: Active Power Control
+            icon: mdi:flash
+            icon_color: yellow
+            grid_options:
+              columns: 3
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: custom:mushroom-template-card
+            primary: "{{ state_attr('sensor.hsem_workingmode_sensor', 'huawei_solar_batteries_excess_pv_energy_use_in_tou_state') }}"
+            secondary: Excess PV in TOU
+            icon: mdi:solar-power
+            icon_color: green
+            grid_options:
+              columns: 3
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: custom:mushroom-template-card
+            primary: "{{ state_attr('sensor.hsem_workingmode_sensor', 'huawei_solar_batteries_maximum_charging_power_state') }} W"
+            secondary: Max Charge Power
+            icon: mdi:battery-plus
+            icon_color: green
+            grid_options:
+              columns: 3
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: custom:mushroom-template-card
+            primary: "{{ state_attr('sensor.hsem_workingmode_sensor', 'huawei_solar_batteries_maximum_discharging_power_state') }} W"
+            secondary: Max Discharge Power
+            icon: mdi:battery-minus
+            icon_color: orange
+            grid_options:
+              columns: 3
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: custom:mushroom-template-card
+            primary: "{{ state_attr('sensor.hsem_workingmode_sensor', 'huawei_solar_batteries_state_of_capacity_state') }}%"
+            secondary: Battery SoC (Huawei)
+            icon: mdi:battery-high
+            icon_color: yellow
+            grid_options:
+              columns: 3
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: custom:mushroom-template-card
+            primary: "{{ state_attr('sensor.hsem_workingmode_sensor', 'huawei_solar_batteries_charging_cutoff_capacity_state') }}%"
+            secondary: Charging Cutoff SoC
+            icon: mdi:battery-off
+            icon_color: grey
+            grid_options:
+              columns: 3
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: custom:mushroom-template-card
+            primary: "{{ state_attr('sensor.hsem_workingmode_sensor', 'huawei_solar_batteries_grid_charge_cutoff_soc_state') }}%"
+            secondary: Grid Charge Cutoff SoC
+            icon: mdi:transmission-tower
+            icon_color: red
+            grid_options:
+              columns: 3
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: custom:mushroom-template-card
+            primary: "{{ state_attr('sensor.hsem_workingmode_sensor', 'huawei_solar_batteries_rated_capacity_max_state') }} Wh"
+            secondary: Rated Capacity (max)
+            icon: mdi:battery
+            icon_color: purple
+            grid_options:
+              columns: 3
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: custom:mushroom-template-card
+            primary: "{{ state_attr('sensor.hsem_workingmode_sensor', 'huawei_solar_batteries_tou_charging_and_discharging_periods_state') }}"
+            secondary: TOU Periods State
+            icon: mdi:calendar-clock
+            icon_color: blue
+            grid_options:
+              columns: 3
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: custom:mushroom-template-card
+            primary: "{{ state_attr('sensor.hsem_workingmode_sensor', 'apply_status') }}"
+            secondary: Last Apply Status
+            icon: mdi:swap-horizontal
+            icon_color: >
+              {% set s = state_attr('sensor.hsem_workingmode_sensor', 'apply_status') %}
+              {% if s == 'ok' %}green{% elif s == 'failed' %}red{% else %}orange{% endif %}
+            grid_options:
+              columns: 3
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: custom:mushroom-template-card
+            primary: "{{ state_attr('sensor.hsem_workingmode_sensor', 'huawei_solar_batteries_tou_charging_and_discharging_periods_periods') | length }} periods"
+            secondary: TOU Schedule Periods
+            icon: mdi:format-list-bulleted
+            icon_color: purple
+            grid_options:
+              columns: 3
+              rows: 1
+            tap_action:
+              action: more-info
+        column_span: 2
+
+      # ═══════════════════════════════════════════════════════════
+      # SECTION 3 (continued) — PLANNING & INTELLIGENCE
+      # ═══════════════════════════════════════════════════════════
+      - type: grid
+        cards:
+          - type: heading
+            heading: Controls & Config
+            heading_style: title
+            grid_options:
+              columns: full
+              rows: 1
+          - type: tile
+            entity: select.hsem_solcast_likelihood
+            name: Solcast Likelihood
+            icon: mdi:solar-power
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 4
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: tile
+            entity: select.hsem_force_working_mode
+            name: Force Working Mode
+            icon: mdi:chart-timeline-variant
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 4
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: tile
+            entity: switch.hsem_extended_attributes
+            name: Extended Attrs
+            icon: mdi:code-json
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 4
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: tile
+            entity: switch.hsem_verbose_logging
+            name: Verbose Logging
+            icon: mdi:message-text
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 4
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: tile
+            entity: switch.hsem_read_only
+            name: Read Only Switch
+            icon: mdi:shield-lock
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 4
+              rows: 1
+            tap_action:
+              action: more-info
+        column_span: 2
+
+      # ═══════════════════════════════════════════════════════════
+      # SECTION 4 — MILP & ML INSIGHTS
+      # ═══════════════════════════════════════════════════════════
+      - type: grid
+        cards:
+          - type: heading
+            heading: Planner — MILP & ML Insights
+            heading_style: title
+            grid_options:
+              columns: full
+              rows: 1
+          - type: custom:mushroom-template-card
+            primary: "{{ state_attr('sensor.hsem_plan_explanation_sensor', 'winner_name') }}"
+            secondary: "{{ state_attr('sensor.hsem_plan_explanation_sensor', 'summary') }}"
+            icon: mdi:chart-gantt
+            icon_color: >
+              {% set w = state_attr('sensor.hsem_plan_explanation_sensor', 'winner_name') %}
+              {% if w == 'milp' %}amber{% elif w == 'passive' %}blue{% else %}grey{% endif %}
+            grid_options:
+              columns: 6
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: custom:mushroom-template-card
+            primary: "Score: {{ state_attr('sensor.hsem_plan_explanation_sensor', 'score') }}"
+            secondary: "Cost: {{ state_attr('sensor.hsem_plan_explanation_sensor', 'estimated_total_cost') }}"
+            icon: mdi:currency-eur
+            icon_color: green
+            grid_options:
+              columns: 5
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: custom:mushroom-template-card
+            primary: "{{ state_attr('sensor.hsem_plan_explanation_sensor', 'selected_strategy') }}"
+            secondary: Strategy
+            icon: mdi:strategy
+            icon_color: purple
+            grid_options:
+              columns: 5
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: custom:mushroom-template-card
+            primary: "PV: {{ state_attr('sensor.hsem_plan_explanation_sensor', 'forecast_pv_kwh') }} kWh"
+            secondary: "Net: {{ state_attr('sensor.hsem_plan_explanation_sensor', 'forecast_net_consumption_kwh') }} kWh"
+            icon: mdi:solar-power
+            icon_color: orange
+            grid_options:
+              columns: 6
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: custom:mushroom-template-card
+            primary: "SoC: {{ state_attr('sensor.hsem_plan_explanation_sensor', 'battery_soc_pct') }}% &rarr; {{ state_attr('sensor.hsem_plan_explanation_sensor', 'battery_soc_at_end_pct') }}%"
+            secondary: "Spread: {{ state_attr('sensor.hsem_plan_explanation_sensor', 'price_spread') }}"
+            icon: mdi:battery-charging
+            icon_color: yellow
+            grid_options:
+              columns: 6
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: custom:mushroom-template-card
+            primary: "Hysteresis: {{ state_attr('sensor.hsem_plan_explanation_sensor', 'hysteresis_active') }}"
+            secondary: "{{ state_attr('sensor.hsem_plan_explanation_sensor', 'hysteresis_reason') }}"
+            icon: mdi:animation
+            icon_color: >
+              {% if state_attr('sensor.hsem_plan_explanation_sensor', 'hysteresis_active') %}orange{% else %}grey{% endif %}
+            grid_options:
+              columns: 6
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: custom:mushroom-template-card
+            primary: "Data Quality: {{ state_attr('sensor.hsem_plan_explanation_sensor', 'data_quality_complete') }}"
+            secondary: "Horizon: {{ state_attr('sensor.hsem_plan_explanation_sensor', 'planning_horizon_hours') }}h / {{ state_attr('sensor.hsem_plan_explanation_sensor', 'forecast_mode') }}"
+            icon: mdi:checkbox-marked-circle-outline
+            icon_color: >
+              {% if state_attr('sensor.hsem_plan_explanation_sensor', 'data_quality_complete') %}green{% else %}red{% endif %}
+            grid_options:
+              columns: 6
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: custom:mushroom-template-card
+            primary: "ML Enabled: {{ states('switch.hsem_ml_consumption_enabled') }}"
+            secondary: "Sequential: {{ states('switch.hsem_ml_consumption_sequential') }}"
+            icon: mdi:chart-bell-curve
+            icon_color: >
+              {% if states('switch.hsem_ml_consumption_enabled') == 'on' %}blue{% else %}grey{% endif %}
+            grid_options:
+              columns: 6
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: tile
+            entity: switch.hsem_ml_consumption_enabled
+            name: ML Consumption
+            icon: mdi:chart-bell-curve
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 5
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: tile
+            entity: switch.hsem_ml_consumption_sequential
+            name: ML Sequential
+            icon: mdi:chart-timeline
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 5
+              rows: 1
+            tap_action:
+              action: more-info
+        column_span: 2
+
+      # ═══════════════════════════════════════════════════════════
+      # SECTION 5 — BATTERY & POWER
+      # ═══════════════════════════════════════════════════════════
+      - type: grid
+        cards:
+          - type: heading
+            heading: Battery & Power
+            heading_style: title
+            grid_options:
+              columns: full
+              rows: 1
+          - type: custom:apexcharts-card
+            update_interval: 10m
+            graph_span: 24h
+            span:
+              start: day
+            now:
+              show: true
+              color: red
+              label: Now
+            header:
+              show: true
+              title: Battery SoC & Grid Import
+              show_states: false
+            apex_config:
+              chart:
+                height: 200
+              legend:
+                show: true
+                position: bottom
+              xaxis:
+                labels:
+                  format: HH
+                  rotate: -45
+                  rotateAlways: true
+                  hideOverlappingLabels: true
+                  style:
+                    fontSize: 10
+                    fontWeight: 500
+              yaxis:
+                - id: pct
+                  show: true
+                  opposite: false
+                  decimals: 0
+                  max: 100
+                  min: 0
+                  title:
+                    text: SoC %
+                - id: watt
+                  show: true
+                  opposite: true
+                  decimals: 0
+                  min: 0
+                  title:
+                    text: Watts
+            series:
+              - entity: sensor.batteries_state_of_capacity
+                name: Battery SoC
+                type: line
+                color: "#eab308"
+                yaxis_id: pct
+                opacity: 1
+                stroke_width: 2
+              - entity: sensor.power_import
+                name: Grid Import
+                color: "#ef4444"
+                yaxis_id: watt
+                type: area
+                opacity: 0.3
+                stroke_width: 1
+                group_by:
+                  func: avg
+                  duration: 5min
+          - type: tile
+            entity: sensor.hsem_battery_soc_sensor
+            name: Battery SoC (HSEM)
+            icon: mdi:battery-high
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 4
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: tile
+            entity: sensor.hsem_net_consumption_sensor
+            name: Net Consumption
+            icon: mdi:transmission-tower
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 4
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: tile
+            entity: number.hsem_battery_charge_efficiency
+            name: Charge Efficiency
+            icon: mdi:battery-plus
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 4
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: tile
+            entity: number.hsem_battery_discharge_efficiency
+            name: Discharge Efficiency
+            icon: mdi:battery-minus
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 4
+              rows: 1
+            tap_action:
+              action: more-info
+        column_span: 2
+
+      # ═══════════════════════════════════════════════════════════
+      # SECTION 6 — BATTERY SCHEDULES
+      # ═══════════════════════════════════════════════════════════
+      - type: grid
+        cards:
+          - type: heading
+            heading: Batteries Discharge Schedules
+            heading_style: title
+            grid_options:
+              columns: full
+              rows: 1
+          - type: tile
+            entity: switch.hsem_batteries_enable_batteries_schedule_1
+            name: Schedule 1
+            icon: mdi:calendar-clock
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 4
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: tile
+            entity: time.hsem_batteries_enable_batteries_schedule_1_start
+            name: S1 Start
+            icon: mdi:clock-start
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 4
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: tile
+            entity: time.hsem_batteries_enable_batteries_schedule_1_end
+            name: S1 End
+            icon: mdi:clock-end
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 4
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: tile
+            entity: switch.hsem_batteries_enable_batteries_schedule_2
+            name: Schedule 2
+            icon: mdi:calendar-clock
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 4
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: tile
+            entity: time.hsem_batteries_enable_batteries_schedule_2_start
+            name: S2 Start
+            icon: mdi:clock-start
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 4
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: tile
+            entity: time.hsem_batteries_enable_batteries_schedule_2_end
+            name: S2 End
+            icon: mdi:clock-end
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 4
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: tile
+            entity: switch.hsem_batteries_enable_batteries_schedule_3
+            name: Schedule 3
+            icon: mdi:calendar-clock
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 4
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: tile
+            entity: time.hsem_batteries_enable_batteries_schedule_3_start
+            name: S3 Start
+            icon: mdi:clock-start
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 4
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: tile
+            entity: time.hsem_batteries_enable_batteries_schedule_3_end
+            name: S3 End
+            icon: mdi:clock-end
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 4
+              rows: 1
+            tap_action:
+              action: more-info
+        column_span: 2
+
+      # ═══════════════════════════════════════════════════════════
+      # SECTION 7 — ENERGY ECONOMICS
+      # ═══════════════════════════════════════════════════════════
+      - type: grid
+        cards:
+          - type: heading
+            heading: Energy Economics
+            heading_style: title
+            grid_options:
+              columns: full
+              rows: 1
+          - type: custom:apexcharts-card
+            update_interval: 5m
+            header:
+              show: true
+              title: Import & Export Price
+            graph_span: 48h
+            span:
+              start: day
+            now:
+              show: true
+              color: red
+              label: Now
+            apex_config:
+              chart:
+                height: 200
+              stroke:
+                curve: stepline
+                width: 1
+              markers:
+                size: 0
+              legend:
+                show: true
+                position: bottom
+              xaxis:
+                labels:
+                  format: HH
+                  rotate: -45
+                  rotateAlways: true
+                  hideOverlappingLabels: true
+                  style:
+                    fontSize: 10
+                    fontWeight: 500
+              yaxis:
+                decimalsInFloat: 4
+                opposite: true
+                title:
+                  text: Currency/kWh
+            series:
+              - name: Import Price
+                entity: sensor.hsem_workingmode_sensor
+                attribute: hourly_recommendations
+                type: line
+                color: "#ef4444"
+                float_precision: 4
+                show:
+                  legend_value: false
+                data_generator: >
+                  const rows =
+                  (Array.isArray(entity.attributes.hourly_recommendations) ?
+                  entity.attributes.hourly_recommendations : [])
+                    .slice()
+                    .sort((a,b) => new Date(a.start) - new Date(b.start));
+                  const out = []; rows.forEach(({ start, end, import_price }) =>
+                  {
+                    const s = new Date(start).getTime();
+                    const e = new Date(end).getTime();
+                    out.push([s, import_price], [e, import_price]);
+                  }); return out;
+              - name: Export Price
+                entity: sensor.hsem_workingmode_sensor
+                attribute: hourly_recommendations
+                type: line
+                color: "#22c55e"
+                float_precision: 4
+                show:
+                  legend_value: false
+                data_generator: >
+                  const rows =
+                  (Array.isArray(entity.attributes.hourly_recommendations) ?
+                  entity.attributes.hourly_recommendations : [])
+                    .slice()
+                    .sort((a,b) => new Date(a.start) - new Date(b.start));
+                  const out = []; rows.forEach(({ start, end, export_price }) =>
+                  {
+                    const s = new Date(start).getTime();
+                    const e = new Date(end).getTime();
+                    out.push([s, export_price], [e, export_price]);
+                  }); return out;
+          - type: custom:apexcharts-card
+            update_interval: 5m
+            header:
+              show: true
+              title: Estimated Cost & Net Consumption
+            graph_span: 48h
+            span:
+              start: day
+            now:
+              show: true
+              color: red
+              label: Now
+            apex_config:
+              chart:
+                height: 200
+              stroke:
+                curve: stepline
+                width: 1
+              markers:
+                size: 0
+              legend:
+                show: true
+                position: bottom
+              xaxis:
+                labels:
+                  format: HH
+                  rotate: -45
+                  rotateAlways: true
+                  hideOverlappingLabels: true
+                  style:
+                    fontSize: 10
+                    fontWeight: 500
+              yaxis:
+                - id: cost
+                  show: true
+                  opposite: false
+                  decimalsInFloat: 2
+                  title:
+                    text: Currency
+                - id: kwh
+                  show: true
+                  opposite: true
+                  decimalsInFloat: 3
+                  title:
+                    text: kWh
+            series:
+              - name: Estimated Cost
+                entity: sensor.hsem_workingmode_sensor
+                attribute: hourly_recommendations
+                type: line
+                color: "#22c55e"
+                yaxis_id: cost
+                show:
+                  legend_value: false
+                data_generator: >
+                  const rows =
+                  (Array.isArray(entity.attributes.hourly_recommendations) ?
+                  entity.attributes.hourly_recommendations : [])
+                    .slice()
+                    .sort((a,b) => new Date(a.start) - new Date(b.start));
+                  const out = []; rows.forEach(({ start, end,
+                  estimated_cost_currency }) => {
+                    const s = new Date(start).getTime();
+                    const e = new Date(end).getTime();
+                    out.push([s, estimated_cost_currency], [e, estimated_cost_currency]);
+                  }); return out;
+              - name: Net Consumption
+                entity: sensor.hsem_workingmode_sensor
+                attribute: hourly_recommendations
+                type: line
+                color: "#06b6d4"
+                yaxis_id: kwh
+                float_precision: 3
+                show:
+                  legend_value: false
+                data_generator: >
+                  const rows =
+                  (Array.isArray(entity.attributes.hourly_recommendations) ?
+                  entity.attributes.hourly_recommendations : [])
+                    .slice()
+                    .sort((a,b) => new Date(a.start) - new Date(b.start));
+                  const out = []; rows.forEach(({ start, end,
+                  estimated_net_consumption_kwh }) => {
+                    const s = new Date(start).getTime();
+                    const e = new Date(end).getTime();
+                    out.push([s, estimated_net_consumption_kwh], [e, estimated_net_consumption_kwh]);
+                  }); return out;
+        column_span: 2
+
+      # ═══════════════════════════════════════════════════════════
+      # SECTION 8 — CONSUMPTION & SOLAR
+      # ═══════════════════════════════════════════════════════════
+      - type: grid
+        cards:
+          - type: heading
+            heading: Consumption & Solar
+            heading_style: title
+            grid_options:
+              columns: full
+              rows: 1
+          - type: custom:apexcharts-card
+            update_interval: 1m
+            experimental:
+              disable_config_validation: true
+            graph_span: 24h
+            span:
+              start: day
+            now:
+              show: true
+              color: red
+              label: Now
+            header:
+              show: true
+              title: House Consumption Averages
+            apex_config:
+              chart:
+                height: 300
+              stroke:
+                width: 2
+              legend:
+                show: true
+                position: bottom
+              xaxis:
+                labels:
+                  format: HH
+                  rotate: -45
+                  rotateAlways: true
+                  hideOverlappingLabels: true
+                  style:
+                    fontSize: 10
+                    fontWeight: 500
+              yaxis:
+                decimalsInFloat: 3
+                title:
+                  text: kWh
+            series:
+              - name: Hourly Consumption
+                entity: sensor.hsem_workingmode_sensor
+                attribute: hourly_recommendations
+                type: area
+                color: "#f97316"
+                float_precision: 3
+                opacity: 0.3
+                data_generator: >
+                  const rows =
+                  (Array.isArray(entity.attributes.hourly_recommendations) ?
+                  entity.attributes.hourly_recommendations : [])
+                    .slice()
+                    .sort((a,b) => new Date(a.start) - new Date(b.start));
+                  const out = []; rows.forEach(({ start, end,
+                  avg_house_consumption_kwh }) => {
+                    const s = new Date(start).getTime();
+                    const e = new Date(end).getTime();
+                    out.push([s, avg_house_consumption_kwh], [e, avg_house_consumption_kwh]);
+                  }); return out;
+              - name: Avg 1 Day
+                entity: sensor.hsem_workingmode_sensor
+                attribute: hourly_recommendations
+                type: line
+                color: "#3b82f6"
+                float_precision: 3
+                data_generator: >
+                  const rows =
+                  (Array.isArray(entity.attributes.hourly_recommendations) ?
+                  entity.attributes.hourly_recommendations : [])
+                    .slice()
+                    .sort((a,b) => new Date(a.start) - new Date(b.start));
+                  const out = []; rows.forEach(({ start, end,
+                  avg_house_consumption_1d_kwh }) => {
+                    const s = new Date(start).getTime();
+                    const e = new Date(end).getTime();
+                    out.push([s, avg_house_consumption_1d_kwh], [e, avg_house_consumption_1d_kwh]);
+                  }); return out;
+              - name: Avg 3 Day
+                entity: sensor.hsem_workingmode_sensor
+                attribute: hourly_recommendations
+                type: line
+                color: "#eab308"
+                float_precision: 3
+                data_generator: >
+                  const rows =
+                  (Array.isArray(entity.attributes.hourly_recommendations) ?
+                  entity.attributes.hourly_recommendations : [])
+                    .slice()
+                    .sort((a,b) => new Date(a.start) - new Date(b.start));
+                  const out = []; rows.forEach(({ start, end,
+                  avg_house_consumption_3d_kwh }) => {
+                    const s = new Date(start).getTime();
+                    const e = new Date(end).getTime();
+                    out.push([s, avg_house_consumption_3d_kwh], [e, avg_house_consumption_3d_kwh]);
+                  }); return out;
+              - name: Avg 7 Day
+                entity: sensor.hsem_workingmode_sensor
+                attribute: hourly_recommendations
+                type: line
+                color: "#8b5cf6"
+                float_precision: 3
+                data_generator: >
+                  const rows =
+                  (Array.isArray(entity.attributes.hourly_recommendations) ?
+                  entity.attributes.hourly_recommendations : [])
+                    .slice()
+                    .sort((a,b) => new Date(a.start) - new Date(b.start));
+                  const out = []; rows.forEach(({ start, end,
+                  avg_house_consumption_7d_kwh }) => {
+                    const s = new Date(start).getTime();
+                    const e = new Date(end).getTime();
+                    out.push([s, avg_house_consumption_7d_kwh], [e, avg_house_consumption_7d_kwh]);
+                  }); return out;
+              - name: Avg 14 Day
+                entity: sensor.hsem_workingmode_sensor
+                attribute: hourly_recommendations
+                type: line
+                color: "#22c55e"
+                float_precision: 3
+                data_generator: >
+                  const rows =
+                  (Array.isArray(entity.attributes.hourly_recommendations) ?
+                  entity.attributes.hourly_recommendations : [])
+                    .slice()
+                    .sort((a,b) => new Date(a.start) - new Date(b.start));
+                  const out = []; rows.forEach(({ start, end,
+                  avg_house_consumption_14d_kwh }) => {
+                    const s = new Date(start).getTime();
+                    const e = new Date(end).getTime();
+                    out.push([s, avg_house_consumption_14d_kwh], [e, avg_house_consumption_14d_kwh]);
+                  }); return out;
+          - type: custom:apexcharts-card
+            update_interval: 5m
+            header:
+              show: true
+              title: Solar & Battery (Planned)
+            graph_span: 48h
+            span:
+              start: day
+            now:
+              show: true
+              color: red
+              label: Now
+            apex_config:
+              chart:
+                height: 300
+              stroke:
+                curve: stepline
+                width: 1
+              markers:
+                size: 0
+              legend:
+                show: true
+                position: bottom
+              xaxis:
+                labels:
+                  format: HH
+                  rotate: -45
+                  rotateAlways: true
+                  hideOverlappingLabels: true
+                  style:
+                    fontSize: 10
+                    fontWeight: 500
+              yaxis:
+                - id: kwh
+                  show: true
+                  opposite: false
+                  decimalsInFloat: 3
+                  title:
+                    text: kWh
+                - id: pct_axis
+                  show: true
+                  opposite: true
+                  decimals: 0
+                  max: 100
+                  min: 0
+                  title:
+                    text: SoC %
+            series:
+              - name: Solcast PV Estimate
+                entity: sensor.hsem_workingmode_sensor
+                attribute: hourly_recommendations
+                type: line
+                color: "#f59e0b"
+                yaxis_id: kwh
+                float_precision: 3
+                show:
+                  legend_value: false
+                data_generator: >
+                  const rows =
+                  (Array.isArray(entity.attributes.hourly_recommendations) ?
+                  entity.attributes.hourly_recommendations : [])
+                    .slice()
+                    .sort((a,b) => new Date(a.start) - new Date(b.start));
+                  const out = []; rows.forEach(({ start, end,
+                  solcast_pv_estimate_kwh }) => {
+                    const s = new Date(start).getTime();
+                    const e = new Date(end).getTime();
+                    out.push([s, solcast_pv_estimate_kwh], [e, solcast_pv_estimate_kwh]);
+                  }); return out;
+              - name: Battery kWh Charged
+                entity: sensor.hsem_workingmode_sensor
+                attribute: hourly_recommendations
+                type: line
+                color: "#22c55e"
+                yaxis_id: kwh
+                float_precision: 3
+                show:
+                  legend_value: false
+                data_generator: >
+                  const rows =
+                  (Array.isArray(entity.attributes.hourly_recommendations) ?
+                  entity.attributes.hourly_recommendations : [])
+                    .slice()
+                    .sort((a,b) => new Date(a.start) - new Date(b.start));
+                  const out = []; rows.forEach(({ start, end,
+                  batteries_charged_kwh }) => {
+                    const s = new Date(start).getTime();
+                    const e = new Date(end).getTime();
+                    out.push([s, batteries_charged_kwh], [e, batteries_charged_kwh]);
+                  }); return out;
+              - name: Est. Battery Capacity
+                entity: sensor.hsem_workingmode_sensor
+                attribute: hourly_recommendations
+                type: line
+                color: "#06b6d4"
+                yaxis_id: kwh
+                show:
+                  legend_value: false
+                data_generator: >
+                  const rows =
+                  (Array.isArray(entity.attributes.hourly_recommendations) ?
+                  entity.attributes.hourly_recommendations : [])
+                    .slice()
+                    .sort((a,b) => new Date(a.start) - new Date(b.start));
+                  const out = []; rows.forEach(({ start, end,
+                  estimated_battery_capacity_kwh }) => {
+                    const s = new Date(start).getTime();
+                    const e = new Date(end).getTime();
+                    out.push([s, estimated_battery_capacity_kwh], [e, estimated_battery_capacity_kwh]);
+                  }); return out;
+              - name: Est. Battery SoC
+                entity: sensor.hsem_workingmode_sensor
+                attribute: hourly_recommendations
+                type: line
+                color: "#eab308"
+                yaxis_id: pct_axis
+                show:
+                  legend_value: false
+                data_generator: >
+                  const rows =
+                  (Array.isArray(entity.attributes.hourly_recommendations) ?
+                  entity.attributes.hourly_recommendations : [])
+                    .slice()
+                    .sort((a,b) => new Date(a.start) - new Date(b.start));
+                  const out = []; rows.forEach(({ start, end,
+                  estimated_battery_soc_pct }) => {
+                    const s = new Date(start).getTime();
+                    const e = new Date(end).getTime();
+                    out.push([s, estimated_battery_soc_pct], [e, estimated_battery_soc_pct]);
+                  }); return out;
+        column_span: 2
+
+      # ═══════════════════════════════════════════════════════════
+      # SECTION 9 — EV 1 (PRIMARY)
+      # ═══════════════════════════════════════════════════════════
+      - type: grid
+        cards:
+          - type: heading
+            heading: EV 1 — Smart Charging Plan
+            heading_style: title
+            grid_options:
+              columns: full
+              rows: 1
+          - type: tile
+            entity: sensor.hsem_ev_optimal_charging_plan
+            name: EV 1 Charging Plan
+            icon: mdi:ev-station
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 6
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: tile
+            entity: switch.hsem_ev_smart_charging
+            name: Smart Charging
+            icon: mdi:flash
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 4
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: tile
+            entity: switch.hsem_ev_force_charge_now
+            name: Force Charge Now
+            icon: mdi:battery-charging
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 5
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: tile
+            entity: number.hsem_ev_target_soc
+            name: Target SoC
+            icon: mdi:battery-arrow-up
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 4
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: tile
+            entity: time.hsem_ev_deadline_time
+            name: Charge Deadline
+            icon: mdi:clock-end
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 5
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: tile
+            entity: switch.hsem_ev_charger_force_max_discharge_power
+            name: Force Max Discharge
+            icon: mdi:battery-arrow-down
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 4
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: custom:apexcharts-card
+            update_interval: 5m
+            header:
+              show: true
+              title: EV 1 Planned Charging (kWh)
+            graph_span: 48h
+            span:
+              start: day
+            now:
+              show: true
+              color: red
+              label: Now
+            apex_config:
+              chart:
+                height: 180
+              stroke:
+                curve: stepline
+                width: 1
+              markers:
+                size: 0
+              legend:
+                show: true
+                position: bottom
+                fontSize: 11px
+              xaxis:
+                labels:
+                  format: HH
+                  rotate: -45
+                  rotateAlways: true
+                  hideOverlappingLabels: true
+                  style:
+                    fontSize: 10
+                    fontWeight: 500
+              yaxis:
+                decimalsInFloat: 3
+                opposite: false
+                title:
+                  text: kWh
+            series:
+              - name: AC Load
+                entity: sensor.hsem_ev_optimal_charging_plan
+                attribute: charging_slots
+                type: area
+                color: "#06b6d4"
+                float_precision: 3
+                opacity: 0.7
+                show:
+                  legend_value: false
+                data_generator: >
+                  const slots =
+                  (Array.isArray(entity.attributes.charging_slots) ?
+                  entity.attributes.charging_slots : [])
+                    .slice()
+                    .sort((a,b) => new Date(a.start) - new Date(b.start));
+                  const out = []; slots.forEach(({ start, end, ac_load_kwh })
+                  => {
+                    const s = new Date(start).getTime();
+                    const e = new Date(end).getTime();
+                    out.push([s, ac_load_kwh], [e, ac_load_kwh]);
+                  }); return out;
+              - name: Import Needed
+                entity: sensor.hsem_ev_optimal_charging_plan
+                attribute: charging_slots
+                type: area
+                color: "#ef4444"
+                float_precision: 3
+                opacity: 0.5
+                show:
+                  legend_value: false
+                data_generator: >
+                  const slots =
+                  (Array.isArray(entity.attributes.charging_slots) ?
+                  entity.attributes.charging_slots : [])
+                    .slice()
+                    .sort((a,b) => new Date(a.start) - new Date(b.start));
+                  const out = []; slots.forEach(({ start, end, import_needed_kwh })
+                  => {
+                    const s = new Date(start).getTime();
+                    const e = new Date(end).getTime();
+                    out.push([s, import_needed_kwh], [e, import_needed_kwh]);
+                  }); return out;
+              - name: Solar Surplus
+                entity: sensor.hsem_ev_optimal_charging_plan
+                attribute: charging_slots
+                type: area
+                color: "#22c55e"
+                float_precision: 3
+                opacity: 0.5
+                show:
+                  legend_value: false
+                data_generator: >
+                  const slots =
+                  (Array.isArray(entity.attributes.charging_slots) ?
+                  entity.attributes.charging_slots : [])
+                    .slice()
+                    .sort((a,b) => new Date(a.start) - new Date(b.start));
+                  const out = []; slots.forEach(({ start, end, solar_surplus_kwh })
+                  => {
+                    const s = new Date(start).getTime();
+                    const e = new Date(end).getTime();
+                    out.push([s, solar_surplus_kwh], [e, solar_surplus_kwh]);
+                  }); return out;
+          - type: custom:mushroom-template-card
+            primary: >
+              {% set p = state_attr('sensor.hsem_ev_optimal_charging_plan', 'current_soc') %}
+              {{ p if p != None else '?' }}% &rarr;
+              {% set t = state_attr('sensor.hsem_ev_optimal_charging_plan', 'target_soc') %}
+              {{ t if t != None else '?' }}%
+            secondary: >
+              {% set cap = state_attr('sensor.hsem_ev_optimal_charging_plan', 'battery_capacity_kwh') %}
+              {% set need = state_attr('sensor.hsem_ev_optimal_charging_plan', 'total_kwh_needed') %}
+              {{ cap if cap != None else '?' }} kWh cap / {{ need if need != None else '?' }} kWh needed
+            icon: mdi:battery-50
+            icon_color: green
+            grid_options:
+              columns: 6
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: custom:mushroom-template-card
+            primary: >
+              {% set s = state_attr('sensor.hsem_ev_optimal_charging_plan', 'charge_power_kw') %}
+              {{ s if s != None else '?' }} kW
+            secondary: >
+              {% set d = state_attr('sensor.hsem_ev_optimal_charging_plan', 'deadline') %}
+              {{ d[:16] if d else 'No deadline' }}
+            icon: mdi:lightning-bolt
+            icon_color: yellow
+            grid_options:
+              columns: 6
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: custom:apexcharts-card
+            update_interval: 5m
+            header:
+              show: true
+              title: EV 1 Slot Cost
+            graph_span: 48h
+            span:
+              start: day
+            now:
+              show: true
+              color: red
+              label: Now
+            apex_config:
+              chart:
+                height: 140
+              stroke:
+                curve: stepline
+                width: 1
+              markers:
+                size: 0
+              legend:
+                show: false
+              xaxis:
+                labels:
+                  format: HH
+                  rotate: -45
+                  rotateAlways: true
+                  hideOverlappingLabels: true
+                  style:
+                    fontSize: 10
+                    fontWeight: 500
+              yaxis:
+                decimalsInFloat: 3
+                opposite: true
+                title:
+                  text: Currency
+            series:
+              - name: Cost
+                entity: sensor.hsem_ev_optimal_charging_plan
+                attribute: charging_slots
+                type: line
+                color: "#22c55e"
+                float_precision: 3
+                show:
+                  legend_value: false
+                data_generator: >
+                  const slots =
+                  (Array.isArray(entity.attributes.charging_slots) ?
+                  entity.attributes.charging_slots : [])
+                    .slice()
+                    .sort((a,b) => new Date(a.start) - new Date(b.start));
+                  const out = []; slots.forEach(({ start, end, estimated_cost })
+                  => {
+                    const s = new Date(start).getTime();
+                    const e = new Date(end).getTime();
+                    out.push([s, estimated_cost], [e, estimated_cost]);
+                  }); return out;
+        column_span: 2
+
+      # ═══════════════════════════════════════════════════════════
+      # SECTION 10 — EV 2 (SECOND)
+      # ═══════════════════════════════════════════════════════════
+      - type: grid
+        cards:
+          - type: heading
+            heading: EV 2 — Second Charging Plan
+            heading_style: title
+            grid_options:
+              columns: full
+              rows: 1
+          - type: tile
+            entity: sensor.hsem_ev_second_optimal_charging_plan
+            name: EV 2 Charging Plan
+            icon: mdi:ev-station
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 6
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: tile
+            entity: switch.hsem_ev_second_smart_charging
+            name: Smart Charging
+            icon: mdi:flash
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 4
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: tile
+            entity: switch.hsem_ev_second_force_charge_now
+            name: Force Charge Now
+            icon: mdi:battery-charging
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 4
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: tile
+            entity: number.hsem_ev_second_target_soc
+            name: Target SoC
+            icon: mdi:battery-arrow-up
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 4
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: tile
+            entity: time.hsem_ev_second_deadline_time
+            name: Charge Deadline
+            icon: mdi:clock-end
+            vertical: false
+            hide_state: false
+            grid_options:
+              columns: 4
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: custom:apexcharts-card
+            update_interval: 5m
+            header:
+              show: true
+              title: EV 2 Planned Charging (kWh)
+            graph_span: 48h
+            span:
+              start: day
+            now:
+              show: true
+              color: red
+              label: Now
+            apex_config:
+              chart:
+                height: 180
+              stroke:
+                curve: stepline
+                width: 1
+              markers:
+                size: 0
+              legend:
+                show: true
+                position: bottom
+                fontSize: 11px
+              xaxis:
+                labels:
+                  format: HH
+                  rotate: -45
+                  rotateAlways: true
+                  hideOverlappingLabels: true
+                  style:
+                    fontSize: 10
+                    fontWeight: 500
+              yaxis:
+                decimalsInFloat: 3
+                opposite: false
+                title:
+                  text: kWh
+            series:
+              - name: AC Load
+                entity: sensor.hsem_ev_second_optimal_charging_plan
+                attribute: charging_slots
+                type: area
+                color: "#06b6d4"
+                float_precision: 3
+                opacity: 0.7
+                show:
+                  legend_value: false
+                data_generator: >
+                  const slots =
+                  (Array.isArray(entity.attributes.charging_slots) ?
+                  entity.attributes.charging_slots : [])
+                    .slice()
+                    .sort((a,b) => new Date(a.start) - new Date(b.start));
+                  const out = []; slots.forEach(({ start, end, ac_load_kwh })
+                  => {
+                    const s = new Date(start).getTime();
+                    const e = new Date(end).getTime();
+                    out.push([s, ac_load_kwh], [e, ac_load_kwh]);
+                  }); return out;
+              - name: Import Needed
+                entity: sensor.hsem_ev_second_optimal_charging_plan
+                attribute: charging_slots
+                type: area
+                color: "#ef4444"
+                float_precision: 3
+                opacity: 0.5
+                show:
+                  legend_value: false
+                data_generator: >
+                  const slots =
+                  (Array.isArray(entity.attributes.charging_slots) ?
+                  entity.attributes.charging_slots : [])
+                    .slice()
+                    .sort((a,b) => new Date(a.start) - new Date(b.start));
+                  const out = []; slots.forEach(({ start, end, import_needed_kwh })
+                  => {
+                    const s = new Date(start).getTime();
+                    const e = new Date(end).getTime();
+                    out.push([s, import_needed_kwh], [e, import_needed_kwh]);
+                  }); return out;
+              - name: Solar Surplus
+                entity: sensor.hsem_ev_second_optimal_charging_plan
+                attribute: charging_slots
+                type: area
+                color: "#22c55e"
+                float_precision: 3
+                opacity: 0.5
+                show:
+                  legend_value: false
+                data_generator: >
+                  const slots =
+                  (Array.isArray(entity.attributes.charging_slots) ?
+                  entity.attributes.charging_slots : [])
+                    .slice()
+                    .sort((a,b) => new Date(a.start) - new Date(b.start));
+                  const out = []; slots.forEach(({ start, end, solar_surplus_kwh })
+                  => {
+                    const s = new Date(start).getTime();
+                    const e = new Date(end).getTime();
+                    out.push([s, solar_surplus_kwh], [e, solar_surplus_kwh]);
+                  }); return out;
+          - type: custom:mushroom-template-card
+            primary: >
+              {% set p = state_attr('sensor.hsem_ev_second_optimal_charging_plan', 'current_soc') %}
+              {{ p if p != None else '?' }}% &rarr;
+              {% set t = state_attr('sensor.hsem_ev_second_optimal_charging_plan', 'target_soc') %}
+              {{ t if t != None else '?' }}%
+            secondary: >
+              {% set cap = state_attr('sensor.hsem_ev_second_optimal_charging_plan', 'battery_capacity_kwh') %}
+              {% set need = state_attr('sensor.hsem_ev_second_optimal_charging_plan', 'total_kwh_needed') %}
+              {{ cap if cap != None else '?' }} kWh cap / {{ need if need != None else '?' }} kWh needed
+            icon: mdi:battery-50
+            icon_color: green
+            grid_options:
+              columns: 5
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: custom:mushroom-template-card
+            primary: >
+              {% set s = state_attr('sensor.hsem_ev_second_optimal_charging_plan', 'charge_power_kw') %}
+              {{ s if s != None else '?' }} kW
+            secondary: >
+              {% set d = state_attr('sensor.hsem_ev_second_optimal_charging_plan', 'deadline') %}
+              {{ d[:16] if d else 'No deadline' }}
+            icon: mdi:lightning-bolt
+            icon_color: yellow
+            grid_options:
+              columns: 5
+              rows: 1
+            tap_action:
+              action: more-info
+          - type: custom:apexcharts-card
+            update_interval: 5m
+            header:
+              show: true
+              title: EV 2 Slot Cost
+            graph_span: 48h
+            span:
+              start: day
+            now:
+              show: true
+              color: red
+              label: Now
+            apex_config:
+              chart:
+                height: 140
+              stroke:
+                curve: stepline
+                width: 1
+              markers:
+                size: 0
+              legend:
+                show: false
+              xaxis:
+                labels:
+                  format: HH
+                  rotate: -45
+                  rotateAlways: true
+                  hideOverlappingLabels: true
+                  style:
+                    fontSize: 10
+                    fontWeight: 500
+              yaxis:
+                decimalsInFloat: 3
+                opposite: true
+                title:
+                  text: Currency
+            series:
+              - name: Cost
+                entity: sensor.hsem_ev_second_optimal_charging_plan
+                attribute: charging_slots
+                type: line
+                color: "#22c55e"
+                float_precision: 3
+                show:
+                  legend_value: false
+                data_generator: >
+                  const slots =
+                  (Array.isArray(entity.attributes.charging_slots) ?
+                  entity.attributes.charging_slots : [])
+                    .slice()
+                    .sort((a,b) => new Date(a.start) - new Date(b.start));
+                  const out = []; slots.forEach(({ start, end, estimated_cost })
+                  => {
+                    const s = new Date(start).getTime();
+                    const e = new Date(end).getTime();
+                    out.push([s, estimated_cost], [e, estimated_cost]);
+                  }); return out;
+        column_span: 2
+
+    type: sections
+    max_columns: 2
+    cards: []

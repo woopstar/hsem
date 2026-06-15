@@ -118,6 +118,9 @@ def energy_to_power_kw(energy_kwh: float, duration_h: float) -> float:
     Returns:
         Average power in kiloWatts (kW).
     """
+    if duration_h <= 0:
+        return 0.0
+
     return energy_kwh / duration_h
 
 

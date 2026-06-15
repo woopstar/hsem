@@ -38,10 +38,15 @@ from datetime import datetime, timedelta
 from custom_components.hsem.models.rejected_plan import RejectedPlan
 from custom_components.hsem.planner.candidate_generator import (
     CANDIDATE_BASELINE,
+    CANDIDATE_MILP,
     CANDIDATE_NO_ACTION,
     CandidatePlan,
 )
 from custom_components.hsem.planner.cost_function import CostWeights, score_plan
+from custom_components.hsem.planner.discharge_scheduler import (
+    apply_optimization_strategy,
+    concentrate_discharge_on_expensive_slots,
+)
 from custom_components.hsem.planner.soc_simulation import simulate_soc
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import log_planner
@@ -101,6 +106,10 @@ def select_best_candidate(  # NOSONAR
     charge_efficiency_pct: float = 100.0,
     discharge_efficiency_pct: float = 100.0,
     replacement_price_per_kwh: float | None = None,
+    # Optimization strategy parameters (score divergence fix)
+    required_capacity: float = 0.0,
+    months_winter: list[int] | None = None,
+    export_min_price: float = 0.0,
     # Hysteresis parameters (issue #372)
     hysteresis_enabled: bool = False,
     hysteresis_absolute: float = 0.0,
@@ -182,6 +191,47 @@ def select_best_candidate(  # NOSONAR
         non-selected candidate, and *hysteresis_result* describes the
         hysteresis decision.
     """
+    # --- Step 0: apply optimization strategy to each candidate ------------
+    # This ensures all candidates are scored on their final form, preventing
+    # score divergence between selector and final output.
+    if months_winter is None:
+        months_winter = []
+    for candidate in candidates:
+        # Skip MILP candidate — the solver already determines the optimal
+        # recommendations.  Applying the optimization strategy here would
+        # overwrite the LP's optimal plan (e.g., filling idle None slots
+        # with BatteriesDischargeMode for summer months).
+        if candidate.name == CANDIDATE_MILP:
+            continue
+        # Apply seasonal optimization strategy BEFORE concentration.
+        # The seasonal fill marks unassigned summer slots as
+        # BatteriesDischargeMode; concentrate_discharge then clears the
+        # cheap discharge slots the battery cannot serve.  Running
+        # concentrate first would find no discharge slots (e.g. on the
+        # passive candidate, whose recs are cleared), after which the
+        # seasonal fill would mark every slot as BatteriesDischargeMode
+        # with nothing left to thin them out — collapsing the whole
+        # horizon into a single discharge window.  This matches the
+        # original engine_core pipeline order.
+        apply_optimization_strategy(
+            candidate.slots,
+            now,
+            current_kwh,
+            usable_kwh,
+            required_capacity,
+            months_winter,
+            export_min_price=export_min_price,
+        )
+        # Concentrate discharge on expensive slots (per-candidate)
+        concentrate_discharge_on_expensive_slots(
+            candidate.slots,
+            now,
+            current_kwh,
+            usable_kwh,
+            max_discharge_per_slot,
+            discharge_efficiency_pct=discharge_efficiency_pct,
+        )
+
     # --- Step 1 & 2: simulate and validate each candidate ---------------
     for candidate in candidates:
         simulate_soc(

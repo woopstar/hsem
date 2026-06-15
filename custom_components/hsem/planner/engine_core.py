@@ -34,7 +34,6 @@ from custom_components.hsem.planner.discharge_scheduler import (
     apply_excess_export,
     apply_optimization_strategy,
     calculate_required_battery_until_solar,
-    concentrate_discharge_on_expensive_slots,
 )
 from custom_components.hsem.planner.engine_explanation import (
     _build_explanation,
@@ -59,7 +58,6 @@ from custom_components.hsem.planner.slot_population import (
     populate_solcast,
     usable_capacity,
 )
-from custom_components.hsem.planner.soc_simulation import simulate_soc
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import (
@@ -554,6 +552,7 @@ def _select_candidate(
     rppk: float | None,
     cw: CostWeights,
     sdh: float,
+    rc: float,
     ev_configs: list[EVConfig] | None = None,
 ) -> tuple:
     """Generate and select best candidate plan."""
@@ -583,6 +582,9 @@ def _select_candidate(
         charge_efficiency_pct=inp.battery_charge_efficiency_pct,
         discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
         replacement_price_per_kwh=rppk,
+        required_capacity=rc,
+        months_winter=inp.months_winter,
+        export_min_price=inp.export_min_price,
         hysteresis_enabled=inp.planner_hysteresis_enabled,
         hysteresis_absolute=inp.planner_hysteresis_absolute,
         hysteresis_percentage=inp.planner_hysteresis_percentage,
@@ -950,14 +952,9 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         top_n,
         f"{rppk:.6f}" if rppk is not None else "None",
     )
-    concentrate_discharge_on_expensive_slots(
-        slots,
-        now,
-        current_kwh,
-        usable_kwh,
-        mdps,
-        discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
-    )
+    # Note: concentrate_discharge_on_expensive_slots() is now applied per-candidate
+    # in the selector before scoring, so we don't run it on the baseline here.
+
     # Build EV configs for MILP co-optimisation (when EVs are active)
     ev_configs = _build_ev_configs_for_milp(inp, slots, now)
     candidates, winner, candidate_rejected, hysteresis_result = _select_candidate(
@@ -972,6 +969,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         rppk,
         cw,
         sdh,
+        rc,
         ev_configs=ev_configs,
     )
     # Surface MILP penalty violations in warnings if the winner used penalties
@@ -995,29 +993,11 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
                 f"or main fuse limit."
             )
     # Step 5 — finalize plan from winner
+    # Note: apply_optimization_strategy() and simulate_soc() are now applied
+    # in the selector before scoring, so the winner's slots are already fully
+    # populated. We do NOT re-run simulate_soc() here to avoid double-simulation
+    # drift and to ensure the final score matches the selector's score.
     slots = winner.slots
-    apply_optimization_strategy(
-        slots,
-        now,
-        current_kwh,
-        usable_kwh,
-        rc,
-        inp.months_winter,
-        export_min_price=inp.export_min_price,
-    )
-    simulate_soc(
-        slots,
-        now,
-        current_kwh,
-        usable_kwh,
-        max_soc_kwh,
-        mcps,
-        mdps,
-        rated_kwh=inp.battery_rated_capacity_kwh,
-        end_of_discharge_soc_pct=inp.battery_end_of_discharge_soc_pct,
-        charge_efficiency_pct=inp.battery_charge_efficiency_pct,
-        discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
-    )
 
     # Post-hoc main fuse check — runs regardless of which candidate won.
     # If any slot exceeds the fuse rating, throttle EV charger power and
@@ -1103,6 +1083,11 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         if as_tz(s.start, now.tzinfo) <= now < s_end_tz:
             remaining_h = max((s_end_tz - now).total_seconds() / 3600.0, 1.0 / 3600.0)
             ac_power_w = round((total_ev_ac / remaining_h) * 1000.0)
+            # Cap at the full-slot power — the charger physically
+            # cannot deliver more than its rated power, even if the
+            # MILP allocated a full slot's energy to a partial slot.
+            full_slot_power_w = round((total_ev_ac / _slot_hours) * 1000.0)
+            ac_power_w = min(ac_power_w, full_slot_power_w)
         else:
             ac_power_w = round((total_ev_ac / _slot_hours) * 1000.0)
 
@@ -1129,6 +1114,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     _EV_KEEP = frozenset(
         {
             Recommendations.BatteriesChargeGrid.value,
+            Recommendations.BatteriesChargeSolar.value,
             Recommendations.ForceBatteriesDischarge.value,
             Recommendations.ForceExport.value,
             Recommendations.TimePassed.value,

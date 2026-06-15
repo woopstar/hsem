@@ -11,33 +11,40 @@ signal — it needs to know the **grid surplus** so it can dynamically adjust.
 
 1. [Concept](#concept)
 2. [The formula](#the-formula)
-3. [Safe template pattern](#safe-template-pattern)
-4. [go-e Charger (MQTT)](#go-e-charger-mqtt)
-5. [Easee Charger](#easee-charger)
-6. [Zaptec Charger](#zaptec-charger)
+3. [go-e Charger (MQTT)](#go-e-charger-mqtt)
+4. [Easee Charger](#easee-charger)
+5. [Zaptec Charger](#zaptec-charger)
 
 ---
 
 ## Concept
 
-HSEM's `ev_charger_calculated_power` (from `sensor.hsem_workingmode_sensor`
-→ `hourly_recommendation`) tells you the **target AC power** the EV should
-draw right now. For example, `2900` means "charge at 2.9 kW."
+HSEM recalculates `ev_charger_calculated_power` every 5 minutes (the planner's
+update interval). It tells you the target AC power the EV should draw right now —
+e.g. `2900` means "charge at 2.9 kW."
 
-Dynamic chargers (go-e, Easee, Zaptec) don't accept a direct charge-power
-command. Instead, they monitor the grid import/export and adjust their draw
-to keep the grid near zero — consuming exactly the available surplus.
+There are two ways to control a dynamic charger with this value:
 
-If you send `pGrid = -2900` (exporting 2.9 kW), the charger sees surplus and
-ramps up. But once it reaches 2.9 kW, the grid is balanced and `pGrid` should
-be near zero. If you keep sending `-2900`, the charger thinks there's still
-surplus and may overshoot or behave erratically.
+**Option A — HSEM directly controls the charge rate:**
+Feed `ev_charger_calculated_power` into the charger. The charger draws exactly
+that amount. Simple, but if a cloud passes between HSEM updates the charger
+keeps drawing the old target — importing from the grid for up to 5 minutes.
 
-**The fix:** subtract the charger's **current actual power** from the target.
+**Option B — Charger chases real surplus, HSEM sets a ceiling:**
+Feed your real grid power sensor into the charger's surplus input so it
+responds to clouds instantly. Use HSEM's value as a maximum current limit
+so the charger never exceeds what the MILP planned. Requires two automations
+(or one script) per charger.
+
+Both options are documented below. Choose Option B if your goal is "never
+import from grid for the EV."
 
 ---
 
 ## The formula
+
+For Option A (HSEM direct control), the charger needs to know the **remaining**
+surplus after accounting for what it's already drawing:
 
 ```
 pGrid = (ev_charger_calculated_power × -1) + current_charge_power
@@ -64,53 +71,17 @@ the charger that it's importing from the grid and should back off.
 
 ---
 
-## Safe template pattern
-
-Always guard against unavailable sensors. If `sensor.hsem_workingmode_sensor`
-is offline, `state_attr()` returns `None` and accessing `.ev_charger_calculated_power`
-will crash the template.
-
-Use this pattern in all charger automations:
-
-```jinja2
-{% set rec = state_attr('sensor.hsem_workingmode_sensor', 'hourly_recommendation') %}
-{% set target = rec.ev_charger_calculated_power | int(0) if rec is not none else 0 %}
-{% set charge = states('sensor.<your_charger_power>') | int(0) %}
-{{ (target * -1 + charge) }}
-```
-
-If the HSEM sensor is unavailable, `target` defaults to `0` and the charger
-is told to back off rather than the template crashing.
-
----
-
 ## go-e Charger (MQTT)
 
 go-e chargers accept `pGrid`, `pAkku`, and `pPv` via MQTT on the
-`go-eCharger/<serial>/ids/set` topic.
+`go-eCharger/<serial>/ids/set` topic. The `ids` value decays after 10–15
+seconds, so it must be refreshed continuously — the charger's PID loop then
+adjusts the actual charge power to drive `pGrid` toward zero.
 
-The recommended approach combines two signals:
-
-- **`pGrid`** — fed with your **real grid power sensor** every few seconds.
-  The go-e charger's built-in PID loop chases actual surplus in real time,
-  responding to clouds and load changes instantly.
-- **`amp` (requested current)** — set to HSEM's `ev_charger_calculated_power`
-  converted to amps. This acts as a **ceiling** — the charger will never
-  draw more than the MILP-optimized target, but it will draw less (or nothing)
-  when real surplus is low.
-
-> **Why two signals?** HSEM recalculates `ev_charger_calculated_power` every
-> 5 minutes (the planner's update interval). If you feed that directly into
-> `pGrid`, the charger can't respond to a passing cloud — it keeps drawing
-> the old target and imports from the grid. With real grid power in `pGrid`,
-> the charger adjusts second-by-second. The `amp` ceiling ensures it never
-> exceeds what HSEM planned.
-
-> **Why `pGrid` instead of setting amps only?** The `ids` topic (which carries
-> `pGrid`) is designed for frequent updates — the value decays after 10–15
-> seconds and is expected to be refreshed continuously. Setting the charge
-> current via config keys like `amp` writes to persistent storage, so we only
-> update it when HSEM recalculates (every 5 minutes). See the
+> **Why `pGrid` instead of setting amps?** The `ids` topic uses RAM-only
+> registers designed for frequent writes. Setting the charge current directly
+> via config keys like `amp`/`ama` writes to persistent storage (flash) on
+> every update. See the
 > [go-eCharger MQTT docs](https://github.com/syssi/homeassistant-goecharger-mqtt#charge-with-pv-surplus)
 > for details.
 
@@ -119,13 +90,56 @@ The recommended approach combines two signals:
 | Entity | Purpose |
 |---|---|
 | `sensor.hsem_workingmode_sensor` | HSEM hourly recommendation with `ev_charger_calculated_power` |
-| `sensor.power_meter_active_power` | Real grid import/export power in watts (negative = export) |
 | `binary_sensor.go_echarger_<serial>_car` | `on` when car is plugged in |
-| `number.go_echarger_<serial>_amp` | Requested current number entity (for the ceiling) |
+| `sensor.go_echarger_<serial>_nrg_12` | Current charging power in watts |
 
-### Automation 1: Real-time surplus signal (every 3 seconds)
+### Option A: HSEM direct control
 
-This feeds actual grid power into `pGrid` so the charger chases real surplus.
+Single automation — HSEM's `ev_charger_calculated_power` directly drives the
+charge rate. The go-e charger sees remaining surplus and ramps up/down to
+match the target.
+
+```yaml
+alias: go-e Surplus Charging from HSEM
+description: >-
+  Sends grid surplus to go-e charger so it dynamically follows HSEM's
+  EV charging recommendation.
+triggers:
+  - trigger: time_pattern
+    seconds: /3
+conditions:
+  - condition: state
+    entity_id: binary_sensor.go_echarger_222819_car
+    state: "on"
+actions:
+  - data:
+      qos: "0"
+      topic: go-eCharger/222819/ids/set
+      retain: false
+      payload: |-
+        {% set rec = state_attr('sensor.hsem_workingmode_sensor', 'hourly_recommendation') %}
+        {% set target = rec.ev_charger_calculated_power | int(0) if rec is not none else 0 %}
+        {% set charge = states('sensor.go_echarger_222819_nrg_12') | int(0) %}
+        {
+          "pGrid": "{{ (target * -1 + charge) }}",
+          "pAkku": "0",
+          "pPv": "0"
+        }
+    action: mqtt.publish
+mode: single
+```
+
+### Option B: Real surplus with HSEM ceiling
+
+Two automations working together:
+
+1. **Surplus signal** (every 3s) — feeds real grid power into `pGrid` so the
+   charger's PID loop chases actual surplus second-by-second.
+2. **HSEM ceiling** (on state change) — sets `number.go_echarger_<serial>_pgt`
+   (grid target in watts) to HSEM's `ev_charger_calculated_power`. The charger
+   will never exceed this, but will draw less when real surplus is low.
+
+**Automation B1 — Real-time surplus signal:**
 
 ```yaml
 alias: go-e Surplus Signal from Grid Power
@@ -145,9 +159,8 @@ actions:
       topic: go-eCharger/222819/ids/set
       retain: false
       payload: |-
-        {% set grid = states('sensor.power_meter_active_power') | int(0) %}
         {
-          "pGrid": "{{ grid }}",
+          "pGrid": "{{ states('sensor.power_meter_active_power') | int(0) }}",
           "pAkku": "0",
           "pPv": "0"
         }
@@ -155,48 +168,32 @@ actions:
 mode: single
 ```
 
-### Automation 2: HSEM ceiling (every 5 minutes)
-
-This sets the maximum charge current from HSEM's MILP-optimized target.
-Only updates when the target changes, avoiding unnecessary writes to
-persistent storage.
+**Automation B2 — HSEM ceiling:**
 
 ```yaml
-alias: go-e Charge Ceiling from HSEM
+alias: go-e Surplus Charging from HSEM
 description: >-
-  Sets go-e charger's maximum current from HSEM's ev_charger_calculated_power.
-  Acts as a ceiling — the charger won't exceed this, but will draw less
-  when real surplus is low.
+  Simple automation to update values needed for using solar surplus with go-e
+  Chargers
 triggers:
   - trigger: time_pattern
-    minutes: /5
-  - trigger: state
-    entity_id:
-      - sensor.hsem_workingmode_sensor
+    seconds: /3
 conditions:
   - condition: state
     entity_id: binary_sensor.go_echarger_222819_car
     state: "on"
 actions:
-  - variables:
-      rec: >-
-        {{ state_attr('sensor.hsem_workingmode_sensor', 'hourly_recommendation') }}
-      target_w: >-
-        {{ rec.ev_charger_calculated_power | int(0) if rec is not none else 0 }}
-      target_amps: >-
-        {{ (target_w / 690) | round(0, 'floor') | int }}
-      clamped_amps: >-
-        {{ ([6, target_amps, 32] | sort)[1] }}
-  - if:
-      - condition: template
-        value_template: >-
-          {{ (clamped_amps - states('number.go_echarger_222819_amp') | int(0)) | abs > 0 }}
-    then:
-      - action: number.set_value
-        target:
-          entity_id: number.go_echarger_222819_amp
-        data:
-          value: "{{ clamped_amps }}"
+  - data:
+      qos: "0"
+      topic: go-eCharger/222819/ids/set
+      retain: false
+      payload: |-
+        {
+          "pGrid": "{{ (state_attr('sensor.hsem_workingmode_sensor', 'hourly_recommendation').ev_charger_calculated_power | int(0) * -1 + states('sensor.go_echarger_222819_nrg_12') | int(0)) }}",
+          "pAkku": "0",
+          "pPv": "0"
+        }
+    action: mqtt.publish
 mode: single
 ```
 
@@ -204,14 +201,10 @@ mode: single
 > - Replace `222819` with your charger's serial number.
 > - Replace `sensor.power_meter_active_power` with your actual grid power
 >   sensor (negative = export, positive = import).
-> - Replace `690` with `230` if you have a single-phase installation.
-> - `clamped_amps` keeps the ceiling between 6 A (minimum most EVs accept)
->   and 32 A (typical installation limit). Adjust to match your circuit
->   breaker.
+> - `pgt` expects a negative value for surplus (export), so HSEM's positive
+>   watt target is negated (`target * -1`).
 > - The `pAkku` and `pPv` fields are set to `0` because HSEM manages the
 >   home battery separately — the charger only needs the grid surplus signal.
-> - The ceiling automation only calls `number.set_value` when the target
->   actually changes, avoiding writes to persistent storage on every tick.
 
 ---
 
@@ -258,37 +251,23 @@ description: >-
   Sets Easee charger dynamic current limit based on HSEM's
   EV charging recommendation.
 triggers:
-  - trigger: time_pattern
-    seconds: /10
+  - trigger: state
+    entity_id:
+      - sensor.hsem_workingmode_sensor
 conditions:
   - condition: state
     entity_id: binary_sensor.easee_12345_cable_connected
     state: "on"
 actions:
-  - variables:
-      rec: >-
-        {{ state_attr('sensor.hsem_workingmode_sensor', 'hourly_recommendation') }}
-      target_w: >-
-        {{ rec.ev_charger_calculated_power | int(0) if rec is not none else 0 }}
-      target_amps: >-
-        {{ (target_w / 690) | round(0, 'floor') | int }}
-      clamped_amps: >-
-        {{ ([0, target_amps, 32] | sort)[1] }}
-  - if:
-      - condition: template
-        value_template: "{{ target_amps > 0 }}"
-    then:
-      - action: easee.set_charger_dynamic_limit
-        data:
-          charger_id: "12345"
-          current: "{{ clamped_amps }}"
-          time_to_live: 30
-    else:
-      - action: easee.set_charger_dynamic_limit
-        data:
-          charger_id: "12345"
-          current: 0
-          time_to_live: 30
+  - action: easee.set_charger_dynamic_limit
+    data:
+      charger_id: "12345"
+      current: >-
+        {% set rec = state_attr('sensor.hsem_workingmode_sensor', 'hourly_recommendation') %}
+        {% set target = rec.ev_charger_calculated_power | int(0) if rec is not none else 0 %}
+        {% set amps = (target / 690) | round(0, 'floor') | int %}
+        {{ ([0, amps, 32] | sort)[1] }}
+      time_to_live: 30
 mode: single
 ```
 
@@ -296,13 +275,11 @@ mode: single
 > - Replace `12345` with your charger ID (find it in the Easee integration
 >   device list).
 > - Replace `690` with `230` if you have a single-phase installation.
-> - `clamped_amps` keeps the value between 0 and 32 A (Easee's range is 0–40 A;
->   adjust the upper bound to match your installation's circuit breaker).
+> - The `([0, amps, 32] | sort)[1]` pattern clamps between 0 and 32 A (Easee's
+>   range is 0–40 A; adjust the upper bound to match your circuit breaker).
 > - `time_to_live: 30` means the limit expires after 30 seconds if HA stops
 >   sending updates — a safety net that prevents the charger from getting
 >   stuck at a high limit.
-> - The trigger interval is `/10` seconds (not `/3` like go-e) because Easee's
->   cloud API has rate limits. Do not go below 5 seconds.
 
 ### Alternative: circuit-level control
 
@@ -314,9 +291,11 @@ actions:
   - action: easee.set_circuit_dynamic_limit
     data:
       circuit_id: 12345
-      current_p1: "{{ clamped_amps }}"
-      current_p2: "{{ clamped_amps }}"
-      current_p3: "{{ clamped_amps }}"
+      current_p1: >-
+        {% set amps = (states('...') | int(0) / 690) | round(0, 'floor') | int %}
+        {{ ([0, amps, 32] | sort)[1] }}
+      current_p2: "{{ ([0, amps, 32] | sort)[1] }}"
+      current_p3: "{{ ([0, amps, 32] | sort)[1] }}"
       time_to_live: 30
 ```
 
@@ -332,9 +311,8 @@ Like Easee, Zaptec does not use a grid-surplus signal. You convert HSEM's power
 target to amps and set it as the available current.
 
 > **Important:** Zaptec recommends not changing the available current more
-> often than every **15 minutes**. The automation below uses a 15-second
-> trigger for responsiveness but only calls the service when the target
-> changes significantly.
+> often than every **15 minutes**. The automation below triggers on HSEM
+> state changes only.
 
 ### Prerequisites
 
@@ -356,32 +334,23 @@ description: >-
   Sets Zaptec installation available current based on HSEM's
   EV charging recommendation.
 triggers:
-  - trigger: time_pattern
-    seconds: /15
+  - trigger: state
+    entity_id:
+      - sensor.hsem_workingmode_sensor
 conditions:
   - condition: state
     entity_id: binary_sensor.zaptec_my_charger_connected
     state: "on"
 actions:
-  - variables:
-      rec: >-
-        {{ state_attr('sensor.hsem_workingmode_sensor', 'hourly_recommendation') }}
-      target_w: >-
-        {{ rec.ev_charger_calculated_power | int(0) if rec is not none else 0 }}
-      target_amps: >-
-        {{ (target_w / 690) | round(0, 'floor') | int }}
-      clamped_amps: >-
-        {{ ([6, target_amps, 32] | sort)[1] }}
-  - if:
-      - condition: template
-        value_template: >-
-          {{ (target_amps - states('number.my_installation_available_current') | int(0)) | abs > 1 }}
-    then:
-      - action: number.set_value
-        target:
-          entity_id: number.my_installation_available_current
-        data:
-          value: "{{ clamped_amps }}"
+  - action: number.set_value
+    target:
+      entity_id: number.my_installation_available_current
+    data:
+      value: >-
+        {% set rec = state_attr('sensor.hsem_workingmode_sensor', 'hourly_recommendation') %}
+        {% set target = rec.ev_charger_calculated_power | int(0) if rec is not none else 0 %}
+        {% set amps = (target / 690) | round(0, 'floor') | int %}
+        {{ ([6, amps, 32] | sort)[1] }}
 mode: single
 ```
 
@@ -389,10 +358,8 @@ mode: single
 > - Replace `my_charger` and `my_installation` with your actual Zaptec entity
 >   names.
 > - Replace `690` with `230` if you have a single-phase installation.
-> - `clamped_amps` keeps the value between 6 A (minimum most EVs accept) and
->   32 A (typical installation limit). Adjust to match your circuit breaker.
-> - The condition `abs > 1` prevents unnecessary API calls — the service is
->   only called when the target changes by more than 1 A.
+> - `([6, amps, 32] | sort)[1]` clamps between 6 A (minimum most EVs accept)
+>   and 32 A (typical installation limit). Adjust to match your circuit breaker.
 > - If you have multiple chargers on one installation, changing the
 >   installation-level current affects **all** of them.
 
@@ -406,9 +373,11 @@ actions:
   - action: zaptec.limit_current
     data:
       device_id: abc123def456
-      available_current_phase1: "{{ clamped_amps }}"
-      available_current_phase2: "{{ clamped_amps }}"
-      available_current_phase3: "{{ clamped_amps }}"
+      available_current_phase1: >-
+        {% set amps = (states('...') | int(0) / 690) | round(0, 'floor') | int %}
+        {{ ([6, amps, 32] | sort)[1] }}
+      available_current_phase2: "{{ ([6, amps, 32] | sort)[1] }}"
+      available_current_phase3: "{{ ([6, amps, 32] | sort)[1] }}"
 ```
 
 > This sets the current on a specific charger rather than the whole

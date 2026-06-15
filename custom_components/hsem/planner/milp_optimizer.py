@@ -10,7 +10,7 @@ via ``scipy.optimize.linprog``.  Binary charge/discharge flags are
 relaxed to continuous because the mutual-exclusion constraint already
 prevents simultaneous charge + discharge.
 
-Decision variables (flattened into ``x`` of length 8*n)
+Decision variables (flattened into ``x`` of length 9*n)
 ----------------------------------------------------------
 For each slot ``t ∈ 0…n-1``:
 
@@ -22,17 +22,20 @@ For each slot ``t ∈ 0…n-1``:
 - ``m[t]`` — max(ec[t], ed[t]) for cycle cost (kWh)
 - ``s_max_pen[t]`` — kWh SoC exceeds usable_kwh
 - ``s_min_pen[t]`` — kWh SoC drops below 0
+- ``curt[t]`` — PV curtailment this slot (kWh, ≥ 0)
 
 ``soc[t]`` is derived from ``ec``/``ed`` via forward recurrence.
 
 Objective (minimise)
 --------------------
 ``Σ_t [ p_imp[t]*gi[t] - p_exp[t]*ge[t] + α*m[t]
-       + γ*(ed[t]-ec[t]) + p_soc*s_max_pen[t] + p_soc*s_min_pen[t] ]``
+       + p_soc*s_max_pen[t] + p_soc*s_min_pen[t] ]``
 
-where ``α`` = battery cycle cost/kWh, ``γ`` = terminal-SoC replacement
-price, ``p_soc = max(p_imp) * 100`` ensures penalties are only used when
-forced (e.g., initial SoC outside bounds).
+where ``α`` = battery cycle cost/kWh, ``p_soc = max(p_imp) * 100`` ensures
+penalties are only used when forced (e.g., initial SoC outside bounds).
+
+Terminal-SoC credit is computed at end-of-horizon (not per-slot) to match
+the cost function's ``terminal_soc_value`` calculation.
 
 Constraints
 -----------
@@ -43,8 +46,14 @@ Constraints
 4. Discharge limit: ``ed[t] ≤ max_discharge_per_slot``
 5. Mutual exclusion: ``ec[t]/mc + ed[t]/md ≤ 1``
 6. Energy balance:
-   ``gi + pv + ed·η_disch = load + ec/η_chg + ge``
+   ``gi + pv + ed·η_disch = load + ec/η_chg + ge + curt``
 7. Non-negativity: all ≥ 0. Past slots fixed at zero.
+
+Curtailment
+-----------
+The ``curt[t]`` variable allows the LP to explicitly curtail PV when the
+battery is full and export prices are low/negative. Without it, the LP
+is forced to "use" all PV surplus even when curtailment would be optimal.
 
 Solving
 -------
@@ -373,14 +382,16 @@ def solve_milp(
     # Variable layout:
     #   x = [ec(0..m-1), ed(0..m-1), gi(0..m-1), ge(0..m-1),
     #        pv(0..m-1), m(0..m-1),
-    #        s_max_pen(0..m-1), s_min_pen(0..m-1)]
+    #        s_max_pen(0..m-1), s_min_pen(0..m-1),
+    #        curt(0..m-1)]
     #   + [evN_c(0..m-1) for each active EV]      ← EV DC charge per slot
     #   + [evN_target_pen for each active EV]      ← deadline target slack
     # ------------------------------------------------------------------
     ec_off, ed_off, gi_off, ge_off, pv_off, m_off = 0, m, 2 * m, 3 * m, 4 * m, 5 * m
     s_max_off = 6 * m
     s_min_off = 7 * m
-    n_vars = 8 * m
+    curt_off = 8 * m
+    n_vars = 9 * m
 
     # --- EV variable layout ---
     ev_var_offsets: list[int] = []  # start of ev_c[t] block per EV
@@ -430,8 +441,9 @@ def solve_milp(
 
     # ------------------------------------------------------------------
     # Objective vector: minimise grid_import_cost - export_revenue + cycle_cost
-    # + conversion_loss_cost - terminal_soc_credit.
+    # + conversion_loss_cost.
     # pv[t] has zero objective cost (it's free).
+    # curt[t] has zero objective cost (curtailment is free).
     #
     # Cycle cost is counted once per slot (matching cost_function.py's
     # max(charge, discharge) counting).  cycle_cost_per_kwh already includes
@@ -439,9 +451,13 @@ def solve_milp(
     # (charge + discharge) correctly costs 2 × usable_kwh × cycle_cost_per_kwh
     # per direction.
     #
-    # Terminal-SoC credit: energy left in the battery at end of horizon
-    # avoids importing at the next discharge window price.  This mirrors
-    # terminal_soc_value in cost_function.py.
+    # Conversion loss: priced at the slot's own import price where the loss
+    # occurs.  Charge-side loss at charge slot price, discharge-side loss at
+    # discharge slot price.  This matches cost_function.py's per-slot pricing.
+    #
+    # Terminal-SoC credit is NOT applied per-slot.  It is computed at
+    # end-of-horizon after the LP solves, matching cost_function.py's
+    # terminal_soc_value = (initial_kwh - final_kwh) * replacement_price.
     #
     # Apply time discount so the MILP objective matches the selector's
     # discounted score (distant savings are worth less).
@@ -464,26 +480,18 @@ def solve_milp(
             hours_ahead = max((slot_mid - now).total_seconds() / 3600.0, 0.0)
             discount = time_discount_rate**hours_ahead
 
-        # Charge-side: energy lost during charge, priced at import price
+        # Charge-side conversion loss: energy lost during charge, priced at
+        # this slot's import price (where the charge occurs).
         c_obj[ec_off + t] = (charge_loss * p_imp[t]) * discount
-        # Discharge-side: energy lost during discharge, priced at import price
+        # Discharge-side conversion loss: energy lost during discharge, priced
+        # at this slot's import price (where the discharge occurs).
         c_obj[ed_off + t] = (discharge_loss * p_imp[t]) * discount
         # Cycle cost through auxiliary variable m[t] (= max(ec, ed))
         c_obj[m_off + t] = cycle_cost_per_kwh * discount
         c_obj[gi_off + t] = p_imp[t] * discount  # grid import cost
         c_obj[ge_off + t] = -p_exp[t] * discount  # export revenue (negative = gain)
         # pv[t] has zero objective cost
-
-        # Terminal-SoC credit: storing energy (ec) reduces future import cost;
-        # discharging (ed) increases future import cost.  The terminal value
-        # is undiscounted to match the selector's cost_function.score_plan()
-        # (which keeps terminal_soc_value raw regardless of time_discount_rate).
-        if (
-            replacement_price_per_kwh is not None
-            and abs(replacement_price_per_kwh) > 1e-9
-        ):
-            c_obj[ec_off + t] -= replacement_price_per_kwh
-            c_obj[ed_off + t] += replacement_price_per_kwh
+        # curt[t] has zero objective cost (curtailment is free)
 
         # Penalty costs: high enough that penalties are zero when SoC is
         # within bounds, but absorb violations when the initial SoC is
@@ -496,10 +504,13 @@ def solve_milp(
     # when it is physically possible within the available slots.
     for ev_idx, ev in enumerate(active_evs):
         if ev.deadline_slot is not None and ev.target_kwh > ev.initial_soc_kwh + 1e-9:
-            # Penalty per kWh shortfall: >= max_import_cost_for_full_charge
-            # This ensures the MILP will import at the most expensive price
-            # rather than miss the deadline target.
-            ev_penalty_cost = max(p_imp_max, 0.1) * max(ev.capacity_kwh, 1.0) * 100.0
+            # Penalty per kWh shortfall: proportional to energy needed,
+            # not full capacity. This ensures the MILP prioritizes the EV
+            # when it needs significant energy, but doesn't force EV charging
+            # when it only needs a small top-up (e.g., 90% -> 100%) at the
+            # expense of a critically low house battery.
+            energy_needed = ev.target_kwh - ev.initial_soc_kwh
+            ev_penalty_cost = max(p_imp_max, 0.1) * max(energy_needed, 1.0) * 10.0
             c_obj[ev_pen_offsets[ev_idx]] = ev_penalty_cost
 
     # --- EV charge-past-target benefit ---
@@ -549,13 +560,16 @@ def solve_milp(
     # ------------------------------------------------------------------
     # Equality constraints: energy balance per slot
     # gi[t] + pv[t] + ed[t]*discharge_eff
-    #     = base_load[t] + ec[t]/charge_eff + ge[t] + Σ ev_c/eff
-    # ->  gi - ec/η_chg + ed·η_dis + pv - ge - Σ ev_c/eff = base_load
+    #     = base_load[t] + ec[t]/charge_eff + ge[t] + curt[t] + Σ ev_c/eff
+    # ->  gi - ec/η_chg + ed·η_dis + pv - ge - curt - Σ ev_c/eff = base_load
     #
     # EV charge energy ev_c[t] is DC-side (delivered to EV battery).
     # The AC grid/PV draw is ev_c[t] / charger_efficiency — that is the
     # load the house must supply.  base_load already EXCLUDES EV load
     # when ev_configs is active (net_load was rebuilt without EV).
+    #
+    # curt[t] allows the LP to explicitly curtail PV when battery is full
+    # and export prices are low/negative.
     # ------------------------------------------------------------------
     A_eq = np.zeros((m, n_vars))  # NOSONAR
     for t in range(m):
@@ -564,6 +578,7 @@ def solve_milp(
         A_eq[t, gi_off + t] = 1.0  # +gi[t]
         A_eq[t, ge_off + t] = -1.0  # -ge[t]
         A_eq[t, pv_off + t] = 1.0  # +pv[t] (fixed to pv_avail[t])
+        A_eq[t, curt_off + t] = -1.0  # -curt[t] (curtailment reduces available PV)
         # EV AC load: -ev_c[t] / charger_eff per active EV
         for ev_idx, ev in enumerate(active_evs):
             A_eq[t, ev_var_offsets[ev_idx] + t] = -1.0 / ev.charger_efficiency
@@ -722,6 +737,7 @@ def solve_milp(
         + [(0.0, None)] * m  # m[t] (auxiliary, unbounded above, ≥ 0)
         + [(0.0, None)] * m  # s_max_pen[t] (penalty, ≥ 0)
         + [(0.0, None)] * m  # s_min_pen[t] (penalty, ≥ 0)
+        + [(0.0, None)] * m  # curt[t] (curtailment, ≥ 0)
     )
     # --- EV bounds ---
     for ev in active_evs:
@@ -761,10 +777,34 @@ def solve_milp(
         return None
 
     # ------------------------------------------------------------------
-    # Decode solution and build output slot list
+    # Compute terminal-SoC credit at end-of-horizon (not per-slot)
+    # This matches cost_function.py's terminal_soc_value calculation:
+    # terminal_soc_value = (initial_kwh - final_kwh) * replacement_price
+    #
+    # The LP objective does NOT include terminal-SoC credit.  We add it
+    # here as a post-hoc adjustment to the objective value so the selector
+    # sees the correct total score.
     # ------------------------------------------------------------------
     ec_sol = result.x[ec_off : ec_off + m]
     ed_sol = result.x[ed_off : ed_off + m]
+
+    # Compute final SoC from the LP solution
+    final_soc_kwh = current_kwh + float(np.sum(ec_sol)) - float(np.sum(ed_sol))
+    final_soc_kwh = max(0.0, min(final_soc_kwh, usable_kwh))  # clamp to bounds
+
+    # Terminal-SoC credit: positive when plan ends with less energy (penalty),
+    # negative when plan ends with more energy (credit).
+    terminal_soc_credit = 0.0
+    if replacement_price_per_kwh is not None and abs(replacement_price_per_kwh) > 1e-9:
+        terminal_soc_credit = (current_kwh - final_soc_kwh) * replacement_price_per_kwh
+        log_planner(
+            "debug",
+            "[milp] Terminal-SoC credit: initial=%.3f  final=%.3f  repl_price=%.4f  credit=%.4f",
+            current_kwh,
+            final_soc_kwh,
+            replacement_price_per_kwh,
+            terminal_soc_credit,
+        )
 
     out_slots: list[PlannedSlot] = [copy.copy(s) for s in slots]
 
@@ -779,6 +819,19 @@ def solve_milp(
         out_slots[i].ev_second_charger_calculated_power = 0.0
 
     # Write MILP-derived charge/discharge actions
+    # Pre-compute which slots have EV charging — when both battery and
+    # EV charge in the same slot, the battery must use BatteriesChargeGrid
+    # (not BatteriesChargeSolar) because the EV will consume the solar
+    # surplus, leaving nothing for the battery.
+    ev_charging_slots: set[int] = set()
+    if active_evs:
+        for ev_idx in range(len(active_evs)):
+            ev_off = ev_var_offsets[ev_idx]
+            ev_c_sol = result.x[ev_off : ev_off + m]
+            for lp_t in range(m):
+                if float(ev_c_sol[lp_t]) >= _MIN_ACTION_KWH:
+                    ev_charging_slots.add(lp_t)
+
     for lp_t, slot_i in enumerate(future_idx):
         ec_kwh = float(ec_sol[lp_t])
         ed_kwh = float(ed_sol[lp_t])
@@ -804,8 +857,11 @@ def solve_milp(
 
         if ec_kwh > _MIN_ACTION_KWH:
             # Use BatteriesChargeSolar when PV surplus is available,
-            # BatteriesChargeGrid otherwise.
-            if pv_avail[lp_t] > _MIN_ACTION_KWH:
+            # BatteriesChargeGrid otherwise.  When EV is also charging
+            # in this slot, always use BatteriesChargeGrid — the EV
+            # will consume the solar surplus, so the battery must draw
+            # from grid to actually receive the energy the MILP allocated.
+            if pv_avail[lp_t] > _MIN_ACTION_KWH and lp_t not in ev_charging_slots:
                 out_slots[
                     slot_i
                 ].recommendation = Recommendations.BatteriesChargeSolar.value
@@ -999,11 +1055,15 @@ def solve_milp(
                 total_fuse_violation_kwh,
             )
 
+    # Extract curtailment solution
+    curt_sol = result.x[curt_off : curt_off + m]
+    total_curtailment_kwh = float(np.sum(curt_sol))
+
     log_planner(
         "debug",
         "[milp] LP solved: objective=%.4f  charge_slots=%d  discharge_slots=%d"
         "  replacement_price=%s  penalty_total=%.4f  has_violations=%s"
-        "  ev_slots=%d",
+        "  ev_slots=%d  terminal_soc_credit=%.4f  curtailment=%.4f",
         float(result.fun),
         sum(
             1
@@ -1028,6 +1088,8 @@ def solve_milp(
         total_violation,
         has_violations,
         sum(1 for s in out_slots if abs(s.ev_total_planned_load_kwh) > _MIN_ACTION_KWH),
+        terminal_soc_credit,
+        total_curtailment_kwh,
     )
 
     diagnostics: dict = {
@@ -1036,6 +1098,8 @@ def solve_milp(
         "has_violations": has_violations,
         "total_violation_kwh": round(total_violation, 4),
         "total_fuse_violation_kwh": round(total_fuse_violation_kwh, 4),
+        "terminal_soc_credit": round(terminal_soc_credit, 4),
+        "total_curtailment_kwh": round(total_curtailment_kwh, 4),
     }
 
     # --- EV diagnostics ---
