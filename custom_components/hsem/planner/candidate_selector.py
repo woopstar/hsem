@@ -42,6 +42,10 @@ from custom_components.hsem.planner.candidate_generator import (
     CandidatePlan,
 )
 from custom_components.hsem.planner.cost_function import CostWeights, score_plan
+from custom_components.hsem.planner.discharge_scheduler import (
+    apply_optimization_strategy,
+    concentrate_discharge_on_expensive_slots,
+)
 from custom_components.hsem.planner.soc_simulation import simulate_soc
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import log_planner
@@ -101,6 +105,10 @@ def select_best_candidate(  # NOSONAR
     charge_efficiency_pct: float = 100.0,
     discharge_efficiency_pct: float = 100.0,
     replacement_price_per_kwh: float | None = None,
+    # Optimization strategy parameters (score divergence fix)
+    required_capacity: float = 0.0,
+    months_winter: list[int] | None = None,
+    export_min_price: float = 0.0,
     # Hysteresis parameters (issue #372)
     hysteresis_enabled: bool = False,
     hysteresis_absolute: float = 0.0,
@@ -182,6 +190,32 @@ def select_best_candidate(  # NOSONAR
         non-selected candidate, and *hysteresis_result* describes the
         hysteresis decision.
     """
+    # --- Step 0: apply optimization strategy to each candidate ------------
+    # This ensures all candidates are scored on their final form, preventing
+    # score divergence between selector and final output.
+    if months_winter is None:
+        months_winter = []
+    for candidate in candidates:
+        # Concentrate discharge on expensive slots (per-candidate)
+        concentrate_discharge_on_expensive_slots(
+            candidate.slots,
+            now,
+            current_kwh,
+            usable_kwh,
+            max_discharge_per_slot,
+            discharge_efficiency_pct=discharge_efficiency_pct,
+        )
+        # Apply seasonal optimization strategy
+        apply_optimization_strategy(
+            candidate.slots,
+            now,
+            current_kwh,
+            usable_kwh,
+            required_capacity,
+            months_winter,
+            export_min_price=export_min_price,
+        )
+    
     # --- Step 1 & 2: simulate and validate each candidate ---------------
     for candidate in candidates:
         simulate_soc(
