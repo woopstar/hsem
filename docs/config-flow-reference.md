@@ -22,6 +22,7 @@ init → prices → months → solcast → huawei_solar
 |---|---|---|---|
 | Device name | `device_name` | `"Huawei Solar Energy Management"` | Friendly name for the integration |
 | Update interval | `hsem_update_interval` | 5 minutes | Coordinator polling interval |
+| Planner min re-solve interval | `hsem_planner_min_resolve_interval_minutes` | 15 minutes | Minimum time between full MILP re-solves. 0 = re-solve every cycle |
 | Read-only mode | `hsem_read_only` | `False` | Block all hardware writes when enabled |
 | Verbose logging | `hsem_verbose_logging` | `False` | Enable debug-level planner logging |
 

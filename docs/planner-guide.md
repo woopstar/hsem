@@ -34,7 +34,7 @@ common scenarios a real installation will encounter.
 ## Overview
 
 The HSEM planner is a forward-looking, cost-minimising battery scheduler.
-Every time the coordinator runs (typically every 15 minutes) the planner:
+Every time the coordinator runs (typically every minute) the planner:
 
 1. Reads the current battery state, electricity prices, and PV forecast.
 2. Generates a time grid of **slots** covering the planning horizon (24, 48, or 72 hours).
@@ -43,8 +43,24 @@ Every time the coordinator runs (typically every 15 minutes) the planner:
 5. Scores every candidate with the cost function.
 6. Writes the lowest-cost valid plan to the `HourlyRecommendation` objects consumed by the coordinator.
 
+**MILP re-solve gating** (issue #582): To prevent EV charger power oscillation caused
+by noisy live PV/load/SoC readings, the MILP is only re-solved when inputs change
+meaningfully (price update, Solcast refresh, slot boundary, EV state change, user
+action) or when `planner_min_resolve_interval_minutes` has elapsed. Between
+re-solves the current-slot EV charger power is smoothed from the cached plan's
+energy allocation. Set `planner_min_resolve_interval_minutes = 0` to re-solve
+every cycle (legacy behaviour). See `hsem_planner_min_resolve_interval_minutes`.
+
 The planner is **pure Python with no Home Assistant imports**. It runs synchronously,
 produces deterministic output for identical input, and is fully testable with plain pytest.
+
+**MILP re-solve gating** (issue #582): To prevent EV charger power oscillation caused
+by noisy live PV/load/SoC readings, the MILP is only re-solved when inputs change
+meaningfully (price update, Solcast refresh, slot boundary, EV state change, user
+action) or when `planner_min_resolve_interval_minutes` has elapsed. Between
+re-solves the current-slot EV charger power is smoothed from the cached plan's
+energy allocation. Set `planner_min_resolve_interval_minutes = 0` to re-solve
+every cycle (legacy behaviour). See `hsem_planner_min_resolve_interval_minutes`.
 
 ---
 

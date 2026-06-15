@@ -90,6 +90,11 @@ DEFAULT_CONFIG_VALUES = {
     # near window boundaries by enforcing a minimum hold time (minutes).
     # 0 disables the feature.
     "hsem_planner_window_hysteresis_minutes": 0,
+    # Minimum time between MILP re-solves (minutes).  Decouples the expensive
+    # global optimisation from the coordinator polling interval so that noisy
+    # live inputs do not cause EV charger power to oscillate (issue #582).
+    # 0 re-solves every cycle (legacy behaviour).
+    "hsem_planner_min_resolve_interval_minutes": 15,
     "hsem_house_consumption_energy_weight_14d": 15,
     "hsem_house_consumption_energy_weight_1d": 25,
     "hsem_house_consumption_energy_weight_3d": 30,

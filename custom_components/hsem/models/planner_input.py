@@ -239,6 +239,11 @@ class PlannerInput:
     #: allowing a charge↔discharge transition on adjacent slots.
     #: 0 disables the feature.
     planner_window_hysteresis_minutes: int = 0
+    #: Minimum time (minutes) between full MILP re-solves.  Used by the
+    #: coordinator to decide whether to re-run the planner or reuse the
+    #: cached plan and only smooth the current EV charger power (issue #582).
+    #: 0 re-solves every cycle (legacy behaviour).
+    planner_min_resolve_interval_minutes: int = 15
     #: Name of the winning candidate from the previous planner run.
     #: ``None`` on the first run (no active plan to preserve).
     previous_winner_name: str | None = None

@@ -128,6 +128,7 @@ _V2_NEW_KEY_DEFAULTS: dict[str, Any] = {
     "hsem_planner_hysteresis_absolute": 0.0,
     "hsem_planner_hysteresis_percentage": 5.0,
     "hsem_planner_window_hysteresis_minutes": 0,
+    "hsem_planner_min_resolve_interval_minutes": 15,
     # Huawei Solar additions in v2
     "hsem_huawei_solar_batteries_charging_cutoff_capacity": (
         "number.batteries_end_of_charge_soc"

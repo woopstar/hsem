@@ -97,6 +97,15 @@ if TYPE_CHECKING:
     from custom_components.hsem.ml.consumption_predictor import ConsumptionPredictor
 
 # ---------------------------------------------------------------------------
+# MILP re-solve gating thresholds (issue #582)
+# ---------------------------------------------------------------------------
+
+#: EV state-of-charge change (percentage points) that forces a MILP re-solve.
+_EV_SOC_RESOLVE_THRESHOLD_PCT = 2.0
+#: Per-slot price/PV epsilon below which two values are treated as unchanged.
+_INPUT_EPSILON = 1e-6
+
+# ---------------------------------------------------------------------------
 # Data payload exposed to subscriber entities
 # ---------------------------------------------------------------------------
 
@@ -227,6 +236,19 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         # Most recent planner input/output retained for diagnostics dumps.
         self._last_planner_input: PlannerInput | None = None
         self._last_planner_output: PlannerOutput | None = None
+
+        # MILP re-solve gating (issue #582).  The MILP is a global optimiser
+        # and re-solving it every coordinator cycle with noisy live inputs
+        # makes the EV charger power oscillate.  These fields record the
+        # inputs and timestamp of the last solve so _should_rerun_milp() can
+        # decide whether a fresh solve is warranted or the cached plan can be
+        # reused (with only the current-slot EV power smoothed).
+        self._last_milp_planner_input: PlannerInput | None = None
+        self._last_milp_solve_ts: datetime | None = None
+        self._last_milp_current_slot_start: datetime | None = None
+        # Set by async_options_updated() so the next cycle always re-solves
+        # after any config change or switch toggle (a user action).
+        self._force_milp_rerun: bool = True
         # Previous planner winner name and score for hysteresis (issue #372).
         # Persisted across cycles so the planner can compare against the
         # previously active plan.
@@ -309,7 +331,13 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             self._midnight_unsub = None
 
     async def async_options_updated(self) -> None:
-        """Re-run the pipeline when the user saves new options."""
+        """Re-run the pipeline when the user saves new options.
+
+        A config change or switch toggle is a user action, so force a full
+        MILP re-solve on the next cycle regardless of the staleness timer
+        (issue #582).
+        """
+        self._force_milp_rerun = True
         await self._async_handle_update(None)
 
     # ------------------------------------------------------------------
@@ -547,16 +575,49 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                     f" over {len(planner_input.consumption_averages)} hours",
                 )
 
-                # Propagate the verbose-logging flag into the pure-Python
-                # planner so detailed slot-level decisions appear in the
-                # standard Home Assistant log when the user enables
-                # verbose logging.
-                set_planner_verbose(cfg.verbose_logging)
-                planner_output = run_planner(planner_input)
-                self._last_planner_output = planner_output
+                # -----------------------------------------------------------
+                # MILP re-solve gating (issue #582)
+                # -----------------------------------------------------------
+                # The MILP is a global optimiser; re-solving it every cycle
+                # with noisy live inputs makes the EV charger power oscillate.
+                # Only re-solve when a meaningful input changed or the
+                # staleness timer elapsed; otherwise reuse the cached plan and
+                # smooth the current-slot EV power from its energy allocation.
+                rerun_milp = self._should_rerun_milp(planner_input, now)
+                cached_output = self._last_planner_output
 
-                for warning in planner_output.warnings:
-                    await async_logger(self, f"[planner] {warning}")
+                if rerun_milp or cached_output is None:
+                    # Propagate the verbose-logging flag into the pure-Python
+                    # planner so detailed slot-level decisions appear in the
+                    # standard Home Assistant log when the user enables
+                    # verbose logging.
+                    set_planner_verbose(cfg.verbose_logging)
+                    planner_output = run_planner(planner_input)
+                    self._last_planner_output = planner_output
+
+                    # Record the inputs and time of this solve so the next
+                    # cycle can compare against them.
+                    self._last_milp_planner_input = planner_input
+                    self._last_milp_solve_ts = now
+                    self._last_milp_current_slot_start = self._current_slot_start(
+                        planner_input, now
+                    )
+                    self._force_milp_rerun = False
+
+                    for warning in planner_output.warnings:
+                        await async_logger(self, f"[planner] {warning}")
+                else:
+                    # Reuse the cached plan unchanged except for smoothing the
+                    # current slot's EV charger power as time elapses within
+                    # the slot.  This keeps the setpoint stable instead of
+                    # toggling on/off every cycle.
+                    planner_output = cached_output
+                    self._smooth_current_slot_ev_power(planner_output, now)
+                    await async_logger(
+                        self,
+                        "[planner] MILP re-solve skipped — reusing cached plan "
+                        "and smoothing current-slot EV charger power.",
+                    )
 
                 self._current_required_battery = planner_output.required_capacity_kwh
                 self._data_quality = planner_output.data_quality
@@ -795,6 +856,248 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             self,
             f"HSEM Coordinator: update interval set to {interval}",
         )
+
+    # ------------------------------------------------------------------
+    # MILP re-solve gating (issue #582)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _current_slot_start(inp: PlannerInput, now: datetime) -> datetime | None:
+        """Return the start of the slot that contains ``now``.
+
+        Slots are aligned to the recommendation interval starting from
+        midnight, so the current slot start is derived arithmetically rather
+        than from the slot list.
+
+        Args:
+            inp: The planner input for the current cycle.
+            now: Current time (timezone-aware).
+
+        Returns:
+            The timezone-aware start of the current slot, or ``None`` when
+            the interval is non-positive.
+        """
+        interval = inp.interval_minutes
+        if interval <= 0:
+            return None
+        midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        minutes_since_midnight = (now - midnight).total_seconds() / 60.0
+        slot_index = int(minutes_since_midnight // interval)
+        return midnight + timedelta(minutes=slot_index * interval)
+
+    def _should_rerun_milp(self, inp: PlannerInput, now: datetime) -> bool:
+        """Decide whether the MILP optimiser must be re-solved this cycle.
+
+        The MILP is a global optimiser and re-solving it every coordinator
+        cycle with noisy live inputs makes the EV charger power oscillate
+        (issue #582).  This method returns ``True`` only when a meaningful
+        input changed or the staleness timer elapsed.
+
+        A re-solve is triggered when any of the following holds:
+
+        - No previous MILP has run (first cycle).
+        - A user action occurred (config change / switch toggle).
+        - ``planner_min_resolve_interval_minutes`` is 0 (legacy: always solve).
+        - A slot boundary has been crossed.
+        - Electricity prices changed.
+        - The Solcast PV forecast changed for any slot.
+        - EV connected/disconnected state changed (either EV).
+        - EV SoC changed by more than the SoC threshold (either EV).
+        - Smart charging was toggled (either EV).
+        - More than ``planner_min_resolve_interval_minutes`` elapsed since the
+          last solve.
+
+        Args:
+            inp: The planner input assembled for the current cycle.
+            now: Current time (timezone-aware).
+
+        Returns:
+            ``True`` when the planner must be re-run; ``False`` when the
+            cached plan can be reused.
+        """
+        prev = self._last_milp_planner_input
+        # First cycle or no cached plan — always solve.
+        if prev is None or self._last_planner_output is None:
+            return True
+
+        # User action (config change / switch toggle) since the last solve.
+        if self._force_milp_rerun:
+            return True
+
+        min_interval = inp.planner_min_resolve_interval_minutes
+        # Legacy behaviour: 0 means re-solve every cycle.
+        if min_interval <= 0:
+            return True
+
+        # Slot boundary crossing.
+        current_slot_start = self._current_slot_start(inp, now)
+        if current_slot_start != self._last_milp_current_slot_start:
+            return True
+
+        # Electricity prices changed.
+        if self._price_points_changed(prev, inp):
+            return True
+
+        # Solcast PV forecast changed for any slot.
+        if self._solcast_changed(prev, inp):
+            return True
+
+        # EV connection / SoC / smart-charging changes (either EV).
+        if self._ev_state_changed(prev, inp):
+            return True
+
+        # Staleness timeout.
+        if self._last_milp_solve_ts is not None:
+            elapsed_min = (now - self._last_milp_solve_ts).total_seconds() / 60.0
+            if elapsed_min >= min_interval:
+                return True
+
+        return False
+
+    @staticmethod
+    def _price_points_changed(prev: PlannerInput, inp: PlannerInput) -> bool:
+        """Return True when any import/export price differs between inputs."""
+        if len(prev.price_points) != len(inp.price_points):
+            return True
+        for old, new in zip(prev.price_points, inp.price_points, strict=False):
+            if abs(old.import_price - new.import_price) > _INPUT_EPSILON:
+                return True
+            if abs(old.export_price - new.export_price) > _INPUT_EPSILON:
+                return True
+        return False
+
+    @staticmethod
+    def _solcast_changed(prev: PlannerInput, inp: PlannerInput) -> bool:
+        """Return True when any Solcast PV estimate differs between inputs."""
+        if len(prev.solcast_slots) != len(inp.solcast_slots):
+            return True
+        for old, new in zip(prev.solcast_slots, inp.solcast_slots, strict=False):
+            if abs(old.pv_estimate - new.pv_estimate) > _INPUT_EPSILON:
+                return True
+        return False
+
+    @staticmethod
+    def _ev_state_changed(prev: PlannerInput, inp: PlannerInput) -> bool:
+        """Return True when any gating EV input changed between inputs.
+
+        Covers both EVs: connection state, smart-charging toggle, and SoC
+        change beyond ``_EV_SOC_RESOLVE_THRESHOLD_PCT`` percentage points.
+        """
+        if prev.ev_planned_load_connected != inp.ev_planned_load_connected:
+            return True
+        if (
+            prev.ev_second_planned_load_connected
+            != inp.ev_second_planned_load_connected
+        ):
+            return True
+        if (
+            prev.ev_planned_load_smart_charging_enabled
+            != inp.ev_planned_load_smart_charging_enabled
+        ):
+            return True
+        if (
+            prev.ev_second_planned_load_smart_charging_enabled
+            != inp.ev_second_planned_load_smart_charging_enabled
+        ):
+            return True
+        if (
+            abs(
+                prev.ev_planned_load_current_soc_pct
+                - inp.ev_planned_load_current_soc_pct
+            )
+            > _EV_SOC_RESOLVE_THRESHOLD_PCT
+        ):
+            return True
+        if (
+            abs(
+                prev.ev_second_planned_load_current_soc_pct
+                - inp.ev_second_planned_load_current_soc_pct
+            )
+            > _EV_SOC_RESOLVE_THRESHOLD_PCT
+        ):
+            return True
+        return False
+
+    def _smooth_current_slot_ev_power(
+        self, output: PlannerOutput, now: datetime
+    ) -> None:
+        """Recompute the current slot's EV charger power from the cached plan.
+
+        When the MILP is not re-solved, the EV charger power setpoint for the
+        current (partially-elapsed) slot is recomputed from the cached plan's
+        ``ev_total_planned_load_kwh`` divided by the remaining hours, capped at
+        the charger's rated power and floored at its minimum operating power.
+        This keeps the setpoint smooth as time progresses within a slot instead
+        of toggling on/off every cycle (issue #582).
+
+        The cached plan's energy allocation is left untouched; only the power
+        field is updated in place.
+
+        Args:
+            output: The cached :class:`PlannerOutput` being reused.
+            now: Current time (timezone-aware).
+        """
+        inp = self._last_milp_planner_input
+        if inp is None:
+            return
+
+        max_power_w = inp.ev_planned_load_charger_power_kw * 1000.0
+        min_power_w = inp.ev_planned_load_charger_min_power_w
+        second_max_power_w = inp.ev_second_planned_load_charger_power_kw * 1000.0
+        second_min_power_w = inp.ev_second_planned_load_charger_min_power_w
+
+        for slot in output.slots:
+            s_start = as_tz(slot.start, now.tzinfo)
+            s_end = as_tz(slot.end, now.tzinfo)
+            if not (s_start <= now < s_end):
+                continue
+
+            total_ev = slot.ev_total_planned_load_kwh
+            if total_ev <= _INPUT_EPSILON:
+                # No EV load planned for this slot — keep the cached value.
+                break
+
+            remaining_h = max((s_end - now).total_seconds() / 3600.0, 1.0 / 3600.0)
+
+            if slot.ev_charger_calculated_power > _INPUT_EPSILON:
+                slot.ev_charger_calculated_power = self._smoothed_power_w(
+                    total_ev, remaining_h, max_power_w, min_power_w
+                )
+            if slot.ev_second_charger_calculated_power > _INPUT_EPSILON:
+                slot.ev_second_charger_calculated_power = self._smoothed_power_w(
+                    total_ev, remaining_h, second_max_power_w, second_min_power_w
+                )
+            break
+
+    @staticmethod
+    def _smoothed_power_w(
+        energy_kwh: float,
+        remaining_hours: float,
+        max_power_w: float,
+        min_power_w: float,
+    ) -> float:
+        """Return the smoothed AC charger power for the current slot.
+
+        Computes ``energy_kwh / remaining_hours`` in Watts, caps it at
+        ``max_power_w`` (when a positive cap is configured), and floors it at
+        ``min_power_w``: below the minimum the charger cannot start, so the
+        power is zeroed.
+
+        Args:
+            energy_kwh: Remaining EV AC energy planned for the slot (kWh).
+            remaining_hours: Hours left in the current slot.
+            max_power_w: Charger rated AC power (W); 0 means uncapped.
+            min_power_w: Charger minimum operating power (W).
+
+        Returns:
+            The smoothed AC power in Watts (0 when below the minimum).
+        """
+        ac_power_w = round((energy_kwh / remaining_hours) * 1000.0)
+        if max_power_w > _INPUT_EPSILON:
+            ac_power_w = min(ac_power_w, round(max_power_w))
+        if min_power_w > _INPUT_EPSILON and ac_power_w < min_power_w:
+            return 0.0
+        return float(ac_power_w)
 
     # ------------------------------------------------------------------
     # Planner bridge helpers

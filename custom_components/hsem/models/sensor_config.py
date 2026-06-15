@@ -254,6 +254,11 @@ class SensorConfig:
     # Window-level hysteresis — minimum hold time (minutes) before allowing
     # a charge↔discharge transition.  0 disables the feature.
     planner_window_hysteresis_minutes: int = 0
+    # Minimum time (minutes) between full MILP re-solves.  Decouples the
+    # global optimisation from the coordinator polling interval so noisy
+    # live inputs do not cause EV charger power to oscillate (issue #582).
+    # 0 re-solves every cycle (legacy behaviour).
+    planner_min_resolve_interval_minutes: int = 15
 
     # Consumption weights
     house_consumption_energy_weight_1d: int = 50
