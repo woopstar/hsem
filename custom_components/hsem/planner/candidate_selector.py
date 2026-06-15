@@ -203,16 +203,16 @@ def select_best_candidate(  # NOSONAR
         # with BatteriesDischargeMode for summer months).
         if candidate.name == CANDIDATE_MILP:
             continue
-        # Concentrate discharge on expensive slots (per-candidate)
-        concentrate_discharge_on_expensive_slots(
-            candidate.slots,
-            now,
-            current_kwh,
-            usable_kwh,
-            max_discharge_per_slot,
-            discharge_efficiency_pct=discharge_efficiency_pct,
-        )
-        # Apply seasonal optimization strategy
+        # Apply seasonal optimization strategy BEFORE concentration.
+        # The seasonal fill marks unassigned summer slots as
+        # BatteriesDischargeMode; concentrate_discharge then clears the
+        # cheap discharge slots the battery cannot serve.  Running
+        # concentrate first would find no discharge slots (e.g. on the
+        # passive candidate, whose recs are cleared), after which the
+        # seasonal fill would mark every slot as BatteriesDischargeMode
+        # with nothing left to thin them out — collapsing the whole
+        # horizon into a single discharge window.  This matches the
+        # original engine_core pipeline order.
         apply_optimization_strategy(
             candidate.slots,
             now,
@@ -221,6 +221,15 @@ def select_best_candidate(  # NOSONAR
             required_capacity,
             months_winter,
             export_min_price=export_min_price,
+        )
+        # Concentrate discharge on expensive slots (per-candidate)
+        concentrate_discharge_on_expensive_slots(
+            candidate.slots,
+            now,
+            current_kwh,
+            usable_kwh,
+            max_discharge_per_slot,
+            discharge_efficiency_pct=discharge_efficiency_pct,
         )
 
     # --- Step 1 & 2: simulate and validate each candidate ---------------
