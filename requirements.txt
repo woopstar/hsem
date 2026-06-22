@@ -1,4 +1,4 @@
 voluptuous==0.15.2
 homeassistant==2026.6.3
 scipy==1.17.1
-numpy==2.4.6
+numpy==2.5.0
