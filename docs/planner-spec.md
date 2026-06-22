@@ -15,6 +15,17 @@ The planner must:
 - explain why a plan was selected
 - produce deterministic output for the same input
 
+**Coordinator re-solve gating** (issue #582): The coordinator decouples the MILP
+re-solve frequency from the polling interval.  The planner engine (`run_planner`)
+is only called when the coordinator's `_should_rerun_milp()` returns `True` —
+on price change, Solcast update, slot boundary, EV state change, user
+override, or staleness timeout (`planner_min_resolve_interval_minutes`,
+default 15).  Between re-solves the current slot's EV charger power is
+smoothed from the cached plan's `ev_total_planned_load_kwh` divided by
+remaining hours, capped at `charger_power_kw` and floored at
+`charger_min_power_w`.  Setting the config option to 0 restores the legacy
+every-cycle re-solve.
+
 ## Core concepts
 
 ### Slot
