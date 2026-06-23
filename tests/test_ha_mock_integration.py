@@ -225,6 +225,7 @@ def make_bare_coordinator(
     coord._current_required_battery = 0.0
     coord._live = None
     coord._snapshot = None
+    coord._net_consumption_ema = None
 
     from custom_components.hsem.models.data_quality import DataQuality
     from custom_components.hsem.models.plan_explanation import PlanExplanation
