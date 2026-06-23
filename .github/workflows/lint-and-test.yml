@@ -28,7 +28,7 @@ jobs:
           python-version: "3.14"
 
       - name: Cache tox environments
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: .tox
           key: tox-${{ runner.os }}-${{ hashFiles('requirements*.txt') }}
@@ -53,7 +53,7 @@ jobs:
           python-version: "3.14"
 
       - name: Cache tox environments
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: .tox
           key: tox-${{ runner.os }}-${{ hashFiles('requirements*.txt') }}
@@ -78,7 +78,7 @@ jobs:
           python-version: "3.14"
 
       - name: Cache tox environments
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: .tox
           key: tox-${{ runner.os }}-${{ hashFiles('requirements*.txt') }}
@@ -103,7 +103,7 @@ jobs:
           python-version: "3.14"
 
       - name: Cache tox environments
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: .tox
           key: tox-${{ runner.os }}-${{ hashFiles('requirements*.txt') }}
