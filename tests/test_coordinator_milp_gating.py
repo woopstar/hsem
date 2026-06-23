@@ -51,6 +51,8 @@ def _make_coordinator() -> HSEMDataUpdateCoordinator:
     coord._last_milp_current_slot_start = None
     coord._last_planner_output = None
     coord._force_milp_rerun = False
+    coord._live = None
+    coord._net_consumption_ema = None
     return coord
 
 
