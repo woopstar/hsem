@@ -20,11 +20,25 @@ re-solve frequency from the polling interval.  The planner engine (`run_planner`
 is only called when the coordinator's `_should_rerun_milp()` returns `True` —
 on price change, Solcast update, slot boundary, EV state change, user
 override, or staleness timeout (`planner_min_resolve_interval_minutes`,
-default 15).  Between re-solves the current slot's EV charger power is
-smoothed from the cached plan's `ev_total_planned_load_kwh` divided by
-remaining hours, capped at `charger_power_kw` and floored at
-`charger_min_power_w`.  Setting the config option to 0 restores the legacy
-every-cycle re-solve.
+Between re-solves the current slot's EV charger power is
+smoothed **every minute** using the cached plan's `ev_total_planned_load_kwh`
+divided by remaining hours, capped at `charger_power_kw` and floored at
+`charger_min_power_w`.  **Two live-surplus guards** were added to prevent
+oscillation:
+
+- **EMA filter**: `live.net_consumption_w` is smoothed through an
+  exponential moving average (α=0.3) to damp transient loads and cloud
+  shadows so they don't kill the EV charging setpoint.
+- **Live surplus cap**: the smoothed power is additionally capped at the
+  current live surplus — the charger never draws from the grid during a
+  cloud or transient load spike within the slot.
+- **Recovery from zero**: when the MILP allocated no EV load for the
+  current slot (e.g. a cloud at solve time), the smoothing layer can still
+  set a power target if live surplus exceeds `charger_min_power_w` —
+  implementing Pass 3 (charge-past-target on surplus PV) reactively every
+  minute instead of every 15.
+
+Setting the config option to 0 restores the legacy every-cycle re-solve.
 
 ## Core concepts
 
@@ -1079,7 +1093,10 @@ The EV planner (`planner/ev_planner.py`) MUST satisfy these invariants:
 
     - **EV planner Pass 3** (fallback): scans remaining PV-surplus slots where
       the house battery is predicted to be full.  All energy is solar-surplus
-      with zero grid cost.
+      with zero grid cost.  Pass 3 now uses **predicted** surplus
+      (`slot_net_surplus_kwh`) for the current slot, not a live reading —
+      this prevents a single cloud at MILP-solve time from locking the EV
+      out for an entire 15-minute slot.
     - **MILP** (primary): when the MILP wins, it co-optimises the EV alongside
       the battery.  The EV is included with `charge_past_target=True`:
       `target_kwh = capacity_kwh`, `deadline_slot = None` (no grid import
@@ -1090,6 +1107,13 @@ The EV planner (`planner/ev_planner.py`) MUST satisfy these invariants:
     The MILP's decisions replace the EV planner's when the MILP wins.
     When the MILP fails or is unavailable, the EV planner's Pass 3 slots
     are used as a fallback.
+
+    **Between MILP re-solves**, the coordinator's smoothing layer
+    (`_smooth_current_slot_ev_power`) implements Pass 3 reactively every
+    minute: if live surplus exceeds `charger_min_power_w`, it sets
+    `ev_charger_calculated_power` even when the MILP allocated no EV
+    load for the current slot.  This prevents 14-minute dead zones when
+    the MILP sampled an unlucky live reading at the slot boundary.
 
 12. **EV charger power field**: `ev_charger_calculated_power` is computed
     from the per-slot EV AC load (`ev_planned_load_kwh + ev_accounted_load_kwh`)
