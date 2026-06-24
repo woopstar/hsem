@@ -25,12 +25,12 @@ dev = [
     "pytest-timeout==2.4.0",
     "pyright==1.1.410",
     "vulture==2.16",
-    "ruff==0.15.18",
+    "ruff==0.15.19",
     "black==26.5.1",
     "isort==8.0.1",
 ]
 lint = [
-    "ruff==0.15.18",
+    "ruff==0.15.19",
     "black==26.5.1",
     "isort==8.0.1",
 ]
