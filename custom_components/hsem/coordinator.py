@@ -44,6 +44,7 @@ from homeassistant.helpers.event import (
 )
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
+from custom_components.hsem.const import EMA_ALPHA_NET_CONSUMPTION
 from custom_components.hsem.coordinator_builder import (
     build_planner_input,
     generate_recommendation_intervals,
@@ -90,7 +91,7 @@ from custom_components.hsem.utils.logger import (
     async_logger,
     set_planner_verbose,
 )
-from custom_components.hsem.utils.misc import get_config_value
+from custom_components.hsem.utils.misc import ema_filter, get_config_value
 from custom_components.hsem.utils.recommendations import Recommendations
 
 if TYPE_CHECKING:
@@ -258,6 +259,12 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         # Window-level hysteresis state (issue #315).
         # Persisted across cycles so the hold-time check can compare against
         # the previously active current-slot recommendation.
+
+        # EMA-smoothed live net consumption (W).  Damped so transients
+        # (støvsuger, kaffemaskine, cloud shadows) don't kill the EV
+        # charging setpoint for the rest of a 15-minute slot.  Initialised
+        # on the first cycle and updated every subsequent cycle.
+        self._net_consumption_ema: float | None = None
         self._window_hys_previous_rec: str | None = None
         self._window_hys_previous_slot_start: datetime | None = None
 
@@ -390,6 +397,19 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             self._listener_unsubs.extend(new_unsubs)
             self._live = self._snapshot.live
             live = self._live
+
+            # Apply EMA smoothing to live net consumption to damp transients
+            # (støvsuger, kaffemaskine, cloud shadows) so they don't kill
+            # the EV charging setpoint for the rest of a 15-minute slot.
+            self._net_consumption_ema = ema_filter(
+                live.net_consumption_w,
+                self._net_consumption_ema,
+                EMA_ALPHA_NET_CONSUMPTION,
+            )
+            # Swap the raw value with the EMA-smoothed value on the live
+            # state object so all downstream code (PlannerInput builder,
+            # forecast tracker, etc.) sees the damped signal.
+            live.net_consumption_w = self._net_consumption_ema
 
             # -----------------------------------------------------------------------
             # Override expiry check (issue #317)
@@ -1046,26 +1066,55 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         second_max_power_w = inp.ev_second_planned_load_charger_power_kw * 1000.0
         second_min_power_w = inp.ev_second_planned_load_charger_min_power_w
 
+        # Live surplus cap — the EMA-smoothed net consumption tells
+        # us the current real surplus.  Cap the charger power at this
+        # value so we never import from the grid during a cloud or
+        # transient load spike within the slot.
+        live_surplus_w: float | None = None
+        if self._live is not None:
+            live_net = self._live.net_consumption_w
+            if live_net < 0:
+                live_surplus_w = -live_net  # negative → surplus
+
         for slot in output.slots:
             s_start = as_tz(slot.start, now.tzinfo)
             s_end = as_tz(slot.end, now.tzinfo)
             if not (s_start <= now < s_end):
                 continue
 
+            remaining_h = max((s_end - now).total_seconds() / 3600.0, 1.0 / 3600.0)
+
             total_ev = slot.ev_total_planned_load_kwh
             if total_ev <= _INPUT_EPSILON:
-                # No EV load planned for this slot — keep the cached value.
+                # No EV load planned for this slot.  Use live surplus
+                # directly — this implements Pass 3 (charge past target
+                # on surplus PV) reactively every minute instead of
+                # waiting for the next MILP re-solve.
+                if live_surplus_w is not None and live_surplus_w > min_power_w:
+                    slot.ev_charger_calculated_power = self._smoothed_power_w(
+                        (live_surplus_w / 1000.0) * remaining_h,
+                        remaining_h,
+                        max_power_w,
+                        min_power_w,
+                        live_surplus_w,
+                    )
                 break
-
-            remaining_h = max((s_end - now).total_seconds() / 3600.0, 1.0 / 3600.0)
 
             if slot.ev_charger_calculated_power > _INPUT_EPSILON:
                 slot.ev_charger_calculated_power = self._smoothed_power_w(
-                    total_ev, remaining_h, max_power_w, min_power_w
+                    total_ev,
+                    remaining_h,
+                    max_power_w,
+                    min_power_w,
+                    live_surplus_w,
                 )
             if slot.ev_second_charger_calculated_power > _INPUT_EPSILON:
                 slot.ev_second_charger_calculated_power = self._smoothed_power_w(
-                    total_ev, remaining_h, second_max_power_w, second_min_power_w
+                    total_ev,
+                    remaining_h,
+                    second_max_power_w,
+                    second_min_power_w,
+                    live_surplus_w,
                 )
             break
 
@@ -1075,6 +1124,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         remaining_hours: float,
         max_power_w: float,
         min_power_w: float,
+        live_surplus_w: float | None = None,
     ) -> float:
         """Return the smoothed AC charger power for the current slot.
 
@@ -1083,11 +1133,18 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         ``min_power_w``: below the minimum the charger cannot start, so the
         power is zeroed.
 
+        When ``live_surplus_w`` is not ``None``, the power is additionally
+        capped at the current live surplus so the charger never draws from
+        the grid during a cloud or transient load spike within the slot.
+
         Args:
             energy_kwh: Remaining EV AC energy planned for the slot (kWh).
             remaining_hours: Hours left in the current slot.
             max_power_w: Charger rated AC power (W); 0 means uncapped.
             min_power_w: Charger minimum operating power (W).
+            live_surplus_w: Current grid surplus in Watts (positive =
+                surplus available).  When set, the returned power will
+                not exceed this value.
 
         Returns:
             The smoothed AC power in Watts (0 when below the minimum).
@@ -1095,6 +1152,9 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         ac_power_w = round((energy_kwh / remaining_hours) * 1000.0)
         if max_power_w > _INPUT_EPSILON:
             ac_power_w = min(ac_power_w, round(max_power_w))
+        # Cap at live surplus to avoid grid import during transients.
+        if live_surplus_w is not None:
+            ac_power_w = min(ac_power_w, round(live_surplus_w))
         if min_power_w > _INPUT_EPSILON and ac_power_w < min_power_w:
             return 0.0
         return float(ac_power_w)

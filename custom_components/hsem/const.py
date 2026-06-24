@@ -229,3 +229,10 @@ SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH = -0.2
 # charged during seasonal optimisation.  Slots at or below this level are
 # charged from solar rather than from the grid.  Default matches v5.1.0.
 NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH = 0.1
+
+# EMA smoothing factor for live net consumption used in EV charger power
+# smoothing.  Alpha=0.3 means each new reading contributes 30 % to the
+# smoothed value — this damps transient loads and
+# short cloud shadows so they don't kill the EV charging setpoint for the
+# rest of the 15-minute slot.
+EMA_ALPHA_NET_CONSUMPTION = 0.3

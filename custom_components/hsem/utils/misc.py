@@ -51,6 +51,38 @@ def get_config_value(config_entry: Any | None, key: str) -> Any:
     return data
 
 
+def ema_filter(
+    current: float,
+    previous: float | None,
+    alpha: float,
+) -> float:
+    """Apply an exponential moving average filter.
+
+    Smooths a stream of values by blending each new reading with the
+    previous smoothed value.  The *alpha* parameter controls
+    responsiveness:
+
+    - ``alpha = 1.0`` → no smoothing (raw value).
+    - ``alpha = 0.3`` → each new reading contributes 30 %.
+    - ``alpha = 0.0`` → frozen (always returns *previous*).
+
+    On the first call (``previous is None``) the raw ``current`` value is
+    returned as-is to initialise the filter.
+
+    Args:
+        current: The latest raw value.
+        previous: The previous EMA-smoothed value, or ``None`` to
+            initialise.
+        alpha: Smoothing factor in [0.0, 1.0].
+
+    Returns:
+        The new EMA-smoothed value.
+    """
+    if previous is None:
+        return current
+    return alpha * current + (1.0 - alpha) * previous
+
+
 def clamp_efficiency(pct: float) -> float:
     """Convert an efficiency percentage (0-100) to a fraction (0.01-1.0).
 
