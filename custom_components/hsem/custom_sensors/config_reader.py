@@ -169,6 +169,12 @@ def build_sensor_config(
     cfg.huawei_solar_inverter_active_power_control = get_config_value(
         config_entry, "hsem_huawei_solar_inverter_active_power_control"
     )
+    cfg.huawei_solar_device_id_emma = get_config_value(
+        config_entry, "hsem_huawei_solar_device_id_emma"
+    )
+    cfg.huawei_solar_emma_active_power_control = get_config_value(
+        config_entry, "hsem_huawei_solar_emma_active_power_control"
+    )
     cfg.huawei_solar_batteries_rated_capacity = get_config_value(
         config_entry, "hsem_huawei_solar_batteries_rated_capacity"
     )
