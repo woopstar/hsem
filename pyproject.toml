@@ -23,7 +23,7 @@ dev = [
     "pytest-cov==7.1.0",
     "pytest-socket==0.8.0",
     "pytest-timeout==2.4.0",
-    "pyright==1.1.410",
+    "pyright==1.1.411",
     "vulture==2.16",
     "ruff==0.15.19",
     "black==26.5.1",
@@ -43,7 +43,7 @@ test = [
     "pytest-cov==7.1.0",
     "pytest-socket==0.8.0",
     "pytest-timeout==2.4.0",
-    "pyright==1.1.410",
+    "pyright==1.1.411",
     "vulture==2.16",
 ]
 
