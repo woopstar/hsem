@@ -691,7 +691,7 @@ class TestMockServiceCalls:
 
         with (
             patch(
-                "custom_components.hsem.custom_sensors.working_mode_sensor.async_logger",
+                "custom_components.hsem.utils.logger.HSEM_LOGGER.debug",
                 new_callable=AsyncMock,
             ),
             patch(

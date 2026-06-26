@@ -78,7 +78,7 @@ async def async_collect_live_state(
 
     Args:
         sensor: The ``HSEMWorkingModeSensor`` instance (used for ``hass`` access,
-            ``entity_id``, and :func:`async_logger`).
+            ``entity_id``, and entity_id).
         cfg: Current sensor configuration (determines which entities to read).
         force_working_mode_cache: Previously resolved entity_id for the force
             working mode select, or ``None`` to trigger resolution.
@@ -674,7 +674,7 @@ async def async_collect_all_states(
 
     Args:
         sensor: The ``HSEMWorkingModeSensor`` instance (used for ``hass`` access,
-            ``entity_id``, and :func:`async_logger`).
+            ``entity_id``, and entity_id).
         cfg: Current sensor configuration.
         force_working_mode_cache: Previously resolved entity_id or ``None``.
         tracked_entities: Mutable set of entity_ids already registered for

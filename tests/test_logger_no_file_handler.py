@@ -10,11 +10,11 @@ Key contract:
 * ``HSEM_LOGGER.propagate`` is ``False`` so planner detail stays out of the
   main HA log unless the user explicitly enables ``custom_components.hsem``
   in the ``logger:`` YAML block.
-* ``async_logger`` writes directly (no per-call executor delegation), but
-  init/teardown of the file handler runs in the executor to avoid HA's
-  ``Detected blocking call to open`` during setup/unload.
-* ``log_planner`` and ``async_logger`` both target ``HSEM_LOGGER`` — the
-  single file handler captures everything.
+* ``set_hsem_verbose`` controls ``HSEM_LOGGER``'s level — the single source
+  of truth for verbosity.
+* ``log_planner`` offloads file I/O to a thread pool when the event loop is
+  running.  Both ``log_planner`` and direct ``_LOGGER.debug()`` calls target
+  ``HSEM_LOGGER`` — the single file handler captures everything.
 """
 
 from __future__ import annotations
@@ -23,12 +23,9 @@ import io
 import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from unittest.mock import MagicMock
-
-import pytest
 
 from custom_components.hsem.utils import logger as logger_module
-from custom_components.hsem.utils.logger import HSEM_LOGGER, async_logger
+from custom_components.hsem.utils.logger import HSEM_LOGGER, set_hsem_verbose
 
 # Re-import unchanged tests
 _ORIGINAL = HSEM_LOGGER.handlers.copy()
@@ -71,18 +68,29 @@ class TestLoggerHandlerHygiene:
         """HSEM_LOGGER must not propagate to avoid flooding home-assistant.log."""
         assert HSEM_LOGGER.propagate is False
 
-    def test_logger_level_is_debug(self) -> None:
-        """HSEM_LOGGER must accept DEBUG records."""
-        assert HSEM_LOGGER.level == logging.DEBUG, (
-            "HSEM_LOGGER must be set to DEBUG so the in-config verbose flag "
-            "controls visibility. "
+    def test_logger_default_level_is_warning(self) -> None:
+        """HSEM_LOGGER defaults to WARNING until set_hsem_verbose is called."""
+        assert HSEM_LOGGER.level == logging.WARNING, (
+            "HSEM_LOGGER must start at WARNING to avoid log spam "
+            "before the config is loaded. "
             f"Got: {logging.getLevelName(HSEM_LOGGER.level)}"
         )
 
-    def test_logger_is_enabled_for_info_and_debug(self) -> None:
-        """End-to-end: HSEM_LOGGER must accept both INFO and DEBUG records."""
-        assert HSEM_LOGGER.isEnabledFor(logging.DEBUG)
-        assert HSEM_LOGGER.isEnabledFor(logging.INFO)
+    def test_level_is_debug_after_set_hsem_verbose_true(self) -> None:
+        """set_hsem_verbose(True) must set HSEM_LOGGER to DEBUG."""
+        set_hsem_verbose(True)
+        try:
+            assert HSEM_LOGGER.level == logging.DEBUG
+            assert HSEM_LOGGER.isEnabledFor(logging.DEBUG)
+            assert HSEM_LOGGER.isEnabledFor(logging.INFO)
+        finally:
+            set_hsem_verbose(False)
+
+    def test_level_is_warning_after_set_hsem_verbose_false(self) -> None:
+        """set_hsem_verbose(False) must restore WARNING level."""
+        set_hsem_verbose(True)
+        set_hsem_verbose(False)
+        assert HSEM_LOGGER.level == logging.WARNING
 
     def test_logger_module_exposes_log_file_constants(self) -> None:
         """The logger module must expose the filename constant for diagnostics."""
@@ -105,43 +113,30 @@ class TestLoggerHandlerHygiene:
             logger_module.close_hsem_logger_sync()
 
 
-class TestAsyncLoggerNonBlocking:
-    """Verify ``async_logger`` writes directly to the HSEM logger."""
+class TestVerboseLogging:
+    """Verify set_hsem_verbose gating via logger level."""
 
-    @pytest.mark.asyncio
-    async def test_async_logger_writes_to_hsem_logger(
-        self,
-    ) -> None:
-        """``async_logger`` must emit logs through HSEM_LOGGER."""
-        sensor = MagicMock()
-        sensor._hsem_verbose_logging = True
-
+    def test_debug_writes_when_verbose_enabled(self) -> None:
+        """_LOGGER.debug() must write when set_hsem_verbose(True)."""
+        set_hsem_verbose(True)
         handler = _attach_capture_handler()
         try:
-            await async_logger(sensor, "regression: test message")
+            HSEM_LOGGER.debug("verbose: test message")
             stream = handler.stream
             stream.seek(0)
             output = stream.read()
-            assert "regression: test message" in output, (
-                "async_logger must write to HSEM_LOGGER (the file handler)."
-            )
+            assert "verbose: test message" in output
         finally:
             HSEM_LOGGER.removeHandler(handler)
             handler.close()
+            set_hsem_verbose(False)
 
-    @pytest.mark.asyncio
-    async def test_async_logger_respects_verbose_flag(
-        self,
-    ) -> None:
-        """When verbose logging is disabled, no record must be emitted."""
-        sensor = MagicMock()
-        sensor._hsem_verbose_logging = False
-        # Defang the new-style config branch so the legacy branch is used.
-        del sensor._cfg
-
+    def test_debug_suppressed_when_verbose_disabled(self) -> None:
+        """_LOGGER.debug() must not write when verbose is off."""
+        set_hsem_verbose(False)
         handler = _attach_capture_handler()
         try:
-            await async_logger(sensor, "should be suppressed")
+            HSEM_LOGGER.debug("should be suppressed")
             stream = handler.stream
             stream.seek(0)
             output = stream.read()
@@ -150,24 +145,16 @@ class TestAsyncLoggerNonBlocking:
             HSEM_LOGGER.removeHandler(handler)
             handler.close()
 
-    @pytest.mark.asyncio
-    async def test_async_logger_uses_requested_level(
-        self,
-    ) -> None:
-        """Level argument must map to the matching logger method."""
-        sensor = MagicMock()
-        sensor._hsem_verbose_logging = True
-
+    def test_warning_always_writes_regardless_of_verbose(self) -> None:
+        """_LOGGER.warning() must write even when verbose is off."""
+        set_hsem_verbose(False)
         handler = _attach_capture_handler()
-        handler.setLevel(logging.WARNING)
         try:
-            await async_logger(sensor, "must appear", level="warning")
-            await async_logger(sensor, "must NOT appear", level="debug")
+            HSEM_LOGGER.warning("must appear")
             stream = handler.stream
             stream.seek(0)
             output = stream.read()
             assert "must appear" in output
-            assert "must NOT appear" not in output
         finally:
             HSEM_LOGGER.removeHandler(handler)
             handler.close()
@@ -180,9 +167,9 @@ class TestPlannerLogger:
         self,
     ) -> None:
         """log_planner('info', ...) must write to HSEM_LOGGER."""
-        from custom_components.hsem.utils.logger import log_planner, set_planner_verbose
+        from custom_components.hsem.utils.logger import log_planner
 
-        set_planner_verbose(True)
+        set_hsem_verbose(True)
         handler = _attach_capture_handler()
         try:
             log_planner("info", "[engine] e2e: slot %d cost=%.4f", 5, 0.1234)
@@ -196,15 +183,15 @@ class TestPlannerLogger:
         finally:
             HSEM_LOGGER.removeHandler(handler)
             handler.close()
-            set_planner_verbose(False)
+            set_hsem_verbose(False)
 
     def test_log_planner_debug_reaches_hsem_logger(
         self,
     ) -> None:
         """DEBUG records must also write to HSEM_LOGGER."""
-        from custom_components.hsem.utils.logger import log_planner, set_planner_verbose
+        from custom_components.hsem.utils.logger import log_planner
 
-        set_planner_verbose(True)
+        set_hsem_verbose(True)
         handler = _attach_capture_handler()
         try:
             log_planner("debug", "[engine] e2e: debug slot=%d", 7)
@@ -215,15 +202,15 @@ class TestPlannerLogger:
         finally:
             HSEM_LOGGER.removeHandler(handler)
             handler.close()
-            set_planner_verbose(False)
+            set_hsem_verbose(False)
 
     def test_log_planner_suppressed_when_not_verbose(
         self,
     ) -> None:
         """With verbose disabled, ``log_planner`` must emit nothing."""
-        from custom_components.hsem.utils.logger import log_planner, set_planner_verbose
+        from custom_components.hsem.utils.logger import log_planner
 
-        set_planner_verbose(False)
+        set_hsem_verbose(False)
         handler = _attach_capture_handler()
         try:
             log_planner("info", "must-not-appear")
