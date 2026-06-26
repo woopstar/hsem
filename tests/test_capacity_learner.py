@@ -119,19 +119,6 @@ class TestCapacityLearner:
     def test_median_with_even_sample_count(self):
         """Even count of samples should return the lower-mid element."""
         learner = CapacityLearner()
-        # Override MIN_SAMPLES for this test by adding samples directly.
-        learner.samples = [10.0, 20.0, 30.0, 40.0]  # 4 samples
-        # sorted = [10, 20, 30, 40], mid = 2, sorted[2] = 30
-        # Actually, len=4, mid=2, sorted[2]=30. But median should be (20+30)/2=25.
-        # Wait - the implementation returns sorted[mid] where mid = len(samples)//2.
-        # For len=4, mid=2, sorted[2]=30. This is the "higher median".
-        # This matches the implementation, so let's test what it actually returns.
-        result = learner.learned_capacity_kwh
-        # With 4 samples, mid = 2, sorted[2] = 30
-
-    def test_median_with_even_sample_count(self):
-        """Even count of samples should return the lower-mid element."""
-        learner = CapacityLearner()
         # Override MIN_SAMPLES threshold by lowering it so 4 samples suffice.
         object.__setattr__(learner, "MIN_SAMPLES", 4)
         learner.samples = [10.0, 20.0, 30.0, 40.0]  # 4 samples
