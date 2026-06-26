@@ -198,7 +198,7 @@ class OCPPServer:
         # Anti-flap state machine
         if target_w > _SLOT_EPSILON:
             # Target is non-zero — handle start window
-            if self._flap_state == "idle" or self._flap_state == "stopping":
+            if self._flap_state in ("idle", "stopping", "starting"):
                 if self._flap_state != "starting":
                     self._target_entered_at = now
                     self._flap_state = "starting"

@@ -418,8 +418,9 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             self._midnight_unsub = None
 
         # Stop the OCPP server if it was started.
-        if self._ocpp_server is not None:
-            await self._ocpp_server.stop()
+        ocpp = getattr(self, "_ocpp_server", None)
+        if ocpp is not None:
+            await ocpp.stop()
             self._ocpp_server = None
 
     async def async_options_updated(self) -> None:
@@ -946,7 +947,8 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             # -----------------------------------------------------------------------
             # OCPP charge target updates — push planner EV plan to OCPP server
             # -----------------------------------------------------------------------
-            if self._ocpp_server is not None and self._cfg.ocpp_enabled:
+            ocpp_server = getattr(self, "_ocpp_server", None)
+            if ocpp_server is not None and self._cfg.ocpp_enabled:
                 cfg = self._cfg
                 cpid = cfg.ocpp_cpid or "default"
                 if self._ev_charging_plan is not None:
@@ -955,11 +957,9 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                     slot_minutes = cfg.recommendation_interval_minutes
                     if slot_minutes > 0 and target_kw > 0:
                         target_kw = (target_kw / slot_minutes) * 60.0
-                    await self._ocpp_server.update_charge_target(
-                        cpid, target_kw, now=now
-                    )
+                    await ocpp_server.update_charge_target(cpid, target_kw, now=now)
                 else:
-                    await self._ocpp_server.update_charge_target(cpid, 0.0, now=now)
+                    await ocpp_server.update_charge_target(cpid, 0.0, now=now)
 
         except Exception as exc:
             raise UpdateFailed(f"HSEM update cycle failed: {exc}") from exc
@@ -971,8 +971,9 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         # Package OCPP charger state for sensor entities.
         ocpp_chargers: dict | None = None
         ocpp_sessions: list | None = None
-        if self._ocpp_server is not None:
-            ocpp_chargers = self._ocpp_server.charger_sessions
+        ocpp = getattr(self, "_ocpp_server", None)
+        if ocpp is not None:
+            ocpp_chargers = ocpp.charger_sessions
             ocpp_sessions = list(self._ocpp_sessions)
 
         data = CoordinatorData(

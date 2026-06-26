@@ -261,6 +261,8 @@ class TestSavingsTracker:
         """History should be pruned to max_history_days."""
         st = SavingsTracker(max_history_days=3)
         st._today = "2026-06-26"
+        # Clear auto-created entries from __post_init__.
+        st.daily = {}
 
         for i in range(5):
             d = f"2026-06-{21 + i}"
