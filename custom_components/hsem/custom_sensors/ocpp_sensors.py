@@ -17,6 +17,7 @@ from __future__ import annotations
 from typing import Any, override
 
 from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor.const import SensorStateClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.helpers.restore_state import RestoreEntity
@@ -179,7 +180,7 @@ class HSEMOCPPChargerPowerSensor(
     _attr_has_entity_name = True
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_native_unit_of_measurement = "kW"
-    _attr_state_class = "measurement"
+    _attr_state_class = SensorStateClass.MEASUREMENT
 
     def __init__(
         self,
