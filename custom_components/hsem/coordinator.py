@@ -713,7 +713,9 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                     previous_winner_name=self._previous_planner_winner_name,
                     previous_winner_score=self._previous_planner_winner_score,
                     dynamic_discharge_floor_pct=_dynamic_floor_pct,
-                    capacity_learner=self._capacity_learner,
+                    capacity_learner=getattr(
+                        self, "_capacity_learner", CapacityLearner()
+                    ),
                 )
                 # Wire the solar forecast corrector into the planner input so
                 # populate_solcast can apply per-hour accuracy corrections (issue #602).
@@ -1000,7 +1002,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             ),
             ocpp_chargers=ocpp_chargers,
             ocpp_sessions=ocpp_sessions,
-            capacity_learner=self._capacity_learner,
+            capacity_learner=getattr(self, "_capacity_learner", CapacityLearner()),
             solar_hour_factors=dict(self._solar_corrector.hour_factors),
             effective_discharge_floor_pct=self._effective_discharge_floor_pct,
             effective_discharge_floor_diag=(

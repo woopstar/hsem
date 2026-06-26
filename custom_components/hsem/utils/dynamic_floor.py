@@ -15,7 +15,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 
 # ---------------------------------------------------------------------------
@@ -139,7 +138,7 @@ class DynamicDischargeFloor:
             return configured_min_soc_pct, diag
 
         # Filter to future slots only, ordered chronologically.
-        future = [s for s in slots if as_tz(s.end, now.tzinfo) > now]
+        future = [s for s in slots if s.end > now]
         if not future:
             _LOGGER.debug(
                 "[dynamic_floor] No future slots — using configured min %.1f%%",
@@ -156,10 +155,7 @@ class DynamicDischargeFloor:
         bridge_duration_hours = 0.0
 
         for s in future:
-            slot_start = as_tz(s.start, now.tzinfo)
-            slot_end = as_tz(s.end, now.tzinfo)
-            # Determine slot duration in hours.
-            slot_hours = (slot_end - slot_start).total_seconds() / 3600.0
+            slot_hours = (s.end - s.start).total_seconds() / 3600.0
 
             net = getattr(s, "estimated_net_consumption_kwh", 0.0) or 0.0
 
