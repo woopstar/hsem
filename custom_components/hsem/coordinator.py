@@ -1006,15 +1006,17 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             solar_hour_factors=dict(
                 getattr(self, "_solar_corrector", SolarForecastCorrector()).hour_factors
             ),
-            effective_discharge_floor_pct=self._effective_discharge_floor_pct,
+            effective_discharge_floor_pct=getattr(
+                self, "_effective_discharge_floor_pct", None
+            ),
             effective_discharge_floor_diag=(
-                dict(self._effective_discharge_floor_diag)
-                if self._effective_discharge_floor_diag
+                dict(getattr(self, "_effective_discharge_floor_diag", None) or {})
+                if getattr(self, "_effective_discharge_floor_diag", None)
                 else None
             ),
-            financial_tracker=self._financial_tracker,
-            prediction_tracker=self._prediction_tracker,
-            savings_tracker=self._savings_tracker,
+            financial_tracker=getattr(self, "_financial_tracker", None),
+            prediction_tracker=getattr(self, "_prediction_tracker", None),
+            savings_tracker=getattr(self, "_savings_tracker", SavingsTracker()),
         )
 
         # Notify all subscriber entities atomically.

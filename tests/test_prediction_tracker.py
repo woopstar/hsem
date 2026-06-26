@@ -477,7 +477,7 @@ class TestMaxRecordsPruning:
         a0_again = _make_record_args(hour=0)
         a0_again["slot_start"] = start_0
         tracker.add_record(**a0_again)
-        assert len(tracker.records) == 3  # start_1, start_2, start_0
+        assert len(tracker.records) == 2  # max_records=2 prunes oldest
 
 
 # ---------------------------------------------------------------------------
