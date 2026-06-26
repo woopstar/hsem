@@ -30,15 +30,9 @@ class _StubSensor:
         self._skipped_count = 0
         self._name = "stub_sensor"
 
-    async def _async_logger(self, msg: str) -> None:  # noqa: D102 (no docstring needed)
-        pass
-
     async def _async_handle_update(self, event: Any = None) -> None:
         """Exact copy of the production guard logic."""
         if self._update_lock.locked():
-            await self._async_logger(
-                "------ Update skipped: a previous update cycle is still running."
-            )
             self._skipped_count += 1
             return
 

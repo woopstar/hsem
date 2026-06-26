@@ -22,7 +22,7 @@ from custom_components.hsem.utils.conversion import convert_to_float
 from custom_components.hsem.utils.ha_helpers import (
     ha_get_entity_state_and_convert,
 )
-from custom_components.hsem.utils.logger import async_logger, log_planner
+from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER, log_planner
 from custom_components.hsem.utils.sensornames.energy import (
     get_energy_average_sensor_unique_id,
 )
@@ -60,12 +60,10 @@ async def async_populate_avg_house_consumption(
 
     for weight, name in [(w1, "1d"), (w3, "3d"), (w7, "7d"), (w14, "14d")]:
         if weight is None:
-            await async_logger(
-                sensor, f"Weight for {name} is None. Skipping this calculation."
-            )
+            _LOGGER.debug(f"Weight for {name} is None. Skipping this calculation.")
             return False
 
-    await async_logger(sensor, "Calculating hourly data for energy averages...")
+    _LOGGER.debug("Calculating hourly data for energy averages...")
 
     scale_to_interval = 60.0 / cfg.recommendation_interval_minutes
     w_total_config = int(w1) + int(w3) + int(w7) + int(w14)
@@ -85,10 +83,9 @@ async def async_populate_avg_house_consumption(
         eid_14d = await _resolve_cached(sensor, entity_id_cache, uid_14d)
 
         if None in (eid_1d, eid_3d, eid_7d, eid_14d):
-            await async_logger(
-                sensor,
+            _LOGGER.debug(
                 "One of the required sensors for average house consumptions load is "
-                "not ready/found. Waiting for next update.",
+                "not ready/found. Waiting for next update."
             )
             return False
 
@@ -107,8 +104,7 @@ async def async_populate_avg_house_consumption(
                 ha_get_entity_state_and_convert(sensor, eid_14d, "float", 3)
             )
         except (HomeAssistantError, ValueError, TypeError) as exc:
-            await async_logger(
-                sensor,
+            _LOGGER.debug(
                 f"Sensor read failed for hour {h} energy averages "
                 f"(entity_ids={eid_1d},{eid_3d},{eid_7d},{eid_14d}): "
                 f"{type(exc).__name__}: {exc!r}",
@@ -116,10 +112,9 @@ async def async_populate_avg_house_consumption(
             v1 = v3 = v7 = v14 = None
 
         if None in (v1, v3, v7, v14):
-            await async_logger(
-                sensor,
+            _LOGGER.debug(
                 "One of the required sensors for average house consumptions load is "
-                "not ready/found. Waiting for next update.",
+                "not ready/found. Waiting for next update."
             )
             return False
 
@@ -128,7 +123,7 @@ async def async_populate_avg_house_consumption(
         assert v1 is not None and v3 is not None and v7 is not None and v14 is not None
 
         if w_total_config == 0:
-            await async_logger(sensor, "All weights sum to 0. Skipping calculation.")
+            _LOGGER.debug("All weights sum to 0. Skipping calculation.")
             continue
 
         avg, _ = weighted_avg_consumption(

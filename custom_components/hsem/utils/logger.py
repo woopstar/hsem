@@ -1,12 +1,14 @@
-"""Async-safe logger for HSEM sensor pipeline modules.
+"""HSEM dedicated file logger.
 
-Single responsibility: provide :func:`async_logger`, the single logging
-entry-point used throughout the HSEM pipeline.
+Single responsibility: provide the ``HSEM_LOGGER`` logger instance and the
+``log_planner`` helper for synchronous planner code.  All HSEM components
+log to ``HSEM_LOGGER``, which writes to a dedicated ``hsem.log`` file.
 
-Splitting this out of ``utils/misc.py`` removes the ``_hsem_verbose_logging``
-coupling from the old sensor and allows the new pipeline modules (which carry
-their verbose flag inside ``self._cfg.verbose_logging``) to share the same
-logger without circular imports.
+Verbosity is controlled by the logger's own level — call
+:func:`set_hsem_verbose` once per coordinator cycle to sync with the
+user's ``verbose_logging`` config setting.  No per-call gating is needed:
+``HSEM_LOGGER.debug()`` calls are silently filtered when the level is
+``WARNING`` or above.
 
 Logging strategy
 ----------------
@@ -17,7 +19,7 @@ diagnostic detail for troubleshooting.
 
 The HSEM logger does **not** propagate to Home Assistant's root logger
 (``propagate`` is set to ``False``).  All HSEM messages — from both the
-async sensor layer (``async_logger``) and the synchronous planner engine
+async sensor layer (``_LOGGER.debug()``) and the synchronous planner engine
 (``log_planner``) — are captured solely by the file handler.
 
 Users who want HSEM messages in the main HA log can enable them via the
@@ -41,22 +43,15 @@ Design note — blocking I/O:
 ``RotatingFileHandler`` performs synchronous ``open()`` / ``write()`` /
 ``rotate()`` calls.  When invoked from inside the event loop (which all HSEM
 async code is), Home Assistant raises a ``Detected blocking call to open``
-warning.  To avoid this we delegate writes to a global ``ThreadPoolExecutor``
-in both :func:`async_logger` (which is always async) and :func:`log_planner`
-(which is synchronous but offloads file I/O when a running event loop is
-detected, falling back to a direct write only when no loop is present).
+warning.  To avoid this, :func:`log_planner` (called from synchronous planner
+code) offloads file I/O to a global ``ThreadPoolExecutor`` when a running
+event loop is detected, falling back to a direct write only when no loop is
+present.  Async code simply calls ``_LOGGER.debug()`` directly — Python's
+logging module handles the rest.
+
 The init/teardown methods (:func:`init_hsem_logger` / :func:`close_hsem_logger`)
 are exposed as coroutines that offload file-handler setup to the executor so they can be
 safely called from ``async_setup_entry`` / ``async_unload_entry``.
-
-Verbose flag resolution order (first match wins):
-
-1. ``self._cfg.verbose_logging``  — new pipeline sensors (``HSEMWorkingModeSensor``
-   after the #282 refactor)
-2. ``self._hsem_verbose_logging`` — legacy attribute kept for any remaining
-   callers that have not yet migrated
-3. ``True``                       — safe default so no log messages are silently
-   swallowed during start-up before config is loaded
 """
 
 from __future__ import annotations
@@ -66,7 +61,7 @@ import logging
 import logging.handlers
 import os
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, cast
+from typing import cast
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -87,8 +82,9 @@ _HSEM_LOG_BACKUP_COUNT = 2
 # All HSEM modules log to this logger.
 HSEM_LOGGER = logging.getLogger("custom_components.hsem")
 
-# Accept all levels so the file handler can capture anything the planner emits.
-HSEM_LOGGER.setLevel(logging.DEBUG)
+# Start at WARNING — verbose debug logging is enabled later by the
+# coordinator via set_hsem_verbose() once the user's config is loaded.
+HSEM_LOGGER.setLevel(logging.WARNING)
 
 # Stop propagation to Home Assistant's root logger — HSEM uses its own file.
 # Users who also want HSEM messages in home-assistant.log can enable them
@@ -187,80 +183,40 @@ async def async_close_hsem_logger() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def async_logger(self: Any, msg: str, level: str = "debug") -> None:  # NOSONAR
-    """Emit *msg* through the HSEM file logger if verbose logging is on.
+def set_hsem_verbose(enabled: bool) -> None:
+    """Enable or disable verbose debug logging for all HSEM components.
 
-    The write is delegated to a ``ThreadPoolExecutor`` so that the
-    ``RotatingFileHandler``'s synchronous ``open()`` / ``write()`` calls
-    do not block the event loop.
+    When enabled, sets the HSEM logger level to ``DEBUG`` so that all
+    ``HSEM_LOGGER.debug()`` calls (coordinator cycle messages, planner
+    slot-level decisions, etc.) are written to ``hsem.log``.
 
-    Works with both the refactored sensor (``self._cfg.verbose_logging``) and
-    the legacy attribute (``self._hsem_verbose_logging``) so that no callers
-    need to be updated simultaneously.
+    When disabled, sets the level to ``WARNING`` so only warnings and
+    errors are written.
 
-    Args:
-        self: Any sensor/entity instance that exposes its verbose flag via
-              ``self._cfg.verbose_logging`` or ``self._hsem_verbose_logging``.
-        msg: The log message to write.
-        level: Log level string — one of ``"debug"``, ``"info"``,
-               ``"warning"``, ``"error"``, ``"critical"``.
-    """
-    # Resolve verbose flag — try new config object first, then legacy attribute
-    if hasattr(self, "_cfg") and hasattr(self._cfg, "verbose_logging"):
-        verbose = self._cfg.verbose_logging
-    elif hasattr(self, "_hsem_verbose_logging"):
-        verbose = self._hsem_verbose_logging
-    else:
-        verbose = True  # safe default during early init
-
-    if not verbose:
-        return
-
-    log_method = getattr(HSEM_LOGGER, level.lower(), HSEM_LOGGER.debug)
-    log_method(msg)
-
-
-# ---------------------------------------------------------------------------
-# Planner synchronous logging helpers
-# ---------------------------------------------------------------------------
-# The planner engine is intentionally pure Python (no HA imports, no ``self``).
-# :func:`async_logger` requires a sensor object for the verbose-flag
-# resolution, so it cannot be called from planner code.  These helpers bridge
-# that gap by forwarding messages straight to the HSEM file logger with a
-# module-level verbosity gate.
-
-_PLANNER_VERBOSE: bool = False
-
-
-def set_planner_verbose(enabled: bool) -> None:
-    """Enable or disable planner debug logging.
-
-    Should be called once per planning run from the async sensor layer
-    (coordinator or ``HSEMWorkingModeSensor``) before calling the planner.
+    This replaces the previous dual-gating (``async_logger``'s per-call
+    verbose check and ``set_planner_verbose``'s module global).  The
+    logger's own level is now the single source of truth.
 
     Args:
         enabled: ``True`` to enable debug output; ``False`` to suppress.
     """
-    global _PLANNER_VERBOSE  # noqa: PLW0603
-    _PLANNER_VERBOSE = enabled
+    HSEM_LOGGER.setLevel(logging.DEBUG if enabled else logging.WARNING)
 
 
-def is_planner_verbose() -> bool:
-    """Return the current verbosity state.
-
-    Returns:
-        ``True`` when planner debug logging is active.
-    """
-    return _PLANNER_VERBOSE
+# ---------------------------------------------------------------------------
+# Planner synchronous logging helper
+# ---------------------------------------------------------------------------
+# The planner engine is intentionally pure Python (no HA imports).
+# :func:`log_planner` offloads blocking file I/O to a thread-pool when
+# called from synchronous code while the event loop is running.
 
 
 def log_planner(level: str, msg: str, *args: object) -> None:
     """Write a structured log message to the HSEM log file.
 
-    The message is only written when planner verbose logging is enabled
-    (see :func:`set_planner_verbose`).  Uses ``%``-style formatting so that
-    string interpolation is deferred until the handler decides to emit the
-    record — consistent with Home Assistant logging conventions.
+    Uses ``%``-style formatting so that string interpolation is deferred
+    until the handler decides to emit the record — consistent with Home
+    Assistant logging conventions.
 
     This helper may be called from **synchronous** planner code while the
     event loop is running (e.g. from ``run_planner`` invoked by the
@@ -268,6 +224,10 @@ def log_planner(level: str, msg: str, *args: object) -> None:
     the actual file I/O is offloaded to the shared HSEM thread pool
     executor.  If no event loop is running (tests, early init) the write
     falls back to the current thread.
+
+    The HSEM logger's own level gates verbosity — no separate flag check
+    is needed.  Call :func:`set_hsem_verbose` once at the start of each
+    coordinator cycle to sync the user's ``verbose_logging`` setting.
 
     Args:
         level: Log level string — one of ``"debug"``, ``"info"``,
@@ -277,9 +237,6 @@ def log_planner(level: str, msg: str, *args: object) -> None:
              positional substitutions.
         *args: Positional arguments for the ``%``-style format template.
     """
-    if not _PLANNER_VERBOSE:
-        return
-
     log_fn = getattr(HSEM_LOGGER, level.lower(), HSEM_LOGGER.debug)
 
     # Offload blocking file I/O to the thread pool executor so that the

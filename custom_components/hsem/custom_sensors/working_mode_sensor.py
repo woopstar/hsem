@@ -36,7 +36,7 @@ from custom_components.hsem.custom_sensors.recommendation_resolver import (
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.utils.degraded_mode import hardware_writes_allowed
 from custom_components.hsem.utils.inverter_verify import ApplyStatus, CycleApplySummary
-from custom_components.hsem.utils.logger import async_logger
+from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 from custom_components.hsem.utils.misc import calculate_recommended_threshold
 from custom_components.hsem.utils.sensornames.diagnostics import (
     get_working_mode_sensor_entity_id,
@@ -366,11 +366,7 @@ class HSEMWorkingModeSensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
             # Task was cancelled (entity unloaded) — propagate cleanly.
             raise
         except Exception:
-            await async_logger(
-                self,
-                "Hardware-write task failed during coordinator update",
-                level="error",
-            )
+            _LOGGER.error("Hardware-write task failed during coordinator update")
 
     async def _async_apply_hardware_writes(self, data: CoordinatorData) -> None:
         """Perform inverter and battery hardware writes for the current slot.
@@ -404,20 +400,15 @@ class HSEMWorkingModeSensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
             # resolved recommendation (e.g. ev_smart_charging) rather than
             # the raw planner output (e.g. batteries_charge_solar).
             data.state = hourly_rec.recommendation
-            await async_logger(self, f"Current hourly recommendation: {hourly_rec}")
+            _LOGGER.debug(f"Current hourly recommendation: {hourly_rec}")
 
         # Gate hardware writes on read_only and degraded mode.
         writes_safe = hardware_writes_allowed(live.degraded_mode)
         combined_summary = CycleApplySummary()
         if cfg.read_only:
-            await async_logger(
-                self,
-                "Hardware writes SKIPPED — read_only=True",
-                "warning",
-            )
+            _LOGGER.debug("Hardware writes SKIPPED — read_only=True", "warning")
         elif not writes_safe:
-            await async_logger(
-                self,
+            _LOGGER.debug(
                 f"Hardware writes BLOCKED — degraded mode: {live.degraded_mode.value}. Missing: {live.missing_entities_list}",
                 "warning",
             )

@@ -460,9 +460,6 @@ def _build_and_inject_for_ev(
     combined_ev_raw_load: list[float],
     combined_ev_injected_load: list[float],
     warnings: list[str],
-    predicted_battery_kwh: list[float],
-    usable_battery_kwh: float,
-    live_net_consumption_w: float,
 ) -> EVChargingPlan | None:
     """Build an EV charging plan and accumulate its loads."""
     if not enabled:
@@ -494,9 +491,6 @@ def _build_and_inject_for_ev(
         deadline=deadline,
         base_load_includes_ev=base_includes,
         allow_charge_past_target_soc=allow_past_target,
-        slot_predicted_battery_kwh=predicted_battery_kwh,
-        usable_battery_kwh=usable_battery_kwh,
-        live_net_consumption_w=live_net_consumption_w,
         now=now,
     )
     plan = build_ev_charging_plan(
@@ -815,18 +809,6 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     combined_ev_inj = [0.0] * len(slots)
     populate_net_consumption(slots)
     sns = [max(-s.estimated_net_consumption_kwh, 0.0) for s in slots]
-    # Predicted battery energy (kWh above floor) at the START of each slot,
-    # assuming no EV charging and no grid charging.  Used to gate Pass 3
-    # in the EV planner: the EV only charges past target when the battery
-    # is already full and the surplus would otherwise be stranded.
-    predicted_battery_kwh: list[float] = []
-    cumulative = current_kwh
-    for s in slots:
-        predicted_battery_kwh.append(cumulative)
-        net = s.estimated_net_consumption_kwh
-        # net positive → battery must cover deficit
-        # net negative → surplus charges battery (up to usable_kwh)
-        cumulative = max(0.0, min(usable_kwh, cumulative - net))
     ss = [s.start for s in slots]
     se = [s.end for s in slots]
     sp = [s.price.import_price for s in slots]
@@ -854,9 +836,6 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
             combined_ev_raw_load=combined_ev_raw,
             combined_ev_injected_load=combined_ev_inj,
             warnings=warnings,
-            predicted_battery_kwh=predicted_battery_kwh,
-            usable_battery_kwh=usable_kwh,
-            live_net_consumption_w=inp.live_net_consumption_w,
         )
     if inp.ev_second_planned_load_enabled:
         ev2_cp = _build_and_inject_for_ev(
@@ -882,9 +861,6 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
             combined_ev_raw_load=combined_ev_raw,
             combined_ev_injected_load=combined_ev_inj,
             warnings=warnings,
-            predicted_battery_kwh=predicted_battery_kwh,
-            usable_battery_kwh=usable_kwh,
-            live_net_consumption_w=inp.live_net_consumption_w,
         )
     for i, s in enumerate(slots):
         s.ev_planned_load_kwh = combined_ev_inj[i]
@@ -1060,10 +1036,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
 
     # Recompute ev_charger_calculated_power from the actual per-slot EV
     # load after the MILP (or baseline) has finalized the slots.  This
-    # ensures the power field is always consistent with the load, even
-    # when the MILP didn't write it (e.g. baseline winner) or when the
-    # EV planner's Pass 3 allocated full max_charge_per_slot to a slot
-    # with only a small surplus.
+    # ensures the power field is always consistent with the final load.
     #
     # Also apply the charger_min_power_w floor: if the computed AC power
     # is below the charger's minimum operating power, zero out the power

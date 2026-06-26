@@ -2983,129 +2983,11 @@ class TestEvChargerCalculatedPower:
         _compute_ev_charger_power(slots, slot_starts, ev_plan, 15, now)
         assert slots[0].ev_charger_calculated_power > 0
 
-    def test_pass_3_skips_when_battery_not_full(self):
-        """Pass 3 adds no slots when battery is below usable_kwh."""
-        now = _dt(0)
-        surplus = [2.0] * 12 + [0.0] * 12
-        starts, ends = _make_slots(24)
-        inp = EVPlannerInput(
-            enabled=True,
-            ev_connected=True,
-            smart_charging_enabled=True,
-            current_soc_pct=97.0,
-            target_soc_pct=98.0,
-            battery_capacity_kwh=100.0,
-            charger_power_kw=11.0,
-            charger_efficiency_pct=100.0,
-            charger_min_power_w=0.0,  # disable guard for Pass 3 test
-            allow_charge_past_target_soc=True,
-            slot_predicted_battery_kwh=[6.0] * 24,
-            usable_battery_kwh=14.25,
-            now=now,
-        )
-        prices = [0.10] * 24
-        plan = build_ev_charging_plan(inp, starts, ends, surplus, prices)
-        total = sum(s.estimated_charged_kwh for s in plan.charging_slots)
-        assert total == pytest.approx(1.0, abs=0.1)
+    # -- Fully-charged early return (charge-past-target is MILP-only) --
 
-    def test_pass_3_adds_when_battery_full(self):
-        """Pass 3 adds surplus slots when battery is full."""
-        now = _dt(0)
-        surplus = [2.0] * 12 + [0.0] * 12
-        starts, ends = _make_slots(24)
-        inp = EVPlannerInput(
-            enabled=True,
-            ev_connected=True,
-            smart_charging_enabled=True,
-            current_soc_pct=97.0,
-            target_soc_pct=98.0,
-            battery_capacity_kwh=100.0,
-            charger_power_kw=11.0,
-            charger_efficiency_pct=100.0,
-            charger_min_power_w=0.0,  # disable guard for Pass 3 test
-            allow_charge_past_target_soc=True,
-            slot_predicted_battery_kwh=[14.25] * 24,
-            usable_battery_kwh=14.25,
-            now=now,
-        )
-        prices = [0.10] * 24
-        plan = build_ev_charging_plan(inp, starts, ends, surplus, prices)
-        total = sum(s.estimated_charged_kwh for s in plan.charging_slots)
-        assert total > 2.0, f"Pass 3 should add surplus, got {total}"
-
-    def test_pass_3_enters_when_above_target_soc(self):
-        """Pass 3 enters when EV SoC is above target (regression: early return bug).
-
-        When current_soc_pct >= target_soc_pct and
-        allow_charge_past_target_soc=True, the function must NOT
-        early-return \"fully_charged\" — it must continue so Pass 3
-        can allocate surplus-PV slots.
-        """
-        now = _dt(0)
-        surplus = [2.0] * 12 + [0.0] * 12
-        starts, ends = _make_slots(24)
-        inp = EVPlannerInput(
-            enabled=True,
-            ev_connected=True,
-            smart_charging_enabled=True,
-            current_soc_pct=88.0,  # above target of 80 %
-            target_soc_pct=80.0,
-            battery_capacity_kwh=100.0,
-            charger_power_kw=11.0,
-            charger_efficiency_pct=100.0,
-            allow_charge_past_target_soc=True,
-            slot_predicted_battery_kwh=[14.25] * 24,
-            usable_battery_kwh=14.25,
-            now=now,
-        )
-        prices = [0.10] * 24
-        plan = build_ev_charging_plan(inp, starts, ends, surplus, prices)
-        total = sum(s.estimated_charged_kwh for s in plan.charging_slots)
-        assert total > 2.0, (
-            f"Pass 3 should allocate surplus when above target, got {total}"
-        )
-        # All slots must be pure surplus (no grid import).
-        for s in plan.charging_slots:
-            assert s.import_needed_kwh == pytest.approx(0.0)
-            assert s.estimated_cost == pytest.approx(0.0)
-
-    def test_pass_3_enters_with_mismatched_prediction_length(self):
-        """Pass 3 enters when len(predicted_battery) != len(candidates).
-
-        Regression: the old condition required
-        len(slot_predicted_battery_kwh) == len(surplus_slots) + len(non_surplus_slots),
-        which failed when the effective-deadline cap trimmed some slots
-        from the candidate list but slot_predicted_battery_kwh still
-        covered the full planner horizon.
-        """
-        now = _dt(17)  # 17:00 — only 31 slots until end-of-tomorrow
-        # 48-slot horizon but only ~31 candidates
-        starts, ends = _make_slots_48(now)
-        surplus = [2.0] * 12 + [0.0] * 36
-        prices = [0.10] * 48
-        inp = EVPlannerInput(
-            enabled=True,
-            ev_connected=True,
-            smart_charging_enabled=True,
-            current_soc_pct=88.0,
-            target_soc_pct=80.0,
-            battery_capacity_kwh=100.0,
-            charger_power_kw=11.0,
-            charger_efficiency_pct=100.0,
-            allow_charge_past_target_soc=True,
-            slot_predicted_battery_kwh=[14.25] * 48,  # full 48 slots
-            usable_battery_kwh=14.25,
-            now=now,
-        )
-        plan = build_ev_charging_plan(inp, starts, ends, surplus, prices)
-        total = sum(s.estimated_charged_kwh for s in plan.charging_slots)
-        assert total > 2.0, (
-            f"Pass 3 should enter with mismatched prediction length, got {total}"
-        )
-
-    def test_pass_3_not_entered_allow_past_target_disabled(self):
-        """When allow_charge_past_target_soc=False and SoC >= target,
-        the function returns \"fully_charged\" immediately."""
+    def test_fully_charged_when_at_target_and_past_target_disabled(self):
+        """When SoC >= target and allow_charge_past_target_soc=False,
+        the function returns 'fully_charged' immediately."""
         now = _dt(0)
         surplus = [2.0] * 12 + [0.0] * 12
         starts, ends = _make_slots(24)
@@ -3118,9 +3000,7 @@ class TestEvChargerCalculatedPower:
             battery_capacity_kwh=100.0,
             charger_power_kw=11.0,
             charger_efficiency_pct=100.0,
-            allow_charge_past_target_soc=False,  # disabled
-            slot_predicted_battery_kwh=[14.25] * 24,
-            usable_battery_kwh=14.25,
+            allow_charge_past_target_soc=False,
             now=now,
         )
         prices = [0.10] * 24
@@ -3128,8 +3008,8 @@ class TestEvChargerCalculatedPower:
         assert plan.state == "fully_charged"
         assert len(plan.charging_slots) == 0
 
-    def test_pass_3_not_entered_soc_100(self):
-        """When SoC is 100 %, the function returns \"fully_charged\"
+    def test_fully_charged_when_soc_100_regardless_of_past_target(self):
+        """When SoC is 100 %, returns 'fully_charged'
         even when allow_charge_past_target_soc=True."""
         now = _dt(0)
         surplus = [2.0] * 12 + [0.0] * 12
@@ -3144,8 +3024,30 @@ class TestEvChargerCalculatedPower:
             charger_power_kw=11.0,
             charger_efficiency_pct=100.0,
             allow_charge_past_target_soc=True,
-            slot_predicted_battery_kwh=[14.25] * 24,
-            usable_battery_kwh=14.25,
+            now=now,
+        )
+        prices = [0.10] * 24
+        plan = build_ev_charging_plan(inp, starts, ends, surplus, prices)
+        assert plan.state == "fully_charged"
+        assert len(plan.charging_slots) == 0
+
+    def test_fully_charged_when_above_target_even_with_past_target_enabled(self):
+        """When SoC is above target and allow_charge_past_target_soc=True,
+        the EV planner returns 'fully_charged' — charge-past-target is
+        handled exclusively by the MILP, not the EV planner."""
+        now = _dt(0)
+        surplus = [2.0] * 12 + [0.0] * 12
+        starts, ends = _make_slots(24)
+        inp = EVPlannerInput(
+            enabled=True,
+            ev_connected=True,
+            smart_charging_enabled=True,
+            current_soc_pct=88.0,
+            target_soc_pct=80.0,
+            battery_capacity_kwh=100.0,
+            charger_power_kw=11.0,
+            charger_efficiency_pct=100.0,
+            allow_charge_past_target_soc=True,
             now=now,
         )
         prices = [0.10] * 24

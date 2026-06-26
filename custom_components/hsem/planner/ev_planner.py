@@ -27,7 +27,6 @@ from typing import Any
 from homeassistant.const import STATE_UNAVAILABLE
 
 from custom_components.hsem.utils.datetime_utils import utc_key
-from custom_components.hsem.utils.logger import log_planner
 
 # ---------------------------------------------------------------------------
 # Public data structures
@@ -108,20 +107,8 @@ class EVPlannerInput:
             charging past the target SoC using surplus PV that would otherwise
             be curtailed (e.g. battery full, negative export prices).
             Only applies when the EV has reached target SoC but is below 100 %.
-        slot_predicted_battery_kwh: Per-slot predicted battery energy (kWh
-            above discharge floor) at the *start* of each slot, assuming no
-            EV charging and no grid charging.  Used to gate Pass 3 — the EV
-            only charges past target when the battery is already full and
-            the surplus would otherwise be stranded.
-        usable_battery_kwh: Maximum usable battery capacity (kWh).  Used as
-            the ceiling for the predicted-battery check in Pass 3.
+            Charge-past-target is handled exclusively by the MILP.
         now: Timezone-aware current datetime.
-        live_net_consumption_w: Live net consumption in Watts from
-            sensor.hsem_net_consumption_sensor after EMA smoothing.
-            Negative values indicate surplus.  No longer used in Pass 3
-            (which now uses predicted surplus for stability) — retained
-            for smoothing the current-slot EV charger power setpoint
-            between MILP re-solves.
     """
 
     enabled: bool = False
@@ -136,10 +123,7 @@ class EVPlannerInput:
     deadline: datetime | None = None
     base_load_includes_ev: bool = False
     allow_charge_past_target_soc: bool = False
-    slot_predicted_battery_kwh: list[float] = field(default_factory=list)
-    usable_battery_kwh: float = 0.0
     now: datetime = field(default_factory=lambda: datetime.now(UTC))
-    live_net_consumption_w: float = 0.0
 
 
 @dataclass
@@ -407,21 +391,11 @@ def build_ev_charging_plan(
     plan.deadline = inp.deadline
 
     # When energy_needed ≈ 0 the EV is at or above target SoC.
-    # Normally we return "fully_charged", but when allow_charge_past_target_soc
-    # is enabled and the EV is not already at 100 %, we let the function
-    # continue so Pass 3 can allocate surplus-PV slots (battery already full,
-    # surplus would otherwise be curtailed).
+    # Charge-past-target is handled exclusively by the MILP — the EV
+    # planner plays no role in that decision.
     if abs(energy_needed) < 1e-9:
-        if not inp.allow_charge_past_target_soc or inp.current_soc_pct >= 100:
-            plan.state = "fully_charged"
-            return plan
-        log_planner(
-            "debug",
-            "[ev_planner] SoC at/above target (%.1f%% >= %.1f%%), "
-            "allow_charge_past_target_soc=True — continuing to Pass 3",
-            inp.current_soc_pct,
-            inp.target_soc_pct,
-        )
+        plan.state = "fully_charged"
+        return plan
 
     # --- Candidate slot filtering (before effective deadline) ---
     #
@@ -546,158 +520,12 @@ def build_ev_charging_plan(
         selected.append(ev_slot)
         remaining_energy -= allocated
 
-    # --- Pass 3: charge past target on surplus PV only ---
-    # When allow_charge_past_target_soc is enabled and the EV has reached
-    # its target SoC (remaining_energy ≈ 0), continue charging from any
-    # remaining PV-surplus slots — but only when the house battery is
-    # already predicted to be full at that slot, meaning the surplus
-    # would otherwise be stranded (curtailed).
-    _pass3_battery_data_ready = len(inp.slot_predicted_battery_kwh) > 0
-    _pass3_enter = (
-        inp.allow_charge_past_target_soc
-        and remaining_energy < 1e-9
-        and inp.current_soc_pct < 100
-    )
-    log_planner(
-        "debug",
-        "[ev_planner] Pass 3 check  allow_past=%s  remaining=%.6f  soc=%.1f%%  "
-        "battery_data_ready=%s  surplus_slots=%d  non_surplus=%d  "
-        "pred_len=%d",
-        inp.allow_charge_past_target_soc,
-        remaining_energy,
-        inp.current_soc_pct,
-        _pass3_battery_data_ready,
-        len(surplus_slots),
-        len(non_surplus_slots),
-        len(inp.slot_predicted_battery_kwh),
-    )
-    if _pass3_enter and not _pass3_battery_data_ready:
-        log_planner(
-            "debug",
-            "[ev_planner] Pass 3 SKIPPED — slot_predicted_battery_kwh is empty",
-        )
-    if _pass3_enter and _pass3_battery_data_ready:
-        used_starts = {s.start for s in selected}
-        log_planner(
-            "debug",
-            "[ev_planner] Pass 3 ENTER  usable_battery=%.3f  already_used=%d  "
-            "surplus_candidates=%d",
-            inp.usable_battery_kwh,
-            len(used_starts),
-            len(surplus_slots),
-        )
-        # Re-scan surplus slots, skipping those already allocated.
-        for i in surplus_slots:
-            s_start = slots_start[i]
-            s_end = slots_end[i]
-            if s_start in used_starts:
-                log_planner(
-                    "debug",
-                    "[ev_planner] Pass 3 slot i=%d  %s  SKIP (already used)",
-                    i,
-                    s_start.isoformat(),
-                )
-                continue
-            # Only charge past target when the battery is already full
-            # at this slot — the surplus has nowhere else to go.
-            if (
-                inp.slot_predicted_battery_kwh
-                and i < len(inp.slot_predicted_battery_kwh)
-                and inp.slot_predicted_battery_kwh[i] < inp.usable_battery_kwh - 1e-6
-            ):
-                log_planner(
-                    "debug",
-                    "[ev_planner] Pass 3 slot i=%d  %s  SKIP (battery not full: "
-                    "pred=%.3f  usable=%.3f)",
-                    i,
-                    s_start.isoformat(),
-                    (
-                        inp.slot_predicted_battery_kwh[i]
-                        if i < len(inp.slot_predicted_battery_kwh)
-                        else -1.0
-                    ),
-                    inp.usable_battery_kwh,
-                )
-                continue
-            slot_min = slot_duration_minutes(s_start, s_end)
-            max_charge = max_charge_energy_for_slot(
-                slot_min,
-                inp.charger_power_kw,
-                inp.charger_efficiency_pct,
-            )
-            if max_charge < 1e-9:
-                log_planner(
-                    "debug",
-                    "[ev_planner] Pass 3 slot i=%d  %s  SKIP (zero max charge: "
-                    "dur=%.1f min  pwr=%.2f  eff=%.1f%%)",
-                    i,
-                    s_start.isoformat(),
-                    slot_min,
-                    inp.charger_power_kw,
-                    inp.charger_efficiency_pct,
-                )
-                continue
-
-            # The EV already reached target — no strict energy budget.
-            # Allocate the minimum of max power and available surplus.
-            # We charge only from surplus, never from grid in this pass.
-            net_surplus = slot_net_surplus_kwh[i]
-            allocated = min(max_charge, net_surplus)
-            if allocated < 1e-9:
-                log_planner(
-                    "debug",
-                    "[ev_planner] Pass 3 slot i=%d  %s  SKIP (allocated < 1e-9: "
-                    "max_charge=%.3f  surplus=%.3f)",
-                    i,
-                    s_start.isoformat(),
-                    max_charge,
-                    net_surplus,
-                )
-                continue
-
-            # Check minimum charger power for Pass 3 too.
-            eff = max(inp.charger_efficiency_pct, 1.0) / 100.0
-            slot_hours = slot_min / 60.0
-            ac_power_w = (allocated / eff) / slot_hours * 1000.0
-            if ac_power_w < inp.charger_min_power_w - 1e-9:
-                continue
-
-            ac_load = allocated / eff
-
-            log_planner(
-                "debug",
-                "[ev_planner] Pass 3 slot i=%d  %s  ALLOCATED  dc=%.3f kWh  "
-                "ac_load=%.3f kWh  surplus=%.3f kWh  max_charge=%.3f "
-                "dur=%.1f min  batt_pred=%.3f",
-                i,
-                s_start.isoformat(),
-                allocated,
-                ac_load,
-                net_surplus,
-                max_charge,
-                slot_min,
-                (
-                    inp.slot_predicted_battery_kwh[i]
-                    if i < len(inp.slot_predicted_battery_kwh)
-                    else -1.0
-                ),
-            )
-            ev_slot = EVChargingSlot(
-                start=s_start,
-                end=s_end,
-                estimated_charged_kwh=round(allocated, 3),
-                ac_load_kwh=round(ac_load, 3),
-                solar_surplus_kwh=round(allocated, 3),
-                import_needed_kwh=0.0,
-                import_price=slot_import_price[i],
-                estimated_cost=0.0,
-            )
-            selected.append(ev_slot)
-        log_planner(
-            "debug",
-            "[ev_planner] Pass 3 DONE  total_selected=%d",
-            len(selected),
-        )
+    # --- Pass 3 removed ---
+    # Charge-past-target is now handled exclusively by the MILP.
+    # When the MILP wins, it co-optimises the EV alongside the battery
+    # with a surplus-only constraint and a tiny tiebreaker benefit
+    # (0.0001/kWh AC).  When the MILP fails, the baseline candidate
+    # does not attempt charge-past-target — the MILP is the only path.
 
     # Build output
     plan.charging_slots = selected

@@ -32,11 +32,10 @@ oscillation:
 - **Live surplus cap**: the smoothed power is additionally capped at the
   current live surplus — the charger never draws from the grid during a
   cloud or transient load spike within the slot.
-- **Recovery from zero**: when the MILP allocated no EV load for the
-  current slot (e.g. a cloud at solve time), the smoothing layer can still
-  set a power target if live surplus exceeds `charger_min_power_w` —
-  implementing Pass 3 (charge-past-target on surplus PV) reactively every
-  minute instead of every 15.
+- **Recovery from zero**: when the MILP sampled a cloud at solve time and
+  allocated no EV load for the current slot, the next MILP re-solve (triggered
+  by a material input change or slot-boundary crossing) will correct the
+  allocation.  The MILP is the single authority for all EV charging decisions.
 
 Setting the config option to 0 restores the legacy every-cycle re-solve.
 
@@ -405,6 +404,79 @@ to reflect the new EV loads.
 - EV diagnostics (total DC kWh delivered, deadline penalty, deadline met)
   are included in the diagnostics dict under the `"ev"` key.
 
+### MILP decision priority
+
+The MILP solves a single global cost-minimization across all future slots
+simultaneously.  It has no hard-coded priority order — the cost coefficients
+in the objective function create a natural decision hierarchy.  Below is
+how that plays out per slot, from cheapest to most expensive action.
+
+**Objective** (minimise):
+
+```text
+Σ_t [ p_imp[t]·gi[t] − p_exp[t]·ge[t] + α·m[t]
+      + (charge_loss·p_imp[t])·ec[t] + (discharge_loss·p_imp[t])·ed[t]
+      + p_soc·(s_max_pen[t] + s_min_pen[t]) ]
++ Σ_ev [ ev_penalty·ev_pen + tiebreaker·Σ_t ev_c[t] ]
+```
+
+#### 1. Serve house load from PV (free)
+
+PV surplus `pv[t]` has **zero objective cost**.  Curtailment `curt[t]` also
+has zero cost.  The LP always uses available PV to cover house load first.
+
+#### 2. Use remaining PV surplus
+
+| Priority | Action | Cost coefficient | When taken |
+|---|---|---|---|
+| 2a | Charge house battery | `charge_loss × p_imp[t]` | Battery below `usable_kwh`, future savings justify the minor conversion loss |
+| 2b | Charge EV (normal, below target) | `p_imp[t]` (via grid) or `0` (via surplus) | EV below target, deadline approaching — the **deadline penalty** forces charging |
+| 2c | Charge EV (past target) | **−0.0001 / charger_eff** (benefit) | Battery full **and** export price near zero **and** `charge_past_target=True`.  Surplus-only constraint: `ev_c/eff ≤ pv − base_load` |
+| 2d | Export to grid | **−p_exp[t]** (revenue) | Battery full, EV doesn't want surplus, export price > 0 |
+| 2e | Curtail PV | `0` (free) | Battery full, EV doesn't want surplus, `p_exp ≤ 0` (export costs money or is blocked) |
+
+#### 3. Cover house-load deficit
+
+| Priority | Action | Cost coefficient | When taken |
+|---|---|---|---|
+| 3a | Discharge battery | `discharge_loss × p_imp[t] + cycle_cost` | Battery has energy, discharging is cheaper than grid import |
+| 3b | Import from grid | `p_imp[t]` | Battery empty or discharge not worthwhile (cycle cost > import price spread) |
+
+#### 4. EV deadline charging (hard penalty)
+
+When the EV is **below target SoC** with a deadline approaching:
+
+- Penalty: `max(p_imp) × energy_needed × 10` per kWh shortfall
+- Constraint: `initial_soc + Σ ev_c + penalty ≥ target`
+- This penalty dominates everything — the LP will import at high prices
+  to meet the deadline when physically possible.
+
+#### 5. Terminal SoC (horizon-end valuation)
+
+At horizon end, the battery's remaining energy is valued:
+
+- `terminal_soc_credit = (initial_kwh − final_kwh) × replacement_price`
+- Ending with less energy → penalty (encourages recharging)
+- Ending with more energy → credit (discourages wasteful discharging)
+
+#### Key constraint: EV surplus-only for charge-past-target
+
+The constraint `ev_c[t]/charger_eff ≤ max(0, pv[t] − base_load[t])` ensures
+past-target EV charging **never** draws from the battery or grid — only
+genuine PV surplus that has nowhere else to go.
+
+#### Tiebreaker benefit (0.0001/kWh AC)
+
+The charge-past-target EV benefit is deliberately tiny — it **must not**
+compete with:
+- House battery charging (worth `p_imp` via avoided future import, typically
+  ~0.03–0.06/kWh in conversion loss alone)
+- Export at meaningful prices (revenue `p_exp`, typically 0.05–0.50/kWh)
+
+It only acts as a tiebreaker: when battery is full and export prices are
+near zero, the EV gets the surplus instead of exporting it for near-zero
+revenue.
+
 ### Grid import power limit (main fuse / tariff protection)
 
 When `main_fuse_amps` is provided and > 0, the MILP adds a **soft**
@@ -526,6 +598,11 @@ this physical behaviour:
   ``CostWeights.export_min_price``.
 - This clamping only affects the planner's decision-making; the raw slot
   ``export_price`` is preserved for diagnostics.
+
+Negative export prices are **not** clamped — the LP's ``curt[t]``
+variable (zero objective cost) naturally handles them: when
+``p_exp < 0``, exporting costs money (``−p_exp·ge`` becomes a positive
+cost) and the LP prefers curtailment (cost 0) over export (cost > 0).
 
 Invariant: ``export_price < export_min_price`` → planner treats export
 revenue as 0 in both optimisation and scoring.
@@ -1086,34 +1163,35 @@ The EV planner (`planner/ev_planner.py`) MUST satisfy these invariants:
     three EV load fields must be `0.0` and the home battery planner output
     must be identical to the non-EV case.
 
-11. **Charge past target SoC (Pass 3 / MILP)**: When `allow_charge_past_target_soc`
+11. **Charge past target SoC (MILP only)**: When `allow_charge_past_target_soc`
     is enabled and the EV has reached its target SoC but is below 100 %, the
     EV can receive surplus PV that would otherwise be exported at low/negative
-    prices.
+    prices.  This is handled exclusively by the MILP:
 
-    - **EV planner Pass 3** (fallback): scans remaining PV-surplus slots where
-      the house battery is predicted to be full.  All energy is solar-surplus
-      with zero grid cost.  Pass 3 now uses **predicted** surplus
-      (`slot_net_surplus_kwh`) for the current slot, not a live reading —
-      this prevents a single cloud at MILP-solve time from locking the EV
-      out for an entire 15-minute slot.
-    - **MILP** (primary): when the MILP wins, it co-optimises the EV alongside
-      the battery.  The EV is included with `charge_past_target=True`:
-      `target_kwh = capacity_kwh`, `deadline_slot = None` (no grid import
-      pressure), a surplus-only constraint (`ev_c/eff ≤ pv − base_load`), and
-      a tiny tiebreaker benefit (0.0001/kWh AC) so the EV only takes surplus
-      when nothing else wants it (battery full, export prices near zero).
+    - The EV is included with `charge_past_target=True`: `target_kwh = capacity_kwh`,
+      `deadline_slot = None` (no grid import pressure), a surplus-only constraint
+      (`ev_c/eff ≤ pv − base_load`), and a tiny tiebreaker benefit (0.0001/kWh AC)
+      so the EV only takes surplus when nothing else wants it (battery full,
+      export prices near zero).
+    - The EV planner's Pass 3 has been removed — the MILP is the single
+      authority for all EV charging decisions, including charge-past-target.
+    - When the MILP fails (scipy unavailable, solver crash), charge-past-target
+      is simply unavailable for that cycle.  The next successful MILP solve
+      (up to `planner_min_resolve_interval_minutes` later) will pick it up.
 
-    The MILP's decisions replace the EV planner's when the MILP wins.
-    When the MILP fails or is unavailable, the EV planner's Pass 3 slots
-    are used as a fallback.
+    The MILP's decisions are authoritative for all EV charging.
 
     **Between MILP re-solves**, the coordinator's smoothing layer
-    (`_smooth_current_slot_ev_power`) implements Pass 3 reactively every
-    minute: if live surplus exceeds `charger_min_power_w`, it sets
-    `ev_charger_calculated_power` even when the MILP allocated no EV
-    load for the current slot.  This prevents 14-minute dead zones when
-    the MILP sampled an unlucky live reading at the slot boundary.
+    (`_smooth_current_slot_ev_power`) recomputes the EV charger power
+    from the cached plan's per-slot energy allocation (``ev_total_planned_load_kwh``
+    divided by the remaining slot hours), capped at the charger's rated
+    power and the live surplus.  Slots where the MILP allocated zero EV
+    load are left at zero — the MILP is the global optimiser and its
+    decision to export or charge the battery instead of the EV is
+    authoritative.  This prevents 14-minute dead zones when the MILP
+    sampled an unlucky live reading at the slot boundary: the MILP itself
+    re-solves when inputs change materially (price, solcast, EV SoC, slot
+    boundary), so a cloud at solve time is corrected at the next re-solve.
 
 12. **EV charger power field**: `ev_charger_calculated_power` is computed
     from the per-slot EV AC load (`ev_planned_load_kwh + ev_accounted_load_kwh`)
@@ -1133,15 +1211,9 @@ The EV planner (`planner/ev_planner.py`) MUST satisfy these invariants:
 ### Invariants for tests
 
 - When `ev_planned_load_enabled = False`, all `ev_planned_load_kwh == 0.0`.
-- When EV is at or above target SoC (`current_soc >= target_soc`) and
-  `allow_charge_past_target_soc` is disabled or `current_soc >= 100`,
+- When EV is at or above target SoC (`current_soc >= target_soc`),
   all EV load fields are `0.0` (early return `"fully_charged"`).
-- When `allow_charge_past_target_soc` is enabled and
-  `target_soc <= current_soc < 100`, Pass 3 may allocate surplus-PV
-  charging slots past the target SoC (energy_needed ≈ 0 does **not**
-  trigger an early return).
-- Pass 3 surplus-PV slots: allocated kWh = `min(max_charge, net_surplus)`,
-  `import_needed_kwh == 0.0`, `estimated_cost == 0.0`.
+  Charge-past-target is handled exclusively by the MILP.
 - When `base_load_includes_ev = True`:
   - `ev_planned_load_kwh == 0.0` for all slots.
   - `ev_accounted_load_kwh > 0` for charging slots.

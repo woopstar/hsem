@@ -280,25 +280,16 @@ def solve_milp(
     p_imp = np.nan_to_num(p_imp, nan=0.0)
     p_exp = np.nan_to_num(p_exp, nan=0.0)
 
-    # Clamp export prices to reflect physical inverter behaviour:
-    # 1. Negative prices → 0 (the inverter curtails PV rather than pay to export).
-    # 2. Prices below min_export_price → 0 (the applier sets the inverter to
-    #    GRID_EXPORT_LIMIT_WATT, blocking export entirely).
+    # Clamp export prices below min_export_price to 0.
+    # The applier physically sets the inverter to GRID_EXPORT_LIMIT_WATT
+    # for these slots, blocking export entirely.  The LP must not optimise
+    # around a price signal that will never be realised.
     #
-    # The MILP cannot model curtailment (pv[t] is fixed), so flooring to 0 is
-    # the best approximation: the LP sees no revenue for blocked-export slots
-    # and does not optimise around a price signal that will never be realised.
-    neg_mask = p_exp < 0.0
-    n_neg = int(np.sum(neg_mask))
-    if n_neg > 0:
-        log_planner(
-            "debug",
-            "[milp] Clamping %d negative export prices to 0 (min=%.4f)",
-            n_neg,
-            float(np.min(p_exp)),
-        )
-    p_exp = np.maximum(p_exp, 0.0)
-
+    # Negative export prices are NOT clamped — the LP has a curt[t]
+    # variable with zero objective cost that naturally handles them:
+    # when p_exp < 0, export costs money (p_exp is negative, so
+    # -p_exp·ge becomes a positive cost), and the LP prefers curtailment
+    # (cost 0) over export (cost > 0).
     if min_export_price > 1e-9:
         blocked = p_exp < min_export_price
         n_blocked = int(np.sum(blocked))

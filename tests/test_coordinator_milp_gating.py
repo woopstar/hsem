@@ -28,6 +28,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
+from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.planner_output import PlannerOutput
@@ -358,6 +359,63 @@ class TestSmoothCurrentSlotEvPower:
         coord._last_milp_planner_input = _base_input()
         output = PlannerOutput(
             slots=[_slot_with_ev_load(slot_start, slot_end, 1.0, 0.0)]
+        )
+        now = slot_start + timedelta(minutes=5)
+        coord._smooth_current_slot_ev_power(output, now)
+        assert output.slots[0].ev_charger_calculated_power == pytest.approx(0.0)
+
+    # -- Slots with zero planned EV load are never reactively charged --
+    # The MILP is the global optimiser.  When it allocates zero EV load for
+    # a slot, that decision is authoritative — live surplus must not override it.
+
+    def test_zero_ev_load_not_reactively_charged_with_surplus(self) -> None:
+        """Live surplus does not create EV power when MILP planned zero EV."""
+        coord = _make_coordinator()
+        slot_start = datetime(2024, 6, 15, 12, 0, tzinfo=TZ)
+        slot_end = datetime(2024, 6, 15, 12, 15, tzinfo=TZ)
+        coord._last_milp_planner_input = _base_input(
+            ev_planned_allow_charge_past_target_soc=True,
+            ev_planned_load_charger_power_kw=11.0,
+            ev_planned_load_charger_min_power_w=1380.0,
+        )
+        # Simulate live surplus (3000 W) and battery full — the reactive
+        # Pass 3 used to trigger here, but it has been removed.  The MILP
+        # is the global optimiser: no EV load planned = no EV charging.
+        coord._live = LiveState(
+            net_consumption_w=-3000.0,
+            huawei_batteries_soc_pct=99.5,
+        )
+        output = PlannerOutput(
+            slots=[_slot_with_ev_load(slot_start, slot_end, 0.0, 0.0)]
+        )
+        now = slot_start + timedelta(minutes=5)
+        coord._smooth_current_slot_ev_power(output, now)
+        # Power must stay at 0 — MILP planned zero EV load for this slot.
+        assert output.slots[0].ev_charger_calculated_power == pytest.approx(0.0)
+
+    def test_zero_ev_load_not_reactively_charged_export_scenario(self) -> None:
+        """Live surplus from export does not create EV power.
+
+        This is the exact scenario from the bug report: the MILP decides
+        to export to grid, grid export creates negative net consumption,
+        but the smoothing layer must not interpret that as "surplus for EV".
+        """
+        coord = _make_coordinator()
+        slot_start = datetime(2024, 6, 15, 12, 0, tzinfo=TZ)
+        slot_end = datetime(2024, 6, 15, 12, 15, tzinfo=TZ)
+        coord._last_milp_planner_input = _base_input(
+            ev_planned_allow_charge_past_target_soc=True,
+            ev_planned_load_charger_power_kw=11.0,
+            ev_planned_load_charger_min_power_w=1380.0,
+        )
+        # Battery at 70 % — MILP chose to export instead of charge battery.
+        # Live surplus is 5000 W from the export.  The EV must NOT charge.
+        coord._live = LiveState(
+            net_consumption_w=-5000.0,
+            huawei_batteries_soc_pct=70.0,
+        )
+        output = PlannerOutput(
+            slots=[_slot_with_ev_load(slot_start, slot_end, 0.0, 0.0)]
         )
         now = slot_start + timedelta(minutes=5)
         coord._smooth_current_slot_ev_power(output, now)

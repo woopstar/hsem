@@ -236,3 +236,11 @@ NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH = 0.1
 # short cloud shadows so they don't kill the EV charging setpoint for the
 # rest of the 15-minute slot.
 EMA_ALPHA_NET_CONSUMPTION = 0.3
+
+# EV state-of-charge change (percentage points) that forces a MILP re-solve.
+# Smaller changes within the staleness window are ignored (issue #582).
+EV_SOC_RESOLVE_THRESHOLD_PCT = 2.0
+
+# Per-slot price/PV epsilon below which two values are treated as unchanged
+# for MILP re-solve gating.  Used in _should_rerun_milp and EV power smoothing.
+INPUT_EPSILON = 1e-6

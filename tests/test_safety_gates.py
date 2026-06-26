@@ -16,9 +16,9 @@ Covered scenarios
 
 All tests are pure-Python and require no running Home Assistant instance.
 
-Note on ``async_logger``
-------------------------
-:func:`async_logger` is patched with a no-op ``AsyncMock`` in every test so
+Note on logging
+----------------
+``HSEM_LOGGER.debug`` is patched with a no-op ``AsyncMock`` in every test so
 that planner/applier output never reaches the standard ``custom_components.hsem``
 logger during the test run.  This keeps test output clean and decouples the
 safety-gate assertions from log-formatting changes.
@@ -44,11 +44,8 @@ from custom_components.hsem.utils.inverter_verify import ApplyStatus
 # Module-level patch targets (reused across all test classes)
 # ---------------------------------------------------------------------------
 
-# The applier module imports async_logger under this name.
-_APPLIER_LOGGER = "custom_components.hsem.custom_sensors.applier.async_logger"
-_SENSOR_LOGGER = (
-    "custom_components.hsem.custom_sensors.working_mode_sensor.async_logger"
-)
+# Patch HSEM_LOGGER.debug to suppress log output during tests.
+_LOGGER_PATCH = "custom_components.hsem.utils.logger.HSEM_LOGGER.debug"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -56,7 +53,7 @@ _SENSOR_LOGGER = (
 
 
 def _make_sensor():
-    """Return a minimal mock sensor that satisfies async_logger requirements."""
+    """Return a minimal mock sensor for testing."""
     sensor = MagicMock()
     sensor.hass = MagicMock()
     return sensor
@@ -103,7 +100,7 @@ class TestInverterPowerControlSafetyGate:
         live = _make_live(degraded_mode=DegradedMode.OK)
 
         with (
-            patch(_APPLIER_LOGGER, new_callable=AsyncMock),
+            patch(_LOGGER_PATCH, new_callable=AsyncMock),
             patch(
                 "custom_components.hsem.custom_sensors.applier.async_set_grid_export_power_pct"
             ) as mock_write,
@@ -121,7 +118,7 @@ class TestInverterPowerControlSafetyGate:
         live = _make_live(degraded_mode=DegradedMode.Error)
 
         with (
-            patch(_APPLIER_LOGGER, new_callable=AsyncMock),
+            patch(_LOGGER_PATCH, new_callable=AsyncMock),
             patch(
                 "custom_components.hsem.custom_sensors.applier.async_set_grid_export_power_pct"
             ) as mock_write,
@@ -156,7 +153,7 @@ class TestInverterPowerControlSafetyGate:
         sensor.hass.states.get.return_value = mock_state
 
         with (
-            patch(_APPLIER_LOGGER, new_callable=AsyncMock),
+            patch(_LOGGER_PATCH, new_callable=AsyncMock),
             patch(
                 "custom_components.hsem.custom_sensors.applier.async_write_and_verify",
                 new_callable=AsyncMock,
@@ -196,7 +193,7 @@ class TestInverterPowerControlSafetyGate:
         sensor.hass.states.get.return_value = mock_state
 
         with (
-            patch(_APPLIER_LOGGER, new_callable=AsyncMock),
+            patch(_LOGGER_PATCH, new_callable=AsyncMock),
             patch(
                 "custom_components.hsem.custom_sensors.applier.async_write_and_verify",
                 new_callable=AsyncMock,
@@ -238,7 +235,7 @@ class TestBatterySettingsSafetyGate:
         rec = self._make_rec()
 
         with (
-            patch(_APPLIER_LOGGER, new_callable=AsyncMock),
+            patch(_LOGGER_PATCH, new_callable=AsyncMock),
             patch(
                 "custom_components.hsem.custom_sensors.applier.async_write_and_verify",
                 new_callable=AsyncMock,
@@ -258,7 +255,7 @@ class TestBatterySettingsSafetyGate:
         rec = self._make_rec()
 
         with (
-            patch(_APPLIER_LOGGER, new_callable=AsyncMock),
+            patch(_LOGGER_PATCH, new_callable=AsyncMock),
             patch(
                 "custom_components.hsem.custom_sensors.applier.async_write_and_verify",
                 new_callable=AsyncMock,
@@ -293,7 +290,7 @@ class TestBatterySettingsSafetyGate:
         rec = _make_rec(Recommendations.BatteriesDischargeMode.value)
 
         with (
-            patch(_APPLIER_LOGGER, new_callable=AsyncMock),
+            patch(_LOGGER_PATCH, new_callable=AsyncMock),
             patch(
                 "custom_components.hsem.custom_sensors.applier.async_write_and_verify",
                 new_callable=AsyncMock,
@@ -337,7 +334,7 @@ class TestBatterySettingsSafetyGate:
         rec = _make_rec(Recommendations.BatteriesDischargeMode.value)
 
         with (
-            patch(_APPLIER_LOGGER, new_callable=AsyncMock),
+            patch(_LOGGER_PATCH, new_callable=AsyncMock),
             patch(
                 "custom_components.hsem.custom_sensors.applier.async_write_and_verify",
                 new_callable=AsyncMock,
@@ -395,7 +392,7 @@ class TestWorkingModeSensorTopLevelGate:
         data = self._make_coordinator_data(read_only=True)
 
         with (
-            patch(_SENSOR_LOGGER, new_callable=AsyncMock),
+            patch(_LOGGER_PATCH, new_callable=AsyncMock),
             patch(
                 "custom_components.hsem.custom_sensors.working_mode_sensor.async_apply_inverter_power_control",
                 new_callable=AsyncMock,
@@ -426,7 +423,7 @@ class TestWorkingModeSensorTopLevelGate:
         )
 
         with (
-            patch(_SENSOR_LOGGER, new_callable=AsyncMock),
+            patch(_LOGGER_PATCH, new_callable=AsyncMock),
             patch(
                 "custom_components.hsem.custom_sensors.working_mode_sensor.async_apply_inverter_power_control",
                 new_callable=AsyncMock,
@@ -458,7 +455,7 @@ class TestWorkingModeSensorTopLevelGate:
         from custom_components.hsem.utils.inverter_verify import CycleApplySummary
 
         with (
-            patch(_SENSOR_LOGGER, new_callable=AsyncMock),
+            patch(_LOGGER_PATCH, new_callable=AsyncMock),
             patch(
                 "custom_components.hsem.custom_sensors.working_mode_sensor.async_apply_inverter_power_control",
                 new_callable=AsyncMock,
@@ -499,7 +496,7 @@ class TestWorkingModeSensorTopLevelGate:
         # so the battery gate passes.
 
         with (
-            patch(_SENSOR_LOGGER, new_callable=AsyncMock),
+            patch(_LOGGER_PATCH, new_callable=AsyncMock),
             patch(
                 "custom_components.hsem.custom_sensors.working_mode_sensor.async_apply_inverter_power_control",
                 new_callable=AsyncMock,

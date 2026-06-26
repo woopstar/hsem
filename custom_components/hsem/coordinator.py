@@ -44,7 +44,11 @@ from homeassistant.helpers.event import (
 )
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from custom_components.hsem.const import EMA_ALPHA_NET_CONSUMPTION
+from custom_components.hsem.const import (
+    EMA_ALPHA_NET_CONSUMPTION,
+    EV_SOC_RESOLVE_THRESHOLD_PCT,
+    INPUT_EPSILON,
+)
 from custom_components.hsem.coordinator_builder import (
     build_planner_input,
     generate_recommendation_intervals,
@@ -88,23 +92,13 @@ from custom_components.hsem.utils.forecast_tracker import (
 from custom_components.hsem.utils.inverter_verify import CycleApplySummary
 from custom_components.hsem.utils.logger import (
     HSEM_LOGGER as _LOGGER,
-    async_logger,
-    set_planner_verbose,
+    set_hsem_verbose,
 )
 from custom_components.hsem.utils.misc import ema_filter, get_config_value
 from custom_components.hsem.utils.recommendations import Recommendations
 
 if TYPE_CHECKING:
     from custom_components.hsem.ml.consumption_predictor import ConsumptionPredictor
-
-# ---------------------------------------------------------------------------
-# MILP re-solve gating thresholds (issue #582)
-# ---------------------------------------------------------------------------
-
-#: EV state-of-charge change (percentage points) that forces a MILP re-solve.
-_EV_SOC_RESOLVE_THRESHOLD_PCT = 2.0
-#: Per-slot price/PV epsilon below which two values are treated as unchanged.
-_INPUT_EPSILON = 1e-6
 
 # ---------------------------------------------------------------------------
 # Data payload exposed to subscriber entities
@@ -354,8 +348,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
     async def _async_handle_update(self, event: Event | None = None) -> None:
         """Drop concurrent updates; run the update cycle while holding the lock."""
         if self._update_lock.locked():
-            await async_logger(
-                self,
+            _LOGGER.debug(
                 "------ Coordinator update skipped: a previous cycle is still running.",
             )
             return
@@ -371,7 +364,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         Raises:
             UpdateFailed: When an unrecoverable error occurs during the pipeline.
         """
-        await async_logger(self, "------ HSEM Coordinator: starting update cycle")
+        _LOGGER.debug("------ HSEM Coordinator: starting update cycle")
         now = hsem_now()
 
         try:
@@ -422,8 +415,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             # before the expiry — clean up the stored expiry in that case too.
             if self._override_expiry is not None:
                 if now >= self._override_expiry:
-                    await async_logger(
-                        self,
+                    _LOGGER.debug(
                         "Timed override EXPIRED — clearing select entity to 'auto'.",
                     )
                     # Fire-and-forget: set the select entity back to "auto".
@@ -440,8 +432,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                     self._override_expiry = None
                 elif live.force_working_mode_state == "auto":
                     # User manually cleared before expiry — remove the tracking.
-                    await async_logger(
-                        self,
+                    _LOGGER.debug(
                         "Override manually cleared before expiry — removing expiry tracking.",
                     )
                     self._override_expiry = None
@@ -468,7 +459,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             # The ML path is enabled via `hsem_ml_consumption_enabled`.
             # When it fails (insufficient history, misconfigured, …), the
             # coordinator transparently falls back to the legacy pipeline.
-            set_planner_verbose(cfg.verbose_logging)
+            set_hsem_verbose(cfg.verbose_logging)
 
             if cfg.ml_consumption_enabled:
                 # ML consumption prediction from recorder history.
@@ -485,15 +476,13 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                     cfg,
                     self._ml_predictor,
                 )
-                await async_logger(
-                    self,
+                _LOGGER.debug(
                     f"[ml] populate_ml_house_consumption returned {consumption_ok}",
                 )
 
                 if not consumption_ok:
                     # Fallback: ML failed; try legacy avg sensors.
-                    await async_logger(
-                        self,
+                    _LOGGER.debug(
                         "[ml] ML consumption failed"
                         " — falling back to legacy avg sensors.",
                     )
@@ -513,8 +502,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                     self._avg_house_consumption_entity_id_cache,
                     entry_id=self._config_entry.entry_id,
                 )
-                await async_logger(
-                    self,
+                _LOGGER.debug(
                     f"[avg] populate_avg_house_consumption_from_snapshot returned {consumption_ok}, "
                     f"cache has {len(self._avg_house_consumption_entity_id_cache)} entries, "
                     f"snapshot has {len(self._snapshot.energy_average_values)} energy_avg values",
@@ -531,9 +519,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
 
             if live.missing_entities and live.force_working_mode_state == "auto":
                 state = Recommendations.MissingInputEntities.value
-                await async_logger(
-                    self, "Missing input entities, skipping calculations."
-                )
+                _LOGGER.debug("Missing input entities, skipping calculations.")
 
             elif not consumption_ok and live.force_working_mode_state == "auto":
                 # Energy average sensors not yet ready.  Still populate prices
@@ -543,8 +529,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
 
             elif live.force_working_mode_state != "auto":
                 state = str(live.force_working_mode_state)
-                await async_logger(
-                    self,
+                _LOGGER.debug(
                     f"Force working mode is activated. Setting working mode to "
                     f"{live.force_working_mode_state}",
                 )
@@ -588,8 +573,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 total_1d = sum(
                     c.avg_1d for c in planner_input.consumption_averages if c.avg_1d > 0
                 )
-                await async_logger(
-                    self,
+                _LOGGER.debug(
                     f"[builder] consumption per-hour total reaching planner:"
                     f" avg_1d={total_1d:.2f} kWh"
                     f" over {len(planner_input.consumption_averages)} hours",
@@ -611,7 +595,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                     # planner so detailed slot-level decisions appear in the
                     # standard Home Assistant log when the user enables
                     # verbose logging.
-                    set_planner_verbose(cfg.verbose_logging)
+                    set_hsem_verbose(cfg.verbose_logging)
                     planner_output = run_planner(planner_input)
                     self._last_planner_output = planner_output
 
@@ -625,7 +609,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                     self._force_milp_rerun = False
 
                     for warning in planner_output.warnings:
-                        await async_logger(self, f"[planner] {warning}")
+                        _LOGGER.debug(f"[planner] {warning}")
                 else:
                     # Reuse the cached plan unchanged except for smoothing the
                     # current slot's EV charger power as time elapses within
@@ -633,8 +617,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                     # toggling on/off every cycle.
                     planner_output = cached_output
                     self._smooth_current_slot_ev_power(planner_output, now)
-                    await async_logger(
-                        self,
+                    _LOGGER.debug(
                         "[planner] MILP re-solve skipped — reusing cached plan "
                         "and smoothing current-slot EV charger power.",
                     )
@@ -655,8 +638,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                         if s.end > now
                     )
                     if not has_planned:
-                        await async_logger(
-                            self,
+                        _LOGGER.debug(
                             "[planner] WARNING: EV is physically charging but no "
                             "current or future slot has ev_total_planned_load_kwh > 0. "
                             "The EV load is either outside the planning window, "
@@ -820,7 +802,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
 
         # Notify all subscriber entities atomically.
         self.async_set_updated_data(data)
-        await async_logger(self, "------ HSEM Coordinator: update cycle complete")
+        _LOGGER.debug("------ HSEM Coordinator: update cycle complete")
 
     # ------------------------------------------------------------------
     # DataUpdateCoordinator override
@@ -872,8 +854,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             self._async_handle_update,  # type: ignore[arg-type]  # HA stub expects Callable[[datetime], ...]; our callback also serves as coordinator update callback
             interval,
         )
-        await async_logger(
-            self,
+        _LOGGER.debug(
             f"HSEM Coordinator: update interval set to {interval}",
         )
 
@@ -980,9 +961,9 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         if len(prev.price_points) != len(inp.price_points):
             return True
         for old, new in zip(prev.price_points, inp.price_points, strict=False):
-            if abs(old.import_price - new.import_price) > _INPUT_EPSILON:
+            if abs(old.import_price - new.import_price) > INPUT_EPSILON:
                 return True
-            if abs(old.export_price - new.export_price) > _INPUT_EPSILON:
+            if abs(old.export_price - new.export_price) > INPUT_EPSILON:
                 return True
         return False
 
@@ -992,7 +973,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         if len(prev.solcast_slots) != len(inp.solcast_slots):
             return True
         for old, new in zip(prev.solcast_slots, inp.solcast_slots, strict=False):
-            if abs(old.pv_estimate - new.pv_estimate) > _INPUT_EPSILON:
+            if abs(old.pv_estimate - new.pv_estimate) > INPUT_EPSILON:
                 return True
         return False
 
@@ -1001,7 +982,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         """Return True when any gating EV input changed between inputs.
 
         Covers both EVs: connection state, smart-charging toggle, and SoC
-        change beyond ``_EV_SOC_RESOLVE_THRESHOLD_PCT`` percentage points.
+        change beyond ``EV_SOC_RESOLVE_THRESHOLD_PCT`` percentage points.
         """
         if prev.ev_planned_load_connected != inp.ev_planned_load_connected:
             return True
@@ -1025,7 +1006,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 prev.ev_planned_load_current_soc_pct
                 - inp.ev_planned_load_current_soc_pct
             )
-            > _EV_SOC_RESOLVE_THRESHOLD_PCT
+            > EV_SOC_RESOLVE_THRESHOLD_PCT
         ):
             return True
         if (
@@ -1033,7 +1014,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 prev.ev_second_planned_load_current_soc_pct
                 - inp.ev_second_planned_load_current_soc_pct
             )
-            > _EV_SOC_RESOLVE_THRESHOLD_PCT
+            > EV_SOC_RESOLVE_THRESHOLD_PCT
         ):
             return True
         return False
@@ -1046,9 +1027,13 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         When the MILP is not re-solved, the EV charger power setpoint for the
         current (partially-elapsed) slot is recomputed from the cached plan's
         ``ev_total_planned_load_kwh`` divided by the remaining hours, capped at
-        the charger's rated power and floored at its minimum operating power.
-        This keeps the setpoint smooth as time progresses within a slot instead
-        of toggling on/off every cycle (issue #582).
+        the charger's rated power, the live surplus, and floored at its minimum
+        operating power.  This keeps the setpoint smooth as time progresses
+        within a slot instead of toggling on/off every cycle (issue #582).
+
+        Slots where the MILP allocated zero EV load are left untouched — the
+        MILP is the global optimiser and its decision to export or charge the
+        battery instead of the EV is authoritative.
 
         The cached plan's energy allocation is left untouched; only the power
         field is updated in place.
@@ -1085,22 +1070,15 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             remaining_h = max((s_end - now).total_seconds() / 3600.0, 1.0 / 3600.0)
 
             total_ev = slot.ev_total_planned_load_kwh
-            if total_ev <= _INPUT_EPSILON:
-                # No EV load planned for this slot.  Use live surplus
-                # directly — this implements Pass 3 (charge past target
-                # on surplus PV) reactively every minute instead of
-                # waiting for the next MILP re-solve.
-                if live_surplus_w is not None and live_surplus_w > min_power_w:
-                    slot.ev_charger_calculated_power = self._smoothed_power_w(
-                        (live_surplus_w / 1000.0) * remaining_h,
-                        remaining_h,
-                        max_power_w,
-                        min_power_w,
-                        live_surplus_w,
-                    )
+            if total_ev <= INPUT_EPSILON:
+                # No EV load planned for this slot by the MILP.
+                # The MILP is the global optimiser — when it chooses
+                # to export or charge the battery instead of charging
+                # the EV, that decision must be respected.  Do not
+                # second-guess it with a reactive surplus check.
                 break
 
-            if slot.ev_charger_calculated_power > _INPUT_EPSILON:
+            if slot.ev_charger_calculated_power > INPUT_EPSILON:
                 slot.ev_charger_calculated_power = self._smoothed_power_w(
                     total_ev,
                     remaining_h,
@@ -1108,7 +1086,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                     min_power_w,
                     live_surplus_w,
                 )
-            if slot.ev_second_charger_calculated_power > _INPUT_EPSILON:
+            if slot.ev_second_charger_calculated_power > INPUT_EPSILON:
                 slot.ev_second_charger_calculated_power = self._smoothed_power_w(
                     total_ev,
                     remaining_h,
@@ -1150,12 +1128,12 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             The smoothed AC power in Watts (0 when below the minimum).
         """
         ac_power_w = round((energy_kwh / remaining_hours) * 1000.0)
-        if max_power_w > _INPUT_EPSILON:
+        if max_power_w > INPUT_EPSILON:
             ac_power_w = min(ac_power_w, round(max_power_w))
         # Cap at live surplus to avoid grid import during transients.
         if live_surplus_w is not None:
             ac_power_w = min(ac_power_w, round(live_surplus_w))
-        if min_power_w > _INPUT_EPSILON and ac_power_w < min_power_w:
+        if min_power_w > INPUT_EPSILON and ac_power_w < min_power_w:
             return 0.0
         return float(ac_power_w)
 

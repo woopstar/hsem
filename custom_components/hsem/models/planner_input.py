@@ -162,12 +162,6 @@ class PlannerInput:
     house_power_includes_ev: bool = True
     is_read_only: bool = False  # False = hardware writes enabled; set True only in dry-run/test scenarios
 
-    #: Live net consumption in Watts from sensor.hsem_net_consumption_sensor.
-    #: Negative values indicate surplus (solar > house load).  Used by the EV
-    #: planner to determine actual (not predicted) surplus for the current slot
-    #: in Pass 3 (charge-past-target on surplus PV).
-    live_net_consumption_w: float = 0.0
-
     #: Live solar production power in Watts from the inverter's input power
     #: sensor.  Injected into the current slot's solcast_pv_estimate_kwh so
     #: the MILP and all candidates use measured (not forecast) PV for the
