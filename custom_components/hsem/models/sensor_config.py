@@ -260,6 +260,13 @@ class SensorConfig:
     # 0 re-solves every cycle (legacy behaviour).
     planner_min_resolve_interval_minutes: int = 15
 
+    # Embedded OCPP 1.6 server for EV charger control (issue #603).
+    ocpp_enabled: bool = False
+    ocpp_port: int = 9000
+    ocpp_cpid: str = ""
+    ocpp_start_window_s: int = 60
+    ocpp_stop_window_s: int = 180
+
     # Consumption weights
     house_consumption_energy_weight_1d: int = 50
     house_consumption_energy_weight_3d: int = 20

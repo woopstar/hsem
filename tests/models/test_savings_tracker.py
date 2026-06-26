@@ -203,9 +203,10 @@ class TestSavingsTracker:
     def test_json_persistence_roundtrip(self, tmp_path: object) -> None:
         """JSON persistence should survive a round-trip."""
         import asyncio
+        from pathlib import Path
 
         st = SavingsTracker()
-        history_path = tmp_path / "test_savings.json"
+        history_path = Path(tmp_path) / "test_savings.json"  # type: ignore[arg-type]
         st.history_file = str(history_path)
 
         # Accumulate some data.
@@ -281,8 +282,9 @@ class TestSavingsTracker:
     def test_load_history_corrupted_file(self, tmp_path: object) -> None:
         """Loading a corrupted file should not crash."""
         import asyncio
+        from pathlib import Path
 
-        corrupted_path = tmp_path / "corrupted.json"
+        corrupted_path = Path(tmp_path) / "corrupted.json"  # type: ignore[arg-type]
         corrupted_path.write_text("not valid json")
 
         st = SavingsTracker()
