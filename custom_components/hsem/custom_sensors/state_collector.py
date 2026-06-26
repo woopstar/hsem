@@ -42,7 +42,7 @@ from custom_components.hsem.utils.ha_helpers import (
     async_resolve_entity_id_from_unique_id,
     ha_get_entity_state_and_convert,
 )
-from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER, async_logger
+from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 from custom_components.hsem.utils.misc import get_config_value
 from custom_components.hsem.utils.sensornames.diagnostics import (
     get_force_working_mode_selector_key,
@@ -643,10 +643,7 @@ async def _register_listeners(
 
     for entity_id in candidates:
         if entity_id and entity_id not in tracked_entities:
-            await async_logger(
-                sensor,
-                f"Starting to track state changes for {entity_id}",
-            )
+            _LOGGER.debug(f"Starting to track state changes for {entity_id}")
             unsub = async_track_state_change_event(
                 sensor.hass, [entity_id], sensor._async_handle_update
             )
@@ -713,10 +710,9 @@ async def async_collect_all_states(
             eid = await _resolve_cached(sensor, avg_cache, uid)
 
             if eid is None:
-                await async_logger(
-                    sensor,
+                _LOGGER.debug(
                     "One of the required sensors for average house consumptions load is "
-                    "not ready/found. Waiting for next update.",
+                    "not ready/found. Waiting for next update."
                 )
                 continue
 
@@ -727,8 +723,7 @@ async def async_collect_all_states(
             except Exception:
                 val = None
 
-            await async_logger(
-                sensor,
+            _LOGGER.debug(
                 f"[avg] Read {uid} (entity_id={eid}) → "
                 f"{'None' if val is None else val}",
             )
@@ -784,13 +779,9 @@ async def _resolve_cached(
 
         if entity_id is not None:
             cache[unique_id] = entity_id
-            await async_logger(
-                sensor,
-                f"[avg] Resolved {unique_id} → {entity_id}",
-            )
+            _LOGGER.debug(f"[avg] Resolved {unique_id} → {entity_id}")
         else:
-            await async_logger(
-                sensor,
+            _LOGGER.debug(
                 f"[avg] Failed to resolve {unique_id} (registry+construct both returned None)",
             )
 

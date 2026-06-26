@@ -155,8 +155,10 @@ by setting the inverter to `GRID_EXPORT_LIMIT_WATT` for any slot where
   applies the same clamping in `score_plan()` so that scored costs match
   the MILP's assumptions.
 
-Both locations also clamp negative export prices to 0 because the inverter
-curtails PV rather than pay to export.
+Negative export prices are **not** clamped.  The LP's `curt[t]` variable
+(zero objective cost) naturally handles them: when `p_exp < 0`, exporting
+costs money (`−p_exp·ge` becomes a positive cost in the objective) and the
+LP prefers curtailment (cost 0) over export (cost > 0).
 
 The raw `slot.price.export_price` is **not** mutated — clamping only affects
 optimisation and scoring.

@@ -15,7 +15,7 @@ from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.models.state_snapshot import StateSnapshot
 from custom_components.hsem.utils.conversion import convert_to_float
 from custom_components.hsem.utils.datetime_utils import normalize_datetime
-from custom_components.hsem.utils.logger import async_logger
+from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 
 from . import _resolve_cached  # noqa: F401
 
@@ -155,7 +155,7 @@ async def _async_update_hourly_field(
 
     sensor_state = sensor.hass.states.get(sensor_id)
     if not sensor_state:
-        await async_logger(sensor, f"Input sensor {sensor_id} was not found for data.")
+        _LOGGER.debug(f"Input sensor {sensor_id} was not found for data.")
         return
 
     # Each source exposes a different attribute key / time-key / value-key
@@ -184,7 +184,7 @@ async def _async_update_hourly_field(
         if not sensor_data:
             continue
 
-        await async_logger(sensor, f"Updating data for {field_name}...")
+        _LOGGER.debug(f"Updating data for {field_name}...")
 
         for data in sensor_data:
             for kv in kv_list:

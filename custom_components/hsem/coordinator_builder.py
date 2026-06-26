@@ -217,7 +217,6 @@ def build_planner_input(
         main_fuse_amps=(float(cfg.main_fuse_amps) if cfg.main_fuse_amps > 0 else None),
         months_winter=list(cfg.months_winter or []),
         house_power_includes_ev=bool(cfg.house_power_includes_ev_charger_power),
-        live_net_consumption_w=convert_to_float(live.net_consumption_w) or 0.0,
         live_solar_production_w=convert_to_float(live.solar_production_power_w) or 0.0,
         live_house_consumption_w=convert_to_float(live.house_consumption_power_w)
         or 0.0,
