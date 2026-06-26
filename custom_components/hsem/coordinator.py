@@ -59,6 +59,7 @@ from custom_components.hsem.custom_sensors.hourly_data_populator.consumption imp
 from custom_components.hsem.custom_sensors.hourly_data_populator.prices_solcast import (
     populate_price_and_solcast_from_snapshot,
 )
+from custom_components.hsem.custom_sensors.ocpp_server import OCPPServer
 from custom_components.hsem.custom_sensors.state_collector import (  # noqa: F401 — kept for backward compat
     async_collect_all_states,
     build_battery_schedules,
@@ -199,6 +200,10 @@ class CoordinatorData:
     effective_discharge_floor_diag: dict | None = None
     #: Financial tracker with cumulative import cost and export income.
     financial_tracker: FinancialTracker | None = None
+    #: OCPP charger session dict (CPID → ChargerSession) for sensor entities.
+    ocpp_chargers: dict | None = None
+    #: OCPP completed session log for the sessions sensor.
+    ocpp_sessions: list | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -345,6 +350,13 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         self._dynamic_floor: DynamicDischargeFloor = DynamicDischargeFloor()
         self._effective_discharge_floor_pct: float | None = None
         self._effective_discharge_floor_diag: dict | None = None
+
+        # Battery capacity learner (issue #605).
+        self._capacity_learner: CapacityLearner = CapacityLearner()
+
+        # Embedded OCPP 1.6 server for EV charger control (issue #603).
+        self._ocpp_server: OCPPServer | None = None
+        self._ocpp_sessions: list = []
 
         # ML consumption predictor — cached across cycles so the retrain
         # gate can skip re-fitting when no new history has arrived.
@@ -1482,19 +1494,19 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         # Feed every newly-finalised forecast tracker record into the solar
         # corrector so it can learn per-hour accuracy factors and update the
         # intra-hour residual buffer.
-        for rec in self._forecast_tracker.records:
-            if not rec.finalised:
+        for frec in self._forecast_tracker.records:
+            if not frec.finalised:
                 continue
-            if rec.start in self._solar_corrector_processed:
+            if frec.start in self._solar_corrector_processed:
                 continue
 
             self._solar_corrector.update_hour(
-                rec.start.hour, rec.forecast_pv_kwh, rec.actual_pv_kwh
+                frec.start.hour, frec.forecast_pv_kwh, frec.actual_pv_kwh
             )
             self._solar_corrector.update_residual(
-                rec.forecast_pv_kwh, rec.actual_pv_kwh
+                frec.forecast_pv_kwh, frec.actual_pv_kwh
             )
-            self._solar_corrector_processed.add(rec.start)
+            self._solar_corrector_processed.add(frec.start)
 
         # -------------------------------------------------------------------
         # Prediction accuracy scorecard (issue #601)
@@ -1502,13 +1514,13 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         # Feed completed slots into the prediction accuracy tracker so the
         # sensor can report SoC MAE, solar MAPE, and action mix.
         if self._last_planner_output is not None:
-            for rec in self._forecast_tracker.records:
-                if not rec.finalised:
+            for frec in self._forecast_tracker.records:
+                if not frec.finalised:
                     continue
                 # Find the matching planner slot for this forecast record.
                 planner_slot = None
                 for slot in self._last_planner_output.slots:
-                    if slot.start == rec.start:
+                    if slot.start == frec.start:
                         planner_slot = slot
                         break
                 if planner_slot is None:
@@ -1517,11 +1529,11 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                     predicted_soc=planner_slot.estimated_battery_soc_pct,
                     actual_soc=live.huawei_batteries_soc_pct or 0.0,
                     predicted_pv=planner_slot.solcast_pv_estimate_kwh,
-                    actual_pv=rec.actual_pv_kwh,
+                    actual_pv=frec.actual_pv_kwh,
                     predicted_load=planner_slot.avg_house_consumption_kwh,
-                    actual_load=rec.actual_load_kwh,
+                    actual_load=frec.actual_load_kwh,
                     action=_action_label(planner_slot.recommendation),
-                    slot_start=rec.start,
+                    slot_start=frec.start,
                 )
 
     def _register_forecasts_from_planner(self, output: PlannerOutput) -> None:

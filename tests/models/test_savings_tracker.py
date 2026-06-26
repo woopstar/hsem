@@ -200,7 +200,7 @@ class TestSavingsTracker:
         assert result["total_actual"] == pytest.approx(0.80, rel=1e-4)
         assert result["today_baseline"] == pytest.approx(2.00, rel=1e-4)
 
-    def test_json_persistence_roundtrip(self, tmp_path) -> None:
+    def test_json_persistence_roundtrip(self, tmp_path: object) -> None:
         """JSON persistence should survive a round-trip."""
         import asyncio
 
@@ -276,7 +276,7 @@ class TestSavingsTracker:
         assert "2026-06-24" in st.daily
         assert "2026-06-25" in st.daily
 
-    def test_load_history_corrupted_file(self, tmp_path) -> None:
+    def test_load_history_corrupted_file(self, tmp_path: object) -> None:
         """Loading a corrupted file should not crash."""
         import asyncio
 

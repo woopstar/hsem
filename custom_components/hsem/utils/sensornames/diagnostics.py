@@ -490,3 +490,23 @@ def get_savings_tracker_sensor_unique_id(entry_id: str) -> str:
 def get_savings_tracker_sensor_entity_id() -> str:
     """Return the entity_id for the savings tracker sensor."""
     return f"sensor.{s(f'{DOMAIN}_savings_tracker_sensor')}"
+
+
+# Prediction Accuracy Sensor
+def get_prediction_accuracy_sensor_name() -> str:
+    """Return the display name for the prediction accuracy sensor."""
+    return "Prediction Accuracy"
+
+
+def get_prediction_accuracy_sensor_unique_id(entry_id: str) -> str:
+    """Return a unique ID for the prediction accuracy sensor.
+
+    Args:
+        entry_id: The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_prediction_accuracy_sensor"
+
+
+def get_prediction_accuracy_sensor_entity_id() -> str:
+    """Return the entity_id for the prediction accuracy sensor."""
+    return f"sensor.{s(f'{DOMAIN}_prediction_accuracy_sensor')}"

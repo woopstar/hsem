@@ -202,7 +202,10 @@ class OCPPServer:
                 if self._flap_state != "starting":
                     self._target_entered_at = now
                     self._flap_state = "starting"
-                elapsed = (now - self._target_entered_at).total_seconds()
+                target_at = self._target_entered_at
+                if target_at is None:
+                    target_at = now
+                elapsed = (now - target_at).total_seconds()
                 if elapsed >= self._start_window_s:
                     self._flap_state = "charging"
                     await self._send_set_charging_profile(
@@ -228,7 +231,10 @@ class OCPPServer:
                 if self._flap_state != "stopping":
                     self._zero_entered_at = now
                     self._flap_state = "stopping"
-                elapsed = (now - self._zero_entered_at).total_seconds()
+                zero_at = self._zero_entered_at
+                if zero_at is None:
+                    zero_at = now
+                elapsed = (now - zero_at).total_seconds()
                 if elapsed >= self._stop_window_s:
                     self._flap_state = "idle"
                     await self._send_remote_stop(session)
