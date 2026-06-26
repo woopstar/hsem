@@ -17,6 +17,7 @@ from custom_components.hsem.utils.sensornames.controls import (
     get_batteries_schedule_1_switch_key,
     get_batteries_schedule_2_switch_key,
     get_batteries_schedule_3_switch_key,
+    get_dynamic_discharge_floor_switch_key,
     get_extended_attributes_switch_key,
     get_read_only_switch_key,
     get_verbose_logging_switch_key,
@@ -104,6 +105,11 @@ SWITCH_DESCRIPTIONS: tuple[HSEMSwitchEntityDescription, ...] = (
         key=get_ml_sequential_switch_key(),
         icon="mdi:arrow-decision",
         translation_key="ml_sequential",
+    ),
+    HSEMSwitchEntityDescription(
+        key=get_dynamic_discharge_floor_switch_key(),
+        icon=_ICON_TOGGLE,
+        translation_key="dynamic_discharge_floor",
     ),
 )
 

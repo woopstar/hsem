@@ -19,6 +19,9 @@ from custom_components.hsem.utils.sensornames.controls import (
     get_batteries_schedule_3_switch_entity_id,
     get_batteries_schedule_3_switch_key,
     get_batteries_schedule_3_switch_unique_id,
+    get_dynamic_discharge_floor_switch_entity_id,
+    get_dynamic_discharge_floor_switch_key,
+    get_dynamic_discharge_floor_switch_unique_id,
     get_extended_attributes_switch_entity_id,
     get_extended_attributes_switch_key,
     get_extended_attributes_switch_unique_id,
@@ -117,6 +120,10 @@ def build_switch_id_map(entry_id: str) -> dict[str, tuple[str, str]]:
         get_ml_sequential_switch_key(): (
             get_ml_sequential_switch_unique_id(entry_id),
             get_ml_sequential_switch_entity_id(),
+        ),
+        get_dynamic_discharge_floor_switch_key(): (
+            get_dynamic_discharge_floor_switch_unique_id(entry_id),
+            get_dynamic_discharge_floor_switch_entity_id(),
         ),
     }
 

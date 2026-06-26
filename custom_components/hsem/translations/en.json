@@ -10,13 +10,13 @@
       "entity_not_found": "The selected entity was not found.",
       "entity_unavailable": "The selected entity is currently unavailable. Check the device or service.",
       "hsem_house_consumption_energy_weight_total": "The total of the house consumption energy weights must be 100%.",
-      "invalid_energy_value": "Invalid energy value — please enter a number.",
+      "invalid_energy_value": "Invalid energy value \u00e2\u20ac\u201d please enter a number.",
       "invalid_entity_id": "Invalid entity ID format. Expected \"domain.object_id\" with lowercase letters, digits, and underscores.",
       "invalid_month_value": "One or more month values are invalid. Months must be integers between 1 and 12.",
-      "invalid_power_value": "Invalid power value — please enter a number.",
-      "invalid_price_value": "Invalid price value — please enter a number.",
+      "invalid_power_value": "Invalid power value \u00e2\u20ac\u201d please enter a number.",
+      "invalid_price_value": "Invalid price value \u00e2\u20ac\u201d please enter a number.",
       "invalid_sensor": "Invalid input sensor. Please choose a valid sensor.",
-      "invalid_time_format": "Invalid time format — expected HH:MM:SS.",
+      "invalid_time_format": "Invalid time format \u00e2\u20ac\u201d expected HH:MM:SS.",
       "months_summer_empty": "At least one month must remain in summer. Assign fewer months to winter.",
       "months_winter_empty": "Winter season must have at least one month.",
       "only_one_entry_allowed": "Only one configuration of HSEM is allowed.",
@@ -24,7 +24,7 @@
       "price_out_of_range": "Price value is outside the allowed range.",
       "required": "This field is required.",
       "start_time_after_end_time": "Start time must be before end time.",
-      "start_time_equals_end_time": "Start time and end time cannot be the same — this creates a zero-length window. Disable the schedule instead."
+      "start_time_equals_end_time": "Start time and end time cannot be the same \u00e2\u20ac\u201d this creates a zero-length window. Disable the schedule instead."
     },
     "step": {
       "batteries_excess_export": {
@@ -52,7 +52,7 @@
           "hsem_ev_planned_load_battery_capacity_kwh": "Nameplate battery capacity of the EV in kWh.",
           "hsem_ev_planned_load_charger_power_kw": "AC output power of the EV charger in kW.",
           "hsem_ev_planned_load_charger_efficiency": "Charger efficiency as a percentage (1-100). Default: 100.",
-          "hsem_ev_planned_load_charger_min_power_w": "Minimum AC power (W) the EV charger needs to start charging. Below this the charger will not operate. Default: 1380 W (230 V × 6 A)."
+          "hsem_ev_planned_load_charger_min_power_w": "Minimum AC power (W) the EV charger needs to start charging. Below this the charger will not operate. Default: 1380 W (230 V \u00c3\u2014 6 A)."
         },
         "description": "Configure optional planned EV charging load integration. When enabled, HSEM accounts for upcoming EV charging demand per planner slot.",
         "title": "EV Planned Load Integration"
@@ -70,10 +70,28 @@
           "hsem_ev_second_planned_load_battery_capacity_kwh": "Nameplate battery capacity of the second EV in kWh.",
           "hsem_ev_second_planned_load_charger_power_kw": "AC output power of the second EV charger in kW.",
           "hsem_ev_second_planned_load_charger_efficiency": "Second EV charger efficiency as a percentage (1-100). Default: 100.",
-          "hsem_ev_second_planned_load_charger_min_power_w": "Minimum AC power (W) the second EV charger needs to start charging. Default: 1380 W (230 V × 6 A)."
+          "hsem_ev_second_planned_load_charger_min_power_w": "Minimum AC power (W) the second EV charger needs to start charging. Default: 1380 W (230 V \u00c3\u2014 6 A)."
         },
         "description": "Configure optional planned charging load integration for the second EV. Only shown when a second EV charger is enabled.",
         "title": "EV 2 Planned Load Integration"
+      },
+      "ocpp": {
+        "data": {
+          "hsem_ocpp_enabled": "Enable OCPP Server",
+          "hsem_ocpp_port": "OCPP Port",
+          "hsem_ocpp_cpid": "Charge Point ID",
+          "hsem_ocpp_start_window_s": "Start Window (s)",
+          "hsem_ocpp_stop_window_s": "Stop Window (s)"
+        },
+        "data_description": {
+          "hsem_ocpp_enabled": "Enable the embedded OCPP 1.6 WebSocket server for direct EV charger control. LAN-only \u2014 do not expose the port to the internet.",
+          "hsem_ocpp_port": "TCP port for the OCPP WebSocket server. Default: 9000. Must be above 1024.",
+          "hsem_ocpp_cpid": "Expected charge-point identifier of the EV charger. Leave empty to accept any charger.",
+          "hsem_ocpp_start_window_s": "Seconds of sustained surplus required before starting a charge. Prevents rapid start-stop cycling. Default: 60.",
+          "hsem_ocpp_stop_window_s": "Seconds of sustained shortage required before stopping a charge. Prevents rapid stop-start cycling. Default: 180."
+        },
+        "description": "Configure the embedded OCPP 1.6 server for LAN-only EV charger control. When enabled, HSEM sends SetChargingProfile commands directly to your EV charger based on the charging plan.",
+        "title": "OCPP Server"
       },
       "batteries_schedule_1": {
         "data": {
@@ -209,15 +227,15 @@
           "hsem_huawei_solar_inverter_active_power_control": "Huawei Inverter Active Power Control Sensor"
         },
         "data_description": {
-          "hsem_batteries_charge_efficiency": "Specify the charge-side efficiency of your battery as a percentage (0–100). Energy stored in the battery equals the input energy multiplied by this factor. Typical lithium batteries achieve 95–98 %. Defaults to 98 %.",
-          "hsem_batteries_discharge_efficiency": "Specify the discharge-side efficiency of your battery as a percentage (0–100). Energy delivered to the house equals the battery energy removed multiplied by this factor. Typical lithium batteries achieve 95–98 %. Defaults to 98 %.",
+          "hsem_batteries_charge_efficiency": "Specify the charge-side efficiency of your battery as a percentage (0\u00e2\u20ac\u201c100). Energy stored in the battery equals the input energy multiplied by this factor. Typical lithium batteries achieve 95\u00e2\u20ac\u201c98 %. Defaults to 98 %.",
+          "hsem_batteries_discharge_efficiency": "Specify the discharge-side efficiency of your battery as a percentage (0\u00e2\u20ac\u201c100). Energy delivered to the house equals the battery energy removed multiplied by this factor. Typical lithium batteries achieve 95\u00e2\u20ac\u201c98 %. Defaults to 98 %.",
           "hsem_batteries_cycle_cost": "Optional extra per-kWh cost of cycling the battery (EUR/kWh). Added on top of the auto-calculated depreciation threshold. Set to 0 to rely solely on the depreciation guard. Example: 0.02 means the planner requires 2 cent extra spread per kWh cycled before approving grid charging.",
-          "hsem_batteries_expected_cycles": "Enter the expected number of full charge/discharge cycles over the battery's lifetime. Used to calculate depreciation cost per kWh and the recommended minimum export price threshold. Typical LiFePO4 batteries support 4000–8000 cycles.",
+          "hsem_batteries_expected_cycles": "Enter the expected number of full charge/discharge cycles over the battery's lifetime. Used to calculate depreciation cost per kWh and the recommended minimum export price threshold. Typical LiFePO4 batteries support 4000\u00e2\u20ac\u201c8000 cycles.",
           "hsem_batteries_purchase_price": "Enter the total purchase price of your battery system in EUR. Used together with expected cycles and usable capacity to calculate the depreciation cost per kWh and the recommended minimum export price threshold.",
           "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Select the sensor that provides setting for excess PV energy use in TOU periods.",
           "hsem_huawei_solar_batteries_forcible_charge": "Sensor showing current forcible charge/discharge state (e.g. Stopped, Discharging at 5000W for 60 minutes)",
           "hsem_huawei_solar_batteries_end_of_discharge_soc": "Specify the end of discharge SOC percentage for your Huawei batteries. When the battery reaches this SOC level, it will stop discharging to prevent deep discharge and potential damage to the battery.",
-          "hsem_huawei_solar_batteries_charging_cutoff_capacity": "Select the entity that defines the maximum state of charge (SoC) the battery is allowed to reach during charging (register STORAGE_CHARGING_CUTOFF_CAPACITY). Typically 90–10 %. Used by the SoC simulation as the upper SoC ceiling so the planner never schedules charging beyond this limit.",
+          "hsem_huawei_solar_batteries_charging_cutoff_capacity": "Select the entity that defines the maximum state of charge (SoC) the battery is allowed to reach during charging (register STORAGE_CHARGING_CUTOFF_CAPACITY). Typically 90\u00e2\u20ac\u201c10\u00e2\u20ac\u00af%. Used by the SoC simulation as the upper SoC ceiling so the planner never schedules charging beyond this limit.",
           "hsem_huawei_solar_batteries_grid_charge_cutoff_soc": "Specify the grid charge cutoff SOC percentage for your Huawei batteries.",
           "hsem_huawei_solar_batteries_maximum_charging_power": "Select the sensor that provides the maximum charging power for your Huawei batteries in kilowatts (W).",
           "hsem_huawei_solar_batteries_maximum_discharging_power": "Select the sensor that provides the maximum discharging power for your Huawei batteries.",
@@ -244,11 +262,11 @@
         },
         "data_description": {
           "hsem_batteries_purchase_price": "Enter the total purchase price of your battery system in EUR. Used together with expected cycles and usable capacity to calculate the depreciation cost per kWh and the recommended minimum export price threshold.",
-          "hsem_batteries_expected_cycles": "Enter the expected number of full charge/discharge cycles over the battery's lifetime. Used to calculate depreciation cost per kWh and the recommended minimum export price threshold. Typical LiFePO4 batteries support 4000–8000 cycles.",
+          "hsem_batteries_expected_cycles": "Enter the expected number of full charge/discharge cycles over the battery's lifetime. Used to calculate depreciation cost per kWh and the recommended minimum export price threshold. Typical LiFePO4 batteries support 4000\u00e2\u20ac\u201c8000 cycles.",
           "hsem_batteries_cycle_cost": "Optional extra per-kWh cost of cycling the battery (EUR/kWh). Added on top of the auto-calculated depreciation threshold. Set to 0 to rely solely on the depreciation guard. Example: 0.02 means the planner requires 2 cent extra spread per kWh cycled before approving grid charging.",
           "hsem_batteries_capacity_loss_pct": "Expected capacity loss at end-of-life as a percentage. LiFePO4 typically reaches 80% capacity after ~6000 cycles (20% loss). Default 30% adds margin for calendar ageing.",
-          "hsem_batteries_charge_efficiency": "Specify the charge-side efficiency of your battery as a percentage (0–100). Energy stored in the battery equals the input energy multiplied by this factor. Typical lithium batteries achieve 95–98 %. Defaults to 98 %.",
-          "hsem_batteries_discharge_efficiency": "Specify the discharge-side efficiency of your battery as a percentage (0–100). Energy delivered to the house equals the battery energy removed multiplied by this factor. Typical lithium batteries achieve 95–98 %. Defaults to 98 %."
+          "hsem_batteries_charge_efficiency": "Specify the charge-side efficiency of your battery as a percentage (0\u00e2\u20ac\u201c100). Energy stored in the battery equals the input energy multiplied by this factor. Typical lithium batteries achieve 95\u00e2\u20ac\u201c98 %. Defaults to 98 %.",
+          "hsem_batteries_discharge_efficiency": "Specify the discharge-side efficiency of your battery as a percentage (0\u00e2\u20ac\u201c100). Energy delivered to the house equals the battery energy removed multiplied by this factor. Typical lithium batteries achieve 95\u00e2\u20ac\u201c98 %. Defaults to 98 %."
         },
         "description": "Configure battery economics parameters that affect depreciation calculations and round-trip efficiency.",
         "title": "Battery Economics"
@@ -394,14 +412,14 @@
           "hsem_ml_consumption_sequential": "Sequential prediction (lag feature)"
         },
         "data_description": {
-          "hsem_grid_import_energy_entity": "Optional—cumulative grid import energy meter (kWh).",
-          "hsem_grid_export_energy_entity": "Optional—cumulative grid export energy meter (kWh).",
-          "hsem_pv_energy_entity": "Optional—cumulative PV production energy meter (kWh).",
+          "hsem_grid_import_energy_entity": "Optional\u00e2\u20ac\u201dcumulative grid import energy meter (kWh).",
+          "hsem_grid_export_energy_entity": "Optional\u00e2\u20ac\u201dcumulative grid export energy meter (kWh).",
+          "hsem_pv_energy_entity": "Optional\u00e2\u20ac\u201dcumulative PV production energy meter (kWh).",
           "hsem_ml_consumption_enabled": "When enabled, uses ridge regression on recorder history instead of rolling averages. Requires 14+ days of history.",
           "hsem_ml_consumption_energy_entity": "Cumulative house consumption energy meter (kWh). Must exclude battery AND EV charging - use a sensor upstream of both. Falls back to grid import if not set.",
-          "hsem_ml_consumption_history_days": "Days of recorder history for ML training (7–90).",
+          "hsem_ml_consumption_history_days": "Days of recorder history for ML training (7\u00e2\u20ac\u201c90).",
           "hsem_ml_consumption_net_consumption": "Subtract grid export from import for net house consumption.",
-          "hsem_ml_consumption_temperature_entity": "Optional—outdoor temperature sensor in °C. Use an outdoor sensor, not an indoor thermostat.",
+          "hsem_ml_consumption_temperature_entity": "Optional\u00e2\u20ac\u201doutdoor temperature sensor in \u00c2\u00b0C. Use an outdoor sensor, not an indoor thermostat.",
           "hsem_ml_consumption_sequential": "Feed each slot prediction as input to the next. Captures intra-hour momentum (e.g. cooking spikes carry forward)."
         },
         "description": "Configure energy meters and enable ML-based consumption prediction.",
@@ -416,13 +434,13 @@
       "entity_not_found": "The selected entity was not found.",
       "entity_unavailable": "The selected entity is currently unavailable. Check the device or service.",
       "hsem_house_consumption_energy_weight_total": "The total of the house consumption energy weights must be 100%.",
-      "invalid_energy_value": "Invalid energy value — please enter a number.",
+      "invalid_energy_value": "Invalid energy value \u00e2\u20ac\u201d please enter a number.",
       "invalid_entity_id": "Invalid entity ID format. Expected \"domain.object_id\" with lowercase letters, digits, and underscores.",
       "invalid_month_value": "One or more month values are invalid. Months must be integers between 1 and 12.",
-      "invalid_power_value": "Invalid power value — please enter a number.",
-      "invalid_price_value": "Invalid price value — please enter a number.",
+      "invalid_power_value": "Invalid power value \u00e2\u20ac\u201d please enter a number.",
+      "invalid_price_value": "Invalid price value \u00e2\u20ac\u201d please enter a number.",
       "invalid_sensor": "Invalid input sensor. Please choose a valid sensor.",
-      "invalid_time_format": "Invalid time format — expected HH:MM:SS.",
+      "invalid_time_format": "Invalid time format \u00e2\u20ac\u201d expected HH:MM:SS.",
       "months_summer_empty": "At least one month must remain in summer. Assign fewer months to winter.",
       "months_winter_empty": "Winter season must have at least one month.",
       "only_one_entry_allowed": "Only one configuration of HSEM is allowed.",
@@ -430,7 +448,7 @@
       "price_out_of_range": "Price value is outside the allowed range.",
       "required": "This field is required.",
       "start_time_after_end_time": "Start time must be before end time.",
-      "start_time_equals_end_time": "Start time and end time cannot be the same — this creates a zero-length window. Disable the schedule instead."
+      "start_time_equals_end_time": "Start time and end time cannot be the same \u00e2\u20ac\u201d this creates a zero-length window. Disable the schedule instead."
     },
     "step": {
       "batteries_excess_export": {
@@ -458,7 +476,7 @@
           "hsem_ev_planned_load_battery_capacity_kwh": "Nameplate battery capacity of the EV in kWh.",
           "hsem_ev_planned_load_charger_power_kw": "AC output power of the EV charger in kW.",
           "hsem_ev_planned_load_charger_efficiency": "Charger efficiency as a percentage (1-100). Default: 100.",
-          "hsem_ev_planned_load_charger_min_power_w": "Minimum AC power (W) the EV charger needs to start charging. Below this the charger will not operate. Default: 1380 W (230 V × 6 A)."
+          "hsem_ev_planned_load_charger_min_power_w": "Minimum AC power (W) the EV charger needs to start charging. Below this the charger will not operate. Default: 1380 W (230 V \u00c3\u2014 6 A)."
         },
         "description": "Configure optional planned EV charging load integration. When enabled, HSEM accounts for upcoming EV charging demand per planner slot.",
         "title": "EV Planned Load Integration"
@@ -476,10 +494,28 @@
           "hsem_ev_second_planned_load_battery_capacity_kwh": "Nameplate battery capacity of the second EV in kWh.",
           "hsem_ev_second_planned_load_charger_power_kw": "AC output power of the second EV charger in kW.",
           "hsem_ev_second_planned_load_charger_efficiency": "Second EV charger efficiency as a percentage (1-100). Default: 100.",
-          "hsem_ev_second_planned_load_charger_min_power_w": "Minimum AC power (W) the second EV charger needs to start charging. Default: 1380 W (230 V × 6 A)."
+          "hsem_ev_second_planned_load_charger_min_power_w": "Minimum AC power (W) the second EV charger needs to start charging. Default: 1380 W (230 V \u00c3\u2014 6 A)."
         },
         "description": "Configure optional planned charging load integration for the second EV. Only shown when a second EV charger is enabled.",
         "title": "EV 2 Planned Load Integration"
+      },
+      "ocpp": {
+        "data": {
+          "hsem_ocpp_enabled": "Enable OCPP Server",
+          "hsem_ocpp_port": "OCPP Port",
+          "hsem_ocpp_cpid": "Charge Point ID",
+          "hsem_ocpp_start_window_s": "Start Window (s)",
+          "hsem_ocpp_stop_window_s": "Stop Window (s)"
+        },
+        "data_description": {
+          "hsem_ocpp_enabled": "Enable the embedded OCPP 1.6 WebSocket server for direct EV charger control. LAN-only \u2014 do not expose the port to the internet.",
+          "hsem_ocpp_port": "TCP port for the OCPP WebSocket server. Default: 9000. Must be above 1024.",
+          "hsem_ocpp_cpid": "Expected charge-point identifier of the EV charger. Leave empty to accept any charger.",
+          "hsem_ocpp_start_window_s": "Seconds of sustained surplus required before starting a charge. Prevents rapid start-stop cycling. Default: 60.",
+          "hsem_ocpp_stop_window_s": "Seconds of sustained shortage required before stopping a charge. Prevents rapid stop-start cycling. Default: 180."
+        },
+        "description": "Configure the embedded OCPP 1.6 server for LAN-only EV charger control. When enabled, HSEM sends SetChargingProfile commands directly to your EV charger based on the charging plan.",
+        "title": "OCPP Server"
       },
       "batteries_schedule_1": {
         "data": {
@@ -615,15 +651,15 @@
           "hsem_huawei_solar_inverter_active_power_control": "Huawei Inverter Active Power Control Sensor"
         },
         "data_description": {
-          "hsem_batteries_charge_efficiency": "Specify the charge-side efficiency of your battery as a percentage (0–100). Energy stored in the battery equals the input energy multiplied by this factor. Typical lithium batteries achieve 95–98 %. Defaults to 98 %.",
-          "hsem_batteries_discharge_efficiency": "Specify the discharge-side efficiency of your battery as a percentage (0–100). Energy delivered to the house equals the battery energy removed multiplied by this factor. Typical lithium batteries achieve 95–98 %. Defaults to 98 %.",
+          "hsem_batteries_charge_efficiency": "Specify the charge-side efficiency of your battery as a percentage (0\u00e2\u20ac\u201c100). Energy stored in the battery equals the input energy multiplied by this factor. Typical lithium batteries achieve 95\u00e2\u20ac\u201c98 %. Defaults to 98 %.",
+          "hsem_batteries_discharge_efficiency": "Specify the discharge-side efficiency of your battery as a percentage (0\u00e2\u20ac\u201c100). Energy delivered to the house equals the battery energy removed multiplied by this factor. Typical lithium batteries achieve 95\u00e2\u20ac\u201c98 %. Defaults to 98 %.",
           "hsem_batteries_cycle_cost": "Optional extra per-kWh cost of cycling the battery (EUR/kWh). Added on top of the auto-calculated depreciation threshold. Set to 0 to rely solely on the depreciation guard. Example: 0.02 means the planner requires 2 cent extra spread per kWh cycled before approving grid charging.",
-          "hsem_batteries_expected_cycles": "Enter the expected number of full charge/discharge cycles over the battery's lifetime. Used to calculate depreciation cost per kWh and the recommended minimum export price threshold. Typical LiFePO4 batteries support 4000–8000 cycles.",
+          "hsem_batteries_expected_cycles": "Enter the expected number of full charge/discharge cycles over the battery's lifetime. Used to calculate depreciation cost per kWh and the recommended minimum export price threshold. Typical LiFePO4 batteries support 4000\u00e2\u20ac\u201c8000 cycles.",
           "hsem_batteries_purchase_price": "Enter the total purchase price of your battery system in EUR. Used together with expected cycles and usable capacity to calculate the depreciation cost per kWh and the recommended minimum export price threshold.",
           "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Select the sensor that provides setting for excess PV energy use in TOU periods.",
           "hsem_huawei_solar_batteries_forcible_charge": "Sensor showing current forcible charge/discharge state (e.g. Stopped, Discharging at 5000W for 60 minutes)",
           "hsem_huawei_solar_batteries_end_of_discharge_soc": "Specify the end of discharge SOC percentage for your Huawei batteries. When the battery reaches this SOC level, it will stop discharging to prevent deep discharge and potential damage to the battery.",
-          "hsem_huawei_solar_batteries_charging_cutoff_capacity": "Select the entity that defines the maximum state of charge (SoC) the battery is allowed to reach during charging (register STORAGE_CHARGING_CUTOFF_CAPACITY). Typically 90–10 %. Used by the SoC simulation as the upper SoC ceiling so the planner never schedules charging beyond this limit.",
+          "hsem_huawei_solar_batteries_charging_cutoff_capacity": "Select the entity that defines the maximum state of charge (SoC) the battery is allowed to reach during charging (register STORAGE_CHARGING_CUTOFF_CAPACITY). Typically 90\u00e2\u20ac\u201c10\u00e2\u20ac\u00af%. Used by the SoC simulation as the upper SoC ceiling so the planner never schedules charging beyond this limit.",
           "hsem_huawei_solar_batteries_grid_charge_cutoff_soc": "Specify the grid charge cutoff SOC percentage for your Huawei batteries.",
           "hsem_huawei_solar_batteries_maximum_charging_power": "Select the sensor that provides the maximum charging power for your Huawei batteries in kilowatts (W).",
           "hsem_huawei_solar_batteries_maximum_discharging_power": "Select the sensor that provides the maximum discharging power for your Huawei batteries.",
@@ -650,11 +686,11 @@
         },
         "data_description": {
           "hsem_batteries_purchase_price": "Enter the total purchase price of your battery system in EUR. Used together with expected cycles and usable capacity to calculate the depreciation cost per kWh and the recommended minimum export price threshold.",
-          "hsem_batteries_expected_cycles": "Enter the expected number of full charge/discharge cycles over the battery's lifetime. Used to calculate depreciation cost per kWh and the recommended minimum export price threshold. Typical LiFePO4 batteries support 4000–8000 cycles.",
+          "hsem_batteries_expected_cycles": "Enter the expected number of full charge/discharge cycles over the battery's lifetime. Used to calculate depreciation cost per kWh and the recommended minimum export price threshold. Typical LiFePO4 batteries support 4000\u00e2\u20ac\u201c8000 cycles.",
           "hsem_batteries_cycle_cost": "Optional extra per-kWh cost of cycling the battery (EUR/kWh). Added on top of the auto-calculated depreciation threshold. Set to 0 to rely solely on the depreciation guard. Example: 0.02 means the planner requires 2 cent extra spread per kWh cycled before approving grid charging.",
           "hsem_batteries_capacity_loss_pct": "Expected capacity loss at end-of-life as a percentage. LiFePO4 typically reaches 80% capacity after ~6000 cycles (20% loss). Default 30% adds margin for calendar ageing.",
-          "hsem_batteries_charge_efficiency": "Specify the charge-side efficiency of your battery as a percentage (0–100). Energy stored in the battery equals the input energy multiplied by this factor. Typical lithium batteries achieve 95–98 %. Defaults to 98 %.",
-          "hsem_batteries_discharge_efficiency": "Specify the discharge-side efficiency of your battery as a percentage (0–100). Energy delivered to the house equals the battery energy removed multiplied by this factor. Typical lithium batteries achieve 95–98 %. Defaults to 98 %."
+          "hsem_batteries_charge_efficiency": "Specify the charge-side efficiency of your battery as a percentage (0\u00e2\u20ac\u201c100). Energy stored in the battery equals the input energy multiplied by this factor. Typical lithium batteries achieve 95\u00e2\u20ac\u201c98 %. Defaults to 98 %.",
+          "hsem_batteries_discharge_efficiency": "Specify the discharge-side efficiency of your battery as a percentage (0\u00e2\u20ac\u201c100). Energy delivered to the house equals the battery energy removed multiplied by this factor. Typical lithium batteries achieve 95\u00e2\u20ac\u201c98 %. Defaults to 98 %."
         },
         "description": "Configure battery economics parameters that affect depreciation calculations and round-trip efficiency.",
         "title": "Battery Economics"
@@ -776,14 +812,14 @@
           "hsem_ml_consumption_sequential": "Sequential prediction (lag feature)"
         },
         "data_description": {
-          "hsem_grid_import_energy_entity": "Optional—cumulative grid import energy meter (kWh).",
-          "hsem_grid_export_energy_entity": "Optional—cumulative grid export energy meter (kWh).",
-          "hsem_pv_energy_entity": "Optional—cumulative PV production energy meter (kWh).",
+          "hsem_grid_import_energy_entity": "Optional\u00e2\u20ac\u201dcumulative grid import energy meter (kWh).",
+          "hsem_grid_export_energy_entity": "Optional\u00e2\u20ac\u201dcumulative grid export energy meter (kWh).",
+          "hsem_pv_energy_entity": "Optional\u00e2\u20ac\u201dcumulative PV production energy meter (kWh).",
           "hsem_ml_consumption_enabled": "When enabled, uses ridge regression on recorder history instead of rolling averages. Requires 14+ days of history.",
           "hsem_ml_consumption_energy_entity": "Cumulative house consumption energy meter (kWh). Must exclude battery AND EV charging - use a sensor upstream of both. Falls back to grid import if not set.",
-          "hsem_ml_consumption_history_days": "Days of recorder history for ML training (7–90).",
+          "hsem_ml_consumption_history_days": "Days of recorder history for ML training (7\u00e2\u20ac\u201c90).",
           "hsem_ml_consumption_net_consumption": "Subtract grid export from import for net house consumption.",
-          "hsem_ml_consumption_temperature_entity": "Optional—outdoor temperature sensor in °C. Use an outdoor sensor, not an indoor thermostat.",
+          "hsem_ml_consumption_temperature_entity": "Optional\u00e2\u20ac\u201doutdoor temperature sensor in \u00c2\u00b0C. Use an outdoor sensor, not an indoor thermostat.",
           "hsem_ml_consumption_sequential": "Feed each slot prediction as input to the next. Captures intra-hour momentum (e.g. cooking spikes carry forward)."
         },
         "description": "Configure energy meters and enable ML-based consumption prediction.",
@@ -894,6 +930,21 @@
       },
       "working_mode": {
         "name": "Working Mode Sensor"
+      },
+      "effective_discharge_floor": {
+        "name": "Effective Discharge Floor"
+      },
+      "ocpp_charger_status": {
+        "name": "OCPP Charger Status"
+      },
+      "ocpp_charger_power": {
+        "name": "OCPP Charger Power"
+      },
+      "ocpp_charger_info": {
+        "name": "OCPP Charger Info"
+      },
+      "ocpp_charger_sessions": {
+        "name": "OCPP Charger Sessions"
       }
     },
     "switch": {
@@ -935,6 +986,9 @@
       },
       "ml_sequential": {
         "name": "ML sequential prediction"
+      },
+      "dynamic_discharge_floor": {
+        "name": "Dynamic Discharge Floor"
       }
     },
     "select": {
