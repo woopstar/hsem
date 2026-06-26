@@ -1003,7 +1003,9 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             ocpp_chargers=ocpp_chargers,
             ocpp_sessions=ocpp_sessions,
             capacity_learner=getattr(self, "_capacity_learner", CapacityLearner()),
-            solar_hour_factors=dict(self._solar_corrector.hour_factors),
+            solar_hour_factors=dict(
+                getattr(self, "_solar_corrector", SolarForecastCorrector()).hour_factors
+            ),
             effective_discharge_floor_pct=self._effective_discharge_floor_pct,
             effective_discharge_floor_diag=(
                 dict(self._effective_discharge_floor_diag)

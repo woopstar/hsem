@@ -456,9 +456,17 @@ class TestMaxRecordsPruning:
         start_1 = _slot_start(hour=1)
         start_2 = _slot_start(hour=2)
 
-        tracker.add_record(**_make_record_args(hour=0), slot_start=start_0)
-        tracker.add_record(**_make_record_args(hour=1), slot_start=start_1)
-        tracker.add_record(**_make_record_args(hour=2), slot_start=start_2)
+        # Build args dicts and override slot_start for this test.
+        a0 = _make_record_args(hour=0)
+        a0["slot_start"] = start_0
+        a1 = _make_record_args(hour=1)
+        a1["slot_start"] = start_1
+        a2 = _make_record_args(hour=2)
+        a2["slot_start"] = start_2
+
+        tracker.add_record(**a0)
+        tracker.add_record(**a1)
+        tracker.add_record(**a2)
 
         # start_0 should be pruned
         assert start_0 not in tracker._recorded_starts
@@ -466,7 +474,9 @@ class TestMaxRecordsPruning:
         assert start_2 in tracker._recorded_starts
 
         # Adding start_0 again should work (it was pruned)
-        tracker.add_record(**_make_record_args(hour=0), slot_start=start_0)
+        a0_again = _make_record_args(hour=0)
+        a0_again["slot_start"] = start_0
+        tracker.add_record(**a0_again)
         assert len(tracker.records) == 3  # start_1, start_2, start_0
 
 
