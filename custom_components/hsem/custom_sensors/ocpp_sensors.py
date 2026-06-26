@@ -225,7 +225,7 @@ class HSEMOCPPChargerPowerSensor(
             return self._restored_state or "0.0"
 
         first = next(iter(data.ocpp_chargers.values()))
-        return float(round(first.current_power_w / 1000.0, 2))
+        return float(round(first.current_power_w / 1000.0, 2))  # type: ignore[no-any-return]
 
     @property
     @override

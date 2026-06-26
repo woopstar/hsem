@@ -201,9 +201,9 @@ class CoordinatorData:
     #: Financial tracker with cumulative import cost and export income.
     financial_tracker: FinancialTracker | None = None
     #: OCPP charger session dict (CPID → ChargerSession) for sensor entities.
-    ocpp_chargers: dict[str, Any] | None = None
+    ocpp_chargers: dict | None = None
     #: OCPP completed session log for the sessions sensor.
-    ocpp_sessions: list[dict[str, Any]] | None = None
+    ocpp_sessions: list | None = None
 
 
 # ---------------------------------------------------------------------------
