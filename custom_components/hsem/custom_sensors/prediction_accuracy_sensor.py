@@ -71,6 +71,12 @@ class HSEMPredictionAccuracySensor(
 
     @property
     @override
+    def should_poll(self) -> bool:
+        """No polling — driven by the coordinator."""
+        return False
+
+    @property
+    @override
     def native_value(self) -> str | float | None:
         """Return the sensor state.
 
