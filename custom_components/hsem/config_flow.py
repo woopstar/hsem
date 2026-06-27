@@ -46,6 +46,10 @@ from custom_components.hsem.flows.init import (
     validate_init_step_input,
 )
 from custom_components.hsem.flows.months import get_months_schema, validate_months_input
+from custom_components.hsem.flows.ocpp import (
+    get_ocpp_step_schema,
+    validate_ocpp_step_input,
+)
 from custom_components.hsem.flows.power import (
     get_power_step_schema,
     validate_power_step_input,
@@ -453,7 +457,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
                 self._user_input.update(user_input)
                 if bool(self._user_input.get("hsem_ev_second_enabled")):
                     return await self.async_step_ev_second_planned_load()
-                return await self.async_step_batteries_schedules()
+                return await self.async_step_ocpp()
 
         data_schema = await get_ev_planned_load_step_schema(None)
 
@@ -477,12 +481,36 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
             errors = await validate_ev_second_planned_load_input(self.hass, user_input)
             if not errors:
                 self._user_input.update(user_input)
-                return await self.async_step_batteries_schedules()
+                return await self.async_step_ocpp()
 
         data_schema = await get_ev_second_planned_load_step_schema(None)
 
         return self.async_show_form(
             step_id="ev_second_planned_load",
+            data_schema=data_schema,
+            errors=errors,
+            last_step=False,
+        )
+
+    async def async_step_ocpp(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle the ocpp config flow step.
+
+        Validates user input and advances to the next step in the config flow.
+        """
+        errors = {}
+
+        if user_input is not None:
+            errors = await validate_ocpp_step_input(self.hass, user_input)
+            if not errors:
+                self._user_input.update(user_input)
+                return await self.async_step_batteries_schedules()
+
+        data_schema = await get_ocpp_step_schema(None)
+
+        return self.async_show_form(
+            step_id="ocpp",
             data_schema=data_schema,
             errors=errors,
             last_step=False,

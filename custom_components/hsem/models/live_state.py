@@ -145,6 +145,11 @@ class LiveState:
     huawei_batteries_forcible_charge_state: str | None = None
     huawei_inverter_active_power_control: str | None = None
 
+    # BMS-reported remaining energy (kWh).  Populated by state_collector
+    # from the inverter or computed from SoC × rated capacity as a fallback.
+    # Used by CapacityLearner for auto-detecting the true usable capacity.
+    bms_kwh_remaining: float | None = None
+
     # TOU periods
     tou_periods: TouPeriodsState = field(default_factory=TouPeriodsState)
 
