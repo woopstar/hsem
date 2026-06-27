@@ -247,3 +247,11 @@ class PlannerInput:
 
     # --- optional extra context that tests may inspect ---
     extra: dict[str, Any] = field(default_factory=dict)
+
+    # --- session-aware EV demand (issue #615) ---
+    #: Current session charge power for the primary EV in kW, or None when
+    #: the EV is not actively charging.  When set, the MILP treats the first
+    #: 2 hours of EV slots as certain demand at this power level.
+    ev_session_charge_kw: float | None = None
+    #: Same as above for the second EV.
+    ev_second_session_charge_kw: float | None = None
