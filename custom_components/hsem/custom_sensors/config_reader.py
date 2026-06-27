@@ -420,6 +420,11 @@ def build_sensor_config(
         _s2_min if _s2_min is not None else 1380.0
     )
 
+    # EV auto-Full on negative price (issue #609)
+    cfg.ev_auto_full_negative_price = convert_to_boolean(
+        get_config_value(config_entry, "hsem_ev_auto_full_negative_price")
+    )
+
     # Daily plan-vs-actual tracking — optional cumulative energy meter entities.
     cfg.grid_import_energy_entity = _optional_entity(
         get_config_value(config_entry, "hsem_grid_import_energy_entity")
