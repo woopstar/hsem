@@ -184,7 +184,7 @@ def _is_directly_limited(power_control_state: str | None) -> bool:
     return power_control_state.strip().lower() not in _UNLIMITED_STATES
 
 
-def _is_derived_curtailment(live) -> bool:
+def _is_derived_curtailment(live: object) -> bool:
     """Return True if derived heuristics indicate curtailment.
 
     Curtailment is likely when:

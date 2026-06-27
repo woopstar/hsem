@@ -54,7 +54,6 @@ class ChargeRateLearner:
     MAX_SAMPLES_PER_BUCKET: int = field(default=100, init=False)
     """Maximum number of samples retained per bucket (FIFO)."""
 
-    @property
     def learned_charge_rate_w(self, bucket_name: str) -> float | None:
         """Return the learned p90 charge rate for a bucket, or None."""
         return self.learned_rates.get(bucket_name)

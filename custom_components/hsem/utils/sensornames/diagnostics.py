@@ -428,3 +428,19 @@ def get_daily_plan_vs_actual_sensor_unique_id(entry_id: str) -> str:
 def get_daily_plan_vs_actual_sensor_entity_id() -> str:
     """Return the entity_id for the daily plan-vs-actual sensor."""
     return f"sensor.{s(get_daily_plan_vs_actual_sensor_key())}"
+
+
+# PV Curtailment Sensor (issue #611)
+def get_pv_curtailment_sensor_name() -> str:
+    """Return the display name for the PV curtailment sensor."""
+    return "PV Curtailment"
+
+
+def get_pv_curtailment_sensor_unique_id(entry_id: str) -> str:
+    """Return a unique ID for the PV curtailment sensor."""
+    return f"{DOMAIN}_{entry_id}_pv_curtailment_sensor"
+
+
+def get_pv_curtailment_sensor_entity_id() -> str:
+    """Return the entity_id for the PV curtailment sensor."""
+    return f"sensor.{s(f'{DOMAIN}_pv_curtailment_sensor')}"
