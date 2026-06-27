@@ -25,15 +25,18 @@ from custom_components.hsem.utils.prediction_tracker import (
 NEVER = datetime(2099, 1, 1, tzinfo=UTC)
 
 
-def _slot_start(hour: int, minute: int = 0) -> datetime:
-    """Create a timezone-aware slot start time."""
-    return datetime(2024, 6, 15, hour, minute, tzinfo=UTC)
+def _slot_start(hour: int, minute: int = 0, day_offset: int = 0) -> datetime:
+    """Create a timezone-aware slot start time with optional day offset."""
+    from datetime import timedelta
+
+    return datetime(2024, 6, 15, hour, minute, tzinfo=UTC) + timedelta(days=day_offset)
 
 
 def _make_record_args(
     hour: int,
     minute: int = 0,
     *,
+    day_offset: int = 0,
     predicted_soc: float = 50.0,
     actual_soc: float = 52.0,
     predicted_pv: float = 0.5,
@@ -51,7 +54,7 @@ def _make_record_args(
         "predicted_load": predicted_load,
         "actual_load": actual_load,
         "action": action,
-        "slot_start": _slot_start(hour, minute),
+        "slot_start": _slot_start(hour, minute, day_offset),
     }
 
 
@@ -269,11 +272,13 @@ class TestSoCMAE:
         # This simulates a regime change in prediction accuracy after ~1.3d.
         for i in range(800):
             error = 5.0 if i < 128 else 2.0
+            day = i // 96  # 96 slots per day
             slot_hour = (i // 4) % 24
             tracker.add_record(
                 **_make_record_args(
                     hour=slot_hour,
                     minute=(i % 4) * 15,
+                    day_offset=day,
                     predicted_soc=50.0,
                     actual_soc=50.0 + error,
                 )
