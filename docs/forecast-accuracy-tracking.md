@@ -39,6 +39,10 @@ perfect.  The forecast accuracy tracking system:
 
 - It does **not** change planner behaviour — no adaptive corrections,
   no confidence weighting, no feedback into the cost function.
+  (The new :class:`~custom_components.hsem.utils.solar_corrector.SolarForecastCorrector`
+  introduced in issue #602 **does** apply learned per-hour accuracy corrections
+  to PV forecasts before they enter the planner — but the tracker itself
+  remains purely diagnostic.)
 - It does **not** require any new configuration options or feature flags.
 - It does **not** write to the inverter or any hardware.
 - It does **not** depend on Home Assistant — the core tracker is pure Python
@@ -212,6 +216,8 @@ Called every cycle **after** state collection.  Steps:
 4. Convert instantaneous PV and load power to energy using `compute_accumulated_energy()`.
 5. Accumulate the energy into the tracker record.
 6. Call `finalise_past_records(now)` to finalise any slots that have ended.
+7. Feed every newly-finalised record into the `SolarForecastCorrector` (issue #602)
+   so it can learn per-hour accuracy factors from actual-vs-forecast PV ratios.
 
 ### `_register_forecasts_from_planner(output)`
 

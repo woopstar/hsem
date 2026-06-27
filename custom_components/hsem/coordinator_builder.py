@@ -28,6 +28,7 @@ from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.price_point import PricePoint
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.models.solcast_slot import SolcastSlot
+from custom_components.hsem.utils.capacity_learner import CapacityLearner
 from custom_components.hsem.utils.conversion import convert_to_float, convert_to_int
 from custom_components.hsem.utils.datetime_utils import now as hsem_now
 from custom_components.hsem.utils.misc import calculate_recommended_threshold
@@ -46,6 +47,8 @@ def build_planner_input(
     previous_winner_name: str | None,
     previous_winner_score: float,
     ev_session_kw: dict[str, float] | None = None,
+    capacity_learner: CapacityLearner | None = None,
+    dynamic_discharge_floor_pct: float | None = None,
 ) -> PlannerInput:
     """Assemble a :class:`PlannerInput` from the coordinator's current pipeline state.
 
@@ -212,7 +215,12 @@ def build_planner_input(
         excess_export_price_threshold=calculate_recommended_threshold(
             purchase_price=convert_to_float(cfg.batteries_purchase_price) or 0.0,
             expected_cycles=_cycles if _cycles is not None else 6000,
-            usable_capacity=live.battery_usable_capacity_kwh,
+            usable_capacity=(
+                capacity_learner.learned_capacity_kwh
+                if capacity_learner is not None
+                and capacity_learner.learned_capacity_kwh is not None
+                else live.battery_usable_capacity_kwh
+            ),
         ),
         export_min_price=convert_to_float(cfg.export_electricity_min_price) or 0.0,
         main_fuse_amps=(float(cfg.main_fuse_amps) if cfg.main_fuse_amps > 0 else None),
@@ -312,6 +320,7 @@ def build_planner_input(
         ev_second_session_charge_kw=(
             ev_session_kw.get("ev_second") if ev_session_kw else None
         ),
+        dynamic_discharge_floor_pct=dynamic_discharge_floor_pct,
     )
 
 

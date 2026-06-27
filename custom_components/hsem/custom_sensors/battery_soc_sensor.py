@@ -143,12 +143,17 @@ class HSEMBatterySoCSensor(
                 "end_of_discharge_soc_pct": None,
             }
         live = data.live
-        return {
+        attrs: dict[str, Any] = {
             "battery_current_capacity_kwh": live.battery_current_capacity_kwh,
             "battery_usable_capacity_kwh": live.battery_usable_capacity_kwh,
             "battery_rated_capacity_wh": live.huawei_batteries_rated_capacity_wh,
             "end_of_discharge_soc_pct": live.huawei_batteries_end_of_discharge_soc_pct,
         }
+        # Expose capacity learner metrics when available.
+        if data.capacity_learner is not None:
+            attrs["learned_capacity_kwh"] = data.capacity_learner.learned_capacity_kwh
+            attrs["capacity_samples"] = data.capacity_learner.sample_count
+        return attrs
 
     # ------------------------------------------------------------------
     # HA lifecycle

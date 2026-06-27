@@ -91,7 +91,13 @@ def _populate_slots(
         inp.interval_length_hours,
     )
     populate_prices(slots, inp.price_points, tsi)
-    populate_solcast(slots, inp.solcast_slots, inp.interval_minutes, tsi)
+    populate_solcast(
+        slots,
+        inp.solcast_slots,
+        inp.interval_minutes,
+        tsi,
+        corrector=inp.solar_corrector,
+    )
     populate_consumption(
         slots,
         inp.consumption_averages,
@@ -763,10 +769,26 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         inp.interval_minutes,
         inp.interval_length_hours,
     )
+    # Dynamic discharge floor (issue #600): when enabled and higher than the
+    # configured minimum, use it as the effective discharge floor.  This
+    # reduces usable capacity and current capacity above the floor, which
+    # naturally limits export and preserves reserve energy.
+    _effective_eod_soc = inp.battery_end_of_discharge_soc_pct
+    if (
+        inp.dynamic_discharge_floor_pct is not None
+        and inp.dynamic_discharge_floor_pct > _effective_eod_soc
+    ):
+        _effective_eod_soc = inp.dynamic_discharge_floor_pct
+        log_planner(
+            "debug",
+            "[core] Dynamic discharge floor active: %.1f%% (configured min: %.1f%%)",
+            _effective_eod_soc,
+            inp.battery_end_of_discharge_soc_pct,
+        )
     usable_kwh, current_kwh = usable_capacity(
         inp.battery_rated_capacity_kwh,
         inp.battery_soc_pct,
-        inp.battery_end_of_discharge_soc_pct,
+        _effective_eod_soc,
         inp.battery_max_soc_pct,
     )
     if inp.battery_rated_capacity_kwh <= 0:
@@ -909,7 +931,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     )
     # Step 4 — candidate plan generation and selection
     cw = CostWeights(
-        min_soc_pct=inp.battery_end_of_discharge_soc_pct,
+        min_soc_pct=_effective_eod_soc,
         max_soc_pct=inp.battery_max_soc_pct,
         battery_purchase_price=inp.battery_purchase_price,
         battery_rated_capacity_kwh=inp.battery_rated_capacity_kwh,

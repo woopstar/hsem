@@ -32,7 +32,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -59,6 +59,7 @@ from custom_components.hsem.custom_sensors.hourly_data_populator.consumption imp
 from custom_components.hsem.custom_sensors.hourly_data_populator.prices_solcast import (
     populate_price_and_solcast_from_snapshot,
 )
+from custom_components.hsem.custom_sensors.ocpp_server import OCPPServer
 from custom_components.hsem.custom_sensors.state_collector import (  # noqa: F401 — kept for backward compat
     async_collect_all_states,
     build_battery_schedules,
@@ -69,22 +70,26 @@ from custom_components.hsem.models.daily_plan_vs_actual_tracker import (
     DailyPlanVsActualTracker,
 )
 from custom_components.hsem.models.data_quality import DataQuality
+from custom_components.hsem.models.financial_tracker import FinancialTracker
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.plan_explanation import PlanExplanation
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.planner_output import PlannerOutput
+from custom_components.hsem.models.savings_tracker import SavingsTracker
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.models.state_snapshot import StateSnapshot
 from custom_components.hsem.planner import run_planner
 from custom_components.hsem.planner.charge_scheduler import apply_window_hysteresis
 from custom_components.hsem.planner.ev_planner import EVChargingPlan
+from custom_components.hsem.utils.capacity_learner import CapacityLearner
 from custom_components.hsem.utils.datetime_utils import (
     as_tz,
     now as hsem_now,
     utc_key,
     utc_now_iso,
 )
+from custom_components.hsem.utils.dynamic_floor import DynamicDischargeFloor
 from custom_components.hsem.utils.forecast_tracker import (
     ForecastTracker,
     compute_accumulated_energy,
@@ -95,10 +100,35 @@ from custom_components.hsem.utils.logger import (
     set_hsem_verbose,
 )
 from custom_components.hsem.utils.misc import ema_filter, get_config_value
+from custom_components.hsem.utils.prediction_tracker import (
+    PredictionTracker,
+    _action_label,
+)
 from custom_components.hsem.utils.recommendations import Recommendations
+from custom_components.hsem.utils.solar_corrector import SolarForecastCorrector
 
 if TYPE_CHECKING:
     from custom_components.hsem.ml.consumption_predictor import ConsumptionPredictor
+
+
+# ---------------------------------------------------------------------------
+# Lightweight slot for dynamic floor bridge computation
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class _SimpleSlot:
+    """Minimal slot for DynamicDischargeFloor.compute_floor().
+
+    Carries only the fields needed by the bridge computation.
+    """
+
+    start: datetime
+    end: datetime
+    estimated_net_consumption_kwh: float = 0.0
+    batteries_charged_kwh: float = 0.0
+    recommendation: str | None = None
+
 
 # ---------------------------------------------------------------------------
 # Data payload exposed to subscriber entities
@@ -152,6 +182,28 @@ class CoordinatorData:
     #: ISO-format timestamp of the override expiry, or None when no timed
     #: override is active (issue #317).
     override_expiry: str | None = None
+    #: Savings tracker with actual vs missed savings metrics.
+    savings_tracker: SavingsTracker = field(default_factory=SavingsTracker)
+    #: Prediction accuracy tracker reference (SoC/MAE/action-mix scorecard, issue #601).
+    prediction_tracker: PredictionTracker | None = None
+    #: Capacity learner for auto-detecting battery usable capacity from
+    #: BMS kWh-remaining and SoC readings.
+    capacity_learner: CapacityLearner = field(default_factory=CapacityLearner)
+    #: Per-hour solar forecast accuracy factors (0-23 → factor).
+    #: Used by the solar confidence diagnostic sensor (issue #602).
+    solar_hour_factors: dict[int, float] = field(default_factory=dict)
+    #: Effective dynamic discharge floor SoC percentage, or None when the
+    #: feature is disabled.  Computed by DynamicDischargeFloor.compute_floor().
+    effective_discharge_floor_pct: float | None = None
+    #: Diagnostics dict from the dynamic floor computation, or None when
+    #: the feature is disabled.
+    effective_discharge_floor_diag: dict | None = None
+    #: Financial tracker with cumulative import cost and export income.
+    financial_tracker: FinancialTracker | None = None
+    #: OCPP charger session dict (CPID → ChargerSession) for sensor entities.
+    ocpp_chargers: dict | None = None
+    #: OCPP completed session log for the sessions sensor.
+    ocpp_sessions: list | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -262,12 +314,26 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         self._window_hys_previous_rec: str | None = None
         self._window_hys_previous_slot_start: datetime | None = None
 
+        # Solar forecast accuracy auto-corrector (issue #602).
+        self._solar_corrector: SolarForecastCorrector = SolarForecastCorrector()
+        # Set of slot start times already fed to the solar corrector.
+        self._solar_corrector_processed: set[datetime] = set()
+
         # Forecast-vs-actual tracker (predicted-vs-actual tracking, issue #373).
         self._forecast_tracker: ForecastTracker = ForecastTracker(max_slots=192)
+        # Prediction accuracy tracker — SoC/MAE/action-mix scorecard (issue #601).
+        self._prediction_tracker: PredictionTracker = PredictionTracker()
         # Daily plan-vs-actual tracker (diagnostic sensor with 90-day history).
         # The history file path is set in async_setup() once hass.config is available.
         self._daily_tracker: DailyPlanVsActualTracker = DailyPlanVsActualTracker()
         self._daily_tracker_initialized: bool = False
+        # Savings tracker (actual vs missed savings with 90-day history).
+        self._savings_tracker: SavingsTracker = SavingsTracker()
+        self._savings_tracker_initialized: bool = False
+        # Financial tracker — cumulative import cost and export income (never reset).
+        # The history file path is set in async_setup() once hass.config is available.
+        self._financial_tracker: FinancialTracker = FinancialTracker()
+        self._financial_tracker_initialized: bool = False
         # Midnight timer unsubscribe handler for daily persistence.
         self._midnight_unsub: Callable[[], None] | None = None
         # Last slot end time accumulated from planner output (prevents double-counting).
@@ -279,6 +345,18 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         # Checked on every update cycle; when expired, the override is cleared
         # automatically and the planner resumes control.
         self._override_expiry: datetime | None = None
+
+        # Dynamic self-learning discharge floor (issue #600).
+        self._dynamic_floor: DynamicDischargeFloor = DynamicDischargeFloor()
+        self._effective_discharge_floor_pct: float | None = None
+        self._effective_discharge_floor_diag: dict | None = None
+
+        # Battery capacity learner (issue #605).
+        self._capacity_learner: CapacityLearner = CapacityLearner()
+
+        # Embedded OCPP 1.6 server for EV charger control (issue #603).
+        self._ocpp_server: OCPPServer | None = None
+        self._ocpp_sessions: list = []
 
         # ML consumption predictor — cached across cycles so the retrain
         # gate can skip re-fitting when no new history has arrived.
@@ -294,6 +372,14 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         Call this once after the coordinator is created (from
         :func:`~custom_components.hsem.__init__.async_setup_entry`).
         """
+        # Initialise the financial tracker — lazy load from disk on first access.
+        # This must happen before the first update cycle so the tracker
+        # is available when accumulation runs.
+        try:
+            await self._init_financial_tracker()
+        except Exception:
+            _LOGGER.exception("Failed to initialise financial tracker")
+
         # Run an immediate first cycle so entities have data before first render.
         await self._async_handle_update(None)
 
@@ -330,6 +416,12 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         if midnight is not None:
             midnight()
             self._midnight_unsub = None
+
+        # Stop the OCPP server if it was started.
+        ocpp = getattr(self, "_ocpp_server", None)
+        if ocpp is not None:
+            await ocpp.stop()
+            self._ocpp_server = None
 
     async def async_options_updated(self) -> None:
         """Re-run the pipeline when the user saves new options.
@@ -554,6 +646,62 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 and not live.missing_entities
                 and consumption_ok
             ):
+                # Compute dynamic discharge floor BEFORE the planner runs
+                # so it can influence the planner's discharge/export decisions.
+                dynamic_floor_enabled = bool(
+                    get_config_value(self._config_entry, "hsem_dynamic_discharge_floor")
+                )
+                if dynamic_floor_enabled:
+                    # Compute usable kWh from the live inverter state.
+                    rated_kwh = (
+                        live.huawei_batteries_rated_capacity_wh or 0.0
+                    ) / 1000.0
+                    min_soc_pct = live.huawei_batteries_end_of_discharge_soc_pct or 0.0
+                    max_soc_pct = (
+                        live.huawei_batteries_charging_cutoff_capacity_pct or 100.0
+                    )
+                    _usable_kwh = rated_kwh * (max_soc_pct - min_soc_pct) / 100.0
+                    _current_kwh = (
+                        (live.huawei_batteries_soc_pct or 0.0) / 100.0 * _usable_kwh
+                    )
+                    # Build a lightweight slot list from hourly_recommendations
+                    # for the bridge computation (they already have consumption
+                    # and PV estimates populated by the populator).
+                    _bridge_slots: list = []
+                    for rec in self._hourly_recommendations:
+                        _bridge_slots.append(
+                            _SimpleSlot(
+                                start=rec.start,
+                                end=rec.end,
+                                estimated_net_consumption_kwh=(
+                                    rec.avg_house_consumption_kwh
+                                    - rec.solcast_pv_estimate_kwh
+                                ),
+                                batteries_charged_kwh=rec.batteries_charged_kwh,
+                                recommendation=rec.recommendation,
+                            )
+                        )
+                    floor_pct, floor_diag = self._dynamic_floor.compute_floor(
+                        now=now,
+                        slots=_bridge_slots,
+                        current_kwh=_current_kwh,
+                        usable_kwh=_usable_kwh,
+                        configured_min_soc_pct=min_soc_pct,
+                    )
+                    self._effective_discharge_floor_pct = floor_pct
+                    self._effective_discharge_floor_diag = floor_diag
+
+                    # Self-correct the safety margin.
+                    if live.huawei_batteries_soc_pct is not None:
+                        self._dynamic_floor.correct_margin(
+                            live.huawei_batteries_soc_pct, floor_pct
+                        )
+                    _dynamic_floor_pct: float | None = floor_pct
+                else:
+                    self._effective_discharge_floor_pct = None
+                    self._effective_discharge_floor_diag = None
+                    _dynamic_floor_pct = None
+
                 # 8. Run the pure-Python planner engine — only when all data
                 #    is ready.  Skip when consumption averages are still
                 #    pending (first cycle, sensor restore not done).
@@ -582,7 +730,14 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                     previous_winner_name=self._previous_planner_winner_name,
                     previous_winner_score=self._previous_planner_winner_score,
                     ev_session_kw=ev_session_kw if ev_session_kw else None,
+                    dynamic_discharge_floor_pct=_dynamic_floor_pct,
+                    capacity_learner=getattr(
+                        self, "_capacity_learner", CapacityLearner()
+                    ),
                 )
+                # Wire the solar forecast corrector into the planner input so
+                # populate_solcast can apply per-hour accuracy corrections (issue #602).
+                planner_input.solar_corrector = self._solar_corrector
                 # Retain for diagnostics dumps (cleared on each cycle).
                 self._last_planner_input = planner_input
 
@@ -787,12 +942,59 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                         "continuing without updating daily metrics."
                     )
 
+                # -----------------------------------------------------------------------
+                # Financial tracker accumulation (issue #599).
+                # -----------------------------------------------------------------------
+                try:
+                    await self._accumulate_financials(now, live)
+                except Exception:
+                    _LOGGER.exception(
+                        "Financial tracker accumulation failed — "
+                        "continuing without updating financial metrics."
+                    )
+
+                # -----------------------------------------------------------------------
+                # Savings tracker accumulation (issue #604).
+                # -----------------------------------------------------------------------
+                try:
+                    await self._accumulate_savings(now, live, planner_output)
+                except Exception:
+                    _LOGGER.exception(
+                        "Savings tracker accumulation failed — "
+                        "continuing without updating savings metrics."
+                    )
+
+            # -----------------------------------------------------------------------
+            # OCPP charge target updates — push planner EV plan to OCPP server
+            # -----------------------------------------------------------------------
+            ocpp_server = getattr(self, "_ocpp_server", None)
+            if ocpp_server is not None and self._cfg.ocpp_enabled:
+                cfg = self._cfg
+                cpid = cfg.ocpp_cpid or "default"
+                if self._ev_charging_plan is not None:
+                    target_kw = self._ev_charging_plan.current_slot_planned_load_kwh
+                    # Convert per-slot kWh to kW by accounting for slot duration
+                    slot_minutes = cfg.recommendation_interval_minutes
+                    if slot_minutes > 0 and target_kw > 0:
+                        target_kw = (target_kw / slot_minutes) * 60.0
+                    await ocpp_server.update_charge_target(cpid, target_kw, now=now)
+                else:
+                    await ocpp_server.update_charge_target(cpid, 0.0, now=now)
+
         except Exception as exc:
             raise UpdateFailed(f"HSEM update cycle failed: {exc}") from exc
 
         # Final sort and timestamp.
         self._hourly_recommendations.sort(key=lambda x: x.start)
         last_updated = utc_now_iso()
+
+        # Package OCPP charger state for sensor entities.
+        ocpp_chargers: dict | None = None
+        ocpp_sessions: list | None = None
+        ocpp = getattr(self, "_ocpp_server", None)
+        if ocpp is not None:
+            ocpp_chargers = ocpp.charger_sessions
+            ocpp_sessions = list(self._ocpp_sessions)
 
         data = CoordinatorData(
             cfg=self._cfg,
@@ -816,6 +1018,23 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 if self._override_expiry is not None
                 else None
             ),
+            ocpp_chargers=ocpp_chargers,
+            ocpp_sessions=ocpp_sessions,
+            capacity_learner=getattr(self, "_capacity_learner", CapacityLearner()),
+            solar_hour_factors=dict(
+                getattr(self, "_solar_corrector", SolarForecastCorrector()).hour_factors
+            ),
+            effective_discharge_floor_pct=getattr(
+                self, "_effective_discharge_floor_pct", None
+            ),
+            effective_discharge_floor_diag=(
+                dict(getattr(self, "_effective_discharge_floor_diag", None) or {})
+                if getattr(self, "_effective_discharge_floor_diag", None)
+                else None
+            ),
+            financial_tracker=getattr(self, "_financial_tracker", None),
+            prediction_tracker=getattr(self, "_prediction_tracker", None),
+            savings_tracker=getattr(self, "_savings_tracker", SavingsTracker()),
         )
 
         # Notify all subscriber entities atomically.
@@ -1294,6 +1513,54 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         # Finalise any slots whose end time has passed.
         self._forecast_tracker.finalise_past_records(now)
 
+        # -------------------------------------------------------------------
+        # Solar forecast auto-correction (issue #602)
+        # -------------------------------------------------------------------
+        # Feed every newly-finalised forecast tracker record into the solar
+        # corrector so it can learn per-hour accuracy factors and update the
+        # intra-hour residual buffer.
+        for frec in self._forecast_tracker.records:
+            if not frec.finalised:
+                continue
+            if frec.start in self._solar_corrector_processed:
+                continue
+
+            self._solar_corrector.update_hour(
+                frec.start.hour, frec.forecast_pv_kwh, frec.actual_pv_kwh
+            )
+            self._solar_corrector.update_residual(
+                frec.forecast_pv_kwh, frec.actual_pv_kwh
+            )
+            self._solar_corrector_processed.add(frec.start)
+
+        # -------------------------------------------------------------------
+        # Prediction accuracy scorecard (issue #601)
+        # -------------------------------------------------------------------
+        # Feed completed slots into the prediction accuracy tracker so the
+        # sensor can report SoC MAE, solar MAPE, and action mix.
+        if self._last_planner_output is not None:
+            for frec in self._forecast_tracker.records:
+                if not frec.finalised:
+                    continue
+                # Find the matching planner slot for this forecast record.
+                planner_slot = None
+                for slot in self._last_planner_output.slots:
+                    if slot.start == frec.start:
+                        planner_slot = slot
+                        break
+                if planner_slot is None:
+                    continue
+                self._prediction_tracker.add_record(
+                    predicted_soc=planner_slot.estimated_battery_soc_pct,
+                    actual_soc=live.huawei_batteries_soc_pct or 0.0,
+                    predicted_pv=planner_slot.solcast_pv_estimate_kwh,
+                    actual_pv=frec.actual_pv_kwh,
+                    predicted_load=planner_slot.avg_house_consumption_kwh,
+                    actual_load=frec.actual_load_kwh,
+                    action=_action_label(planner_slot.recommendation),
+                    slot_start=frec.start,
+                )
+
     def _register_forecasts_from_planner(self, output: PlannerOutput) -> None:
         """Register PV and load forecasts from planner output into the tracker.
 
@@ -1370,6 +1637,192 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             export_price=live.export_electricity_price,
         )
 
+    # ------------------------------------------------------------------
+    # Financial tracker accumulation (issue #599)
+    # ------------------------------------------------------------------
+
+    async def _init_financial_tracker(self) -> None:
+        """Lazily initialise the financial tracker.
+
+        Called once on the first access.  Loads the JSON history file.
+        Failures are logged and leave the tracker with an empty history
+        file path so the sensors show 'no data' rather than crashing the
+        coordinator.
+        """
+        if getattr(self, "_financial_tracker_initialized", True):
+            return
+
+        try:
+            config_dir = self.hass.config.config_dir
+            self._financial_tracker.history_file = str(
+                Path(config_dir) / "hsem_financial_history.json"
+            )
+            await self._load_financial_tracker()
+            self._financial_tracker_initialized = True
+        except Exception:
+            _LOGGER.exception(
+                "Failed to initialise financial tracker "
+                "(financial sensors will be unavailable)"
+            )
+            self._financial_tracker_initialized = True  # don't retry
+
+    async def _load_financial_tracker(self) -> None:
+        """Load financial tracker state from the JSON persistence file."""
+        path = Path(self._financial_tracker.history_file)
+        if not path.exists():
+            return
+        try:
+            data = await asyncio.to_thread(FinancialTracker._read_history_file, path)
+            if data is not None:
+                loaded = FinancialTracker.from_dict(data)
+                self._financial_tracker = loaded
+        except Exception:
+            _LOGGER.exception("Failed to load financial tracker history")
+
+    async def _persist_financial_tracker(self) -> bool:
+        """Persist financial tracker state to disk atomically."""
+        if not self._financial_tracker.history_file:
+            return False
+        data = self._financial_tracker.as_dict()
+        path = Path(self._financial_tracker.history_file)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return await asyncio.to_thread(FinancialTracker._write_history_file, data, path)
+
+    async def _accumulate_financials(
+        self,
+        now: datetime,
+        live: LiveState,
+    ) -> None:
+        """Accumulate import cost and export income into the financial tracker.
+
+        Called each coordinator cycle after plan-vs-actual accumulation.
+        Handles day rollover (snapshotting yesterday's totals) before
+        accumulating the live cost deltas from the energy meters.
+
+        Args:
+            now: Current datetime (timezone-aware).
+            live: Live HA entity state snapshot.
+        """
+        await self._init_financial_tracker()
+        tracker = self._financial_tracker
+
+        # Check and handle day rollover first.
+        tracker.check_day_rollover(now)
+
+        # Accumulate cost deltas from live meter readings.
+        tracker.accumulate(
+            grid_import_energy_kwh=live.grid_import_energy_kwh,
+            grid_export_energy_kwh=live.grid_export_energy_kwh,
+            import_price=live.import_electricity_price,
+            export_price=live.export_electricity_price,
+        )
+
+    async def _accumulate_savings(
+        self,
+        now: datetime,
+        live: LiveState,
+        output: PlannerOutput,
+    ) -> None:
+        """Accumulate savings data for the current cycle.
+
+        Computes export revenue delta, charge savings delta, and baseline
+        cost delta from the daily tracker and planner output.
+
+        Args:
+            now: Current datetime (timezone-aware).
+            live: Live HA entity state snapshot.
+            output: Planner output with slot-level decisions.
+        """
+        await self._init_savings_tracker()
+        st = self._savings_tracker
+        dt = self._daily_tracker
+
+        # Check day rollover first.
+        today_str = now.date().isoformat()
+        st.check_day_rollover(today_str)
+
+        # ---- Compute per-cycle deltas from the daily tracker ----
+        current_export_rev = dt.actual.grid_export_rev
+        current_import_cost = dt.actual.grid_import_cost
+
+        export_rev_delta = 0.0
+        if st._last_export_rev is not None:
+            export_rev_delta = max(0.0, current_export_rev - st._last_export_rev)
+        st._last_export_rev = current_export_rev
+
+        import_cost_delta = 0.0
+        if st._last_import_cost is not None:
+            import_cost_delta = max(0.0, current_import_cost - st._last_import_cost)
+        st._last_import_cost = current_import_cost
+
+        # ---- Charge savings: money saved by charging cheap now ----
+        charge_savings_delta = 0.0
+        import_price = live.import_electricity_price
+
+        # Compute average daily import price from planner slots for today.
+        avg_import_price = self._compute_daily_avg_import_price(output)
+
+        # Check if the current recommendation is a charge action.
+        hourly_rec = self._hourly_recommendation
+        from custom_components.hsem.utils.recommendations import CHARGE_RECS
+
+        if (
+            hourly_rec is not None
+            and hourly_rec.recommendation in CHARGE_RECS
+            and import_price < avg_import_price
+            and avg_import_price > 0
+        ):
+            charge_kwh = hourly_rec.batteries_charged_kwh or 0.0
+            if abs(charge_kwh) > 1e-9:
+                charge_savings_delta = charge_kwh * (avg_import_price - import_price)
+
+        # ---- Baseline cost: what passive mode would cost this cycle ----
+        baseline_cost_delta = import_cost_delta
+
+        # ---- Determine if the master switch is on ----
+        switch_on = live.force_working_mode_state == "auto"
+
+        st.accumulate(
+            export_revenue_delta=export_rev_delta,
+            charge_savings_delta=charge_savings_delta,
+            baseline_cost_delta=baseline_cost_delta,
+            switch_on=switch_on,
+        )
+
+    @staticmethod
+    def _compute_daily_avg_import_price(output: PlannerOutput) -> float:
+        """Compute the average import price for today from planner slots."""
+        today_str = date.today().isoformat()
+        prices: list[float] = []
+        for slot in output.slots:
+            slot_date = slot.start.strftime("%Y-%m-%d")
+            if slot_date == today_str:
+                p = getattr(slot, "import_price", None)
+                if p is not None and p > 0:
+                    prices.append(float(p))
+        if not prices:
+            return 0.0
+        return sum(prices) / len(prices)
+
+    async def _init_savings_tracker(self) -> None:
+        """Lazily initialise the savings tracker."""
+        if getattr(self, "_savings_tracker_initialized", True):
+            return
+
+        try:
+            config_dir = self.hass.config.config_dir
+            self._savings_tracker.history_file = str(
+                Path(config_dir) / "hsem_savings_history.json"
+            )
+            await self._savings_tracker.load_history()
+            self._savings_tracker_initialized = True
+        except Exception:
+            _LOGGER.exception(
+                "Failed to initialise savings tracker "
+                "(savings sensor will be unavailable)"
+            )
+            self._savings_tracker_initialized = True  # don't retry
+
     async def _init_daily_tracker(self) -> None:
         """Lazily initialise the daily plan-vs-actual tracker.
 
@@ -1438,6 +1891,33 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             tracker._last_export_energy_kwh = None
             tracker._last_pv_energy_kwh = None
             self._daily_plan_last_accumulated = None
+
+        # Persist the financial tracker at midnight so daily log survives
+        # HA restarts.
+        financial = self._financial_tracker
+        if financial.history_file:
+            saved = await self._persist_financial_tracker()
+            if saved:
+                _LOGGER.info(
+                    "Financial tracker persisted for %s",
+                    financial.today,
+                )
+            else:
+                _LOGGER.warning(
+                    "Failed to persist financial tracker for %s",
+                    financial.today,
+                )
+
+        # Persist savings tracker state at midnight.
+        st = self._savings_tracker
+        if st.history_file:
+            saved = await st.save_history()
+            if saved:
+                _LOGGER.info("Savings tracker state saved for %s", st._today)
+            else:
+                _LOGGER.warning(
+                    "Failed to save savings tracker state for %s", st._today
+                )
 
 
 # ---------------------------------------------------------------------------

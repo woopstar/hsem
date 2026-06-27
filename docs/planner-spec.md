@@ -974,6 +974,16 @@ Only PV estimates are discounted.  Electricity prices are used as-is because:
 Decay is applied **after** missing-data diagnostics, so `DataQuality` always
 reflects original data gaps, not decayed values.
 
+In addition to the fixed daily decay, the
+:class:`~custom_components.hsem.utils.solar_corrector.SolarForecastCorrector`
+(introduced in issue #602) applies learned **per-hour accuracy factors** and
+an **intra-hour residual correction** to PV estimates before they enter the
+planner.  The corrector maintains a 4-day rolling history of (forecast, actual)
+ratios per hour-of-day, clamped to [0.3, 1.5].  A configurable confidence
+percentile (0.10–0.90, default 0.50) scales the correction — lower values are
+more conservative (less PV expected).  The raw Solcast data is never mutated;
+corrections are only applied at consumption time.
+
 ### Missing future data handling
 
 For every day in the horizon the engine detects and surfaces missing price

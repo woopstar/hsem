@@ -255,3 +255,17 @@ class PlannerInput:
     ev_session_charge_kw: float | None = None
     #: Same as above for the second EV.
     ev_second_session_charge_kw: float | None = None
+
+    # --- solar forecast auto-correction (issue #602) ---
+    #: Optional :class:`~custom_components.hsem.utils.solar_corrector.SolarForecastCorrector`
+    #: instance for per-hour PV forecast accuracy correction.  When ``None`` the
+    #: raw Solcast forecast is used unchanged.
+    solar_corrector: Any = field(default=None, repr=False)
+
+    # --- dynamic discharge floor (issue #600) ---
+    #: Effective discharge floor SoC percentage computed by
+    #: :class:`~custom_components.hsem.utils.dynamic_floor.DynamicDischargeFloor`.
+    #: When ``None`` the feature is disabled and the configured minimum is used.
+    #: When set, the planner's discharge/export logic uses this floor instead
+    #: of the raw ``battery_end_of_discharge_soc_pct``.
+    dynamic_discharge_floor_pct: float | None = None

@@ -316,6 +316,7 @@ Snapshot of the battery state of charge.
 | `sensor.hsem_ev_second_optimal_charging_plan` | EV Second Optimal Charging Plan | Second EV plan state | `charging`, `waiting`, etc. |
 | `sensor.hsem_force_mode_sensor` | Force Working Mode | Override active indicator | `auto` or override mode name |
 | `sensor.hsem_forecast_accuracy` | Forecast Accuracy | PV & load forecast-vs-actual | PV MAE (kWh) |
+| `sensor.hsem_solar_confidence_sensor` | Solar Forecast Confidence | Per-hour PV forecast accuracy factors | Mean factor (ratio) |
 | `sensor.hsem_hardware_writes_sensor` | Hardware Writes | Writes allowed/blocked by safety gate | `allowed`, `blocked` |
 | `sensor.hsem_read_only_sensor` | Read-Only Mode | Read-only mode indicator | `on`, `off` |
 | `sensor.hsem_net_consumption_sensor` | Net Consumption | Net load (house minus solar) | Watts (W) |

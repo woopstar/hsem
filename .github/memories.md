@@ -40,6 +40,7 @@ for the HSEM (Home Smart Energy Management) project. Read this before making any
 | `prices.py` | Price lookup, grid fee calculation, spot price helpers |
 | `huawei.py` | Huawei Solar inverter API helpers |
 | `logger.py` | `HSEM_LOGGER` — rotating file handler, `propagate=False` |
+| `solar_corrector.py` | Per-hour PV forecast accuracy auto-correction (issue #602) |
 
 ---
 
