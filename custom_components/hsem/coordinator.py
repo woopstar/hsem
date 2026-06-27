@@ -707,6 +707,23 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 # 8. Run the pure-Python planner engine — only when all data
                 #    is ready.  Skip when consumption averages are still
                 #    pending (first cycle, sensor restore not done).
+
+                # Collect session EV charge power for session-aware MILP
+                # optimisation (issue #615).  When an EV is actively charging
+                # in a forced-draw mode, its current charge power is treated
+                # as certain demand for the next 2 hours in the MILP.
+                ev_session_kw: dict[str, float] = {}
+                if live.ev.is_charging and live.ev.power_w:
+                    ev_session_kw["ev"] = (live.ev.power_w or 0.0) / 1000.0
+                if (
+                    cfg.ev_second_enabled
+                    and live.ev_second.is_charging
+                    and live.ev_second.power_w
+                ):
+                    ev_session_kw["ev_second"] = (
+                        live.ev_second.power_w or 0.0
+                    ) / 1000.0
+
                 planner_input = build_planner_input(
                     cfg=cfg,
                     live=self._live,
@@ -714,6 +731,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                     batteries_schedules=self._batteries_schedules,
                     previous_winner_name=self._previous_planner_winner_name,
                     previous_winner_score=self._previous_planner_winner_score,
+                    ev_session_kw=ev_session_kw if ev_session_kw else None,
                     dynamic_discharge_floor_pct=_dynamic_floor_pct,
                     capacity_learner=getattr(
                         self, "_capacity_learner", CapacityLearner()

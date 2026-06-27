@@ -46,6 +46,7 @@ def build_planner_input(
     batteries_schedules: list,
     previous_winner_name: str | None,
     previous_winner_score: float,
+    ev_session_kw: dict[str, float] | None = None,
     capacity_learner: CapacityLearner | None = None,
     dynamic_discharge_floor_pct: float | None = None,
 ) -> PlannerInput:
@@ -315,6 +316,10 @@ def build_planner_input(
         planner_min_resolve_interval_minutes=(cfg.planner_min_resolve_interval_minutes),
         previous_winner_name=previous_winner_name,
         previous_winner_score=previous_winner_score,
+        ev_session_charge_kw=(ev_session_kw.get("ev") if ev_session_kw else None),
+        ev_second_session_charge_kw=(
+            ev_session_kw.get("ev_second") if ev_session_kw else None
+        ),
         dynamic_discharge_floor_pct=dynamic_discharge_floor_pct,
     )
 

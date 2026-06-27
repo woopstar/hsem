@@ -748,6 +748,12 @@ def _build_ev_configs_for_milp(
             )
         )
 
+    # Apply session charge power from live EV state (issue #615).
+    if configs:
+        configs[0].session_charge_kw = inp.ev_session_charge_kw
+        if len(configs) > 1:
+            configs[1].session_charge_kw = inp.ev_second_session_charge_kw
+
     return configs if configs else None
 
 

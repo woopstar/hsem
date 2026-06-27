@@ -370,6 +370,29 @@ def solve_milp(
     m = len(future_idx)  # number of active LP slots
 
     # ------------------------------------------------------------------
+    # Session-aware EV demand (issue #615).
+    # When an EV is actively charging (session_charge_kw is set), treat
+    # the first 2 hours (SESSION_SLOTS slots) as certain demand at that
+    # power level.  Grid-charging the battery is blocked during these
+    # slots to avoid stacking battery charge on top of the EV draw.
+    # ------------------------------------------------------------------
+    slot_hours = (
+        (slots[future_idx[0]].end - slots[future_idx[0]].start).total_seconds() / 3600.0
+        if future_idx
+        else 0.0
+    )
+    SESSION_SLOTS = min(8, m)  # 2 hours at 15-min resolution
+    session_ev_indices: list[int] = []  # indices into active_evs
+    session_slots_set: set[int] = set()
+    if active_evs and slot_hours > 0:
+        for ev_idx, ev in enumerate(active_evs):
+            if ev.session_charge_kw is not None and ev.session_charge_kw > 1e-9:
+                session_ev_indices.append(ev_idx)
+        if session_ev_indices:
+            session_slots_set = set(range(SESSION_SLOTS))
+    _has_session_demand = bool(session_ev_indices)
+
+    # ------------------------------------------------------------------
     # Variable layout:
     #   x = [ec(0..m-1), ed(0..m-1), gi(0..m-1), ge(0..m-1),
     #        pv(0..m-1), m(0..m-1),
@@ -694,6 +717,41 @@ def solve_milp(
                 ev_row += m
 
     # ------------------------------------------------------------------
+    # Session EV grid-charge prevention (issue #615).
+    # For session slots, battery grid-charging is blocked: the battery
+    # may only charge from PV surplus remaining after the fixed EV
+    # session load is met.
+    #   ec[t] / charge_eff  ≤  max(0, pv_avail[t] - total_session_ac[t])
+    # ------------------------------------------------------------------
+    session_rows = len(session_slots_set) if _has_session_demand else 0
+    if session_rows > 0:
+        # Compute per-slot total AC-side session EV load
+        session_ac_by_slot: dict[int, float] = {}
+        for ev_idx in session_ev_indices:
+            ev = active_evs[ev_idx]
+            skw = ev.session_charge_kw
+            assert skw is not None
+            session_dc = skw * slot_hours * ev.charger_efficiency
+            session_ac = session_dc / ev.charger_efficiency
+            for t in session_slots_set:
+                session_ac_by_slot[t] = session_ac_by_slot.get(t, 0.0) + session_ac
+
+        session_t_list = sorted(session_slots_set)
+        existing_rows = soc_rows + mutex_rows + cycle_rows + ev_total_rows
+        A_ub_old = A_ub
+        b_ub_old = b_ub
+        A_ub = np.zeros((existing_rows + session_rows, n_vars))
+        b_ub = np.zeros(existing_rows + session_rows)
+        A_ub[:existing_rows, :] = A_ub_old
+        b_ub[:existing_rows] = b_ub_old
+        for row, t in enumerate(session_t_list):
+            A_ub[existing_rows + row, ec_off + t] = 1.0 / charge_eff
+            b_ub[existing_rows + row] = max(
+                pv_avail[t] - session_ac_by_slot.get(t, 0.0), 0.0
+            )
+        ev_total_rows += session_rows
+
+    # ------------------------------------------------------------------
     # Fuse constraint (soft): gi[t] - gi_pen[t] ≤ max_grid_import_per_slot_kwh
     # The penalty variable gi_pen[t] absorbs any excess at high cost,
     # preventing infeasibility when house base load alone exceeds the fuse.
@@ -731,9 +789,16 @@ def solve_milp(
         + [(0.0, None)] * m  # curt[t] (curtailment, ≥ 0)
     )
     # --- EV bounds ---
-    for ev in active_evs:
-        # ev_c[t] bounded by [0, ev.max_charge_per_slot]
-        bounds += [(0.0, ev.max_charge_per_slot)] * m
+    for ev_idx, ev in enumerate(active_evs):
+        is_session_ev = ev_idx in session_ev_indices
+        for t in range(m):
+            if is_session_ev and t < SESSION_SLOTS and ev.session_charge_kw is not None:
+                # Fixed bound: session demand (DC-side kWh per slot)
+                session_dc = ev.session_charge_kw * slot_hours * ev.charger_efficiency
+                session_dc = min(session_dc, ev.max_charge_per_slot)
+                bounds.append((session_dc, session_dc))
+            else:
+                bounds.append((0.0, ev.max_charge_per_slot))
         # ev deadline penalty: [0, unbounded)
         bounds.append((0.0, None))
     # --- Fuse penalty bounds ---
@@ -857,9 +922,19 @@ def solve_milp(
                     slot_i
                 ].recommendation = Recommendations.BatteriesChargeSolar.value
             else:
-                out_slots[
-                    slot_i
-                ].recommendation = Recommendations.BatteriesChargeGrid.value
+                # Session-slot guard: do NOT assign BatteriesChargeGrid
+                # during session EV demand slots (issue #615).  The LP
+                # constraints already prevent ec[t] > 0 here, but this
+                # guard protects against any edge case.
+                is_session_slot = _has_session_demand and lp_t in session_slots_set
+                if is_session_slot and pv_avail[lp_t] > _MIN_ACTION_KWH:
+                    out_slots[
+                        slot_i
+                    ].recommendation = Recommendations.BatteriesChargeSolar.value
+                elif not is_session_slot:
+                    out_slots[
+                        slot_i
+                    ].recommendation = Recommendations.BatteriesChargeGrid.value
             out_slots[slot_i].batteries_charged_kwh = round(ec_kwh, 3)
         elif ed_kwh > _MIN_ACTION_KWH:
             # If the LP is exporting (ge > 0) in this slot, use
