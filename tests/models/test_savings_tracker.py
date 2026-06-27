@@ -248,6 +248,7 @@ class TestSavingsTracker:
     def test_get_sorted_daily(self) -> None:
         """get_sorted_daily should return entries sorted by most recent first."""
         st = SavingsTracker()
+        st.daily.clear()  # remove auto-created today entry
         st.daily["2026-06-24"] = SavingsDay(date="2026-06-24", actual_savings=1.0)
         st.daily["2026-06-26"] = SavingsDay(date="2026-06-26", actual_savings=3.0)
         st.daily["2026-06-25"] = SavingsDay(date="2026-06-25", actual_savings=2.0)
