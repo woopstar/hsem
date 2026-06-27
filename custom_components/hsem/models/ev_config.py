@@ -54,3 +54,8 @@ class EVConfig:
     #: deadline constraint is suppressed and EV charging is valued at the
     #: import price in the objective (avoided future import cost).
     charge_past_target: bool = False
+    #: Current session charge power in kW, or None when EV is not actively
+    #: charging.  When set, the MILP treats the first 2h of EV slots as
+    #: certain demand at this power level instead of using the probabilistic
+    #: planned-load model.
+    session_charge_kw: float | None = None

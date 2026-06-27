@@ -1,0 +1,412 @@
+title: HSEM Energy Management
+views:
+  - title: Overview
+    icon: mdi:home-battery-outline
+    path: overview
+    cards:
+      - type: vertical-stack
+        cards:
+          # ── Master Status Row ──
+          - type: horizontal-stack
+            cards:
+              - type: custom:mushroom-template-card
+                primary: HSEM Status
+                secondary: "{{ states('sensor.hsem_workingmode_sensor') }}"
+                icon: mdi:robot
+                entity: sensor.hsem_workingmode_sensor
+                icon_color: |-
+                  {% if states('sensor.hsem_workingmode_sensor') in ['batteries_charge_grid','batteries_charge_solar'] %}
+                    green
+                  {% elif states('sensor.hsem_workingmode_sensor') in ['batteries_discharge_mode','force_batteries_discharge'] %}
+                    red
+                  {% else %}
+                    blue
+                  {% endif %}
+                multiline_secondary: false
+                layout: vertical
+                tap_action:
+                  action: more-info
+              - type: custom:mushroom-template-card
+                primary: System Health
+                secondary: "{{ states('sensor.hsem_degraded_mode_sensor') }}"
+                icon: mdi:heart-pulse
+                entity: sensor.hsem_degraded_mode_sensor
+                icon_color: |-
+                  {% if is_state('sensor.hsem_degraded_mode_sensor', 'ok') %}
+                    green
+                  {% else %}
+                    red
+                  {% endif %}
+                layout: vertical
+                tap_action:
+                  action: more-info
+              - type: custom:mushroom-template-card
+                primary: Read-Only
+                secondary: "{{ states('sensor.hsem_read_only_sensor') }}"
+                icon: mdi:lock
+                entity: sensor.hsem_read_only_sensor
+                icon_color: |-
+                  {% if is_state('sensor.hsem_read_only_sensor', 'off') %}
+                    green
+                  {% else %}
+                    orange
+                  {% endif %}
+                layout: vertical
+                tap_action:
+                  action: more-info
+              - type: custom:mushroom-template-card
+                primary: Next Update
+                secondary: "{{ states('sensor.hsem_next_update_sensor') }}"
+                icon: mdi:update
+                entity: sensor.hsem_next_update_sensor
+                icon_color: blue
+                layout: vertical
+                tap_action:
+                  action: more-info
+
+          # ── Plan Status Bar ──
+          - type: horizontal-stack
+            cards:
+              - type: custom:mushroom-entity-card
+                entity: sensor.hsem_plan_explanation_sensor
+                name: Plan Strategy
+                icon: mdi:strategy
+                secondary_info: last-changed
+              - type: custom:mushroom-entity-card
+                entity: sensor.hsem_force_mode_sensor
+                name: Force Mode
+                icon: mdi:hand-back-right
+              - type: custom:mushroom-entity-card
+                entity: sensor.hsem_applier_status_sensor
+                name: Inverter Apply
+                icon: mdi:transmission-tower
+              - type: custom:mushroom-entity-card
+                entity: sensor.hsem_hardware_writes_sensor
+                name: HW Writes
+                icon: mdi:pencil-off
+
+          # ── Diagnostics Row ──
+          - type: entities
+            title: Diagnostics
+            entities:
+              - entity: sensor.hsem_missing_entities_sensor
+                name: Missing Entities
+              - entity: sensor.hsem_update_interval_sensor
+                name: Update Interval
+              - entity: sensor.hsem_last_updated_sensor
+                name: Last Updated
+              - entity: sensor.hsem_net_consumption_sensor
+                name: Net Consumption
+              - entity: sensor.hsem_recommendation_interval_sensor
+                name: Recommendation Interval
+
+  - title: Energy
+    icon: mdi:flash
+    path: energy
+    cards:
+      - type: vertical-stack
+        cards:
+          # ── Price Chart (24h import/export) ──
+          - type: custom:apexcharts-card
+            graph_span: 24h
+            header:
+              show: true
+              title: Electricity Prices (24h)
+              show_states: true
+            series:
+              - entity: sensor.hsem_import_cost
+                name: Import Price
+                type: line
+                stroke_width: 2
+                color: "#e74c3c"
+                show:
+                  in_header: true
+              - entity: sensor.hsem_export_income
+                name: Export Price
+                type: line
+                stroke_width: 2
+                color: "#2ecc71"
+                show:
+                  in_header: true
+            yaxis:
+              - id: price
+                title: Price (currency/kWh)
+                decimals: 2
+            now:
+              show: true
+              label: Now
+
+          # ── Solar Section ──
+          - type: horizontal-stack
+            cards:
+              - type: custom:mushroom-entity-card
+                entity: sensor.solcast_pv_forecast_forecast_today
+                name: Solar Today
+                icon: mdi:solar-power
+                icon_color: yellow
+                secondary_info: last-updated
+              - type: custom:mushroom-entity-card
+                entity: sensor.solcast_pv_forecast_forecast_tomorrow
+                name: Solar Tomorrow
+                icon: mdi:solar-power-variant
+                icon_color: orange
+                secondary_info: last-updated
+              - type: custom:mushroom-entity-card
+                entity: sensor.hsem_solar_confidence_sensor
+                name: Solar Confidence
+                icon: mdi:weather-sunny-alert
+                icon_color: cyan
+
+          # ── Battery Section ──
+          - type: horizontal-stack
+            cards:
+              - type: custom:mushroom-entity-card
+                entity: sensor.hsem_battery_soc_sensor
+                name: Battery SoC
+                icon: mdi:battery-high
+                icon_color: |-
+                  {% set soc = states('sensor.hsem_battery_soc_sensor') | float(0) %}
+                  {% if soc > 80 %}green{% elif soc > 40 %}orange{% else %}red{% endif %}
+                layout: vertical
+              - type: custom:mushroom-entity-card
+                entity: select.hsem_force_working_mode
+                name: Working Mode
+                icon: mdi:list-status
+              - type: custom:mushroom-entity-card
+                entity: sensor.hsem_effective_discharge_floor_sensor
+                name: Discharge Floor
+                icon: mdi:arrow-collapse-down
+
+          - type: entities
+            title: Battery Settings
+            entities:
+              - entity: number.hsem_battery_charge_efficiency
+                name: Charge Efficiency
+              - entity: number.hsem_battery_discharge_efficiency
+                name: Discharge Efficiency
+              - entity: switch.hsem_dynamic_discharge_floor
+                name: Dynamic Discharge Floor
+
+  - title: EV Charging
+    icon: mdi:ev-station
+    path: ev
+    cards:
+      - type: vertical-stack
+        cards:
+          # ── EV Charger Status ──
+          - type: conditional
+            conditions:
+              - entity: sensor.hsem_ev_charging_sensor
+                state_not: "unavailable"
+            card:
+              type: horizontal-stack
+              cards:
+                - type: custom:mushroom-entity-card
+                  entity: sensor.hsem_ev_charging_sensor
+                  name: EV Charging
+                  icon: mdi:ev-station
+                  icon_color: |-
+                    {% if is_state('sensor.hsem_ev_charging_sensor', 'on') %}
+                      green
+                    {% else %}
+                      grey
+                    {% endif %}
+                - type: custom:mushroom-entity-card
+                  entity: sensor.hsem_ocpp_charger_power_sensor
+                  name: Charger Power
+                  icon: mdi:lightning-bolt
+                  icon_color: yellow
+                - type: custom:mushroom-entity-card
+                  entity: sensor.hsem_ocpp_charger_status_sensor
+                  name: Charger Status
+                  icon: mdi:information-outline
+
+          # ── Optimal Plan ──
+          - type: conditional
+            conditions:
+              - entity: sensor.hsem_ev_optimal_charging_plan
+                state_not: "unavailable"
+            card:
+              type: custom:mushroom-entity-card
+              entity: sensor.hsem_ev_optimal_charging_plan
+              name: Optimal Charging Plan
+              icon: mdi:calendar-clock
+              layout: vertical
+              secondary_info: last-updated
+
+          - type: conditional
+            conditions:
+              - entity: sensor.hsem_ev_second_optimal_charging_plan
+                state_not: "unavailable"
+            card:
+              type: custom:mushroom-entity-card
+              entity: sensor.hsem_ev_second_optimal_charging_plan
+              name: EV 2 Optimal Charging Plan
+              icon: mdi:calendar-clock-outline
+              layout: vertical
+              secondary_info: last-updated
+
+          # ── EV Controls ──
+          - type: entities
+            title: EV Controls
+            entities:
+              - entity: switch.hsem_ev_smart_charging
+                name: EV Smart Charging
+              - entity: switch.hsem_ev_force_charge_now
+                name: EV Force Charge Now
+              - entity: number.hsem_ev_target_soc
+                name: EV Target SoC
+              - entity: time.hsem_ev_deadline_time
+                name: EV Charge Deadline
+              - entity: switch.hsem_ev_second_smart_charging
+                name: EV 2 Smart Charging
+              - entity: switch.hsem_ev_second_force_charge_now
+                name: EV 2 Force Charge Now
+              - entity: number.hsem_ev_second_target_soc
+                name: EV 2 Target SoC
+              - entity: time.hsem_ev_second_deadline_time
+                name: EV 2 Charge Deadline
+
+  - title: Savings
+    icon: mdi:cash
+    path: savings
+    cards:
+      - type: vertical-stack
+        cards:
+          # ── Financial Summary ──
+          - type: horizontal-stack
+            cards:
+              - type: custom:mushroom-entity-card
+                entity: sensor.hsem_export_income
+                name: Export Income
+                icon: mdi:cash-plus
+                icon_color: green
+                layout: vertical
+              - type: custom:mushroom-entity-card
+                entity: sensor.hsem_import_cost
+                name: Import Cost
+                icon: mdi:cash-minus
+                icon_color: red
+                layout: vertical
+              - type: custom:mushroom-entity-card
+                entity: sensor.hsem_net_grid_balance
+                name: Net Balance
+                icon: mdi:scale-balance
+                icon_color: |-
+                  {% set bal = states('sensor.hsem_net_grid_balance') | float(0) %}
+                  {% if bal > 0 %}green{% elif bal < 0 %}red{% else %}grey{% endif %}
+                layout: vertical
+
+          # ── Savings Tracker ──
+          - type: custom:mushroom-entity-card
+            entity: sensor.hsem_savings_tracker_sensor
+            name: Savings Tracker
+            icon: mdi:piggy-bank
+            icon_color: green
+            layout: vertical
+            secondary_info: last-updated
+
+          # ── Daily Plan vs Actual ──
+          - type: custom:mushroom-entity-card
+            entity: sensor.hsem_daily_plan_vs_actual
+            name: Daily Plan vs Actual
+            icon: mdi:chart-line
+            icon_color: cyan
+            layout: vertical
+            secondary_info: last-updated
+
+  - title: Accuracy
+    icon: mdi:target
+    path: accuracy
+    cards:
+      - type: vertical-stack
+        cards:
+          # ── Forecast Accuracy ──
+          - type: custom:mushroom-entity-card
+            entity: sensor.hsem_forecast_accuracy_sensor
+            name: Forecast Accuracy
+            icon: mdi:crosshairs-gps
+            icon_color: |-
+              {% set acc = states('sensor.hsem_forecast_accuracy_sensor') | float(0) %}
+              {% if acc >= 90 %}green{% elif acc >= 70 %}orange{% else %}red{% endif %}
+            layout: vertical
+            secondary_info: last-updated
+
+          # ── Prediction Accuracy ──
+          - type: custom:mushroom-entity-card
+            entity: sensor.hsem_prediction_accuracy_sensor
+            name: Prediction Accuracy
+            icon: mdi:brain
+            icon_color: purple
+            layout: vertical
+            secondary_info: last-updated
+
+          # ── Accuracy Details ──
+          - type: entities
+            title: Accuracy Details
+            entities:
+              - entity: sensor.hsem_forecast_accuracy_sensor
+                name: SoC Forecast Accuracy
+              - entity: sensor.hsem_prediction_accuracy_sensor
+                name: Solar Prediction Accuracy
+              - entity: sensor.hsem_daily_plan_vs_actual
+                name: Plan-vs-Actual Tracking
+
+  - title: Controls
+    icon: mdi:tune
+    path: controls
+    cards:
+      - type: vertical-stack
+        cards:
+          # ── Switches ──
+          - type: entities
+            title: System Controls
+            entities:
+              - entity: switch.hsem_read_only
+                name: Read-Only Mode
+              - entity: switch.hsem_extended_attributes
+                name: Extended Attributes
+              - entity: switch.hsem_verbose_logging
+                name: Verbose Logging
+              - entity: switch.hsem_ml_consumption_enabled
+                name: ML Consumption
+              - entity: switch.hsem_ml_consumption_sequential
+                name: ML Sequential
+              - entity: switch.hsem_ev_charger_force_max_discharge_power
+                name: EV Force Max Discharge
+              - entity: switch.hsem_dynamic_discharge_floor
+                name: Dynamic Discharge Floor
+
+          # ── Discharge Schedules ──
+          - type: entities
+            title: Discharge Schedules
+            entities:
+              - entity: switch.hsem_batteries_enable_batteries_schedule_1
+                name: Schedule 1
+              - entity: time.hsem_batteries_enable_batteries_schedule_1_start
+                name: Schedule 1 Start
+              - entity: time.hsem_batteries_enable_batteries_schedule_1_end
+                name: Schedule 1 End
+              - entity: switch.hsem_batteries_enable_batteries_schedule_2
+                name: Schedule 2
+              - entity: time.hsem_batteries_enable_batteries_schedule_2_start
+                name: Schedule 2 Start
+              - entity: time.hsem_batteries_enable_batteries_schedule_2_end
+                name: Schedule 2 End
+              - entity: switch.hsem_batteries_enable_batteries_schedule_3
+                name: Schedule 3
+              - entity: time.hsem_batteries_enable_batteries_schedule_3_start
+                name: Schedule 3 Start
+              - entity: time.hsem_batteries_enable_batteries_schedule_3_end
+                name: Schedule 3 End
+
+          # ── Solcast ──
+          - type: entities
+            title: Solar Forecast
+            entities:
+              - entity: select.hsem_solcast_likelihood
+                name: Solcast Likelihood
+              - entity: sensor.solcast_pv_forecast_forecast_today
+                name: Solcast Today
+              - entity: sensor.solcast_pv_forecast_forecast_tomorrow
+                name: Solcast Tomorrow

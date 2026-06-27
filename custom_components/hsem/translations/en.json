@@ -345,6 +345,44 @@
         "description": "Select power sensors for HSEM.",
         "title": "Power Sensors"
       },
+      "quick_setup": {
+        "data": {
+          "battery_soc": "Battery State of Capacity",
+          "working_mode": "Batteries Working Mode",
+          "max_charge_power": "Max Charging Power",
+          "max_discharge_power": "Max Discharging Power",
+          "eod_soc": "End of Discharge SoC",
+          "rated_capacity": "Batteries Rated Capacity",
+          "active_power_control": "Active Power Control",
+          "tou_periods": "TOU Charging/Discharging Periods",
+          "solcast_today": "Solcast Forecast Today",
+          "solcast_tomorrow": "Solcast Forecast Tomorrow",
+          "import_price": "Import Electricity Price Sensor",
+          "export_price": "Export Electricity Price Sensor",
+          "house_power": "House Consumption Power",
+          "solar_power": "Solar Production Power",
+          "use_quick_setup": "Use Quick Setup"
+        },
+        "data_description": {
+          "battery_soc": "Auto-detected battery state of capacity sensor.",
+          "working_mode": "Auto-detected batteries working mode entity.",
+          "max_charge_power": "Auto-detected maximum charging power entity.",
+          "max_discharge_power": "Auto-detected maximum discharging power entity.",
+          "eod_soc": "Auto-detected end of discharge SoC entity.",
+          "rated_capacity": "Auto-detected batteries rated capacity sensor.",
+          "active_power_control": "Auto-detected inverter active power control sensor.",
+          "tou_periods": "Auto-detected TOU charging/discharging periods sensor.",
+          "solcast_today": "Auto-detected Solcast PV forecast for today.",
+          "solcast_tomorrow": "Auto-detected Solcast PV forecast for tomorrow.",
+          "import_price": "Auto-detected electricity import price sensor.",
+          "export_price": "Auto-detected electricity export price sensor.",
+          "house_power": "Auto-detected house consumption power sensor.",
+          "solar_power": "Auto-detected solar production power sensor.",
+          "use_quick_setup": "Enable to use auto-detected entities and skip the full entity-by-entity setup wizard. Disable for Advanced Setup."
+        },
+        "description": "HSEM has auto-detected the following entities. {warning}Review the detected entities below. You can confirm to use them or choose Advanced Setup to select entities manually.",
+        "title": "Quick Setup \u2014 Auto-Detected Entities"
+      },
       "solcast": {
         "data": {
           "hsem_solcast_pv_forecast_forecast_likelihood": "Solcast PV Forecast Preferred forecast likelihood to use",

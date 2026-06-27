@@ -180,6 +180,8 @@ class SensorConfig:
     ev: EVChargerConfig = field(default_factory=EVChargerConfig)
     ev_second_enabled: bool = False
     ev_second: EVChargerConfig = field(default_factory=EVChargerConfig)
+    #: Auto-Full on negative electricity price (issue #609)
+    ev_auto_full_negative_price: bool = False
 
     # Battery economics
     batteries_charge_efficiency: float = 98.0

@@ -295,3 +295,24 @@ def get_ev_second_deadline_time_unique_id(entry_id: str) -> str:
 def get_ev_second_deadline_time_entity_id() -> str:
     """Return the Home Assistant entity ID for the second EV charge deadline time entity."""
     return f"time.{s(get_ev_second_deadline_time_key())}"
+
+
+# EV Auto-Full on Negative Price Switch (issue #609)
+def get_ev_auto_full_negative_price_switch_key() -> str:
+    """Return the config-entry key for the EV auto-full negative price switch."""
+    return f"{DOMAIN}_ev_auto_full_negative_price"
+
+
+def get_ev_auto_full_negative_price_switch_name() -> str:
+    """Return the display name for the EV auto-full negative price switch."""
+    return "EV Auto-Full on Negative Price"
+
+
+def get_ev_auto_full_negative_price_switch_unique_id(entry_id: str) -> str:
+    """Return the unique_id for the EV auto-full negative price switch."""
+    return f"{DOMAIN}_{entry_id}_{get_ev_auto_full_negative_price_switch_key()}_switch"
+
+
+def get_ev_auto_full_negative_price_switch_entity_id() -> str:
+    """Return the entity_id for the EV auto-full negative price switch."""
+    return f"switch.{s(get_ev_auto_full_negative_price_switch_key())}"

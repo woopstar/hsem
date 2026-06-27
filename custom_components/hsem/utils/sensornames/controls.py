@@ -383,3 +383,31 @@ def get_schedule_3_end_time_unique_id(entry_id: str) -> str:
 def get_schedule_3_end_time_entity_id() -> str:
     """Return the entity_id for the schedule-3-end time entity."""
     return f"time.{s(get_schedule_3_end_time_key())}"
+
+
+# Charge rate per temperature bucket number entities (issue #608)
+
+_TEMP_BUCKET_KEYS = [
+    "below_0",
+    "0_to_5",
+    "6_to_15",
+    "16_to_21",
+    "21_to_35",
+    "35_to_50",
+    "above_50",
+]
+
+
+def get_charge_rate_number_key(bucket: str) -> str:
+    """Return the entity description key for a temperature-bucket charge rate."""
+    return f"{DOMAIN}_charge_rate_{bucket}"
+
+
+def get_charge_rate_number_unique_id(entry_id: str, bucket: str) -> str:
+    """Return the unique_id for a temperature-bucket charge rate number entity."""
+    return f"{DOMAIN}_{entry_id}_charge_rate_{bucket}"
+
+
+def get_charge_rate_number_entity_id(bucket: str) -> str:
+    """Return the entity_id for a temperature-bucket charge rate number entity."""
+    return f"number.{s(f'{DOMAIN}_charge_rate_{bucket}')}"

@@ -320,9 +320,11 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         self._solar_corrector_processed: set[datetime] = set()
 
         # Forecast-vs-actual tracker (predicted-vs-actual tracking, issue #373).
-        self._forecast_tracker: ForecastTracker = ForecastTracker(max_slots=192)
+        self._forecast_tracker: ForecastTracker = ForecastTracker(max_slots=2880)
         # Prediction accuracy tracker — SoC/MAE/action-mix scorecard (issue #601).
-        self._prediction_tracker: PredictionTracker = PredictionTracker()
+        self._prediction_tracker: PredictionTracker = PredictionTracker(
+            max_records=2880
+        )
         # Daily plan-vs-actual tracker (diagnostic sensor with 90-day history).
         # The history file path is set in async_setup() once hass.config is available.
         self._daily_tracker: DailyPlanVsActualTracker = DailyPlanVsActualTracker()
