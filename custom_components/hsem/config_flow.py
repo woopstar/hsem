@@ -3,11 +3,13 @@
 import logging
 from typing import Any
 
+import voluptuous as vol
+
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigEntry, ConfigFlowResult
 from homeassistant.core import HomeAssistant, callback
 
-from custom_components.hsem.const import DOMAIN, NAME
+from custom_components.hsem.const import DEFAULT_CONFIG_VALUES, DOMAIN, NAME
 from custom_components.hsem.flows.batteries_excess_export import (
     get_batteries_excess_export_step_schema,
     validate_batteries_excess_export_input,
@@ -53,6 +55,11 @@ from custom_components.hsem.flows.power import (
 from custom_components.hsem.flows.prices import (
     get_prices_step_schema,
     validate_prices_input,
+)
+from custom_components.hsem.flows.quick_setup import (
+    _DETECTION_TO_CONFIG,
+    CRITICAL_DETECTION_KEYS,
+    auto_detect_entities,
 )
 from custom_components.hsem.flows.solcast import (
     get_solcast_step_schema,
@@ -203,7 +210,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
             errors = await validate_init_step_input(user_input)
             if not errors:
                 self._user_input.update(user_input)
-                return await self.async_step_prices()
+                return await self.async_step_quick_setup()
 
         data_schema = await get_init_step_schema(None)
 
@@ -212,6 +219,86 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
             step_id="user",
             data_schema=data_schema,
             errors=errors,
+            last_step=False,
+        )
+
+    async def async_step_quick_setup(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle the quick setup auto-detection step.
+
+        Auto-detects HSEM-relevant entities and offers a pre-filled form.
+        The user can confirm to use detected entities (quick setup) or
+        choose advanced setup to go through the full entity-by-entity wizard.
+        """
+        detected = await auto_detect_entities(self.hass)
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            use_quick_setup = user_input.pop("use_quick_setup", True)
+
+            if use_quick_setup:
+                # Map detected form values to config keys.
+                for detect_key, config_key in _DETECTION_TO_CONFIG.items():
+                    value = user_input.get(detect_key) or detected.get(detect_key)
+                    if value:
+                        self._user_input[config_key] = value
+
+                # Fill remaining defaults from DEFAULT_CONFIG_VALUES.
+                for key, default_value in DEFAULT_CONFIG_VALUES.items():
+                    if key not in self._user_input:
+                        # vol.UNDEFINED is not JSON-serializable; skip it.
+                        if default_value is vol.UNDEFINED:
+                            continue
+                        self._user_input[key] = default_value
+
+                # Ensure months are processed (winter/summer split).
+                winter_months = self._user_input.get("hsem_months_winter", [])
+                if not isinstance(winter_months, list):
+                    winter_months = convert_months_to_int(
+                        winter_months if winter_months else []
+                    )
+                all_months = set(range(1, 13))
+                summer_months = sorted(all_months - set(winter_months))
+                self._user_input["hsem_months_winter"] = winter_months
+                self._user_input["hsem_months_summer"] = summer_months
+
+                # Ensure optional fields have safe defaults.
+                self._user_input.setdefault(
+                    "hsem_huawei_solar_device_id_inverter_1", ""
+                )
+                self._user_input.setdefault(
+                    "hsem_huawei_solar_device_id_inverter_2", ""
+                )
+                self._user_input.setdefault("hsem_huawei_solar_device_id_batteries", "")
+
+                return await self.async_step_battery_economics()
+
+            # Advanced setup — go through full wizard.
+            return await self.async_step_prices()
+
+        # Build the quick-setup form schema.
+        schema_fields: dict[vol.Marker, type] = {}
+
+        for detect_key in _DETECTION_TO_CONFIG:
+            default_value = detected.get(detect_key) or ""
+            schema_fields[vol.Optional(detect_key, default=default_value)] = str
+
+        schema_fields[vol.Required("use_quick_setup", default=True)] = bool
+
+        # Build warning for missing critical entities.
+        missing_critical = [k for k in CRITICAL_DETECTION_KEYS if not detected.get(k)]
+        description_placeholders: dict[str, str] = {}
+        if missing_critical:
+            description_placeholders["warning"] = (
+                "Critical entities not detected: " + ", ".join(missing_critical)
+            )
+
+        return self.async_show_form(
+            step_id="quick_setup",
+            data_schema=vol.Schema(schema_fields),
+            errors=errors,
+            description_placeholders=description_placeholders,
             last_step=False,
         )
 
