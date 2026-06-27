@@ -694,52 +694,6 @@ def solve_milp(
                 ev_row += m
 
     # ------------------------------------------------------------------
-    # Session EV demand grid-charge prevention (issue #615).
-    # For slots where EV session demand is certain, prevent the battery
-    # from charging from grid.  The battery may only charge from PV
-    # surplus that remains after the fixed EV session load is met.
-    #
-    # Constraint:  ec[t] / charge_eff  ≤  max(0, pv_avail[t] - total_session_ac[t])
-    # where total_session_ac[t] is the total AC load from all session EVs.
-    # ------------------------------------------------------------------
-    session_rows = len(session_slots_set) if _has_session_demand else 0
-    if session_rows > 0:
-        # Compute per-slot total AC-side session EV load
-        session_ac_by_slot: dict[int, float] = {}
-        for ev_idx in session_ev_indices:
-            ev = active_evs[ev_idx]
-            session_kw = ev.session_charge_kw
-            assert session_kw is not None  # guarded by session_ev_indices
-            session_dc = session_kw * _slot_hours * ev.charger_efficiency
-            session_ac = session_dc / ev.charger_efficiency
-            for t in session_slots_set:
-                session_ac_by_slot[t] = session_ac_by_slot.get(t, 0.0) + session_ac
-
-        # Map session slot LP indices to consecutive row indices
-        session_t_list = sorted(session_slots_set)
-        session_t_to_row = {t: i for i, t in enumerate(session_t_list)}
-
-        existing_rows = soc_rows + mutex_rows + cycle_rows + ev_total_rows
-        A_ub_old = A_ub
-        b_ub_old = b_ub
-        A_ub = np.zeros((existing_rows + session_rows, n_vars))
-        b_ub = np.zeros(existing_rows + session_rows)
-        A_ub[:existing_rows, :] = A_ub_old
-        b_ub[:existing_rows] = b_ub_old
-
-        for t in session_t_list:
-            row = existing_rows + session_t_to_row[t]
-            total_session_ac = session_ac_by_slot.get(t, 0.0)
-            # ec[t] / charge_eff ≤ max(0, pv_avail[t] - total_session_ac)
-            A_ub[row, ec_off + t] = 1.0 / charge_eff
-            b_ub[row] = max(0.0, pv_avail[t] - total_session_ac)
-        log_planner(
-            "debug",
-            "[milp] Session grid-charge prevention: %d constraint rows added",
-            session_rows,
-        )
-
-    # ------------------------------------------------------------------
     # Fuse constraint (soft): gi[t] - gi_pen[t] ≤ max_grid_import_per_slot_kwh
     # The penalty variable gi_pen[t] absorbs any excess at high cost,
     # preventing infeasibility when house base load alone exceeds the fuse.
@@ -778,17 +732,8 @@ def solve_milp(
     )
     # --- EV bounds ---
     for ev in active_evs:
-        session_kw = ev.session_charge_kw
-        if session_kw is not None and session_kw > 1e-9:
-            session_dc = session_kw * _slot_hours * ev.charger_efficiency
-            session_dc = min(session_dc, ev.max_charge_per_slot)
-            for t in range(m):
-                if t < SESSION_SLOTS:
-                    bounds.append((session_dc, session_dc))
-                else:
-                    bounds.append((0.0, ev.max_charge_per_slot))
-        else:
-            bounds += [(0.0, ev.max_charge_per_slot)] * m
+        # ev_c[t] bounded by [0, ev.max_charge_per_slot]
+        bounds += [(0.0, ev.max_charge_per_slot)] * m
         # ev deadline penalty: [0, unbounded)
         bounds.append((0.0, None))
     # --- Fuse penalty bounds ---
@@ -907,43 +852,15 @@ def solve_milp(
             # in this slot, always use BatteriesChargeGrid — the EV
             # will consume the solar surplus, so the battery must draw
             # from grid to actually receive the energy the MILP allocated.
-            #
-            # Session EV demand override: for session-demand slots the EV
-            # charging is certain (not a decision), so check whether PV
-            # surplus *beyond* the session EV load is available for the
-            # battery.  Grid-charging the battery is blocked during session
-            # slots to avoid stacking battery charge on top of certain EV draw.
-            is_session_slot = _has_session_demand and lp_t in session_slots_set
-            if is_session_slot:
-                # Compute total AC-side session EV load for this slot
-                total_session_ac = 0.0
-                for ev_idx in session_ev_indices:
-                    ev = active_evs[ev_idx]
-                    skw = ev.session_charge_kw
-                    assert skw is not None
-                    s_dc = skw * _slot_hours * ev.charger_efficiency
-                    total_session_ac += s_dc / ev.charger_efficiency
-                remaining_pv = pv_avail[lp_t] - total_session_ac
-                if remaining_pv > _MIN_ACTION_KWH:
-                    out_slots[
-                        slot_i
-                    ].recommendation = Recommendations.BatteriesChargeSolar.value
-                    out_slots[slot_i].batteries_charged_kwh = round(ec_kwh, 3)
-                else:
-                    # No PV left after session EV — do not charge battery
-                    # from grid.  Zero out the allocated charge energy.
-                    out_slots[slot_i].recommendation = None
-                    out_slots[slot_i].batteries_charged_kwh = 0.0
-            elif pv_avail[lp_t] > _MIN_ACTION_KWH and lp_t not in ev_charging_slots:
+            if pv_avail[lp_t] > _MIN_ACTION_KWH and lp_t not in ev_charging_slots:
                 out_slots[
                     slot_i
                 ].recommendation = Recommendations.BatteriesChargeSolar.value
-                out_slots[slot_i].batteries_charged_kwh = round(ec_kwh, 3)
             else:
                 out_slots[
                     slot_i
                 ].recommendation = Recommendations.BatteriesChargeGrid.value
-                out_slots[slot_i].batteries_charged_kwh = round(ec_kwh, 3)
+            out_slots[slot_i].batteries_charged_kwh = round(ec_kwh, 3)
         elif ed_kwh > _MIN_ACTION_KWH:
             # If the LP is exporting (ge > 0) in this slot, use
             # ForceBatteriesDischarge to signal that the battery should
