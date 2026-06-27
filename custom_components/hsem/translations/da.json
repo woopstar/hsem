@@ -742,6 +742,18 @@
       },
       "ev_second_force_charge_now": {
         "name": "EV 2 Tving Opladning Nu"
+      },
+      "ml_consumption": {
+        "name": "ML-forbrugsforudsigelse"
+      },
+      "ml_sequential": {
+        "name": "ML-sekventiel forudsigelse"
+      },
+      "dynamic_discharge_floor": {
+        "name": "Dynamisk afladningsgulv"
+      },
+      "ev_auto_full_negative_price": {
+        "name": "EV Auto-Fuld ved negativ pris"
       }
     },
     "select": {
@@ -764,6 +776,27 @@
       },
       "ev_second_target_soc": {
         "name": "EV 2 Mål SoC"
+      },
+      "charge_rate_below_0": {
+        "name": "Maks. opladning (<0\u00b0C)"
+      },
+      "charge_rate_0_to_5": {
+        "name": "Maks. opladning (0-5\u00b0C)"
+      },
+      "charge_rate_6_to_15": {
+        "name": "Maks. opladning (6-15\u00b0C)"
+      },
+      "charge_rate_16_to_21": {
+        "name": "Maks. opladning (16-21\u00b0C)"
+      },
+      "charge_rate_21_to_35": {
+        "name": "Maks. opladning (21-35\u00b0C)"
+      },
+      "charge_rate_35_to_50": {
+        "name": "Maks. opladning (35-50\u00b0C)"
+      },
+      "charge_rate_above_50": {
+        "name": "Maks. opladning (>50\u00b0C)"
       }
     },
     "time": {
@@ -793,8 +826,77 @@
       }
     },
     "sensor": {
+      "applier_status": {
+        "name": "Inverter-status"
+      },
+      "battery_soc": {
+        "name": "Batteriets ladetilstand"
+      },
       "daily_plan_vs_actual": {
         "name": "Daglig Plan vs Faktisk"
+      },
+      "degraded_mode": {
+        "name": "Systemtilstand"
+      },
+      "effective_discharge_floor": {
+        "name": "Effektivt afladningsgulv"
+      },
+      "ev_charging": {
+        "name": "EV opladning aktiv"
+      },
+      "ev_optimal_charging_plan": {
+        "name": "EV Optimal Opladningsplan"
+      },
+      "ev_second_optimal_charging_plan": {
+        "name": "EV 2 Optimal Opladningsplan"
+      },
+      "force_mode": {
+        "name": "Tving arbejdstilstand"
+      },
+      "forecast_accuracy": {
+        "name": "Prognose-nøjagtighed"
+      },
+      "hardware_writes": {
+        "name": "Hardware-skrivninger"
+      },
+      "last_updated": {
+        "name": "Sidst opdateret"
+      },
+      "missing_entities": {
+        "name": "Manglende enheder"
+      },
+      "net_consumption": {
+        "name": "Nettoforbrug"
+      },
+      "next_update": {
+        "name": "Næste opdatering"
+      },
+      "ocpp_charger_info": {
+        "name": "OCPP Lader-info"
+      },
+      "ocpp_charger_power": {
+        "name": "OCPP Lader-effekt"
+      },
+      "ocpp_charger_sessions": {
+        "name": "OCPP Lader-sessioner"
+      },
+      "ocpp_charger_status": {
+        "name": "OCPP Lader-status"
+      },
+      "plan_explanation": {
+        "name": "Planstrategi"
+      },
+      "read_only": {
+        "name": "Skrivebeskyttet tilstand"
+      },
+      "recommendation_interval": {
+        "name": "Anbefalingsinterval"
+      },
+      "update_interval": {
+        "name": "Opdateringsinterval"
+      },
+      "working_mode": {
+        "name": "Arbejdstilstand"
       }
     }
   },

@@ -14,6 +14,54 @@
 
 ---
 
+## Features
+
+### Core Optimization
+- **MILP-based planner** — global optimal charge/discharge scheduling via linear programming (HiGHS solver)
+- **8-term cost function** — rigorous mathematical formulation with formal invariants
+- **Multiple candidate strategies** — baseline, passive, aggressive, partial-SoC, and MILP-optimal plans
+- **Time-discounted candidate selection** — prefers near-term savings over far-future gains
+
+### Battery Intelligence
+- **Dynamic self-learning discharge floor** — reserves enough energy to bridge the house to the next solar surplus or cheap grid window, with self-correcting safety margin
+- **Temperature-adaptive charge rate learning** — 7 temperature buckets track actual charge power at p90, adapting to cold-weather limitations
+- **Battery capacity auto-detection** — learns usable capacity from BMS kWh-remaining readings in the 15-85 % SoC range
+- **Cycle cost accounting** — wear-and-tear costs factored into every charge/discharge decision
+- **Grid overcurrent protection** — respects main fuse rating, caps total grid draw
+
+### Solar & Forecast
+- **Solar forecast accuracy auto-correction** — per-hour learned factors (4-day rolling) + intra-hour residual correction (2h decay)
+- **Configurable solar confidence** — plans against a user-selectable percentile (10-90 %) of historical forecast accuracy
+- **48-hour PV horizon** — Solcast today + tomorrow integration
+- **PV curtailment detection** — detects when the inverter throttles solar production
+
+### EV Charging
+- **MILP EV co-optimisation** — EV charging scheduled alongside battery in one LP solve
+- **Session-aware EV demand** — treats actively-charging EV as certain demand for the next 2 hours
+- **Embedded OCPP 1.6 server** — direct EV charger control via WebSocket (Easee, Zaptec, Wallbox, etc.)
+- **Auto-Full on negative prices** — automatically charges EV at full power when electricity is free
+- **Dual EV support** — independent configuration and planning for two EVs
+
+### Financial Visibility
+- **Export income / import cost / net balance sensors** — monetary, total_increasing, HA Energy dashboard compatible
+- **Savings tracker** — actual vs missed savings with 90-day rolling log
+- **Prediction accuracy scorecard** — 7-day and 30-day SoC MAE, solar MAPE, action mix
+- **Daily plan-vs-actual tracking** — compares planned and actual energy flows
+
+### Safety & Trust
+- **Read-only / monitoring mode** — observe what HSEM would do before enabling control
+- **Degraded mode** — safely degrades when critical entities are missing
+- **Hardware write verification** — confirms inverter accepted every command
+- **Data quality diagnostics** — reports missing price/PV data per horizon day
+
+### User Experience
+- **Quick setup wizard** — auto-detects Huawei Solar, Solcast, and price entities
+- **Bundled Lovelace dashboard** — 6-view dashboard with price charts, energy flow, savings, and accuracy
+- **Live-configurable** — all thresholds and settings editable from the dashboard without restart
+- **Bilingual** — English and Danish translations
+
+---
+
 ## Quick Start
 
 1. **Remove any previous Huawei Solar Battery Optimization Project integrations.**
@@ -98,11 +146,16 @@ Full documentation is available on the **[HSEM Wiki](https://github.com/woopstar
 
 - **[Home](https://github.com/woopstar/hsem/wiki/Home)** — User-facing overview: features, FAQ, working modes, battery schedules, excess export, and more
 - **[Architecture Overview](https://github.com/woopstar/hsem/wiki/architecture-overview)** — System context, layered architecture, module map
-- **[Planner Specification](https://github.com/woopstar/hsem/wiki/planner-spec)** — Normative planner invariants, rules, and constraints
-- **[Planner Technical Guide](https://github.com/woopstar/hsem/wiki/planner-guide)** — How the planner works with worked examples
-- **[Cost Function Math](https://github.com/woopstar/hsem/wiki/cost-function-math)** — Complete mathematical formulation of the 8-term cost function
-- **[Sensors Reference](https://github.com/woopstar/hsem/wiki/sensors-reference)** — Complete entity reference: all sensor, select, switch, number, and time entities
-- **[Dashboard Setup](docs/dashboard-setup.md)** — ApexCharts dashboard with full YAML, layout reference, and setup instructions
+- **[Planner Specification](docs/planner-spec.md)** — Normative planner invariants, solar correction, dynamic floor, session EV
+- **[Planner Technical Guide](docs/planner-guide.md)** — How the planner works with worked examples, solar correction, dynamic floor
+- **[Cost Function Math](docs/cost-function-math.md)** — Complete mathematical formulation of the 8-term cost function
+- **[Sensors Reference](docs/sensors-reference.md)** — Complete entity reference: ~40 sensors, switches, numbers, and more
+- **[Config Flow Reference](docs/config-flow-reference.md)** — Setup wizard steps including quick setup and OCPP
+- **[EV Charge Plan Setup](docs/ev-charge-plan-setup.md)** — EV planned load and OCPP charger configuration
+- **[Dashboard Setup](docs/dashboard-setup.md)** — Bundled Lovelace dashboard with 6 views
+- **[Consumption Prediction](docs/consumption-prediction.md)** — ML ridge regression with DOW + DOY + temperature features
+- **[MILP Optimization](docs/milp-optimization.md)** — LP formulation, EV co-optimisation, session-aware demand
+- **[Forecast Accuracy Tracking](docs/forecast-accuracy-tracking.md)** — Solar correction and prediction accuracy
 - **[Troubleshooting Guide](https://github.com/woopstar/hsem/wiki/troubleshooting-guide)** — Diagnose and fix common problems
 - **[All Documentation](docs/index.md)** — Full index of all documentation files
 
