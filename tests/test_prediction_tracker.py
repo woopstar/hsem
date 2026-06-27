@@ -269,9 +269,10 @@ class TestSoCMAE:
         # This simulates a regime change in prediction accuracy after ~1.3d.
         for i in range(800):
             error = 5.0 if i < 128 else 2.0
+            slot_hour = (i // 4) % 24
             tracker.add_record(
                 **_make_record_args(
-                    hour=i // 4,
+                    hour=slot_hour,
                     minute=(i % 4) * 15,
                     predicted_soc=50.0,
                     actual_soc=50.0 + error,

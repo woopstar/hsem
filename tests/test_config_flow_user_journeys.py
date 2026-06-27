@@ -86,14 +86,14 @@ class TestFreshInstallFullFlow:
             ),
             patch.object(
                 flow,
-                "async_step_prices",
-                new=AsyncMock(return_value={"type": "form", "step_id": "prices"}),
+                "async_step_quick_setup",
+                new=AsyncMock(return_value={"type": "form", "step_id": "quick_setup"}),
             ),
         ):
             result = await flow.async_step_user(user_input={"device_name": "My HSEM"})
 
         assert result["type"] == "form"
-        assert result["step_id"] == "prices"
+        assert result["step_id"] == "quick_setup"
 
     @pytest.mark.asyncio
     async def test_final_step_creates_entry_with_accumulated_data(self) -> None:
