@@ -41,6 +41,12 @@ for the HSEM (Home Smart Energy Management) project. Read this before making any
 | `huawei.py` | Huawei Solar inverter API helpers |
 | `logger.py` | `HSEM_LOGGER` — rotating file handler, `propagate=False` |
 | `solar_corrector.py` | Per-hour PV forecast accuracy auto-correction (issue #602) |
+| `dynamic_floor.py` | Dynamic self-learning discharge floor (bridge-to-refill computation) |
+| `capacity_learner.py` | Battery usable capacity auto-detection from BMS readings |
+| `charge_rate_learner.py` | Temperature-adaptive charge rate learning (7 buckets, p90) |
+| `prediction_tracker.py` | Prediction accuracy scorecard (SoC MAE, solar MAPE, action mix) |
+| `weekday_profile.py` | Weekday/weekend split house load EWMA profiles |
+| `ev_mode_resolver.py` | Auto-Full EV charging on negative electricity prices |
 
 ---
 
@@ -217,20 +223,20 @@ Always check `docs/huawei_entities.md` before looking elsewhere.
 
 | Issue | Title | Status |
 |---|---|---|
-| #439 | Move `_DISCHARGE_RECS` to `utils/recommendations.py` | Open |
-| #440 | Extract `clamp_efficiency()` to `utils/misc.py` | Open |
-| #441 | Split `engine.py` into 3 modules | Open |
-| #442 | Split `charge_scheduler.py` into charge + discharge | Open |
-| #443 | Split `coordinator.py` into coordinator + builder | Open |
+| #439 | Move `_DISCHARGE_RECS` to `utils/recommendations.py` | Closed |
+| #440 | Extract `clamp_efficiency()` to `utils/misc.py` | Closed |
+| #441 | Split `engine.py` into 3 modules | Closed |
+| #442 | Split `charge_scheduler.py` into charge + discharge | Closed |
+| #443 | Split `coordinator.py` into coordinator + builder | Closed |
 
 ## Open Bug Issues
 
 | Issue | Title | Status |
 |---|---|---|
-| #444 | MILP cycle cost `ec+ed` vs `max(ec,ed)` | Open |
-| #445 | `_apply_soc_plan` uses `0.30` proxy threshold | Open |
+| #444 | MILP cycle cost `ec+ed` vs `max(ec,ed)` | Closed |
+| #445 | `_apply_soc_plan` uses `0.30` proxy threshold | Closed |
 | #446 | `concentrate_discharge` greedy `break` skips viable slots | Fixed in #452 |
-#447 | Partial-SoC fractions collapse to floor at low SoC | Open
+| #447 | Partial-SoC fractions collapse to floor at low SoC | Open
 | #582 | EV charger power oscillates due to frequent MILP re-solves | Open
 
 ---

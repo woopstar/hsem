@@ -136,6 +136,29 @@ The `excess_export_price_threshold` and the schedule profitability guard both us
 depreciation threshold.  Users who want extra margin can set `battery_cycle_cost_per_kwh`
 to a positive value, which is added on top.
 
+#### Dynamic discharge floor
+
+The planner computes a **dynamic discharge floor** — a bridge-to-refill
+minimum SoC that prevents the battery from being discharged below the
+level needed to reach the next solar refill window:
+
+```text
+bridge_reserve_pct = (next_refill_kwh − expected_charge_kwh)
+                    / usable_capacity_kwh × 100
+effective_floor   = max(configured_min_soc_pct,
+                        bridge_reserve_pct × safety_margin)
+```
+
+where `safety_margin` is a **self-correcting multiplier** that starts at
+1.50 and gradually decays toward 1.05 as the tracker observes successful
+refills.  The floor is clamped to the hardware minimum SoC.
+
+This prevents the planner from discharging the battery late in the
+evening when the next day's solar forecast is insufficient to refill it —
+the battery retains enough energy to cover the gap.  Without this guard,
+the planner would discharge to the configured floor every night, forcing
+morning grid imports when solar is scarce.
+
 ### Consumption prediction
 
 HSEM predicts house load for each slot.  Two modes are available (toggled via
@@ -205,6 +228,37 @@ for future days to account for forecast uncertainty:
 | 2 (day after) | 0.80 | 20 % conservative discount |
 
 Prices are **not** decayed because spot-market prices are typically firm by mid-day.
+
+#### Solar forecast auto-correction
+
+Raw Solcast PV estimates are corrected in two stages before entering the
+planner (issue #602):
+
+**Per-hour accuracy factors:** The `SolarForecastCorrector` maintains a
+4-day rolling history of `(forecast, actual)` ratios for each hour of the
+day.  The ratio for a given hour is clamped to **[0.3, 1.5]** so that a
+single anomalous day cannot permanently distort the correction.  The
+factor is updated once per day when a full 24 h of actual production is
+available.
+
+**Intra-hour residual correction:** When live solar production data is
+available mid-hour, the last 4 slots (2 hours) of the forecast horizon are
+adjusted with an exponentially decaying residual:
+
+```text
+corrected_pv = raw_pv × hour_factor × residual_factor
+residual_factor = 1.0 + (live_pv − forecast_pv) / max(forecast_pv, 0.01)
+                × decay_per_slot
+```
+
+where `decay_per_slot` is `[0.66, 0.44, 0.22, 0.05]` across the 4 slots
+(linear decay over 2 h).  The correction is conservative in both
+directions: it raises PV estimates when live production exceeds forecast
+(cloud clearing) and lowers them when live production falls short (cloud
+arrival).
+
+The raw Solcast data is never mutated; corrections are only applied at
+consumption time when the planner reads PV estimates.
 
 ### Schedule windows
 
@@ -685,6 +739,27 @@ surplus = max(slot.solcast_pv_estimate − slot.avg_house_consumption, 0.0)
 This was correct but did not yet apply PV confidence decay.  PR #406 replaced it
 with the pre-populated `estimated_net_consumption` approach, which is both
 conceptually cleaner and more accurate.
+
+---
+
+### Session-aware EV demand
+
+When an EV is **actively charging** (session in progress, current draw
+detected), the next 2 hours (8 slots at 15-minute granularity) are treated
+as **certain demand** in the MILP.  The live charger power is used as a
+fixed lower bound on EV load for those slots, preventing the MILP from
+re-allocating demand away from a charging session that is already underway:
+
+```text
+For slots t in [now, now + 2h]:
+    ev_c_lower_bound[t] = min(session_charge_kw × slot_hours,
+                               ev_max_charge_per_slot)
+```
+
+This keeps the MILP's plan consistent with the physical state of the EV
+charger and avoids oscillation between charging and idle states within a
+single session.  Slots beyond the 2-hour window are optimised freely by
+the MILP.
 
 ---
 
@@ -1364,12 +1439,6 @@ Missing price data is surfaced in `data_quality` and triggers `Degraded` mode,
 but the planner proceeds using `0.0` as a fallback — which means it cannot
 meaningfully optimise slots where prices are absent.
 
-### PV forecast is a point estimate
-
-Solcast provides a single `pv_estimate` per hour. There is no confidence interval
-or worst-case/best-case distinction exposed to the planner. The confidence decay
-factor (10 %/day) is a conservative heuristic, not a calibrated uncertainty model.
-
 ### No intra-day re-planning of past slots
 
 Slots marked `time_passed` are frozen. If the morning plan assumed 5 kWh of PV
@@ -1380,12 +1449,6 @@ current SoC but does not retroactively account for the morning shortfall.
 
 The `export_min_price` threshold turns grid export on or off below a price level.
 There is no proportional throttle or ramp — the switch is instantaneous.
-
-### Battery round-trip efficiency is a fixed percentage
-
-`battery_conversion_loss_pct` is a static configuration value. Real lithium
-batteries have efficiency curves that depend on charge rate, temperature, and SoC
-level. Using a conservative value (e.g. 10–15 %) compensates partially for this.
 
 ### Single-zone tariff model
 

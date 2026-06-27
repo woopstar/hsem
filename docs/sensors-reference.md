@@ -11,11 +11,12 @@ HSEM exposes these entity types:
 
 | Type | Count | Description |
 |---|---|---|
-| **Sensor** | ~20 | Read-only state, plan, and diagnostic entities |
+| **Sensor** | ~40 | Read-only state, plan, diagnostic, financial, and EV entities |
 | **Select** | 2 | Force working mode override and Solcast likelihood selector |
-| **Switch** | 13 | Toggle entities for schedules, EV settings, and ML options |
+| **Switch** | ~15 | Toggle entities for schedules, EV settings, features, and ML options |
 | **Time** | 8 | Start/end time inputs for battery schedules and EV deadlines |
-| **Number** | 4 | Charge/discharge efficiency and EV target SoC inputs |
+| **Number** | ~12 | Charge/discharge efficiency, EV target SoC, temperature charge rates |
+| **Binary sensor** | 1 | PV curtailment detection |
 
 ---
 
@@ -208,29 +209,88 @@ Displays the planner's strategy rationale and per-candidate cost breakdown.
 
 ---
 
-## Forecast accuracy sensor
+## Financial sensors
 
-Diagnostic sensor tracking forecast vs actual PV and load accuracy.
+Cumulative monetary sensors that track grid import cost and export revenue.
 
-**Entity:** `sensor.hsem_forecast_accuracy`
+**Entities:**
+- `sensor.hsem_export_income` — Cumulative export revenue
+- `sensor.hsem_import_cost` — Cumulative import cost
+- `sensor.hsem_net_grid_balance` — Export income minus import cost
+
+### `sensor.hsem_export_income`
+
+| Property | Value |
+|---|---|
+| **Type** | `sensor` |
+| **State class** | `total_increasing` |
+| **State** | Cumulative export revenue (local currency) |
+| **Device class** | `monetary` |
+
+### `sensor.hsem_import_cost`
+
+| Property | Value |
+|---|---|
+| **Type** | `sensor` |
+| **State class** | `total_increasing` |
+| **State** | Cumulative import cost (local currency) |
+| **Device class** | `monetary` |
+
+### `sensor.hsem_net_grid_balance`
+
+| Property | Value |
+|---|---|
+| **Type** | `sensor` |
+| **State class** | `measurement` |
+| **State** | Net grid balance (`export_income − import_cost`, local currency) |
+| **Device class** | `monetary` |
+
+**Template example:**
+
+```jinja2
+{{ states('sensor.hsem_net_grid_balance') | float | round(2) }}
+```
+
+---
+
+## Prediction accuracy sensor
+
+Tracks prediction accuracy across multiple horizons — solar, load, and battery SoC — up to 30 days.
+
+**Entity:** `sensor.hsem_prediction_accuracy`
+
+| State | Meaning |
+|---|---|
+| `soc_mae_7d` | 7-day battery SoC MAE (percentage points) |
 
 | Attribute | Unit | Description |
 |---|---|---|
-| `native_value` | kWh | PV MAE (Mean Absolute Error) |
-| `window_slots` | — | Total slots in ring buffer |
-| `finalised_slots` | — | Slots contributing to metrics |
-| `mae_pv_kwh` | kWh | PV Mean Absolute Error |
-| `mae_load_kwh` | kWh | Load Mean Absolute Error |
-| `bias_pv_kwh` | kWh | PV signed bias (positive = over-forecast) |
-| `bias_load_kwh` | kWh | Load signed bias |
-| `rmse_pv_kwh` | kWh | PV Root Mean Squared Error |
-| `rmse_load_kwh` | kWh | Load RMSE |
-| `mape_pv_pct` | % | PV MAPE |
-| `mape_load_pct` | % | Load MAPE |
-| `latest_pv_forecast_kwh` | kWh | Latest finalised slot PV forecast |
-| `latest_pv_actual_kwh` | kWh | Latest finalised slot PV actual |
-| `latest_load_forecast_kwh` | kWh | Latest finalised slot load forecast |
-| `latest_load_actual_kwh` | kWh | Latest finalised slot load actual |
+| `soc_mae_7d` | pp | 7-day SoC Mean Absolute Error |
+| `soc_mae_30d` | pp | 30-day SoC Mean Absolute Error |
+| `solar_mape` | % | Solar forecast MAPE |
+| `load_mae_kwh` | kWh | Load Mean Absolute Error |
+| `action_mix` | dict | Distribution of planner actions over the window |
+
+---
+
+## Solar confidence sensor
+
+Per-hour PV forecast accuracy factors and confidence percentile.
+
+**Entity:** `sensor.hsem_solar_confidence`
+
+| Attribute | Description |
+|---|---|
+| **State** | Mean accuracy factor across the horizon (ratio) |
+| `factors` | dict — per-hour correction factors for each slot |
+| `confidence_pct` | float — confidence percentile (e.g. 50 = median) |
+
+**Template example:**
+
+```jinja2
+{{ states('sensor.hsem_solar_confidence') | float | round(3) }}
+Confidence: {{ state_attr('sensor.hsem_solar_confidence', 'confidence_pct') }}%
+```
 
 ---
 
@@ -293,13 +353,151 @@ Boolean sensor indicating whether any EV is actively drawing power.
 
 ## Battery SoC sensor
 
-Snapshot of the battery state of charge.
+Snapshot of the battery state of charge with optional learned capacity tracking.
 
 **Entity:** `sensor.hsem_battery_soc_sensor`
 
 | State | Unit | Description |
 |---|---|---|
 | 0–100 | % | Battery SoC percentage |
+
+**Key attributes:**
+
+| Attribute | Unit | Description |
+|---|---|---|
+| `learned_capacity_kwh` | kWh | Learned usable battery capacity from charge/discharge cycles |
+| `capacity_samples` | int | Number of charge/discharge samples contributing to the learned capacity |
+
+---
+
+## Dynamic discharge floor
+
+Controls and reports the effective discharge floor SoC, which the planner uses as a minimum battery SoC when the dynamic floor feature is enabled.
+
+**Entities:**
+- `sensor.hsem_effective_discharge_floor` — Current effective floor SoC (%)
+- `switch.hsem_dynamic_discharge_floor` — Enable/disable the dynamic floor feature
+
+### `sensor.hsem_effective_discharge_floor`
+
+| Property | Value |
+|---|---|
+| **Type** | `sensor` |
+| **State** | Current effective discharge floor SoC percentage |
+| **Unit** | % |
+
+### `switch.hsem_dynamic_discharge_floor`
+
+| Property | Value |
+|---|---|
+| **Type** | `switch` |
+| **State** | `on` (dynamic floor active) or `off` (static floor) |
+
+**Template example:**
+
+```jinja2
+{% if is_state('switch.hsem_dynamic_discharge_floor', 'on') %}
+  Dynamic floor: {{ states('sensor.hsem_effective_discharge_floor') }}%
+{% endif %}
+```
+
+---
+
+## OCPP charger sensors
+
+Sensors providing live status and diagnostics for an OCPP-compliant EV charger connected via the integrated OCPP server.
+
+**Configuration keys** (set in config flow):
+
+| Key | Description |
+|---|---|
+| `hsem_ocpp_enabled` | Enable the OCPP server |
+| `hsem_ocpp_port` | TCP port for OCPP WebSocket connections |
+| `hsem_ocpp_cpid` | OCPP charge point identifier |
+| `hsem_ocpp_start_window_s` | Seconds before charge deadline to start charging |
+| `hsem_ocpp_stop_window_s` | Seconds after charge deadline to stop charging |
+
+### `sensor.hsem_ocpp_charger_status`
+
+| Property | Value |
+|---|---|
+| **Type** | `sensor` |
+| **State** | Connection/charging state: `connected`, `charging`, `disconnected`, etc. |
+
+### `sensor.hsem_ocpp_charger_power`
+
+| Property | Value |
+|---|---|
+| **Type** | `sensor` |
+| **State** | Live charging power (kW) |
+| **Device class** | `power` |
+| **Unit** | kW |
+
+### `sensor.hsem_ocpp_charger_info`
+
+| Property | Value |
+|---|---|
+| **Type** | `sensor` |
+| **State** | Charger summary string |
+| **Attributes** | `vendor`, `model`, `firmware_version`, `serial_number` |
+
+### `sensor.hsem_ocpp_charger_sessions`
+
+| Property | Value |
+|---|---|
+| **Type** | `sensor` |
+| **State** | Number of completed sessions |
+| **Attributes** | `sessions` — list of completed session logs (start time, energy, duration) |
+
+**Template example:**
+
+```jinja2
+{{ states('sensor.hsem_ocpp_charger_status') }}
+{{ states('sensor.hsem_ocpp_charger_power') | float | round(2) }} kW
+```
+
+---
+
+## Savings tracker sensor
+
+Tracks actual vs missed savings over a rolling 90-day window.
+
+**Entity:** `sensor.hsem_savings_tracker`
+
+| Property | Value |
+|---|---|
+| **Type** | `sensor` |
+| **State** | Current day savings (local currency) |
+| **Attributes** | `actual_savings`, `missed_savings`, `total_savings`, `log` (90-day rolling list) |
+
+**Template example:**
+
+```jinja2
+Actual: {{ state_attr('sensor.hsem_savings_tracker', 'actual_savings') }}
+Missed: {{ state_attr('sensor.hsem_savings_tracker', 'missed_savings') }}
+```
+
+---
+
+## PV curtailment sensor
+
+Detects when the inverter is actively curtailing PV production.
+
+**Entity:** `binary_sensor.hsem_pv_curtailment`
+
+| Property | Value |
+|---|---|
+| **Type** | `binary_sensor` |
+| **State** | `curtailed` (PV being limited) or `normal` (no curtailment) |
+| **Device class** | `problem` |
+
+**Template example:**
+
+```jinja2
+{% if is_state('binary_sensor.hsem_pv_curtailment', 'curtailed') %}
+  PV is being curtailed
+{% endif %}
+```
 
 ---
 
@@ -315,7 +513,6 @@ Snapshot of the battery state of charge.
 | `sensor.hsem_ev_optimal_charging_plan` | EV Optimal Charging Plan | Primary EV plan state | `charging`, `waiting`, etc. |
 | `sensor.hsem_ev_second_optimal_charging_plan` | EV Second Optimal Charging Plan | Second EV plan state | `charging`, `waiting`, etc. |
 | `sensor.hsem_force_mode_sensor` | Force Working Mode | Override active indicator | `auto` or override mode name |
-| `sensor.hsem_forecast_accuracy` | Forecast Accuracy | PV & load forecast-vs-actual | PV MAE (kWh) |
 | `sensor.hsem_solar_confidence_sensor` | Solar Forecast Confidence | Per-hour PV forecast accuracy factors | Mean factor (ratio) |
 | `sensor.hsem_hardware_writes_sensor` | Hardware Writes | Writes allowed/blocked by safety gate | `allowed`, `blocked` |
 | `sensor.hsem_read_only_sensor` | Read-Only Mode | Read-only mode indicator | `on`, `off` |
@@ -324,9 +521,20 @@ Snapshot of the battery state of charge.
 | `sensor.hsem_next_update_sensor` | Next Update | Next scheduled coordinator cycle | ISO-8601 timestamp |
 | `sensor.hsem_missing_entities_sensor` | Missing Input Entities | Count of missing input entities | Integer |
 | `sensor.hsem_plan_explanation` | Plan Explanation | Planner strategy and cost breakdown | Winning candidate name |
+| `sensor.hsem_prediction_accuracy` | Prediction Accuracy | Multi-horizon forecast accuracy | `soc_mae_7d` |
 | `sensor.hsem_recommendation_interval_sensor` | Recommendation Interval | Slot width and horizon info | Minutes |
 | `sensor.hsem_update_interval_sensor` | Update Interval | Current polling interval | Minutes |
 | `sensor.hsem_working_mode` | Working Mode | Active battery recommendation | Working mode state |
+| `sensor.hsem_export_income` | Export Income | Cumulative export revenue | Monetary (total_increasing) |
+| `sensor.hsem_import_cost` | Import Cost | Cumulative import cost | Monetary (total_increasing) |
+| `sensor.hsem_net_grid_balance` | Net Grid Balance | Export income minus import cost | Monetary (measurement) |
+| `sensor.hsem_effective_discharge_floor` | Effective Discharge Floor | Current effective floor SoC | Percentage |
+| `sensor.hsem_ocpp_charger_status` | OCPP Charger Status | Charger connection/charging state | String |
+| `sensor.hsem_ocpp_charger_power` | OCPP Charger Power | Live charging power | kW |
+| `sensor.hsem_ocpp_charger_info` | OCPP Charger Info | Vendor, model, firmware, serial | String |
+| `sensor.hsem_ocpp_charger_sessions` | OCPP Charger Sessions | Completed session log | Integer |
+| `sensor.hsem_savings_tracker` | Savings Tracker | Actual vs missed savings (90-day) | Monetary |
+| `binary_sensor.hsem_pv_curtailment` | PV Curtailment | PV curtailment detection | `curtailed` / `normal` |
 
 ---
 
@@ -373,6 +581,8 @@ This setting is also configurable in the options flow.
 | `switch.hsem_ev_second_force_charge_now` | Force immediate second EV charging |
 | `switch.hsem_ml_consumption` | Enable ML-based consumption prediction |
 | `switch.hsem_ml_sequential` | Enable sequential (intra-day momentum) ML mode |
+| `switch.hsem_dynamic_discharge_floor` | Enable dynamic discharge floor |
+| `switch.hsem_ev_auto_full_negative_price` | Auto-Full EV on negative price |
 
 ---
 
@@ -384,6 +594,21 @@ This setting is also configurable in the options flow.
 | `number.hsem_battery_discharge_efficiency` | Battery discharge efficiency | 1–100 % |
 | `number.hsem_ev_target_soc` | Primary EV target SoC | 0–100 % |
 | `number.hsem_ev_second_target_soc` | Second EV target SoC | 0–100 % |
+
+### Temperature-based charge rates
+
+Charge rate limits based on ambient temperature ranges. Each adjusts the maximum
+charge power the planner may request within the corresponding temperature band.
+
+| Entity | Temperature range |
+|---|---|
+| `number.hsem_charge_rate_below_0` | Below 0 °C |
+| `number.hsem_charge_rate_0_to_5` | 0–5 °C |
+| `number.hsem_charge_rate_6_to_15` | 6–15 °C |
+| `number.hsem_charge_rate_16_to_21` | 16–21 °C |
+| `number.hsem_charge_rate_21_to_35` | 21–35 °C |
+| `number.hsem_charge_rate_35_to_50` | 35–50 °C |
+| `number.hsem_charge_rate_above_50` | Above 50 °C |
 
 ---
 
@@ -399,6 +624,45 @@ This setting is also configurable in the options flow.
 | `time.hsem_batteries_schedule_3_end` | Schedule 3 end time |
 | `time.hsem_ev_deadline` | Primary EV charge deadline |
 | `time.hsem_ev_second_deadline` | Second EV charge deadline |
+
+---
+
+## Config flow additions
+
+### Quick setup (#610)
+
+The config flow includes a `quick_setup` step that auto-detects HA entities
+(Huawei inverter, EV charger, Solcast forecasts, price sensors) to reduce
+manual configuration.
+
+### OCPP server
+
+OCPP configuration is exposed through the config flow with these keys:
+`hsem_ocpp_enabled`, `hsem_ocpp_port`, `hsem_ocpp_cpid`,
+`hsem_ocpp_start_window_s`, `hsem_ocpp_stop_window_s`. See
+[OCPP charger sensors](#ocpp-charger-sensors) above.
+
+---
+
+## Services
+
+### `hsem.create_dashboard`
+
+Creates a pre-configured HSEM dashboard in Home Assistant with cards for
+working mode, battery SoC, financial sensors, EV status, and plan explanation.
+Available in **Developer Tools → Services**.
+
+---
+
+## Internal additions (no new sensors)
+
+These changes are internal to the planner and do not expose new entities:
+
+- **Weekday/weekend profiling (#612):** `WeekdayProfile` module-level
+  singleton distinguishes weekday vs weekend consumption patterns for
+  more accurate load forecasting.
+- **Session EV charging (#615):** `EVConfig.session_charge_kw` field
+  allows per-session charge power configuration for EV co-optimisation.
 
 ---
 

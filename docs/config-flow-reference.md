@@ -9,12 +9,27 @@ This document describes every step in the HSEM configuration and options flows.
 The config flow is a multi-step wizard. Steps appear in this order:
 
 ```
-init → prices → months → solcast → huawei_solar
+quick_setup → init → prices → months → solcast → huawei_solar
     → battery_economics → power → ev → [ev_second] → ev_planned_load
-    → [ev_second_planned_load] → batteries_schedules
+    → [ev_second_planned_load] → ocpp → batteries_schedules
     → batteries_excess_export → weighted_values
     → energy_and_ml
 ```
+
+### Step: `quick_setup`
+
+Initial entity auto-detection step. Scans available HA entities and
+pre-populates the config flow with discovered sensors and devices.
+
+| Field | Key | Default | Description |
+|---|---|---|---|
+| Confirm & Continue | — | — | Accept auto-detected entities and skip to final review |
+| Advanced Setup | — | — | Proceed through the full step-by-step wizard |
+
+When the user selects "Confirm & Continue", all auto-detected entities
+are saved and the config flow jumps directly to `energy_and_ml` for
+review and confirmation.  Selecting "Advanced Setup" walks through
+every step in order so individual entities can be customised.
 
 ### Step: `init`
 
@@ -115,6 +130,7 @@ Primary EV charger configuration.
 | EV SoC target | `hsem_ev_soc_target` | 80 % | EV target SoC |
 | EV connected sensor | `hsem_ev_connected` | — | Binary sensor for EV plugged in |
 | Allow charge past target | `hsem_ev_allow_charge_past_target_soc` | `False` | Allow solar-only charging beyond target SoC |
+| Auto-Full on negative price | `hsem_ev_auto_full_negative_price` | `False` | Charge EV to 100 % when electricity price is negative |
 | Force max discharge power | `hsem_ev_charger_force_max_discharge_power` | `False` | Force maximum discharge power during discharge slots |
 | Max discharge power | `hsem_ev_charger_max_discharge_power` | 0 | Maximum discharge power cap (W) |
 
@@ -144,6 +160,18 @@ Target SoC and deadline are configured outside this step:
 ### Step: `ev_second_planned_load`
 
 Second EV planned load integration (identical fields; only shown when second EV enabled).
+
+### Step: `ocpp`
+
+OCPP (Open Charge Point Protocol) integration for EV charger remote control.
+
+| Field | Key | Default | Description |
+|---|---|---|---|
+| OCPP enabled | `hsem_ocpp_enabled` | `False` | Master switch for OCPP integration |
+| OCPP port | `hsem_ocpp_port` | `9000` | TCP port for the OCPP WebSocket server |
+| OCPP charge point ID | `hsem_ocpp_cpid` | — | Charge point identifier (as configured in the charger) |
+| Start window | `hsem_ocpp_start_window_s` | `300` | Seconds before a scheduled charge slot to send `RemoteStartTransaction` |
+| Stop window | `hsem_ocpp_stop_window_s` | `300` | Seconds before a non-charge slot to send `RemoteStopTransaction` |
 
 ### Step: `batteries_schedule_1/2/3`
 

@@ -984,6 +984,25 @@ percentile (0.10–0.90, default 0.50) scales the correction — lower values ar
 more conservative (less PV expected).  The raw Solcast data is never mutated;
 corrections are only applied at consumption time.
 
+#### Solar correction invariant
+
+The `SolarForecastCorrector` applies two multiplicative corrections to each
+raw PV estimate before it enters the planner:
+
+```text
+corrected_pv = raw_pv × hour_factor × residual_factor
+```
+
+Where:
+- `hour_factor ∈ [0.3, 1.5]` — the per-hour accuracy ratio clamped to prevent
+  single-day distortions
+- `residual_factor` — intra-hour live-surplus correction with 4-slot linear
+  decay over 2 hours
+
+The clamping is symmetric (0.3 lower, 1.5 upper) so the corrector never
+amplifies a single outlier beyond these bounds.  Raw Solcast data is never
+mutated; both factors are applied only at consumption time.
+
 ### Missing future data handling
 
 For every day in the horizon the engine detects and surfaces missing price
@@ -1042,6 +1061,47 @@ discharge slots on the same day.
 - Missing day+2 price data surfaces in `day2_price_missing_hours`.
 - Missing day+2 PV data surfaces in `day2_pv_missing_hours`.
 - `DataQuality.is_complete` is ``False`` when any future-day data is missing.
+- PV estimate after solar correction is always within `[0.3 × raw_pv, 1.5 × raw_pv]`
+  for each hour (clamping enforced).
+- The residual correction decays to ≤0.05× the initial deviation after 4 slots.
+
+### Dynamic discharge floor
+
+The dynamic discharge floor computes a per-cycle minimum SoC that bridges the
+gap between the last discharge slot and the next solar refill window:
+
+```text
+effective_floor_pct = max(configured_min_soc_pct, bridge_reserve_pct)
+bridge_reserve_pct  = (next_refill_need_kwh / usable_capacity_kwh) × 100
+                    × safety_margin
+```
+
+Where `safety_margin` is a self-learning multiplier that starts at **1.50**
+and decays toward **1.05** as successful solar refills are observed.  The
+floor is never lower than the hardware-configured minimum SoC.
+
+#### Dynamic floor invariant
+
+```text
+effective_floor_pct ≥ configured_min_soc_pct    (always)
+effective_floor_pct ≤ 1.50 × bridge_reserve_raw  (after learning period)
+```
+
+### Session EV invariant
+
+When an active charging session is detected (`session_charge_kw > 0`), the
+MILP treats the next 2 hours (8 slots at 15-minute granularity) as **fixed
+EV demand** with enforced lower bounds:
+
+```text
+For t = 1 … 8 (first 8 future slots):
+    ev_c[t] ≥ min(session_charge_kw × slot_duration_hours, ev_max_charge_per_slot)
+```
+
+These bound constraints prevent the MILP from re-allocating demand away from
+a live charging session.  Slots beyond the 8-slot window are unconstrained
+and optimised freely.  When `session_charge_kw == 0` (no active session),
+no bounds are applied and the entire EV demand is MILP-determined.
 
 ## EV planned load integration
 

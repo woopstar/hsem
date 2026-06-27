@@ -1027,6 +1027,9 @@
       },
       "dynamic_discharge_floor": {
         "name": "Dynamic Discharge Floor"
+      },
+      "ev_auto_full_negative_price": {
+        "name": "EV Auto-Full on Negative Price"
       }
     },
     "select": {
@@ -1049,6 +1052,27 @@
       },
       "ev_second_target_soc": {
         "name": "EV 2 Target SoC"
+      },
+      "charge_rate_below_0": {
+        "name": "Max Charge Rate (<0\u00b0C)"
+      },
+      "charge_rate_0_to_5": {
+        "name": "Max Charge Rate (0-5\u00b0C)"
+      },
+      "charge_rate_6_to_15": {
+        "name": "Max Charge Rate (6-15\u00b0C)"
+      },
+      "charge_rate_16_to_21": {
+        "name": "Max Charge Rate (16-21\u00b0C)"
+      },
+      "charge_rate_21_to_35": {
+        "name": "Max Charge Rate (21-35\u00b0C)"
+      },
+      "charge_rate_35_to_50": {
+        "name": "Max Charge Rate (35-50\u00b0C)"
+      },
+      "charge_rate_above_50": {
+        "name": "Max Charge Rate (>50\u00b0C)"
       }
     },
     "time": {
