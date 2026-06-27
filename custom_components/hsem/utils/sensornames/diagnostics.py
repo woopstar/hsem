@@ -430,6 +430,88 @@ def get_daily_plan_vs_actual_sensor_entity_id() -> str:
     return f"sensor.{s(get_daily_plan_vs_actual_sensor_key())}"
 
 
+# Effective Discharge Floor Sensor
+def get_effective_discharge_floor_sensor_name() -> str:
+    """Return the display name for the effective discharge floor sensor."""
+    return "Effective Discharge Floor"
+
+
+def get_effective_discharge_floor_sensor_unique_id(entry_id: str) -> str:
+    """Return a unique ID for the effective discharge floor sensor.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_effective_discharge_floor_sensor"
+
+
+def get_effective_discharge_floor_sensor_entity_id() -> str:
+    """Return the entity_id for the effective discharge floor sensor."""
+    return f"sensor.{s(f'{DOMAIN}_effective_discharge_floor_sensor')}"
+
+
+# Solar Confidence Sensor
+
+
+def get_solar_confidence_sensor_name() -> str:
+    """Return the display name for the solar confidence diagnostic sensor."""
+    return "Solar Forecast Confidence"
+
+
+def get_solar_confidence_sensor_unique_id(entry_id: str) -> str:
+    """Return a unique ID for the solar confidence sensor.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_solar_confidence_sensor"
+
+
+def get_solar_confidence_sensor_entity_id() -> str:
+    """Return the entity_id for the solar confidence sensor."""
+    return f"sensor.{s(f'{DOMAIN}_solar_confidence_sensor')}"
+
+
+# Savings Tracker Sensor
+def get_savings_tracker_sensor_name() -> str:
+    """Return the display name for the savings tracker sensor."""
+    return "Savings Tracker"
+
+
+def get_savings_tracker_sensor_unique_id(entry_id: str) -> str:
+    """Return a unique ID for the savings tracker sensor.
+
+    Args:
+        entry_id: The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_savings_tracker_sensor"
+
+
+def get_savings_tracker_sensor_entity_id() -> str:
+    """Return the entity_id for the savings tracker sensor."""
+    return f"sensor.{s(f'{DOMAIN}_savings_tracker_sensor')}"
+
+
+# Prediction Accuracy Sensor
+def get_prediction_accuracy_sensor_name() -> str:
+    """Return the display name for the prediction accuracy sensor."""
+    return "Prediction Accuracy"
+
+
+def get_prediction_accuracy_sensor_unique_id(entry_id: str) -> str:
+    """Return a unique ID for the prediction accuracy sensor.
+
+    Args:
+        entry_id: The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_prediction_accuracy_sensor"
+
+
+def get_prediction_accuracy_sensor_entity_id() -> str:
+    """Return the entity_id for the prediction accuracy sensor."""
+    return f"sensor.{s(f'{DOMAIN}_prediction_accuracy_sensor')}"
+
+
 # PV Curtailment Sensor (issue #611)
 def get_pv_curtailment_sensor_name() -> str:
     """Return the display name for the PV curtailment sensor."""

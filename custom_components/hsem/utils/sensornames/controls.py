@@ -335,6 +335,31 @@ def get_schedule_3_start_time_entity_id() -> str:
     return f"time.{s(get_schedule_3_start_time_key())}"
 
 
+# Dynamic Discharge Floor Switch
+def get_dynamic_discharge_floor_switch_key() -> str:
+    """Return the config-entry key for the dynamic-discharge-floor switch."""
+    return f"{DOMAIN}_dynamic_discharge_floor"
+
+
+def get_dynamic_discharge_floor_switch_name() -> str:
+    """Return the display name for the dynamic-discharge-floor switch."""
+    return "Dynamic Discharge Floor"
+
+
+def get_dynamic_discharge_floor_switch_unique_id(entry_id: str) -> str:
+    """Return the unique_id for the dynamic-discharge-floor switch.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_{get_dynamic_discharge_floor_switch_key()}_switch"
+
+
+def get_dynamic_discharge_floor_switch_entity_id() -> str:
+    """Return the entity_id for the dynamic-discharge-floor switch."""
+    return f"switch.{s(get_dynamic_discharge_floor_switch_key())}"
+
+
 # Schedule 3 End Time
 def get_schedule_3_end_time_key() -> str:
     """Return the config-entry key / unique_id basis for schedule-3-end time."""

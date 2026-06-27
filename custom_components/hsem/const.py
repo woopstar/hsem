@@ -128,6 +128,13 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_solcast_pv_forecast_forecast_tomorrow": "sensor.solcast_pv_forecast_forecast_tomorrow",
     "hsem_update_interval": 5,
     "hsem_verbose_logging": False,
+    "hsem_dynamic_discharge_floor": False,
+    # Embedded OCPP 1.6 server for EV charger control (issue #603).
+    "hsem_ocpp_enabled": False,
+    "hsem_ocpp_port": 9000,
+    "hsem_ocpp_cpid": "",
+    "hsem_ocpp_start_window_s": 60,
+    "hsem_ocpp_stop_window_s": 180,
     # Daily plan-vs-actual tracking — optional energy meter entities.
     # When not configured, the sensor falls back to Riemann-sum estimates
     # from instantaneous power sensors.

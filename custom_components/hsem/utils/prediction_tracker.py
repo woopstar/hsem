@@ -47,7 +47,7 @@ class PredictionTracker:
     entries and recomputes aggregate metrics on every addition.
 
     Attributes:
-        max_records: Maximum number of records to retain (default 2880 = 30 days
+        max_records: Maximum number of records to retain (default 672 = 7 days
             at 15-minute slots).
         records: Rolling buffer of prediction-vs-actual records, oldest first.
         soc_mae_7d: Mean absolute error of SoC prediction (%) over the last
@@ -61,7 +61,7 @@ class PredictionTracker:
             ``{"charge": 0.15, "discharge": 0.10, "idle": 0.75}``).
     """
 
-    max_records: int = 2880  # 30 days at 15-min = 2880 slots
+    max_records: int = 672  # 7 days at 15-min = 672 slots
 
     records: list[PredictionRecord] = field(default_factory=list)
 

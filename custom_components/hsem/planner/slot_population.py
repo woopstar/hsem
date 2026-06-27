@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import math
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from custom_components.hsem.const import (
     BASELINE_7D_SHARE,
@@ -40,6 +40,9 @@ from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.prices import SlotPrice
 from custom_components.hsem.utils.recommendations import Recommendations
+
+if TYPE_CHECKING:
+    from custom_components.hsem.utils.solar_corrector import SolarForecastCorrector
 
 # ---------------------------------------------------------------------------
 # Slot generation
@@ -173,6 +176,7 @@ def populate_solcast(
     solcast_slots: list[SolcastSlot],
     interval_minutes: int,
     tsi: TimeSeriesIndex | None = None,
+    corrector: SolarForecastCorrector | None = None,
 ) -> None:
     """Write PV estimates into each slot, scaled to the slot duration.
 
@@ -182,11 +186,20 @@ def populate_solcast(
     When a :class:`TimeSeriesIndex` is provided the PV series is aligned via
     the shared slot index and missing slots are tracked centrally.
 
+    When *corrector* is provided the raw PV estimate is corrected using the
+    learned per-hour accuracy factor and intra-hour residual before being
+    written to the slot.  This keeps the raw Solcast data unchanged (the
+    correction is only applied at consumption time).
+
     Args:
         slots: Mutable list of planned slots to update.
         solcast_slots: Per-hour Solcast PV estimate data.
         interval_minutes: Slot width in minutes.
         tsi: Optional shared time-series index.
+        corrector: Optional :class:`~custom_components.hsem.utils.solar_corrector.SolarForecastCorrector`
+            instance.  When provided the per-slot PV estimate is corrected
+            before being written.  When ``None`` the raw estimate is used
+            unchanged (backward compatible).
     """
     log_planner(
         "debug",
@@ -206,16 +219,34 @@ def populate_solcast(
         else:
             pv_by_hour = {sc.hour: sc.pv_estimate for sc in solcast_slots}
         aligned = tsi.align_hourly_pv(pv_by_hour)
-        for slot, val in zip(slots, aligned):
-            slot.solcast_pv_estimate_kwh = 0.0 if math.isnan(val) else round(val, 3)
+        for i, (slot, val) in enumerate(zip(slots, aligned)):
+            raw_estimate = 0.0 if math.isnan(val) else val
+            if corrector is not None and raw_estimate > 0:
+                slot.solcast_pv_estimate_kwh = round(
+                    corrector.get_corrected_pv(
+                        slot.start.hour, raw_estimate, slots_ahead=i
+                    ),
+                    3,
+                )
+            else:
+                slot.solcast_pv_estimate_kwh = round(raw_estimate, 3)
         return
 
     solcast_by_hour = index_by_hour(solcast_slots)
     scale = 60.0 / interval_minutes  # e.g. 4 for 15-min slots
 
-    for slot in slots:
+    for i, slot in enumerate(slots):
         sc = solcast_by_hour.get(slot.start.hour)
-        slot.solcast_pv_estimate_kwh = round(sc.pv_estimate / scale, 3) if sc else 0.0
+        raw_estimate = round(sc.pv_estimate / scale, 3) if sc else 0.0
+        if corrector is not None and raw_estimate > 0:
+            slot.solcast_pv_estimate_kwh = round(
+                corrector.get_corrected_pv(
+                    slot.start.hour, raw_estimate, slots_ahead=i
+                ),
+                3,
+            )
+        else:
+            slot.solcast_pv_estimate_kwh = raw_estimate
 
 
 def populate_consumption(

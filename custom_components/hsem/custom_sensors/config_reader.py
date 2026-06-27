@@ -475,6 +475,18 @@ def build_sensor_config(
     )
     cfg.house_consumption_energy_weight_14d = _w14d if _w14d is not None else 15
 
+    # Embedded OCPP 1.6 server for EV charger control (issue #603).
+    cfg.ocpp_enabled = convert_to_boolean(
+        get_config_value(config_entry, "hsem_ocpp_enabled")
+    )
+    _ocpp_port = convert_to_int(get_config_value(config_entry, "hsem_ocpp_port"))
+    cfg.ocpp_port = _ocpp_port if _ocpp_port is not None else 9000
+    cfg.ocpp_cpid = get_config_value(config_entry, "hsem_ocpp_cpid") or ""
+    _start = convert_to_int(get_config_value(config_entry, "hsem_ocpp_start_window_s"))
+    cfg.ocpp_start_window_s = _start if _start is not None else 60
+    _stop = convert_to_int(get_config_value(config_entry, "hsem_ocpp_stop_window_s"))
+    cfg.ocpp_stop_window_s = _stop if _stop is not None else 180
+
     return cfg
 
 

@@ -453,6 +453,9 @@ def _compute_battery_capacities(state: LiveState) -> None:
     state.battery_rated_capacity_min_kwh = round(reserve_kwh, 3)
     state.battery_usable_capacity_kwh = round(usable_kwh, 2)
     state.battery_current_capacity_kwh = round(available_kwh, 2)
+    # BMS-reported energy remaining — the total kWh stored in the battery
+    # (including reserve).  Used by CapacityLearner for capacity auto-detection.
+    state.bms_kwh_remaining = round(current_kwh, 3)
 
 
 def _compute_net_consumption(state: LiveState, cfg: SensorConfig) -> None:
