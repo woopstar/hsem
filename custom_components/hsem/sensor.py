@@ -71,6 +71,12 @@ from custom_components.hsem.custom_sensors.ocpp_sensors import (
 from custom_components.hsem.custom_sensors.plan_explanation_sensor import (
     HSEMPlanExplanationSensor,
 )
+from custom_components.hsem.custom_sensors.prediction_accuracy_sensor import (
+    HSEMPredictionAccuracySensor,
+)
+from custom_components.hsem.custom_sensors.pv_curtailment_sensor import (
+    HSEMPVTailedSensor,
+)
 from custom_components.hsem.custom_sensors.read_only_sensor import HSEMReadOnlySensor
 from custom_components.hsem.custom_sensors.recommendation_interval_sensor import (
     HSEMRecommendationIntervalSensor,
@@ -127,6 +133,12 @@ async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
     # Solar confidence sensor — exposes per-hour PV forecast accuracy factors.
     solar_confidence_sensor = HSEMSolarConfidenceSensor(config_entry, coordinator)
 
+    # Prediction accuracy sensor — SoC MAE, solar MAPE, action mix scorecard.
+    prediction_accuracy_sensor = HSEMPredictionAccuracySensor(config_entry, coordinator)
+
+    # PV curtailment sensor — detects when inverter throttles solar production.
+    pv_curtailment_sensor = HSEMPVTailedSensor(config_entry, coordinator)
+
     # Working-mode sensor — subscribes to coordinator updates and owns hardware writes.
     working_mode_sensor = HSEMWorkingModeSensor(config_entry, coordinator)
 
@@ -180,6 +192,8 @@ async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
             plan_explanation_sensor,
             forecast_accuracy_sensor,
             solar_confidence_sensor,
+            prediction_accuracy_sensor,
+            pv_curtailment_sensor,
             daily_plan_vs_actual_sensor,
             effective_discharge_floor_sensor,
             savings_sensor,
