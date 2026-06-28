@@ -507,7 +507,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 live.bms_kwh_remaining is not None
                 and live.huawei_batteries_soc_pct is not None
             ):
-                self._capacity_learner.update(
+                getattr(self, "_capacity_learner", CapacityLearner()).update(
                     live.bms_kwh_remaining, live.huawei_batteries_soc_pct
                 )
 

@@ -73,12 +73,12 @@ class TestExportIncomeSensor:
         )
         assert sensor._attr_device_class == SensorDeviceClass.MONETARY
 
-    def test_state_class_is_total_increasing(self) -> None:
-        """State class is TOTAL_INCREASING."""
+    def test_state_class_is_total(self) -> None:
+        """State class is TOTAL (HA 2025.6+ requires total for monetary)."""
         sensor = HSEMExportIncomeSensor(
             _make_mock_config_entry(), _make_mock_coordinator()
         )
-        assert sensor._attr_state_class == SensorStateClass.TOTAL_INCREASING
+        assert sensor._attr_state_class == SensorStateClass.TOTAL
 
     def test_should_poll_is_false(self) -> None:
         """Sensor is coordinator-driven, not polled."""
@@ -136,12 +136,12 @@ class TestImportCostSensor:
         )
         assert sensor._attr_device_class == SensorDeviceClass.MONETARY
 
-    def test_state_class_is_total_increasing(self) -> None:
-        """State class is TOTAL_INCREASING."""
+    def test_state_class_is_total(self) -> None:
+        """State class is TOTAL."""
         sensor = HSEMImportCostSensor(
             _make_mock_config_entry(), _make_mock_coordinator()
         )
-        assert sensor._attr_state_class == SensorStateClass.TOTAL_INCREASING
+        assert sensor._attr_state_class == SensorStateClass.TOTAL
 
     def test_should_poll_is_false(self) -> None:
         """Sensor is coordinator-driven."""
@@ -182,12 +182,12 @@ class TestNetGridBalanceSensor:
         )
         assert sensor._attr_device_class == SensorDeviceClass.MONETARY
 
-    def test_state_class_is_measurement(self) -> None:
-        """State class is MEASUREMENT (not total_increasing)."""
+    def test_state_class_is_total(self) -> None:
+        """State class is TOTAL."""
         sensor = HSEMNetGridBalanceSensor(
             _make_mock_config_entry(), _make_mock_coordinator()
         )
-        assert sensor._attr_state_class == SensorStateClass.MEASUREMENT
+        assert sensor._attr_state_class == SensorStateClass.TOTAL
 
     def test_should_poll_is_false(self) -> None:
         """Sensor is coordinator-driven."""
