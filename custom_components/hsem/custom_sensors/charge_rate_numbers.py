@@ -25,7 +25,6 @@ from custom_components.hsem.utils.charge_rate_learner import (
     TEMP_BUCKETS,
 )
 from custom_components.hsem.utils.conversion import convert_to_float
-from custom_components.hsem.utils.misc import get_config_value
 
 
 def _override_key(bucket_name: str) -> str:
@@ -83,10 +82,14 @@ class HSEMChargeRateNumber(HSEMEntity, NumberEntity):
         if isinstance(raw_name, str):
             self._attr_name = str(raw_name)
 
-        # Load override from config entry options, if any.
-        stored = convert_to_float(
-            get_config_value(config_entry, _override_key(bucket_name))
-        )
+        # Load override from config entry options, if any (optional).
+        override_key = _override_key(bucket_name)
+        stored = None
+        if config_entry:
+            raw = config_entry.options.get(
+                override_key, config_entry.data.get(override_key)
+            )
+            stored = convert_to_float(raw)
         self._override: float | None = stored
 
     # ------------------------------------------------------------------
@@ -150,9 +153,11 @@ class HSEMChargeRateNumber(HSEMEntity, NumberEntity):
         self, hass: HomeAssistant, entry: ConfigEntry
     ) -> None:
         """Re-read the override value from the updated config entry."""
-        stored = convert_to_float(
-            get_config_value(entry, _override_key(self._bucket_name))
-        )
+        override_key = _override_key(self._bucket_name)
+        stored = None
+        raw = entry.options.get(override_key, entry.data.get(override_key))
+        if raw is not None:
+            stored = convert_to_float(raw)
         self._override = stored
         self.async_write_ha_state()
 
