@@ -69,3 +69,19 @@ export_diagnostics:
     entity:
       integration: hsem
   fields: {}
+
+create_dashboard:
+  name: Create dashboard
+  description: >-
+    Create or update the HSEM Lovelace dashboard at /hsem-dashboard.
+    The dashboard includes status cards, price charts, battery SoC,
+    EV status, savings, and accuracy views. Set force: true to
+    overwrite an existing dashboard.
+  target:
+    entity: {}
+  fields:
+    force:
+      required: false
+      selector:
+        boolean: {}
+      description: "Overwrite the dashboard if it already exists."

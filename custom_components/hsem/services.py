@@ -53,6 +53,7 @@ SERVICE_FORCE_RECALCULATION = "force_recalculation"
 SERVICE_SET_TEMPORARY_OVERRIDE = "set_temporary_override"
 SERVICE_CLEAR_OVERRIDE = "clear_override"
 SERVICE_EXPORT_DIAGNOSTICS = "export_diagnostics"
+SERVICE_CREATE_DASHBOARD = "create_dashboard"
 
 # ---------------------------------------------------------------------------
 # Voluptuous schemas for input validation
@@ -73,6 +74,8 @@ SCHEMA_SET_TEMPORARY_OVERRIDE = vol.Schema(
 SCHEMA_CLEAR_OVERRIDE = vol.Schema({})
 
 SCHEMA_EXPORT_DIAGNOSTICS = vol.Schema({})
+
+SCHEMA_CREATE_DASHBOARD = vol.Schema({vol.Optional("force", default=False): bool})
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -298,6 +301,89 @@ async def async_handle_export_diagnostics(  # NOSONAR
     return dump
 
 
+async def async_handle_create_dashboard(
+    hass: HomeAssistant,
+    call: ServiceCall,
+) -> None:
+    """Create or update the HSEM Lovelace dashboard.
+
+    Reads the bundled dashboard YAML from the integration directory and
+    creates a dashboard at URL ``/hsem-dashboard``.  When ``force`` is
+    ``False`` (default) and the dashboard already exists, the call is a
+    no-op.  When ``force`` is ``True`` the existing dashboard is replaced.
+
+    Args:
+        hass: The Home Assistant instance.
+        call: The service call with optional ``force`` boolean.
+    """
+    from pathlib import Path
+
+    import yaml
+
+    force: bool = call.data.get("force", False)
+    dashboard_url = "hsem-dashboard"
+
+    # Check if dashboard already exists.
+    for dash in hass.data.get("lovelace", {}).get("dashboards", {}).values():
+        if isinstance(dash, dict) and dash.get("url_path") == dashboard_url:
+            if not force:
+                _LOGGER.info(
+                    "HSEM dashboard already exists at /%s — use force: true to overwrite",
+                    dashboard_url,
+                )
+                return
+            break
+
+    # Read the bundled dashboard YAML.
+    dash_path = Path(__file__).parent / "dashboards" / "dashboard_en.yaml"
+    if not dash_path.exists():
+        _LOGGER.error("HSEM dashboard YAML not found at %s", dash_path)
+        return
+
+    with open(dash_path, encoding="utf-8") as f:
+        dashboard_yaml = yaml.safe_load(f)
+
+    # Store the dashboard via HA's storage.
+    store = hass.helpers.storage.Store(1, "lovelace.dashboards")
+    data = await store.async_load() or {}
+    content = data.get("content", {})
+
+    existing = next(
+        (
+            d
+            for d in content.values()
+            if isinstance(d, dict) and d.get("url_path") == dashboard_url
+        ),
+        None,
+    )
+    if existing and not force:
+        _LOGGER.info("HSEM dashboard already exists — use force: true to overwrite")
+        return
+
+    # Build the dashboard entry.
+    import uuid
+
+    dash_id = existing.get("id", str(uuid.uuid4())) if existing else str(uuid.uuid4())
+    content[dash_id] = {
+        "id": dash_id,
+        "url_path": dashboard_url,
+        "title": "HSEM",
+        "icon": "mdi:solar-power",
+        "show_in_sidebar": True,
+        "require_admin": False,
+        "mode": "storage",
+    }
+
+    data["content"] = content
+    await store.async_save(data)
+
+    # Also store the dashboard config itself.
+    config_store = hass.helpers.storage.Store(1, f"lovelace.{dash_id}")
+    await config_store.async_save(dashboard_yaml)
+
+    _LOGGER.info("HSEM dashboard created at /%s", dashboard_url)
+
+
 # ---------------------------------------------------------------------------
 # Service registration
 # ---------------------------------------------------------------------------
@@ -306,6 +392,11 @@ SERVICE_HANDLER_MAP: dict[str, tuple[vol.Schema, Any, SupportsResponse]] = {
     SERVICE_CLEAR_OVERRIDE: (
         SCHEMA_CLEAR_OVERRIDE,
         async_handle_clear_override,
+        SupportsResponse.NONE,
+    ),
+    SERVICE_CREATE_DASHBOARD: (
+        SCHEMA_CREATE_DASHBOARD,
+        async_handle_create_dashboard,
         SupportsResponse.NONE,
     ),
     SERVICE_EXPORT_DIAGNOSTICS: (

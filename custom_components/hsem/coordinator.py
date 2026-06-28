@@ -107,6 +107,7 @@ from custom_components.hsem.utils.prediction_tracker import (
 )
 from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.solar_corrector import SolarForecastCorrector
+from custom_components.hsem.utils.weekday_profile import weekday_profile
 
 if TYPE_CHECKING:
     from custom_components.hsem.ml.consumption_predictor import ConsumptionPredictor
@@ -523,6 +524,14 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             if is_charging and live.huawei_batteries_max_charge_power_w:
                 CHARGE_RATE_LEARNER.update(
                     25.0, live.huawei_batteries_max_charge_power_w
+                )
+
+            # Update the weekday/weekend consumption profile (issue #612).
+            if live.house_consumption_power_w > 0:
+                weekday_profile.update(
+                    dow=now.weekday(),
+                    slot=now.hour,
+                    value_kwh=live.house_consumption_power_w / 1000.0,
                 )
 
             # Apply EMA smoothing to live net consumption to damp transients
