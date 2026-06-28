@@ -123,13 +123,13 @@ class _FinancialSensorMixin(
 
 
 class HSEMExportIncomeSensor(_FinancialSensorMixin):
-    """Cumulative export revenue sensor (total_increasing, monetary).
+    """Cumulative export revenue sensor (total, monetary).
 
     State: total export income (currency).
     """
 
     _attr_device_class = SensorDeviceClass.MONETARY
-    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_state_class = SensorStateClass.TOTAL
 
     def __init__(
         self,
@@ -163,13 +163,13 @@ class HSEMExportIncomeSensor(_FinancialSensorMixin):
 
 
 class HSEMImportCostSensor(_FinancialSensorMixin):
-    """Cumulative grid import cost sensor (total_increasing, monetary).
+    """Cumulative grid import cost sensor (total, monetary).
 
     State: total grid import cost (currency).
     """
 
     _attr_device_class = SensorDeviceClass.MONETARY
-    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_state_class = SensorStateClass.TOTAL
 
     def __init__(
         self,
@@ -203,13 +203,13 @@ class HSEMImportCostSensor(_FinancialSensorMixin):
 
 
 class HSEMNetGridBalanceSensor(_FinancialSensorMixin):
-    """Net grid balance sensor (measurement, monetary).
+    """Net grid balance sensor (total, monetary).
 
     State: cumulative export income minus cumulative import cost (currency).
     """
 
     _attr_device_class = SensorDeviceClass.MONETARY
-    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_state_class = SensorStateClass.TOTAL
 
     def __init__(
         self,
