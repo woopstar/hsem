@@ -305,83 +305,31 @@ async def async_handle_create_dashboard(
     hass: HomeAssistant,
     call: ServiceCall,
 ) -> None:
-    """Create or update the HSEM Lovelace dashboard.
+    """Log the path to the bundled HSEM dashboard YAML for manual import.
 
-    Reads the bundled dashboard YAML from the integration directory and
-    creates a dashboard at URL ``/hsem-dashboard``.  When ``force`` is
-    ``False`` (default) and the dashboard already exists, the call is a
-    no-op.  When ``force`` is ``True`` the existing dashboard is replaced.
+    The dashboard YAML is bundled at
+    ``custom_components/hsem/dashboards/dashboard_en.yaml``.
+    Import it via Settings → Dashboards → Add Dashboard →
+    New dashboard from scratch → Raw configuration editor.
 
     Args:
         hass: The Home Assistant instance.
-        call: The service call with optional ``force`` boolean.
+        call: The service call (unused).
     """
     from pathlib import Path
 
-    import yaml
-
-    force: bool = call.data.get("force", False)
-    dashboard_url = "hsem-dashboard"
-
-    # Check if dashboard already exists.
-    for dash in hass.data.get("lovelace", {}).get("dashboards", {}).values():
-        if isinstance(dash, dict) and dash.get("url_path") == dashboard_url:
-            if not force:
-                _LOGGER.info(
-                    "HSEM dashboard already exists at /%s — use force: true to overwrite",
-                    dashboard_url,
-                )
-                return
-            break
-
-    # Read the bundled dashboard YAML.
     dash_path = Path(__file__).parent / "dashboards" / "dashboard_en.yaml"
     if not dash_path.exists():
         _LOGGER.error("HSEM dashboard YAML not found at %s", dash_path)
         return
 
-    with open(dash_path, encoding="utf-8") as f:
-        dashboard_yaml = yaml.safe_load(f)
-
-    # Store the dashboard via HA's storage.
-    store = hass.helpers.storage.Store(1, "lovelace.dashboards")
-    data = await store.async_load() or {}
-    content = data.get("content", {})
-
-    existing = next(
-        (
-            d
-            for d in content.values()
-            if isinstance(d, dict) and d.get("url_path") == dashboard_url
-        ),
-        None,
+    _LOGGER.info(
+        "HSEM dashboard YAML available at %s. "
+        "Import it via Settings → Dashboards → Add Dashboard → "
+        "New dashboard from scratch → Raw configuration editor. "
+        "Paste the YAML content and save.",
+        dash_path,
     )
-    if existing and not force:
-        _LOGGER.info("HSEM dashboard already exists — use force: true to overwrite")
-        return
-
-    # Build the dashboard entry.
-    import uuid
-
-    dash_id = existing.get("id", str(uuid.uuid4())) if existing else str(uuid.uuid4())
-    content[dash_id] = {
-        "id": dash_id,
-        "url_path": dashboard_url,
-        "title": "HSEM",
-        "icon": "mdi:solar-power",
-        "show_in_sidebar": True,
-        "require_admin": False,
-        "mode": "storage",
-    }
-
-    data["content"] = content
-    await store.async_save(data)
-
-    # Also store the dashboard config itself.
-    config_store = hass.helpers.storage.Store(1, f"lovelace.{dash_id}")
-    await config_store.async_save(dashboard_yaml)
-
-    _LOGGER.info("HSEM dashboard created at /%s", dashboard_url)
 
 
 # ---------------------------------------------------------------------------
