@@ -53,6 +53,7 @@ SERVICE_FORCE_RECALCULATION = "force_recalculation"
 SERVICE_SET_TEMPORARY_OVERRIDE = "set_temporary_override"
 SERVICE_CLEAR_OVERRIDE = "clear_override"
 SERVICE_EXPORT_DIAGNOSTICS = "export_diagnostics"
+SERVICE_CREATE_DASHBOARD = "create_dashboard"
 
 # ---------------------------------------------------------------------------
 # Voluptuous schemas for input validation
@@ -73,6 +74,8 @@ SCHEMA_SET_TEMPORARY_OVERRIDE = vol.Schema(
 SCHEMA_CLEAR_OVERRIDE = vol.Schema({})
 
 SCHEMA_EXPORT_DIAGNOSTICS = vol.Schema({})
+
+SCHEMA_CREATE_DASHBOARD = vol.Schema({vol.Optional("force", default=False): bool})
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -298,6 +301,37 @@ async def async_handle_export_diagnostics(  # NOSONAR
     return dump
 
 
+async def async_handle_create_dashboard(
+    hass: HomeAssistant,
+    call: ServiceCall,
+) -> None:
+    """Log the path to the bundled HSEM dashboard YAML for manual import.
+
+    The dashboard YAML is bundled at
+    ``custom_components/hsem/dashboards/dashboard_en.yaml``.
+    Import it via Settings → Dashboards → Add Dashboard →
+    New dashboard from scratch → Raw configuration editor.
+
+    Args:
+        hass: The Home Assistant instance.
+        call: The service call (unused).
+    """
+    from pathlib import Path
+
+    dash_path = Path(__file__).parent / "dashboards" / "dashboard_en.yaml"
+    if not dash_path.exists():
+        _LOGGER.error("HSEM dashboard YAML not found at %s", dash_path)
+        return
+
+    _LOGGER.info(
+        "HSEM dashboard YAML available at %s. "
+        "Import it via Settings → Dashboards → Add Dashboard → "
+        "New dashboard from scratch → Raw configuration editor. "
+        "Paste the YAML content and save.",
+        dash_path,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Service registration
 # ---------------------------------------------------------------------------
@@ -306,6 +340,11 @@ SERVICE_HANDLER_MAP: dict[str, tuple[vol.Schema, Any, SupportsResponse]] = {
     SERVICE_CLEAR_OVERRIDE: (
         SCHEMA_CLEAR_OVERRIDE,
         async_handle_clear_override,
+        SupportsResponse.NONE,
+    ),
+    SERVICE_CREATE_DASHBOARD: (
+        SCHEMA_CREATE_DASHBOARD,
+        async_handle_create_dashboard,
         SupportsResponse.NONE,
     ),
     SERVICE_EXPORT_DIAGNOSTICS: (

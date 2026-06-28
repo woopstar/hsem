@@ -31,6 +31,7 @@ from custom_components.hsem.services import (
     SCHEMA_FORCE_RECALCULATION,
     SCHEMA_SET_TEMPORARY_OVERRIDE,
     SERVICE_CLEAR_OVERRIDE,
+    SERVICE_CREATE_DASHBOARD,
     SERVICE_EXPORT_DIAGNOSTICS,
     SERVICE_FORCE_RECALCULATION,
     SERVICE_SET_TEMPORARY_OVERRIDE,
@@ -177,10 +178,11 @@ class TestServiceRegistration:
         await async_register_services(hass)
 
         expected_calls = {
+            SERVICE_CLEAR_OVERRIDE,
+            SERVICE_CREATE_DASHBOARD,
+            SERVICE_EXPORT_DIAGNOSTICS,
             SERVICE_FORCE_RECALCULATION,
             SERVICE_SET_TEMPORARY_OVERRIDE,
-            SERVICE_CLEAR_OVERRIDE,
-            SERVICE_EXPORT_DIAGNOSTICS,
         }
         actual_calls = {
             call.kwargs["service"]
@@ -200,13 +202,13 @@ class TestServiceRegistration:
 
     @pytest.mark.asyncio
     async def test_unregister_services(self):
-        """Must remove all four HSEM services."""
+        """Must remove all five HSEM services."""
         hass = _make_hass()
         hass.services.has_service.return_value = True
 
         await async_unregister_services(hass)
 
-        assert hass.services.async_remove.call_count == 4
+        assert hass.services.async_remove.call_count == 5
 
     @pytest.mark.asyncio
     async def test_unregister_services_skips_missing(self):
@@ -574,3 +576,4 @@ class TestServiceNameConstants:
         assert SERVICE_SET_TEMPORARY_OVERRIDE == "set_temporary_override"
         assert SERVICE_CLEAR_OVERRIDE == "clear_override"
         assert SERVICE_EXPORT_DIAGNOSTICS == "export_diagnostics"
+        assert SERVICE_CREATE_DASHBOARD == "create_dashboard"
