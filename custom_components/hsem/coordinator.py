@@ -83,6 +83,7 @@ from custom_components.hsem.planner import run_planner
 from custom_components.hsem.planner.charge_scheduler import apply_window_hysteresis
 from custom_components.hsem.planner.ev_planner import EVChargingPlan
 from custom_components.hsem.utils.capacity_learner import CapacityLearner
+from custom_components.hsem.utils.charge_rate_learner import CHARGE_RATE_LEARNER
 from custom_components.hsem.utils.datetime_utils import (
     as_tz,
     now as hsem_now,
@@ -509,6 +510,19 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             ):
                 getattr(self, "_capacity_learner", CapacityLearner()).update(
                     live.bms_kwh_remaining, live.huawei_batteries_soc_pct
+                )
+
+            # Feed the charge rate learner when battery is actively charging
+            # (issue #608).  Uses the configured max charge power and a
+            # default temperature of 25 °C until cell-temperature entity is
+            # wired through the full Huawei protocol.
+            fc_state = (live.huawei_batteries_forcible_charge_state or "").lower()
+            is_charging = (
+                fc_state and "charging" in fc_state and "stopped" not in fc_state
+            )
+            if is_charging and live.huawei_batteries_max_charge_power_w:
+                CHARGE_RATE_LEARNER.update(
+                    25.0, live.huawei_batteries_max_charge_power_w
                 )
 
             # Apply EMA smoothing to live net consumption to damp transients

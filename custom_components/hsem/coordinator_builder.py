@@ -29,9 +29,26 @@ from custom_components.hsem.models.price_point import PricePoint
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.models.solcast_slot import SolcastSlot
 from custom_components.hsem.utils.capacity_learner import CapacityLearner
+from custom_components.hsem.utils.charge_rate_learner import CHARGE_RATE_LEARNER
 from custom_components.hsem.utils.conversion import convert_to_float, convert_to_int
 from custom_components.hsem.utils.datetime_utils import now as hsem_now
 from custom_components.hsem.utils.misc import calculate_recommended_threshold
+
+
+def _clamp_charge_rate(configured_w: float) -> float:
+    """Apply the learned charge rate cap to the configured max charge power.
+
+    When the charge rate learner has collected enough samples for the
+    current temperature bucket, the learned rate (p90) replaces the
+    configured max.  Otherwise the configured value is used unchanged.
+
+    Returns the effective max charge power in Watts.
+    """
+    learned = CHARGE_RATE_LEARNER.get_charge_rate_w(
+        cell_temp_c=None, fallback_w=configured_w
+    )
+    return min(configured_w, learned)
+
 
 # ---------------------------------------------------------------------------
 # Public API
@@ -181,10 +198,9 @@ def build_planner_input(
             live.huawei_batteries_charging_cutoff_capacity_pct
         )
         or 100.0,
-        battery_max_charge_power_w=convert_to_float(
-            live.huawei_batteries_max_charge_power_w
-        )
-        or 5000.0,
+        battery_max_charge_power_w=_clamp_charge_rate(
+            convert_to_float(live.huawei_batteries_max_charge_power_w) or 5000.0
+        ),
         battery_max_discharge_power_w=convert_to_float(
             live.huawei_batteries_max_discharge_power_w
         )
