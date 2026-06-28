@@ -382,6 +382,23 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         except Exception:
             _LOGGER.exception("Failed to initialise financial tracker")
 
+        # Start the embedded OCPP 1.6 server if enabled (issue #603).
+        cfg = build_sensor_config(self._config_entry)
+        if cfg.ocpp_enabled:
+            try:
+                self._ocpp_server = OCPPServer(
+                    hass=self.hass,
+                    host="0.0.0.0",
+                    port=cfg.ocpp_port,
+                    start_window_s=cfg.ocpp_start_window_s,
+                    stop_window_s=cfg.ocpp_stop_window_s,
+                )
+                await self._ocpp_server.start()
+                _LOGGER.info("OCPP server started on port %d", cfg.ocpp_port)
+            except Exception:
+                _LOGGER.exception("Failed to start OCPP server")
+                self._ocpp_server = None
+
         # Run an immediate first cycle so entities have data before first render.
         await self._async_handle_update(None)
 
@@ -484,6 +501,15 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             self._listener_unsubs.extend(new_unsubs)
             self._live = self._snapshot.live
             live = self._live
+
+            # Feed the capacity learner with BMS readings (issue #605).
+            if (
+                live.bms_kwh_remaining is not None
+                and live.huawei_batteries_soc_pct is not None
+            ):
+                self._capacity_learner.update(
+                    live.bms_kwh_remaining, live.huawei_batteries_soc_pct
+                )
 
             # Apply EMA smoothing to live net consumption to damp transients
             # (støvsuger, kaffemaskine, cloud shadows) so they don't kill
@@ -855,7 +881,39 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 # step 9 sees the held recommendation.
                 self._apply_planner_output(planner_output)
 
-                # 8b. Force-charge-now override: when the user toggles the
+                # 8b. Auto-Full EV on negative price override (issue #609).
+                # When import price is ≤ 0 and the feature is enabled,
+                # override the current slot to charge the EV at full power.
+                auto_full_enabled = bool(
+                    get_config_value(
+                        self._config_entry, "hsem_ev_auto_full_negative_price"
+                    )
+                )
+                if auto_full_enabled and live.import_electricity_price <= 0.0:
+                    now_slot = next(
+                        (
+                            r
+                            for r in self._hourly_recommendations
+                            if as_tz(r.start, now.tzinfo)
+                            <= now
+                            < as_tz(r.end, now.tzinfo)
+                        ),
+                        None,
+                    )
+                    if now_slot is not None:
+                        now_slot.recommendation = Recommendations.EVSmartCharging.value
+                        pwr_kw = float(
+                            get_config_value(
+                                self._config_entry,
+                                "hsem_ev_planned_load_charger_power_kw",
+                            )
+                            or 0.0
+                        )
+                        now_slot.ev_charger_calculated_power = (
+                            round(pwr_kw * 1000) if pwr_kw > 0 else 0.0
+                        )
+
+                # 8c. Force-charge-now override: when the user toggles the
                 # "EV Force Charge Now" switch, override the current slot's
                 # recommendation and calculated power to charge at max speed.
                 force_primary = bool(
