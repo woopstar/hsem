@@ -169,6 +169,9 @@ async def populate_ml_house_consumption(
             use_sequential=cfg.ml_consumption_sequential,
         )
 
+    # Store the actual history span so it can be exposed to the user.
+    predictor.actual_history_days = max(oldest_age, 0.0) if history else 0.0
+
     # Read temperature history if configured.
     # Expects an outdoor (ambient) temperature sensor in °C.
     # Indoor thermostats will NOT help predict weather-driven load.

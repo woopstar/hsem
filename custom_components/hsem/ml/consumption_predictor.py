@@ -79,6 +79,8 @@ class ConsumptionPredictor:
 
         self._last_fit_samples: int = 0
         self._last_fit_time: datetime | None = None
+        #: Actual calendar days spanned by the input history (set by populator).
+        self.actual_history_days: float = 0.0
 
     @property
     def days_of_history(self) -> float:

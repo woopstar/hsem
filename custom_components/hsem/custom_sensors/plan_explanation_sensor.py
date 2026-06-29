@@ -217,6 +217,9 @@ class HSEMPlanExplanationSensor(
             d["ml_days_of_history"] = (
                 ml_predictor.days_of_history if ml_predictor is not None else 0.0
             )
+            d["ml_available_history_days"] = (
+                ml_predictor.actual_history_days if ml_predictor is not None else 0.0
+            )
 
         return d
 
