@@ -523,8 +523,8 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             soc_now = live.huawei_batteries_soc_pct
             if (
                 soc_now is not None
-                and self._last_soc_pct is not None
-                and soc_now > self._last_soc_pct + 0.5
+                and getattr(self, "_last_soc_pct", None) is not None
+                and soc_now > getattr(self, "_last_soc_pct", 0.0) + 0.5
                 and live.huawei_batteries_max_charge_power_w
             ):
                 CHARGE_RATE_LEARNER.update(
