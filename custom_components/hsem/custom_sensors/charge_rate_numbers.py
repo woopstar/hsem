@@ -189,7 +189,7 @@ def _restore_learned_rates_from_entry(config_entry: ConfigEntry) -> None:
         return
     try:
         stored: dict[str, float | None] = json.loads(raw)
-    except json.JSONDecodeError, TypeError:
+    except (json.JSONDecodeError, TypeError):
         return
     for name, _lo, _hi in TEMP_BUCKETS:
         if name in stored and stored[name] is not None:
@@ -216,7 +216,7 @@ def persist_learned_rates_to_entry(
     )
     try:
         existing: dict[str, float] = json.loads(stored_raw) if stored_raw else {}
-    except json.JSONDecodeError, TypeError:
+    except (json.JSONDecodeError, TypeError):
         existing = {}
     if existing == payload:
         return  # No change — avoid unnecessary writes.
