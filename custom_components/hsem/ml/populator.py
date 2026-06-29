@@ -17,7 +17,10 @@ from datetime import date, datetime, timedelta
 from homeassistant.core import HomeAssistant
 
 from custom_components.hsem.ml.consumption_predictor import ConsumptionPredictor
-from custom_components.hsem.ml.history_reader import HistoryReader
+from custom_components.hsem.ml.history_reader import (
+    DEFAULT_MAX_HISTORY_DAYS,
+    HistoryReader,
+)
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.utils.logger import HSEM_LOGGER
@@ -93,7 +96,7 @@ async def populate_ml_house_consumption(
             entity_id=energy_entity,
             days=min_days,
             slot_minutes=slot_minutes,
-            max_days=min_days,
+            max_days=DEFAULT_MAX_HISTORY_DAYS,
         )
         if import_history:
             _cached_history = import_history
@@ -123,7 +126,7 @@ async def populate_ml_house_consumption(
                 entity_id=cfg.grid_export_energy_entity,
                 days=min_days,
                 slot_minutes=slot_minutes,
-                max_days=min_days,
+                max_days=DEFAULT_MAX_HISTORY_DAYS,
             )
             if export_history:
                 history = _compute_net_consumption(import_history, export_history)

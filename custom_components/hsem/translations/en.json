@@ -1124,6 +1124,10 @@
     "export_diagnostics": {
       "name": "Export diagnostics",
       "description": "Export a structured diagnostics dump for the HSEM integration with all entity IDs redacted."
+    },
+    "create_dashboard": {
+      "name": "Create dashboard",
+      "description": "Create or update the HSEM Lovelace dashboard. Set force to true to overwrite."
     }
   }
 }
