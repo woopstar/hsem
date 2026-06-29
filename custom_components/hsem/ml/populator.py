@@ -66,7 +66,6 @@ async def populate_ml_house_consumption(
     slot_minutes = cfg.recommendation_interval_minutes
     slots_per_day = 24 * 60 // slot_minutes
     min_days = cfg.ml_consumption_history_days
-    decay_days = float(min_days) / 2.0
 
     reader = HistoryReader(hass)
 
@@ -144,6 +143,23 @@ async def populate_ml_house_consumption(
     # Create or reuse predictor.
     reference_time = datetime.now().astimezone()
     use_temp = bool(cfg.ml_consumption_temperature_entity)
+
+    # Compute decay from the actual data span, not the configured window.
+    # Half-life = actual_span / 2 gives the oldest data ~14% weight.
+    if history:
+        oldest_age = max(
+            (
+                reference_time - ts[0].replace(tzinfo=reference_time.tzinfo)
+                if ts[0].tzinfo is None
+                else reference_time - ts[0]
+            ).total_seconds()
+            / 86400.0
+            for ts, _slot, _energy in history
+        )
+        decay_days = max(oldest_age, 1.0) / 2.0
+    else:
+        decay_days = float(min_days) / 2.0
+
     if predictor is None:
         predictor = ConsumptionPredictor(
             decay_days=decay_days,
