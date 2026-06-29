@@ -344,6 +344,8 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         self._daily_plan_last_accumulated: datetime | None = None
         # Timestamp of the last actual-energy accumulation cycle.
         self._last_accumulation_ts: datetime | None = None
+        #: Previous battery SoC reading for charge-rate learner delta detection.
+        self._last_soc_pct: float | None = None
         # Override expiry timestamp for timed manual overrides (issue #317).
         # Set by set_temporary_override when duration_minutes is provided.
         # Checked on every update cycle; when expired, the override is cleared
@@ -514,17 +516,21 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 )
 
             # Feed the charge rate learner when battery is actively charging
-            # (issue #608).  Uses the configured max charge power and a
-            # default temperature of 25 °C until cell-temperature entity is
-            # wired through the full Huawei protocol.
-            fc_state = (live.huawei_batteries_forcible_charge_state or "").lower()
-            is_charging = (
-                fc_state and "charging" in fc_state and "stopped" not in fc_state
-            )
-            if is_charging and live.huawei_batteries_max_charge_power_w:
+            # (issue #608).  Detects charging by SoC increase between cycles
+            # and records the configured max charge power at the estimated
+            # cell temperature (default 25 °C until BMS temp is wired).
+            soc_now = live.huawei_batteries_soc_pct
+            if (
+                soc_now is not None
+                and self._last_soc_pct is not None
+                and soc_now > self._last_soc_pct + 0.5
+                and live.huawei_batteries_max_charge_power_w
+            ):
                 CHARGE_RATE_LEARNER.update(
                     25.0, live.huawei_batteries_max_charge_power_w
                 )
+            if soc_now is not None:
+                self._last_soc_pct = soc_now
 
             # Update the weekday/weekend consumption profile (issue #612).
             if live.house_consumption_power_w > 0:
