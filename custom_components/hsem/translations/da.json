@@ -920,8 +920,12 @@
       "description": "Ryd enhver aktiv midlertidig arbejdstilstandstilsidesÃ¦ttelse og vend tilbage til automatisk planlÃ¦gningskontrol."
     },
     "export_diagnostics": {
-      "name": "EksportÃ©r diagnosticering",
-      "description": "EksportÃ©r et struktureret diagnosticeringsdump for HSEM-integrationen med alle enheds-ID'er redigeret."
+      "name": "Eksportér diagnosticering",
+      "description": "Eksportér et struktureret diagnosticeringsdump for HSEM-integrationen med alle enheds-ID'er redigeret."
+    },
+    "create_dashboard": {
+      "name": "Opret dashboard",
+      "description": "Opret eller opdater HSEM Lovelace-dashboardet. Sæt force til true for at overskrive."
     }
   }
 }

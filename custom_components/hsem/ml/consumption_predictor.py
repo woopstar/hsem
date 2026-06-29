@@ -79,6 +79,22 @@ class ConsumptionPredictor:
 
         self._last_fit_samples: int = 0
         self._last_fit_time: datetime | None = None
+        #: Actual calendar days spanned by the input history (set by populator).
+        self.actual_history_days: float = 0.0
+
+    @property
+    def days_of_history(self) -> float:
+        """Return the number of calendar days spanned by historical data.
+
+        Computed from the oldest sample across all (DOW, slot) groups.
+        Returns 0.0 when no history has been collected.
+        """
+        oldest_age = 0.0
+        for entries in self._raw_groups.values():
+            for age_days, _energy in entries:
+                if age_days > oldest_age:
+                    oldest_age = age_days
+        return round(oldest_age, 1)
 
     # ------------------------------------------------------------------
     # Public API

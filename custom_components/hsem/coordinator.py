@@ -45,6 +45,7 @@ from homeassistant.helpers.event import (
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from custom_components.hsem.const import (
+    DOMAIN,
     EMA_ALPHA_NET_CONSUMPTION,
     EV_SOC_RESOLVE_THRESHOLD_PCT,
     INPUT_EPSILON,
@@ -344,6 +345,8 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         self._daily_plan_last_accumulated: datetime | None = None
         # Timestamp of the last actual-energy accumulation cycle.
         self._last_accumulation_ts: datetime | None = None
+        #: Previous battery SoC reading for charge-rate learner delta detection.
+        self._last_soc_pct: float | None = None
         # Override expiry timestamp for timed manual overrides (issue #317).
         # Set by set_temporary_override when duration_minutes is provided.
         # Checked on every update cycle; when expired, the override is cleared
@@ -514,16 +517,42 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 )
 
             # Feed the charge rate learner when battery is actively charging
-            # (issue #608).  Uses the configured max charge power and a
-            # default temperature of 25 °C until cell-temperature entity is
-            # wired through the full Huawei protocol.
-            fc_state = (live.huawei_batteries_forcible_charge_state or "").lower()
-            is_charging = (
-                fc_state and "charging" in fc_state and "stopped" not in fc_state
-            )
-            if is_charging and live.huawei_batteries_max_charge_power_w:
+            # (issue #608).  Detects charging by SoC increase between cycles
+            # and records the configured max charge power at the estimated
+            # cell temperature (default 25 °C until BMS temp is wired).
+            soc_now = live.huawei_batteries_soc_pct
+            if (
+                soc_now is not None
+                and getattr(self, "_last_soc_pct", None) is not None
+                and soc_now > getattr(self, "_last_soc_pct", 0.0) + 0.5
+                and live.huawei_batteries_max_charge_power_w
+            ):
                 CHARGE_RATE_LEARNER.update(
                     25.0, live.huawei_batteries_max_charge_power_w
+                )
+                # Persist newly learned rates so they survive HA restarts.
+                from custom_components.hsem.custom_sensors.charge_rate_numbers import (
+                    persist_learned_rates_to_entry,
+                )
+
+                persist_learned_rates_to_entry(self.hass, self._config_entry)
+            if soc_now is not None:
+                self._last_soc_pct = soc_now
+
+            # Refresh charge rate number entities so they reflect the
+            # latest learned rates (issue #608).
+            charge_entities = self.hass.data.get(DOMAIN, {}).get(
+                "charge_rate_entities", []
+            )
+            for entity in charge_entities:
+                entity.async_write_ha_state()
+
+            # Update the weekday/weekend consumption profile (issue #612).
+            if live.house_consumption_power_w > 0:
+                weekday_profile.update(
+                    dow=now.weekday(),
+                    slot=now.hour,
+                    value_kwh=live.house_consumption_power_w / 1000.0,
                 )
 
             # Update the weekday/weekend consumption profile (issue #612).

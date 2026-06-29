@@ -17,7 +17,10 @@ from datetime import date, datetime, timedelta
 from homeassistant.core import HomeAssistant
 
 from custom_components.hsem.ml.consumption_predictor import ConsumptionPredictor
-from custom_components.hsem.ml.history_reader import HistoryReader
+from custom_components.hsem.ml.history_reader import (
+    DEFAULT_MAX_HISTORY_DAYS,
+    HistoryReader,
+)
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.utils.logger import HSEM_LOGGER
@@ -66,7 +69,6 @@ async def populate_ml_house_consumption(
     slot_minutes = cfg.recommendation_interval_minutes
     slots_per_day = 24 * 60 // slot_minutes
     min_days = cfg.ml_consumption_history_days
-    decay_days = float(min_days) / 2.0
 
     reader = HistoryReader(hass)
 
@@ -94,7 +96,7 @@ async def populate_ml_house_consumption(
             entity_id=energy_entity,
             days=min_days,
             slot_minutes=slot_minutes,
-            max_days=min_days,
+            max_days=DEFAULT_MAX_HISTORY_DAYS,
         )
         if import_history:
             _cached_history = import_history
@@ -124,7 +126,7 @@ async def populate_ml_house_consumption(
                 entity_id=cfg.grid_export_energy_entity,
                 days=min_days,
                 slot_minutes=slot_minutes,
-                max_days=min_days,
+                max_days=DEFAULT_MAX_HISTORY_DAYS,
             )
             if export_history:
                 history = _compute_net_consumption(import_history, export_history)
@@ -144,6 +146,23 @@ async def populate_ml_house_consumption(
     # Create or reuse predictor.
     reference_time = datetime.now().astimezone()
     use_temp = bool(cfg.ml_consumption_temperature_entity)
+
+    # Compute decay from the actual data span, not the configured window.
+    # Half-life = actual_span / 2 gives the oldest data ~14% weight.
+    if history:
+        oldest_age = max(
+            (
+                reference_time - ts.replace(tzinfo=reference_time.tzinfo)
+                if ts.tzinfo is None
+                else reference_time - ts
+            ).total_seconds()
+            / 86400.0
+            for ts, _slot, _energy in history
+        )
+        decay_days = max(oldest_age, 1.0) / 2.0
+    else:
+        decay_days = float(min_days) / 2.0
+
     if predictor is None:
         predictor = ConsumptionPredictor(
             decay_days=decay_days,
@@ -152,6 +171,9 @@ async def populate_ml_house_consumption(
             use_temperature=use_temp,
             use_sequential=cfg.ml_consumption_sequential,
         )
+
+    # Store the actual history span so it can be exposed to the user.
+    predictor.actual_history_days = max(oldest_age, 0.0) if history else 0.0
 
     # Read temperature history if configured.
     # Expects an outdoor (ambient) temperature sensor in °C.

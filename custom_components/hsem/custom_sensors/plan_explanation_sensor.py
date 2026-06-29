@@ -212,6 +212,13 @@ class HSEMPlanExplanationSensor(
             # Data quality summary
             d["data_quality_complete"] = data.data_quality.is_complete
 
+            # ML history — configured minimum vs actual recorder span.
+            d["ml_days_of_history"] = cfg.ml_consumption_history_days
+            ml_predictor = getattr(self.coordinator, "_ml_predictor", None)
+            d["ml_available_history_days"] = (
+                ml_predictor.actual_history_days if ml_predictor is not None else 0.0
+            )
+
         return d
 
     # ------------------------------------------------------------------

@@ -43,7 +43,7 @@
 - **Dual EV support** — independent configuration and planning for two EVs
 
 ### Financial Visibility
-- **Export income / import cost / net balance sensors** — monetary, total_increasing, HA Energy dashboard compatible
+- **Export income / import cost / net balance sensors** — monetary, cumulative, HA Energy dashboard compatible
 - **Savings tracker** — actual vs missed savings with 90-day rolling log
 - **Prediction accuracy scorecard** — 7-day and 30-day SoC MAE, solar MAPE, action mix
 - **Daily plan-vs-actual tracking** — compares planned and actual energy flows
@@ -58,6 +58,7 @@
 - **Quick setup wizard** — auto-detects Huawei Solar, Solcast, and price entities
 - **Bundled Lovelace dashboard** — 6-view dashboard with price charts, energy flow, savings, and accuracy
 - **Live-configurable** — all thresholds and settings editable from the dashboard without restart
+- **`hsem.create_dashboard` service** — install or update the bundled Lovelace dashboard from Developer Tools
 - **Bilingual** — English and Danish translations
 
 ---
