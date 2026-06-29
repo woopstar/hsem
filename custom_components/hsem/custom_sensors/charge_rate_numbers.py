@@ -47,7 +47,6 @@ class HSEMChargeRateNumber(HSEMEntity, NumberEntity):
     _attr_native_step = 100.0
     _attr_native_unit_of_measurement = UnitOfPower.WATT
     _attr_icon = "mdi:thermometer-lines"
-    _attr_should_poll = True  # poll to refresh from CHARGE_RATE_LEARNER
 
     def __init__(
         self,
@@ -99,22 +98,9 @@ class HSEMChargeRateNumber(HSEMEntity, NumberEntity):
 
     @property
     @override
-    def should_poll(self) -> bool:
-        """Poll to refresh from the charge rate learner."""
-        return True
-
-    @override
-    async def async_update(self) -> None:
-        """Refresh state from the module-level CHARGE_RATE_LEARNER."""
-        # native_value and available re-read from the learner on each poll.
-
-    @property
-    @override
     def available(self) -> bool:
-        """Entity is available when there is a learned rate or override."""
-        return self._override is not None or (
-            CHARGE_RATE_LEARNER.learned_rates.get(self._bucket_name) is not None
-        )
+        """Entity is always available — shows 0 W when no data yet."""
+        return True
 
     @property
     @override
@@ -122,10 +108,12 @@ class HSEMChargeRateNumber(HSEMEntity, NumberEntity):
         """Return the current effective charge rate.
 
         Manual overrides take priority over learned rates.
+        Returns 0 when neither exists (not yet learned).
         """
         if self._override is not None:
             return self._override
-        return CHARGE_RATE_LEARNER.learned_rates.get(self._bucket_name)
+        learned = CHARGE_RATE_LEARNER.learned_rates.get(self._bucket_name)
+        return learned if learned is not None else 0.0
 
     # ------------------------------------------------------------------
     # Manual override — user sets a value via the UI

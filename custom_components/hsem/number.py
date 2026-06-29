@@ -11,6 +11,7 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from custom_components.hsem.const import DOMAIN
 from custom_components.hsem.custom_numbers.battery_efficiency import (
     HSEMBatteryEfficiencyNumber,
 )
@@ -151,3 +152,7 @@ async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
             )
         )
     async_add_entities(charge_entities)
+
+    # Store charge rate entities so the coordinator can refresh them
+    # after the charge rate learner is updated (issue #608).
+    hass.data.setdefault(DOMAIN, {})["charge_rate_entities"] = charge_entities

@@ -45,6 +45,7 @@ from homeassistant.helpers.event import (
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from custom_components.hsem.const import (
+    DOMAIN,
     EMA_ALPHA_NET_CONSUMPTION,
     EV_SOC_RESOLVE_THRESHOLD_PCT,
     INPUT_EPSILON,
@@ -531,6 +532,14 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 )
             if soc_now is not None:
                 self._last_soc_pct = soc_now
+
+            # Refresh charge rate number entities so they reflect the
+            # latest learned rates (issue #608).
+            charge_entities = self.hass.data.get(DOMAIN, {}).get(
+                "charge_rate_entities", []
+            )
+            for entity in charge_entities:
+                entity.async_write_ha_state()
 
             # Update the weekday/weekend consumption profile (issue #612).
             if live.house_consumption_power_w > 0:
