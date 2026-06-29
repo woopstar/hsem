@@ -149,9 +149,9 @@ async def populate_ml_house_consumption(
     if history:
         oldest_age = max(
             (
-                reference_time - ts[0].replace(tzinfo=reference_time.tzinfo)
-                if ts[0].tzinfo is None
-                else reference_time - ts[0]
+                reference_time - ts.replace(tzinfo=reference_time.tzinfo)
+                if ts.tzinfo is None
+                else reference_time - ts
             ).total_seconds()
             / 86400.0
             for ts, _slot, _energy in history
