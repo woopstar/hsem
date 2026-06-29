@@ -530,6 +530,12 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 CHARGE_RATE_LEARNER.update(
                     25.0, live.huawei_batteries_max_charge_power_w
                 )
+                # Persist newly learned rates so they survive HA restarts.
+                from custom_components.hsem.custom_sensors.charge_rate_numbers import (
+                    persist_learned_rates_to_entry,
+                )
+
+                persist_learned_rates_to_entry(self.hass, self._config_entry)
             if soc_now is not None:
                 self._last_soc_pct = soc_now
 

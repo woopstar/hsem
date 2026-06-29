@@ -12,6 +12,7 @@ Issue #608 — Temperature-adaptive battery charge rate learning.
 
 from __future__ import annotations
 
+import json
 from typing import override
 
 from homeassistant.components.number import NumberEntity, NumberEntityDescription
@@ -25,6 +26,9 @@ from custom_components.hsem.utils.charge_rate_learner import (
     TEMP_BUCKETS,
 )
 from custom_components.hsem.utils.conversion import convert_to_float
+
+# Config entry key for persisting learned charge rates across restarts.
+_LEARNED_RATES_KEY = "hsem_charge_rate_learned_rates"
 
 
 def _override_key(bucket_name: str) -> str:
@@ -143,8 +147,12 @@ class HSEMChargeRateNumber(HSEMEntity, NumberEntity):
 
     @override
     async def async_added_to_hass(self) -> None:
-        """Register config-entry update listener."""
+        """Restore learned rates from config entry and register listeners."""
         await super().async_added_to_hass()
+
+        # Restore learned rates from config entry so they survive HA restarts.
+        _restore_learned_rates_from_entry(self._config_entry)
+
         self.async_on_remove(
             self._config_entry.add_update_listener(self._async_handle_config_update)
         )
@@ -160,6 +168,60 @@ class HSEMChargeRateNumber(HSEMEntity, NumberEntity):
             stored = convert_to_float(raw)
         self._override = stored
         self.async_write_ha_state()
+
+
+# ---------------------------------------------------------------------------
+# Persistence helpers — restore and persist learned rates across restarts
+# ---------------------------------------------------------------------------
+
+
+def _restore_learned_rates_from_entry(config_entry: ConfigEntry) -> None:
+    """Restore learned charge rates from config entry options into the learner.
+
+    Reads the JSON blob stored under ``_LEARNED_RATES_KEY`` and populates
+    ``CHARGE_RATE_LEARNER.learned_rates``.  No-op if the key is absent or
+    the JSON is malformed.
+    """
+    raw = config_entry.options.get(
+        _LEARNED_RATES_KEY, config_entry.data.get(_LEARNED_RATES_KEY)
+    )
+    if not raw or not isinstance(raw, str):
+        return
+    try:
+        stored: dict[str, float | None] = json.loads(raw)
+    except json.JSONDecodeError, TypeError:
+        return
+    for name, _lo, _hi in TEMP_BUCKETS:
+        if name in stored and stored[name] is not None:
+            CHARGE_RATE_LEARNER.learned_rates[name] = float(stored[name])
+
+
+def persist_learned_rates_to_entry(
+    hass: HomeAssistant, config_entry: ConfigEntry
+) -> None:
+    """Persist the current learned charge rates to the config entry.
+
+    Called from the coordinator after the learner produces new rates.
+    Only rates that are not ``None`` are stored.
+    """
+    payload = {
+        name: rate
+        for name, rate in CHARGE_RATE_LEARNER.learned_rates.items()
+        if rate is not None
+    }
+    if not payload:
+        return
+    stored_raw = config_entry.options.get(
+        _LEARNED_RATES_KEY, config_entry.data.get(_LEARNED_RATES_KEY)
+    )
+    try:
+        existing: dict[str, float] = json.loads(stored_raw) if stored_raw else {}
+    except json.JSONDecodeError, TypeError:
+        existing = {}
+    if existing == payload:
+        return  # No change — avoid unnecessary writes.
+    new_options = {**config_entry.options, _LEARNED_RATES_KEY: json.dumps(payload)}
+    hass.config_entries.async_update_entry(config_entry, options=new_options)
 
 
 # ---------------------------------------------------------------------------
