@@ -133,7 +133,7 @@ Key methods:
 | `set_forecasts(start, pv_kwh, load_kwh)` | Set forecast values (only if not finalised) |
 | `to_dict()` / `load_from_dict(data)` | Serialize / deserialize the full record list |
 
-The default maximum is 192 records, which covers approximately 48 hours
+The default maximum is 2880 records, which covers approximately 30 days
 of 15-minute slots.  Older records are automatically pruned.
 
 ### Energy accumulation

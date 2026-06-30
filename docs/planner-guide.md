@@ -190,6 +190,11 @@ Each `HourlyConsumptionAverage` carries:
 The planner applies a median-ratio outlier detection algorithm that flags anomalous
 windows and redistributes their weight to stable windows before combining the averages.
 
+In addition, the optional **weekday/weekend profiling** feature (`WeekdayProfile`,
+#612) maintains separate 24-slot EWMA profiles for Mon–Fri and Sat–Sun.  When
+active, the appropriate profile is merged into the consumption prediction to
+better capture the distinct usage patterns between workdays and weekends.
+
 ### Price data
 
 | Field | Type | Description |
