@@ -26,7 +26,7 @@ from typing import Any, cast, override
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory
+from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN, EntityCategory
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from custom_components.hsem.coordinator import (
@@ -77,10 +77,23 @@ class HSEMDailyPlanVsActualSensor(
         )
         self._attr_name = get_daily_plan_vs_actual_sensor_name()
         self.entity_id = get_daily_plan_vs_actual_sensor_entity_id()
+        self._restored_state: str | None = None
 
     # ------------------------------------------------------------------
     # HA entity properties
     # ------------------------------------------------------------------
+
+    @override
+    async def async_added_to_hass(self) -> None:
+        """Restore the last-known state after a restart."""
+        await super().async_added_to_hass()
+        restored = await self.async_get_last_state()
+        if restored is not None and restored.state not in (
+            STATE_UNAVAILABLE,
+            STATE_UNKNOWN,
+            None,
+        ):
+            self._restored_state = restored.state
 
     @property
     @override
@@ -92,6 +105,11 @@ class HSEMDailyPlanVsActualSensor(
         """
         tracker = self._get_tracker()
         if tracker is None:
+            if self._restored_state is not None:
+                try:
+                    return float(self._restored_state)
+                except ValueError:
+                    return self._restored_state
             return None
         today_record = tracker.get_today_record()
         return cast(float, round(today_record.net_cost_actual, 3))
@@ -114,8 +132,9 @@ class HSEMDailyPlanVsActualSensor(
     @property
     @override
     def available(self) -> bool:
-        """True once the coordinator has completed at least one successful cycle."""
-        return self.coordinator.last_update_success
+        """True once the coordinator has completed at least one successful cycle,
+        or when a restored state from the previous HA session exists."""
+        return self.coordinator.last_update_success or self._restored_state is not None
 
     # ------------------------------------------------------------------
     # Helper

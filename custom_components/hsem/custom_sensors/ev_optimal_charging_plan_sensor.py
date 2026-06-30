@@ -134,6 +134,12 @@ class HSEMEVOptimalChargingPlanSensor(
         """Return True when the coordinator has data."""
         return self.coordinator.data is not None
 
+    @property
+    @override
+    def should_poll(self) -> bool:
+        """Return False — this sensor is coordinator-driven."""
+        return False
+
     # ------------------------------------------------------------------
     # State restore
     # ------------------------------------------------------------------

@@ -74,6 +74,11 @@ class HSEMWorkingModeSelector(HSEMEntity, SelectEntity):
         # resolve the name via entity_description.translation_key.
 
     @override
+    async def async_added_to_hass(self) -> None:
+        """Register lifecycle when entity is added to Home Assistant."""
+        await super().async_added_to_hass()
+
+    @override
     async def async_select_option(self, option: str) -> None:
         """Handle the user selecting a new option.
 

@@ -27,7 +27,11 @@ from typing import Any, cast, override
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.components.sensor.const import SensorDeviceClass, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory
+from homeassistant.const import (
+    STATE_UNAVAILABLE,
+    STATE_UNKNOWN,
+    EntityCategory,
+)
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
@@ -77,6 +81,8 @@ class HSEMSavingsSensor(
         self._attr_name = get_savings_tracker_sensor_name()
         self.entity_id = get_savings_tracker_sensor_entity_id()
 
+        self._restored_state: str | None = None
+
     # ------------------------------------------------------------------
     # HA entity properties
     # ------------------------------------------------------------------
@@ -87,6 +93,11 @@ class HSEMSavingsSensor(
         """Return today's actual savings as the sensor state."""
         tracker = self._get_tracker()
         if tracker is None:
+            if self._restored_state is not None:
+                try:
+                    return float(self._restored_state)
+                except ValueError, TypeError:
+                    pass
             return None
         return cast(float, round(tracker.today_actual, 3))
 
@@ -109,7 +120,23 @@ class HSEMSavingsSensor(
     @override
     def available(self) -> bool:
         """True once the coordinator has completed at least one successful cycle."""
-        return self.coordinator.last_update_success
+        return self.coordinator.last_update_success or self._restored_state is not None
+
+    # ------------------------------------------------------------------
+    # HA lifecycle
+    # ------------------------------------------------------------------
+
+    @override
+    async def async_added_to_hass(self) -> None:
+        """Restore previous state and register coordinator listener."""
+        await super().async_added_to_hass()
+        restored = await self.async_get_last_state()
+        if restored is not None and restored.state not in {
+            STATE_UNAVAILABLE,
+            STATE_UNKNOWN,
+            None,
+        }:
+            self._restored_state = restored.state
 
     # ------------------------------------------------------------------
     # Helper
