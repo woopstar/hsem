@@ -414,6 +414,7 @@ class TestValidateEvChargerInput:
                 "hsem_ev_charger_max_discharge_power": 2000,
                 "hsem_ev_charger_force_max_discharge_power": False,
                 "hsem_ev_allow_charge_past_target_soc": False,
+                "hsem_ev_auto_full_negative_price": False,
                 "hsem_house_power_includes_ev_charger_power": True,
             },
             prefix="hsem_ev",
