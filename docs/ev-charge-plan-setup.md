@@ -225,8 +225,9 @@ periods (e.g. Nordpool, Amber Electric) where charging the EV at full power
 can be profitable or free.
 
 **Configuration:**
-- Toggle `hsem_ev_auto_full_negative_price` in the EV charger config step
-  of the config/options flow.
+- Toggle ``hsem_ev_auto_full_negative_price`` in the EV charger config step
+  of the config/options flow, or at runtime via
+  ``switch.hsem_ev_auto_full_negative_price``.
 - No additional entities are required — it uses the import price sensor
   already configured for the planner.
 
