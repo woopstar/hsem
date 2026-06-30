@@ -4,9 +4,10 @@ The primary EV step (``flows/ev.py``) and the second EV step
 (``flows/ev_second.py``) share near-identical structure.  The differences are:
 
 - Field prefix: ``hsem_ev_`` vs ``hsem_ev_second_``.
-- The primary step has two extra top-level fields
-  (``hsem_ev_second_enabled`` and
-  ``hsem_house_power_includes_ev_charger_power``).
+- The primary step has three extra top-level fields
+  (``hsem_ev_second_enabled``,
+  ``hsem_house_power_includes_ev_charger_power``, and
+  ``hsem_ev_auto_full_negative_price``).
 - The required-fields list for validation differs slightly.
 
 This module parameterises both the schema builder and the validator so that
@@ -60,10 +61,11 @@ async def build_ev_charger_schema(  # NOSONAR
     Args:
         config_entry: Active config entry; ``None`` for the initial config flow.
         prefix: Field-name prefix, e.g. ``"hsem_ev"`` or ``"hsem_ev_second"``.
-        include_primary_fields: When ``True``, adds the two fields that only
+        include_primary_fields: When ``True``, adds the three fields that only
             appear in the primary EV step —
-            ``hsem_ev_second_enabled`` (enables the second-EV flow step) and
-            ``hsem_house_power_includes_ev_charger_power``.
+            ``hsem_ev_second_enabled`` (enables the second-EV flow step),
+            ``hsem_house_power_includes_ev_charger_power``, and
+            ``hsem_ev_auto_full_negative_price``.
 
     Returns:
         A ``vol.Schema`` for the EV charger flow step.
@@ -143,6 +145,16 @@ async def build_ev_charger_schema(  # NOSONAR
         )
     ] = selector({"boolean": {}})
 
+    if include_primary_fields:
+        fields[
+            vol.Required(
+                "hsem_ev_auto_full_negative_price",
+                default=get_config_value(
+                    config_entry, "hsem_ev_auto_full_negative_price"
+                ),
+            )
+        ] = selector({"boolean": {}})
+
     return vol.Schema(fields)
 
 
@@ -174,6 +186,9 @@ async def validate_ev_charger_input(
         f"{prefix}_charger_force_max_discharge_power",
         f"{prefix}_allow_charge_past_target_soc",
     ]
+    # Auto-full on negative price is primary-EV only.
+    if prefix == "hsem_ev":
+        standard_required.append("hsem_ev_auto_full_negative_price")
     all_required = standard_required + (extra_required_fields or [])
 
     required_errors: dict[str, str] = {

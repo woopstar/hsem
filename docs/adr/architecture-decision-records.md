@@ -24,7 +24,8 @@ An Architecture Decision Record is a short document that captures an important a
 | [ADR-002](adr-002-slot-model.md) | Slot Model | Planner engine, data model | Accepted |
 | [ADR-003](adr-003-cost-scoring.md) | Cost Scoring Architecture | Cost function, candidate selection | Accepted |
 | [ADR-004](adr-004-inverter-safety.md) | Inverter Safety — Layered Hardware Write Protection | Safety, hardware interface | Accepted |
-| [ADR-005](adr-005-forecast-confidence.md) | Forecast Confidence | Forecast handling, diagnostics | Accepted |
+| [ADR-005](adr-005-forecast-confidence.md) | Forecast Confidence | Forecast handling, diagnostics | Partially superseded by ADR-006 |
+| [ADR-006](adr-006-solar-correction.md) | Solar Forecast Auto-Correction | Forecast handling, planner engine | Accepted |
 
 ## How to add a new ADR
 

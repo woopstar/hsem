@@ -211,6 +211,45 @@ flowchart TD
 | Force charge now | `switch.hsem_ev_force_charge_now` | Immediate charge |
 | Allow past target | `hsem_ev_allow_charge_past_target_soc` | Solar-only surplus charging past target |
 | Base load includes EV | `hsem_house_power_includes_ev_charger_power` | CT clamp position |
+| Auto-Full on negative price | `hsem_ev_auto_full_negative_price` | Max-charge EV when price ≤ 0 |
+
+### Auto-Full EV on negative electricity prices
+
+When `hsem_ev_auto_full_negative_price` is enabled (off by default), HSEM
+automatically promotes the EV to **Full** charging mode whenever the import
+electricity price drops to ≤ 0 (including negative prices). The previous
+charging mode is restored automatically when the price rises above 0.
+
+This feature is especially useful in markets with frequent negative-price
+periods (e.g. Nordpool, Amber Electric) where charging the EV at full power
+can be profitable or free.
+
+**Configuration:**
+- Toggle ``hsem_ev_auto_full_negative_price`` in the EV charger config step
+  of the config/options flow, or at runtime via
+  ``switch.hsem_ev_auto_full_negative_price``.
+- No additional entities are required — it uses the import price sensor
+  already configured for the planner.
+
+### Session-aware EV demand
+
+When the EV is actively plugged in and drawing power, the MILP planner treats
+the next 2 hours of EV load as **near-certain** demand rather than
+probabilistic. This prevents the battery planner from grid-charging the home
+battery against EV demand that is definitely happening right now.
+
+**How it works:**
+1. The coordinator reads `live.ev.is_charging` and `live.ev.power_w`.
+2. If the EV is actively charging, the first 8 future slots (2 hours at
+   15-minute granularity) get fixed EV load bounds.
+3. A grid-charge prevention constraint blocks battery grid-charging during
+   those session slots.
+4. A post-solve guard overrides any `BatteriesChargeGrid` recommendations
+   in session slots to `BatteriesChargeSolar` or skip.
+
+**Conditions:**
+- Activates only when `live.ev.is_charging == True` AND `live.ev.power_w > 0`.
+- Applies independently to the second EV if configured.
 
 ---
 

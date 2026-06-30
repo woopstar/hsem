@@ -1,10 +1,16 @@
 # ADR-005: Forecast Confidence
 
-**Status:** Accepted
+**Status:** Accepted (partially superseded by [ADR-006](adr-006-solar-correction.md))
 
 **Date:** 2026-05-11
 
 **Deciders:** Project maintainers
+
+> **Note:** The original "diagnostic-only, non-adaptive" decision was
+> amended in June 2026 by ADR-006, which introduces adaptive per-hour PV
+> correction.  The deterministic decay factors for future-day PV, the
+> non-adaptive load and price treatment, and the diagnostic tracking
+> infrastructure remain unchanged.
 
 ---
 

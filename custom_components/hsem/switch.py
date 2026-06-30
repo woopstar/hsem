@@ -23,6 +23,7 @@ from custom_components.hsem.utils.sensornames.controls import (
     get_verbose_logging_switch_key,
 )
 from custom_components.hsem.utils.sensornames.ev import (
+    get_ev_auto_full_negative_price_switch_key,
     get_ev_force_charge_now_switch_key,
     get_ev_force_discharge_switch_key,
     get_ev_second_force_charge_now_switch_key,
@@ -85,6 +86,11 @@ SWITCH_DESCRIPTIONS: tuple[HSEMSwitchEntityDescription, ...] = (
         key=get_ev_force_charge_now_switch_key(),
         icon=_ICON_EV,
         translation_key="ev_force_charge_now",
+    ),
+    HSEMSwitchEntityDescription(
+        key=get_ev_auto_full_negative_price_switch_key(),
+        icon=_ICON_EV,
+        translation_key="ev_auto_full_negative_price",
     ),
     HSEMSwitchEntityDescription(
         key=get_ev_second_smart_charging_switch_key(),

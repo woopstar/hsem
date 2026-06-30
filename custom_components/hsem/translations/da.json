@@ -6,9 +6,9 @@
     },
     "error": {
       "device_not_found": "Den valgte enhed blev ikke fundet.",
-      "energy_out_of_range": "Energiv\u00e6rdien er uden for det tilladte omr\u00e5de.",
+      "energy_out_of_range": "Energiværdien er uden for det tilladte område.",
       "entity_not_found": "Den valgte enhed blev ikke fundet.",
-      "entity_unavailable": "Den valgte enhed er ikke tilg\u00e6ngelig i \u00f8jeblikket. Kontroller enheden eller tjenesten.",
+      "entity_unavailable": "Den valgte enhed er ikke tilgængelig i øjeblikket. Kontroller enheden eller tjenesten.",
       "hsem_house_consumption_energy_weight_total": "Summen af husets energivÃ¦gte skal vÃ¦re 100%.",
       "invalid_energy_value": "Ugyldig energivÃ¦rdi â€” indtast et tal.",
       "invalid_entity_id": "Ugyldigt enheds-ID-format. Forventet \"domÃ¦ne.objekt_id\" med smÃ¥ bogstaver, tal og understregninger.",
@@ -131,7 +131,8 @@
           "hsem_ev_connected": "EV tilsluttet sensor",
           "hsem_ev_second_enabled": "Aktiver anden EV-lader",
           "hsem_ev_soc": "EV ladetilstand (SoC) sensor",
-          "hsem_house_power_includes_ev_charger_power": "Husets effekt inkluderer EV-ladereffekt"
+          "hsem_house_power_includes_ev_charger_power": "Husets effekt inkluderer EV-ladereffekt",
+          "hsem_ev_auto_full_negative_price": "Auto-Fuld EV ved negativ pris"
         },
         "data_description": {
           "hsem_ev_allow_charge_past_target_soc": "Aktiver denne mulighed, hvis du vil tillade systemet at fortsÃ¦tte opladningen af EV-batteriet, selv efter det har nÃ¥et mÃ¥l-ladetilstanden (SoC).",
@@ -142,7 +143,8 @@
           "hsem_ev_connected": "VÃ¦lg den sensor eller enhed, der angiver, om EV er tilsluttet laderen.",
           "hsem_ev_second_enabled": "Aktiver eller deaktiver konfigurationen for en anden EV-lader.",
           "hsem_ev_soc": "VÃ¦lg den sensor, der leverer den aktuelle ladetilstand (SoC) for dit EV-batteri.",
-          "hsem_house_power_includes_ev_charger_power": "Aktiver dette, hvis husets forbrugseffektsensor allerede inkluderer EV-laderens strÃ¸mforbrug."
+          "hsem_house_power_includes_ev_charger_power": "Aktiver dette, hvis husets forbrugseffektsensor allerede inkluderer EV-laderens strÃ¸mforbrug.",
+          "hsem_ev_auto_full_negative_price": "Når aktiveret, sættes elbilen automatisk til fuld opladningseffekt, når elprisen er nul eller negativ. Den tidligere opladningstilstand gendannes, når prisen stiger over nul."
         },
         "description": "Konfigurer EV-laderindstillinger for HSEM.",
         "title": "EV-laderindstillinger (Valgfri)"
@@ -358,9 +360,9 @@
   "options": {
     "error": {
       "device_not_found": "Den valgte enhed blev ikke fundet.",
-      "energy_out_of_range": "Energiv\u00e6rdien er uden for det tilladte omr\u00e5de.",
+      "energy_out_of_range": "Energiværdien er uden for det tilladte område.",
       "entity_not_found": "Den valgte enhed blev ikke fundet.",
-      "entity_unavailable": "Den valgte enhed er ikke tilg\u00e6ngelig i \u00f8jeblikket. Kontroller enheden eller tjenesten.",
+      "entity_unavailable": "Den valgte enhed er ikke tilgængelig i øjeblikket. Kontroller enheden eller tjenesten.",
       "hsem_house_consumption_energy_weight_total": "Summen af husets energivÃ¦gte skal vÃ¦re 100%.",
       "invalid_energy_value": "Ugyldig energivÃ¦rdi â€” indtast et tal.",
       "invalid_entity_id": "Ugyldigt enheds-ID-format. Forventet \"domÃ¦ne.objekt_id\" med smÃ¥ bogstaver, tal og understregninger.",
@@ -483,7 +485,8 @@
           "hsem_ev_connected": "EV Connected Sensor",
           "hsem_ev_second_enabled": "Enable Second EV Charger",
           "hsem_ev_soc": "EV State of Charge (SoC) Sensor",
-          "hsem_house_power_includes_ev_charger_power": "House Power Includes EV Charger Power"
+          "hsem_house_power_includes_ev_charger_power": "House Power Includes EV Charger Power",
+          "hsem_ev_auto_full_negative_price": "Auto-Fuld EV ved negativ pris"
         },
         "data_description": {
           "hsem_ev_allow_charge_past_target_soc": "Enable this option if you want to allow the system to continue charging the EV battery even after it has reached the target state of charge (SoC). This can be useful in scenarios where you want to ensure the EV is fully charged regardless of the target setting.",
@@ -494,7 +497,8 @@
           "hsem_ev_connected": "Select the sensor or entity that indicates whether the EV is connected to the charger.",
           "hsem_ev_second_enabled": "Enable or disable the configuration for a second EV charger.",
           "hsem_ev_soc": "Select the sensor that provides the current state of charge (SoC) of your EV battery.",
-          "hsem_house_power_includes_ev_charger_power": "Enable this if the house consumption power sensor already includes the EV charger power consumption."
+          "hsem_house_power_includes_ev_charger_power": "Enable this if the house consumption power sensor already includes the EV charger power consumption.",
+          "hsem_ev_auto_full_negative_price": "Når aktiveret, sættes elbilen automatisk til fuld opladningseffekt, når elprisen er nul eller negativ. Den tidligere opladningstilstand gendannes, når prisen stiger over nul."
         },
         "description": "Configure EV Charger settings for HSEM.",
         "title": "EV Charger Settings (Optional)"
@@ -778,25 +782,25 @@
         "name": "EV 2 Mål SoC"
       },
       "charge_rate_below_0": {
-        "name": "Maks. opladning (<0\u00b0C)"
+        "name": "Maks. opladning (<0°C)"
       },
       "charge_rate_0_to_5": {
-        "name": "Maks. opladning (0-5\u00b0C)"
+        "name": "Maks. opladning (0-5°C)"
       },
       "charge_rate_6_to_15": {
-        "name": "Maks. opladning (6-15\u00b0C)"
+        "name": "Maks. opladning (6-15°C)"
       },
       "charge_rate_16_to_21": {
-        "name": "Maks. opladning (16-21\u00b0C)"
+        "name": "Maks. opladning (16-21°C)"
       },
       "charge_rate_21_to_35": {
-        "name": "Maks. opladning (21-35\u00b0C)"
+        "name": "Maks. opladning (21-35°C)"
       },
       "charge_rate_35_to_50": {
-        "name": "Maks. opladning (35-50\u00b0C)"
+        "name": "Maks. opladning (35-50°C)"
       },
       "charge_rate_above_50": {
-        "name": "Maks. opladning (>50\u00b0C)"
+        "name": "Maks. opladning (>50°C)"
       }
     },
     "time": {

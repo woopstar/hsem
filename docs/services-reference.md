@@ -12,6 +12,7 @@ manual control over the planner and hardware writes.
 | `hsem.force_recalculation` | Trigger an immediate full planner re-run | None |
 | `hsem.set_temporary_override` | Force a specific battery working mode | None |
 | `hsem.clear_override` | Return to automatic planner control | None |
+| `hsem.create_dashboard` | Create or update the bundled Lovelace dashboard | None |
 | `hsem.export_diagnostics` | Export structured diagnostic data | Dict |
 
 ---
@@ -111,7 +112,42 @@ service: hsem.clear_override
 
 ---
 
-## 4. `hsem.export_diagnostics`
+## 4. `hsem.create_dashboard`
+
+Creates or updates the bundled HSEM Lovelace dashboard in Home Assistant.
+The dashboard YAML is bundled with the integration at
+`custom_components/hsem/dashboards/dashboard_en.yaml` and includes 6 views:
+price charts, energy flow, savings, accuracy, EV status, and battery health.
+
+**Schema:**
+
+| Field | Required | Type | Default | Description |
+|---|---|---|---|---|
+| `force` | No | Boolean | `false` | When `true`, overwrites an existing HSEM dashboard. When `false` (default), skips if a dashboard named "HSEM" already exists. |
+
+**Use cases:**
+- First-time dashboard installation after HSEM setup
+- Updating the bundled dashboard to a newer version after an HSEM upgrade
+
+**Implementation notes:**
+- The service logs the path to the bundled dashboard YAML with import instructions.
+- Does not use HA internal storage or Lovelace APIs — relies on the user
+  importing the dashboard via the raw configuration editor or YAML mode.
+
+**Examples:**
+```yaml
+# Create dashboard, skip if already exists
+service: hsem.create_dashboard
+
+# Force-overwrite an existing dashboard
+service: hsem.create_dashboard
+data:
+  force: true
+```
+
+---
+
+## 5. `hsem.export_diagnostics`
 
 Exports a structured diagnostics dump containing the most recent planner input,
 planner output, hardware write status, and integration version. All entity IDs
