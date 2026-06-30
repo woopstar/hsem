@@ -28,6 +28,7 @@
 - **Battery capacity auto-detection** — learns usable capacity from BMS kWh-remaining readings in the 15-85 % SoC range
 - **Cycle cost accounting** — wear-and-tear costs factored into every charge/discharge decision
 - **Grid overcurrent protection** — respects main fuse rating, caps total grid draw
+- **Weekday/weekend consumption profiling** — separate EWMA load profiles for workdays and weekends improve prediction accuracy
 
 ### Solar & Forecast
 - **Solar forecast accuracy auto-correction** — per-hour learned factors (4-day rolling) + intra-hour residual correction (2h decay)
