@@ -106,6 +106,12 @@ class HSEMEVSecondOptimalChargingPlanSensor(
         """Return True when the coordinator has data."""
         return self.coordinator.data is not None
 
+    @property
+    @override
+    def should_poll(self) -> bool:
+        """Return False — this sensor is coordinator-driven."""
+        return False
+
     @override
     async def async_added_to_hass(self) -> None:
         """Restore previous state on startup."""

@@ -23,7 +23,8 @@ from typing import Any, cast, override
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory
+from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN, EntityCategory
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
@@ -36,6 +37,7 @@ from custom_components.hsem.utils.sensornames.diagnostics import (
 
 class HSEMPredictionAccuracySensor(
     HSEMCoordinatorEntity,
+    RestoreEntity,
     SensorEntity,
     HSEMEntity,
 ):
@@ -68,6 +70,18 @@ class HSEMPredictionAccuracySensor(
         )
         self._attr_name = get_prediction_accuracy_sensor_name()
         self.entity_id = get_prediction_accuracy_sensor_entity_id()
+        self._restored_state: str | None = None
+
+    @override
+    async def async_added_to_hass(self) -> None:
+        """Restore last-known state on startup."""
+        await super().async_added_to_hass()
+        last_state = await self.async_get_last_state()
+        if last_state is not None and last_state.state not in (
+            STATE_UNAVAILABLE,
+            STATE_UNKNOWN,
+        ):
+            self._restored_state = last_state.state
 
     @property
     @override
@@ -77,18 +91,30 @@ class HSEMPredictionAccuracySensor(
 
     @property
     @override
+    def available(self) -> bool:
+        """Available when the coordinator has data or a restored state exists."""
+        if super().available:
+            return True
+        return self._restored_state is not None
+
+    @property
+    @override
     def native_value(self) -> str | float | None:
         """Return the sensor state.
 
         State is the SoC MAE over 7 days (pct) when records exist,
-        otherwise ``None`` (unavailable).
+        falling back to the restored state on startup.
         """
-        if self.coordinator.data is None:
-            return None
-        tracker = getattr(self.coordinator, "_prediction_tracker", None)
-        if tracker is None or tracker.soc_mae_7d is None:
-            return None
-        return cast(float, round(tracker.soc_mae_7d, 3))
+        if self.coordinator.data is not None:
+            tracker = getattr(self.coordinator, "_prediction_tracker", None)
+            if tracker is not None and tracker.soc_mae_7d is not None:
+                return cast(float, round(tracker.soc_mae_7d, 3))
+        if self._restored_state is not None:
+            try:
+                return float(self._restored_state)
+            except ValueError, TypeError:
+                return self._restored_state
+        return None
 
     @property
     @override

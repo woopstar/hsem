@@ -129,6 +129,12 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
     def should_poll(self) -> bool:
         return True
 
+    @property
+    @override
+    def available(self) -> bool:
+        """Return True when the sensor has a valid state."""
+        return self._state is not None
+
     async def async_update(self, event: Any | None = None) -> None:
         """Manually trigger the sensor update."""
         return await self._async_handle_update(event)

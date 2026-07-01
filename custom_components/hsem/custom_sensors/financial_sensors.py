@@ -28,6 +28,7 @@ from typing import Any, cast, override
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.components.sensor.const import SensorDeviceClass, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from custom_components.hsem.coordinator import (
@@ -82,6 +83,23 @@ class _FinancialSensorMixin(
         HSEMCoordinatorEntity.__init__(self, coordinator)
         HSEMEntity.__init__(self, config_entry)
         self._config_entry = config_entry
+        self._restored_state: str | None = None
+
+    # ------------------------------------------------------------------
+    # HA lifecycle
+    # ------------------------------------------------------------------
+
+    @override
+    async def async_added_to_hass(self) -> None:
+        """Restore previous state and register coordinator listener."""
+        await super().async_added_to_hass()
+        restored = await self.async_get_last_state()
+        if restored is not None and restored.state not in {
+            STATE_UNAVAILABLE,
+            STATE_UNKNOWN,
+            None,
+        }:
+            self._restored_state = restored.state
 
     # ------------------------------------------------------------------
     # HA entity properties
@@ -97,7 +115,7 @@ class _FinancialSensorMixin(
     @override
     def available(self) -> bool:
         """True once the coordinator has completed at least one successful cycle."""
-        return self.coordinator.last_update_success
+        return self.coordinator.last_update_success or self._restored_state is not None
 
     @property
     @override
@@ -153,6 +171,11 @@ class HSEMExportIncomeSensor(_FinancialSensorMixin):
         """Return cumulative export income."""
         tracker = self._get_tracker()
         if tracker is None:
+            if self._restored_state is not None:
+                try:
+                    return float(self._restored_state)
+                except ValueError, TypeError:
+                    pass
             return None
         return round(tracker.export_income_total, 3)
 
@@ -193,6 +216,11 @@ class HSEMImportCostSensor(_FinancialSensorMixin):
         """Return cumulative import cost."""
         tracker = self._get_tracker()
         if tracker is None:
+            if self._restored_state is not None:
+                try:
+                    return float(self._restored_state)
+                except ValueError, TypeError:
+                    pass
             return None
         return round(tracker.import_cost_total, 3)
 
@@ -233,5 +261,10 @@ class HSEMNetGridBalanceSensor(_FinancialSensorMixin):
         """Return net grid balance (export income − import cost)."""
         tracker = self._get_tracker()
         if tracker is None:
+            if self._restored_state is not None:
+                try:
+                    return float(self._restored_state)
+                except ValueError, TypeError:
+                    pass
             return None
         return round(tracker.export_income_total - tracker.import_cost_total, 3)

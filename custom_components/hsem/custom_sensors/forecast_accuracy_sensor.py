@@ -28,7 +28,12 @@ from typing import Any, cast, override
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory, UnitOfEnergy
+from homeassistant.const import (
+    STATE_UNAVAILABLE,
+    STATE_UNKNOWN,
+    EntityCategory,
+    UnitOfEnergy,
+)
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from custom_components.hsem.coordinator import (
@@ -78,6 +83,21 @@ class HSEMForecastAccuracySensor(
         )
         self._attr_name = get_forecast_accuracy_sensor_name()
         self.entity_id = get_forecast_accuracy_sensor_entity_id()
+        self._restored_state: str | None = None
+
+    @property
+    @override
+    def should_poll(self) -> bool:
+        """This entity does not poll — updates are pushed by the coordinator."""
+        return False
+
+    @property
+    @override
+    def available(self) -> bool:
+        """Return True when the coordinator is healthy or a restored state is available."""
+        return (
+            self.coordinator.last_update_success and self.coordinator.data is not None
+        ) or self._restored_state is not None
 
     @property
     @override
@@ -85,10 +105,12 @@ class HSEMForecastAccuracySensor(
         """Return the sensor state.
 
         State is the PV MAE (kWh) when records exist, otherwise
-        ``None`` (unavailable).
+        falls back to the last known restored state.
         """
         data: CoordinatorData | None = self.coordinator.data
         if data is None:
+            if self._restored_state is not None:
+                return float(self._restored_state)
             return None
         tracker = getattr(self.coordinator, "_forecast_tracker", None)
         if tracker is None:
@@ -153,11 +175,15 @@ class HSEMForecastAccuracySensor(
 
     @override
     async def async_added_to_hass(self) -> None:
-        """Restore forecast tracker data from the previous HA session."""
+        """Restore forecast tracker data and sensor state from the previous HA session."""
         await super().async_added_to_hass()
         restored = await self.async_get_last_state()
         if restored is None:
             return
+
+        # Restore sensor state
+        if restored.state not in {STATE_UNAVAILABLE, STATE_UNKNOWN, None}:
+            self._restored_state = restored.state
 
         tracker_data = restored.attributes.get("_forecast_tracker_data")
         if tracker_data is None:
