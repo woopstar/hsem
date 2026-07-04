@@ -527,6 +527,26 @@ def solve_milp(
             ev_penalty_cost = max(p_imp_max, 0.1) * max(energy_needed, 1.0) * 10.0
             c_obj[ev_pen_offsets[ev_idx]] = ev_penalty_cost
 
+            # Direct benefit on ev_c[t]: the avoided penalty per kWh of DC
+            # charge delivered before the deadline.  Without this, the LP
+            # sees ev_c[t] as having zero benefit — only the slack penalty
+            # provides an incentive, and the LP may prefer paying the penalty
+            # over importing expensive grid power to charge the EV.
+            #
+            # The benefit equals the penalty cost per kWh, so the LP always
+            # prefers charging over paying the penalty.  Slots before the
+            # deadline get the full benefit; slots after get zero (the
+            # deadline constraint already prevents post-deadline charge from
+            # reducing the penalty).
+            ev_off = ev_var_offsets[ev_idx]
+            d = ev.deadline_slot
+            d = max(0, min(d, m - 1))
+            for t in range(m):
+                if t <= d:
+                    # Negative coefficient = benefit (reduces objective).
+                    # The benefit is the avoided penalty per kWh DC.
+                    c_obj[ev_off + t] -= ev_penalty_cost
+
     # --- EV charge-past-target benefit ---
     # When an EV is already at its user-configured target SoC but
     # charge_past_target is enabled, give EV charging a tiny benefit
