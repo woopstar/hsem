@@ -933,6 +933,14 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 # step 9 sees the held recommendation.
                 self._apply_planner_output(planner_output)
 
+                # Recalculate EV charger power for the current slot every cycle.
+                # The power calculation in engine_core.py only runs when the MILP
+                # is re-solved, but the power setpoint needs to be updated every
+                # cycle as time elapses within the slot (remaining_h decreases).
+                # This ensures the charger power stays accurate even when the
+                # MILP is cached.
+                self._recalculate_current_slot_ev_power(planner_output, now)
+
                 # 8b. Auto-Full EV on negative price override (issue #609).
                 # When import price is ≤ 0 and the feature is enabled,
                 # override the current slot to charge the EV at full power.
@@ -1501,6 +1509,68 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                     slot.start.isoformat(),
                     slot.ev_charger_calculated_power,
                     slot.ev_second_charger_calculated_power,
+                )
+            break
+
+    def _recalculate_current_slot_ev_power(
+        self, output: PlannerOutput, now: datetime
+    ) -> None:
+        """Recalculate EV charger power for the current slot every cycle.
+
+        This ensures the power setpoint stays accurate as time elapses within
+        the slot, even when the MILP is cached and not re-solved. The power
+        calculation in engine_core.py only runs when run_planner() is called,
+        so we need to recalculate it here every cycle.
+
+        Args:
+            output: The :class:`PlannerOutput` (cached or fresh).
+            now: Current time (timezone-aware).
+        """
+        inp = self._last_milp_planner_input
+        if inp is None:
+            return
+
+        max_power_w = inp.ev_planned_load_charger_power_kw * 1000.0
+        min_power_w = inp.ev_planned_load_charger_min_power_w
+        second_max_power_w = inp.ev_second_planned_load_charger_power_kw * 1000.0
+        second_min_power_w = inp.ev_second_planned_load_charger_min_power_w
+
+        # Live surplus cap
+        live_surplus_w: float | None = None
+        if self._live is not None:
+            live_net = self._live.net_consumption_w
+            if live_net < 0:
+                live_surplus_w = -live_net
+
+        for slot in output.slots:
+            s_start = as_tz(slot.start, now.tzinfo)
+            s_end = as_tz(slot.end, now.tzinfo)
+            if not (s_start <= now < s_end):
+                continue
+
+            remaining_h = max((s_end - now).total_seconds() / 3600.0, 1.0 / 3600.0)
+            total_ev = slot.ev_total_planned_load_kwh
+
+            if total_ev <= INPUT_EPSILON:
+                break
+
+            if (
+                slot.ev_planned_load_kwh > INPUT_EPSILON
+                or slot.ev_accounted_load_kwh > INPUT_EPSILON
+            ):
+                slot.ev_charger_calculated_power = self._smoothed_power_w(
+                    total_ev,
+                    remaining_h,
+                    max_power_w,
+                    min_power_w,
+                    live_surplus_w,
+                )
+                slot.ev_second_charger_calculated_power = self._smoothed_power_w(
+                    total_ev,
+                    remaining_h,
+                    second_max_power_w,
+                    second_min_power_w,
+                    live_surplus_w,
                 )
             break
 
