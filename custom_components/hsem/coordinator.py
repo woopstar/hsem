@@ -1530,6 +1530,31 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         if inp is None:
             return
 
+        # Check if we're past the EV deadline - if so, don't recalculate power
+        # (the EV should not be charging after the deadline)
+        if inp.ev_planned_load_deadline is not None:
+            if now >= inp.ev_planned_load_deadline:
+                # Past deadline - zero out power for current slot
+                for slot in output.slots:
+                    s_start = as_tz(slot.start, now.tzinfo)
+                    s_end = as_tz(slot.end, now.tzinfo)
+                    if s_start <= now < s_end:
+                        slot.ev_charger_calculated_power = 0.0
+                        slot.ev_second_charger_calculated_power = 0.0
+                        break
+                return
+
+        if inp.ev_second_planned_load_deadline is not None:
+            if now >= inp.ev_second_planned_load_deadline:
+                # Past second EV deadline - zero out second EV power
+                for slot in output.slots:
+                    s_start = as_tz(slot.start, now.tzinfo)
+                    s_end = as_tz(slot.end, now.tzinfo)
+                    if s_start <= now < s_end:
+                        slot.ev_second_charger_calculated_power = 0.0
+                        break
+                # Don't return - still need to check primary EV
+
         max_power_w = inp.ev_planned_load_charger_power_kw * 1000.0
         min_power_w = inp.ev_planned_load_charger_min_power_w
         second_max_power_w = inp.ev_second_planned_load_charger_power_kw * 1000.0
@@ -1558,20 +1583,35 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 slot.ev_planned_load_kwh > INPUT_EPSILON
                 or slot.ev_accounted_load_kwh > INPUT_EPSILON
             ):
-                slot.ev_charger_calculated_power = self._smoothed_power_w(
-                    total_ev,
-                    remaining_h,
-                    max_power_w,
-                    min_power_w,
-                    live_surplus_w,
-                )
-                slot.ev_second_charger_calculated_power = self._smoothed_power_w(
-                    total_ev,
-                    remaining_h,
-                    second_max_power_w,
-                    second_min_power_w,
-                    live_surplus_w,
-                )
+                # Only calculate primary EV power if not past deadline
+                if (
+                    inp.ev_planned_load_deadline is None
+                    or now < inp.ev_planned_load_deadline
+                ):
+                    slot.ev_charger_calculated_power = self._smoothed_power_w(
+                        total_ev,
+                        remaining_h,
+                        max_power_w,
+                        min_power_w,
+                        live_surplus_w,
+                    )
+                else:
+                    slot.ev_charger_calculated_power = 0.0
+
+                # Only calculate second EV power if not past deadline
+                if (
+                    inp.ev_second_planned_load_deadline is None
+                    or now < inp.ev_second_planned_load_deadline
+                ):
+                    slot.ev_second_charger_calculated_power = self._smoothed_power_w(
+                        total_ev,
+                        remaining_h,
+                        second_max_power_w,
+                        second_min_power_w,
+                        live_surplus_w,
+                    )
+                else:
+                    slot.ev_second_charger_calculated_power = 0.0
             break
 
     @staticmethod
