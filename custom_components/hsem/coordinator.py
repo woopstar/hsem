@@ -1425,6 +1425,12 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 # to export or charge the battery instead of charging
                 # the EV, that decision must be respected.  Do not
                 # second-guess it with a reactive surplus check.
+                _LOGGER.debug(
+                    "[coordinator] _smooth_current_slot_ev_power: slot=%s total_ev=%.3f "
+                    "(below epsilon, skipping)",
+                    slot.start.isoformat(),
+                    total_ev,
+                )
                 break
 
             # Recalculate power from energy allocation, even if the
@@ -1439,6 +1445,16 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 slot.ev_planned_load_kwh > INPUT_EPSILON
                 or slot.ev_accounted_load_kwh > INPUT_EPSILON
             ):
+                _LOGGER.debug(
+                    "[coordinator] _smooth_current_slot_ev_power: slot=%s total_ev=%.3f "
+                    "ev_planned=%.3f ev_accounted=%.3f old_power=%d remaining_h=%.3f",
+                    slot.start.isoformat(),
+                    total_ev,
+                    slot.ev_planned_load_kwh,
+                    slot.ev_accounted_load_kwh,
+                    slot.ev_charger_calculated_power,
+                    remaining_h,
+                )
                 slot.ev_charger_calculated_power = self._smoothed_power_w(
                     total_ev,
                     remaining_h,
@@ -1454,6 +1470,13 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                     second_max_power_w,
                     second_min_power_w,
                     live_surplus_w,
+                )
+                _LOGGER.debug(
+                    "[coordinator] _smooth_current_slot_ev_power: slot=%s new_power=%d "
+                    "second_power=%d",
+                    slot.start.isoformat(),
+                    slot.ev_charger_calculated_power,
+                    slot.ev_second_charger_calculated_power,
                 )
             break
 
@@ -1545,6 +1568,18 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             # The planner may have applied confidence decay or other transforms
             # that differ from the raw value stored by the data populator.
             rec.solcast_pv_estimate_kwh = slot.solcast_pv_estimate_kwh
+
+            # Debug logging for EV power
+            if slot.ev_total_planned_load_kwh > 1e-9:
+                _LOGGER.debug(
+                    "[coordinator] _apply_planner_output: slot=%s ev_total=%.3f "
+                    "ev_planned=%.3f ev_accounted=%.3f power=%d",
+                    rec.start.isoformat(),
+                    slot.ev_total_planned_load_kwh,
+                    slot.ev_planned_load_kwh,
+                    slot.ev_accounted_load_kwh,
+                    slot.ev_charger_calculated_power,
+                )
 
         if unmatched:
             _LOGGER.warning(

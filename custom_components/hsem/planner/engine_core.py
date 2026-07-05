@@ -1089,13 +1089,36 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
             # MILP allocated a full slot's energy to a partial slot.
             full_slot_power_w = round((total_ev_ac / _slot_hours) * 1000.0)
             ac_power_w = min(ac_power_w, full_slot_power_w)
+            log_planner(
+                "debug",
+                "[core] EV power calc: slot=%s total_ev_ac=%.3f remaining_h=%.3f "
+                "ac_power_w=%d full_slot_power_w=%d",
+                s.start.isoformat(),
+                total_ev_ac,
+                remaining_h,
+                ac_power_w,
+                full_slot_power_w,
+            )
         else:
             ac_power_w = round((total_ev_ac / _slot_hours) * 1000.0)
+            log_planner(
+                "debug",
+                "[core] EV power calc: slot=%s total_ev_ac=%.3f ac_power_w=%d (future slot)",
+                s.start.isoformat(),
+                total_ev_ac,
+                ac_power_w,
+            )
 
         if _min_pwr_w > 1e-9 and ac_power_w < _min_pwr_w:
             # Below minimum — charger won't start.  Zero out power,
             # load, and recommendation so net consumption and cost
             # reflect reality.
+            log_planner(
+                "debug",
+                "[core] EV power below minimum (%d < %d), zeroing out",
+                ac_power_w,
+                _min_pwr_w,
+            )
             s.ev_charger_calculated_power = 0
             s.ev_second_charger_calculated_power = 0
             s.ev_planned_load_kwh = 0.0
@@ -1110,6 +1133,12 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
             else:
                 s.estimated_cost_currency = round(net * s.price.export_price, 4)
         else:
+            log_planner(
+                "debug",
+                "[core] EV power set to %d W for slot %s",
+                ac_power_w,
+                s.start.isoformat(),
+            )
             s.ev_charger_calculated_power = ac_power_w
 
     _EV_KEEP = frozenset(
