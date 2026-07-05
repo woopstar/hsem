@@ -1330,24 +1330,16 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
     def _ev_state_changed(prev: PlannerInput, inp: PlannerInput) -> bool:
         """Return True when any gating EV input changed between inputs.
 
-        Covers both EVs: connection state, smart-charging toggle, and SoC
-        change beyond ``EV_SOC_RESOLVE_THRESHOLD_PCT`` percentage points.
+        Covers both EVs: connection state, smart-charging toggle, SoC
+        change beyond ``EV_SOC_RESOLVE_THRESHOLD_PCT`` percentage points,
+        target SoC, deadline, and force-charge-now switch.
         """
+        # Primary EV
         if prev.ev_planned_load_connected != inp.ev_planned_load_connected:
-            return True
-        if (
-            prev.ev_second_planned_load_connected
-            != inp.ev_second_planned_load_connected
-        ):
             return True
         if (
             prev.ev_planned_load_smart_charging_enabled
             != inp.ev_planned_load_smart_charging_enabled
-        ):
-            return True
-        if (
-            prev.ev_second_planned_load_smart_charging_enabled
-            != inp.ev_second_planned_load_smart_charging_enabled
         ):
             return True
         if (
@@ -1360,12 +1352,44 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             return True
         if (
             abs(
+                prev.ev_planned_load_target_soc_pct - inp.ev_planned_load_target_soc_pct
+            )
+            > 1e-9
+        ):
+            return True
+        if prev.ev_planned_load_deadline != inp.ev_planned_load_deadline:
+            return True
+
+        # Second EV
+        if (
+            prev.ev_second_planned_load_connected
+            != inp.ev_second_planned_load_connected
+        ):
+            return True
+        if (
+            prev.ev_second_planned_load_smart_charging_enabled
+            != inp.ev_second_planned_load_smart_charging_enabled
+        ):
+            return True
+        if (
+            abs(
                 prev.ev_second_planned_load_current_soc_pct
                 - inp.ev_second_planned_load_current_soc_pct
             )
             > EV_SOC_RESOLVE_THRESHOLD_PCT
         ):
             return True
+        if (
+            abs(
+                prev.ev_second_planned_load_target_soc_pct
+                - inp.ev_second_planned_load_target_soc_pct
+            )
+            > 1e-9
+        ):
+            return True
+        if prev.ev_second_planned_load_deadline != inp.ev_second_planned_load_deadline:
+            return True
+
         return False
 
     def _smooth_current_slot_ev_power(
