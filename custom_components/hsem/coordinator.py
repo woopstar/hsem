@@ -1427,7 +1427,18 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 # second-guess it with a reactive surplus check.
                 break
 
-            if slot.ev_charger_calculated_power > INPUT_EPSILON:
+            # Recalculate power from energy allocation, even if the
+            # pre-calculated power is zero. This fixes a bug where the
+            # MILP allocates energy (ev_accounted_load_kwh > 0) but
+            # doesn't set the power field (ev_charger_calculated_power = 0).
+            # The power calculation in milp_optimizer.py only writes power
+            # for slots where ev_dc_kwh >= _MIN_ACTION_KWH, which can miss
+            # slots where the EV planner allocated energy but the MILP
+            # didn't explicitly allocate DC energy.
+            if (
+                slot.ev_planned_load_kwh > INPUT_EPSILON
+                or slot.ev_accounted_load_kwh > INPUT_EPSILON
+            ):
                 slot.ev_charger_calculated_power = self._smoothed_power_w(
                     total_ev,
                     remaining_h,
@@ -1435,7 +1446,8 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                     min_power_w,
                     live_surplus_w,
                 )
-            if slot.ev_second_charger_calculated_power > INPUT_EPSILON:
+                # Second EV uses the same energy fields (combined),
+                # so recalculate its power as well
                 slot.ev_second_charger_calculated_power = self._smoothed_power_w(
                     total_ev,
                     remaining_h,
