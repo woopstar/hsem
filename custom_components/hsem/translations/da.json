@@ -243,7 +243,6 @@
         "data": {
           "device_name": "Navn",
           "hsem_extended_attributes": "Udvidede attributter",
-          "hsem_planner_min_resolve_interval_minutes": "PlanlÃ¦gger minimum genberegningsinterval",
           "hsem_read_only": "Kun lÃ¦sning",
           "hsem_recommendation_interval_length": "Anbefalingsinterval-lÃ¦ngde",
           "hsem_recommendation_interval_minutes": "Anbefalingsinterval-minutter",
@@ -253,7 +252,6 @@
         "data_description": {
           "device_name": "Indtast et unikt navn for denne enhed.",
           "hsem_extended_attributes": "Aktiver denne mulighed for at eksponere ekstra diagnostiske attributter pÃ¥ sensorenheden.",
-          "hsem_planner_min_resolve_interval_minutes": "Minimum minutter mellem fulde plan-genberegninger. Optimeringsmotoren beholder den eksisterende plan og udglatter kun den aktuelle EV-oplader-effekt mellem genberegninger, hvilket forhindrer hurtig tÃ¦nd/sluk-oscillation. SÃ¦t til 0 for at genberegne hver cyklus.",
           "hsem_read_only": "Aktiver denne mulighed for at sÃ¦tte integrationen i skrivebeskyttet tilstand, sÃ¥ den ikke sender kommandoer til enheder.",
           "hsem_recommendation_interval_length": "LÃ¦ngden i minutter af hvert anbefalingsinterval, der bruges til at beregne optimal batteribrug.",
           "hsem_recommendation_interval_minutes": "Antallet af anbefalingsintervaller, der skal overvejes ved beregning af optimal batteribrug.",
@@ -305,7 +303,6 @@
         "data": {
           "device_name": "Navn",
           "hsem_extended_attributes": "Udvidede attributter",
-          "hsem_planner_min_resolve_interval_minutes": "PlanlÃ¦gger minimum genberegningsinterval",
           "hsem_read_only": "Kun lÃ¦sning",
           "hsem_recommendation_interval_length": "Anbefalingsinterval-lÃ¦ngde",
           "hsem_recommendation_interval_minutes": "Anbefalingsinterval-minutter",
@@ -315,7 +312,6 @@
         "data_description": {
           "device_name": "Indtast et unikt navn for denne enhed.",
           "hsem_extended_attributes": "Aktiver denne mulighed for at eksponere ekstra diagnostiske attributter pÃ¥ sensorenheden.",
-          "hsem_planner_min_resolve_interval_minutes": "Minimum minutter mellem fulde plan-genberegninger. Optimeringsmotoren beholder den eksisterende plan og udglatter kun den aktuelle EV-oplader-effekt mellem genberegninger, hvilket forhindrer hurtig tÃ¦nd/sluk-oscillation. SÃ¦t til 0 for at genberegne hver cyklus.",
           "hsem_read_only": "Aktiver denne mulighed for at sÃ¦tte integrationen i skrivebeskyttet tilstand, sÃ¥ den ikke sender kommandoer til enheder.",
           "hsem_recommendation_interval_length": "LÃ¦ngden i minutter af hvert anbefalingsinterval, der bruges til at beregne optimal batteribrug.",
           "hsem_recommendation_interval_minutes": "Antallet af anbefalingsintervaller, der skal overvejes ved beregning af optimal batteribrug.",
@@ -577,7 +573,6 @@
         "data": {
           "device_name": "Name",
           "hsem_extended_attributes": "Extended Attributes",
-          "hsem_planner_min_resolve_interval_minutes": "Planner Minimum Re-solve Interval",
           "hsem_read_only": "Read Only",
           "hsem_recommendation_interval_length": "Recommendation Interval Length",
           "hsem_recommendation_interval_minutes": "Recommendation Interval Minutes",
@@ -587,7 +582,6 @@
         "data_description": {
           "device_name": "Enter a unique name for this device.",
           "hsem_extended_attributes": "Enable this option to expose extra diagnostic attributes on the sensor entity.",
-          "hsem_planner_min_resolve_interval_minutes": "Minimum minutes between full plan re-solves. The optimizer keeps the existing plan and only smooths the current EV charger power between re-solves, preventing rapid on/off oscillation. Set to 0 to re-solve every cycle.",
           "hsem_read_only": "Enable this option to set the integration to read-only mode, preventing it from sending commands to devices.",
           "hsem_recommendation_interval_length": "The length in minutes of each recommendation interval used to calculate optimal battery usage.",
           "hsem_recommendation_interval_minutes": "The number of recommendation intervals to consider when calculating optimal battery usage.",

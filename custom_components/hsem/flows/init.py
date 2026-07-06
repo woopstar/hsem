@@ -39,22 +39,6 @@ async def get_init_step_schema(
                 }
             ),
             vol.Required(
-                "hsem_planner_min_resolve_interval_minutes",
-                default=get_config_value(
-                    config_entry, "hsem_planner_min_resolve_interval_minutes"
-                ),
-            ): selector(
-                {
-                    "number": {
-                        "min": 0,
-                        "max": 60,
-                        "step": 1,
-                        "unit_of_measurement": UnitOfTime.MINUTES,
-                        "mode": "slider",
-                    }
-                }
-            ),
-            vol.Required(
                 "hsem_read_only",
                 default=bool(get_config_value(config_entry, "hsem_read_only")),
             ): selector({"boolean": {}}),
@@ -126,7 +110,6 @@ async def validate_init_step_input(
         "hsem_verbose_logging",
         "hsem_extended_attributes",
         "hsem_update_interval",
-        "hsem_planner_min_resolve_interval_minutes",
         "hsem_recommendation_interval_minutes",
         "hsem_recommendation_interval_length",
     ]

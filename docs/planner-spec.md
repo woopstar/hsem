@@ -15,30 +15,6 @@ The planner must:
 - explain why a plan was selected
 - produce deterministic output for the same input
 
-**Coordinator re-solve gating** (issue #582): The coordinator decouples the MILP
-re-solve frequency from the polling interval.  The planner engine (`run_planner`)
-is only called when the coordinator's `_should_rerun_milp()` returns `True` —
-on price change, Solcast update, slot boundary, EV state change, user
-override, or staleness timeout (`planner_min_resolve_interval_minutes`,
-Between re-solves the current slot's EV charger power is
-smoothed **every minute** using the cached plan's `ev_total_planned_load_kwh`
-divided by remaining hours, capped at `charger_power_kw` and floored at
-`charger_min_power_w`.  **Two live-surplus guards** were added to prevent
-oscillation:
-
-- **EMA filter**: `live.net_consumption_w` is smoothed through an
-  exponential moving average (α=0.3) to damp transient loads and cloud
-  shadows so they don't kill the EV charging setpoint.
-- **Live surplus cap**: the smoothed power is additionally capped at the
-  current live surplus — the charger never draws from the grid during a
-  cloud or transient load spike within the slot.
-- **Recovery from zero**: when the MILP sampled a cloud at solve time and
-  allocated no EV load for the current slot, the next MILP re-solve (triggered
-  by a material input change or slot-boundary crossing) will correct the
-  allocation.  The MILP is the single authority for all EV charging decisions.
-
-Setting the config option to 0 restores the legacy every-cycle re-solve.
-
 ## Core concepts
 
 ### Slot
@@ -370,6 +346,10 @@ the MILP decides **when and how much each EV charges**.
 - SOC upper bound per slot: `ev_soc[t] ≤ ev_capacity`
 - Deadline soft goal: `ev_soc[D] + ev_pen ≥ ev_target` where `D` is the
   LP-slot index of the effective deadline.
+- **Post-deadline zero-charge**: For EVs with a deadline and `charge_past_target=False`,
+  `ev_c[t] = 0` for all `t > D`. This prevents charging after the deadline.
+- **Surplus-only for charge-past-target**: When `charge_past_target=True`,
+  `ev_c[t]/η_charger ≤ max(0, pv[t] − base_load[t])` — charging only from PV surplus.
 - No discharge: `ev_c[t] ≥ 0` (via bounds).
 
 **Energy balance** includes EV AC load:
@@ -381,9 +361,23 @@ where `base_load` is recomputed **without** pre-computed EV planned loads
 
 **Objective** includes a high-cost deadline penalty:
 ```text
-ev_penalty_cost = max(p_imp) * max(capacity, 1.0) * 100
+ev_penalty_cost = max(p_imp) * max(energy_needed, 1.0) * 10
 ```
 ensuring the MILP always prefers meeting the target when physically possible.
+
+**Pre-deadline slots** (`t ≤ D`): Each `ev_c[t]` receives a negative objective
+coefficient of `-ev_penalty_cost`, creating a direct benefit that forces the LP
+to charge the EV. The LP will use PV surplus first (free), then grid import
+(costs `p_imp[t]`) when PV alone is insufficient.
+
+**Post-deadline slots** (`t > D`):
+- When `charge_past_target=False`: `ev_c[t]` is hard-constrained to zero —
+  no charging allowed after the deadline.
+- When `charge_past_target=True`: `ev_c[t]` receives a tiny benefit of
+  `-0.0001/η_charger` per kWh AC, but is constrained to PV surplus only
+  (`ev_c[t]/η_charger ≤ pv[t] − base_load[t]`). The house battery charges
+  first (benefit ~`p_imp`), then export at good prices (benefit `p_exp`),
+  and only when both are saturated does the EV get the remaining surplus.
 
 **Output**: the MILP writes EV decisions to `ev_planned_load_kwh`,
 `ev_accounted_load_kwh`, and `ev_total_planned_load_kwh` on the output slots.
@@ -430,8 +424,8 @@ has zero cost.  The LP always uses available PV to cover house load first.
 | Priority | Action | Cost coefficient | When taken |
 |---|---|---|---|
 | 2a | Charge house battery | `charge_loss × p_imp[t]` | Battery below `usable_kwh`, future savings justify the minor conversion loss |
-| 2b | Charge EV (normal, below target) | `p_imp[t]` (via grid) or `0` (via surplus) | EV below target, deadline approaching — the **deadline penalty** forces charging |
-| 2c | Charge EV (past target) | **−0.0001 / charger_eff** (benefit) | Battery full **and** export price near zero **and** `charge_past_target=True`.  Surplus-only constraint: `ev_c/eff ≤ pv − base_load` |
+| 2b | Charge EV (pre-deadline, below target) | `-ev_penalty_cost` (benefit) + `p_imp[t]` (via grid) or `0` (via surplus) | EV below target, `t ≤ D` — the **deadline benefit** forces charging; PV used first, grid import when PV insufficient |
+| 2c | Charge EV (post-deadline, past target) | **−0.0001 / charger_eff** (benefit) | `t > D`, `charge_past_target=True`. Surplus-only constraint: `ev_c/eff ≤ pv − base_load`. House battery fills first, then export, then EV gets remainder |
 | 2d | Export to grid | **−p_exp[t]** (revenue) | Battery full, EV doesn't want surplus, export price > 0 |
 | 2e | Curtail PV | `0` (free) | Battery full, EV doesn't want surplus, `p_exp ≤ 0` (export costs money or is blocked) |
 
@@ -446,10 +440,29 @@ has zero cost.  The LP always uses available PV to cover house load first.
 
 When the EV is **below target SoC** with a deadline approaching:
 
-- Penalty: `max(p_imp) × energy_needed × 10` per kWh shortfall
+- Penalty: `max(p_imp) × max(energy_needed, 1.0) × 10` per kWh shortfall
 - Constraint: `initial_soc + Σ ev_c + penalty ≥ target`
+- **Pre-deadline benefit**: Each slot `t ≤ D` gets coefficient `-ev_penalty_cost`
+  on `ev_c[t]`, so the LP always prefers charging over paying the penalty.
 - This penalty dominates everything — the LP will import at high prices
   to meet the deadline when physically possible.
+
+#### 5. Post-deadline behaviour
+
+After the deadline slot `D`:
+
+- **Normal mode** (`charge_past_target=False`): Hard constraint `ev_c[t] = 0`
+  for all `t > D`. The EV receives zero energy allocation — charging is
+  forbidden regardless of PV surplus or grid prices.
+- **Charge-past-target mode** (`charge_past_target=True`): The EV may still
+  charge, but only from genuine PV surplus that would otherwise be curtailed
+  or exported at near-zero prices:
+  - Surplus-only constraint: `ev_c[t]/η_charger ≤ max(0, pv[t] − base_load[t])`
+  - Tiny benefit: `-0.0001/η_charger` per kWh AC (tiebreaker only)
+  - The house battery charges first (benefit ~`p_imp` via avoided future import),
+    then export at good prices (benefit `p_exp`), and only when both are
+    saturated does the EV get the remaining surplus.
+  - Grid import is never used for post-deadline EV charging.
 
 #### 5. Terminal SoC (horizon-end valuation)
 
@@ -1247,21 +1260,9 @@ The EV planner (`planner/ev_planner.py`) MUST satisfy these invariants:
       authority for all EV charging decisions, including charge-past-target.
     - When the MILP fails (scipy unavailable, solver crash), charge-past-target
       is simply unavailable for that cycle.  The next successful MILP solve
-      (up to `planner_min_resolve_interval_minutes` later) will pick it up.
+      will pick it up.
 
     The MILP's decisions are authoritative for all EV charging.
-
-    **Between MILP re-solves**, the coordinator's smoothing layer
-    (`_smooth_current_slot_ev_power`) recomputes the EV charger power
-    from the cached plan's per-slot energy allocation (``ev_total_planned_load_kwh``
-    divided by the remaining slot hours), capped at the charger's rated
-    power and the live surplus.  Slots where the MILP allocated zero EV
-    load are left at zero — the MILP is the global optimiser and its
-    decision to export or charge the battery instead of the EV is
-    authoritative.  This prevents 14-minute dead zones when the MILP
-    sampled an unlucky live reading at the slot boundary: the MILP itself
-    re-solves when inputs change materially (price, solcast, EV SoC, slot
-    boundary), so a cloud at solve time is corrected at the next re-solve.
 
 12. **EV charger power field**: `ev_charger_calculated_power` is computed
     from the per-slot EV AC load (`ev_planned_load_kwh + ev_accounted_load_kwh`)

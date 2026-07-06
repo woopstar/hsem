@@ -90,11 +90,6 @@ DEFAULT_CONFIG_VALUES = {
     # near window boundaries by enforcing a minimum hold time (minutes).
     # 0 disables the feature.
     "hsem_planner_window_hysteresis_minutes": 0,
-    # Minimum time between MILP re-solves (minutes).  Decouples the expensive
-    # global optimisation from the coordinator polling interval so that noisy
-    # live inputs do not cause EV charger power to oscillate (issue #582).
-    # 0 re-solves every cycle (legacy behaviour).
-    "hsem_planner_min_resolve_interval_minutes": 15,
     "hsem_house_consumption_energy_weight_14d": 15,
     "hsem_house_consumption_energy_weight_1d": 25,
     "hsem_house_consumption_energy_weight_3d": 30,
@@ -245,11 +240,3 @@ NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH = 0.1
 # short cloud shadows so they don't kill the EV charging setpoint for the
 # rest of the 15-minute slot.
 EMA_ALPHA_NET_CONSUMPTION = 0.3
-
-# EV state-of-charge change (percentage points) that forces a MILP re-solve.
-# Smaller changes within the staleness window are ignored (issue #582).
-EV_SOC_RESOLVE_THRESHOLD_PCT = 2.0
-
-# Per-slot price/PV epsilon below which two values are treated as unchanged
-# for MILP re-solve gating.  Used in _should_rerun_milp and EV power smoothing.
-INPUT_EPSILON = 1e-6

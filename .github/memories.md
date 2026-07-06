@@ -237,7 +237,7 @@ Always check `docs/huawei_entities.md` before looking elsewhere.
 | #445 | `_apply_soc_plan` uses `0.30` proxy threshold | Closed |
 | #446 | `concentrate_discharge` greedy `break` skips viable slots | Fixed in #452 |
 | #447 | Partial-SoC fractions collapse to floor at low SoC | Open
-| #582 | EV charger power oscillates due to frequent MILP re-solves | Open
+| #582 | EV charger power oscillates due to frequent MILP re-solves | Closed (reverted) |
 
 ---
 

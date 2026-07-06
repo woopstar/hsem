@@ -78,12 +78,6 @@ def build_sensor_config(
         )
         or 0
     )
-    _min_resolve = convert_to_int(
-        get_config_value(config_entry, "hsem_planner_min_resolve_interval_minutes")
-    )
-    cfg.planner_min_resolve_interval_minutes = (
-        _min_resolve if _min_resolve is not None else 15
-    )
     _update_interval = convert_to_int(
         get_config_value(config_entry, "hsem_update_interval")
     )

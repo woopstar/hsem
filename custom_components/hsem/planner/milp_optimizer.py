@@ -527,6 +527,29 @@ def solve_milp(
             ev_penalty_cost = max(p_imp_max, 0.1) * max(energy_needed, 1.0) * 10.0
             c_obj[ev_pen_offsets[ev_idx]] = ev_penalty_cost
 
+            # Direct benefit on ev_c[t]: the avoided penalty per kWh of DC
+            # charge delivered before the deadline.  Without this, the LP
+            # sees ev_c[t] as having zero benefit — only the slack penalty
+            # provides an incentive, and the LP may prefer paying the penalty
+            # over importing expensive grid power to charge the EV.
+            #
+            # The benefit equals the penalty cost per kWh, so the LP always
+            # prefers charging over paying the penalty.  Slots before the
+            # deadline get the full benefit; slots after get zero coefficient.
+            # Post-deadline charging is forbidden by hard constraints below
+            # unless charge_past_target is enabled (surplus PV only).
+            ev_off = ev_var_offsets[ev_idx]
+            d = ev.deadline_slot
+            d = max(0, min(d, m - 1))
+            for t in range(m):
+                if t <= d:
+                    # Negative coefficient = benefit (reduces objective).
+                    # The benefit is the avoided penalty per kWh DC.
+                    c_obj[ev_off + t] -= ev_penalty_cost
+                # Post-deadline slots: no benefit (coefficient stays 0).
+                # Hard constraints below prevent charging unless
+                # charge_past_target is enabled.
+
     # --- EV charge-past-target benefit ---
     # When an EV is already at its user-configured target SoC but
     # charge_past_target is enabled, give EV charging a tiny benefit
@@ -662,9 +685,20 @@ def solve_milp(
         for ev in active_evs
         if ev.deadline_slot is not None and ev.target_kwh > ev.initial_soc_kwh + 1e-9
     )
+    # Post-deadline zero-charge rows: for EVs with a deadline and no
+    # charge-past-target, ev_c[t] = 0 for all t > deadline_slot.
+    ev_post_deadline_rows = sum(
+        m - 1 - max(0, min(ev.deadline_slot, m - 1))
+        for ev in active_evs
+        if ev.deadline_slot is not None
+        and ev.target_kwh > ev.initial_soc_kwh + 1e-9
+        and not ev.charge_past_target
+    )
     # Surplus-only rows: for charge-past-target EVs, ev_c[t]/eff ≤ max(0, pv[t] - base_load[t])
     ev_surplus_rows = sum(1 for ev in active_evs if ev.charge_past_target) * m
-    ev_total_rows = ev_soc_rows + ev_deadline_rows + ev_surplus_rows
+    ev_total_rows = (
+        ev_soc_rows + ev_deadline_rows + ev_post_deadline_rows + ev_surplus_rows
+    )
 
     if ev_total_rows > 0:
         # Extend A_ub and b_ub to accommodate EV rows
@@ -704,6 +738,23 @@ def solve_milp(
                 A_ub[ev_row, ev_pen_offsets[ev_idx]] = -1.0
                 b_ub[ev_row] = ev.initial_soc_kwh - ev.target_kwh
                 ev_row += 1
+
+            # Post-deadline zero-charge constraint:
+            # For EVs with a deadline and no charge-past-target,
+            # ev_c[t] = 0 for all t > deadline_slot.
+            # This prevents the MILP from charging after the deadline
+            # unless charge_past_target is enabled (which uses surplus PV).
+            if (
+                ev.deadline_slot is not None
+                and ev.target_kwh > ev.initial_soc_kwh + 1e-9
+                and not ev.charge_past_target
+            ):
+                d = ev.deadline_slot
+                d = max(0, min(d, m - 1))
+                for t in range(d + 1, m):
+                    A_ub[ev_row, ev_off + t] = 1.0
+                    b_ub[ev_row] = 0.0
+                    ev_row += 1
 
             # Surplus-only constraint for charge-past-target EVs:
             # ev_c[t] / charger_eff ≤ max(0, pv[t] - base_load[t])

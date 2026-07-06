@@ -277,7 +277,6 @@
         "data": {
           "device_name": "Name",
           "hsem_extended_attributes": "Extended Attributes",
-          "hsem_planner_min_resolve_interval_minutes": "Planner Minimum Re-solve Interval",
           "hsem_read_only": "Read Only",
           "hsem_recommendation_interval_length": "Recommendation Interval Length",
           "hsem_recommendation_interval_minutes": "Recommendation Interval Minutes",
@@ -287,7 +286,6 @@
         "data_description": {
           "device_name": "Enter a unique name for this device.",
           "hsem_extended_attributes": "Enable this option to expose extra diagnostic attributes on the sensor entity.",
-          "hsem_planner_min_resolve_interval_minutes": "Minimum minutes between full plan re-solves. The optimizer keeps the existing plan and only smooths the current EV charger power between re-solves, preventing rapid on/off oscillation. Set to 0 to re-solve every cycle.",
           "hsem_read_only": "Enable this option to set the integration to read-only mode, preventing it from sending commands to devices.",
           "hsem_recommendation_interval_length": "The length in minutes of each recommendation interval used to calculate optimal battery usage.",
           "hsem_recommendation_interval_minutes": "The number of recommendation intervals to consider when calculating optimal battery usage.",
@@ -403,7 +401,6 @@
         "data": {
           "device_name": "Name",
           "hsem_extended_attributes": "Extended Attributes",
-          "hsem_planner_min_resolve_interval_minutes": "Planner Minimum Re-solve Interval",
           "hsem_read_only": "Read Only",
           "hsem_recommendation_interval_length": "Recommendation Interval Length",
           "hsem_recommendation_interval_minutes": "Recommendation Interval Minutes",
@@ -413,7 +410,6 @@
         "data_description": {
           "device_name": "Enter a unique name for this device.",
           "hsem_extended_attributes": "Enable this option to expose extra diagnostic attributes on the sensor entity.",
-          "hsem_planner_min_resolve_interval_minutes": "Minimum minutes between full plan re-solves. The optimizer keeps the existing plan and only smooths the current EV charger power between re-solves, preventing rapid on/off oscillation. Set to 0 to re-solve every cycle.",
           "hsem_read_only": "Enable this option to set the integration to read-only mode, preventing it from sending commands to devices.",
           "hsem_recommendation_interval_length": "The length in minutes of each recommendation interval used to calculate optimal battery usage.",
           "hsem_recommendation_interval_minutes": "The number of recommendation intervals to consider when calculating optimal battery usage.",
@@ -741,7 +737,6 @@
         "data": {
           "device_name": "Name",
           "hsem_extended_attributes": "Extended Attributes",
-          "hsem_planner_min_resolve_interval_minutes": "Planner Minimum Re-solve Interval",
           "hsem_read_only": "Read Only",
           "hsem_recommendation_interval_length": "Recommendation Interval Length",
           "hsem_recommendation_interval_minutes": "Recommendation Interval Minutes",
@@ -751,7 +746,6 @@
         "data_description": {
           "device_name": "Enter a unique name for this device.",
           "hsem_extended_attributes": "Enable this option to expose extra diagnostic attributes on the sensor entity.",
-          "hsem_planner_min_resolve_interval_minutes": "Minimum minutes between full plan re-solves. The optimizer keeps the existing plan and only smooths the current EV charger power between re-solves, preventing rapid on/off oscillation. Set to 0 to re-solve every cycle.",
           "hsem_read_only": "Enable this option to set the integration to read-only mode, preventing it from sending commands to devices.",
           "hsem_recommendation_interval_length": "The length in minutes of each recommendation interval used to calculate optimal battery usage.",
           "hsem_recommendation_interval_minutes": "The number of recommendation intervals to consider when calculating optimal battery usage.",
