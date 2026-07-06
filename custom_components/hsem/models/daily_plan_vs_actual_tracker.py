@@ -326,6 +326,10 @@ class DailyPlanVsActualTracker:
         """Return all data needed by the sensor as a flat dict.
 
         The sensor state is ``net_cost_actual``.
+
+        Note: History is limited to 7 days in attributes to stay under
+        Home Assistant's 16KB state attribute limit. Full 90-day history
+        is available in the JSON file.
         """
         today_record = self.get_today_record()
         yesterday_record = self.get_yesterday_record()
@@ -333,7 +337,7 @@ class DailyPlanVsActualTracker:
         attrs: dict[str, Any] = {
             "today": today_record.as_dict(),
             "yesterday": yesterday_record.as_dict() if yesterday_record else None,
-            "history": [r.as_dict() for r in self.history[-30:]],
+            "history": [r.as_dict() for r in self.history[-7:]],
             "history_file": self.history_file,
             "history_days": self.max_history_days,
             "history_total_days": len(self.history),
