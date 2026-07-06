@@ -337,19 +337,129 @@
         "description": "Konfigurer vÃ¦gtede vÃ¦rdier for husets energiforbrug til at estimere dit gennemsnitlige strÃ¸mforbrug.",
         "title": "VÃ¦gtede vÃ¦rdier"
       },
-      "daily_tracking": {
+      "batteries_schedule_1": {
         "data": {
-          "hsem_grid_import_energy_entity": "Netimport Energi Sensor",
-          "hsem_grid_export_energy_entity": "Neteexport Energi Sensor",
-          "hsem_pv_energy_entity": "Solcelleproduktion Energi Sensor"
+          "hsem_batteries_enable_batteries_schedule_1": "Aktiver Batteri Plan 1",
+          "hsem_batteries_enable_batteries_schedule_1_start": "Starttid",
+          "hsem_batteries_enable_batteries_schedule_1_end": "Sluttid"
         },
         "data_description": {
-          "hsem_grid_import_energy_entity": "Valgfri — akkumuleret netimport energimåler (kWh).",
-          "hsem_grid_export_energy_entity": "Valgfri — akkumuleret netexport energimåler (kWh).",
-          "hsem_pv_energy_entity": "Valgfri — akkumuleret solcelleproduktion energimåler (kWh)."
+          "hsem_batteries_enable_batteries_schedule_1": "Aktiver en tvungen opladningsplan for batteriet.",
+          "hsem_batteries_enable_batteries_schedule_1_start": "Hvornår skal opladningen starte?",
+          "hsem_batteries_enable_batteries_schedule_1_end": "Hvornår skal opladningen slutte?"
         },
-        "description": "Kortlæg valgfrit akkumulerede energimålere til daglig plan-vs-faktisk sporing. Når de ikke er angivet, estimeres faktiske værdier fra øjeblikseffektaflæsninger.",
-        "title": "Daglig Sporing"
+        "description": "Konfigurer den første batteriopladeplan.",
+        "title": "Batteri Plan 1"
+      },
+      "batteries_schedule_2": {
+        "data": {
+          "hsem_batteries_enable_batteries_schedule_2": "Aktiver Batteri Plan 2",
+          "hsem_batteries_enable_batteries_schedule_2_start": "Starttid",
+          "hsem_batteries_enable_batteries_schedule_2_end": "Sluttid"
+        },
+        "data_description": {
+          "hsem_batteries_enable_batteries_schedule_2": "Aktiver en tvungen opladningsplan for batteriet.",
+          "hsem_batteries_enable_batteries_schedule_2_start": "Hvornår skal opladningen starte?",
+          "hsem_batteries_enable_batteries_schedule_2_end": "Hvornår skal opladningen slutte?"
+        },
+        "description": "Konfigurer den anden batteriopladeplan.",
+        "title": "Batteri Plan 2"
+      },
+      "batteries_schedule_3": {
+        "data": {
+          "hsem_batteries_enable_batteries_schedule_3": "Aktiver Batteri Plan 3",
+          "hsem_batteries_enable_batteries_schedule_3_start": "Starttid",
+          "hsem_batteries_enable_batteries_schedule_3_end": "Sluttid"
+        },
+        "data_description": {
+          "hsem_batteries_enable_batteries_schedule_3": "Aktiver en tvungen opladningsplan for batteriet.",
+          "hsem_batteries_enable_batteries_schedule_3_start": "Hvornår skal opladningen starte?",
+          "hsem_batteries_enable_batteries_schedule_3_end": "Hvornår skal opladningen slutte?"
+        },
+        "description": "Konfigurer den tredje batteriopladeplan.",
+        "title": "Batteri Plan 3"
+      },
+      "energy_and_ml": {
+        "data": {
+          "hsem_grid_import_energy_entity": "Netimport Energi Sensor",
+          "hsem_grid_export_energy_entity": "Neteksport Energi Sensor",
+          "hsem_pv_energy_entity": "Solcelleproduktion Energi Sensor",
+          "hsem_ml_consumption_enabled": "Aktiver ML forbrugsprognose",
+          "hsem_ml_consumption_energy_entity": "Husforbrug energi sensor (ekskl. batteri og EV)",
+          "hsem_ml_consumption_history_days": "ML historik dage",
+          "hsem_ml_consumption_net_consumption": "Brug nettoforbrug (import minus eksport)",
+          "hsem_ml_consumption_temperature_entity": "Udendørs temperatur sensor",
+          "hsem_ml_consumption_sequential": "Sekventiel forudsigelse (lag-funktion)"
+        },
+        "data_description": {
+          "hsem_grid_import_energy_entity": "Valgfri - akkumuleret netimport energimåler (kWh).",
+          "hsem_grid_export_energy_entity": "Valgfri - akkumuleret neteksport energimåler (kWh).",
+          "hsem_pv_energy_entity": "Valgfri - akkumuleret solcelleproduktion energimåler (kWh).",
+          "hsem_ml_consumption_enabled": "Når aktiveret, bruger ridge regression på optagerhistorik i stedet for rullende gennemsnit. Kræver 14+ dages historik.",
+          "hsem_ml_consumption_energy_entity": "Akkumuleret husforbrug energimåler (kWh). Skal ekskludere batteri OG EV-opladning. Falder tilbage til netimport hvis ikke sat.",
+          "hsem_ml_consumption_history_days": "Dage med optagerhistorik til ML-træning (7-90).",
+          "hsem_ml_consumption_net_consumption": "Træk neteksport fra import for netto husforbrug.",
+          "hsem_ml_consumption_temperature_entity": "Valgfri - udendørs temperatur sensor i grader C. Brug en udendørs sensor, ikke en indendørs termostat.",
+          "hsem_ml_consumption_sequential": "Før hver slotsforudsigelse som input til den næste. Fanger intra-time momentum."
+        },
+        "description": "Konfigurer energimålere og aktiver ML-baseret forbrugsprognose.",
+        "title": "Energi og ML"
+      },
+      "ocpp": {
+        "data": {
+          "hsem_ocpp_enabled": "Aktiver OCPP Server",
+          "hsem_ocpp_port": "OCPP Port",
+          "hsem_ocpp_cpid": "Ladepunkt ID",
+          "hsem_ocpp_start_window_s": "Startvindue (s)",
+          "hsem_ocpp_stop_window_s": "Stopvindue (s)"
+        },
+        "data_description": {
+          "hsem_ocpp_enabled": "Aktiver den indbyggede OCPP 1.6 WebSocket-server til direkte EV-laderstyring. Kun LAN - eksponer ikke porten til internettet.",
+          "hsem_ocpp_port": "TCP-port til OCPP WebSocket-serveren. Standard: 9000. Skal være over 1024.",
+          "hsem_ocpp_cpid": "Forventet ladepunkt-identifikator for EV-laderen. Lad være tom for at acceptere enhver lader.",
+          "hsem_ocpp_start_window_s": "Sekunder med vedvarende overskud før opladning starter. Forhindrer hurtig start-stop cykling. Standard: 60.",
+          "hsem_ocpp_stop_window_s": "Sekunder med vedvarende underskud før opladning stopper. Forhindrer hurtig stop-start cykling. Standard: 180."
+        },
+        "description": "Konfigurer den indbyggede OCPP 1.6 server til LAN-kun EV-laderstyring. Når aktiveret, sender HSEM SetChargingProfile-kommandoer direkte til din EV-lader baseret på opladeplanen.",
+        "title": "OCPP Server"
+      },
+      "quick_setup": {
+        "data": {
+          "battery_soc": "Batteri State of Capacity",
+          "working_mode": "Batterier Arbejdstilstand",
+          "max_charge_power": "Maks Opladningseffekt",
+          "max_discharge_power": "Maks Afladningseffekt",
+          "eod_soc": "End of Discharge SoC",
+          "rated_capacity": "Batterier Nominel Kapacitet",
+          "active_power_control": "Aktiv Effektstyring",
+          "tou_periods": "TOU Opladning/Afladning Perioder",
+          "solcast_today": "Solcast Prognose I Dag",
+          "solcast_tomorrow": "Solcast Prognose I Morgen",
+          "import_price": "Import Elpris Sensor",
+          "export_price": "Eksport Elpris Sensor",
+          "house_power": "Husforbrug Effekt",
+          "solar_power": "Solcelleproduktion Effekt",
+          "use_quick_setup": "Brug Hurtig Opsætning"
+        },
+        "data_description": {
+          "battery_soc": "Autodetekteret batteri state of capacity sensor.",
+          "working_mode": "Autodetekteret batterier arbejdstilstand enhed.",
+          "max_charge_power": "Autodetekteret maksimal opladningseffekt enhed.",
+          "max_discharge_power": "Autodetekteret maksimal afladningseffekt enhed.",
+          "eod_soc": "Autodetekteret end of discharge SoC enhed.",
+          "rated_capacity": "Autodetekteret batterier nominel kapacitet sensor.",
+          "active_power_control": "Autodetekteret inverter aktiv effektstyring sensor.",
+          "tou_periods": "Autodetekteret TOU opladning/afladning perioder sensor.",
+          "solcast_today": "Autodetekteret Solcast PV-prognose for i dag.",
+          "solcast_tomorrow": "Autodetekteret Solcast PV-prognose for i morgen.",
+          "import_price": "Autodetekteret el importpris sensor.",
+          "export_price": "Autodetekteret el eksportpris sensor.",
+          "house_power": "Autodetekteret husforbrug effekt sensor.",
+          "solar_power": "Autodetekteret solcelleproduktion effekt sensor.",
+          "use_quick_setup": "Aktiver for at bruge autodetekterede enheder og springe over den fulde enhed-for-enhed opsætningsguide. Deaktiver for Avanceret Opsætning."
+        },
+        "description": "HSEM har autodetekteret følgende enheder. Gennemgå de detekterede enheder nedenfor. Du kan bekræfte at bruge dem eller vælge Avanceret Opsætning for at vælge enheder manuelt.",
+        "title": "Hurtig Opsætning - Autodetekterede Enheder"
       }
     }
   },
@@ -645,19 +755,111 @@
         "description": "Configure the weighted values for house consumption energy to estimate your average power usage. The system calculates the average consumption for each hour over 1, 3, 7, and 14 days. These averages are then weighted to provide a combined, weighted estimate. This approach helps to smooth out anomalies, such as unusually high consumption on a single day due to low prices, and provides a reliable prediction of your expected power usage in specific time intervals (e.g., between 16:00 and 17:00).",
         "title": "Weighted Values"
       },
-      "daily_tracking": {
+      "batteries_schedule_1": {
         "data": {
-          "hsem_grid_import_energy_entity": "Netimport Energi Sensor",
-          "hsem_grid_export_energy_entity": "Neteexport Energi Sensor",
-          "hsem_pv_energy_entity": "Solcelleproduktion Energi Sensor"
+          "hsem_batteries_enable_batteries_schedule_1": "Aktiver Batteri Plan 1",
+          "hsem_batteries_enable_batteries_schedule_1_start": "Starttid",
+          "hsem_batteries_enable_batteries_schedule_1_end": "Sluttid"
         },
         "data_description": {
-          "hsem_grid_import_energy_entity": "Valgfri — akkumuleret netimport energimåler (kWh).",
-          "hsem_grid_export_energy_entity": "Valgfri — akkumuleret netexport energimåler (kWh).",
-          "hsem_pv_energy_entity": "Valgfri — akkumuleret solcelleproduktion energimåler (kWh)."
+          "hsem_batteries_enable_batteries_schedule_1": "Aktiver en tvungen opladningsplan for batteriet.",
+          "hsem_batteries_enable_batteries_schedule_1_start": "Hvornår skal opladningen starte?",
+          "hsem_batteries_enable_batteries_schedule_1_end": "Hvornår skal opladningen slutte?"
         },
-        "description": "Kortlæg valgfrit akkumulerede energimålere til daglig plan-vs-faktisk sporing.",
-        "title": "Daglig Sporing"
+        "description": "Konfigurer den første batteriopladeplan.",
+        "title": "Batteri Plan 1"
+      },
+      "batteries_schedule_2": {
+        "data": {
+          "hsem_batteries_enable_batteries_schedule_2": "Aktiver Batteri Plan 2",
+          "hsem_batteries_enable_batteries_schedule_2_start": "Starttid",
+          "hsem_batteries_enable_batteries_schedule_2_end": "Sluttid"
+        },
+        "data_description": {
+          "hsem_batteries_enable_batteries_schedule_2": "Aktiver en tvungen opladningsplan for batteriet.",
+          "hsem_batteries_enable_batteries_schedule_2_start": "Hvornår skal opladningen starte?",
+          "hsem_batteries_enable_batteries_schedule_2_end": "Hvornår skal opladningen slutte?"
+        },
+        "description": "Konfigurer den anden batteriopladeplan.",
+        "title": "Batteri Plan 2"
+      },
+      "batteries_schedule_3": {
+        "data": {
+          "hsem_batteries_enable_batteries_schedule_3": "Aktiver Batteri Plan 3",
+          "hsem_batteries_enable_batteries_schedule_3_start": "Starttid",
+          "hsem_batteries_enable_batteries_schedule_3_end": "Sluttid"
+        },
+        "data_description": {
+          "hsem_batteries_enable_batteries_schedule_3": "Aktiver en tvungen opladningsplan for batteriet.",
+          "hsem_batteries_enable_batteries_schedule_3_start": "Hvornår skal opladningen starte?",
+          "hsem_batteries_enable_batteries_schedule_3_end": "Hvornår skal opladningen slutte?"
+        },
+        "description": "Konfigurer den tredje batteriopladeplan.",
+        "title": "Batteri Plan 3"
+      },
+      "battery_economics": {
+        "data": {
+          "hsem_batteries_purchase_price": "Batteri Købspris",
+          "hsem_batteries_expected_cycles": "Forventede Cyklusser",
+          "hsem_batteries_capacity_loss_pct": "Kapacitetstab procent",
+          "hsem_batteries_charge_efficiency": "Opladningseffektivitet procent",
+          "hsem_batteries_discharge_efficiency": "Afladningseffektivitet procent",
+          "hsem_batteries_cycle_cost": "Cyklusomkostning pr. kWh"
+        },
+        "data_description": {
+          "hsem_batteries_purchase_price": "Samlet købspris for batterisystemet (inkl. installation).",
+          "hsem_batteries_expected_cycles": "Forventet antal fuld opladning/afladning cyklusser i batteriets levetid.",
+          "hsem_batteries_capacity_loss_pct": "Procentdel af batteriværdi forbrugt over levetiden (standard 30 procent).",
+          "hsem_batteries_charge_efficiency": "Opladningseffektivitet som procentdel (standard 95 procent).",
+          "hsem_batteries_discharge_efficiency": "Afladningseffektivitet som procentdel (standard 95 procent).",
+          "hsem_batteries_cycle_cost": "Beregnet cyklusomkostning pr. kWh (vises kun, read-only)."
+        },
+        "description": "Konfigurer batteriøkonomi-parametre til cyklusomkostningsberegning.",
+        "title": "Batteriøkonomi"
+      },
+      "energy_and_ml": {
+        "data": {
+          "hsem_grid_import_energy_entity": "Netimport Energi Sensor",
+          "hsem_grid_export_energy_entity": "Neteksport Energi Sensor",
+          "hsem_pv_energy_entity": "Solcelleproduktion Energi Sensor",
+          "hsem_ml_consumption_enabled": "Aktiver ML forbrugsprognose",
+          "hsem_ml_consumption_energy_entity": "Husforbrug energi sensor (ekskl. batteri og EV)",
+          "hsem_ml_consumption_history_days": "ML historik dage",
+          "hsem_ml_consumption_net_consumption": "Brug nettoforbrug (import minus eksport)",
+          "hsem_ml_consumption_temperature_entity": "Udendørs temperatur sensor",
+          "hsem_ml_consumption_sequential": "Sekventiel forudsigelse (lag-funktion)"
+        },
+        "data_description": {
+          "hsem_grid_import_energy_entity": "Valgfri - akkumuleret netimport energimåler (kWh).",
+          "hsem_grid_export_energy_entity": "Valgfri - akkumuleret neteksport energimåler (kWh).",
+          "hsem_pv_energy_entity": "Valgfri - akkumuleret solcelleproduktion energimåler (kWh).",
+          "hsem_ml_consumption_enabled": "Når aktiveret, bruger ridge regression på optagerhistorik i stedet for rullende gennemsnit. Kræver 14+ dages historik.",
+          "hsem_ml_consumption_energy_entity": "Akkumuleret husforbrug energimåler (kWh). Skal ekskludere batteri OG EV-opladning. Falder tilbage til netimport hvis ikke sat.",
+          "hsem_ml_consumption_history_days": "Dage med optagerhistorik til ML-træning (7-90).",
+          "hsem_ml_consumption_net_consumption": "Træk neteksport fra import for netto husforbrug.",
+          "hsem_ml_consumption_temperature_entity": "Valgfri - udendørs temperatur sensor i grader C. Brug en udendørs sensor, ikke en indendørs termostat.",
+          "hsem_ml_consumption_sequential": "Før hver slotsforudsigelse som input til den næste. Fanger intra-time momentum."
+        },
+        "description": "Konfigurer energimålere og aktiver ML-baseret forbrugsprognose.",
+        "title": "Energi og ML"
+      },
+      "ocpp": {
+        "data": {
+          "hsem_ocpp_enabled": "Aktiver OCPP Server",
+          "hsem_ocpp_port": "OCPP Port",
+          "hsem_ocpp_cpid": "Ladepunkt ID",
+          "hsem_ocpp_start_window_s": "Startvindue (s)",
+          "hsem_ocpp_stop_window_s": "Stopvindue (s)"
+        },
+        "data_description": {
+          "hsem_ocpp_enabled": "Aktiver den indbyggede OCPP 1.6 WebSocket-server til direkte EV-laderstyring. Kun LAN - eksponer ikke porten til internettet.",
+          "hsem_ocpp_port": "TCP-port til OCPP WebSocket-serveren. Standard: 9000. Skal være over 1024.",
+          "hsem_ocpp_cpid": "Forventet ladepunkt-identifikator for EV-laderen. Lad være tom for at acceptere enhver lader.",
+          "hsem_ocpp_start_window_s": "Sekunder med vedvarende overskud før opladning starter. Standard: 60.",
+          "hsem_ocpp_stop_window_s": "Sekunder med vedvarende underskud før opladning stopper. Standard: 180."
+        },
+        "description": "Konfigurer den indbyggede OCPP 1.6 server til LAN-kun EV-laderstyring.",
+        "title": "OCPP Server"
       }
     }
   },
