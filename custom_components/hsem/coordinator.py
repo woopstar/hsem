@@ -97,6 +97,7 @@ from custom_components.hsem.utils.forecast_tracker import (
 from custom_components.hsem.utils.inverter_verify import CycleApplySummary
 from custom_components.hsem.utils.logger import (
     HSEM_LOGGER as _LOGGER,
+    async_log,
     set_hsem_verbose,
 )
 from custom_components.hsem.utils.misc import ema_filter, get_config_value
@@ -371,7 +372,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         try:
             await self._init_financial_tracker()
         except Exception:
-            _LOGGER.exception("Failed to initialise financial tracker")
+            async_log("error", "Failed to initialise financial tracker")
 
         # Start the embedded OCPP 1.6 server if enabled (issue #603).
         cfg = build_sensor_config(self._config_entry)
@@ -385,9 +386,9 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                     stop_window_s=cfg.ocpp_stop_window_s,
                 )
                 await self._ocpp_server.start()
-                _LOGGER.info("OCPP server started on port %d", cfg.ocpp_port)
+                async_log("info", "OCPP server started on port %d", cfg.ocpp_port)
             except Exception:
-                _LOGGER.exception("Failed to start OCPP server")
+                async_log("error", "Failed to start OCPP server")
                 self._ocpp_server = None
 
         # Run an immediate first cycle so entities have data before first render.
@@ -444,7 +445,8 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
     async def _async_handle_update(self, event: Event | None = None) -> None:
         """Drop concurrent updates; run the update cycle while holding the lock."""
         if self._update_lock.locked():
-            _LOGGER.debug(
+            async_log(
+                "debug",
                 "------ Coordinator update skipped: a previous cycle is still running.",
             )
             return
@@ -460,7 +462,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         Raises:
             UpdateFailed: When an unrecoverable error occurs during the pipeline.
         """
-        _LOGGER.debug("------ HSEM Coordinator: starting update cycle")
+        async_log("debug", "------ HSEM Coordinator: starting update cycle")
         now = hsem_now()
 
         try:
@@ -567,7 +569,8 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             # before the expiry — clean up the stored expiry in that case too.
             if self._override_expiry is not None:
                 if now >= self._override_expiry:
-                    _LOGGER.debug(
+                    async_log(
+                        "debug",
                         "Timed override EXPIRED — clearing select entity to 'auto'.",
                     )
                     # Fire-and-forget: set the select entity back to "auto".
@@ -584,7 +587,8 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                     self._override_expiry = None
                 elif live.force_working_mode_state == "auto":
                     # User manually cleared before expiry — remove the tracking.
-                    _LOGGER.debug(
+                    async_log(
+                        "debug",
                         "Override manually cleared before expiry — removing expiry tracking.",
                     )
                     self._override_expiry = None
@@ -628,13 +632,16 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                     cfg,
                     self._ml_predictor,
                 )
-                _LOGGER.debug(
-                    f"[ml] populate_ml_house_consumption returned {consumption_ok}",
+                async_log(
+                    "debug",
+                    "[ml] populate_ml_house_consumption returned %s",
+                    consumption_ok,
                 )
 
                 if not consumption_ok:
                     # Fallback: ML failed; try legacy avg sensors.
-                    _LOGGER.debug(
+                    async_log(
+                        "debug",
                         "[ml] ML consumption failed"
                         " — falling back to legacy avg sensors.",
                     )
@@ -654,10 +661,14 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                     self._avg_house_consumption_entity_id_cache,
                     entry_id=self._config_entry.entry_id,
                 )
-                _LOGGER.debug(
-                    f"[avg] populate_avg_house_consumption_from_snapshot returned {consumption_ok}, "
-                    f"cache has {len(self._avg_house_consumption_entity_id_cache)} entries, "
-                    f"snapshot has {len(self._snapshot.energy_average_values)} energy_avg values",
+                async_log(
+                    "debug",
+                    "[avg] populate_avg_house_consumption_from_snapshot returned %s, "
+                    "cache has %d entries, "
+                    "snapshot has %d energy_avg values",
+                    consumption_ok,
+                    len(self._avg_house_consumption_entity_id_cache),
+                    len(self._snapshot.energy_average_values),
                 )
 
             # Adjust timer based on missing-entities or pending-consumption status.
@@ -671,7 +682,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
 
             if live.missing_entities and live.force_working_mode_state == "auto":
                 state = Recommendations.MissingInputEntities.value
-                _LOGGER.debug("Missing input entities, skipping calculations.")
+                async_log("debug", "Missing input entities, skipping calculations.")
 
             elif not consumption_ok and live.force_working_mode_state == "auto":
                 # Energy average sensors not yet ready.  Still populate prices
@@ -681,9 +692,10 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
 
             elif live.force_working_mode_state != "auto":
                 state = str(live.force_working_mode_state)
-                _LOGGER.debug(
-                    f"Force working mode is activated. Setting working mode to "
-                    f"{live.force_working_mode_state}",
+                async_log(
+                    "debug",
+                    "Force working mode is activated. Setting working mode to %s",
+                    live.force_working_mode_state,
                 )
 
             # 7. Populate electricity prices and Solcast PV estimates — always
@@ -806,10 +818,13 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 total_1d = sum(
                     c.avg_1d for c in planner_input.consumption_averages if c.avg_1d > 0
                 )
-                _LOGGER.debug(
-                    f"[builder] consumption per-hour total reaching planner:"
-                    f" avg_1d={total_1d:.2f} kWh"
-                    f" over {len(planner_input.consumption_averages)} hours",
+                async_log(
+                    "debug",
+                    "[builder] consumption per-hour total reaching planner:"
+                    " avg_1d=%.2f kWh"
+                    " over %d hours",
+                    total_1d,
+                    len(planner_input.consumption_averages),
                 )
 
                 # Propagate the verbose-logging flag into the pure-Python
@@ -821,7 +836,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 self._last_planner_output = planner_output
 
                 for warning in planner_output.warnings:
-                    _LOGGER.debug(f"[planner] {warning}")
+                    async_log("debug", "[planner] %s", warning)
 
                 self._current_required_battery = planner_output.required_capacity_kwh
                 self._data_quality = planner_output.data_quality
@@ -839,7 +854,8 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                         if s.end > now
                     )
                     if not has_planned:
-                        _LOGGER.debug(
+                        async_log(
+                            "debug",
                             "[planner] WARNING: EV is physically charging but no "
                             "current or future slot has ev_total_planned_load_kwh > 0. "
                             "The EV load is either outside the planning window, "
@@ -997,9 +1013,10 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 try:
                     await self._accumulate_daily_plan_actuals(now, live, planner_output)
                 except Exception:
-                    _LOGGER.exception(
+                    async_log(
+                        "error",
                         "Daily plan-vs-actual accumulation failed — "
-                        "continuing without updating daily metrics."
+                        "continuing without updating daily metrics.",
                     )
 
                 # -----------------------------------------------------------------------
@@ -1008,9 +1025,10 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 try:
                     await self._accumulate_financials(now, live)
                 except Exception:
-                    _LOGGER.exception(
+                    async_log(
+                        "error",
                         "Financial tracker accumulation failed — "
-                        "continuing without updating financial metrics."
+                        "continuing without updating financial metrics.",
                     )
 
                 # -----------------------------------------------------------------------
@@ -1019,9 +1037,10 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 try:
                     await self._accumulate_savings(now, live, planner_output)
                 except Exception:
-                    _LOGGER.exception(
+                    async_log(
+                        "error",
                         "Savings tracker accumulation failed — "
-                        "continuing without updating savings metrics."
+                        "continuing without updating savings metrics.",
                     )
 
             # -----------------------------------------------------------------------
@@ -1099,7 +1118,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
 
         # Notify all subscriber entities atomically.
         self.async_set_updated_data(data)
-        _LOGGER.debug("------ HSEM Coordinator: update cycle complete")
+        async_log("debug", "------ HSEM Coordinator: update cycle complete")
 
     # ------------------------------------------------------------------
     # DataUpdateCoordinator override
@@ -1151,8 +1170,10 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             self._async_handle_update,  # type: ignore[arg-type]  # HA stub expects Callable[[datetime], ...]; our callback also serves as coordinator update callback
             interval,
         )
-        _LOGGER.debug(
-            f"HSEM Coordinator: update interval set to {interval}",
+        async_log(
+            "debug",
+            "HSEM Coordinator: update interval set to %s",
+            interval,
         )
 
     # ------------------------------------------------------------------
@@ -1204,7 +1225,8 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             rec.solcast_pv_estimate_kwh = slot.solcast_pv_estimate_kwh
 
         if unmatched:
-            _LOGGER.warning(
+            async_log(
+                "warning",
                 "[HSEM] _apply_planner_output: %d recommendation slot(s) had no "
                 "matching planner output slot — planner fields (ev_planned_load_kwh, "
                 "ev_accounted_load_kwh, ev_total_planned_load_kwh, recommendation, …) "
@@ -1441,9 +1463,10 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             await self._load_financial_tracker()
             self._financial_tracker_initialized = True
         except Exception:
-            _LOGGER.exception(
+            async_log(
+                "error",
                 "Failed to initialise financial tracker "
-                "(financial sensors will be unavailable)"
+                "(financial sensors will be unavailable)",
             )
             self._financial_tracker_initialized = True  # don't retry
 
@@ -1458,7 +1481,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 loaded = FinancialTracker.from_dict(data)
                 self._financial_tracker = loaded
         except Exception:
-            _LOGGER.exception("Failed to load financial tracker history")
+            async_log("error", "Failed to load financial tracker history")
 
     async def _persist_financial_tracker(self) -> bool:
         """Persist financial tracker state to disk atomically."""
@@ -1598,9 +1621,10 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             await self._savings_tracker.load_history()
             self._savings_tracker_initialized = True
         except Exception:
-            _LOGGER.exception(
+            async_log(
+                "error",
                 "Failed to initialise savings tracker "
-                "(savings sensor will be unavailable)"
+                "(savings sensor will be unavailable)",
             )
             self._savings_tracker_initialized = True  # don't retry
 
@@ -1631,9 +1655,10 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             )
             self._daily_tracker_initialized = True
         except Exception:
-            _LOGGER.exception(
+            async_log(
+                "error",
                 "Failed to initialise daily tracker (plan-vs-actual "
-                "sensor will be unavailable)"
+                "sensor will be unavailable)",
             )
             self._daily_tracker_initialized = True  # don't retry
 
@@ -1652,12 +1677,14 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             today_record = tracker._build_today_record()
             saved = await tracker._save_record_to_history(today_record)
             if saved:
-                _LOGGER.info(
+                async_log(
+                    "info",
                     "Daily plan-vs-actual record saved for %s",
                     tracker.today,
                 )
             else:
-                _LOGGER.warning(
+                async_log(
+                    "warning",
                     "Failed to save daily plan-vs-actual record for %s",
                     tracker.today,
                 )
@@ -1679,12 +1706,14 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         if financial.history_file:
             saved = await self._persist_financial_tracker()
             if saved:
-                _LOGGER.info(
+                async_log(
+                    "info",
                     "Financial tracker persisted for %s",
                     financial.today,
                 )
             else:
-                _LOGGER.warning(
+                async_log(
+                    "warning",
                     "Failed to persist financial tracker for %s",
                     financial.today,
                 )
@@ -1694,10 +1723,12 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         if st.history_file:
             saved = await st.save_history()
             if saved:
-                _LOGGER.info("Savings tracker state saved for %s", st._today)
+                async_log("info", "Savings tracker state saved for %s", st._today)
             else:
-                _LOGGER.warning(
-                    "Failed to save savings tracker state for %s", st._today
+                async_log(
+                    "warning",
+                    "Failed to save savings tracker state for %s",
+                    st._today,
                 )
 
 
