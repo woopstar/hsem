@@ -458,7 +458,7 @@
           "solar_power": "Autodetekteret solcelleproduktion effekt sensor.",
           "use_quick_setup": "Aktiver for at bruge autodetekterede enheder og springe over den fulde enhed-for-enhed opsætningsguide. Deaktiver for Avanceret Opsætning."
         },
-        "description": "HSEM har autodetekteret følgende enheder. Gennemgå de detekterede enheder nedenfor. Du kan bekræfte at bruge dem eller vælge Avanceret Opsætning for at vælge enheder manuelt.",
+        "description": "HSEM har autodetekteret følgende enheder. {warning}Gennemgå de detekterede enheder nedenfor. Du kan bekræfte at bruge dem eller vælge Avanceret Opsætning for at vælge enheder manuelt.",
         "title": "Hurtig Opsætning - Autodetekterede Enheder"
       }
     }
