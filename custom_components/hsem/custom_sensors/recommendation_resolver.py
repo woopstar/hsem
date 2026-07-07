@@ -53,20 +53,24 @@ def resolve_current_recommendation(
     if rec.recommendation == Recommendations.BatteriesChargeGrid.value:
         return
 
-    # 3. Any EV is actively charging → override with EV smart charging.
+    # 3. Any EV is actively charging AND the planner allocated EV load for
+    #    this slot → override with EV smart charging.
     #
-    # Guard: only apply the live override when the planner already injected EV
-    # planned load for this slot (ev_planned_load_kwh > 0) OR when the planner
-    # had no EV data at all (ev_planned_load_kwh == 0 because the feature was
-    # disabled or no charging plan was built).  In both of those cases the live
-    # charger signal is the best available information.
+    # The planner's ``ev_charger_calculated_power`` is HSEM's *command* to the
+    # charger, not a reflection of what the charger is doing.  If the planner
+    # set it to 0, that means "stop charging" (e.g. target SoC reached, no
+    # surplus PV, expensive grid power).  In that case we must NOT override
+    # the recommendation to ``ev_smart_charging`` — the planner's original
+    # recommendation (e.g. ``batteries_wait_mode``) should stand.
     #
-    # The one scenario we intentionally keep: the EV is physically charging but
-    # the planner assigned zero planned load (e.g. outside the planned window,
-    # fully charged, or smart-charging disabled).  The live signal still matters
-    # for hardware writes, so we preserve the override in all cases where an EV
-    # is actively drawing power.
-    if live.ev.is_charging or live.ev_second.is_charging:
+    # We only override when the planner actually allocated EV load for this
+    # slot (``ev_charger_calculated_power > 0`` or ``ev_total_planned_load_kwh > 0``).
+    planner_allocated_ev = (
+        rec.ev_charger_calculated_power > 1e-9
+        or rec.ev_second_charger_calculated_power > 1e-9
+        or rec.ev_total_planned_load_kwh > 1e-9
+    )
+    if (live.ev.is_charging or live.ev_second.is_charging) and planner_allocated_ev:
         rec.recommendation = Recommendations.EVSmartCharging.value
         return
 
