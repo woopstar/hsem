@@ -14,9 +14,9 @@ flowchart TD
     D{EV configs provided?}
     E[Rebuild net_load without pre-computed EV planned loads]
     F[Keep fixed EV planned load in net_load]
-    G[Build objective vector c_obj: import cost, export revenue, cycle cost, conversion loss, terminal-SoC credit, SoC penalties, EV deadline penalties, EV charge-past-target benefit]
+    G[Build objective vector c_obj: import cost, export revenue, cycle cost, conversion loss, terminal-SoC credit, SoC penalties, EV deadline penalties, EV pre-deadline benefit, EV charge-past-target benefit]
     H[Build equality constraints A_eq: energy balance per slot inc. EV charger load]
-    I[Build inequality constraints A_ub: SoC recurrence soft bounds, mutual exclusion, cycle cost auxiliary m >= ec/ed, EV cumulative SOC, EV deadline target, EV surplus-only]
+    I[Build inequality constraints A_ub: SoC recurrence soft bounds, mutual exclusion, cycle cost auxiliary m >= ec/ed, EV cumulative SOC, EV deadline target, EV post-deadline zero-charge, EV surplus-only]
     J[Build variable bounds: ec, ed capped; pv fixed to actual surplus; penalties >= 0]
     K[linprog method = highs, timeout = 2s]
     L{Solution found?}
@@ -82,6 +82,10 @@ When an EV's `charge_past_target` flag is `True` (EV already at user-configured 
 - The deadline constraint is **suppressed** (`deadline_slot = None`) — no grid import pressure
 - The **surplus-only constraint** is added (see Constraints below)
 - A **tiny tiebreaker benefit** is added to the objective (see Objective function below)
+
+When an EV has a deadline and `charge_past_target=False` (normal mode):
+- **Pre-deadline slots** (`t ≤ D`): direct benefit `-ev_penalty_cost` on `ev_c[t]` forces charging
+- **Post-deadline slots** (`t > D`): hard constraint `ev_c[t] = 0` — charging is forbidden
 
 ### Fuse constraint extension (issue #567)
 
@@ -152,8 +156,16 @@ Where:
 | $\gamma$ | Terminal-SoC replacement price (currency/kWh), from the engine |
 | $p_{\mathrm{soc}}$ | SoC penalty cost: $\max(p_{\mathrm{imp}}) \times 100$ |
 | $p_{\mathrm{fuse}}$ | Fuse penalty cost: $\max(p_{\mathrm{imp}}) \times 100$ (same magnitude as SoC) |
-| $p_{\mathrm{ev\_pen}}^{(v)}$ | EV deadline penalty for EV v: $\max(p_{\mathrm{imp}}) \cdot \mathrm{capacity} \cdot 100$ |
+| $p_{\mathrm{ev\_pen}}^{(v)}$ | EV deadline penalty for EV v: $\max(p_{\mathrm{imp}}) \cdot \max(\mathrm{energy\_needed}, 1.0) \cdot 10$ |
 | $\beta_{\mathrm{ev}}$ | EV charge-past-target tiebreaker benefit: $0.0001$ per kWh AC (tiny — only wins when nothing else wants the surplus) |
+
+Plus EV pre-deadline benefit (undiscounted, per EV $v$ with deadline, slots $t \leq D_v$):
+
+$$
+-\sum_{v=1}^{E} \sum_{t=0}^{D_v} p_{\mathrm{ev\_pen}}^{(v)} \cdot \mathrm{ev\_c}_v[t]
+$$
+
+This direct benefit on pre-deadline slots ensures the LP always prefers charging over paying the deadline penalty. Post-deadline slots ($t > D_v$) have zero coefficient unless `charge_past_target=True`.
 
 Plus EV charge-past-target benefit (discounted, per charge-past-target EV $v$):
 
@@ -222,13 +234,22 @@ $$
 \mathrm{initial\_soc}_v + \sum_{k=0}^{D_v} \mathrm{ev\_c}_v[k] + \mathrm{ev\_pen}_v \geq \mathrm{target}_v
 $$
 
+**EV post-deadline zero-charge (hard, per EV v with deadline and `charge_past_target=False`):**
+
+$$
+\mathrm{ev\_c}_v[t] = 0 \quad \forall\, t > D_v
+$$
+
+This hard constraint prevents any EV charging after the deadline unless
+`charge_past_target=True` (surplus-PV-only mode).
+
 **EV surplus-only constraint (per charge-past-target EV v, per slot t):**
 
 $$
 \frac{\mathrm{ev\_c}_v[t]}{\eta_{\mathrm{charger}}^{(v)}} \leq \max\bigl(0,\; \mathrm{pv\_avail}[t] - \mathrm{base\_load}[t]\bigr)
 $$
 
-This constraint ensures charge-past-target EVs only consume **genuine PV surplus** — never battery discharge or grid import.  It is only added for EVs where `charge_past_target` is `True` (EV already at user-configured target SoC but `allow_charge_past_target_soc` is enabled and SoC < 100 %).
+This constraint ensures charge-past-target EVs only consume **genuine PV surplus** — never battery discharge or grid import. It is added for EVs where `charge_past_target=True` (EV already at user-configured target SoC but `allow_charge_past_target_soc` is enabled and SoC < 100 %). The house battery charges first (benefit ~$p_{\mathrm{imp}}$), then export at good prices (benefit $p_{\mathrm{exp}}$), and only when both are saturated does the EV get the remaining surplus.
 
 **Main fuse grid import limit (soft):**
 

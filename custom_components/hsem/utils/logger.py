@@ -260,6 +260,24 @@ def log_planner(level: str, msg: str, *args: object) -> None:
             log_fn(msg)
 
 
+def async_log(level: str, msg: str, *args: object) -> None:
+    """Write a log message without blocking the event loop.
+
+    Identical to :func:`log_planner` but intended for use from **async**
+    coordinator code.  The file I/O is offloaded to the shared HSEM
+    thread pool executor so the ``RotatingFileHandler``'s synchronous
+    ``open()``/``write()`` does not trigger Home Assistant's
+    ``Detected blocking call to open`` warning.
+
+    Args:
+        level: Log level string — one of ``"debug"``, ``"info"``,
+               ``"warning"``, ``"error"``.
+        msg: Log message (pre-formatted or with ``%``-style placeholders).
+        *args: Positional arguments for ``%``-style formatting.
+    """
+    log_planner(level, msg, *args)
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------

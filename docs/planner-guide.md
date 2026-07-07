@@ -43,24 +43,8 @@ Every time the coordinator runs (typically every minute) the planner:
 5. Scores every candidate with the cost function.
 6. Writes the lowest-cost valid plan to the `HourlyRecommendation` objects consumed by the coordinator.
 
-**MILP re-solve gating** (issue #582): To prevent EV charger power oscillation caused
-by noisy live PV/load/SoC readings, the MILP is only re-solved when inputs change
-meaningfully (price update, Solcast refresh, slot boundary, EV state change, user
-action) or when `planner_min_resolve_interval_minutes` has elapsed. Between
-re-solves the current-slot EV charger power is smoothed from the cached plan's
-energy allocation. Set `planner_min_resolve_interval_minutes = 0` to re-solve
-every cycle (legacy behaviour). See `hsem_planner_min_resolve_interval_minutes`.
-
 The planner is **pure Python with no Home Assistant imports**. It runs synchronously,
 produces deterministic output for identical input, and is fully testable with plain pytest.
-
-**MILP re-solve gating** (issue #582): To prevent EV charger power oscillation caused
-by noisy live PV/load/SoC readings, the MILP is only re-solved when inputs change
-meaningfully (price update, Solcast refresh, slot boundary, EV state change, user
-action) or when `planner_min_resolve_interval_minutes` has elapsed. Between
-re-solves the current-slot EV charger power is smoothed from the cached plan's
-energy allocation. Set `planner_min_resolve_interval_minutes = 0` to re-solve
-every cycle (legacy behaviour). See `hsem_planner_min_resolve_interval_minutes`.
 
 ---
 
@@ -1318,7 +1302,7 @@ than pure `no_action` because the PV surplus would otherwise export at only
 
 ---
 
-### Scenario 6: EV charging — solar-first smart plan
+### Scenario 6: EV charging — MILP co-optimisation
 
 **Conditions:**
 - EV plugged in at 08:00, target SoC 80 %, deadline 07:00 next morning
@@ -1329,32 +1313,34 @@ than pure `no_action` because the PV surplus would otherwise export at only
 - Import price: 0.80 DKK/kWh off-peak, 2.00 DKK/kWh peak (09–13, 17–21)
 - `base_load_includes_ev = False` (CT clamp is downstream of EVSE)
 
-**What the EV planner does:**
+**What the MILP does:**
+
+The MILP co-optimises EV charging, house battery, and grid import/export
+simultaneously across all future slots. For pre-deadline slots (`t ≤ D`),
+each `ev_c[t]` receives a strong negative coefficient (benefit) equal to
+`ev_penalty_cost = max(p_imp) × max(energy_needed, 1.0) × 10`, forcing the LP to
+charge the EV.
+
+The LP naturally prefers PV surplus (free) over grid import (costs
+`p_imp[t]`), so it allocates EV charging to high-PV slots first:
 
 ```
-Pass 1 — solar surplus slots (pv − house_load > 0):
-  10:00–11:00: surplus = 8 − 0.5 = 7.5 kWh  → allocate 7.5 kWh (capped by charger: 11 kWh/h)
-  11:00–12:00: surplus = 10 − 0.5 = 9.5 kWh → allocate 9.5 kWh → total = 17.0 kWh
-  09:00–10:00: surplus = 2 − 0.5 = 1.5 kWh  → allocate 1.5 kWh → total = 18.5 kWh
+Pre-deadline slots (08:00 → 07:00 next day):
+  10:00–11:00: PV surplus = 8 − 0.5 = 7.5 kWh → EV charges 7.5 kWh (free)
+  11:00–12:00: PV surplus = 10 − 0.5 = 9.5 kWh → EV charges 9.5 kWh (free)
+  09:00–10:00: PV surplus = 2 − 0.5 = 1.5 kWh → EV charges 1.5 kWh (free)
+  Remaining 10.3 kWh → cheapest import slot (00:00–01:00 at 0.80 DKK/kWh)
 
-Pass 2 — cheapest import slots (remaining need = 28.8 − 18.5 = 10.3 kWh):
-  00:00–01:00: 0.80 DKK/kWh → allocate 10.3 kWh (final slot, partial fill)
+Post-deadline slots (after 07:00):
+  ev_c[t] = 0 — hard constraint, no charging allowed
+  (unless charge_past_target=True, then surplus-PV-only with tiny benefit)
 ```
-
-**Net load seen by home battery planner (slot 10:00–11:00):**
-
-```
-effective_net_load = 0.5 (house) + 7.5 (EV) − 8.0 (PV) = 0.0 kWh
-```
-
-The battery planner sees zero net consumption in that slot, meaning no battery
-solar charge is triggered — the solar energy goes entirely to the EV.
 
 **Cost comparison (EV charging cost only):**
 
 | Strategy | EV cost (DKK) |
 |---|---|
-| Smart (solar-first) | 0.80 × 10.3 + 0 × 18.5 = 8.24 DKK |
+| MILP (solar-first + cheapest import) | 0.80 × 10.3 + 0 × 18.5 = 8.24 DKK |
 | Dumb (charge immediately from grid at 2.00 DKK/kWh) | 2.00 × 28.8 = 57.60 DKK |
 
 ---

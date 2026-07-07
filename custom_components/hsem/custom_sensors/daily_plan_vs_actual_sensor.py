@@ -12,7 +12,8 @@ Attributes
 ----------
 - ``today`` — today's actual vs plan vs diff record.
 - ``yesterday`` — yesterday's record from history (or ``None``).
-- ``history`` — last 30 days of records from the JSON file.
+- ``history`` — last 7 days of records (limited to stay under HA's 16KB
+  state attribute limit; full 90-day history is in the JSON file).
 - ``history_file`` — path to the JSON history file.
 - ``history_days`` — configured maximum history window (default 90).
 - ``history_total_days`` — number of days currently stored.

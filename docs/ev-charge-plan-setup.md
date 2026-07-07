@@ -177,22 +177,19 @@ The two EV plans are independent. Their per-slot loads are **summed** into
 flowchart TD
     A[Read EV state: SoC, connected, deadline, target]
     B{EV connected AND\nsmart charging enabled?}
-    C[Calculate energy needed:\ncapacity × (target% − current%)]
+    C[Calculate energy needed:\ncapacity × target% − current%]
     D[Sensor shows not_connected\nor smart_charging_disabled]
     E{Energy needed > 0?}
-    F[Sort candidate slots before deadline\nby cheapest import price]
-    G[Allocate solar surplus slots first]
-    H[Fill remaining need with\ncheapest grid import slots]
-    I[Inject per-slot EV AC load\ninto planner net consumption]
-    J[Battery planner runs with\nreduced net surplus]
-    K[MILP co-optimises EV charging\nwith battery schedule]
-    L[Post-processing: minimum power floor\nand power recomputation]
+    F[Build EVConfig with deadline_slot,\ntarget_kwh, charge_past_target]
+    G[MILP co-optimises EV + battery:\npre-deadline benefit forces charging,\nPV surplus used first, grid import when needed]
+    H[Post-deadline: ev_c=0 unless\ncharge_past_target=True\nthen surplus-PV-only]
+    I[Write EV decisions to output slots:\nev_planned_load_kwh, ev_charger_power]
 
     A --> B
     B -->|No| D
     B -->|Yes| C --> E
     E -->|No| D
-    E -->|Yes| F --> G --> H --> I --> J --> K --> L
+    E -->|Yes| F --> G --> H --> I
 ```
 
 ### Inputs

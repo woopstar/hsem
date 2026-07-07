@@ -329,7 +329,6 @@ def build_planner_input(
         planner_hysteresis_percentage=(
             convert_to_float(cfg.planner_hysteresis_percentage) or 0.0
         ),
-        planner_min_resolve_interval_minutes=(cfg.planner_min_resolve_interval_minutes),
         previous_winner_name=previous_winner_name,
         previous_winner_score=previous_winner_score,
         ev_session_charge_kw=(ev_session_kw.get("ev") if ev_session_kw else None),
