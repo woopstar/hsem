@@ -132,7 +132,8 @@
           "hsem_ev_second_enabled": "Aktiver anden EV-lader",
           "hsem_ev_soc": "EV ladetilstand (SoC) sensor",
           "hsem_house_power_includes_ev_charger_power": "Husets effekt inkluderer EV-ladereffekt",
-          "hsem_ev_auto_full_negative_price": "Auto-Fuld EV ved negativ pris"
+          "hsem_ev_auto_full_negative_price": "Auto-Fuld EV ved negativ pris",
+          "hsem_ev_past_target_confidence_factor": "EV opladning ud over mål-SoC - Konfidensfaktor (Avanceret)"
         },
         "data_description": {
           "hsem_ev_allow_charge_past_target_soc": "Aktiver denne mulighed, hvis du vil tillade systemet at fortsætte opladningen af EV-batteriet, selv efter det har nået mål-ladetilstanden (SoC).",
@@ -144,7 +145,8 @@
           "hsem_ev_second_enabled": "Aktiver eller deaktiver konfigurationen for en anden EV-lader.",
           "hsem_ev_soc": "Vælg den sensor, der leverer den aktuelle ladetilstand (SoC) for dit EV-batteri.",
           "hsem_house_power_includes_ev_charger_power": "Aktiver dette, hvis husets forbrugseffektsensor allerede inkluderer EV-laderens strømforbrug.",
-          "hsem_ev_auto_full_negative_price": "Når aktiveret, sættes elbilen automatisk til fuld opladningseffekt, når elprisen er nul eller negativ. Den tidligere opladningstilstand gendannes, når prisen stiger over nul."
+          "hsem_ev_auto_full_negative_price": "Når aktiveret, sættes elbilen automatisk til fuld opladningseffekt, når elprisen er nul eller negativ. Den tidligere opladningstilstand gendannes, når prisen stiger over nul.",
+          "hsem_ev_past_target_confidence_factor": "Konfidensmultiplikator (0.0-1.0) der anvendes på værdien af undgået fremtidig import når EV'en oplades ud over sin mål-SoC. Lavere værdier gør EV'en mindre konkurrencedygtig mod eksport af overskuds-PV, for at tage højde for usikkerhed om, om EV'en faktisk vil have brug for den ekstra energi før næste opladning. Standard 0.9."
         },
         "description": "Konfigurer EV-laderindstillinger for HSEM.",
         "title": "EV-laderindstillinger (Valgfri)"
@@ -157,7 +159,8 @@
           "hsem_ev_second_charger_power": "Anden EV-lader effektsensor",
           "hsem_ev_second_charger_status": "Anden EV-lader statussensor",
           "hsem_ev_second_connected": "Anden EV tilsluttet sensor",
-          "hsem_ev_second_soc": "Anden EV ladetilstand (SoC) sensor"
+          "hsem_ev_second_soc": "Anden EV ladetilstand (SoC) sensor",
+          "hsem_ev_second_past_target_confidence_factor": "Anden EV opladning ud over mål-SoC - Konfidensfaktor (Avanceret)"
         },
         "data_description": {
           "hsem_ev_second_allow_charge_past_target_soc": "Aktiver denne mulighed, hvis du vil tillade systemet at fortsætte opladningen af EV-batteriet, selv efter det har nået mål-ladetilstanden (SoC).",
@@ -166,7 +169,8 @@
           "hsem_ev_second_charger_power": "Vælg den sensor, der måler strømforbruget for din EV-lader.",
           "hsem_ev_second_charger_status": "Vælg den sensor eller enhed, der angiver, om EV-laderen er aktiv.",
           "hsem_ev_second_connected": "Vælg den sensor eller enhed, der angiver, om EV er tilsluttet laderen.",
-          "hsem_ev_second_soc": "Vælg den sensor, der leverer den aktuelle ladetilstand (SoC) for dit EV-batteri."
+          "hsem_ev_second_soc": "Vælg den sensor, der leverer den aktuelle ladetilstand (SoC) for dit EV-batteri.",
+          "hsem_ev_second_past_target_confidence_factor": "Konfidensmultiplikator (0.0-1.0) der anvendes på værdien af undgået fremtidig import når den anden EV oplades ud over sin mål-SoC. Lavere værdier gør EV'en mindre konkurrencedygtig mod eksport af overskuds-PV, for at tage højde for usikkerhed om, om EV'en faktisk vil have brug for den ekstra energi før næste opladning. Standard 0.9."
         },
         "description": "Konfigurer anden EV-laderindstillinger for HSEM.",
         "title": "Anden EV-laderindstillinger (Valgfri)"
@@ -592,7 +596,8 @@
           "hsem_ev_second_enabled": "Enable Second EV Charger",
           "hsem_ev_soc": "EV State of Charge (SoC) Sensor",
           "hsem_house_power_includes_ev_charger_power": "House Power Includes EV Charger Power",
-          "hsem_ev_auto_full_negative_price": "Auto-Fuld EV ved negativ pris"
+          "hsem_ev_auto_full_negative_price": "Auto-Fuld EV ved negativ pris",
+          "hsem_ev_past_target_confidence_factor": "EV opladning ud over mål-SoC - Konfidensfaktor (Avanceret)"
         },
         "data_description": {
           "hsem_ev_allow_charge_past_target_soc": "Enable this option if you want to allow the system to continue charging the EV battery even after it has reached the target state of charge (SoC). This can be useful in scenarios where you want to ensure the EV is fully charged regardless of the target setting.",
@@ -604,7 +609,8 @@
           "hsem_ev_second_enabled": "Enable or disable the configuration for a second EV charger.",
           "hsem_ev_soc": "Select the sensor that provides the current state of charge (SoC) of your EV battery.",
           "hsem_house_power_includes_ev_charger_power": "Enable this if the house consumption power sensor already includes the EV charger power consumption.",
-          "hsem_ev_auto_full_negative_price": "Når aktiveret, sættes elbilen automatisk til fuld opladningseffekt, når elprisen er nul eller negativ. Den tidligere opladningstilstand gendannes, når prisen stiger over nul."
+          "hsem_ev_auto_full_negative_price": "Når aktiveret, sættes elbilen automatisk til fuld opladningseffekt, når elprisen er nul eller negativ. Den tidligere opladningstilstand gendannes, når prisen stiger over nul.",
+          "hsem_ev_past_target_confidence_factor": "Konfidensmultiplikator (0.0-1.0) der anvendes på værdien af undgået fremtidig import når EV'en oplades ud over sin mål-SoC. Lavere værdier gør EV'en mindre konkurrencedygtig mod eksport af overskuds-PV, for at tage højde for usikkerhed om, om EV'en faktisk vil have brug for den ekstra energi før næste opladning. Standard 0.9."
         },
         "description": "Configure EV Charger settings for HSEM.",
         "title": "EV Charger Settings (Optional)"
@@ -617,7 +623,8 @@
           "hsem_ev_second_charger_power": "Second EV Charger Power Sensor",
           "hsem_ev_second_charger_status": "Second EV Charger Status Sensor",
           "hsem_ev_second_connected": "Second EV Connected Sensor",
-          "hsem_ev_second_soc": "Second EV State of Charge (SoC) Sensor"
+          "hsem_ev_second_soc": "Second EV State of Charge (SoC) Sensor",
+          "hsem_ev_second_past_target_confidence_factor": "Anden EV opladning ud over mål-SoC - Konfidensfaktor (Avanceret)"
         },
         "data_description": {
           "hsem_ev_second_allow_charge_past_target_soc": "Enable this option if you want to allow the system to continue charging the EV battery even after it has reached the target state of charge (SoC). This can be useful in scenarios where you want to ensure the EV is fully charged regardless of the target setting.",
@@ -626,7 +633,8 @@
           "hsem_ev_second_charger_power": "Select the sensor that measures the power consumption of your EV charger.",
           "hsem_ev_second_charger_status": "Select the sensor or entity that indicates whether the EV charger is active (e.g., a switch or sensor).",
           "hsem_ev_second_connected": "Select the sensor or entity that indicates whether the EV is connected to the charger.",
-          "hsem_ev_second_soc": "Select the sensor that provides the current state of charge (SoC) of your EV battery."
+          "hsem_ev_second_soc": "Select the sensor that provides the current state of charge (SoC) of your EV battery.",
+          "hsem_ev_second_past_target_confidence_factor": "Konfidensmultiplikator (0.0-1.0) der anvendes på værdien af undgået fremtidig import når den anden EV oplades ud over sin mål-SoC. Lavere værdier gør EV'en mindre konkurrencedygtig mod eksport af overskuds-PV, for at tage højde for usikkerhed om, om EV'en faktisk vil have brug for den ekstra energi før næste opladning. Standard 0.9."
         },
         "description": "Configure Second EV Charger settings for HSEM.",
         "title": "Second EV Charger Settings (Optional)"

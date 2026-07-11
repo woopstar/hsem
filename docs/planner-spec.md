@@ -458,10 +458,16 @@ After the deadline slot `D`:
   charge, but only from genuine PV surplus that would otherwise be curtailed
   or exported at near-zero prices:
   - Surplus-only constraint: `ev_c[t]/η_charger ≤ max(0, pv[t] − base_load[t])`
-  - Tiny benefit: `-0.0001/η_charger` per kWh AC (tiebreaker only)
-  - The house battery charges first (benefit ~`p_imp` via avoided future import),
-    then export at good prices (benefit `p_exp`), and only when both are
-    saturated does the EV get the remaining surplus.
+  - Benefit: `-future_value_per_kwh/η_charger` per kWh AC (issue #630), where
+    `future_value_per_kwh` is the avoided cost of importing the same energy
+    later (`confidence_factor × mean(import_price)` over the next 24h — see
+    `ev_future_charge_value_per_kwh` in `candidate_selector.py`). Falls back
+    to a tiny fixed `0.0001/η_charger` tiebreaker when no future price data
+    is available.
+  - Because the benefit is priced in real currency terms, charge-past-target
+    EV charging competes fairly against house battery charging (worth
+    ~`p_imp` via avoided future import) and export (`p_exp`) — whichever has
+    the higher genuine avoided-cost value wins the surplus for that slot.
   - Grid import is never used for post-deadline EV charging.
 
 #### 5. Terminal SoC (horizon-end valuation)
@@ -478,17 +484,36 @@ The constraint `ev_c[t]/charger_eff ≤ max(0, pv[t] − base_load[t])` ensures
 past-target EV charging **never** draws from the battery or grid — only
 genuine PV surplus that has nowhere else to go.
 
-#### Tiebreaker benefit (0.0001/kWh AC)
+#### Charge-past-target benefit: avoided future import cost (issue #630)
 
-The charge-past-target EV benefit is deliberately tiny — it **must not**
-compete with:
-- House battery charging (worth `p_imp` via avoided future import, typically
-  ~0.03–0.06/kWh in conversion loss alone)
-- Export at meaningful prices (revenue `p_exp`, typically 0.05–0.50/kWh)
+The charge-past-target EV benefit (`EVConfig.future_value_per_kwh`) prices
+one kWh of past-target EV charging at what it would otherwise cost to
+import that same energy later:
 
-It only acts as a tiebreaker: when battery is full and export prices are
-near zero, the EV gets the surplus instead of exporting it for near-zero
-revenue.
+```
+future_value_per_kwh = confidence_factor × mean(import_price[t] for t in next 24h of slots)
+```
+
+- **24h lookahead**: always available even on the minimum-configured
+  planning horizon (24h), long enough to smooth daily price cycles, short
+  enough to avoid relying on degraded/missing day+2 forecasts.
+- **`confidence_factor`** (default `0.9`, configurable per EV via
+  `hsem_ev_past_target_confidence_factor` /
+  `hsem_ev_second_past_target_confidence_factor`): discounts the estimate
+  to account for the EV's future need being less certain than the house
+  battery's scheduled discharge (depends on driving pattern, whether the EV
+  stays plugged in, etc.).
+- Mirrors `replacement_price_from_next_discharge`, which applies the same
+  avoided-cost principle to the house battery's terminal SoC.
+
+Because this benefit is priced in the same currency units as `p_imp` and
+`p_exp`, the MILP lets charge-past-target EV charging compete fairly
+against house battery charging and export — whichever has the higher
+genuine avoided-cost value wins the surplus for that slot. When no future
+price data is available (`future_value_per_kwh` is `None`, e.g. missing
+forecast), the MILP falls back to a tiny fixed tiebreaker
+(`0.0001`/kWh AC) so surplus PV still prefers the EV over being wastefully
+curtailed/exported at near-zero or negative prices.
 
 ### Grid import power limit (main fuse / tariff protection)
 
@@ -1249,13 +1274,20 @@ The EV planner (`planner/ev_planner.py`) MUST satisfy these invariants:
 11. **Charge past target SoC (MILP only)**: When `allow_charge_past_target_soc`
     is enabled and the EV has reached its target SoC but is below 100 %, the
     EV can receive surplus PV that would otherwise be exported at low/negative
-    prices.  This is handled exclusively by the MILP:
+    prices — or, when its avoided-future-import valuation exceeds the export
+    price, surplus PV that would otherwise be exported at any price
+    (issue #630).  This is handled exclusively by the MILP:
 
     - The EV is included with `charge_past_target=True`: `target_kwh = capacity_kwh`,
       `deadline_slot = None` (no grid import pressure), a surplus-only constraint
-      (`ev_c/eff ≤ pv − base_load`), and a tiny tiebreaker benefit (0.0001/kWh AC)
-      so the EV only takes surplus when nothing else wants it (battery full,
-      export prices near zero).
+      (`ev_c/eff ≤ pv − base_load`), and a benefit equal to
+      `future_value_per_kwh` (avoided cost of importing the same energy
+      later, `confidence_factor × mean(import_price)` over the next 24h),
+      falling back to a tiny fixed tiebreaker (0.0001/kWh AC) when no future
+      price data is available.
+    - `future_value_per_kwh` and the per-EV `confidence_factor` are computed
+      in `_build_ev_configs_for_milp` (`engine_core.py`) from
+      `ev_future_charge_value_per_kwh` (`candidate_selector.py`).
     - The EV planner's Pass 3 has been removed — the MILP is the single
       authority for all EV charging decisions, including charge-past-target.
     - When the MILP fails (scipy unavailable, solver crash), charge-past-target

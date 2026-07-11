@@ -552,23 +552,24 @@ def solve_milp(
 
     # --- EV charge-past-target benefit ---
     # When an EV is already at its user-configured target SoC but
-    # charge_past_target is enabled, give EV charging a tiny benefit
-    # (0.0001 per kWh AC) so the MILP prefers diverting surplus PV to
-    # the EV over exporting it when nothing else wants the surplus.
+    # charge_past_target is enabled, EV charging is valued at
+    # ev.future_value_per_kwh — the avoided cost of importing that same
+    # energy later (see ev_future_charge_value_per_kwh in
+    # candidate_selector.py), so it competes fairly against export revenue
+    # (p_exp) and house battery charging on real currency terms.
     #
-    # The benefit is deliberately tiny — it must NOT compete with:
-    # - House battery charging (worth p_imp via avoided future import)
-    # - Export at good prices (worth p_exp)
-    # It only acts as a tiebreaker: when the battery is full and export
-    # prices are low/negative, the EV gets the surplus instead of
-    # exporting it for near-zero revenue.
-    #
-    # Using a larger benefit (e.g. p_exp) would make the MILP prefer
-    # EV over battery charging when both compete for surplus — wrong
-    # when the battery is at 5 % and the EV is already above target.
+    # When no future price data is available (future_value_per_kwh is
+    # None), fall back to a tiny fixed tiebreaker benefit (0.0001 per kWh
+    # AC) so surplus PV still prefers the EV over being wastefully
+    # curtailed/exported at near-zero or negative prices.
     for ev_idx, ev in enumerate(active_evs):
         if ev.charge_past_target:
             ev_off = ev_var_offsets[ev_idx]
+            ev_value = (
+                ev.future_value_per_kwh
+                if ev.future_value_per_kwh is not None
+                else 0.0001
+            )
             for t in range(m):
                 discount = 1.0
                 if use_discount:
@@ -576,9 +577,8 @@ def solve_milp(
                     slot_mid = slot.start + (slot.end - slot.start) / 2
                     hours_ahead = max((slot_mid - now).total_seconds() / 3600.0, 0.0)
                     discount = time_discount_rate**hours_ahead
-                # Tiny tiebreaker benefit (0.0001 per kWh AC).
                 # Negative coefficient = reduces objective = benefit.
-                c_obj[ev_off + t] -= (0.0001 / ev.charger_efficiency) * discount
+                c_obj[ev_off + t] -= (ev_value / ev.charger_efficiency) * discount
 
     # --- Fuse penalty cost (same magnitude as SOC penalties) ---
     # P_fuse = max(p_imp) * 100 — high enough that the solver only exceeds

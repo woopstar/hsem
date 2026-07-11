@@ -81,7 +81,7 @@ The EV charger AC load entering the energy balance equation is `evN_c[t] / charg
 When an EV's `charge_past_target` flag is `True` (EV already at user-configured target SoC, `allow_charge_past_target_soc` enabled, SoC < 100 %):
 - The deadline constraint is **suppressed** (`deadline_slot = None`) — no grid import pressure
 - The **surplus-only constraint** is added (see Constraints below)
-- A **tiny tiebreaker benefit** is added to the objective (see Objective function below)
+- An **avoided-future-import-cost benefit** (`future_value_per_kwh`, issue #630) is added to the objective, falling back to a tiny fixed tiebreaker when no future price data is available (see Objective function below)
 
 When an EV has a deadline and `charge_past_target=False` (normal mode):
 - **Pre-deadline slots** (`t ≤ D`): direct benefit `-ev_penalty_cost` on `ev_c[t]` forces charging
@@ -157,7 +157,7 @@ Where:
 | $p_{\mathrm{soc}}$ | SoC penalty cost: $\max(p_{\mathrm{imp}}) \times 100$ |
 | $p_{\mathrm{fuse}}$ | Fuse penalty cost: $\max(p_{\mathrm{imp}}) \times 100$ (same magnitude as SoC) |
 | $p_{\mathrm{ev\_pen}}^{(v)}$ | EV deadline penalty for EV v: $\max(p_{\mathrm{imp}}) \cdot \max(\mathrm{energy\_needed}, 1.0) \cdot 10$ |
-| $\beta_{\mathrm{ev}}$ | EV charge-past-target tiebreaker benefit: $0.0001$ per kWh AC (tiny — only wins when nothing else wants the surplus) |
+| $\beta_{\mathrm{ev}}^{(v)}$ | EV charge-past-target benefit for EV v: `future_value_per_kwh` — avoided-future-import valuation (issue #630), or a $0.0001$ per kWh AC fallback tiebreaker when no future price data is available |
 
 Plus EV pre-deadline benefit (undiscounted, per EV $v$ with deadline, slots $t \leq D_v$):
 
@@ -170,10 +170,12 @@ This direct benefit on pre-deadline slots ensures the LP always prefers charging
 Plus EV charge-past-target benefit (discounted, per charge-past-target EV $v$):
 
 $$
--\sum_{v \in \mathrm{past\_target}} \sum_{t} \delta_t \cdot \frac{\beta_{\mathrm{ev}}}{\eta_{\mathrm{charger}}^{(v)}} \cdot \mathrm{ev\_c}_v[t]
+-\sum_{v \in \mathrm{past\_target}} \sum_{t} \delta_t \cdot \frac{\beta_{\mathrm{ev}}^{(v)}}{\eta_{\mathrm{charger}}^{(v)}} \cdot \mathrm{ev\_c}_v[t]
 $$
 
-This benefit is deliberately tiny ($0.0001$ per kWh AC) — it only acts as a tiebreaker when the battery is full and export prices are near zero or negative. It must **not** compete with house battery charging (worth $p_{\mathrm{imp}}$) or export at good prices (worth $p_{\mathrm{exp}}$).
+$\beta_{\mathrm{ev}}^{(v)}$ is `EVConfig.future_value_per_kwh`: the avoided cost of importing the same energy later, computed as `confidence_factor × mean(import_price)` over the next 24 hours (`ev_future_charge_value_per_kwh` in `candidate_selector.py`, mirroring `replacement_price_from_next_discharge` for the house battery's terminal SoC). `confidence_factor` defaults to `0.9` and is configurable per EV (`hsem_ev_past_target_confidence_factor` / `hsem_ev_second_past_target_confidence_factor`) to discount for uncertainty in whether the EV will actually need the extra energy before its next charge.
+
+Because $\beta_{\mathrm{ev}}^{(v)}$ is priced in the same currency units as $p_{\mathrm{imp}}$ and $p_{\mathrm{exp}}$, charge-past-target EV charging competes fairly against both house battery charging and grid export — whichever has the higher genuine avoided-cost value wins the surplus for that slot. When no future price data is available (`future_value_per_kwh` is `None`), the MILP falls back to a tiny fixed tiebreaker ($0.0001$ per kWh AC) so surplus PV still prefers the EV over being wastefully curtailed/exported at near-zero or negative prices.
 
 ---
 

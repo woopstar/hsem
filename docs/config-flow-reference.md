@@ -128,7 +128,8 @@ Primary EV charger configuration.
 | EV SoC sensor | `hsem_ev_soc` | — | EV battery SoC sensor |
 | EV SoC target | `hsem_ev_soc_target` | 80 % | EV target SoC |
 | EV connected sensor | `hsem_ev_connected` | — | Binary sensor for EV plugged in |
-| Allow charge past target | `hsem_ev_allow_charge_past_target_soc` | `False` | Allow solar-only charging beyond target SoC |
+| Allow charge past target | `hsem_ev_allow_charge_past_target_soc` | `False` | Allow charging beyond target SoC from surplus PV, valued against export by avoided future import cost |
+| Past-target confidence factor | `hsem_ev_past_target_confidence_factor` | `0.9` | Discount (0.0–1.0) applied to the avoided-future-import valuation used for past-target charging |
 | Auto-Full on negative price | `hsem_ev_auto_full_negative_price` | `False` | Charge EV to 100 % when electricity price is negative |
 | Force max discharge power | `hsem_ev_charger_force_max_discharge_power` | `False` | Force maximum discharge power during discharge slots |
 | Max discharge power | `hsem_ev_charger_max_discharge_power` | 0 | Maximum discharge power cap (W) |
@@ -155,6 +156,7 @@ Target SoC and deadline are configured outside this step:
 - **Smart charging**: via the HSEM switch `switch.hsem_ev_smart_charging`
 - **Force charge now**: via the HSEM switch `switch.hsem_ev_force_charge_now`
 - **Allow charge past target**: via `hsem_ev_allow_charge_past_target_soc` in the EV charger step
+- **Past-target confidence factor**: via `hsem_ev_past_target_confidence_factor` in the EV charger step
 
 ### Step: `ev_second_planned_load`
 

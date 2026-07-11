@@ -14,7 +14,7 @@ for the HSEM (Home Smart Energy Management) project. Read this before making any
 | `engine.py` | Main entry point — orchestrates the full planning pipeline |
 | `slot_population.py` | Builds the 48/96/192-slot time horizon from price data |
 | `candidate_generator.py` | Generates charge/discharge plan candidates (partial-SoC, MILP, solar) |
-| `candidate_selector.py` | Picks the best candidate using time-discounted score |
+| `candidate_selector.py` | Picks the best candidate using time-discounted score; also hosts avoided-cost pricing helpers (`replacement_price_from_next_discharge`, `ev_future_charge_value_per_kwh`) |
 | `charge_scheduler.py` | Assigns charge recommendations to slots |
 | `discharge_scheduler.py` | Assigns discharge recommendations to slots; `concentrate_discharge_on_expensive_slots` uses **per-calendar-day** budget pools |
 | `milp_optimizer.py` | Solves the MILP LP problem — variable vector is 8*n base, growing to 8n + 2n·E + E with EV co-optimisation.  Accepts optional `EVConfig` list for EV integration. |
@@ -187,6 +187,29 @@ for t in sorted(targets)[1:]:
 
 ---
 
+## EV Charge-Past-Target Valuation (issue #630)
+
+When `allow_charge_past_target_soc` is enabled and the EV has reached its
+target SoC but is below 100 %, surplus PV diverted to the EV is priced at
+`EVConfig.future_value_per_kwh` — the avoided cost of importing that same
+energy later:
+
+```
+future_value_per_kwh = confidence_factor * mean(import_price[t] for t in next 24h of slots)
+```
+
+Computed by `ev_future_charge_value_per_kwh()` in `planner/candidate_selector.py`
+(mirrors `replacement_price_from_next_discharge()`, which applies the same
+avoided-cost principle to the house battery's terminal SoC), and wired into
+`EVConfig` per-EV in `_build_ev_configs_for_milp()` (`planner/engine_core.py`).
+`confidence_factor` defaults to 0.9 and is configurable per EV via
+`hsem_ev_past_target_confidence_factor` / `hsem_ev_second_past_target_confidence_factor`.
+When no future price data is available, the MILP falls back to a tiny fixed
+tiebreaker (0.0001/kWh AC) in `milp_optimizer.py`. Never hardcode a
+replacement constant here — always source it from `ev_future_charge_value_per_kwh()`.
+
+---
+
 ## Discharge Concentration — Per-Day Budget Pools
 
 `concentrate_discharge_on_expensive_slots` groups discharge slots by calendar day
@@ -238,6 +261,7 @@ Always check `docs/huawei_entities.md` before looking elsewhere.
 | #446 | `concentrate_discharge` greedy `break` skips viable slots | Fixed in #452 |
 | #447 | Partial-SoC fractions collapse to floor at low SoC | Open
 | #582 | EV charger power oscillates due to frequent MILP re-solves | Closed (reverted) |
+| #630 | EV charge-past-target valued at flat 0.0001 instead of avoided-cost | Closed |
 
 ---
 

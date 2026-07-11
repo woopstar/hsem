@@ -227,6 +227,12 @@ def build_sensor_config(
     ev.allow_charge_past_target_soc = convert_to_boolean(
         get_config_value(config_entry, "hsem_ev_allow_charge_past_target_soc")
     )
+    ev.past_target_confidence_factor = (
+        convert_to_float(
+            get_config_value(config_entry, "hsem_ev_past_target_confidence_factor")
+        )
+        or 0.9
+    )
     ev.force_max_discharge_power = convert_to_boolean(
         get_config_value(config_entry, "hsem_ev_charger_force_max_discharge_power")
     )
@@ -252,6 +258,14 @@ def build_sensor_config(
     )
     ev2.allow_charge_past_target_soc = convert_to_boolean(
         get_config_value(config_entry, "hsem_ev_second_allow_charge_past_target_soc")
+    )
+    ev2.past_target_confidence_factor = (
+        convert_to_float(
+            get_config_value(
+                config_entry, "hsem_ev_second_past_target_confidence_factor"
+            )
+        )
+        or 0.9
     )
     ev2.force_max_discharge_power = convert_to_boolean(
         get_config_value(

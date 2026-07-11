@@ -20,6 +20,7 @@ from custom_components.hsem.planner.candidate_generator import (
     generate_candidates,
 )
 from custom_components.hsem.planner.candidate_selector import (
+    ev_future_charge_value_per_kwh,
     replacement_price_from_next_discharge,
     select_best_candidate,
 )
@@ -628,6 +629,14 @@ def _build_ev_configs_for_milp(
     if not future_slots:
         return None
 
+    # Avoided-future-import-cost valuation for charge-past-target EVs
+    # (issue #630). Computed once — depends only on the slot price
+    # forecast, not per-EV state. Per-EV confidence factors are applied
+    # below when building each EVConfig.
+    ev_avg_future_import_price = ev_future_charge_value_per_kwh(
+        slots, now, confidence_factor=1.0
+    )
+
     # Build config for each EV slot pair (primary, secondary)
     ev_sources: list[
         tuple[
@@ -643,6 +652,7 @@ def _build_ev_configs_for_milp(
             datetime | None,
             bool,
             bool,
+            float,
         ]
     ] = [
         (
@@ -658,6 +668,7 @@ def _build_ev_configs_for_milp(
             inp.ev_planned_load_deadline,
             inp.ev_planned_load_base_load_includes_ev,
             inp.ev_planned_allow_charge_past_target_soc,
+            inp.ev_past_target_confidence_factor,
         ),
         (
             inp.ev_second_planned_load_enabled,
@@ -672,6 +683,7 @@ def _build_ev_configs_for_milp(
             inp.ev_second_planned_load_deadline,
             inp.ev_second_planned_load_base_load_includes_ev,
             inp.ev_second_allow_charge_past_target_soc,
+            inp.ev_second_past_target_confidence_factor,
         ),
     ]
     for (
@@ -687,6 +699,7 @@ def _build_ev_configs_for_milp(
         deadline,
         base_includes,
         allow_past_target,
+        past_target_confidence_factor,
     ) in ev_sources:
         if not enabled:
             continue
@@ -733,6 +746,12 @@ def _build_ev_configs_for_milp(
         slot_hours = inp.interval_minutes / 60.0
         max_dc = pwr * slot_hours * eff  # DC-side kWh per slot
 
+        future_value_per_kwh: float | None = None
+        if charge_past_target and ev_avg_future_import_price is not None:
+            future_value_per_kwh = (
+                past_target_confidence_factor * ev_avg_future_import_price
+            )
+
         configs.append(
             EVConfig(
                 enabled=True,
@@ -745,6 +764,7 @@ def _build_ev_configs_for_milp(
                 deadline_slot=deadline_slot,
                 base_load_includes_ev=base_includes,
                 charge_past_target=charge_past_target,
+                future_value_per_kwh=future_value_per_kwh,
             )
         )
 

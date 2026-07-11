@@ -616,3 +616,60 @@ def replacement_price_from_next_discharge(
     first_block.sort(key=lambda s: s.price.import_price, reverse=True)
     top = [s.price.import_price for s in first_block[:top_n]]
     return sum(top) / len(top) if top else None
+
+
+def ev_future_charge_value_per_kwh(
+    slots: list,
+    now: datetime,
+    lookahead_hours: float = 24.0,
+    confidence_factor: float = 0.9,
+) -> float | None:
+    """Value of 1 kWh of EV charge-past-target, priced at avoided future import cost.
+
+    When an EV has already reached its user-configured target SoC but
+    ``allow_charge_past_target_soc`` is enabled, surplus PV diverted to the
+    EV competes against exporting that same surplus.  This function prices
+    the EV side of that comparison: the energy is worth roughly what it
+    would otherwise cost to import the same amount of energy later, when
+    the EV needs to top up again.
+
+    Mirrors :func:`replacement_price_from_next_discharge`, which applies the
+    same avoided-cost principle to the house battery's terminal SoC.  The EV
+    case uses a fixed lookahead window instead of the next discharge window,
+    because EV energy use depends on driving patterns rather than a known
+    schedule — a plain average of near-term import prices is a reasonable,
+    defensible proxy.
+
+    A ``confidence_factor`` below ``1.0`` discounts the estimate to reflect
+    that the EV's future need is less certain than the battery's scheduled
+    discharge (the EV may be unplugged, or may not need the extra energy at
+    all before its next charge cycle).
+
+    Args:
+        slots:
+            Any candidate's populated slot list (must have ``price.import_price``
+            and ``start`` set).
+        now:
+            Timezone-aware current datetime.  Past slots are excluded.
+        lookahead_hours:
+            Size of the averaging window in hours.  Default 24 h: always
+            available even on the minimum-configured planning horizon, and
+            long enough to smooth over daily price cycles.
+        confidence_factor:
+            Multiplier applied to the averaged price to discount for
+            uncertainty in the EV's future energy need.  Default 0.9.
+
+    Returns:
+        Value in currency/kWh, or ``None`` when no future price data is
+        available within the lookahead window.
+    """
+    tz = now.tzinfo
+    cutoff = now + timedelta(hours=lookahead_hours)
+    future_prices: list[float] = [
+        float(s.price.import_price)
+        for s in slots
+        if now < as_tz(s.start, tz) <= cutoff and not math.isnan(s.price.import_price)
+    ]
+    if not future_prices:
+        return None
+    return confidence_factor * (sum(future_prices) / len(future_prices))
