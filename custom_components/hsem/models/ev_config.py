@@ -54,6 +54,13 @@ class EVConfig:
     #: deadline constraint is suppressed and EV charging is valued at the
     #: import price in the objective (avoided future import cost).
     charge_past_target: bool = False
+    #: Value (currency/kWh) of one kWh of charge-past-target EV charging,
+    #: derived from the avoided cost of importing that same energy later
+    #: (see ``ev_future_charge_value_per_kwh`` in ``candidate_selector.py``).
+    #: Only used when ``charge_past_target`` is True.  ``None`` falls back
+    #: to a tiny fixed tiebreaker benefit in the MILP (no future price data
+    #: available).
+    future_value_per_kwh: float | None = None
     #: Current session charge power in kW, or None when EV is not actively
     #: charging.  When set, the MILP treats the first 2h of EV slots as
     #: certain demand at this power level instead of using the probabilistic

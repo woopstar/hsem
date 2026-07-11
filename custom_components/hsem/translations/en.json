@@ -166,7 +166,8 @@
           "hsem_ev_second_enabled": "Enable Second EV Charger",
           "hsem_ev_soc": "EV State of Charge (SoC) Sensor",
           "hsem_house_power_includes_ev_charger_power": "House Power Includes EV Charger Power",
-          "hsem_ev_auto_full_negative_price": "Auto-Full EV on Negative Price"
+          "hsem_ev_auto_full_negative_price": "Auto-Full EV on Negative Price",
+          "hsem_ev_past_target_confidence_factor": "EV Past-Target Charging Confidence Factor (Advanced)"
         },
         "data_description": {
           "hsem_ev_allow_charge_past_target_soc": "Enable this option if you want to allow the system to continue charging the EV battery even after it has reached the target state of charge (SoC). This can be useful in scenarios where you want to ensure the EV is fully charged regardless of the target setting.",
@@ -178,7 +179,8 @@
           "hsem_ev_second_enabled": "Enable or disable the configuration for a second EV charger.",
           "hsem_ev_soc": "Select the sensor that provides the current state of charge (SoC) of your EV battery.",
           "hsem_house_power_includes_ev_charger_power": "Enable this if the house consumption power sensor already includes the EV charger power consumption.",
-          "hsem_ev_auto_full_negative_price": "When enabled, the EV is automatically set to full charging power when the electricity price is zero or negative. The previous charging mode is restored when the price rises above zero."
+          "hsem_ev_auto_full_negative_price": "When enabled, the EV is automatically set to full charging power when the electricity price is zero or negative. The previous charging mode is restored when the price rises above zero.",
+          "hsem_ev_past_target_confidence_factor": "Confidence multiplier (0.0-1.0) applied to the avoided-future-import valuation used when charging the EV past its target SoC. Lower values make the EV less competitive against exporting surplus PV, to account for uncertainty in whether the EV will actually need the extra energy before its next charge. Default 0.9."
         },
         "description": "Configure EV Charger settings for HSEM.",
         "title": "EV Charger Settings (Optional)"
@@ -191,7 +193,8 @@
           "hsem_ev_second_charger_power": "Second EV Charger Power Sensor",
           "hsem_ev_second_charger_status": "Second EV Charger Status Sensor",
           "hsem_ev_second_connected": "Second EV Connected Sensor",
-          "hsem_ev_second_soc": "Second EV State of Charge (SoC) Sensor"
+          "hsem_ev_second_soc": "Second EV State of Charge (SoC) Sensor",
+          "hsem_ev_second_past_target_confidence_factor": "Second EV Past-Target Charging Confidence Factor (Advanced)"
         },
         "data_description": {
           "hsem_ev_second_allow_charge_past_target_soc": "Enable this option if you want to allow the system to continue charging the EV battery even after it has reached the target state of charge (SoC). This can be useful in scenarios where you want to ensure the EV is fully charged regardless of the target setting.",
@@ -200,7 +203,8 @@
           "hsem_ev_second_charger_power": "Select the sensor that measures the power consumption of your EV charger.",
           "hsem_ev_second_charger_status": "Select the sensor or entity that indicates whether the EV charger is active (e.g., a switch or sensor).",
           "hsem_ev_second_connected": "Select the sensor or entity that indicates whether the EV is connected to the charger.",
-          "hsem_ev_second_soc": "Select the sensor that provides the current state of charge (SoC) of your EV battery."
+          "hsem_ev_second_soc": "Select the sensor that provides the current state of charge (SoC) of your EV battery.",
+          "hsem_ev_second_past_target_confidence_factor": "Confidence multiplier (0.0-1.0) applied to the avoided-future-import valuation used when charging the second EV past its target SoC. Lower values make the EV less competitive against exporting surplus PV, to account for uncertainty in whether the EV will actually need the extra energy before its next charge. Default 0.9."
         },
         "description": "Configure Second EV Charger settings for HSEM.",
         "title": "Second EV Charger Settings (Optional)"
@@ -626,7 +630,8 @@
           "hsem_ev_second_enabled": "Enable Second EV Charger",
           "hsem_ev_soc": "EV State of Charge (SoC) Sensor",
           "hsem_house_power_includes_ev_charger_power": "House Power Includes EV Charger Power",
-          "hsem_ev_auto_full_negative_price": "Auto-Full EV on Negative Price"
+          "hsem_ev_auto_full_negative_price": "Auto-Full EV on Negative Price",
+          "hsem_ev_past_target_confidence_factor": "EV Past-Target Charging Confidence Factor (Advanced)"
         },
         "data_description": {
           "hsem_ev_allow_charge_past_target_soc": "Enable this option if you want to allow the system to continue charging the EV battery even after it has reached the target state of charge (SoC). This can be useful in scenarios where you want to ensure the EV is fully charged regardless of the target setting.",
@@ -638,7 +643,8 @@
           "hsem_ev_second_enabled": "Enable or disable the configuration for a second EV charger.",
           "hsem_ev_soc": "Select the sensor that provides the current state of charge (SoC) of your EV battery.",
           "hsem_house_power_includes_ev_charger_power": "Enable this if the house consumption power sensor already includes the EV charger power consumption.",
-          "hsem_ev_auto_full_negative_price": "When enabled, the EV is automatically set to full charging power when the electricity price is zero or negative. The previous charging mode is restored when the price rises above zero."
+          "hsem_ev_auto_full_negative_price": "When enabled, the EV is automatically set to full charging power when the electricity price is zero or negative. The previous charging mode is restored when the price rises above zero.",
+          "hsem_ev_past_target_confidence_factor": "Confidence multiplier (0.0-1.0) applied to the avoided-future-import valuation used when charging the EV past its target SoC. Lower values make the EV less competitive against exporting surplus PV, to account for uncertainty in whether the EV will actually need the extra energy before its next charge. Default 0.9."
         },
         "description": "Configure EV Charger settings for HSEM.",
         "title": "EV Charger Settings (Optional)"
@@ -651,7 +657,8 @@
           "hsem_ev_second_charger_power": "Second EV Charger Power Sensor",
           "hsem_ev_second_charger_status": "Second EV Charger Status Sensor",
           "hsem_ev_second_connected": "Second EV Connected Sensor",
-          "hsem_ev_second_soc": "Second EV State of Charge (SoC) Sensor"
+          "hsem_ev_second_soc": "Second EV State of Charge (SoC) Sensor",
+          "hsem_ev_second_past_target_confidence_factor": "Second EV Past-Target Charging Confidence Factor (Advanced)"
         },
         "data_description": {
           "hsem_ev_second_allow_charge_past_target_soc": "Enable this option if you want to allow the system to continue charging the EV battery even after it has reached the target state of charge (SoC). This can be useful in scenarios where you want to ensure the EV is fully charged regardless of the target setting.",
@@ -660,7 +667,8 @@
           "hsem_ev_second_charger_power": "Select the sensor that measures the power consumption of your EV charger.",
           "hsem_ev_second_charger_status": "Select the sensor or entity that indicates whether the EV charger is active (e.g., a switch or sensor).",
           "hsem_ev_second_connected": "Select the sensor or entity that indicates whether the EV is connected to the charger.",
-          "hsem_ev_second_soc": "Select the sensor that provides the current state of charge (SoC) of your EV battery."
+          "hsem_ev_second_soc": "Select the sensor that provides the current state of charge (SoC) of your EV battery.",
+          "hsem_ev_second_past_target_confidence_factor": "Confidence multiplier (0.0-1.0) applied to the avoided-future-import valuation used when charging the second EV past its target SoC. Lower values make the EV less competitive against exporting surplus PV, to account for uncertainty in whether the EV will actually need the extra energy before its next charge. Default 0.9."
         },
         "description": "Configure Second EV Charger settings for HSEM.",
         "title": "Second EV Charger Settings (Optional)"

@@ -594,6 +594,141 @@ def test_two_evs_charger_power_fields():
 
 
 # ---------------------------------------------------------------------------
+# Charge-past-target valuation (issue #630)
+# ---------------------------------------------------------------------------
+
+
+@_pytestmark_scipy
+def test_charge_past_target_wins_surplus_when_future_value_exceeds_export():
+    """EV charges past target when future_value_per_kwh > export price.
+
+    Setup: single slot with PV surplus. The house battery is given a
+    negligible capacity (0.001 kWh) so the MILP stays active without the
+    battery meaningfully competing for the surplus. EV is already at
+    target (charge_past_target=True) with future_value_per_kwh (1.20)
+    higher than the slot's export price (0.89), so all surplus should go
+    to the EV, not export.
+    """
+    slots = [
+        _make_slot(hour=14, day=15, import_price=1.50, export_price=0.89, pv_kwh=5.0)
+    ]
+
+    ev = EVConfig(
+        enabled=True,
+        initial_soc_kwh=40.0,
+        target_kwh=40.0,  # already at target
+        capacity_kwh=50.0,
+        max_charge_per_slot=5.0,
+        charger_efficiency=1.0,
+        charge_past_target=True,
+        future_value_per_kwh=1.20,
+    )
+
+    # A tiny house battery capacity keeps the MILP active (usable_kwh and
+    # max_charge_per_slot must be > 0) without giving the battery enough
+    # headroom to meaningfully compete for the surplus.
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=0.001,
+        max_charge_per_slot=0.001,
+        max_discharge_per_slot=None,
+        ev_configs=[ev],
+    )
+
+    assert result is not None
+    out_slots, _diag = result
+
+    # Surplus PV (after house consumption) should go to the EV, not export.
+    assert out_slots[0].ev_total_planned_load_kwh > 1e-6, (
+        "EV should receive surplus PV when its future value exceeds export price"
+    )
+
+
+@_pytestmark_scipy
+def test_charge_past_target_loses_surplus_when_future_value_below_export():
+    """EV does NOT charge past target when future_value_per_kwh < export price.
+
+    Mirrors the reported scenario: EV at target, export price high (0.89),
+    but the EV's avoided-future-import valuation is low (0.40) — surplus
+    should be exported instead of diverted to the EV.
+    """
+    slots = [
+        _make_slot(hour=14, day=15, import_price=1.50, export_price=0.89, pv_kwh=5.0)
+    ]
+
+    ev = EVConfig(
+        enabled=True,
+        initial_soc_kwh=40.0,
+        target_kwh=40.0,  # already at target
+        capacity_kwh=50.0,
+        max_charge_per_slot=5.0,
+        charger_efficiency=1.0,
+        charge_past_target=True,
+        future_value_per_kwh=0.40,
+    )
+
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=0.001,
+        max_charge_per_slot=0.001,
+        max_discharge_per_slot=None,
+        ev_configs=[ev],
+    )
+
+    assert result is not None
+    out_slots, _diag = result
+
+    # Surplus should be exported, not diverted to the EV.
+    assert out_slots[0].ev_total_planned_load_kwh == pytest.approx(0.0, abs=1e-6), (
+        "EV should not charge past target when export is more valuable"
+    )
+
+
+@_pytestmark_scipy
+def test_charge_past_target_falls_back_to_tiebreaker_when_value_none():
+    """When future_value_per_kwh is None, the tiny 0.0001 tiebreaker applies.
+
+    With a near-zero export price, the EV should still absorb surplus PV
+    rather than let it be exported for near-zero revenue.
+    """
+    slots = [
+        _make_slot(hour=14, day=15, import_price=1.50, export_price=0.00001, pv_kwh=5.0)
+    ]
+
+    ev = EVConfig(
+        enabled=True,
+        initial_soc_kwh=40.0,
+        target_kwh=40.0,
+        capacity_kwh=50.0,
+        max_charge_per_slot=5.0,
+        charger_efficiency=1.0,
+        charge_past_target=True,
+        future_value_per_kwh=None,
+    )
+
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=0.001,
+        max_charge_per_slot=0.001,
+        max_discharge_per_slot=None,
+        ev_configs=[ev],
+    )
+
+    assert result is not None
+    out_slots, _diag = result
+    assert out_slots[0].ev_total_planned_load_kwh > 1e-6, (
+        "EV should absorb surplus via the fallback tiebreaker "
+        "when no future price data is available"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Integration test: full planner with EV config
 # ---------------------------------------------------------------------------
 

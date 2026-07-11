@@ -308,6 +308,7 @@ class TestBuildEvChargerSchema:
         assert "hsem_ev_soc" in keys
         assert "hsem_ev_connected" in keys
         assert "hsem_ev_allow_charge_past_target_soc" in keys
+        assert "hsem_ev_past_target_confidence_factor" in keys
 
     @pytest.mark.asyncio
     async def test_secondary_ev_schema_omits_primary_only_fields(self):
@@ -328,6 +329,7 @@ class TestBuildEvChargerSchema:
         assert "hsem_ev_second_soc" in keys
         assert "hsem_ev_second_connected" in keys
         assert "hsem_ev_second_allow_charge_past_target_soc" in keys
+        assert "hsem_ev_second_past_target_confidence_factor" in keys
 
     @pytest.mark.asyncio
     async def test_primary_schema_keys_match_original_ev_step(self):
@@ -383,6 +385,7 @@ class TestValidateEvChargerInput:
         assert errors.get("hsem_ev_charger_max_discharge_power") == "required"
         assert errors.get("hsem_ev_charger_force_max_discharge_power") == "required"
         assert errors.get("hsem_ev_allow_charge_past_target_soc") == "required"
+        assert errors.get("hsem_ev_past_target_confidence_factor") == "required"
         assert errors.get("hsem_house_power_includes_ev_charger_power") == "required"
 
     @pytest.mark.asyncio
@@ -401,6 +404,7 @@ class TestValidateEvChargerInput:
             errors.get("hsem_ev_second_charger_force_max_discharge_power") == "required"
         )
         assert errors.get("hsem_ev_second_allow_charge_past_target_soc") == "required"
+        assert errors.get("hsem_ev_second_past_target_confidence_factor") == "required"
 
     @pytest.mark.asyncio
     async def test_valid_primary_ev_input_passes(self):
@@ -414,6 +418,7 @@ class TestValidateEvChargerInput:
                 "hsem_ev_charger_max_discharge_power": 2000,
                 "hsem_ev_charger_force_max_discharge_power": False,
                 "hsem_ev_allow_charge_past_target_soc": False,
+                "hsem_ev_past_target_confidence_factor": 0.9,
                 "hsem_ev_auto_full_negative_price": False,
                 "hsem_house_power_includes_ev_charger_power": True,
             },
@@ -434,6 +439,7 @@ class TestValidateEvChargerInput:
                 "hsem_ev_charger_max_discharge_power": 2000,
                 "hsem_ev_charger_force_max_discharge_power": False,
                 "hsem_ev_allow_charge_past_target_soc": False,
+                "hsem_ev_past_target_confidence_factor": 0.9,
                 "hsem_house_power_includes_ev_charger_power": True,
                 "hsem_ev_charger_status": "sensor.ev_status_nonexistent",
             },
@@ -453,6 +459,7 @@ class TestValidateEvChargerInput:
             "hsem_ev_charger_max_discharge_power": 500,
             "hsem_ev_charger_force_max_discharge_power": True,
             "hsem_ev_allow_charge_past_target_soc": True,
+            "hsem_ev_past_target_confidence_factor": 0.9,
             "hsem_house_power_includes_ev_charger_power": False,
         }
         errors_helper = await validate_ev_charger_input(
@@ -475,6 +482,7 @@ class TestValidateEvChargerInput:
             "hsem_ev_second_charger_max_discharge_power": 1000,
             "hsem_ev_second_charger_force_max_discharge_power": False,
             "hsem_ev_second_allow_charge_past_target_soc": False,
+            "hsem_ev_second_past_target_confidence_factor": 0.9,
         }
         errors_helper = await validate_ev_charger_input(
             hass, user_input, prefix="hsem_ev_second"
@@ -522,6 +530,7 @@ class TestSchemaRoundTrip:
             "hsem_ev_charger_force_max_discharge_power": False,
             "hsem_ev_charger_max_discharge_power": 2000,
             "hsem_ev_allow_charge_past_target_soc": False,
+            "hsem_ev_past_target_confidence_factor": 0.9,
         }
         result = schema(valid_input)
         assert result["hsem_ev_charger_max_discharge_power"] == 2000  # pyright: ignore[reportIndexIssue]
@@ -537,6 +546,7 @@ class TestSchemaRoundTrip:
             "hsem_ev_second_charger_force_max_discharge_power": True,
             "hsem_ev_second_charger_max_discharge_power": 1500,
             "hsem_ev_second_allow_charge_past_target_soc": True,
+            "hsem_ev_second_past_target_confidence_factor": 0.9,
         }
         result = schema(valid_input)
         assert result["hsem_ev_second_charger_max_discharge_power"] == 1500  # pyright: ignore[reportIndexIssue]
