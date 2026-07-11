@@ -7,7 +7,6 @@ tested with plain dataclasses — no Home Assistant required.
 from __future__ import annotations
 
 from datetime import UTC
-from typing import Any
 
 from custom_components.hsem.custom_sensors.recommendation_resolver import (
     resolve_current_recommendation,
@@ -115,12 +114,14 @@ class TestGridChargePreserved:
 class TestEVSmartCharging:
     def test_ev1_charging_triggers_ev_mode(self):
         rec = _make_rec(recommendation=Recommendations.BatteriesDischargeMode.value)
+        rec.ev_charger_calculated_power = 7500.0  # Planner allocated power
         live = _make_live(import_price=0.5, ev_charging=True)
         resolve_current_recommendation(rec, live, 0.0)
         assert rec.recommendation == Recommendations.EVSmartCharging.value
 
     def test_ev2_charging_triggers_ev_mode(self):
         rec = _make_rec(recommendation=Recommendations.BatteriesWaitMode.value)
+        rec.ev_second_charger_calculated_power = 11000.0  # Planner allocated power
         live = _make_live(import_price=0.5, ev2_charging=True)
         resolve_current_recommendation(rec, live, 0.0)
         assert rec.recommendation == Recommendations.EVSmartCharging.value
