@@ -13,7 +13,7 @@ from __future__ import annotations
 import statistics
 from dataclasses import dataclass, field
 
-from custom_components.hsem.utils.logger import HSEM_LOGGER
+from custom_components.hsem.utils.logger import log_planner
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -99,14 +99,16 @@ class SolarForecastCorrector:
             actual_kwh: Actual PV energy in kWh.
         """
         if hour < 0 or hour > 23:
-            HSEM_LOGGER.warning(
+            log_planner(
+                "warning",
                 "[solar_corrector] update_hour called with invalid hour %d — ignoring",
                 hour,
             )
             return
 
         if abs(forecast_kwh) < _FORECAST_EPS:
-            HSEM_LOGGER.debug(
+            log_planner(
+                "debug",
                 "[solar_corrector] update_hour(h=%d) skipped — forecast_kwh=%.4f near zero",
                 hour,
                 forecast_kwh,
@@ -133,7 +135,8 @@ class SolarForecastCorrector:
         else:
             self.hour_factors[hour] = 1.0
 
-        HSEM_LOGGER.debug(
+        log_planner(
+            "debug",
             "[solar_corrector] update_hour(h=%d) factor=%.4f  samples=%d",
             hour,
             self.hour_factors.get(hour, 1.0),
@@ -153,7 +156,8 @@ class SolarForecastCorrector:
         while len(self._recent_residuals) > MAX_RESIDUALS:
             self._recent_residuals.pop(0)
 
-        HSEM_LOGGER.debug(
+        log_planner(
+            "debug",
             "[solar_corrector] update_residual  residual_count=%d",
             len(self._recent_residuals),
         )
@@ -192,7 +196,8 @@ class SolarForecastCorrector:
 
         corrected = forecast_kwh * hour_factor * residual_factor
 
-        HSEM_LOGGER.debug(
+        log_planner(
+            "debug",
             "[solar_corrector] get_corrected_pv(h=%d, forecast=%.4f, ahead=%d)"
             " → hour_factor=%.4f  residual_factor=%.4f  corrected=%.4f",
             hour,

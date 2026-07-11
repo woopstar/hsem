@@ -350,3 +350,33 @@ class TestEdgeCases:
         result = c.get_corrected_pv(10, 2.0, slots_ahead=0)
         # hour_factor=1.0, residual=1.5 => 3.0
         assert result == pytest.approx(2.0 * 1.5)
+
+
+class TestNoDirectBlockingLoggerCalls:
+    """Regression test for issue #632.
+
+    ``solar_corrector.py`` is pure Python and may be invoked synchronously
+    from the planner (``populate_solcast`` -> ``get_corrected_pv``) while
+    the coordinator's async update cycle is running inside the event loop.
+    Calling ``HSEM_LOGGER.debug()``/``.warning()`` directly triggers Home
+    Assistant's "Detected blocking call to open" warning because the
+    ``RotatingFileHandler`` performs synchronous file I/O. All logging in
+    this module must go through ``log_planner()``, which offloads the I/O
+    to a thread-pool executor when a running event loop is detected.
+    """
+
+    def test_module_does_not_import_hsem_logger_directly(self) -> None:
+        """solar_corrector.py must not import HSEM_LOGGER at all — only log_planner."""
+        import inspect
+
+        from custom_components.hsem.utils import solar_corrector
+
+        source = inspect.getsource(solar_corrector)
+        assert "HSEM_LOGGER" not in source, (
+            "solar_corrector.py must not reference HSEM_LOGGER directly — "
+            "use log_planner() so file I/O is offloaded off the event loop "
+            "(issue #632)."
+        )
+        assert "log_planner" in source, (
+            "solar_corrector.py should log via log_planner() for event-loop-safe I/O."
+        )

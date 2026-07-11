@@ -258,6 +258,15 @@ Always check `docs/huawei_entities.md` before looking elsewhere.
 - Never use `logging.getLogger(__name__)` directly in planner files.
 - `HSEM_LOGGER.propagate = False` keeps output out of `home-assistant.log`.
 - Log to `hsem.log` (10 MB × 5 files rotating) in HA config dir.
+- **Never call `HSEM_LOGGER.debug()`/`.info()`/`.warning()` directly from pure-Python
+  planner/utils modules that can run synchronously inside the coordinator's async
+  update cycle** (e.g. `planner/*.py`, `utils/solar_corrector.py`, `utils/dynamic_floor.py`,
+  `utils/capacity_learner.py`, `utils/charge_rate_learner.py`). The `RotatingFileHandler`
+  performs blocking `open()`/`write()` calls that trigger Home Assistant's
+  "Detected blocking call to open" warning when invoked from the event loop.
+  Always use `log_planner(level, msg, *args)` instead — it offloads file I/O to a
+  thread-pool executor when a running event loop is detected, falling back to a
+  direct call only when no loop is present (tests, early init). See issue #632.
 
 ---
 
