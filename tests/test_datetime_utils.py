@@ -756,6 +756,7 @@ class TestResolverDoesNotEraseEVFields:
             ev_planned_load_kwh=3.5,
             estimated_net_consumption_kwh=4.0,
             recommendation="batteries_wait_mode",
+            ev_charger_calculated_power=7500.0,  # Planner allocated power
         )
 
         # EV is actively charging — resolver will relabel to ev_smart_charging
