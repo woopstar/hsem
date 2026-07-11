@@ -33,6 +33,10 @@ class EVChargerConfig:
     soc_entity: str | None = None
     connected_entity: str | None = None
     allow_charge_past_target_soc: bool = False
+    #: Confidence multiplier (0.0-1.0) applied to the avoided-future-import
+    #: valuation of charge-past-target EV charging in the MILP. See
+    #: ``ev_future_charge_value_per_kwh`` in ``planner/candidate_selector.py``.
+    past_target_confidence_factor: float = 0.9
     force_max_discharge_power: bool = False
     max_discharge_power: int = 0
 

@@ -283,6 +283,10 @@ def build_planner_input(
         ev_planned_allow_charge_past_target_soc=bool(
             cfg.ev.allow_charge_past_target_soc
         ),
+        ev_past_target_confidence_factor=convert_to_float(
+            cfg.ev.past_target_confidence_factor
+        )
+        or 0.9,
         # Second EV planned load
         ev_second_planned_load_enabled=bool(cfg.ev_second_planned_load_enabled),
         ev_second_planned_load_connected=bool(live.ev_second_planned_load_connected),
@@ -320,6 +324,10 @@ def build_planner_input(
         ev_second_allow_charge_past_target_soc=bool(
             cfg.ev_second.allow_charge_past_target_soc
         ),
+        ev_second_past_target_confidence_factor=convert_to_float(
+            cfg.ev_second.past_target_confidence_factor
+        )
+        or 0.9,
         time_discount_rate=0.995,
         # Planner hysteresis (issue #372)
         planner_hysteresis_enabled=bool(cfg.planner_hysteresis_enabled),

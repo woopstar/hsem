@@ -206,7 +206,8 @@ flowchart TD
 | Connected sensor | `hsem_ev_connected` binary sensor | Plug status |
 | Smart charging switch | `switch.hsem_ev_smart_charging` | Enable/disable |
 | Force charge now | `switch.hsem_ev_force_charge_now` | Immediate charge |
-| Allow past target | `hsem_ev_allow_charge_past_target_soc` | Solar-only surplus charging past target |
+| Allow past target | `hsem_ev_allow_charge_past_target_soc` | Surplus charging past target, valued against export by avoided future import cost |
+| Past-target confidence factor | `hsem_ev_past_target_confidence_factor` | Discount (0.0–1.0, default 0.9) applied to the avoided-future-import valuation |
 | Base load includes EV | `hsem_house_power_includes_ev_charger_power` | CT clamp position |
 | Auto-Full on negative price | `hsem_ev_auto_full_negative_price` | Max-charge EV when price ≤ 0 |
 

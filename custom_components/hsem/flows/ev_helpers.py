@@ -145,6 +145,24 @@ async def build_ev_charger_schema(  # NOSONAR
         )
     ] = selector({"boolean": {}})
 
+    fields[
+        vol.Required(
+            f"{prefix}_past_target_confidence_factor",
+            default=get_config_value(
+                config_entry, f"{prefix}_past_target_confidence_factor"
+            ),
+        )
+    ] = selector(
+        {
+            "number": {
+                "min": 0.0,
+                "max": 1.0,
+                "step": 0.05,
+                "mode": "slider",
+            }
+        }
+    )
+
     if include_primary_fields:
         fields[
             vol.Required(
@@ -185,6 +203,7 @@ async def validate_ev_charger_input(
         f"{prefix}_charger_max_discharge_power",
         f"{prefix}_charger_force_max_discharge_power",
         f"{prefix}_allow_charge_past_target_soc",
+        f"{prefix}_past_target_confidence_factor",
     ]
     # Auto-full on negative price is primary-EV only.
     if prefix == "hsem_ev":

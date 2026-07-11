@@ -198,6 +198,13 @@ class PlannerInput:
     #: surplus PV that would otherwise be curtailed (e.g. battery full,
     #: negative export prices).
     ev_planned_allow_charge_past_target_soc: bool = False
+    #: Confidence multiplier (0.0-1.0) applied to the avoided-future-import
+    #: valuation of charge-past-target EV charging (see
+    #: ``ev_future_charge_value_per_kwh`` in ``candidate_selector.py``).
+    #: Lower values make the EV less competitive against exporting surplus
+    #: PV, to account for uncertainty in whether the EV will actually need
+    #: the extra energy.
+    ev_past_target_confidence_factor: float = 0.9
 
     # --- EV planned load integration — second EV (optional, disabled by default) ---
     #: When True, the second EV planned load feature is active.
@@ -214,6 +221,8 @@ class PlannerInput:
     ev_second_planned_load_base_load_includes_ev: bool = False
     #: Same as ev_planned_allow_charge_past_target_soc, for the second EV.
     ev_second_allow_charge_past_target_soc: bool = False
+    #: Same as ev_past_target_confidence_factor, for the second EV.
+    ev_second_past_target_confidence_factor: float = 0.9
 
     # --- planner hysteresis — keep the active plan unless the new plan
     # is materially better (anti-flapping, issue #372). ---
