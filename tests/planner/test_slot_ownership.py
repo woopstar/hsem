@@ -628,6 +628,7 @@ class TestResolverPreservesEnergyFields:
         rec = _make_hrec(
             ev_kwh=3.0, estimated_net_consumption_kwh=1.5, batteries_charged_kwh=0.5
         )
+        rec.ev_charger_calculated_power = 7500.0
         before = self._snapshot_energy(rec)
         resolve_current_recommendation(rec, _make_live(ev_charging=True), 0.0)
         assert rec.recommendation == Recommendations.EVSmartCharging.value
