@@ -128,13 +128,13 @@ $$
     && \text{charge-side conversion loss cost} \\
     + & \epsilon_{\mathrm{dis}} \cdot p_{\mathrm{imp}}[t] \cdot ed[t]
     && \text{discharge-side conversion loss cost} \\
-    - & \gamma \cdot \bigl( ec[t] - ed[t] \bigr)
-    && \text{terminal-SoC replacement credit} \\
     + & p_{\mathrm{soc}} \cdot \bigl( \mathrm{s\_max\_pen}[t] + \mathrm{s\_min\_pen}[t] \bigr)
     && \text{SoC soft-constraint penalties} \\
     + & p_{\mathrm{fuse}} \cdot \mathrm{gi\_pen}[t]
     && \text{Main fuse grid-import penalty}
 \bigg] \\
++ \sum_{t} \gamma \cdot \bigl( ed[t] - ec[t] \bigr)
+    && \text{terminal-SoC valuation (undiscounted)} \\
 \end{aligned}
 $$
 

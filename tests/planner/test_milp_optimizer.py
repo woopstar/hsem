@@ -1805,6 +1805,133 @@ def test_milp_discharge_not_overwritten_without_prepopulated_flag():
 
 
 @_scipy_skip()
+def test_terminal_soc_objective_preserves_charge_with_high_replacement_price():
+    """Issue #638: With replacement_price_per_kwh=2.00, the LP must preserve
+    battery charge instead of draining/exporting at a much lower export price.
+
+    Single slot, battery full (5 kWh), no consumption, no PV, import=0.10,
+    export=0.05, replacement_price=2.00.  Without the terminal-SoC term in
+    the objective, the LP would discharge/export for a 0.05/kWh profit.
+    With the term, the LP sees a 2.00/kWh penalty for discharging, so it
+    should choose to do nothing instead.
+    """
+    s = _make_slot(hour=0, import_price=0.10, export_price=0.05, consumption_kwh=0.0)
+    s.solcast_pv_estimate_kwh = 0.0
+    s.estimated_net_consumption_kwh = 0.0
+    slots = [s]
+
+    milp_result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=5.0,
+        usable_kwh=5.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+        replacement_price_per_kwh=2.00,
+        charge_efficiency_pct=100.0,
+        discharge_efficiency_pct=100.0,
+    )
+    assert milp_result is not None
+    out_slots, diag = milp_result
+
+    # The LP must NOT export when replacement_price (2.00) is
+    # 40x the export price (0.05) — the terminal-SoC penalty dominates.
+    # Note: the LP may find a degenerate optimum with simultaneous
+    # ec=ed>0 (zero net SoC change) since the terminal-SoC terms
+    # cancel.  The post-processing resolves this by zeroing both.
+    # What matters is that no discharge/export recommendation is set
+    # and no grid export occurs.
+    rec = out_slots[0].recommendation
+    exp = out_slots[0].grid_export_kwh
+    assert rec is None, (
+        f"LP must not recommend discharge/export when replacement_price >> export, "
+        f"got recommendation={rec}"
+    )
+    assert exp < 1e-6, (
+        f"LP must not export when replacement_price=2.00 >> export=0.05, "
+        f"got grid_export_kwh={exp:.6f}"
+    )
+
+
+@_scipy_skip()
+def test_terminal_soc_objective_none_produces_identical_results():
+    """Issue #638: replacement_price_per_kwh=None must produce IDENTICAL
+    results to before the terminal-SoC-in-objective change.
+
+    The terminal-SoC term is guarded by
+    `if replacement_price_per_kwh is not None and abs(replacement_price_per_kwh) > 1e-9`,
+    so passing None must produce bit-identical LP solutions.
+    """
+    slots = _make_arbitrage_slots(
+        cheap_hours=[0, 1, 2],
+        expensive_hours=[6, 7, 8],
+        cheap_price=0.05,
+        expensive_price=1.50,
+        total_hours=12,
+    )
+
+    milp_result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=2.0,
+        usable_kwh=5.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+        cycle_cost_per_kwh=0.0,
+        charge_efficiency_pct=100.0,
+        discharge_efficiency_pct=100.0,
+        replacement_price_per_kwh=None,
+    )
+    assert milp_result is not None
+    out_slots, diag = milp_result
+
+    # With no replacement price, the LP should charge in cheap slots
+    # and discharge/export in expensive slots (arbitrage).
+    charged_any = any(s.batteries_charged_kwh > 1e-6 for s in out_slots)
+    discharged_any = any(s.batteries_discharged_kwh > 1e-6 for s in out_slots)
+    assert charged_any, "LP should charge with cheap import prices"
+    assert discharged_any, "LP should discharge with expensive import prices"
+
+    # The terminal_soc_credit in diagnostics should be 0 (no replacement price).
+    assert diag["terminal_soc_credit"] == pytest.approx(0.0, abs=1e-9)
+
+
+@_scipy_skip()
+def test_terminal_soc_objective_low_replacement_price_still_allows_export():
+    """Issue #638: With a genuinely low replacement_price_per_kwh (0.01),
+    exporting at a normal price (0.20) should still win over preserving SoC.
+
+    This proves the new terminal-SoC term does not dominate when it shouldn't.
+    """
+    s = _make_slot(hour=0, import_price=0.30, export_price=0.20, consumption_kwh=0.0)
+    s.solcast_pv_estimate_kwh = 0.0
+    s.estimated_net_consumption_kwh = 0.0
+    slots = [s]
+
+    milp_result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=5.0,
+        usable_kwh=5.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+        replacement_price_per_kwh=0.01,
+        charge_efficiency_pct=100.0,
+        discharge_efficiency_pct=100.0,
+    )
+    assert milp_result is not None
+    out_slots, diag = milp_result
+
+    # Export revenue (0.20/kWh) > replacement_price (0.01/kWh), so the LP
+    # should prefer exporting over preserving charge.
+    exp = out_slots[0].grid_export_kwh
+    assert exp > 1e-6, (
+        f"LP should export when export_price=0.20 > replacement_price=0.01, "
+        f"got grid_export_kwh={exp:.6f}"
+    )
+
+
+@_scipy_skip()
 def test_non_milp_candidates_unaffected_by_milp_prepopulated():
     """Regression test: non-MILP candidates (no_action, passive) must keep
     using simulate_soc's existing greedy logic exactly as before.

@@ -497,11 +497,19 @@ After the deadline slot `D`:
 
 #### 5. Terminal SoC (horizon-end valuation)
 
-At horizon end, the battery's remaining energy is valued:
+At horizon end, the battery's remaining energy is valued **inside the LP objective**
+as a linear term so the LP itself optimises for it:
 
-- `terminal_soc_credit = (initial_kwh − final_kwh) × replacement_price`
+- `terminal_soc_value = (Σed − Σec) × replacement_price`
+- Discharging (`ed[t]`) incurs a penalty `+γ` in the objective
+- Charging (`ec[t]`) earns a credit `−γ` in the objective
 - Ending with less energy → penalty (encourages recharging)
 - Ending with more energy → credit (discourages wasteful discharging)
+- **Undiscounted** — terminal SoC is a single point-in-time valuation at
+  horizon end, matching `cost_function.py`'s `terminal_soc_value` treatment.
+
+The post-hoc `terminal_soc_credit` calculation in the diagnostics dict is
+retained as a consistency check but no longer drives the LP's decisions.
 
 #### Key constraint: EV surplus-only for charge-past-target
 

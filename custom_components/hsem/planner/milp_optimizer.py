@@ -518,9 +518,12 @@ def solve_milp(
     # occurs.  Charge-side loss at charge slot price, discharge-side loss at
     # discharge slot price.  This matches cost_function.py's per-slot pricing.
     #
-    # Terminal-SoC credit is NOT applied per-slot.  It is computed at
-    # end-of-horizon after the LP solves, matching cost_function.py's
-    # terminal_soc_value = (initial_kwh - final_kwh) * replacement_price.
+    # Terminal-SoC credit IS applied per-slot as a linear term in the
+    # objective so the LP itself optimises for it.  The post-hoc
+    # calculation below is retained as a diagnostic consistency check.
+    # terminal_soc_value = (Σed - Σec) * replacement_price
+    # This is undiscounted — terminal SoC is a single point-in-time
+    # valuation at horizon end, matching cost_function.py's treatment.
     #
     # Apply time discount so the MILP objective matches the selector's
     # discounted score (distant savings are worth less).
@@ -555,6 +558,21 @@ def solve_milp(
         c_obj[ge_off + t] = -p_exp[t] * discount  # export revenue (negative = gain)
         # pv[t] has zero objective cost
         # curt[t] has zero objective cost (curtailment is free)
+
+        # Terminal-SoC term in the objective (undiscounted).
+        # Values the opportunity cost of ending the horizon with more or
+        # less stored battery energy.  Every unit of charge/discharge
+        # anywhere in the horizon contributes to the final cumulative SoC:
+        #   terminal_soc_value = (Σed - Σec) * replacement_price_per_kwh
+        # Charging (ec) earns a credit (-γ), discharging (ed) incurs a
+        # penalty (+γ).  Undiscounted — matches cost_function.py where
+        # terminal_soc_value is always added raw to score.
+        if (
+            replacement_price_per_kwh is not None
+            and abs(replacement_price_per_kwh) > 1e-9
+        ):
+            c_obj[ec_off + t] -= replacement_price_per_kwh
+            c_obj[ed_off + t] += replacement_price_per_kwh
 
         # Penalty costs: high enough that penalties are zero when SoC is
         # within bounds, but absorb violations when the initial SoC is
@@ -970,13 +988,14 @@ def solve_milp(
         return None
 
     # ------------------------------------------------------------------
-    # Compute terminal-SoC credit at end-of-horizon (not per-slot)
+    # Compute terminal-SoC credit at end-of-horizon (diagnostic).
     # This matches cost_function.py's terminal_soc_value calculation:
     # terminal_soc_value = (initial_kwh - final_kwh) * replacement_price
     #
-    # The LP objective does NOT include terminal-SoC credit.  We add it
-    # here as a post-hoc adjustment to the objective value so the selector
-    # sees the correct total score.
+    # The LP objective now INCLUDES this term (see c_obj construction
+    # above), so the solution itself already reflects this valuation.
+    # This post-hoc calculation is retained as a diagnostic consistency
+    # check and for the diagnostics dict.
     # ------------------------------------------------------------------
     ec_sol = result.x[ec_off : ec_off + m]
     ed_sol = result.x[ed_off : ed_off + m]
