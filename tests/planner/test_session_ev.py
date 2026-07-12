@@ -1,9 +1,10 @@
-"""Tests for session-aware EV demand in MILP (issue #615).
+"""Tests for session-aware EV demand in MILP (issue #615, #639).
 
 Coverage
 --------
-- session_charge_kw overrides probabilistic demand for first 8 slots
-- Fallback to normal EV co-optimisation beyond 8 slots
+- session_charge_kw overrides probabilistic demand for first 2 hours
+  (resolution-dependent: 8 slots at 15-min, 4 at 30-min, 2 at 60-min)
+- Fallback to normal EV co-optimisation beyond the 2-hour session window
 - Grid-charging battery is blocked during session demand slots
 """
 
@@ -93,10 +94,11 @@ _pytestmark_scipy = pytest.mark.skipif(
 
 @_pytestmark_scipy
 def test_session_charge_overrides_probabilistic_demand():
-    """Session EV charge at 6 kW is fixed for first 8 slots (60-min slots).
+    """Session EV charge at 6 kW is fixed for first 2 hours of future slots.
 
-    The EV config has session_charge_kw=6.0, so the first 8 hourly slots
-    should each show 6.0 * 1h * 0.9 / 0.9 = 6.0 kWh AC load.  Beyond slot 8,
+    At 60-min resolution, this covers 2 slots.  The EV config has
+    session_charge_kw=6.0, so those 2 hourly slots should each show
+    6.0 * 1h = 6.0 kWh AC load.  Beyond the 2-hour session window,
     the MILP decides EV charging as usual.
     """
     # 16 hourly slots starting at 14:00 (slot 0 = 14-15, past)
@@ -126,14 +128,12 @@ def test_session_charge_overrides_probabilistic_demand():
     assert result is not None
     out_slots, _diag = result
 
-    # Slot 0 (LP index 0 → slot at 15:00, first future slot)
-    # Session should apply to LP slots 0-7 (real slots 15:00-22:00)
+    # At 60-min resolution, session covers first 2 future slots
+    # (LP slots 0-1 → real slots 15:00-16:00)
     session_ac_per_slot = 6.0 * 1.0  # kW * hours = kWh AC
 
-    for lp_idx in range(8):
-        # Find the actual slot by counting future slots
+    for lp_idx in range(2):
         slot = out_slots[lp_idx + 1]  # +1 because slot 0 is past
-        # The EV AC load should be close to session_ac_per_slot
         assert slot.ev_total_planned_load_kwh == pytest.approx(
             session_ac_per_slot, rel=0.05
         ), (
@@ -143,11 +143,12 @@ def test_session_charge_overrides_probabilistic_demand():
 
 
 @_pytestmark_scipy
-def test_session_ev_fallback_beyond_eight_slots():
-    """Beyond the first 8 slots, EV charging falls back to MILP decision.
+def test_session_ev_fallback_beyond_session_window():
+    """Beyond the 2-hour session window, EV charging falls back to MILP decision.
 
-    The EV has a deadline target that the session demand won't meet alone,
-    so the MILP should charge the remaining energy in slots beyond 8.
+    At 60-min resolution, the session window is 2 slots.  The EV has a
+    deadline target that the session demand won't meet alone, so the MILP
+    should charge the remaining energy in slots beyond the session window.
     """
     slots = _build_slots(20, start_hour=14, import_price=0.20, interval_minutes=60)
 
@@ -175,9 +176,9 @@ def test_session_ev_fallback_beyond_eight_slots():
     assert result is not None
     out_slots, _diag = result
 
-    # First 8 slots: session demand provides 6 kWh AC each = 48 kWh total AC
-    # = 43.2 kWh DC total.  Target is 60 kWh DC.
-    # The remaining 60 - 43.2 = 16.8 kWh DC must be charged in slots 8-18.
+    # At 60-min, first 2 slots: session demand provides 6 kWh AC each
+    # = 12 kWh total AC = 10.8 kWh DC.  Target is 60 kWh DC.
+    # The remaining 60 - 10.8 = 49.2 kWh DC must be charged in later slots.
 
     # Compute total DC-side EV charge across all slots
     ev_total_dc = sum(
@@ -188,9 +189,9 @@ def test_session_ev_fallback_beyond_eight_slots():
         f"Expected ~60 kWh DC total EV charge, got {ev_total_dc}"
     )
 
-    # Verify session slots have session demand (first 8 future slots)
+    # Verify session slots have session demand (first 2 future slots)
     session_ac = 6.0 * 1.0  # kWh AC per session slot
-    for lp_idx in range(8):
+    for lp_idx in range(2):
         slot = out_slots[lp_idx + 1]
         assert slot.ev_total_planned_load_kwh == pytest.approx(session_ac, rel=0.05)
 
@@ -205,18 +206,18 @@ def test_grid_charging_blocked_during_session_demand():
     session EV demand is available.
     """
     # Build slots with high PV in early slots to provide battery charging opportunity.
-    # Slots 15:00-17:00 (LP 0-2) have session EV + enough PV for battery too.
-    # Slots 18:00 onwards have only moderate PV.
+    # Slots 15:00-16:00 (LP 0-1, 2 session slots at 60-min) have session EV +
+    # enough PV for battery too.  Slot 17:00+ has only moderate PV.
     slots = _build_slots(12, start_hour=14, import_price=0.05, interval_minutes=60)
 
     # Give session slots generous PV: enough to cover EV (6 kWh) AND battery (5 kWh)
-    for i in range(3):
+    for i in range(2):
         slots[i + 1].solcast_pv_estimate_kwh = 15.0
         slots[i + 1].estimated_net_consumption_kwh = (
             slots[i + 1].avg_house_consumption_kwh - 15.0
         )
     # Beyond session slots: no PV for charging
-    for i in range(3, 11):
+    for i in range(2, 11):
         slots[i + 1].solcast_pv_estimate_kwh = 0.0
         slots[i + 1].estimated_net_consumption_kwh = slots[
             i + 1
@@ -246,9 +247,10 @@ def test_grid_charging_blocked_during_session_demand():
     assert result is not None
     out_slots, _diag = result
 
-    # Check that session-demand slots (LP 0-2, slots 15:00-17:00) don't get
-    # BatteriesChargeGrid.  They may get BatteriesChargeSolar if PV available.
-    for lp_idx in range(3):
+    # Check that session-demand slots (LP 0-1, slots 15:00-16:00 at 60-min)
+    # don't get BatteriesChargeGrid.  They may get BatteriesChargeSolar if
+    # PV available.
+    for lp_idx in range(2):
         slot = out_slots[lp_idx + 1]
         rec = slot.recommendation
         assert rec != "batteries_charge_grid", (
@@ -260,3 +262,164 @@ def test_grid_charging_blocked_during_session_demand():
                 f"Slot at {slot.start}: battery charged {slot.batteries_charged_kwh} kWh "
                 f"with recommendation={rec}, expected batteries_charge_solar"
             )
+
+
+# ---------------------------------------------------------------------------
+# Regression tests for SESSION_SLOTS resolution behaviour (issue #639)
+# ---------------------------------------------------------------------------
+
+
+def _session_slot_count(interval_minutes: int) -> int:
+    """Return expected SESSION_SLOTS for a given interval_minutes.
+
+    2 hours / (interval_minutes / 60) => rounded integer slot count.
+    """
+    slot_hours = interval_minutes / 60.0
+    return round(2.0 / slot_hours)
+
+
+@_pytestmark_scipy
+def test_session_slots_at_15min_resolution():
+    """At 15-min resolution, session EV demand covers first 8 slots."""
+    interval_minutes = 15
+    expected_slots = _session_slot_count(interval_minutes)
+    assert expected_slots == 8
+
+    # Build enough slots: 16 slots × 15 min = 4 hours coverage
+    slots = _build_slots(
+        16, start_hour=14, import_price=0.20, interval_minutes=interval_minutes
+    )
+
+    ev = EVConfig(
+        enabled=True,
+        initial_soc_kwh=10.0,
+        target_kwh=30.0,
+        capacity_kwh=50.0,
+        max_charge_per_slot=3.0,
+        charger_efficiency=0.90,
+        deadline_slot=14,
+        session_charge_kw=6.0,
+    )
+
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=10.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=None,
+        ev_configs=[ev],
+    )
+
+    assert result is not None
+    out_slots, _diag = result
+
+    # At 15-min, slot_hours = 0.25, so session demand per slot is 6.0 * 0.25 = 1.5 kWh AC
+    session_ac_per_slot = 6.0 * 0.25
+
+    for lp_idx in range(expected_slots):
+        slot = out_slots[lp_idx]
+        assert slot.ev_total_planned_load_kwh == pytest.approx(
+            session_ac_per_slot, rel=0.05
+        ), (
+            f"Slot at {slot.start} (LP {lp_idx}): expected {session_ac_per_slot} kWh AC, "
+            f"got {slot.ev_total_planned_load_kwh}"
+        )
+
+
+@_pytestmark_scipy
+def test_session_slots_at_30min_resolution():
+    """At 30-min resolution, session EV demand covers first 4 slots."""
+    interval_minutes = 30
+    expected_slots = _session_slot_count(interval_minutes)
+    assert expected_slots == 4
+
+    # 8 slots × 30 min = 4 hours coverage
+    slots = _build_slots(
+        8, start_hour=14, import_price=0.20, interval_minutes=interval_minutes
+    )
+
+    ev = EVConfig(
+        enabled=True,
+        initial_soc_kwh=10.0,
+        target_kwh=30.0,
+        capacity_kwh=50.0,
+        max_charge_per_slot=5.0,
+        charger_efficiency=0.90,
+        deadline_slot=6,
+        session_charge_kw=6.0,
+    )
+
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=10.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=None,
+        ev_configs=[ev],
+    )
+
+    assert result is not None
+    out_slots, _diag = result
+
+    # At 30-min, slot_hours = 0.5, so session demand per slot is 6.0 * 0.5 = 3.0 kWh AC
+    session_ac_per_slot = 6.0 * 0.5
+
+    for lp_idx in range(expected_slots):
+        slot = out_slots[lp_idx]
+        assert slot.ev_total_planned_load_kwh == pytest.approx(
+            session_ac_per_slot, rel=0.05
+        ), (
+            f"Slot at {slot.start} (LP {lp_idx}): expected {session_ac_per_slot} kWh AC, "
+            f"got {slot.ev_total_planned_load_kwh}"
+        )
+
+
+@_pytestmark_scipy
+def test_session_slots_at_60min_resolution():
+    """At 60-min resolution, session EV demand covers first 2 slots."""
+    interval_minutes = 60
+    expected_slots = _session_slot_count(interval_minutes)
+    assert expected_slots == 2
+
+    # 8 slots × 60 min = 8 hours coverage
+    slots = _build_slots(
+        8, start_hour=14, import_price=0.20, interval_minutes=interval_minutes
+    )
+
+    ev = EVConfig(
+        enabled=True,
+        initial_soc_kwh=10.0,
+        target_kwh=30.0,
+        capacity_kwh=50.0,
+        max_charge_per_slot=10.0,
+        charger_efficiency=0.90,
+        deadline_slot=6,
+        session_charge_kw=6.0,
+    )
+
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=10.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=None,
+        ev_configs=[ev],
+    )
+
+    assert result is not None
+    out_slots, _diag = result
+
+    # At 60-min, slot_hours = 1.0, so session demand per slot is 6.0 * 1.0 = 6.0 kWh AC
+    session_ac_per_slot = 6.0 * 1.0
+
+    for lp_idx in range(expected_slots):
+        slot = out_slots[lp_idx]
+        assert slot.ev_total_planned_load_kwh == pytest.approx(
+            session_ac_per_slot, rel=0.05
+        ), (
+            f"Slot at {slot.start} (LP {lp_idx}): expected {session_ac_per_slot} kWh AC, "
+            f"got {slot.ev_total_planned_load_kwh}"
+        )

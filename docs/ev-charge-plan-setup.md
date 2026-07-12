@@ -238,8 +238,9 @@ battery against EV demand that is definitely happening right now.
 
 **How it works:**
 1. The coordinator reads `live.ev.is_charging` and `live.ev.power_w`.
-2. If the EV is actively charging, the first 8 future slots (2 hours at
-   15-minute granularity) get fixed EV load bounds.
+2. If the EV is actively charging, the first 2 hours of future slots get
+   fixed EV load bounds (slot count is resolution-dependent: 8 slots at
+   15-minute, 4 at 30-minute, 2 at 60-minute).
 3. A grid-charge prevention constraint blocks battery grid-charging during
    those session slots.
 4. A post-solve guard overrides any `BatteriesChargeGrid` recommendations

@@ -1186,16 +1186,19 @@ effective_floor_pct ≤ 1.50 × bridge_reserve_raw  (after learning period)
 ### Session EV invariant
 
 When an active charging session is detected (`session_charge_kw > 0`), the
-MILP treats the next 2 hours (8 slots at 15-minute granularity) as **fixed
-EV demand** with enforced lower bounds:
+MILP treats the next 2 hours as **fixed EV demand** with enforced lower
+bounds.  The number of slots covered is derived from the configured slot
+interval: `round(2 / slot_hours)`, which yields 8 slots at 15-minute
+resolution, 4 slots at 30-minute resolution, and 2 slots at 60-minute
+resolution.
 
 ```text
-For t = 1 … 8 (first 8 future slots):
+For t = 1 … SESSION_SLOTS (first 2 hours of future slots):
     ev_c[t] ≥ min(session_charge_kw × slot_duration_hours, ev_max_charge_per_slot)
 ```
 
 These bound constraints prevent the MILP from re-allocating demand away from
-a live charging session.  Slots beyond the 8-slot window are unconstrained
+a live charging session.  Slots beyond the 2-hour window are unconstrained
 and optimised freely.  When `session_charge_kw == 0` (no active session),
 no bounds are applied and the entire EV demand is MILP-determined.
 
