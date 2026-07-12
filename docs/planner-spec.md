@@ -766,31 +766,46 @@ Plans must not look better merely because they empty the battery before the
 horizon ends.
 
 The cost function implements this via a `terminal_soc_value` term that
-contributes to `score` (not to `total_cost`):
+contributes to `score` (not to `total_cost`).  It is computed **per slot**
+and summed across the horizon, mirroring `milp_optimizer.py`'s `c_obj`
+terminal-SoC term exactly (issue #655/#657) so the selector's score always
+matches what the LP actually optimised for:
 
 ```text
-initial_kwh = stored battery energy above the discharge floor at the start of the horizon
-final_kwh   = stored battery energy above the discharge floor at the end of the horizon
-            (taken from the last future slot's estimated_battery_capacity)
-delta_kwh   = initial_kwh - final_kwh
+imp_price_obj[t]     = max(slot.price.import_price, 0.0)
+terminal_premium[t]  = max(0, replacement_price_per_kwh - imp_price_obj[t])
 
-terminal_soc_value = delta_kwh * replacement_price_per_kwh
+terminal_soc_value = sum over all slots of:
+    (batteries_discharged_kwh[t] - batteries_charged_kwh[t]) * terminal_premium[t]
 ```
 
-Sign convention:
+Sign convention (per slot):
 
-- `delta_kwh < 0` (plan ends with **more** energy than it started with) →
-  `terminal_soc_value < 0` → **credit**, reduces `score`.
-- `delta_kwh > 0` (plan ends with **less** energy) →
-  `terminal_soc_value > 0` → **penalty**, increases `score`.
+- Charging (`batteries_charged_kwh[t] > 0`) contributes a **negative**
+  (credit) term, reducing `score`.
+- Discharging (`batteries_discharged_kwh[t] > 0`) contributes a **positive**
+  (penalty) term, increasing `score`.
+
+The per-slot premium is capped by the differential between
+`replacement_price_per_kwh` and that slot's own sanitised import price.  When
+`replacement_price_per_kwh <= imp_price_obj[t]`, the premium is zero for that
+slot - charging/discharging then has no terminal-SoC effect, because the LP
+saw no genuine opportunity cost either.  This prevents the selector from
+over-penalising discharge in cheap-import slots, matching the MILP exactly.
 
 The recommended `replacement_price_per_kwh` is the **minimum future import
 price across the planning horizon**.  This represents the marginal cost of
-re-purchasing one stored kWh at the cheapest available opportunity — the
+re-purchasing one stored kWh at the cheapest available opportunity - the
 economically correct proxy for the opportunity cost of consuming stored energy
 now rather than later.  Using the average over all future slots (including
 expensive peak prices) systematically over-values stored energy during
 high-price periods and biases the selector against discharging.
+
+Import prices are sanitised the same way as the MILP's own objective
+(`imp_price_obj = max(imp_price, 0.0)`) before being used anywhere in
+`score_plan` - including the import-cost term itself and the
+conversion-loss term - so a negative-price slot never scores as a synthetic
+profit when the LP itself never realises one.
 
 Terminal-SoC accounting is **only active** when both `initial_battery_kwh`
 and `replacement_price_per_kwh` are supplied to `score_plan`.  Unit tests
