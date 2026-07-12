@@ -645,6 +645,30 @@ cost) and the LP prefers curtailment (cost 0) over export (cost > 0).
 Invariant: ``export_price < export_min_price`` → planner treats export
 revenue as 0 in both optimisation and scoring.
 
+**Export-≤-import clamp (MILP unbounded-LP fix, issue #635):**
+Before solving, the MILP also clamps ``export_price[t]`` to never
+exceed ``import_price[t]`` for the same slot:
+
+```text
+export_price[t] = min(export_price[t], import_price[t])
+```
+
+Without this, slots where ``export_price > import_price`` create an
+**unbounded LP** (HiGHS status=3).  ``gi[t]`` and ``ge[t]`` are both
+``[0, ∞)`` and linked only through the energy-balance equality, so the
+LP can drive both to infinity (import cheap, export expensive) while
+the terms cancel.  A single such slot in the horizon causes
+``solve_milp()`` to return ``None`` for the entire cycle.
+
+This condition occurs whenever negative import spot prices coincide
+with positive export tariffs (DK/DE/NL markets), or when asymmetric
+import/export grid fees create an apparent price spread.  The clamp is
+economically correct — no rational agent imports and exports
+simultaneously for profit — and removes the unbounded direction
+without changing any other optimisation behaviour.
+
+This clamp is applied **after** the ``min_export_price`` clamp.
+
 ### Battery cycle cost
 
 Cycle cost should count physical battery throughput.

@@ -170,6 +170,26 @@ LP prefers curtailment (cost 0) over export (cost > 0).
 The raw `slot.price.export_price` is **not** mutated — clamping only affects
 optimisation and scoring.
 
+## MILP Export-≤-Import Clamp (Issue #635 — Unbounded LP Fix)
+
+In `milp_optimizer.py`, after the `min_export_price` clamp, `p_exp` is
+further clamped so it never exceeds `p_imp` for the same slot:
+
+```python
+p_exp = np.minimum(p_exp, p_imp)
+```
+
+This prevents an unbounded LP (HiGHS status=3) when any slot has
+`p_exp > p_imp`.  Without this clamp, the LP can drive both `gi[t]` and
+`ge[t]` to infinity (import cheap, export expensive) while the terms
+cancel in the energy-balance equality, causing `solve_milp()` to return
+`None` for the entire horizon.
+
+- This is applied **after** the `min_export_price` clamp.
+- A debug log line reports how many slots were clamped and the max delta.
+- This must **never** be silently reverted in future refactors — it is
+  a solver-stability requirement, not a cosmetic convenience.
+
 ---
 
 ## Candidate Deduplication
