@@ -263,6 +263,20 @@ The same principle applies to any valuation that affects the LP's decisions:
 if `cost_function.py` includes it in `score`, the MILP's `c_obj` must include
 it too.  Post-hoc adjustments are for diagnostics only.
 
+**Both sides now fixed and matching (issue #657):** `cost_function.py`'s
+`score_plan()` previously used the OLD flat, uncapped
+`(initial_kwh - final_kwh) * replacement_price_per_kwh` formula (a stale
+copy of the pre-#638 MILP formula) even after `milp_optimizer.py` was fixed
+in PR #656.  It now computes the identical per-slot capped-differential
+term shown above, summed across `batteries_charged_kwh[t]` /
+`batteries_discharged_kwh[t]`.  `score_plan()` also now clamps import price
+via `imp_price_obj = max(imp_price, 0.0)` before pricing `import_cost` and
+both conversion-loss terms — mirroring the MILP's `p_imp_obj` clamp — so a
+negative-price slot never scores as a synthetic profit that the LP itself
+never realises. Always grep both files together when touching any pricing
+term; a mismatch here is easy to introduce silently and hard to notice
+without side-by-side numeric verification using varying (non-flat) prices.
+
 ---
 
 ## EV Charge-Past-Target Valuation (issue #630)

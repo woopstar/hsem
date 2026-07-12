@@ -409,6 +409,86 @@ def test_milp_cycle_cost_matches_score_plan():
     )
 
 
+@_scipy_skip()
+def test_milp_terminal_soc_matches_score_plan_with_varying_prices():
+    """Regression for issue #657.
+
+    score_plan()'s terminal-SoC term must use the SAME per-slot,
+    price-differential-capped formula as solve_milp()'s c_obj terminal-SoC
+    term. Flat/uniform prices cannot distinguish the old (buggy) flat
+    delta formula from the correct per-slot capped-differential formula --
+    both produce identical numbers when price is constant. This test uses
+    three DISTINCT, varying per-slot import prices spanning a range both
+    above and below the replacement price, which only the correct per-slot
+    formula reproduces exactly.
+    """
+    replacement_price = 1.00
+    # Slot 0: import price BELOW replacement price -> full premium applies.
+    # Slot 1: import price ABOVE replacement price -> premium capped to 0.
+    # Slot 2: import price EXACTLY at replacement price -> premium is 0.
+    slots = [
+        _make_slot(hour=0, import_price=0.20, consumption_kwh=0.0),
+        _make_slot(hour=1, import_price=2.00, consumption_kwh=0.0),
+        _make_slot(hour=2, import_price=1.00, consumption_kwh=0.0),
+    ]
+
+    milp_result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=5.0,
+        usable_kwh=9.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+        cycle_cost_per_kwh=0.0,
+        charge_efficiency_pct=100.0,
+        discharge_efficiency_pct=100.0,
+        replacement_price_per_kwh=replacement_price,
+    )
+    assert milp_result is not None, "MILP must return a solution"
+    result, _diag = milp_result
+
+    simulate_soc(
+        result,
+        _NOW,
+        current_kwh=5.0,
+        usable_kwh=9.0,
+        max_capacity_kwh=9.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+        rated_kwh=10.0,
+        end_of_discharge_soc_pct=0.0,
+    )
+
+    # Compute the expected terminal-SoC value directly from the MILP's own
+    # per-slot capped-differential formula, using the realised SoC-simulated
+    # charge/discharge flows.
+    expected_terminal_soc_value = 0.0
+    for s in result:
+        imp_price_obj = max(s.price.import_price, 0.0)
+        terminal_premium = max(0.0, replacement_price - imp_price_obj)
+        expected_terminal_soc_value += (
+            s.batteries_discharged_kwh - s.batteries_charged_kwh
+        ) * terminal_premium
+
+    bd = score_plan(
+        result,
+        CostWeights(cycle_cost_per_kwh=0.0),
+        slot_duration_hours=1.0,
+        now=_NOW,
+        initial_battery_kwh=5.0,
+        replacement_price_per_kwh=replacement_price,
+    )
+
+    assert bd.terminal_soc_value == pytest.approx(
+        expected_terminal_soc_value, abs=1e-6
+    ), (
+        f"score_plan terminal_soc_value {bd.terminal_soc_value:.6f} does not "
+        f"match the MILP's own per-slot capped-differential formula "
+        f"{expected_terminal_soc_value:.6f} -- cost_function.py and "
+        f"milp_optimizer.py have diverged (issue #657)."
+    )
+
+
 # ---------------------------------------------------------------------------
 # Performance test
 # ---------------------------------------------------------------------------

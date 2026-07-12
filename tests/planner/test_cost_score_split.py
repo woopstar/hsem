@@ -149,12 +149,26 @@ class TestTerminalSoCCredit:
     """A plan ending with more stored energy receives a credit (negative)."""
 
     def test_credit_when_battery_grows(self) -> None:
-        """Final capacity > initial → terminal_soc_value < 0 → reduces score."""
-        # Two slots; the second is "future" with estimated_battery_capacity_kwh=8.
-        # Initial energy above floor = 3 kWh; final = 8 kWh.
-        # delta = 3 − 8 = −5; with replacement 0.30 DKK/kWh → −1.50.
+        """Charging with a net capacity gain → terminal_soc_value < 0 → reduces score.
+
+        The terminal-SoC term is computed per-slot, capped by the
+        differential between ``replacement_price_per_kwh`` and that slot's
+        own import price (issue #655) — it must match
+        ``milp_optimizer.py``'s identical formula.  Using ``import_price=0.0``
+        makes the differential equal to the full replacement price, so the
+        expected numbers below match what the flat pre-#655 formula would
+        have produced for this scenario, while still exercising the new
+        per-slot, flow-based calculation (``batteries_charged_kwh``) rather
+        than an ungrounded ``estimated_battery_capacity_kwh`` that no real
+        SoC simulation would ever produce on its own.
+        """
+        # Battery charges 5 kWh this slot (3 -> 8 kWh); price 0.30 DKK/kWh.
+        # terminal_premium = max(0, 0.30 - 0.0) = 0.30.
+        # terminal_soc_value = (discharged - charged) * premium = (0 - 5) * 0.30 = -1.50.
         slot = _make_slot(
+            import_price=0.0,
             grid_import_kwh=1.0,
+            batteries_charged_kwh=5.0,
             estimated_battery_capacity_kwh=8.0,
             estimated_battery_soc_pct=80.0,
         )
@@ -166,18 +180,25 @@ class TestTerminalSoCCredit:
 
         assert bd.terminal_soc_value == pytest.approx(-1.50, abs=1e-9)
         # Money cost is unaffected.
-        assert bd.total_cost == pytest.approx(0.20, abs=1e-9)
+        assert bd.total_cost == pytest.approx(0.0, abs=1e-9)
         # Score includes the credit.
-        assert bd.score == pytest.approx(0.20 - 1.50, abs=1e-9)
+        assert bd.score == pytest.approx(0.0 - 1.50, abs=1e-9)
 
 
 class TestTerminalSoCPenalty:
     """A plan ending with less stored energy pays a penalty (positive)."""
 
     def test_penalty_when_battery_empties(self) -> None:
-        """Final capacity < initial → terminal_soc_value > 0 → increases score."""
-        # Initial 8 kWh; final 1 kWh → delta = 7; price 0.40 → penalty = 2.80.
+        """Discharging with a net capacity loss → terminal_soc_value > 0 → increases score.
+
+        Using ``import_price=0.0`` makes the per-slot differential equal to
+        the full replacement price, matching the pre-#655 flat formula's
+        numbers for this scenario while exercising the new per-slot
+        calculation.
+        """
+        # Initial 8 kWh; discharges 7 kWh -> final 1 kWh; price 0.40 -> penalty = 2.80.
         slot = _make_slot(
+            import_price=0.0,
             grid_import_kwh=0.0,
             batteries_discharged_kwh=7.0,
             estimated_battery_capacity_kwh=1.0,
@@ -264,18 +285,31 @@ class TestComparePlansUsesScore:
         76.5 DKK) but different end-of-horizon battery capacity.  Cycle and
         conversion-loss terms are disabled by setting the relevant weights
         to zero so the test isolates the terminal-SoC behaviour.
+
+        The terminal-SoC term is a per-slot ``batteries_charged_kwh`` /
+        ``batteries_discharged_kwh`` differential capped by
+        ``replacement_price_per_kwh - imp_price_obj`` (mirrors
+        ``milp_optimizer.py`` exactly, issue #655/#657).  ``import_price`` is
+        set to ``0.0`` on both slots so the cap never bites and the
+        differential equals the full ``replacement_price_per_kwh``, matching
+        the flat-formula expected values below.
         """
         # Both plans: same import cost; same SoC %.  Difference: final
-        # estimated_battery_capacity_kwh.
+        # estimated_battery_capacity_kwh, driven by the matching
+        # batteries_charged_kwh / batteries_discharged_kwh flow fields.
         discharge_only_last_slot = _make_slot(
             hour=23,
+            import_price=0.0,
             grid_import_kwh=76.5,
+            batteries_discharged_kwh=4.5,  # 5.0 -> 0.5
             estimated_battery_capacity_kwh=0.5,  # nearly empty
             estimated_battery_soc_pct=15.0,
         )
         solar_only_last_slot = _make_slot(
             hour=23,
+            import_price=0.0,
             grid_import_kwh=76.5,
+            batteries_charged_kwh=4.0,  # 5.0 -> 9.0
             estimated_battery_capacity_kwh=9.0,  # ends nearly full
             estimated_battery_soc_pct=95.0,
         )
@@ -311,9 +345,23 @@ class TestComparePlansUsesScore:
         )
 
     def test_score_strictly_lower_when_battery_preserved(self) -> None:
-        """A plan that preserves more battery energy must score strictly lower."""
-        slot_a = _make_slot(grid_import_kwh=1.0, estimated_battery_capacity_kwh=4.0)
-        slot_b = _make_slot(grid_import_kwh=1.0, estimated_battery_capacity_kwh=1.0)
+        """A plan that preserves more battery energy must score strictly lower.
+
+        ``import_price`` is set to ``0.0`` so the terminal-SoC differential
+        cap never bites and equals the full ``replacement_price_per_kwh``.
+        """
+        slot_a = _make_slot(
+            import_price=0.0,
+            grid_import_kwh=1.0,
+            batteries_charged_kwh=2.0,  # 2.0 -> 4.0
+            estimated_battery_capacity_kwh=4.0,
+        )
+        slot_b = _make_slot(
+            import_price=0.0,
+            grid_import_kwh=1.0,
+            batteries_discharged_kwh=1.0,  # 2.0 -> 1.0
+            estimated_battery_capacity_kwh=1.0,
+        )
         bd_a, bd_b, winner = compare_plans(
             [slot_a],
             [slot_b],
@@ -346,8 +394,13 @@ class TestTotalAlias:
         assert bd.total == pytest.approx(bd.score, abs=1e-9)
 
     def test_total_alias_includes_terminal_soc(self) -> None:
+        """``import_price`` stays at the default (0.20) here: the credit only
+        needs to be negative, not equal to the flat-formula value, so the
+        differential cap doesn't need to be avoided.
+        """
         slot = _make_slot(
             grid_import_kwh=1.0,
+            batteries_charged_kwh=6.0,  # 2.0 -> 8.0
             estimated_battery_capacity_kwh=8.0,
             estimated_battery_soc_pct=80.0,
         )
