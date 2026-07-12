@@ -207,6 +207,32 @@ for t in sorted(targets)[1:]:
 
 ---
 
+## LP Opportunity-Cost Valuations: Linear Terms in c_obj (issue #638)
+
+Opportunity-cost valuations that represent the marginal value of stored energy
+(e.g., terminal-SoC replacement price, EV future-value-per-kWh) **must** be
+linear terms in the LP's `c_obj` objective vector so the LP itself optimises
+for them.  Computing them as post-hoc adjustments after `linprog()` returns
+creates a mismatch between the LP's optimisation target and the selector's
+scoring function.
+
+Canonical pattern for terminal-SoC valuation:
+
+```python
+# terminal_soc_value = (Σed - Σec) * replacement_price_per_kwh
+# This is undiscounted — a point-in-time valuation at horizon end.
+if replacement_price_per_kwh is not None and abs(replacement_price_per_kwh) > 1e-9:
+    for t in range(m):
+        c_obj[ec_off + t] -= replacement_price_per_kwh  # credit
+        c_obj[ed_off + t] += replacement_price_per_kwh  # penalty
+```
+
+The same principle applies to any valuation that affects the LP's decisions:
+if `cost_function.py` includes it in `score`, the MILP's `c_obj` must include
+it too.  Post-hoc adjustments are for diagnostics only.
+
+---
+
 ## EV Charge-Past-Target Valuation (issue #630)
 
 When `allow_charge_past_target_soc` is enabled and the EV has reached its
