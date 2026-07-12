@@ -2489,6 +2489,109 @@ class TestEvLoadSemantics:
                 f"+ ev_accounted ({s.ev_accounted_load_kwh:.4f})"
             )
 
+    # ------------------------------------------------------------------
+    # Test 4b: Mirror — primary EV has load, second EV fully charged
+    # (issue #655 regression guard: rebuild_ev_plan_from_slots per-EV)
+    # ------------------------------------------------------------------
+
+    def test_only_primary_ev_has_load(self):
+        """Primary EV with 4.0 kWh; second EV fully charged.
+
+        Mirror of test_only_second_ev_has_load: second EV plan must
+        correctly show "fully_charged" while primary shows real state.
+        Verifies rebuild_ev_plan_from_slots() uses per-EV power fields
+        (is_second routing), not combined slot totals.
+        """
+        now_iso = "2024-06-15T06:00:00+00:00"
+        from datetime import datetime as _dt2
+
+        now = _dt2.fromisoformat(now_iso)
+        deadline = now + timedelta(hours=6)
+
+        prices = [
+            PricePoint(hour=h, import_price=0.20, export_price=0.05) for h in range(24)
+        ]
+        pv = [SolcastSlot(hour=h, pv_estimate=0.0) for h in range(24)]
+        avgs = [
+            HourlyConsumptionAverage(
+                hour=h, avg_1d=1.0, avg_3d=1.0, avg_7d=1.0, avg_14d=1.0
+            )
+            for h in range(24)
+        ]
+
+        inp = PlannerInput(
+            now_iso=now_iso,
+            interval_minutes=60,
+            interval_length_hours=24,
+            battery_soc_pct=50.0,
+            battery_rated_capacity_kwh=10.0,
+            battery_end_of_discharge_soc_pct=10.0,
+            battery_max_soc_pct=90.0,
+            battery_max_charge_power_w=5000.0,
+            battery_max_discharge_power_w=5000.0,
+            battery_charge_efficiency_pct=100.0,
+            battery_discharge_efficiency_pct=100.0,
+            weight_1d=25,
+            weight_3d=30,
+            weight_7d=30,
+            weight_14d=15,
+            consumption_averages=avgs,
+            price_points=prices,
+            solcast_slots=pv,
+            # Primary EV: needs 4.0 kWh
+            ev_planned_load_enabled=True,
+            ev_planned_load_connected=True,
+            ev_planned_load_smart_charging_enabled=True,
+            ev_planned_load_current_soc_pct=0.0,
+            ev_planned_load_target_soc_pct=4.0,
+            ev_planned_load_battery_capacity_kwh=100.0,
+            ev_planned_load_charger_power_kw=11.0,
+            ev_planned_load_charger_efficiency_pct=100.0,
+            ev_planned_load_deadline=deadline,
+            ev_planned_load_base_load_includes_ev=False,
+            # Second EV: fully charged — should contribute nothing
+            ev_second_planned_load_enabled=True,
+            ev_second_planned_load_connected=True,
+            ev_second_planned_load_smart_charging_enabled=True,
+            ev_second_planned_load_current_soc_pct=80.0,
+            ev_second_planned_load_target_soc_pct=80.0,  # 0 kWh needed
+            ev_second_planned_load_battery_capacity_kwh=100.0,
+            ev_second_planned_load_charger_power_kw=11.0,
+            ev_second_planned_load_charger_efficiency_pct=100.0,
+            ev_second_planned_load_deadline=deadline,
+            ev_second_planned_load_base_load_includes_ev=False,
+        )
+        out = run_planner(inp)
+
+        total_ev_total = sum(s.ev_total_planned_load_kwh for s in out.slots)
+        assert total_ev_total == pytest.approx(4.0, abs=0.1), (
+            f"ev_total_planned_load_kwh should be 4.0 (primary EV only), "
+            f"got {total_ev_total:.3f}"
+        )
+        # Second EV plan should be fully_charged
+        assert out.ev_second_charging_plan is not None
+        assert out.ev_second_charging_plan.state == "fully_charged"
+
+        # Second EV power must be 0 (fully charged, no charging allocated).
+        for s in out.slots:
+            assert s.ev_second_charger_calculated_power == pytest.approx(0.0, abs=1), (
+                f"Second EV power should be 0 (fully charged), "
+                f"got {s.ev_second_charger_calculated_power} W"
+            )
+
+        # Primary EV power must be positive in at least one slot.
+        primary_power_slots = [
+            s for s in out.slots if s.ev_charger_calculated_power > 1
+        ]
+        assert primary_power_slots, (
+            "Primary EV should have non-zero power in at least one slot"
+        )
+        for s in primary_power_slots:
+            assert s.ev_charger_calculated_power <= 11000 + 1, (
+                f"Primary EV power {s.ev_charger_calculated_power} W "
+                f"exceeds its rated 11000 W"
+            )
+
 
 # ---------------------------------------------------------------------------
 # TestEvLoadDoesNotInflateChargeNeeded (issue #404 / charge scheduler fix)

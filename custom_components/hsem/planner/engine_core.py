@@ -637,7 +637,10 @@ def _build_ev_configs_for_milp(
         slots, now, confidence_factor=1.0
     )
 
-    # Build config for each EV slot pair (primary, secondary)
+    # Build config for each EV slot pair (primary, secondary).
+    # Each source tuple carries an is_second flag so the downstream
+    # write-out loop can route EV power to the correct output field by
+    # identity rather than by list position (issue #646).
     ev_sources: list[
         tuple[
             bool,
@@ -653,6 +656,7 @@ def _build_ev_configs_for_milp(
             bool,
             bool,
             float,
+            bool,
         ]
     ] = [
         (
@@ -669,6 +673,7 @@ def _build_ev_configs_for_milp(
             inp.ev_planned_load_base_load_includes_ev,
             inp.ev_planned_allow_charge_past_target_soc,
             inp.ev_past_target_confidence_factor,
+            False,  # is_second = False (primary EV)
         ),
         (
             inp.ev_second_planned_load_enabled,
@@ -684,6 +689,7 @@ def _build_ev_configs_for_milp(
             inp.ev_second_planned_load_base_load_includes_ev,
             inp.ev_second_allow_charge_past_target_soc,
             inp.ev_second_past_target_confidence_factor,
+            True,  # is_second = True (second EV)
         ),
     ]
     for (
@@ -700,6 +706,7 @@ def _build_ev_configs_for_milp(
         base_includes,
         allow_past_target,
         past_target_confidence_factor,
+        is_second,
     ) in ev_sources:
         if not enabled:
             continue
@@ -765,14 +772,17 @@ def _build_ev_configs_for_milp(
                 base_load_includes_ev=base_includes,
                 charge_past_target=charge_past_target,
                 future_value_per_kwh=future_value_per_kwh,
+                is_second=is_second,
             )
         )
 
     # Apply session charge power from live EV state (issue #615).
-    if configs:
-        configs[0].session_charge_kw = inp.ev_session_charge_kw
-        if len(configs) > 1:
-            configs[1].session_charge_kw = inp.ev_second_session_charge_kw
+    # Route by identity (is_second), not list position (issue #646).
+    for cfg in configs:
+        if cfg.is_second:
+            cfg.session_charge_kw = inp.ev_second_session_charge_kw
+        else:
+            cfg.session_charge_kw = inp.ev_session_charge_kw
 
     return configs if configs else None
 
@@ -1247,6 +1257,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
                 slots,
                 now,
                 charger_efficiency_pct=inp.ev_planned_load_charger_efficiency_pct,
+                is_second=False,
             )
         if ev2_cp is not None:
             ev2_cp = rebuild_ev_plan_from_slots(
@@ -1254,6 +1265,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
                 slots,
                 now,
                 charger_efficiency_pct=inp.ev_second_planned_load_charger_efficiency_pct,
+                is_second=True,
             )
 
     return PlannerOutput(

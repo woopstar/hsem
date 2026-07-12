@@ -187,8 +187,27 @@ cancel in the energy-balance equality, causing `solve_milp()` to return
 
 - This is applied **after** the `min_export_price` clamp.
 - A debug log line reports how many slots were clamped and the max delta.
-- This must **never** be silently reverted in future refactors — it is
-  a solver-stability requirement, not a cosmetic convenience.
+
+## MILP Negative-Import-Price Clamp (Issue #655 — Second Unbounded Direction)
+
+After the export-≤-import clamp, a second sanitisation step creates
+`p_imp_obj = np.maximum(p_imp, 0.0)` and uses it for **all objective
+coefficients** that involve the import price (`gi[t]`, conversion loss on
+`ec[t]` and `ed[t]`).  The original `p_imp` is preserved for the
+export-≤-import clamp and penalty scaling.
+
+When `p_imp[t] < 0`, the `gi[t]` objective coefficient becomes negative,
+incentivising the LP to import infinite energy.  `curt[t]` (zero objective
+cost) participates in the energy balance, so the LP can also import-and-
+curtail for unbounded profit even without `p_exp > p_imp`.
+
+- `p_imp_obj` ensures the LP never *wants* to import for the sake of a
+  negative price alone.
+- The terminal-SoC differential (issue #655/#638 regression) also uses
+  `p_imp_obj` so negative import prices don't inflate the terminal premium.
+- Both clamps together close all known unbounded LP directions.
+- These must **never** be silently reverted in future refactors — they are
+  solver-stability requirements, not cosmetic conveniences.
 
 ---
 
@@ -207,7 +226,7 @@ for t in sorted(targets)[1:]:
 
 ---
 
-## LP Opportunity-Cost Valuations: Linear Terms in c_obj (issue #638)
+## LP Opportunity-Cost Valuations: Linear Terms in c_obj (issue #638/#655)
 
 Opportunity-cost valuations that represent the marginal value of stored energy
 (e.g., terminal-SoC replacement price, EV future-value-per-kWh) **must** be
@@ -216,16 +235,29 @@ for them.  Computing them as post-hoc adjustments after `linprog()` returns
 creates a mismatch between the LP's optimisation target and the selector's
 scoring function.
 
-Canonical pattern for terminal-SoC valuation:
+Canonical pattern for terminal-SoC valuation (opportunity-cost differential):
 
 ```python
 # terminal_soc_value = (Σed - Σec) * replacement_price_per_kwh
-# This is undiscounted — a point-in-time valuation at horizon end.
+# Per-slot incentive is capped by the DIFFERENTIAL between replacement
+# price and this slot's import price, so the terminal-SoC term cannot
+# override a genuine discharge decision in flat/near-flat price scenarios.
+# Uses p_imp_obj (non-negative) to prevent negative prices from inflating
+# the terminal premium.
 if replacement_price_per_kwh is not None and abs(replacement_price_per_kwh) > 1e-9:
-    for t in range(m):
-        c_obj[ec_off + t] -= replacement_price_per_kwh  # credit
-        c_obj[ed_off + t] += replacement_price_per_kwh  # penalty
+    terminal_premium = max(0.0, replacement_price_per_kwh - p_imp_obj[t])
+    c_obj[ec_off + t] -= terminal_premium  # credit (capped)
+    c_obj[ed_off + t] += terminal_premium  # penalty (capped)
 ```
+
+When `replacement_price ≤ p_imp[t]`, the premium is zero — the LP sees no
+terminal-SoC incentive and makes discharge decisions purely on per-slot
+price signals.  When `replacement_price > p_imp[t]`, the differential
+represents the genuine opportunity cost of using energy now vs. later.
+
+This prevents the regression identified in issue #638 where flat-price
+scenarios saw zero discharge because the uniform +replacement_price penalty
+dominated the per-slot import-saving benefit.
 
 The same principle applies to any valuation that affects the LP's decisions:
 if `cost_function.py` includes it in `score`, the MILP's `c_obj` must include
@@ -414,7 +446,7 @@ phase-dependent power calculations.
 
 ---
 
-## Per-EV Output Fields Must Come From Per-EV Data (issue #646)
+## Per-EV Output Fields Must Come From Per-EV Data (issue #646/#655)
 
 **Canonical rule**: per-EV output fields (`ev_charger_calculated_power`,
 `ev_second_charger_calculated_power`) **must always** be derived from
@@ -431,6 +463,23 @@ Each EV's power must be computed from that EV's own `EVChargingPlan`
 (`_compute_ev_charger_power()`) or directly by the MILP's per-EV power
 computation.  The post-candidate minimum-power floor check must use
 each EV's own `charger_min_power_w` — never `max(min1, min2)`.
+
+## EV Field Routing By Identity, Not List Position (issue #655)
+
+In `milp_optimizer.py`'s EV power write-out loop and in
+`engine_core.py`'s session-charge-power assignment, EV identity is
+**always** determined by `EVConfig.is_second` — **never** by list
+position (`ev_idx == 0`) in the `active_evs` list.
+
+When the primary EV is disabled, `active_evs[0]` **is** the second EV.
+Position-based routing (`ev_idx == 0 → ev_charger_calculated_power`) would
+incorrectly write the second EV's power into the primary field.
+
+- `EVConfig.is_second: bool` — set by `_build_ev_configs_for_milp()`
+  based on which `PlannerInput` fields the config came from
+  (primary vs. `ev_second_*`).
+- MILP write-out: `if ev.is_second: write to ev_second_charger_calculated_power`
+- Session power: iterates `configs` and routes by `cfg.is_second`
 
 ---
 

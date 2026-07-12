@@ -1886,8 +1886,9 @@ def test_milp_discharge_values_preserved_after_soc_simulation():
     # The LP should discharge more in the expensive slot (slot 1)
     # than in the cheap slot (slot 0), because displacing 1.00/kWh imports
     # is worth more than displacing 0.30/kWh imports.
-    assert out_slots[1].batteries_discharged_kwh >= pytest.approx(
-        out_slots[0].batteries_discharged_kwh, rel=1e-6
+    assert (
+        out_slots[1].batteries_discharged_kwh
+        >= out_slots[0].batteries_discharged_kwh - 1e-6
     ), (
         f"LP should discharge more in expensive slot (1.00/kWh) than cheap "
         f"slot (0.30/kWh).  Got slot0={out_slots[0].batteries_discharged_kwh}, "
@@ -2110,3 +2111,227 @@ def test_non_milp_candidates_unaffected_by_milp_prepopulated():
     )
     assert slot.grid_import_kwh >= 0, "Grid import must be non-negative"
     assert slot.estimated_battery_capacity_kwh > 0, "SoC must be tracked"
+
+
+# ---------------------------------------------------------------------------
+# Issue #655 acceptance tests — Fix 1: Complete unbounded-LP fix
+# ---------------------------------------------------------------------------
+
+
+@_scipy_skip()
+def test_milp_all_price_sign_combinations_return_solution():
+    """ALL sign/ordering combinations of (p_imp, p_exp) must return non-None.
+
+    Covers the second unbounded-LP direction (p_imp[t] < 0 alone can still
+    drive gi[t] and curt[t] to infinity even when p_exp <= p_imp).
+    """
+    combos = [
+        (0.10, 0.05, "both pos, exp<imp"),
+        (0.05, 0.10, "both pos, exp>imp"),
+        (-0.05, -0.10, "both neg, unequal"),
+        (-0.05, -0.05, "both neg, equal"),
+        (-0.05, 0.10, "imp neg, exp pos"),
+        (-0.05, 0.00, "imp neg, exp zero"),
+        (0.10, -0.05, "imp pos, exp neg"),
+        (0.00, 0.00, "both zero"),
+    ]
+    for imp, exp, label in combos:
+        slot = _make_slot(hour=0, import_price=imp, export_price=exp)
+        result = solve_milp(
+            [slot],
+            _NOW,
+            current_kwh=2.0,
+            usable_kwh=10.0,
+            max_charge_per_slot=3.0,
+            max_discharge_per_slot=3.0,
+        )
+        assert result is not None, (
+            f"MILP must return a solution for {label} (imp={imp}, exp={exp})"
+        )
+
+
+@_scipy_skip()
+def test_milp_negative_import_alone_returns_solution():
+    """Negative import price with zero export must return non-None.
+
+    Before the Fix 1 completion, this combination was unbounded because
+    the LP could import (negative cost) and curtail (zero cost) for
+    unbounded profit.
+    """
+    slot = _make_slot(hour=0, import_price=-0.05, export_price=0.00)
+    result = solve_milp(
+        [slot],
+        _NOW,
+        current_kwh=2.0,
+        usable_kwh=10.0,
+        max_charge_per_slot=3.0,
+        max_discharge_per_slot=3.0,
+    )
+    assert result is not None, (
+        "MILP must return a solution when import_price < 0 and export_price = 0"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Issue #655 acceptance tests — Fix 2: Terminal-SoC regression
+# ---------------------------------------------------------------------------
+
+
+@_scipy_skip()
+def test_terminal_soc_high_replacement_preserves_soc():
+    """High replacement price must prevent wasteful discharge.
+
+    Original #638 scenario: single slot, full battery, no load,
+    replacement=2.00, export=0.05.  Discharging just to export at 0.05
+    when replacement is 2.00 is clearly wrong — the LP must preserve SoC.
+    """
+    slot = _make_slot(hour=0, import_price=0.05, export_price=0.05, consumption_kwh=0.0)
+    result = solve_milp(
+        [slot],
+        _NOW,
+        current_kwh=10.0,
+        usable_kwh=10.0,
+        max_charge_per_slot=3.0,
+        max_discharge_per_slot=3.0,
+        replacement_price_per_kwh=2.0,
+    )
+    assert result is not None, "MILP must return a solution"
+    out_slots, _diag = result
+    assert out_slots[0].batteries_discharged_kwh < 0.001, (
+        f"High replacement price must prevent discharge. "
+        f"Got discharge={out_slots[0].batteries_discharged_kwh}"
+    )
+
+
+@_scipy_skip()
+def test_terminal_soc_flat_price_allows_discharge():
+    """Flat price + heavy load must allow discharge to cover house load.
+
+    Regression scenario: flat import=export=0.10, 4 kWh/h load, full
+    battery (10 kWh usable), unlimited discharge.  Before the Fix 2
+    correction, the uniform +replacement_price penalty dominated the
+    per-slot import-saving benefit and caused zero discharge.
+    """
+    slots = [
+        _make_slot(hour=h, import_price=0.10, export_price=0.10, consumption_kwh=4.0)
+        for h in range(24)
+    ]
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=10.0,
+        usable_kwh=10.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=None,
+        replacement_price_per_kwh=0.10,
+    )
+    assert result is not None, "MILP must return a solution"
+    out_slots, _diag = result
+    total_discharge = sum(s.batteries_discharged_kwh for s in out_slots)
+    assert total_discharge > 1.0, (
+        f"Flat price with heavy load must discharge. "
+        f"Got total_discharge={total_discharge}"
+    )
+
+
+@_scipy_skip()
+def test_terminal_soc_low_replacement_still_allows_export():
+    """Low replacement price must not block profitable export.
+
+    When replacement_price is low and export price is high, the LP
+    should still discharge to capture the export revenue.
+    """
+    slot = _make_slot(hour=0, import_price=3.00, export_price=2.50, consumption_kwh=0.0)
+    result = solve_milp(
+        [slot],
+        _NOW,
+        current_kwh=5.0,
+        usable_kwh=10.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+        replacement_price_per_kwh=0.10,
+    )
+    assert result is not None, "MILP must return a solution"
+    out_slots, _diag = result
+    # With export=2.50 and replacement=0.10, discharging is profitable:
+    # terminal_premium = max(0, 0.10 - 3.00) = 0, so no discharge penalty.
+    # Export revenue = 2.50, positive.
+    assert out_slots[0].batteries_discharged_kwh > 0.001, (
+        f"Low replacement + high export must allow discharge. "
+        f"Got discharge={out_slots[0].batteries_discharged_kwh}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Issue #655 acceptance tests — Fix 3: EV field routing by identity
+# ---------------------------------------------------------------------------
+
+
+@_scipy_skip()
+def test_ev_second_only_routes_to_second_field():
+    """When only the second EV is active, power must go to second field.
+
+    Before the Fix 3 correction, active_evs[0] was the second EV and
+    ev_idx==0 routed its power to ev_charger_calculated_power (primary).
+    """
+    slots = [_make_slot(hour=h, consumption_kwh=0.5) for h in range(4)]
+    second_ev = EVConfig(
+        enabled=True,
+        initial_soc_kwh=10.0,
+        target_kwh=30.0,
+        capacity_kwh=50.0,
+        max_charge_per_slot=3.0,
+        charger_efficiency=0.95,
+        deadline_slot=3,
+        is_second=True,
+    )
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=5.0,
+        usable_kwh=10.0,
+        max_charge_per_slot=3.0,
+        max_discharge_per_slot=3.0,
+        ev_configs=[second_ev],
+    )
+    assert result is not None, "MILP must return a solution"
+    out_slots, _diag = result
+    primary_used = any(s.ev_charger_calculated_power > 0 for s in out_slots)
+    second_used = any(s.ev_second_charger_calculated_power > 0 for s in out_slots)
+    assert second_used and not primary_used, (
+        f"Second EV power must go to ev_second_charger_calculated_power. "
+        f"Got primary={primary_used}, second={second_used}"
+    )
+
+
+@_scipy_skip()
+def test_ev_primary_only_routes_to_primary_field():
+    """Primary EV power must go to ev_charger_calculated_power."""
+    slots = [_make_slot(hour=h, consumption_kwh=0.5) for h in range(4)]
+    primary_ev = EVConfig(
+        enabled=True,
+        initial_soc_kwh=10.0,
+        target_kwh=30.0,
+        capacity_kwh=50.0,
+        max_charge_per_slot=3.0,
+        charger_efficiency=0.95,
+        deadline_slot=3,
+        is_second=False,
+    )
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=5.0,
+        usable_kwh=10.0,
+        max_charge_per_slot=3.0,
+        max_discharge_per_slot=3.0,
+        ev_configs=[primary_ev],
+    )
+    assert result is not None, "MILP must return a solution"
+    out_slots, _diag = result
+    primary_used = any(s.ev_charger_calculated_power > 0 for s in out_slots)
+    second_used = any(s.ev_second_charger_calculated_power > 0 for s in out_slots)
+    assert primary_used and not second_used, (
+        f"Primary EV power must go to ev_charger_calculated_power. "
+        f"Got primary={primary_used}, second={second_used}"
+    )

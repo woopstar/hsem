@@ -609,11 +609,14 @@ def rebuild_ev_plan_from_slots(
     slots: list,
     now: datetime,
     charger_efficiency_pct: float = 100.0,
+    *,
+    is_second: bool = False,
 ) -> EVChargingPlan:
-    """Rebuild an EVChargingPlan from MILP-decided slot fields.
+    """Rebuild an EVChargingPlan from MILP-decided per-EV slot fields.
 
     When the MILP wins, its per-slot EV decisions (written to
-    ``PlannedSlot.ev_planned_load_kwh`` and related fields) replace the
+    ``PlannedSlot.ev_charger_calculated_power`` or
+    ``PlannedSlot.ev_second_charger_calculated_power``) replace the
     EV planner's original charging plan.  This function scans the winning
     slots and produces an updated :class:`EVChargingPlan` that the sensor
     can display, so the user sees what the system *actually* plans to do
@@ -622,16 +625,27 @@ def rebuild_ev_plan_from_slots(
     The original plan provides metadata (SoC, target, capacity, etc.) that
     the MILP does not recompute.
 
+    .. important::
+
+       This function reads **per-EV** power fields, not the combined
+       ``ev_planned_load_kwh`` / ``ev_accounted_load_kwh`` totals.
+       The combined fields sum across both EVs and cannot distinguish
+       which EV contributed how much load (issue #646/#655).
+
     Args:
         original_plan: The EV planner's original plan (for metadata).
         slots: The winning slot list with MILP-populated EV fields.
         now: Current time (timezone-aware), used to detect the current slot.
         charger_efficiency_pct: Charger efficiency (0–100 %) for converting
             AC load back to DC-side delivered energy.
+        is_second: When ``True``, read from
+            ``ev_second_charger_calculated_power`` instead of
+            ``ev_charger_calculated_power``.  Must match the EV identity
+            the caller is rebuilding for.
 
     Returns:
         A new :class:`EVChargingPlan` with ``charging_slots`` derived from
-        the MILP's slot decisions.
+        the MILP's per-EV slot decisions.
     """
     from custom_components.hsem.utils.datetime_utils import as_tz
 
@@ -641,12 +655,20 @@ def rebuild_ev_plan_from_slots(
     current_slot_planned_load_kwh: float = 0.0
     total_charged_kwh: float = 0.0
 
+    # Read from the per-EV charger power field, not the combined
+    # ev_planned_load_kwh / ev_accounted_load_kwh totals (issue #646/#655).
+    power_field = (
+        "ev_second_charger_calculated_power"
+        if is_second
+        else "ev_charger_calculated_power"
+    )
     for s in slots:
-        ac_load = getattr(s, "ev_planned_load_kwh", 0.0) + getattr(
-            s, "ev_accounted_load_kwh", 0.0
-        )
-        if ac_load < 1e-9:
+        power_w = getattr(s, power_field, 0.0)
+        if power_w < 1e-9:
             continue
+        # Convert AC power (W) back to AC load (kWh) using the slot duration.
+        slot_hours = (s.end - s.start).total_seconds() / 3600.0
+        ac_load = power_w * slot_hours / 1000.0
 
         # Convert AC load back to DC-side delivered energy for display.
         dc_kwh = ac_load * eff
