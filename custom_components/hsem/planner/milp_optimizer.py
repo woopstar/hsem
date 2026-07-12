@@ -146,10 +146,12 @@ def solve_milp(
       ``ForceBatteriesDischarge``, or ``None`` (idle).
     - ``batteries_charged_kwh`` — energy entering the battery this slot (kWh).
     - ``batteries_discharged_kwh`` — energy discharged from the battery this slot
-      (kWh).  Populated directly from the LP's ``ed[t]`` solution — this is the
-      source of truth and must not be re-derived by :func:`~soc_simulation.simulate_soc`.
-    - ``grid_import_kwh`` — grid import this slot (kWh), from the LP's ``gi[t]``.
-    - ``grid_export_kwh`` — grid export this slot (kWh), from the LP's ``ge[t]``.
+      (kWh).  Derived from the **resolved** ed after mutex resolution — this is the
+      source of truth and must not be re-derived by the SoC simulation.
+    - ``grid_import_kwh`` — grid import this slot (kWh), derived from the energy
+      balance equation using the resolved ec/ed values.
+    - ``grid_export_kwh`` — grid export this slot (kWh), derived from the energy
+      balance equation using the resolved ec/ed values.
     - ``ev_planned_load_kwh`` — EV AC load that must be added to base consumption
       (when ``ev_configs`` is provided and ``base_load_includes_ev`` is False).
     - ``ev_accounted_load_kwh`` — EV AC load already captured in house consumption
@@ -1092,18 +1094,60 @@ def solve_milp(
                 if float(ev_c_sol[lp_t]) >= _MIN_ACTION_KWH:
                     ev_charging_slots.add(lp_t)
 
+    # Pre-compute per-slot total EV AC load from the LP solution.
+    # Needed for deriving grid import/export from the energy balance
+    # equation when mutex resolution alters ec/ed (issue #659):
+    #   gi + pv + ed·η_dis = base_load + ec/η_chg + ge + curt + Σ ev_c/eff
+    ev_ac_load_by_slot: dict[int, float] = {}
+    if active_evs:
+        for ev_idx, ev in enumerate(active_evs):
+            ev_off = ev_var_offsets[ev_idx]
+            ev_c_sol = result.x[ev_off : ev_off + m]
+            for lp_t in range(m):
+                ev_dc = float(ev_c_sol[lp_t])
+                if ev_dc >= _MIN_ACTION_KWH:
+                    ev_ac_load_by_slot[lp_t] = (
+                        ev_ac_load_by_slot.get(lp_t, 0.0)
+                        + ev_dc / ev.charger_efficiency
+                    )
+
+    # Extract curtailment solution early — needed for the energy balance
+    # derivation in the merged write-out loop below.
+    curt_sol_full = result.x[curt_off : curt_off + m]
+
+    # ------------------------------------------------------------------
+    # Single merged energy-flow write-out pass (issue #659).
+    #
+    # Resolves degenerate LP vertices (simultaneous charge+discharge),
+    # sets recommendation, and populates ALL per-slot energy-flow fields
+    # (charge, discharge, grid import, grid export) consistently from
+    # the SAME resolved ec/ed decision.  Grid import/export are derived
+    # from the slot's energy balance equation rather than read from the
+    # raw LP arrays, so they remain correct even when ec/ed are adjusted
+    # by the mutex resolution.
+    #
+    # The SoC simulation (simulate_soc) must use these verbatim when
+    # milp_prepopulated=True — never re-derive a different (greedy)
+    # value from the recommendation label and net_demand.
+    # ------------------------------------------------------------------
     for lp_t, slot_i in enumerate(future_idx):
         ec_kwh = float(ec_sol[lp_t])
         ed_kwh = float(ed_sol[lp_t])
-        ge_kwh = float(result.x[ge_off + lp_t])  # grid export from LP
+        ge_kwh = float(result.x[ge_off + lp_t])  # raw LP export (for recommendation)
 
         if ec_kwh > _MIN_ACTION_KWH and ed_kwh > _MIN_ACTION_KWH:
             # Mutual exclusion is guaranteed by the LP constraint
             # (ec/max_charge + ed/max_dis <= 1).  If we reach here,
-            # it is due to numerical tolerance.  Resolve by checking
-            # whether the round-trip is net profitable (Bug J fix).
-            # The value of discharging is avoided import (p_imp),
-            # not export revenue (p_exp).
+            # it is due to numerical tolerance at a degenerate LP
+            # vertex.  Resolve by checking whether the round-trip is
+            # net profitable (Bug J fix).  The value of discharging is
+            # avoided import (p_imp), not export revenue (p_exp).
+            #
+            # When the round-trip is NOT profitable, collapse the
+            # degenerate vertex to its net direction instead of
+            # zeroing both — the LP expressed a net charge or
+            # discharge through the vertex and that net effect must
+            # be preserved (issue #659).
             net_charge_profit = (
                 p_imp[lp_t] * discharge_eff
                 - p_imp[lp_t] / charge_eff
@@ -1111,9 +1155,14 @@ def solve_milp(
             )
             if net_charge_profit > 0:
                 ed_kwh = 0.0
-            else:
-                ec_kwh = 0.0
+            elif ec_kwh > ed_kwh:
+                # Net charge: keep the delta, zero the discharge
+                ec_kwh = ec_kwh - ed_kwh
                 ed_kwh = 0.0
+            else:
+                # Net discharge (or equal): keep the delta, zero the charge
+                ed_kwh = ed_kwh - ec_kwh
+                ec_kwh = 0.0
 
         if ec_kwh > _MIN_ACTION_KWH:
             # Use BatteriesChargeSolar when PV surplus is available,
@@ -1139,7 +1188,6 @@ def solve_milp(
                     out_slots[
                         slot_i
                     ].recommendation = Recommendations.BatteriesChargeGrid.value
-            out_slots[slot_i].batteries_charged_kwh = round(ec_kwh, 3)
         elif ed_kwh > _MIN_ACTION_KWH:
             # If the LP is exporting (ge > 0) in this slot, use
             # ForceBatteriesDischarge to signal that the battery should
@@ -1153,22 +1201,37 @@ def solve_milp(
                     slot_i
                 ].recommendation = Recommendations.BatteriesDischargeMode.value
 
-    # ------------------------------------------------------------------
-    # Write LP-derived energy flow fields to ALL future slots.
-    #
-    # These are the source of truth for batteries_discharged_kwh,
-    # grid_import_kwh, and grid_export_kwh.  The SoC simulation
-    # (simulate_soc) must use these verbatim when milp_prepopulated=True
-    # — never re-derive a different (greedy) value from the
-    # recommendation label and net_demand.
-    # ------------------------------------------------------------------
-    for lp_t, slot_i in enumerate(future_idx):
-        ed_val = float(ed_sol[lp_t])
-        gi_val = float(result.x[gi_off + lp_t])
-        ge_val = float(result.x[ge_off + lp_t])
-        out_slots[slot_i].batteries_discharged_kwh = round(max(ed_val, 0.0), 3)
-        out_slots[slot_i].grid_import_kwh = round(max(gi_val, 0.0), 3)
-        out_slots[slot_i].grid_export_kwh = round(max(ge_val, 0.0), 3)
+        # Write resolved charge/discharge kWh fields consistently.
+        resolved_charge = round(max(ec_kwh, 0.0), 3)
+        resolved_discharge = round(max(ed_kwh, 0.0), 3)
+        out_slots[slot_i].batteries_charged_kwh = resolved_charge
+        out_slots[slot_i].batteries_discharged_kwh = resolved_discharge
+
+        # Derive grid import/export from the slot's energy balance using
+        # the SAME resolved (rounded) charge/discharge values stored in
+        # the slot fields.  This guarantees the equality
+        #   gi + pv + ed·η_dis = house_load + ec/η_chg + ge
+        # holds exactly at 3-decimal precision.
+        #
+        # LP energy balance:  gi + pv + ed·η_dis
+        #     = base_load + ec/η_chg + ge + curt + Σ ev_c/eff
+        # ⇒ gi − ge = base_load + ec/η_chg − ed·η_dis + curt + Σ ev_c/eff − pv
+        curt_kwh = float(curt_sol_full[lp_t])
+        ev_ac_kwh = ev_ac_load_by_slot.get(lp_t, 0.0)
+        net_flow = (
+            base_load[lp_t]
+            + resolved_charge / charge_eff
+            - resolved_discharge * discharge_eff
+            + curt_kwh
+            + ev_ac_kwh
+            - pv_avail[lp_t]
+        )
+        if net_flow > 0:
+            out_slots[slot_i].grid_import_kwh = round(net_flow, 3)
+            out_slots[slot_i].grid_export_kwh = 0.0
+        else:
+            out_slots[slot_i].grid_import_kwh = 0.0
+            out_slots[slot_i].grid_export_kwh = round(-net_flow, 3)
 
     # ------------------------------------------------------------------
     # Write MILP-derived EV charging decisions to output slots
@@ -1346,9 +1409,7 @@ def solve_milp(
                 total_fuse_violation_kwh,
             )
 
-    # Extract curtailment solution
-    curt_sol = result.x[curt_off : curt_off + m]
-    total_curtailment_kwh = float(np.sum(curt_sol))
+    total_curtailment_kwh = float(np.sum(curt_sol_full))
 
     log_planner(
         "debug",

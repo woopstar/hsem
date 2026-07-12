@@ -297,11 +297,22 @@ simulation uses the slot's **existing** `batteries_discharged_kwh`,
 `grid_import_kwh`, and `grid_export_kwh` values verbatim — it does **not**
 re-derive them from the recommendation label and net demand.
 
-This mode is used for MILP-sourced candidates, where `solve_milp()` has
-already populated these fields from the LP's `ed[t]`, `gi[t]`, and
-`ge[t]` solutions.  The LP values are the source of truth; the SoC
-simulation must never silently overwrite them with a greedy
-re-derivation.
+This mode is used for MILP-sourced candidates.  `solve_milp()` populates
+these fields in a **single merged write-out pass** (issue #659) that:
+
+1. Resolves degenerate LP vertices (simultaneous charge+discharge) by
+   collapsing to the net direction.
+2. Writes `batteries_charged_kwh` and `batteries_discharged_kwh` from the
+   **resolved** ec/ed (not the raw LP arrays).
+3. Derives `grid_import_kwh` and `grid_export_kwh` from the slot's energy
+   balance equation using the **same resolved** ec/ed values — they are
+   **not** read directly from the raw LP `gi[t]`/`ge[t]` arrays, because
+   the raw arrays assume the original (potentially now-invalid) ec/ed
+   combination.
+
+All four energy-flow fields are consistent with each other and with the
+recommendation label for every slot.  The resolved values are the source
+of truth; the SoC simulation must never silently overwrite them.
 
 For non-MILP candidates (`milp_prepopulated=False`, the default),
 the simulation continues to derive discharge and grid flows greedily

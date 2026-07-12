@@ -2415,3 +2415,81 @@ def test_ev_primary_only_routes_to_primary_field():
         f"Primary EV power must go to ev_charger_calculated_power. "
         f"Got primary={primary_used}, second={second_used}"
     )
+
+
+@_scipy_skip()
+def test_milp_energy_fields_consistent_after_mutex_resolution():
+    """Regression test for issue #659: energy-flow fields must be consistent.
+
+    When the LP returns a degenerate vertex with simultaneous charge and
+    discharge for the same slot, the mutex resolution (Bug J fix) zeroes
+    or adjusts ec/ed.  All per-slot energy-flow fields —
+    batteries_charged_kwh, batteries_discharged_kwh, grid_import_kwh,
+    grid_export_kwh — must reflect the SAME resolved decision, and the
+    slot energy balance must hold within floating-point tolerance.
+
+    The test constructs a scenario where a cheap slot (import 0.01)
+    followed by neutral slots (import 0.50) with 100 % efficiency and
+    zero cycle cost reliably triggers a degenerate LP vertex.
+    """
+    slots = [
+        _make_slot(
+            hour=h,
+            import_price=(0.01 if h == 0 else 0.50),
+            export_price=0.01,
+            consumption_kwh=0.3,
+        )
+        for h in range(4)
+    ]
+    for s in slots:
+        s.solcast_pv_estimate_kwh = 0.0
+        s.estimated_net_consumption_kwh = (
+            s.avg_house_consumption_kwh - s.solcast_pv_estimate_kwh
+        )
+
+    milp_result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=9.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=None,
+        cycle_cost_per_kwh=0.0,
+        charge_efficiency_pct=100.0,
+        discharge_efficiency_pct=100.0,
+    )
+    assert milp_result is not None, "MILP must solve the 4-slot problem"
+    milp_slots, _diag = milp_result
+
+    charge_eff = 1.0  # 100 %
+    discharge_eff = 1.0
+
+    for i, s in enumerate(milp_slots):
+        # Invariant 1: a None recommendation must not coexist with
+        # nonzero charge or discharge.
+        if s.recommendation is None:
+            assert s.batteries_charged_kwh == pytest.approx(0.0, abs=1e-4), (
+                f"Slot {i}: recommendation=None but batteries_charged_kwh="
+                f"{s.batteries_charged_kwh}"
+            )
+            assert s.batteries_discharged_kwh == pytest.approx(0.0, abs=1e-4), (
+                f"Slot {i}: recommendation=None but batteries_discharged_kwh="
+                f"{s.batteries_discharged_kwh}"
+            )
+
+        # Invariant 2: energy balance must hold.
+        # gi + pv + ed·η_dis == house_load + ec/η_chg + ge
+        lhs = (
+            s.grid_import_kwh
+            + s.solcast_pv_estimate_kwh
+            + s.batteries_discharged_kwh * discharge_eff
+        )
+        rhs = (
+            s.avg_house_consumption_kwh
+            + s.batteries_charged_kwh / charge_eff
+            + s.grid_export_kwh
+        )
+        assert lhs == pytest.approx(rhs, abs=1e-6), (
+            f"Slot {i}: energy balance violation. "
+            f"LHS={lhs:.6f} RHS={rhs:.6f} delta={abs(lhs - rhs):.6f}"
+        )
