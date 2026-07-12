@@ -35,7 +35,7 @@ lint = [
     "isort==8.0.1",
 ]
 typing = [
-    "mypy==2.1.0",
+    "mypy==2.2.0",
 ]
 test = [
     "pytest==9.1.1",
