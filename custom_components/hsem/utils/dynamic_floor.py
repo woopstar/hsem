@@ -15,7 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+from custom_components.hsem.utils.logger import log_planner
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -131,7 +131,8 @@ class DynamicDischargeFloor:
         }
 
         if not slots:
-            _LOGGER.debug(
+            log_planner(
+                "debug",
                 "[dynamic_floor] No slots provided — using configured min %.1f%%",
                 configured_min_soc_pct,
             )
@@ -140,7 +141,8 @@ class DynamicDischargeFloor:
         # Filter to future slots only, ordered chronologically.
         future = [s for s in slots if s.end > now]
         if not future:
-            _LOGGER.debug(
+            log_planner(
+                "debug",
                 "[dynamic_floor] No future slots — using configured min %.1f%%",
                 configured_min_soc_pct,
             )
@@ -218,7 +220,8 @@ class DynamicDischargeFloor:
             "refill_type": refill_type,
         }
 
-        _LOGGER.debug(
+        log_planner(
+            "debug",
             "[dynamic_floor] compute_floor: reserve=%.3f kWh  bridge=%.1f h  "
             "refill=%s(%s)  margin=%.2f  raw_soc=%.1f%%  effective=%.1f%%  "
             "configured_min=%.1f%%  usable=%.3f",
@@ -259,7 +262,8 @@ class DynamicDischargeFloor:
         if actual_soc_pct < floor_pct:
             self._days_below_floor += 1
             self._days_above_floor = 0
-            _LOGGER.debug(
+            log_planner(
+                "debug",
                 "[dynamic_floor] SoC %.1f%% < floor %.1f%% — below-floor days: %d",
                 actual_soc_pct,
                 floor_pct,
@@ -271,7 +275,8 @@ class DynamicDischargeFloor:
                     self.max_margin, self.safety_margin + _MARGIN_INCREASE
                 )
                 self._days_below_floor = 0
-                _LOGGER.info(
+                log_planner(
+                    "info",
                     "[dynamic_floor] Increasing safety margin from %.2f to %.2f "
                     "(SoC %.1f%% dropped below floor %.1f%% for %d days)",
                     old_margin,
@@ -283,7 +288,8 @@ class DynamicDischargeFloor:
         elif actual_soc_pct > floor_pct * _WELL_ABOVE_FACTOR:
             self._days_above_floor += 1
             self._days_below_floor = 0
-            _LOGGER.debug(
+            log_planner(
+                "debug",
                 "[dynamic_floor] SoC %.1f%% > floor %.1f%% × %.1f — above-floor days: %d",
                 actual_soc_pct,
                 floor_pct,
@@ -296,7 +302,8 @@ class DynamicDischargeFloor:
                     self.min_margin, self.safety_margin - _MARGIN_DECREASE
                 )
                 self._days_above_floor = 0
-                _LOGGER.info(
+                log_planner(
+                    "info",
                     "[dynamic_floor] Decreasing safety margin from %.2f to %.2f "
                     "(SoC %.1f%% stayed above floor %.1f%% for %d days)",
                     old_margin,
