@@ -48,12 +48,11 @@ async def get_power_step_schema(
                 default=get_config_value(config_entry, "hsem_main_fuse_phases"),
             ): selector(
                 {
-                    "select": {
-                        "options": [
-                            {"label": "1-phase", "value": 1},
-                            {"label": "3-phase", "value": 3},
-                        ],
-                        "mode": "dropdown",
+                    "number": {
+                        "min": 1,
+                        "max": 3,
+                        "step": 2,
+                        "mode": "box",
                     }
                 }
             ),
