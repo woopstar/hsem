@@ -1477,3 +1477,191 @@ def test_main_fuse_has_violations_flag():
     assert diag.get("has_violations", False), (
         "has_violations must be True when fuse violations exist"
     )
+
+
+# ---------------------------------------------------------------------------
+# Export price > import price — unbounded LP fix (issue #635)
+# ---------------------------------------------------------------------------
+
+
+@_scipy_skip()
+def test_milp_export_above_import_returns_solution():
+    """Single slot with export > import (both positive) must return non-None.
+
+    Before the fix, p_exp > p_imp in any slot caused an unbounded LP
+    (HiGHS status=3) and solve_milp() returned None for the entire horizon.
+    """
+    slots = [_make_slot(hour=0, import_price=0.05, export_price=0.10)]
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=2.0,
+        usable_kwh=10.0,
+        max_charge_per_slot=3.0,
+        max_discharge_per_slot=3.0,
+    )
+    assert result is not None, (
+        "MILP must return a solution when export_price > import_price"
+    )
+
+
+@_scipy_skip()
+def test_milp_negative_import_positive_export_returns_solution():
+    """Single slot with negative import and positive export must return non-None.
+
+    This is a common real-world condition during high wind/solar production
+    hours in DK/DE/NL markets.
+    """
+    slots = [_make_slot(hour=0, import_price=-0.05, export_price=0.10)]
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=2.0,
+        usable_kwh=10.0,
+        max_charge_per_slot=3.0,
+        max_discharge_per_slot=3.0,
+    )
+    assert result is not None, (
+        "MILP must return a solution when import_price < 0 and export_price > 0"
+    )
+
+
+@_scipy_skip()
+def test_milp_bad_slot_at_start_of_288_slot_horizon():
+    """A bad slot (export > import) at index 0 in a 288-slot horizon must not fail."""
+    import copy
+
+    # 288 slots (72 hours × 15 min per slot)
+    base_slot = _make_slot(hour=0, import_price=0.20, export_price=0.05)
+    slots: list[PlannedSlot] = []
+    for i in range(288):
+        s = copy.copy(base_slot)
+        s.start = _NOW + timedelta(minutes=i * 15)
+        s.end = s.start + timedelta(minutes=15)
+        if i == 0:
+            s.price = SlotPrice(import_price=0.05, export_price=0.10)
+        else:
+            s.price = SlotPrice(import_price=0.20, export_price=0.05)
+        slots.append(s)
+
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=2.0,
+        usable_kwh=10.0,
+        max_charge_per_slot=3.0,
+        max_discharge_per_slot=3.0,
+    )
+    assert result is not None, (
+        "MILP must return a solution when bad slot is at index 0 in 288-slot horizon"
+    )
+
+
+@_scipy_skip()
+def test_milp_bad_slot_at_midpoint_of_288_slot_horizon():
+    """A bad slot (export > import) at the midpoint in a 288-slot horizon must not fail."""
+    import copy
+
+    base_slot = _make_slot(hour=0, import_price=0.20, export_price=0.05)
+    slots: list[PlannedSlot] = []
+    for i in range(288):
+        s = copy.copy(base_slot)
+        s.start = _NOW + timedelta(minutes=i * 15)
+        s.end = s.start + timedelta(minutes=15)
+        if i == 144:  # midpoint
+            s.price = SlotPrice(import_price=0.05, export_price=0.10)
+        else:
+            s.price = SlotPrice(import_price=0.20, export_price=0.05)
+        slots.append(s)
+
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=2.0,
+        usable_kwh=10.0,
+        max_charge_per_slot=3.0,
+        max_discharge_per_slot=3.0,
+    )
+    assert result is not None, (
+        "MILP must return a solution when bad slot is at midpoint in 288-slot horizon"
+    )
+
+
+@_scipy_skip()
+def test_milp_bad_slot_at_end_of_288_slot_horizon():
+    """A bad slot (export > import) at the last slot in a 288-slot horizon must not fail."""
+    import copy
+
+    base_slot = _make_slot(hour=0, import_price=0.20, export_price=0.05)
+    slots: list[PlannedSlot] = []
+    for i in range(288):
+        s = copy.copy(base_slot)
+        s.start = _NOW + timedelta(minutes=i * 15)
+        s.end = s.start + timedelta(minutes=15)
+        if i == 287:  # last slot
+            s.price = SlotPrice(import_price=0.05, export_price=0.10)
+        else:
+            s.price = SlotPrice(import_price=0.20, export_price=0.05)
+        slots.append(s)
+
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=2.0,
+        usable_kwh=10.0,
+        max_charge_per_slot=3.0,
+        max_discharge_per_slot=3.0,
+    )
+    assert result is not None, (
+        "MILP must return a solution when bad slot is at last position in 288-slot horizon"
+    )
+
+
+@_scipy_skip()
+def test_milp_normal_prices_no_regression():
+    """Normal prices (import > export in all slots) must produce same results.
+
+    The fix must not change behavior when p_imp > p_exp for all slots,
+    which is the normal case.
+    """
+    # Standard arbitrage case — import > export everywhere
+    cheap = [0, 1, 2, 3]
+    expensive = [20, 21, 22, 23]
+    slots = _make_arbitrage_slots(
+        cheap, expensive, cheap_price=0.05, expensive_price=3.0
+    )
+
+    milp_result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=9.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+    )
+
+    assert milp_result is not None, (
+        "MILP must still return a solution on the standard arbitrage case"
+    )
+    result, _diag = milp_result
+
+    # Verify charge/discharge still works as expected (same assertions
+    # as test_milp_charges_in_cheap_slots_and_discharges_in_expensive)
+    charge_hours = {
+        s.start.hour
+        for s in result
+        if s.recommendation == Recommendations.BatteriesChargeGrid.value
+    }
+    discharge_hours = {
+        s.start.hour
+        for s in result
+        if s.recommendation == Recommendations.BatteriesDischargeMode.value
+    }
+
+    assert charge_hours & set(cheap), (
+        f"Expected charge in cheap hours {cheap}, got charge hours: {sorted(charge_hours)}"
+    )
+    assert discharge_hours & set(expensive), (
+        f"Expected discharge in expensive hours {expensive}, "
+        f"got discharge hours: {sorted(discharge_hours)}"
+    )

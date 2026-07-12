@@ -55,6 +55,26 @@ The ``curt[t]`` variable allows the LP to explicitly curtail PV when the
 battery is full and export prices are low/negative. Without it, the LP
 is forced to "use" all PV surplus even when curtailment would be optimal.
 
+Price sanitisation
+------------------
+Before solving, ``p_exp`` is sanitised in two steps:
+
+1. **Min-export-price clamp**: slots where ``p_exp < min_export_price`` are
+   clamped to 0 because the applier physically blocks export for those
+   slots (sets inverter to ``GRID_EXPORT_LIMIT_WATT``).
+2. **Export-≤-import clamp**: ``p_exp = min(p_exp, p_imp)`` — ensures
+   ``p_exp[t]`` never exceeds ``p_imp[t]`` for the same slot.  Without this,
+   slots where ``p_exp > p_imp`` create an unbounded LP (HiGHS status=3)
+   because ``gi[t]`` and ``ge[t]`` are both ``[0, ∞)`` and linked only
+   through the energy-balance equality.  The LP could drive both to
+   infinity (import cheap, export expensive) while the terms cancel.
+
+   This clamp is economically correct — no rational agent imports and
+   exports simultaneously for profit — and prevents the entire MILP from
+   silently returning ``None`` for the whole horizon whenever this common
+   real-world condition (negative import prices, asymmetric grid tariffs)
+   occurs.
+
 Solving
 -------
 ``scipy.optimize.linprog(method='highs')``.  96-slot horizon < 50 ms.
@@ -303,6 +323,28 @@ def solve_milp(
                 float(np.max(p_exp[blocked])),
             )
         p_exp = np.where(blocked, 0.0, p_exp)
+
+    # Clamp export price to never exceed import price for the same slot.
+    # Without this, slots where p_exp[t] > p_imp[t] create an unbounded LP
+    # (HiGHS status=3): both gi[t] and ge[t] are [0, ∞) and linked only
+    # through the energy-balance equality, so the LP can drive both to
+    # infinity (import cheap, export expensive) while the terms cancel in
+    # the balance equation.  This is economically correct — no rational
+    # agent imports and exports the same commodity in the same instant for
+    # profit — and capping the achievable arbitrage spread removes the
+    # unbounded direction without changing any other behavior.
+    export_exceeds_import = p_exp > p_imp
+    n_clamped = int(np.sum(export_exceeds_import))
+    if n_clamped > 0:
+        deltas = p_exp[export_exceeds_import] - p_imp[export_exceeds_import]
+        log_planner(
+            "debug",
+            "[milp] Clamping %d export prices that exceed import price "
+            "(max delta=%.4f)",
+            n_clamped,
+            float(np.max(deltas)),
+        )
+        p_exp = np.minimum(p_exp, p_imp)
 
     # Net load = house consumption + EV extra load − PV estimate.
     # A positive value means the battery/grid must supply extra energy.

@@ -149,7 +149,7 @@ Where:
 |---|---|
 | $\delta_t$ | Time discount per slot: $\delta_t = r^{\Delta t}$ where $\Delta t$ is hours from now |
 | $p_{\mathrm{imp}}[t]$ | Grid import price (currency/kWh) |
-| $p_{\mathrm{exp}}[t]$ | Grid export price (currency/kWh), clamped to 0 when below `min_export_price` |
+| $p_{\mathrm{exp}}[t]$ | Grid export price (currency/kWh). Before solving, `p_exp` is sanitised: (1) clamped to 0 when below `min_export_price` (physically blocked export), and (2) clamped to `min(p_exp, p_imp)` to prevent an unbounded LP when `p_exp > p_imp` in any slot (issue #635). |
 | $\alpha$ | Battery cycle cost per kWh: $\alpha = \frac{P \cdot L_{pct}/100}{2 \cdot N \cdot C_u}$ |
 | $\epsilon_{\mathrm{chg}}$ | Charge-side loss fraction: $\epsilon_{\mathrm{chg}} = 1 - \eta_{\mathrm{chg}}$ |
 | $\epsilon_{\mathrm{dis}}$ | Discharge-side loss fraction: $\epsilon_{\mathrm{dis}} = 1 - \eta_{\mathrm{dis}}$ |
@@ -264,6 +264,30 @@ $$
 The penalty variable `gi_pen[t]` absorbs any excess at high cost (`p_fuse`), preventing infeasibility when house base load alone exceeds the fuse rating. When `main_fuse_amps` is `None` or 0, this constraint is not added.
 
 Where $D_v$ is the deadline slot index for EV v.
+
+---
+
+## Price sanitisation
+
+Before the LP is built, two sanitisation steps are applied to `p_exp` to prevent solver instability and maintain consistency with physical constraints:
+
+### 1. Min-export-price clamp
+
+Slots where `p_exp < min_export_price` are clamped to 0. The applier physically blocks export for these slots by setting the inverter to `GRID_EXPORT_LIMIT_WATT`, so the LP must not optimise around a price signal that will never be realised. Negative export prices are **not** clamped — the `curt[t]` variable (zero objective cost) naturally handles them.
+
+### 2. Export-≤-import clamp (issue #635)
+
+`p_exp` is clamped to never exceed `p_imp` for the same slot:
+
+$$
+p_{\mathrm{exp}}[t] = \min\bigl(p_{\mathrm{exp}}[t],\; p_{\mathrm{imp}}[t]\bigr)
+$$
+
+Without this, slots where `p_exp > p_imp` create an **unbounded LP** (HiGHS status=3). `gi[t]` and `ge[t]` are both `[0, ∞)` and linked only through the per-slot energy-balance equality, so the LP can drive both to infinity (import cheap, export expensive) while the terms cancel. A single such slot causes `solve_milp()` to return `None` for the **entire horizon**, silently falling back to weaker heuristic candidates.
+
+This condition occurs in practice whenever negative import spot prices coincide with positive export tariffs (common in DK/DE/NL markets during high wind/solar hours), or when asymmetric import/export grid fees create an apparent export-price premium.
+
+The clamp is economically correct — no rational agent imports and exports simultaneously for profit — and capping the achievable arbitrage spread removes the unbounded direction without changing any other optimisation behaviour.
 
 ---
 
