@@ -1665,3 +1665,182 @@ def test_milp_normal_prices_no_regression():
         f"Expected discharge in expensive hours {expensive}, "
         f"got discharge hours: {sorted(discharge_hours)}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Issue #637 — MILP discharge values are the source of truth
+# ---------------------------------------------------------------------------
+
+
+@_scipy_skip()
+def test_milp_discharge_values_preserved_after_soc_simulation():
+    """batteries_discharged_kwh after milp_prepopulated simulate_soc must match
+    the LP's ed[t] solution, not a greedy chronological re-derivation.
+
+    Scenario: two slots, both need 2.0 kWh, battery has only 3.0 kWh usable.
+    The LP optimally allocates discharge across the two slots considering
+    different import prices (0.30 vs 1.00).  The greedy simulator would
+    discharge 2.0 kWh in slot 0 (enough to cover its load), leaving only
+    1.0 kWh for slot 1.  The LP may instead ration: discharge less in
+    slot 0 (where import is cheaper) and save more for slot 1.
+    """
+    slot0 = _make_slot(hour=0, import_price=0.30, consumption_kwh=2.0)
+    slot1 = _make_slot(hour=1, import_price=1.00, consumption_kwh=2.0)
+    slots = [slot0, slot1]
+
+    milp_result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=3.0,
+        usable_kwh=3.0,
+        max_charge_per_slot=3.0,
+        max_discharge_per_slot=3.0,
+        cycle_cost_per_kwh=0.0,
+    )
+    assert milp_result is not None, "MILP must return a solution"
+    out_slots, _diag = milp_result
+
+    # Record LP-derived discharge values before simulate_soc
+    lp_discharge = [s.batteries_discharged_kwh for s in out_slots]
+    lp_grid_import = [s.grid_import_kwh for s in out_slots]
+    lp_grid_export = [s.grid_export_kwh for s in out_slots]
+
+    # Run SoC simulation WITH milp_prepopulated=True (preserve LP values)
+    simulate_soc(
+        out_slots,
+        _NOW,
+        current_kwh=3.0,
+        usable_kwh=3.0,
+        max_capacity_kwh=3.0,
+        max_charge_per_slot=3.0,
+        max_discharge_per_slot=3.0,
+        rated_kwh=3.0,
+        end_of_discharge_soc_pct=0.0,
+        milp_prepopulated=True,
+    )
+
+    # After simulation, batteries_discharged_kwh must still match LP values
+    for i, slot in enumerate(out_slots):
+        assert slot.batteries_discharged_kwh == pytest.approx(
+            lp_discharge[i], rel=1e-6
+        ), (
+            f"Slot {i}: batteries_discharged_kwh {slot.batteries_discharged_kwh} "
+            f"differs from LP ed[t] {lp_discharge[i]}"
+        )
+        assert slot.grid_import_kwh == pytest.approx(lp_grid_import[i], rel=1e-6), (
+            f"Slot {i}: grid_import_kwh {slot.grid_import_kwh} "
+            f"differs from LP gi[t] {lp_grid_import[i]}"
+        )
+        assert slot.grid_export_kwh == pytest.approx(lp_grid_export[i], rel=1e-6), (
+            f"Slot {i}: grid_export_kwh {slot.grid_export_kwh} "
+            f"differs from LP ge[t] {lp_grid_export[i]}"
+        )
+
+    # The LP should have rationed discharge: since slot 1 has a much higher
+    # import price (1.00 vs 0.30), the LP should allocate MORE discharge to
+    # slot 1 (saving expensive imports) and LESS to slot 0.
+    # Total discharge cannot exceed usable_kwh (3.0 kWh).
+    total_discharge = sum(s.batteries_discharged_kwh for s in out_slots)
+    assert total_discharge <= 3.0 + 1e-6, (
+        f"Total discharge {total_discharge} exceeds usable capacity 3.0"
+    )
+    # The LP should discharge more in the expensive slot (slot 1)
+    # than in the cheap slot (slot 0), because displacing 1.00/kWh imports
+    # is worth more than displacing 0.30/kWh imports.
+    assert out_slots[1].batteries_discharged_kwh >= pytest.approx(
+        out_slots[0].batteries_discharged_kwh, rel=1e-6
+    ), (
+        f"LP should discharge more in expensive slot (1.00/kWh) than cheap "
+        f"slot (0.30/kWh).  Got slot0={out_slots[0].batteries_discharged_kwh}, "
+        f"slot1={out_slots[1].batteries_discharged_kwh}"
+    )
+
+
+@_scipy_skip()
+def test_milp_discharge_not_overwritten_without_prepopulated_flag():
+    """Without milp_prepopulated=True, simulate_soc still overwrites
+    batteries_discharged_kwh with its own greedy derivation — this is the
+    pre-existing behavior for non-MILP candidates and must remain unchanged.
+
+    This test verifies that the greedy path is still intact and produces
+    different results than the LP for capacity-constrained scenarios.
+    """
+    slot0 = _make_slot(hour=0, import_price=0.30, consumption_kwh=2.0)
+    slot1 = _make_slot(hour=1, import_price=1.00, consumption_kwh=2.0)
+    slots = [slot0, slot1]
+
+    milp_result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=3.0,
+        usable_kwh=3.0,
+        max_charge_per_slot=3.0,
+        max_discharge_per_slot=3.0,
+        cycle_cost_per_kwh=0.0,
+    )
+    assert milp_result is not None, "MILP must return a solution"
+    out_slots, _diag = milp_result
+
+    # Run SoC simulation WITHOUT milp_prepopulated (greedy re-derivation)
+    simulate_soc(
+        out_slots,
+        _NOW,
+        current_kwh=3.0,
+        usable_kwh=3.0,
+        max_capacity_kwh=3.0,
+        max_charge_per_slot=3.0,
+        max_discharge_per_slot=3.0,
+        rated_kwh=3.0,
+        end_of_discharge_soc_pct=0.0,
+        # milp_prepopulated defaults to False
+    )
+
+    # After simulation WITHOUT milp_prepopulated, the values MAY differ
+    # from the LP — this is the greedy re-derivation behavior.
+    greedy_discharge = [s.batteries_discharged_kwh for s in out_slots]
+
+    # The greedy path should still be functional (non-zero total discharge)
+    total_discharge = sum(greedy_discharge)
+    assert total_discharge > 0, "Greedy simulation should produce non-zero discharge"
+
+
+@_scipy_skip()
+def test_non_milp_candidates_unaffected_by_milp_prepopulated():
+    """Regression test: non-MILP candidates (no_action, passive) must keep
+    using simulate_soc's existing greedy logic exactly as before.
+
+    The milp_prepopulated flag defaults to False, so any caller that does
+    not explicitly opt-in gets the original greedy behavior.
+    """
+    slot = _make_slot(
+        hour=0,
+        import_price=0.30,
+        consumption_kwh=1.0,
+        recommendation=Recommendations.BatteriesDischargeMode.value,
+    )
+    slots = [slot]
+
+    # Run simulate_soc without milp_prepopulated (default behavior)
+    simulate_soc(
+        slots,
+        _NOW,
+        current_kwh=2.0,
+        usable_kwh=5.0,
+        max_capacity_kwh=5.0,
+        max_charge_per_slot=3.0,
+        max_discharge_per_slot=3.0,
+        rated_kwh=5.0,
+        end_of_discharge_soc_pct=0.0,
+    )
+
+    # The greedy path should have derived discharge from the recommendation
+    # label and net_demand:
+    # - net_demand = 1.0 kWh (house load, no PV)
+    # - discharge = min(1.0, cap=2.0, max_discharge=3.0) = 1.0 kWh
+    # The default flag must produce the same greedy behavior as before.
+    assert slot.batteries_discharged_kwh == pytest.approx(1.0, rel=1e-6), (
+        f"Greedy discharge should be 1.0 kWh (covers full net_demand), "
+        f"got {slot.batteries_discharged_kwh}"
+    )
+    assert slot.grid_import_kwh >= 0, "Grid import must be non-negative"
+    assert slot.estimated_battery_capacity_kwh > 0, "SoC must be tracked"

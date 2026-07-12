@@ -143,7 +143,12 @@ def solve_milp(
 
     - ``recommendation``  — one of ``BatteriesChargeGrid``, ``BatteriesDischargeMode``,
       ``ForceBatteriesDischarge``, or ``None`` (idle).
-    - ``batteries_charged`` — energy entering the battery this slot (kWh).
+    - ``batteries_charged_kwh`` — energy entering the battery this slot (kWh).
+    - ``batteries_discharged_kwh`` — energy discharged from the battery this slot
+      (kWh).  Populated directly from the LP's ``ed[t]`` solution — this is the
+      source of truth and must not be re-derived by :func:`~soc_simulation.simulate_soc`.
+    - ``grid_import_kwh`` — grid import this slot (kWh), from the LP's ``gi[t]``.
+    - ``grid_export_kwh`` — grid export this slot (kWh), from the LP's ``ge[t]``.
     - ``ev_planned_load_kwh`` — EV AC load that must be added to base consumption
       (when ``ev_configs`` is provided and ``base_load_includes_ev`` is False).
     - ``ev_accounted_load_kwh`` — EV AC load already captured in house consumption
@@ -155,8 +160,10 @@ def solve_milp(
     - ``estimated_cost_currency`` — recomputed after EV decisions.
 
     The SoC simulation (:func:`~soc_simulation.simulate_soc`) must be run
-    by the caller **after** receiving these slots to populate
-    ``grid_import_kwh``, ``grid_export_kwh``, and ``estimated_battery_soc``.
+    by the caller **after** receiving these slots with
+    ``milp_prepopulated=True`` to populate ``estimated_battery_soc``
+    and ``estimated_battery_capacity_kwh`` while preserving the LP-derived
+    energy flow fields.
 
     The MILP objective now includes conversion loss costs so its optimisation
     matches the cost function's ``total_cost``.  The energy balance equation
@@ -994,10 +1001,14 @@ def solve_milp(
 
     out_slots: list[PlannedSlot] = [copy.copy(s) for s in slots]
 
-    # Reset charge/discharge and EV fields on all future slots; past slots keep TimePassed
+    # Reset charge/discharge, energy-flow, and EV fields on all future slots;
+    # past slots keep TimePassed.
     for i in future_idx:
         out_slots[i].recommendation = None
         out_slots[i].batteries_charged_kwh = 0.0
+        out_slots[i].batteries_discharged_kwh = 0.0
+        out_slots[i].grid_import_kwh = 0.0
+        out_slots[i].grid_export_kwh = 0.0
         out_slots[i].ev_planned_load_kwh = 0.0
         out_slots[i].ev_accounted_load_kwh = 0.0
         out_slots[i].ev_total_planned_load_kwh = 0.0
@@ -1078,6 +1089,23 @@ def solve_milp(
                 out_slots[
                     slot_i
                 ].recommendation = Recommendations.BatteriesDischargeMode.value
+
+    # ------------------------------------------------------------------
+    # Write LP-derived energy flow fields to ALL future slots.
+    #
+    # These are the source of truth for batteries_discharged_kwh,
+    # grid_import_kwh, and grid_export_kwh.  The SoC simulation
+    # (simulate_soc) must use these verbatim when milp_prepopulated=True
+    # — never re-derive a different (greedy) value from the
+    # recommendation label and net_demand.
+    # ------------------------------------------------------------------
+    for lp_t, slot_i in enumerate(future_idx):
+        ed_val = float(ed_sol[lp_t])
+        gi_val = float(result.x[gi_off + lp_t])
+        ge_val = float(result.x[ge_off + lp_t])
+        out_slots[slot_i].batteries_discharged_kwh = round(max(ed_val, 0.0), 3)
+        out_slots[slot_i].grid_import_kwh = round(max(gi_val, 0.0), 3)
+        out_slots[slot_i].grid_export_kwh = round(max(ge_val, 0.0), 3)
 
     # ------------------------------------------------------------------
     # Write MILP-derived EV charging decisions to output slots

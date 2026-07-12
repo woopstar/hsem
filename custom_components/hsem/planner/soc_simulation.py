@@ -53,6 +53,8 @@ def simulate_soc(
     end_of_discharge_soc_pct: float = 0.0,
     charge_efficiency_pct: float = 100.0,
     discharge_efficiency_pct: float = 100.0,
+    *,
+    milp_prepopulated: bool = False,
 ) -> None:
     """Forward-simulate battery SoC through all planning slots.
 
@@ -112,6 +114,12 @@ def simulate_soc(
         discharge_efficiency_pct: Discharge-side efficiency as a percentage
             (0-100).  Energy to house = battery_removed × (discharge_efficiency_pct / 100).
             Defaults to 100 % (no discharge-side loss) for backward compatibility.
+        milp_prepopulated: When ``True``, the slot's ``batteries_discharged_kwh``,
+            ``grid_import_kwh``, and ``grid_export_kwh`` fields are already
+            populated by the MILP LP solution and must be used verbatim.
+            The simulation skips the greedy derivation and tracks SoC from
+            the pre-populated values.  Defaults to ``False`` (unchanged
+            behaviour for non-MILP candidates).
     """
     # Clamp efficiencies to a valid range to avoid division by zero or nonsense.
     charge_eff = clamp_efficiency(charge_efficiency_pct)
@@ -215,7 +223,16 @@ def simulate_soc(
             house_load - pv
         )  # positive = house needs energy; negative = surplus
 
-        if net_demand > 0:
+        if milp_prepopulated:
+            # Trust the LP-derived energy flow values verbatim.
+            # The LP already accounts for all constraints (SoC bounds,
+            # power limits, EV interactions, conversion efficiencies).
+            # Do NOT re-derive discharge from the recommendation label
+            # and net_demand — the LP's ed[t] is the source of truth.
+            discharge = slot.batteries_discharged_kwh
+            grid_import = slot.grid_import_kwh
+            grid_export = slot.grid_export_kwh
+        elif net_demand > 0:
             # House demand exceeds PV on the shared AC bus.
             #
             # When the EV is charging, the battery MUST NOT discharge.
@@ -348,9 +365,10 @@ def simulate_soc(
             slot.estimated_battery_soc_pct = round(cap / usable_kwh * 100, 2)
         else:
             slot.estimated_battery_soc_pct = 0.0
-        slot.batteries_discharged_kwh = round(discharge, 3)
-        slot.grid_import_kwh = round(grid_import, 3)
-        slot.grid_export_kwh = round(grid_export, 3)
+        if not milp_prepopulated:
+            slot.batteries_discharged_kwh = round(discharge, 3)
+            slot.grid_import_kwh = round(grid_import, 3)
+            slot.grid_export_kwh = round(grid_export, 3)
 
         # If the slot has a FORCE discharge/export recommendation but
         # no discharge actually happened (battery empty or PV surplus),

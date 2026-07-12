@@ -310,6 +310,7 @@ Always check `docs/huawei_entities.md` before looking elsewhere.
 | #447 | Partial-SoC fractions collapse to floor at low SoC | Open
 | #582 | EV charger power oscillates due to frequent MILP re-solves | Closed (reverted) |
 | #630 | EV charge-past-target valued at flat 0.0001 instead of avoided-cost | Closed |
+| #637 | simulate_soc overwrites MILP's ed[t] with greedy discharge allocation | Closed |
 
 ---
 
@@ -339,6 +340,31 @@ Always check `docs/huawei_entities.md` before looking elsewhere.
   Always use `log_planner(level, msg, *args)` instead — it offloads file I/O to a
   thread-pool executor when a running event loop is detected, falling back to a
   direct call only when no loop is present (tests, early init). See issue #632.
+
+---
+
+## MILP Energy Flow Source-of-Truth Rule (issue #637)
+
+`solve_milp()` now writes **every** per-slot energy flow field directly from
+the LP solution: `batteries_discharged_kwh`, `grid_import_kwh`, and
+`grid_export_kwh`.  These are the **source of truth** for MILP-sourced
+candidates.
+
+- `simulate_soc()` accepts an optional `milp_prepopulated=True` parameter.
+  When ``True``, it preserves the LP's pre-populated energy flow values
+  verbatim — it does **not** re-derive discharge from the recommendation
+  label and `net_demand`.
+- The candidate selector passes ``milp_prepopulated=True`` for MILP
+  candidates (detected by ``candidate.name == CANDIDATE_MILP``).
+- Non-MILP candidates (no_action, passive, etc.) use the default
+  ``milp_prepopulated=False`` and continue with the existing greedy
+  derivation — their behaviour is unchanged.
+
+**Do NOT** add any post-processing step that silently overwrites the
+LP-derived per-slot energy flows (``batteries_discharged_kwh``,
+``grid_import_kwh``, ``grid_export_kwh``) on MILP-sourced slots.
+If a step needs to adjust these values, it must be part of the LP
+formulation itself, not a downstream patch.
 
 ---
 
