@@ -554,10 +554,11 @@ When `main_fuse_amps` is provided and > 0, the MILP adds a **soft**
 constraint on total grid import power per slot:
 
 ```text
-max_grid_import_per_slot_kwh = main_fuse_amps * 230 * 3 / 1000 * (interval_minutes / 60)
+max_grid_import_per_slot_kwh = main_fuse_amps * 230 * phases / 1000 * (interval_minutes / 60)
 ```
 
-This assumes balanced three-phase load at 230 V phase-to-neutral.
+where ``phases`` is the electrical phase count (1 or 3, default 3).
+This assumes balanced load at 230 V phase-to-neutral per phase.
 
 **Penalty approach** (soft constraint):
 - A penalty variable `gi_pen[t]` is added for each future slot.

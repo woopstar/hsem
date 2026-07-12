@@ -103,10 +103,11 @@ $$
 The max grid import per slot is converted from amps to kWh/slot:
 
 $$
-\mathrm{max\_grid\_import} = \frac{\mathrm{amps} \times 230 \times 3}{1000} \times \frac{\mathrm{interval\_minutes}}{60}
+\mathrm{max\_grid\_import} = \frac{\mathrm{amps} \times 230 \times \mathrm{phases}}{1000} \times \frac{\mathrm{interval\_minutes}}{60}
 $$
 
-This assumes balanced three-phase load at 230 V phase-to-neutral.
+where ``phases`` is the electrical phase count (1 or 3, default 3).
+This assumes balanced load at 230 V phase-to-neutral per phase.
 
 The penalty uses the same high coefficient as SoC penalties (`max(p_imp) × 100`), ensuring the solver only exceeds the fuse limit when physically unavoidable (e.g. house base load alone exceeds the rating). When `main_fuse_amps` is `None` or 0, no variables or constraints are added — behaviour is unchanged.
 
@@ -259,7 +260,7 @@ This constraint ensures charge-past-target EVs only consume **genuine PV surplus
 For each slot $t$, when `main_fuse_amps > 0`:
 
 $$
-gi[t] - \mathrm{gi\_pen}[t] \leq \frac{\mathrm{amps} \times 230 \times 3}{1000} \times \frac{\mathrm{interval\_minutes}}{60}
+gi[t] - \mathrm{gi\_pen}[t] \leq \frac{\mathrm{amps} \times 230 \times \mathrm{phases}}{1000} \times \frac{\mathrm{interval\_minutes}}{60}
 $$
 
 The penalty variable `gi_pen[t]` absorbs any excess at high cost (`p_fuse`), preventing infeasibility when house base load alone exceeds the fuse rating. When `main_fuse_amps` is `None` or 0, this constraint is not added.

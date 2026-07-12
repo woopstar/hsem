@@ -1480,6 +1480,145 @@ def test_main_fuse_has_violations_flag():
 
 
 # ---------------------------------------------------------------------------
+# Main fuse phase-aware tests (issue #640)
+# ---------------------------------------------------------------------------
+
+
+@_scipy_skip()
+def test_main_fuse_phase1_quarter_limit():
+    """Phase=1 produces a max_grid_import exactly 1/3 of phase=3 (25A fuse).
+
+    25 A × 3-phase → 25*230*3/1000 * 0.25 = 4.3125 kWh/slot.
+    25 A × 1-phase → 25*230*1/1000 * 0.25 = 1.4375 kWh/slot.
+    """
+    slots = _make_arbitrage_slots([0, 1, 2, 3], [20, 21, 22, 23])
+
+    result_3 = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=9.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+        main_fuse_amps=25.0,
+        main_fuse_phases=3,
+    )
+    result_1 = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=9.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+        main_fuse_amps=25.0,
+        main_fuse_phases=1,
+    )
+
+    assert result_3 is not None
+    assert result_1 is not None
+    _s3, diag_3 = result_3
+    _s1, diag_1 = result_1
+
+    # Both should have zero violations with normal (0.5 kWh/slot) house load
+    assert diag_3.get("total_fuse_violation_kwh", 1.0) == pytest.approx(0.0), (
+        "Phase=3, 25A: no violations expected with 0.5 kWh/slot house load"
+    )
+    assert diag_1.get("total_fuse_violation_kwh", 1.0) == pytest.approx(0.0), (
+        "Phase=1, 25A: no violations expected with 0.5 kWh/slot house load"
+    )
+
+
+@_scipy_skip()
+@pytest.mark.parametrize("phases", [1, 3])
+def test_main_fuse_normal_load_within_limit_phase_aware(phases):
+    """Normal load within fuse limit regardless of phase count."""
+    slots = _make_arbitrage_slots([0, 1, 2, 3], [20, 21, 22, 23])
+
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=9.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+        main_fuse_amps=25.0,
+        main_fuse_phases=phases,
+    )
+
+    assert result is not None
+    _milp_slots, diag = result
+    assert diag.get("total_fuse_violation_kwh", 1.0) == pytest.approx(0.0)
+    assert not diag.get("has_violations", True)
+
+
+@_scipy_skip()
+def test_main_fuse_phase1_restrictive_penalty_fires():
+    """Phase=1 × 1A fuse = 1*230*1/1000*0.25 = 0.0575 kWh/slot — very tight.
+
+    House load 0.5 kWh/slot alone exceeds this, so the penalty must fire.
+    """
+    slots = _make_arbitrage_slots([0, 1, 2, 3], [20, 21, 22, 23])
+
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=9.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+        main_fuse_amps=1.0,
+        main_fuse_phases=1,
+    )
+
+    assert result is not None
+    _milp_slots, diag = result
+    fuse_violation = diag.get("total_fuse_violation_kwh", 0.0)
+    assert fuse_violation > 1e-6, (
+        f"Expected fuse violations with 1A phase=1, got {fuse_violation}"
+    )
+    assert diag.get("has_violations", False)
+
+
+@_scipy_skip()
+def test_main_fuse_default_phase_preserves_behavior():
+    """Omitting main_fuse_phases (defaults to 3) gives same result as explicit phases=3."""
+    slots = _make_arbitrage_slots([0, 1, 2, 3], [20, 21, 22, 23])
+
+    result_default = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=9.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+        main_fuse_amps=25.0,
+    )
+    result_explicit = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=9.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+        main_fuse_amps=25.0,
+        main_fuse_phases=3,
+    )
+
+    assert result_default is not None
+    assert result_explicit is not None
+    slots_default, diag_default = result_default
+    slots_explicit, diag_explicit = result_explicit
+
+    for i in range(len(slots_default)):
+        assert slots_default[i].recommendation == slots_explicit[i].recommendation, (
+            f"Slot {i}: phase default differs from explicit phase=3"
+        )
+    assert diag_default.get("total_fuse_violation_kwh", 1.0) == pytest.approx(
+        diag_explicit.get("total_fuse_violation_kwh", 1.0)
+    )
+
+
+# ---------------------------------------------------------------------------
 # Export price > import price — unbounded LP fix (issue #635)
 # ---------------------------------------------------------------------------
 

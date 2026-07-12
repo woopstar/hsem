@@ -1028,7 +1028,13 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     # battery charge energy to bring total grid import within the limit.
     if inp.main_fuse_amps is not None and inp.main_fuse_amps > 0:
         slot_hours = inp.interval_minutes / 60.0
-        max_per_slot_kwh = inp.main_fuse_amps * 230.0 * 3.0 / 1000.0 * slot_hours
+        max_per_slot_kwh = (
+            inp.main_fuse_amps
+            * 230.0
+            * float(inp.main_fuse_phases)
+            / 1000.0
+            * slot_hours
+        )
 
         for s in slots:
             if s.grid_import_kwh <= max_per_slot_kwh + 1e-9:

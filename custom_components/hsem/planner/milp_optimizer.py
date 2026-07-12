@@ -135,6 +135,7 @@ def solve_milp(
     min_export_price: float = 0.0,
     ev_configs: list[EVConfig] | None = None,
     main_fuse_amps: float | None = None,
+    main_fuse_phases: int = 3,
 ) -> tuple[list[PlannedSlot], dict] | None:
     """Solve the LP and return a deep-copy slot list with MILP recommendations.
 
@@ -226,10 +227,14 @@ def solve_milp(
         main_fuse_amps:
             Main fuse/breaker rating in amps.  When provided and > 0, a soft
             constraint limits total grid import power per slot to
-            ``main_fuse_amps * 230 * 3 / 1000 * (interval_minutes / 60)`` kWh.
+            ``main_fuse_amps * 230 * main_fuse_phases / 1000 * (interval_minutes / 60)`` kWh.
             A penalty variable ``gi_pen[t]`` absorbs any excess, preventing
             infeasibility when house base load alone exceeds the fuse rating.
             ``None`` or 0 disables the constraint (identical to current behaviour).
+        main_fuse_phases:
+            Electrical phase count (1 or 3).  Used as the multiplier in the
+            max-grid-import formula above.  Defaults to 3 (three-phase).
+            Single-phase installations MUST use 1.
 
     Returns:
         A tuple ``(slots, diagnostics)`` where:
@@ -474,19 +479,24 @@ def solve_milp(
         gi_pen_off = n_vars
         n_vars += m  # gi_pen[0..m-1] per slot
         # Calculate max grid import per slot in kWh
-        # Formula: amps * 230V * 3 phases / 1000 (kW) * (interval_minutes / 60) (hours)
+        # Formula: amps * 230V * phases / 1000 (kW) * (interval_minutes / 60) (hours)
         # We derive interval_minutes from the first slot's duration
         first_slot = slots[future_idx[0]]
         interval_minutes = (first_slot.end - first_slot.start).total_seconds() / 60.0
         assert main_fuse_amps is not None  # guarded by fuse_active
         max_grid_import_per_slot_kwh = (
-            main_fuse_amps * 230.0 * 3.0 / 1000.0 * (interval_minutes / 60.0)
+            main_fuse_amps
+            * 230.0
+            * float(main_fuse_phases)
+            / 1000.0
+            * (interval_minutes / 60.0)
         )
         log_planner(
             "debug",
-            "[milp] Main fuse constraint active: %d A → max %.3f kWh/slot "
+            "[milp] Main fuse constraint active: %d A × %d-phase → max %.3f kWh/slot "
             "(interval=%.0f min)",
             main_fuse_amps,
+            main_fuse_phases,
             max_grid_import_per_slot_kwh,
             interval_minutes,
         )

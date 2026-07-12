@@ -167,6 +167,10 @@ class SensorConfig:
     #: Main fuse/breaker rating in amps (0 = disabled).  The MILP optimizer
     #: uses this as a soft constraint on total grid import power.
     main_fuse_amps: int = 0
+    #: Electrical phase count (1 or 3).  Single-phase installations MUST
+    #: set this to 1 — using 3 on a single-phase install makes the fuse
+    #: protection constraint silenty 3× too permissive.
+    main_fuse_phases: int = 3
 
     # Solcast
     solcast_pv_forecast_forecast_today: str | None = None

@@ -659,6 +659,58 @@ class TestFlowValidatorsUseConfigValidator:
         assert errors == {}
 
     @pytest.mark.asyncio
+    async def test_power_step_schema_includes_phase_field(self):
+        """hsem_main_fuse_phases field round-trips through power step schema."""
+        from custom_components.hsem.flows.power import get_power_step_schema
+
+        schema = await get_power_step_schema(None)
+        # Phase=1 should be valid
+        result = schema(
+            {
+                "hsem_house_consumption_power": "sensor.house",
+                "hsem_solar_production_power": "sensor.solar",
+                "hsem_main_fuse_phases": 1,
+            }
+        )
+        assert result["hsem_main_fuse_phases"] == 1  # pyright: ignore[reportIndexIssue]
+
+        # Phase=3 should be valid
+        result = schema(
+            {
+                "hsem_house_consumption_power": "sensor.house",
+                "hsem_solar_production_power": "sensor.solar",
+                "hsem_main_fuse_phases": 3,
+            }
+        )
+        assert result["hsem_main_fuse_phases"] == 3  # pyright: ignore[reportIndexIssue]
+
+        # Omitted phase should get default (3)
+        result = schema(
+            {
+                "hsem_house_consumption_power": "sensor.house",
+                "hsem_solar_production_power": "sensor.solar",
+            }
+        )
+        assert result["hsem_main_fuse_phases"] == 3  # pyright: ignore[reportIndexIssue]
+
+    @pytest.mark.asyncio
+    async def test_validate_power_step_with_phase_field(self):
+        """Power step validation should pass with the new phase field present."""
+        from custom_components.hsem.flows.power import validate_power_step_input
+
+        hass = _hass_with_states("sensor.house", "sensor.solar")
+        errors = await validate_power_step_input(
+            hass,
+            {
+                "hsem_house_consumption_power": "sensor.house",
+                "hsem_solar_production_power": "sensor.solar",
+                "hsem_main_fuse_amps": 25,
+                "hsem_main_fuse_phases": 1,
+            },
+        )
+        assert errors == {}
+
+    @pytest.mark.asyncio
     async def test_validate_power_step_malformed_entity_id(self):
         from custom_components.hsem.flows.power import validate_power_step_input
 

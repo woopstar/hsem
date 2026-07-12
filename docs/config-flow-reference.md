@@ -116,6 +116,8 @@ Power sensor configuration.
 | House consumption power | `hsem_house_consumption_power` | `sensor.power_house_load` | House load power sensor |
 | Solar production power | `hsem_solar_production_power` | `sensor.power_inverter_input_total` | PV production sensor |
 | House includes EV | `hsem_house_power_includes_ev_charger_power` | `True` | Whether house sensor already includes EV charger |
+| Main fuse amps | `hsem_main_fuse_amps` | 25 | Main fuse/breaker rating in amps. Set to 0 to disable. The MILP optimizer will respect this limit when scheduling battery and EV charging |
+| Main fuse phases | `hsem_main_fuse_phases` | 3 | Electrical phase count (1 or 3). Single-phase installations MUST set this to 1 — setting 3 on a single-phase install makes the fuse constraint 3× too permissive |
 
 ### Step: `ev`
 
