@@ -22,6 +22,7 @@ flowchart TD
     L{Solution found?}
     M[Decode solution: ec, ed, gi, ge, pv, m, penalties, EV charging]
     N[Write recommendations to output slots BatteriesChargeGrid, BatteriesChargeSolar, BatteriesDischargeMode, ForceBatteriesDischarge]
+    N2[Write LP-derived energy flow fields: batteries_discharged_kwh, grid_import_kwh, grid_export_kwh — these are the source of truth]
     O[Compute penalty violation diagnostics]
     P[Return slots and diagnostics]
     Q[Return None: solver failed or no future slots]
@@ -30,7 +31,7 @@ flowchart TD
     D -->|Yes| E --> G
     D -->|No| F --> G
     G --> H --> I --> J --> K --> L
-    L -->|Yes| M --> N --> O --> P
+    L -->|Yes| M --> N --> N2 --> O --> P
     L -->|No| Q
 ```
 
@@ -293,7 +294,7 @@ The clamp is economically correct — no rational agent imports and exports simu
 
 ## Post-processing
 
-After solving, the solution is decoded into slot recommendations:
+After solving, the solution is decoded into slot recommendations and energy flow fields:
 
 ```mermaid
 flowchart TD
@@ -311,6 +312,8 @@ flowchart TD
     L{Grid export > 0 AND price >= min_export_price?}
     M[ForceBatteriesDischarge]
     N[BatteriesDischargeMode]
+    N2[Write LP energy flow fields to ALL future slots:
+    batteries_discharged_kwh, grid_import_kwh, grid_export_kwh]
     O[Write EV charge decisions]
     P[Recompute estimated_net_consumption and estimated_cost per slot]
     Q[Compute penalty violation diagnostics]
@@ -321,15 +324,32 @@ flowchart TD
     D -->|No| F --> G
     B -->|No| G
     G -->|Yes| H
-    H -->|Yes| I --> O
-    H -->|No| J --> O
+    H -->|Yes| I --> N2
+    H -->|No| J --> N2
     G -->|No| K
     K -->|Yes| L
-    L -->|Yes| M --> O
-    L -->|No| N --> O
-    K -->|No| O
-    O --> P --> Q
+    L -->|Yes| M --> N2
+    L -->|No| N --> N2
+    K -->|No| N2
+    N2 --> O --> P --> Q
 ```
+
+### Energy flow fields written to slots (issue #637)
+
+The MILP now writes **all** per-slot energy flow fields directly from the LP solution,
+making them the source of truth:
+
+| Field | LP variable | Description |
+|---|---|---|
+| `batteries_discharged_kwh` | `ed[t]` | Energy discharged from battery (kWh) |
+| `grid_import_kwh` | `gi[t]` | Grid import (kWh) |
+| `grid_export_kwh` | `ge[t]` | Grid export (kWh) |
+
+These are populated for **every** future slot (zero for idle slots).  The
+SoC simulation (:func:`~soc_simulation.simulate_soc`) must be called with
+``milp_prepopulated=True`` for MILP-sourced candidates so it preserves
+these values verbatim instead of re-deriving a different (greedy)
+allocation from the recommendation label and net demand.
 
 ### EV charging fields written to slots
 

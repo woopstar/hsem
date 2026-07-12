@@ -290,6 +290,23 @@ If a slot recommends forced discharge, force export, or discharge-only behavior,
 
 No recommendation may be energetically invisible.
 
+### MILP-pre-populated mode (issue #637)
+
+When `milp_prepopulated=True` is passed to `simulate_soc()`, the
+simulation uses the slot's **existing** `batteries_discharged_kwh`,
+`grid_import_kwh`, and `grid_export_kwh` values verbatim — it does **not**
+re-derive them from the recommendation label and net demand.
+
+This mode is used for MILP-sourced candidates, where `solve_milp()` has
+already populated these fields from the LP's `ed[t]`, `gi[t]`, and
+`ge[t]` solutions.  The LP values are the source of truth; the SoC
+simulation must never silently overwrite them with a greedy
+re-derivation.
+
+For non-MILP candidates (`milp_prepopulated=False`, the default),
+the simulation continues to derive discharge and grid flows greedily
+from the recommendation label and net demand — unchanged behaviour.
+
 ## MILP soft constraints (penalty approach)
 
 The MILP optimizer (`milp_optimizer.py`) uses **soft constraints** with penalty

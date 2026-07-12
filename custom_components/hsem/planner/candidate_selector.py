@@ -38,6 +38,7 @@ from datetime import datetime, timedelta
 from custom_components.hsem.models.rejected_plan import RejectedPlan
 from custom_components.hsem.planner.candidate_generator import (
     CANDIDATE_BASELINE,
+    CANDIDATE_MILP,
     CANDIDATE_NO_ACTION,
     CandidatePlan,
 )
@@ -246,6 +247,7 @@ def select_best_candidate(  # NOSONAR
             end_of_discharge_soc_pct=end_of_discharge_soc_pct,
             charge_efficiency_pct=charge_efficiency_pct,
             discharge_efficiency_pct=discharge_efficiency_pct,
+            milp_prepopulated=(candidate.name == CANDIDATE_MILP),
         )
         candidate.is_valid, candidate.rejection_reason = _validate_candidate(
             candidate, end_of_discharge_soc_pct
