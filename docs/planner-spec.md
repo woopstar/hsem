@@ -348,6 +348,12 @@ the MILP decides **when and how much each EV charges**.
   LP-slot index of the effective deadline.
 - **Post-deadline zero-charge**: For EVs with a deadline and `charge_past_target=False`,
   `ev_c[t] = 0` for all `t > D`. This prevents charging after the deadline.
+- **Target-cap constraint** (issue #636): For EVs with a deadline and
+  `charge_past_target=False`, a hard upper bound caps cumulative pre-deadline
+  charge at the economic shortfall:
+  `Σ_{k≤D} ev_c[k] ≤ target_kwh − initial_soc_kwh`.
+  Without this, the benefit coefficient on `ev_c[t]` would drive charging all the
+  way to `capacity_kwh` regardless of the actual shortfall.
 - **Surplus-only for charge-past-target**: When `charge_past_target=True`,
   `ev_c[t]/η_charger ≤ max(0, pv[t] − base_load[t])` — charging only from PV surplus.
 - No discharge: `ev_c[t] ≥ 0` (via bounds).
@@ -390,6 +396,8 @@ to reflect the new EV loads.
   (backward compatible).
 - EV charge per slot never exceeds `ev.max_charge_per_slot`.
 - Cumulative EV SoC never exceeds `ev.capacity_kwh`.
+- For EVs with a deadline and `charge_past_target=False`, cumulative
+  pre-deadline charge `Σ_{k≤D} ev_c[k]` never exceeds `target_kwh − initial_soc_kwh`.
 - When `ev.deadline_slot` is provided and the target is reachable, the
   deadline penalty `ev_pen` is zero.
 - When the target is unreachable within the available slots, `ev_pen > 0`

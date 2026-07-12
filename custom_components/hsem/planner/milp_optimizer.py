@@ -736,10 +736,25 @@ def solve_milp(
         and ev.target_kwh > ev.initial_soc_kwh + 1e-9
         and not ev.charge_past_target
     )
+    # Target-cap rows: for EVs with a deadline and no charge-past-target,
+    # Σ_{k≤D} ev_c[k] ≤ target_kwh - initial_soc_kwh
+    # Caps EV charging at the economic target for pre-deadline slots,
+    # preventing overcharge to full capacity_kwh.
+    ev_target_rows = sum(
+        1
+        for ev in active_evs
+        if ev.deadline_slot is not None
+        and ev.target_kwh > ev.initial_soc_kwh + 1e-9
+        and not ev.charge_past_target
+    )
     # Surplus-only rows: for charge-past-target EVs, ev_c[t]/eff ≤ max(0, pv[t] - base_load[t])
     ev_surplus_rows = sum(1 for ev in active_evs if ev.charge_past_target) * m
     ev_total_rows = (
-        ev_soc_rows + ev_deadline_rows + ev_post_deadline_rows + ev_surplus_rows
+        ev_soc_rows
+        + ev_deadline_rows
+        + ev_target_rows
+        + ev_post_deadline_rows
+        + ev_surplus_rows
     )
 
     if ev_total_rows > 0:
@@ -779,6 +794,28 @@ def solve_milp(
                     A_ub[ev_row, ev_off + k] = -1.0
                 A_ub[ev_row, ev_pen_offsets[ev_idx]] = -1.0
                 b_ub[ev_row] = ev.initial_soc_kwh - ev.target_kwh
+                ev_row += 1
+
+            # EV target-cap constraint:
+            # Σ_{k≤D} ev_c[k] ≤ target_kwh - initial_soc_kwh
+            # Caps EV charging at the economic target for pre-deadline
+            # slots.  Without this, the benefit coefficient on ev_c[t]
+            # would drive charging all the way to capacity_kwh
+            # regardless of the actual shortfall.
+            # Does NOT apply when charge_past_target is enabled — that
+            # mode intentionally allows charging beyond target_kwh via
+            # a separate surplus-only mechanism.
+            if (
+                ev.deadline_slot is not None
+                and ev.target_kwh > ev.initial_soc_kwh + 1e-9
+                and not ev.charge_past_target
+            ):
+                shortfall = ev.target_kwh - ev.initial_soc_kwh
+                d = ev.deadline_slot
+                d = max(0, min(d, m - 1))
+                for k in range(d + 1):
+                    A_ub[ev_row, ev_off + k] = 1.0
+                b_ub[ev_row] = shortfall
                 ev_row += 1
 
             # Post-deadline zero-charge constraint:

@@ -729,6 +729,137 @@ def test_charge_past_target_falls_back_to_tiebreaker_when_value_none():
 
 
 # ---------------------------------------------------------------------------
+# Target-cap constraint (issue #636)
+# ---------------------------------------------------------------------------
+
+
+@_pytestmark_scipy
+def test_ev_target_capped_not_to_capacity():
+    """EV charging is capped at target_kwh, not capacity_kwh (issue #636).
+
+    EV at 50/80 kWh needs only +5 kWh to reach 55 kWh target.
+    Grid price is extreme (3.00/kWh) for the whole horizon, no PV.
+    Total EV DC charge must stay at ~5 kWh (the shortfall), never the
+    full 30 kWh capacity headroom.
+    """
+    slots = _build_slots(10, start_hour=14, import_price=3.00)
+    ev = EVConfig(
+        enabled=True,
+        initial_soc_kwh=50.0,
+        target_kwh=55.0,  # needs only 5 kWh
+        capacity_kwh=80.0,
+        max_charge_per_slot=10.0,
+        charger_efficiency=0.90,
+        deadline_slot=9,
+    )
+
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=0.001,
+        max_charge_per_slot=0.001,
+        max_discharge_per_slot=None,
+        ev_configs=[ev],
+    )
+
+    assert result is not None
+    out_slots, _diag = result
+
+    ev_total_dc = sum(
+        s.ev_total_planned_load_kwh * 0.9  # AC -> DC
+        for s in out_slots
+    )
+    assert ev_total_dc == pytest.approx(5.0, rel=0.05), (
+        f"Expected ~5 kWh DC (shortfall), got {ev_total_dc} kWh "
+        f"(full capacity headroom would be 30 kWh)"
+    )
+
+
+@_pytestmark_scipy
+def test_ev_target_capped_large_reachable_shortfall():
+    """EV with large but reachable shortfall charges to target, not capacity.
+
+    EV at 10/60 kWh needs 40 kWh, max 10 kWh/slot, 6 slots before deadline
+    = 60 kWh reachable.  At moderate prices the EV should charge to target
+    (50 kWh) not to full capacity (60 kWh).
+    """
+    slots = _build_slots(10, start_hour=14, import_price=0.20)
+    ev = EVConfig(
+        enabled=True,
+        initial_soc_kwh=10.0,
+        target_kwh=50.0,  # needs 40 kWh
+        capacity_kwh=60.0,
+        max_charge_per_slot=10.0,
+        charger_efficiency=0.90,
+        deadline_slot=5,  # slots 0-5 = 6 slots, 6*10 = 60 kWh max
+    )
+
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=10.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=None,
+        ev_configs=[ev],
+    )
+
+    assert result is not None
+    out_slots, _diag = result
+
+    ev_total_dc = sum(
+        s.ev_total_planned_load_kwh * 0.9  # AC -> DC
+        for s in out_slots
+    )
+    assert ev_total_dc == pytest.approx(40.0, rel=0.05), (
+        f"Expected ~40 kWh DC (target shortfall), got {ev_total_dc}"
+    )
+
+
+@_pytestmark_scipy
+def test_charge_past_target_unaffected_by_target_cap():
+    """charge_past_target=True is NOT capped by the new target constraint.
+
+    The target-cap constraint only applies to EVs without charge_past_target.
+    When charge_past_target=True, the EV must still be able to charge past
+    target using surplus PV.
+    """
+    # Single slot with PV surplus, EV already at target
+    slots = [
+        _make_slot(hour=14, day=15, import_price=1.50, export_price=0.05, pv_kwh=5.0)
+    ]
+    ev = EVConfig(
+        enabled=True,
+        initial_soc_kwh=40.0,
+        target_kwh=40.0,  # already at target
+        capacity_kwh=50.0,
+        max_charge_per_slot=5.0,
+        charger_efficiency=1.0,
+        charge_past_target=True,
+        future_value_per_kwh=1.20,  # high enough to prefer EV over export
+    )
+
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=0.001,
+        max_charge_per_slot=0.001,
+        max_discharge_per_slot=None,
+        ev_configs=[ev],
+    )
+
+    assert result is not None
+    out_slots, _diag = result
+    # EV should have charged past target (absorbed PV surplus)
+    assert out_slots[0].ev_total_planned_load_kwh > 0.5, (
+        "charge_past_target EV should absorb surplus even though "
+        "it is already at target"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Integration test: full planner with EV config
 # ---------------------------------------------------------------------------
 
