@@ -501,12 +501,33 @@ At horizon end, the battery's remaining energy is valued **inside the LP objecti
 as a linear term so the LP itself optimises for it:
 
 - `terminal_soc_value = (Σed − Σec) × replacement_price`
-- Discharging (`ed[t]`) incurs a penalty `+γ` in the objective
-- Charging (`ec[t]`) earns a credit `−γ` in the objective
+- Discharging (`ed[t]`) incurs a penalty in the objective
+- Charging (`ec[t]`) earns a credit in the objective
 - Ending with less energy → penalty (encourages recharging)
 - Ending with more energy → credit (discourages wasteful discharging)
+
+**Per-slot incentive cap (issue #655):** the per-slot terminal-SoC term is
+capped by the **opportunity-cost differential** between the replacement
+price and the slot's own import price:
+
+```
+terminal_premium[t] = max(0, replacement_price_per_kwh − p_imp[t])
+```
+
+When `replacement_price ≤ p_imp[t]`, the premium is zero — the LP sees no
+terminal-SoC incentive and makes discharge decisions purely on per-slot
+price signals.  When `replacement_price > p_imp[t]`, the differential
+represents the genuine opportunity cost of using energy now vs. later.
+
+This prevents the regression where uniform +replacement_price penalties
+dominated per-slot import-saving benefits in flat/near-flat price scenarios,
+causing zero discharge even when a full battery could cover house load
+(issue #638 regression).
+
 - **Undiscounted** — terminal SoC is a single point-in-time valuation at
   horizon end, matching `cost_function.py`'s `terminal_soc_value` treatment.
+- The differential uses the sanitised import price (`max(p_imp, 0)`) so
+  negative import prices cannot artificially inflate the terminal premium.
 
 The post-hoc `terminal_soc_credit` calculation in the diagnostics dict is
 retained as a consistency check but no longer drives the LP's decisions.

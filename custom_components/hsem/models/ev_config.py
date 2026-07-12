@@ -54,6 +54,14 @@ class EVConfig:
     #: deadline constraint is suppressed and EV charging is valued at the
     #: import price in the objective (avoided future import cost).
     charge_past_target: bool = False
+    #: When True, this EV config represents the second (secondary) charger.
+    #: Used by the MILP write-out loop to route calculated power to
+    #: ``ev_second_charger_calculated_power`` instead of
+    #: ``ev_charger_calculated_power``.  Eliminates the position-based
+    #: routing bug where ``ev_idx == 0`` in the filtered ``active_evs`` list
+    #: could route the second EV's power to the primary field when the
+    #: primary EV was disabled (issue #646).
+    is_second: bool = False
     #: Value (currency/kWh) of one kWh of charge-past-target EV charging,
     #: derived from the avoided cost of importing that same energy later
     #: (see ``ev_future_charge_value_per_kwh`` in ``candidate_selector.py``).

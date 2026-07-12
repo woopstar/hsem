@@ -358,6 +358,22 @@ def solve_milp(
         )
         p_exp = np.minimum(p_exp, p_imp)
 
+    # Clamp negative import prices to 0 for objective coefficients.
+    # When p_imp[t] < 0, the gi[t] objective coefficient becomes
+    # negative, incentivising the LP to import infinite energy
+    # (HiGHS status=3, unbounded LP).  curt[t] has zero objective
+    # cost but participates in the energy balance, so the LP can
+    # import-and-curtail for unbounded profit even without p_exp>p_imp.
+    #
+    # Clamping to 0 here removes that unbounded direction while
+    # keeping the original p_imp for the export-≤-import clamp and
+    # penalty scaling (both need the real market signal).
+    #
+    # This is the companion to the export-≤-import clamp above:
+    # together they close both unbounded-LP directions identified in
+    # issue #635.
+    p_imp_obj = np.maximum(p_imp, 0.0)
+
     # Net load = house consumption + EV extra load − PV estimate.
     # A positive value means the battery/grid must supply extra energy.
     # A negative value means there is PV surplus.
@@ -562,13 +578,13 @@ def solve_milp(
 
         # Charge-side conversion loss: energy lost during charge, priced at
         # this slot's import price (where the charge occurs).
-        c_obj[ec_off + t] = (charge_loss * p_imp[t]) * discount
+        c_obj[ec_off + t] = (charge_loss * p_imp_obj[t]) * discount
         # Discharge-side conversion loss: energy lost during discharge, priced
         # at this slot's import price (where the discharge occurs).
-        c_obj[ed_off + t] = (discharge_loss * p_imp[t]) * discount
+        c_obj[ed_off + t] = (discharge_loss * p_imp_obj[t]) * discount
         # Cycle cost through auxiliary variable m[t] (= max(ec, ed))
         c_obj[m_off + t] = cycle_cost_per_kwh * discount
-        c_obj[gi_off + t] = p_imp[t] * discount  # grid import cost
+        c_obj[gi_off + t] = p_imp_obj[t] * discount  # grid import cost
         c_obj[ge_off + t] = -p_exp[t] * discount  # export revenue (negative = gain)
         # pv[t] has zero objective cost
         # curt[t] has zero objective cost (curtailment is free)
@@ -578,15 +594,29 @@ def solve_milp(
         # less stored battery energy.  Every unit of charge/discharge
         # anywhere in the horizon contributes to the final cumulative SoC:
         #   terminal_soc_value = (Σed - Σec) * replacement_price_per_kwh
-        # Charging (ec) earns a credit (-γ), discharging (ed) incurs a
-        # penalty (+γ).  Undiscounted — matches cost_function.py where
-        # terminal_soc_value is always added raw to score.
+        # Charging (ec) earns a credit, discharging (ed) incurs a penalty.
+        #
+        # IMPORTANT: the per-slot incentive is capped by the
+        # opportunity-cost DIFFERENTIAL between the replacement price and
+        # this slot's import price.  When replacement_price ≤ p_imp[t],
+        # energy is worth the same or less later than now, so the
+        # terminal-SoC term must not discourage a genuine discharge
+        # decision (covering house load with an otherwise-idle battery).
+        # This prevents the regression identified in issue #638 where
+        # flat-price scenarios saw zero discharge because the uniform
+        # +replacement_price penalty dominated the per-slot import-saving
+        # benefit.
+        #
+        # The differential is computed against the sanitised import price
+        # (p_imp_obj, non-negative) so that negative import prices cannot
+        # artificially inflate the terminal premium.
         if (
             replacement_price_per_kwh is not None
             and abs(replacement_price_per_kwh) > 1e-9
         ):
-            c_obj[ec_off + t] -= replacement_price_per_kwh
-            c_obj[ed_off + t] += replacement_price_per_kwh
+            terminal_premium = max(0.0, replacement_price_per_kwh - p_imp_obj[t])
+            c_obj[ec_off + t] -= terminal_premium
+            c_obj[ed_off + t] += terminal_premium
 
         # Penalty costs: high enough that penalties are zero when SoC is
         # within bounds, but absorb violations when the initial SoC is
@@ -1207,16 +1237,20 @@ def solve_milp(
                 ):
                     ac_power_w = 0
 
-                # Write to the correct charger power field (additive across
-                # multiple EVs — max value wins, reflecting the higher demand).
-                if ev_idx == 0:
-                    out_slots[slot_i].ev_charger_calculated_power = max(
-                        ac_power_w, out_slots[slot_i].ev_charger_calculated_power
-                    )
-                else:
+                # Write to the correct charger power field by EV identity
+                # (is_second), NOT by list position (ev_idx).  When the
+                # primary EV is disabled, active_evs[0] IS the second EV,
+                # and ev_idx==0 would incorrectly route its power to
+                # ev_charger_calculated_power instead of
+                # ev_second_charger_calculated_power (issue #646).
+                if ev.is_second:
                     out_slots[slot_i].ev_second_charger_calculated_power = max(
                         ac_power_w,
                         out_slots[slot_i].ev_second_charger_calculated_power,
+                    )
+                else:
+                    out_slots[slot_i].ev_charger_calculated_power = max(
+                        ac_power_w, out_slots[slot_i].ev_charger_calculated_power
                     )
         # Recompute estimated_net_consumption_kwh and estimated_cost_currency
         # to reflect new EV loads
