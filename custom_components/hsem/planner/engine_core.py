@@ -1088,84 +1088,100 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
                     f"(EV/battery throttling insufficient)."
                 )
 
-    # Recompute ev_charger_calculated_power from the actual per-slot EV
-    # load after the MILP (or baseline) has finalized the slots.  This
-    # ensures the power field is always consistent with the final load.
+    # Re-apply per-EV minimum-power floor after MILP and fuse throttling.
     #
-    # Also apply the charger_min_power_w floor: if the computed AC power
-    # is below the charger's minimum operating power, zero out the power
-    # and the EV load — the charger physically cannot start, so the
-    # energy will never be delivered.
+    # Both _compute_ev_charger_power() (for non-MILP candidates) and the
+    # MILP's own EV power computation already set ev_charger_calculated_power
+    # and ev_second_charger_calculated_power correctly per-EV, and the
+    # main-fuse throttling block above correctly adjusts them per-field.
+    #
+    # This block checks whether any power field fell below its OWN charger's
+    # minimum operating power due to fuse throttling, and zeroes it if so.
+    # The energy contribution is reverse-engineered from the power field and
+    # subtracted from the combined slot energy totals so net consumption and
+    # cost remain consistent.
+    #
+    # IMPORTANT: This block MUST NOT recompute per-EV power from the combined
+    # ev_planned_load_kwh / ev_accounted_load_kwh totals.  Those fields are
+    # the SUM across both EVs; deriving a per-EV power from them would
+    # corrupt the per-EV output field with the combined total.
     _slot_hours = inp.interval_minutes / 60.0
-    _min_pwr_w = max(
-        inp.ev_planned_load_charger_min_power_w,
-        inp.ev_second_planned_load_charger_min_power_w,
-    )
-    for s in slots:
-        total_ev_ac = s.ev_planned_load_kwh + s.ev_accounted_load_kwh
-        if total_ev_ac < 1e-9:
-            continue
-        # For the current (partially elapsed) slot use remaining time.
-        s_end_tz = as_tz(s.end, now.tzinfo)
-        if as_tz(s.start, now.tzinfo) <= now < s_end_tz:
-            remaining_h = max((s_end_tz - now).total_seconds() / 3600.0, 1.0 / 3600.0)
-            ac_power_w = round((total_ev_ac / remaining_h) * 1000.0)
-            # Cap at the full-slot power — the charger physically
-            # cannot deliver more than its rated power, even if the
-            # MILP allocated a full slot's energy to a partial slot.
-            full_slot_power_w = round((total_ev_ac / _slot_hours) * 1000.0)
-            ac_power_w = min(ac_power_w, full_slot_power_w)
-            log_planner(
-                "debug",
-                "[core] EV power calc: slot=%s total_ev_ac=%.3f remaining_h=%.3f "
-                "ac_power_w=%d full_slot_power_w=%d",
-                s.start.isoformat(),
-                total_ev_ac,
-                remaining_h,
-                ac_power_w,
-                full_slot_power_w,
+    _ev_power_checks: list[tuple[str, float, bool]] = []
+    if inp.ev_planned_load_enabled:
+        _ev_power_checks.append(
+            (
+                "ev_charger_calculated_power",
+                inp.ev_planned_load_charger_min_power_w,
+                inp.ev_planned_load_base_load_includes_ev,
             )
-        else:
-            ac_power_w = round((total_ev_ac / _slot_hours) * 1000.0)
-            log_planner(
-                "debug",
-                "[core] EV power calc: slot=%s total_ev_ac=%.3f ac_power_w=%d (future slot)",
-                s.start.isoformat(),
-                total_ev_ac,
-                ac_power_w,
+        )
+    if inp.ev_second_planned_load_enabled:
+        _ev_power_checks.append(
+            (
+                "ev_second_charger_calculated_power",
+                inp.ev_second_planned_load_charger_min_power_w,
+                inp.ev_second_planned_load_base_load_includes_ev,
             )
+        )
 
-        if _min_pwr_w > 1e-9 and ac_power_w < _min_pwr_w:
-            # Below minimum — charger won't start.  Zero out power,
-            # load, and recommendation so net consumption and cost
-            # reflect reality.
-            log_planner(
-                "debug",
-                "[core] EV power below minimum (%d < %d), zeroing out",
-                ac_power_w,
-                _min_pwr_w,
-            )
-            s.ev_charger_calculated_power = 0
-            s.ev_second_charger_calculated_power = 0
-            s.ev_planned_load_kwh = 0.0
-            s.ev_accounted_load_kwh = 0.0
-            s.ev_total_planned_load_kwh = 0.0
-            s.estimated_net_consumption_kwh = (
-                s.avg_house_consumption_kwh - s.solcast_pv_estimate_kwh
-            )
-            net = s.estimated_net_consumption_kwh
-            if net > 0:
-                s.estimated_cost_currency = round(net * s.price.import_price, 4)
-            else:
-                s.estimated_cost_currency = round(net * s.price.export_price, 4)
-        else:
-            log_planner(
-                "debug",
-                "[core] EV power set to %d W for slot %s",
-                ac_power_w,
-                s.start.isoformat(),
-            )
-            s.ev_charger_calculated_power = ac_power_w
+    for s in slots:
+        for attr, min_pwr_w, base_includes in _ev_power_checks:
+            ev_w = round(getattr(s, attr))
+            if ev_w <= 0:
+                continue
+            if min_pwr_w > 1e-9 and ev_w < min_pwr_w:
+                # Below this EV's own minimum — charger won't start.
+                # Reverse-engineer the energy contribution from the
+                # power field to subtract from combined slot totals.
+                s_end_tz = as_tz(s.end, now.tzinfo)
+                if as_tz(s.start, now.tzinfo) <= now < s_end_tz:
+                    remaining_h = max(
+                        (s_end_tz - now).total_seconds() / 3600.0,
+                        1.0 / 3600.0,
+                    )
+                    ev_energy = round((ev_w / 1000.0) * remaining_h, 3)
+                else:
+                    ev_energy = round((ev_w / 1000.0) * _slot_hours, 3)
+
+                log_planner(
+                    "debug",
+                    "[core] EV power below %s minimum (%d < %d), "
+                    "zeroing field and subtracting %.3f kWh",
+                    attr,
+                    ev_w,
+                    min_pwr_w,
+                    ev_energy,
+                )
+
+                # Zero this EV's power field only (not the other EV's).
+                setattr(s, attr, 0)
+
+                # Remove this EV's energy contribution from the combined
+                # slot energy fields.  The energy bucket depends on whether
+                # base load already includes EV consumption.
+                if base_includes:
+                    s.ev_accounted_load_kwh = round(
+                        max(0.0, s.ev_accounted_load_kwh - ev_energy), 3
+                    )
+                else:
+                    s.ev_planned_load_kwh = round(
+                        max(0.0, s.ev_planned_load_kwh - ev_energy), 3
+                    )
+                s.ev_total_planned_load_kwh = round(
+                    s.ev_planned_load_kwh + s.ev_accounted_load_kwh, 3
+                )
+
+                # Recompute net consumption and cost with the reduced EV load.
+                s.estimated_net_consumption_kwh = (
+                    s.avg_house_consumption_kwh
+                    + s.ev_planned_load_kwh
+                    - s.solcast_pv_estimate_kwh
+                )
+                net = s.estimated_net_consumption_kwh
+                if net > 0:
+                    s.estimated_cost_currency = round(net * s.price.import_price, 4)
+                else:
+                    s.estimated_cost_currency = round(net * s.price.export_price, 4)
 
     _EV_KEEP = frozenset(
         {
