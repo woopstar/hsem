@@ -228,6 +228,34 @@ When no future price data is available, the MILP falls back to a tiny fixed
 tiebreaker (0.0001/kWh AC) in `milp_optimizer.py`. Never hardcode a
 replacement constant here — always source it from `ev_future_charge_value_per_kwh()`.
 
+## EV Pre-Deadline Target Cap (Issue #636 — Overcharge Fix)
+
+In `milp_optimizer.py`, the EV deadline benefit coefficient (`-ev_penalty_cost`)
+is applied to **every** kWh of `ev_c[t]` before the deadline.  Without an
+additional constraint, the LP sees a net positive benefit for charging all the
+way to `capacity_kwh` — not just to `target_kwh`.
+
+To fix this, a **hard upper-bound row** is added per EV (only when
+`deadline_slot` is set, `target_kwh > initial_soc_kwh + 1e-9`, and
+`charge_past_target` is **not** enabled):
+
+```python
+# Σ_{k≤D} ev_c[k] ≤ target_kwh - initial_soc_kwh
+shortfall = ev.target_kwh - ev.initial_soc_kwh
+for k in range(d + 1):
+    A_ub[ev_row, ev_off + k] = 1.0
+b_ub[ev_row] = shortfall
+```
+
+- This is **separate** from the existing `ev_soc_rows` capacity constraint
+  (which caps at `capacity_kwh - initial_soc_kwh` — the physical ceiling).
+- This must **never** apply to `charge_past_target=True` EVs — that mode
+  intentionally allows charging beyond `target_kwh` via its own surplus-only
+  mechanism.
+- The row count variable `ev_target_rows` (1 per eligible EV) is included
+  in `ev_total_rows` alongside `ev_soc_rows`, `ev_deadline_rows`,
+  `ev_post_deadline_rows`, and `ev_surplus_rows`.
+
 ---
 
 ## Discharge Concentration — Per-Day Budget Pools

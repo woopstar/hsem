@@ -1,0 +1,3069 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="77" failures="0" skipped="0" tests="77" time="39.491" timestamp="2026-07-12T10:48:07.544631+02:00" hostname="APILOT-n7oEOiYz"><testcase classname="" name="tests.custom_sensors.test_financial_sensors" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\custom_sensors\test_financial_sensors.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\custom_sensors\test_financial_sensors.py:9: in &lt;module&gt;
+    from homeassistant.components.sensor.const import SensorDeviceClass, SensorStateClass
+.tox\py314\Lib\site-packages\homeassistant\components\sensor\__init__.py:15: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.custom_sensors.test_ocpp_server" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\custom_sensors\test_ocpp_server.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\custom_sensors\test_ocpp_server.py:23: in &lt;module&gt;
+    from custom_components.hsem.custom_sensors.ocpp_server import OCPPServer
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.models.test_financial_tracker" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\models\test_financial_tracker.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\models\test_financial_tracker.py:9: in &lt;module&gt;
+    from custom_components.hsem.models.financial_tracker import (
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.models.test_savings_tracker" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\models\test_savings_tracker.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\models\test_savings_tracker.py:7: in &lt;module&gt;
+    from custom_components.hsem.models.savings_day import SavingsDay
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.planner.test_48h_second_day" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\planner\test_48h_second_day.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\planner\test_48h_second_day.py:29: in &lt;module&gt;
+    from custom_components.hsem.models.battery_schedule_input import BatteryScheduleInput
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.planner.test_arbitrage_grid_charge" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\planner\test_arbitrage_grid_charge.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\planner\test_arbitrage_grid_charge.py:29: in &lt;module&gt;
+    from custom_components.hsem.models.battery_schedule_input import BatteryScheduleInput
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.planner.test_candidate_generation" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\planner\test_candidate_generation.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\planner\test_candidate_generation.py:25: in &lt;module&gt;
+    from custom_components.hsem.models.planned_slot import PlannedSlot
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.planner.test_candidate_generator_placement" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\planner\test_candidate_generator_placement.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\planner\test_candidate_generator_placement.py:21: in &lt;module&gt;
+    from custom_components.hsem.models.planned_slot import PlannedSlot
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.planner.test_charge_scheduler_capacity" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\planner\test_charge_scheduler_capacity.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\planner\test_charge_scheduler_capacity.py:15: in &lt;module&gt;
+    from custom_components.hsem.models.battery_schedule_input import BatteryScheduleInput
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.planner.test_concentrate_discharge" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\planner\test_concentrate_discharge.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\planner\test_concentrate_discharge.py:18: in &lt;module&gt;
+    from custom_components.hsem.models.planned_slot import PlannedSlot
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.planner.test_cost_function" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\planner\test_cost_function.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\planner\test_cost_function.py:24: in &lt;module&gt;
+    from custom_components.hsem.models.planned_slot import PlannedSlot
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.planner.test_cost_score_split" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\planner\test_cost_score_split.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\planner\test_cost_score_split.py:37: in &lt;module&gt;
+    from custom_components.hsem.models.planned_slot import PlannedSlot
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.planner.test_cycle_cost_guard" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\planner\test_cycle_cost_guard.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\planner\test_cycle_cost_guard.py:24: in &lt;module&gt;
+    from custom_components.hsem.models.battery_schedule_input import BatteryScheduleInput
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.planner.test_ev_future_charge_value" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\planner\test_ev_future_charge_value.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\planner\test_ev_future_charge_value.py:16: in &lt;module&gt;
+    from custom_components.hsem.models.planned_slot import PlannedSlot
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.planner.test_ev_past_target_config_wiring" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\planner\test_ev_past_target_config_wiring.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\planner\test_ev_past_target_config_wiring.py:17: in &lt;module&gt;
+    from custom_components.hsem.models.planned_slot import PlannedSlot
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.planner.test_ev_planned_load" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\planner\test_ev_planned_load.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\planner\test_ev_planned_load.py:21: in &lt;module&gt;
+    from custom_components.hsem.models.hourly_consumption_average import (
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.planner.test_hysteresis" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\planner\test_hysteresis.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\planner\test_hysteresis.py:37: in &lt;module&gt;
+    from custom_components.hsem.models.planned_slot import PlannedSlot
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.planner.test_invariants" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\planner\test_invariants.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\planner\test_invariants.py:41: in &lt;module&gt;
+    from custom_components.hsem.models.battery_schedule_input import BatteryScheduleInput
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.planner.test_mid_hour_planner" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\planner\test_mid_hour_planner.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\planner\test_mid_hour_planner.py:31: in &lt;module&gt;
+    from custom_components.hsem.models.hourly_consumption_average import (
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.planner.test_milp_ev" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\planner\test_milp_ev.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\planner\test_milp_ev.py:20: in &lt;module&gt;
+    from custom_components.hsem.models.ev_config import EVConfig
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.planner.test_milp_optimizer" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\planner\test_milp_optimizer.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\planner\test_milp_optimizer.py:25: in &lt;module&gt;
+    from custom_components.hsem.models.ev_config import EVConfig
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.planner.test_missing_tomorrow_data" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\planner\test_missing_tomorrow_data.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\planner\test_missing_tomorrow_data.py:19: in &lt;module&gt;
+    from custom_components.hsem.models.data_quality import DataQuality
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.planner.test_multi_day_price_preservation" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\planner\test_multi_day_price_preservation.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\planner\test_multi_day_price_preservation.py:33: in &lt;module&gt;
+    from custom_components.hsem.models.battery_schedule_input import BatteryScheduleInput
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.planner.test_plan_explanation" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\planner\test_plan_explanation.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\planner\test_plan_explanation.py:23: in &lt;module&gt;
+    from custom_components.hsem.models.plan_explanation import PlanExplanation
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.planner.test_planner_harness" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\planner\test_planner_harness.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\planner\test_planner_harness.py:20: in &lt;module&gt;
+    from custom_components.hsem.models.battery_schedule_input import BatteryScheduleInput
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.planner.test_planning_horizon" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\planner\test_planning_horizon.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\planner\test_planning_horizon.py:21: in &lt;module&gt;
+    from custom_components.hsem.models.battery_schedule_input import BatteryScheduleInput
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.planner.test_roundtrip_efficiency" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\planner\test_roundtrip_efficiency.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\planner\test_roundtrip_efficiency.py:19: in &lt;module&gt;
+    from custom_components.hsem.models.planned_slot import PlannedSlot
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.planner.test_session_ev" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\planner\test_session_ev.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\planner\test_session_ev.py:17: in &lt;module&gt;
+    from custom_components.hsem.models.ev_config import EVConfig
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.planner.test_slot_ownership" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\planner\test_slot_ownership.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\planner\test_slot_ownership.py:42: in &lt;module&gt;
+    from custom_components.hsem.custom_sensors.recommendation_resolver import (
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.planner.test_soc_simulation" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\planner\test_soc_simulation.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\planner\test_soc_simulation.py:23: in &lt;module&gt;
+    from custom_components.hsem.models.battery_schedule_input import BatteryScheduleInput
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.planner.test_solar_charge_no_double_count" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\planner\test_solar_charge_no_double_count.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\planner\test_solar_charge_no_double_count.py:27: in &lt;module&gt;
+    from custom_components.hsem.models.battery_schedule_input import BatteryScheduleInput
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.planner.test_window_hysteresis" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\planner\test_window_hysteresis.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\planner\test_window_hysteresis.py:24: in &lt;module&gt;
+    from custom_components.hsem.planner.charge_scheduler import apply_window_hysteresis
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.sensors.test_applier" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\sensors\test_applier.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\sensors\test_applier.py:10: in &lt;module&gt;
+    from custom_components.hsem.custom_sensors.applier import _parse_power_control_pct
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.sensors.test_hourly_data_populator" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\sensors\test_hourly_data_populator.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\sensors\test_hourly_data_populator.py:11: in &lt;module&gt;
+    from custom_components.hsem.planner.slot_population import (
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.sensors.test_plan_explanation_sensor" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\sensors\test_plan_explanation_sensor.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\sensors\test_plan_explanation_sensor.py:24: in &lt;module&gt;
+    from custom_components.hsem.coordinator import CoordinatorData
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.sensors.test_recommendation_resolver" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\sensors\test_recommendation_resolver.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\sensors\test_recommendation_resolver.py:11: in &lt;module&gt;
+    from custom_components.hsem.custom_sensors.recommendation_resolver import (
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.sensors.test_state_collector" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\sensors\test_state_collector.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\sensors\test_state_collector.py:15: in &lt;module&gt;
+    from custom_components.hsem.custom_sensors.state_collector import (
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.test_capacity_learner" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\test_capacity_learner.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\test_capacity_learner.py:7: in &lt;module&gt;
+    from custom_components.hsem.utils.capacity_learner import CapacityLearner
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.test_config_flow_single_entry_guard" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\test_config_flow_single_entry_guard.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\test_config_flow_single_entry_guard.py:36: in &lt;module&gt;
+    from custom_components.hsem.config_flow import HSEMConfigFlow
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.test_config_flow_state_isolation" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\test_config_flow_state_isolation.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\test_config_flow_state_isolation.py:27: in &lt;module&gt;
+    from custom_components.hsem.config_flow import HSEMConfigFlow
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.test_config_flow_user_journeys" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\test_config_flow_user_journeys.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\test_config_flow_user_journeys.py:21: in &lt;module&gt;
+    from custom_components.hsem.config_flow import HSEMConfigFlow
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.test_config_validation" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\test_config_validation.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\test_config_validation.py:20: in &lt;module&gt;
+    from custom_components.hsem.utils.config_validator import (
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.test_convert_to_float_none" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\test_convert_to_float_none.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\test_convert_to_float_none.py:19: in &lt;module&gt;
+    from custom_components.hsem.models.live_state import LiveState
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.test_coordinator" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\test_coordinator.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\test_coordinator.py:37: in &lt;module&gt;
+    from custom_components.hsem.coordinator import (
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.test_cross_day_charge_windows" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\test_cross_day_charge_windows.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\test_cross_day_charge_windows.py:19: in &lt;module&gt;
+    from custom_components.hsem.utils.time_windows import (
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.test_daily_plan_vs_actual" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\test_daily_plan_vs_actual.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\test_daily_plan_vs_actual.py:13: in &lt;module&gt;
+    from custom_components.hsem.models.daily_diff import DailyDiff
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.test_datetime_utils" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\test_datetime_utils.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\test_datetime_utils.py:32: in &lt;module&gt;
+    from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.test_degraded_mode" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\test_degraded_mode.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\test_degraded_mode.py:18: in &lt;module&gt;
+    from custom_components.hsem.models.live_state import LiveState
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.test_diagnostics_dump" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\test_diagnostics_dump.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\test_diagnostics_dump.py:21: in &lt;module&gt;
+    from custom_components.hsem.models.planner_input import PlannerInput
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.test_dst_transitions" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\test_dst_transitions.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\test_dst_transitions.py:23: in &lt;module&gt;
+    from custom_components.hsem.models.planner_input import PlannerInput
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.test_entity_platform_classes" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\test_entity_platform_classes.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\test_entity_platform_classes.py:22: in &lt;module&gt;
+    from homeassistant.components.select import SelectEntity
+.tox\py314\Lib\site-packages\homeassistant\components\select\__init__.py:10: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.test_exception_handling" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\test_exception_handling.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\test_exception_handling.py:30: in &lt;module&gt;
+    from custom_components.hsem.utils.ha_helpers import (
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.test_excess_battery_export" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\test_excess_battery_export.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\test_excess_battery_export.py:12: in &lt;module&gt;
+    from custom_components.hsem.const import DEFAULT_CONFIG_VALUES
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.test_excess_export_negative_consumption" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\test_excess_export_negative_consumption.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\test_excess_export_negative_consumption.py:25: in &lt;module&gt;
+    from custom_components.hsem.models.planned_slot import PlannedSlot
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.test_forecast_tracker" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\test_forecast_tracker.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\test_forecast_tracker.py:19: in &lt;module&gt;
+    from custom_components.hsem.utils.forecast_tracker import (
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.test_ha_mock_integration" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\test_ha_mock_integration.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\test_ha_mock_integration.py:46: in &lt;module&gt;
+    from custom_components.hsem.coordinator import (
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.test_hourly_price_expansion" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\test_hourly_price_expansion.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\test_hourly_price_expansion.py:28: in &lt;module&gt;
+    from custom_components.hsem.models.time_series import MISSING_SENTINEL
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.test_house_consumption_sensor_lifecycle" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\test_house_consumption_sensor_lifecycle.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\test_house_consumption_sensor_lifecycle.py:36: in &lt;module&gt;
+    from homeassistant.components.sensor.const import SensorDeviceClass, SensorStateClass
+.tox\py314\Lib\site-packages\homeassistant\components\sensor\__init__.py:15: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.test_huawei_service_calls" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\test_huawei_service_calls.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\test_huawei_service_calls.py:31: in &lt;module&gt;
+    from custom_components.hsem.utils.huawei import (
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.test_logger_no_file_handler" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\test_logger_no_file_handler.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\test_logger_no_file_handler.py:27: in &lt;module&gt;
+    from custom_components.hsem.utils import logger as logger_module
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.test_midnight_rollover" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\test_midnight_rollover.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\test_midnight_rollover.py:19: in &lt;module&gt;
+    from custom_components.hsem.utils.time_windows import (
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.test_months_validation" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\test_months_validation.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\test_months_validation.py:12: in &lt;module&gt;
+    from custom_components.hsem.flows.months import get_months_schema, validate_months_input
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.test_platform_entity_refactor" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\test_platform_entity_refactor.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\test_platform_entity_refactor.py:28: in &lt;module&gt;
+    from homeassistant.components.select import SelectEntity, SelectEntityDescription
+.tox\py314\Lib\site-packages\homeassistant\components\select\__init__.py:10: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.test_power_thresholds" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\test_power_thresholds.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\test_power_thresholds.py:19: in &lt;module&gt;
+    from custom_components.hsem.const import (
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.test_prediction_tracker" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\test_prediction_tracker.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\test_prediction_tracker.py:19: in &lt;module&gt;
+    from custom_components.hsem.utils.prediction_tracker import (
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.test_safety_gates" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\test_safety_gates.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\test_safety_gates.py:33: in &lt;module&gt;
+    from custom_components.hsem.custom_sensors.applier import (
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.test_schedule_validation" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\test_schedule_validation.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\test_schedule_validation.py:13: in &lt;module&gt;
+    from custom_components.hsem.const import DEFAULT_CONFIG_VALUES
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.test_services" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\test_services.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\test_services.py:23: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntryState
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.test_solar_corrector" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\test_solar_corrector.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\test_solar_corrector.py:17: in &lt;module&gt;
+    from custom_components.hsem.utils.solar_corrector import (
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.test_time_series_model" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\test_time_series_model.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\test_time_series_model.py:30: in &lt;module&gt;
+    from custom_components.hsem.models.time_series import (
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.test_unit_conversions" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\test_unit_conversions.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\test_unit_conversions.py:12: in &lt;module&gt;
+    from custom_components.hsem.utils.units import (
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.test_version_comparison" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\test_version_comparison.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\test_version_comparison.py:12: in &lt;module&gt;
+    from custom_components.hsem import _parse_version
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.test_working_mode_task_lifecycle" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\test_working_mode_task_lifecycle.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\test_working_mode_task_lifecycle.py:22: in &lt;module&gt;
+    from custom_components.hsem.custom_sensors.working_mode_sensor import (
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.test_write_verify_applier" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\test_write_verify_applier.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\test_write_verify_applier.py:17: in &lt;module&gt;
+    from custom_components.hsem.utils.inverter_verify import (
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.utils.test_charge_rate_learner" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\utils\test_charge_rate_learner.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\utils\test_charge_rate_learner.py:10: in &lt;module&gt;
+    from custom_components.hsem.utils.charge_rate_learner import (
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.utils.test_dynamic_floor" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\utils\test_dynamic_floor.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\utils\test_dynamic_floor.py:14: in &lt;module&gt;
+    from custom_components.hsem.utils.dynamic_floor import (
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase><testcase classname="" name="tests.utils.test_weekday_profile" time="0.000"><error message="collection failure">ImportError while importing test module 'C:\Users\andreas.kruger\Github\hsem\tests\utils\test_weekday_profile.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.tox\py314\Lib\site-packages\_pytest\python.py:508: in importtestmodule
+    mod = import_path(
+.tox\py314\Lib\site-packages\_pytest\pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+..\..\.pyenv\pyenv-win\versions\3.14.2\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1398: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1371: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1342: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:938: in _load_unlocked
+    ???
+.tox\py314\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests\utils\test_weekday_profile.py:7: in &lt;module&gt;
+    from custom_components.hsem.utils.weekday_profile import WeekdayProfile
+custom_components\__init__.py:1: in &lt;module&gt;
+    from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+custom_components\hsem\__init__.py:13: in &lt;module&gt;
+    from homeassistant.config_entries import ConfigEntry
+.tox\py314\Lib\site-packages\homeassistant\config_entries.py:78: in &lt;module&gt;
+    from .setup import (
+.tox\py314\Lib\site-packages\homeassistant\setup.py:15: in &lt;module&gt;
+    from . import config as conf_util, core, loader, requirements
+.tox\py314\Lib\site-packages\homeassistant\config.py:25: in &lt;module&gt;
+    from .core_config import _PACKAGE_DEFINITION_SCHEMA, _PACKAGES_CONFIG_SCHEMA
+.tox\py314\Lib\site-packages\homeassistant\core_config.py:17: in &lt;module&gt;
+    from . import auth
+.tox\py314\Lib\site-packages\homeassistant\auth\__init__.py:29: in &lt;module&gt;
+    from .providers.homeassistant import HassAuthProvider
+.tox\py314\Lib\site-packages\homeassistant\auth\providers\homeassistant.py:9: in &lt;module&gt;
+    import bcrypt
+.tox\py314\Lib\site-packages\bcrypt\__init__.py:13: in &lt;module&gt;
+    from ._bcrypt import (
+E   ImportError: PyO3 modules compiled for CPython 3.8 or older may only be initialized once per interpreter process</error></testcase></testsuite></testsuites>
