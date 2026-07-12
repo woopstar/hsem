@@ -345,10 +345,13 @@ If you are on a version before this fix, update HSEM.
 
 ### EV charging slots show zero power
 
-The engine post-processing applies a **minimum power floor** (default 1380 W, configurable
-via `hsem_ev_planned_load_charger_min_power_w`). If the computed AC power for a slot is
-below this threshold, the slot's EV fields are zeroed out because the charger physically
-cannot operate below 6 A (230 V × 6 A = 1380 W).
+The engine post-processing applies a **per-EV minimum power floor** (default
+1380 W per EV, configurable via `hsem_ev_planned_load_charger_min_power_w` and
+`hsem_ev_second_planned_load_charger_min_power_w`).  If an EV's computed AC power
+for a slot falls below **its own** threshold, that EV's power field is zeroed
+because the charger physically cannot operate below 6 A (230 V × 6 A = 1380 W).
+Each EV is checked independently against its own minimum — a higher minimum on
+one EV does not affect the other.
 
 ### Deadline is in the past
 

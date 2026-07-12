@@ -414,6 +414,26 @@ phase-dependent power calculations.
 
 ---
 
+## Per-EV Output Fields Must Come From Per-EV Data (issue #646)
+
+**Canonical rule**: per-EV output fields (`ev_charger_calculated_power`,
+`ev_second_charger_calculated_power`) **must always** be derived from
+per-EV data — never recompute a per-EV field from a combined/summed-across-
+all-EVs total.
+
+The slot energy fields (`ev_planned_load_kwh`, `ev_accounted_load_kwh`,
+`ev_total_planned_load_kwh`) are the **sum** across both EVs (accumulated
+via `combined_ev_inj` / `combined_ev_raw`).  Using any of these to derive
+a per-EV power value would write the combined total into a single EV's
+field, corrupting the other EV's allocation.
+
+Each EV's power must be computed from that EV's own `EVChargingPlan`
+(`_compute_ev_charger_power()`) or directly by the MILP's per-EV power
+computation.  The post-candidate minimum-power floor check must use
+each EV's own `charger_min_power_w` — never `max(min1, min2)`.
+
+---
+
 ## File Organization — By Responsibility, Not By Theme
 
 AI agents naturally bucket related things together (e.g. "all planner inputs in one file").

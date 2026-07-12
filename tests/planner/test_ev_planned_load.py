@@ -1758,8 +1758,19 @@ class TestEvLoadSemantics:
             f"ev_accounted_load_kwh should be 0 (base excludes EV), got {total_ev_accounted:.3f}"
         )
         assert total_ev_total == pytest.approx(7.0, abs=0.1), (
-            f"ev_total_planned_load_kwh should be 7.0, got {total_ev_total:.3f}"
+            f"ev_total_planned_load_kwh total should be 7.0, got {total_ev_total:.3f}"
         )
+
+        # Per-EV power fields must not exceed each EV's own rated power.
+        for s in out.slots:
+            assert s.ev_charger_calculated_power <= 11000 + 1, (
+                f"Primary EV power {s.ev_charger_calculated_power} W "
+                f"exceeds its rated 11000 W"
+            )
+            assert s.ev_second_charger_calculated_power <= 11000 + 1, (
+                f"Second EV power {s.ev_second_charger_calculated_power} W "
+                f"exceeds its rated 11000 W"
+            )
 
     # ------------------------------------------------------------------
     # Test 3: Two EVs, same slot, base_load_includes_ev=True
@@ -1858,6 +1869,17 @@ class TestEvLoadSemantics:
             f"ev_total_planned_load_kwh total should be 7.0, got {total_ev_total:.3f}"
         )
 
+        # Per-EV power fields must not exceed each EV's own rated power.
+        for s in out.slots:
+            assert s.ev_charger_calculated_power <= 11000 + 1, (
+                f"Primary EV power {s.ev_charger_calculated_power} W "
+                f"exceeds its rated 11000 W"
+            )
+            assert s.ev_second_charger_calculated_power <= 11000 + 1, (
+                f"Second EV power {s.ev_second_charger_calculated_power} W "
+                f"exceeds its rated 11000 W"
+            )
+
         # net consumption must NOT include EV load (no double-count)
         for s in out.slots:
             expected_net = round(
@@ -1953,6 +1975,26 @@ class TestEvLoadSemantics:
         assert out.ev_charging_plan is not None
         assert out.ev_charging_plan.state == "fully_charged"
 
+        # Primary EV power must be 0 (fully charged, no charging allocated).
+        for s in out.slots:
+            assert s.ev_charger_calculated_power == pytest.approx(0.0, abs=1), (
+                f"Primary EV power should be 0 (fully charged), "
+                f"got {s.ev_charger_calculated_power} W"
+            )
+
+        # Second EV power must be positive in at least one slot.
+        second_power_slots = [
+            s for s in out.slots if s.ev_second_charger_calculated_power > 1
+        ]
+        assert second_power_slots, (
+            "Second EV should have non-zero power in at least one slot"
+        )
+        for s in second_power_slots:
+            assert s.ev_second_charger_calculated_power <= 11000 + 1, (
+                f"Second EV power {s.ev_second_charger_calculated_power} W "
+                f"exceeds its rated 11000 W"
+            )
+
     # ------------------------------------------------------------------
     # Test 5: Second EV zero load does not clear primary EV load
     # ------------------------------------------------------------------
@@ -2033,6 +2075,26 @@ class TestEvLoadSemantics:
             f"ev_total_planned_load_kwh should be 3.0 (primary only, second is zero), "
             f"got {total_ev_total:.3f}"
         )
+
+        # Primary EV power must not exceed its rated power.
+        primary_power_slots = [
+            s for s in out.slots if s.ev_charger_calculated_power > 1
+        ]
+        assert primary_power_slots, (
+            "Primary EV should have non-zero power in at least one slot"
+        )
+        for s in primary_power_slots:
+            assert s.ev_charger_calculated_power <= 11000 + 1, (
+                f"Primary EV power {s.ev_charger_calculated_power} W "
+                f"exceeds its rated 11000 W"
+            )
+
+        # Second EV power must be 0 (fully charged).
+        for s in out.slots:
+            assert s.ev_second_charger_calculated_power == pytest.approx(0.0, abs=1), (
+                f"Second EV power should be 0 (fully charged), "
+                f"got {s.ev_second_charger_calculated_power} W"
+            )
 
     # ------------------------------------------------------------------
     # Test 6: Net consumption does not double-count EV when base includes EV
@@ -3030,6 +3092,249 @@ class TestEvChargerCalculatedPower:
         plan = build_ev_charging_plan(inp, starts, ends, surplus, prices)
         assert plan.state == "fully_charged"
         assert len(plan.charging_slots) == 0
+
+
+# ---------------------------------------------------------------------------
+# TestEvChargerPowerFields — regression tests for issue #646
+#
+# These tests assert that per-EV power fields (ev_charger_calculated_power,
+# ev_second_charger_calculated_power) are never corrupted by the combined
+# EV energy totals or by a shared minimum-power threshold.
+# ---------------------------------------------------------------------------
+
+
+class TestEvChargerPowerFields:
+    """Per-EV charger power field correctness tests (issue #646)."""
+
+    def test_two_evs_different_ratings_power_not_corrupted(self):
+        """EV1 (2 kW, min 200 W) + EV2 (11 kW, min 1380 W) in same slot.
+
+        Each EV's ev_charger_calculated_power must not exceed its OWN
+        rated charger power.  Before the fix, the recompute block derived
+        power from the COMBINED energy total and wrote it to only the
+        primary EV's field, which could far exceed its rated 2 kW.
+        """
+        now_iso = "2024-06-15T06:00:00+00:00"
+        from datetime import datetime as _dt2
+
+        now = _dt2.fromisoformat(now_iso)
+        deadline = now + timedelta(hours=6)
+
+        prices = [
+            PricePoint(hour=h, import_price=0.20, export_price=0.05) for h in range(24)
+        ]
+        pv = [SolcastSlot(hour=h, pv_estimate=0.0) for h in range(24)]
+        avgs = [
+            HourlyConsumptionAverage(
+                hour=h, avg_1d=1.0, avg_3d=1.0, avg_7d=1.0, avg_14d=1.0
+            )
+            for h in range(24)
+        ]
+
+        inp = PlannerInput(
+            now_iso=now_iso,
+            interval_minutes=60,
+            interval_length_hours=24,
+            battery_soc_pct=50.0,
+            battery_rated_capacity_kwh=10.0,
+            battery_end_of_discharge_soc_pct=10.0,
+            battery_max_soc_pct=90.0,
+            battery_max_charge_power_w=5000.0,
+            battery_max_discharge_power_w=5000.0,
+            battery_charge_efficiency_pct=100.0,
+            battery_discharge_efficiency_pct=100.0,
+            weight_1d=25,
+            weight_3d=30,
+            weight_7d=30,
+            weight_14d=15,
+            consumption_averages=avgs,
+            price_points=prices,
+            solcast_slots=pv,
+            ev_planned_load_enabled=True,
+            ev_planned_load_connected=True,
+            ev_planned_load_smart_charging_enabled=True,
+            ev_planned_load_current_soc_pct=0.0,
+            ev_planned_load_target_soc_pct=5.0,
+            ev_planned_load_battery_capacity_kwh=100.0,
+            ev_planned_load_charger_power_kw=2.0,
+            ev_planned_load_charger_efficiency_pct=100.0,
+            ev_planned_load_charger_min_power_w=200.0,
+            ev_planned_load_deadline=deadline,
+            ev_planned_load_base_load_includes_ev=False,
+            ev_second_planned_load_enabled=True,
+            ev_second_planned_load_connected=True,
+            ev_second_planned_load_smart_charging_enabled=True,
+            ev_second_planned_load_current_soc_pct=0.0,
+            ev_second_planned_load_target_soc_pct=5.0,
+            ev_second_planned_load_battery_capacity_kwh=100.0,
+            ev_second_planned_load_charger_power_kw=11.0,
+            ev_second_planned_load_charger_efficiency_pct=100.0,
+            ev_second_planned_load_charger_min_power_w=1380.0,
+            ev_second_planned_load_deadline=deadline,
+            ev_second_planned_load_base_load_includes_ev=False,
+        )
+        out = run_planner(inp)
+
+        for s in out.slots:
+            msg_primary = (
+                f"Slot {s.start.hour}: primary EV power "
+                f"{s.ev_charger_calculated_power} W > 2000 W rated. "
+                f"Combined total may have been written to primary field."
+            )
+            assert s.ev_charger_calculated_power <= 2000 + 1, msg_primary
+
+            msg_second = (
+                f"Slot {s.start.hour}: second EV power "
+                f"{s.ev_second_charger_calculated_power} W > 11000 W rated."
+            )
+            assert s.ev_second_charger_calculated_power <= 11000 + 1, msg_second
+
+    def test_second_ev_not_zeroed_by_disabled_primary_min(self):
+        """Second EV with allocation above its own min (200 W) but below
+        the primary EV's min (1380 W).  Primary EV is disabled.
+
+        Before the fix, the shared _min_pwr_w = max(1380, 200) = 1380 W
+        would incorrectly zero the second EV's 500 W allocation.
+        """
+        now_iso = "2024-06-15T06:00:00+00:00"
+        from datetime import datetime as _dt2
+
+        now = _dt2.fromisoformat(now_iso)
+        deadline = now + timedelta(hours=6)
+
+        prices = [
+            PricePoint(hour=h, import_price=0.20, export_price=0.05) for h in range(24)
+        ]
+        pv = [SolcastSlot(hour=h, pv_estimate=0.0) for h in range(24)]
+        avgs = [
+            HourlyConsumptionAverage(
+                hour=h, avg_1d=1.0, avg_3d=1.0, avg_7d=1.0, avg_14d=1.0
+            )
+            for h in range(24)
+        ]
+
+        inp = PlannerInput(
+            now_iso=now_iso,
+            interval_minutes=60,
+            interval_length_hours=24,
+            battery_soc_pct=50.0,
+            battery_rated_capacity_kwh=10.0,
+            battery_end_of_discharge_soc_pct=10.0,
+            battery_max_soc_pct=90.0,
+            battery_max_charge_power_w=5000.0,
+            battery_max_discharge_power_w=5000.0,
+            battery_charge_efficiency_pct=100.0,
+            battery_discharge_efficiency_pct=100.0,
+            weight_1d=25,
+            weight_3d=30,
+            weight_7d=30,
+            weight_14d=15,
+            consumption_averages=avgs,
+            price_points=prices,
+            solcast_slots=pv,
+            ev_planned_load_enabled=False,
+            ev_planned_load_charger_min_power_w=1380.0,
+            ev_second_planned_load_enabled=True,
+            ev_second_planned_load_connected=True,
+            ev_second_planned_load_smart_charging_enabled=True,
+            ev_second_planned_load_current_soc_pct=0.0,
+            ev_second_planned_load_target_soc_pct=0.5,
+            ev_second_planned_load_battery_capacity_kwh=100.0,
+            ev_second_planned_load_charger_power_kw=2.0,
+            ev_second_planned_load_charger_efficiency_pct=100.0,
+            ev_second_planned_load_charger_min_power_w=200.0,
+            ev_second_planned_load_deadline=deadline,
+            ev_second_planned_load_base_load_includes_ev=False,
+        )
+        out = run_planner(inp)
+
+        second_power_slots = [
+            s for s in out.slots if s.ev_second_charger_calculated_power > 1
+        ]
+        assert second_power_slots, (
+            "Second EV should have non-zero power allocation. "
+            "It may have been incorrectly zeroed by the primary EV's "
+            "irrelevant min-power threshold."
+        )
+
+        for s in out.slots:
+            assert s.ev_charger_calculated_power == pytest.approx(0.0, abs=1), (
+                f"Primary EV is disabled but power is {s.ev_charger_calculated_power} W"
+            )
+
+    def test_primary_ev_not_zeroed_by_disabled_second_min(self):
+        """Primary EV with allocation above its own min (200 W) but below
+        the second EV's min (1380 W).  Second EV is disabled.
+
+        Before the fix, the shared _min_pwr_w = max(1380, 200) = 1380 W
+        would incorrectly zero the primary EV's 500 W allocation.
+        """
+        now_iso = "2024-06-15T06:00:00+00:00"
+        from datetime import datetime as _dt2
+
+        now = _dt2.fromisoformat(now_iso)
+        deadline = now + timedelta(hours=6)
+
+        prices = [
+            PricePoint(hour=h, import_price=0.20, export_price=0.05) for h in range(24)
+        ]
+        pv = [SolcastSlot(hour=h, pv_estimate=0.0) for h in range(24)]
+        avgs = [
+            HourlyConsumptionAverage(
+                hour=h, avg_1d=1.0, avg_3d=1.0, avg_7d=1.0, avg_14d=1.0
+            )
+            for h in range(24)
+        ]
+
+        inp = PlannerInput(
+            now_iso=now_iso,
+            interval_minutes=60,
+            interval_length_hours=24,
+            battery_soc_pct=50.0,
+            battery_rated_capacity_kwh=10.0,
+            battery_end_of_discharge_soc_pct=10.0,
+            battery_max_soc_pct=90.0,
+            battery_max_charge_power_w=5000.0,
+            battery_max_discharge_power_w=5000.0,
+            battery_charge_efficiency_pct=100.0,
+            battery_discharge_efficiency_pct=100.0,
+            weight_1d=25,
+            weight_3d=30,
+            weight_7d=30,
+            weight_14d=15,
+            consumption_averages=avgs,
+            price_points=prices,
+            solcast_slots=pv,
+            ev_planned_load_enabled=True,
+            ev_planned_load_connected=True,
+            ev_planned_load_smart_charging_enabled=True,
+            ev_planned_load_current_soc_pct=0.0,
+            ev_planned_load_target_soc_pct=0.5,
+            ev_planned_load_battery_capacity_kwh=100.0,
+            ev_planned_load_charger_power_kw=2.0,
+            ev_planned_load_charger_efficiency_pct=100.0,
+            ev_planned_load_charger_min_power_w=200.0,
+            ev_planned_load_deadline=deadline,
+            ev_planned_load_base_load_includes_ev=False,
+            ev_second_planned_load_enabled=False,
+            ev_second_planned_load_charger_min_power_w=1380.0,
+        )
+        out = run_planner(inp)
+
+        primary_power_slots = [
+            s for s in out.slots if s.ev_charger_calculated_power > 1
+        ]
+        assert primary_power_slots, (
+            "Primary EV should have non-zero power allocation. "
+            "It may have been incorrectly zeroed by the second EV's "
+            "irrelevant min-power threshold."
+        )
+
+        for s in out.slots:
+            assert s.ev_second_charger_calculated_power == pytest.approx(0.0, abs=1), (
+                f"Second EV is disabled but power is "
+                f"{s.ev_second_charger_calculated_power} W"
+            )
 
     def test_fully_charged_when_above_target_even_with_past_target_enabled(self):
         """When SoC is above target and allow_charge_past_target_soc=True,

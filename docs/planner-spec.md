@@ -1357,20 +1357,30 @@ The EV planner (`planner/ev_planner.py`) MUST satisfy these invariants:
 
     The MILP's decisions are authoritative for all EV charging.
 
-12. **EV charger power field**: `ev_charger_calculated_power` is computed
-    from the per-slot EV AC load (`ev_planned_load_kwh + ev_accounted_load_kwh`)
-    divided by the slot duration in hours.  For the **current** (partially
-    elapsed) slot the divisor is the remaining slot time (minimum 1 s).
+12. **EV charger power fields**: `ev_charger_calculated_power` (primary EV)
+    and `ev_second_charger_calculated_power` (second EV) are each computed
+    **per-EV** from that EV's own charging plan (`EVChargingPlan.charging_slots`)
+    by `_compute_ev_charger_power()` (for non-MILP candidates) or directly by
+    the MILP's EV power computation (for MILP candidates).
 
-    The computation runs **after** the winner is selected (MILP or baseline),
-    ensuring the power field is always consistent with the actual slot load.
-    If the computed power is below `charger_min_power_w` (default 1380 W),
-    the charger physically cannot start — the slot's EV fields are zeroed out
-    (power, load, recommendation, net consumption, cost).
+    The per-EV power fields are set **before** candidate selection and
+    correctly adjusted by the main-fuse throttling block (per-field loop).
 
-    The field is purely a planner output — the applier must read this value
-    to throttle the go-e charger; the planner does not control hardware
-    directly.
+    After candidate selection, a per-EV minimum-power floor check runs:
+    each EV's power field is compared against **its own**
+    `charger_min_power_w`.  If the power fell below that EV's own minimum
+    (due to fuse throttling), only that EV's power field is zeroed, and
+    its energy contribution is reverse-engineered from the power value and
+    subtracted from the combined slot energy totals.
+
+    **Important**: per-EV power fields MUST NOT be recomputed from the
+    combined `ev_planned_load_kwh + ev_accounted_load_kwh` totals, because
+    those fields are the sum across both EVs.  Deriving a per-EV power from
+    a combined total would corrupt the per-EV output with the sum of both
+    EVs' loads.
+
+    The fields are purely planner outputs — the applier must read them to
+    throttle the go-e charger; the planner does not control hardware directly.
 
 ### Invariants for tests
 
