@@ -394,6 +394,26 @@ formulation itself, not a downstream patch.
 
 ---
 
+## Phase-Aware Power Formulas (issue #640)
+
+Any future power/current-based formula in the planner that converts amps
+to kWh/slot **must** be phase-aware.  The hardcoded ``3.0`` multiplier was
+replaced by ``main_fuse_phases`` (1 or 3) in:
+
+- ``milp_optimizer.py`` — ``solve_milp()`` fuse constraint formula
+- ``engine_core.py`` — post-hoc main fuse violation check
+
+The canonical formula is:
+
+```text
+max_kwh = amps * 230 * phases / 1000 * (interval_minutes / 60)
+```
+
+Do **not** reintroduce a hardcoded ``3.0`` in new formulas that involve
+phase-dependent power calculations.
+
+---
+
 ## File Organization — By Responsibility, Not By Theme
 
 AI agents naturally bucket related things together (e.g. "all planner inputs in one file").

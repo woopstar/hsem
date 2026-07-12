@@ -43,6 +43,19 @@ async def get_power_step_schema(
                     }
                 }
             ),
+            vol.Optional(
+                "hsem_main_fuse_phases",
+                default=get_config_value(config_entry, "hsem_main_fuse_phases"),
+            ): selector(
+                {
+                    "number": {
+                        "min": 1,
+                        "max": 3,
+                        "step": 2,
+                        "mode": "box",
+                    }
+                }
+            ),
         }
     )
 

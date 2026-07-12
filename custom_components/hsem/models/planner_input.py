@@ -156,6 +156,11 @@ class PlannerInput:
     #: Main fuse/breaker rating in amps (0 or None = disabled).  The MILP
     #: optimizer uses this as a soft constraint on total grid import power.
     main_fuse_amps: float | None = None
+    #: Electrical phase count (1 or 3).  The MILP optimizer uses this to
+    #: compute the correct per-phase grid import power limit.  Single-phase
+    #: installations MUST set this to 1 — using 3 on a single-phase install
+    #: makes the fuse constraint 3× too permissive.
+    main_fuse_phases: int = 3
 
     # --- seasonal / mode config ---
     months_winter: list[int] = field(default_factory=lambda: [1, 2, 3, 4, 10, 11, 12])

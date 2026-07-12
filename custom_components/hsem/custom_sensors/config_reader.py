@@ -179,6 +179,10 @@ def build_sensor_config(
     )
     _main_fuse = convert_to_int(get_config_value(config_entry, "hsem_main_fuse_amps"))
     cfg.main_fuse_amps = _main_fuse if _main_fuse is not None else 0
+    _main_fuse_phases = convert_to_int(
+        get_config_value(config_entry, "hsem_main_fuse_phases")
+    )
+    cfg.main_fuse_phases = _main_fuse_phases if _main_fuse_phases is not None else 3
 
     # Solcast
     cfg.solcast_pv_forecast_forecast_today = get_config_value(
