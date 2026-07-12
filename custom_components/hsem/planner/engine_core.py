@@ -1257,6 +1257,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
                 slots,
                 now,
                 charger_efficiency_pct=inp.ev_planned_load_charger_efficiency_pct,
+                is_second=False,
             )
         if ev2_cp is not None:
             ev2_cp = rebuild_ev_plan_from_slots(
@@ -1264,6 +1265,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
                 slots,
                 now,
                 charger_efficiency_pct=inp.ev_second_planned_load_charger_efficiency_pct,
+                is_second=True,
             )
 
     return PlannerOutput(

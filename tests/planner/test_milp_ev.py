@@ -571,6 +571,7 @@ def test_two_evs_charger_power_fields():
         max_charge_per_slot=3.0,
         charger_efficiency=0.85,
         deadline_slot=7,
+        is_second=True,
     )
 
     result = solve_milp(
@@ -586,7 +587,9 @@ def test_two_evs_charger_power_fields():
     assert result is not None
     out_slots, _diag = result
 
-    # Both EVs should have non-zero power in at least some slots
+    # Both EVs should have non-zero power in at least some slots.
+    # ev1.is_second defaults to False → ev_charger_calculated_power.
+    # ev2.is_second=True → ev_second_charger_calculated_power.
     has_ev1_power = any(s.ev_charger_calculated_power > 0 for s in out_slots)
     has_ev2_power = any(s.ev_second_charger_calculated_power > 0 for s in out_slots)
     assert has_ev1_power, "Primary EV should have non-zero charger power"
