@@ -426,16 +426,20 @@ def solve_milp(
     # ------------------------------------------------------------------
     # Session-aware EV demand (issue #615).
     # When an EV is actively charging (session_charge_kw is set), treat
-    # the first 2 hours (SESSION_SLOTS slots) as certain demand at that
-    # power level.  Grid-charging the battery is blocked during these
-    # slots to avoid stacking battery charge on top of the EV draw.
+    # the first 2 hours as certain demand at that power level.
+    # Grid-charging the battery is blocked during these slots to avoid
+    # stacking battery charge on top of the EV draw.
     # ------------------------------------------------------------------
     slot_hours = (
         (slots[future_idx[0]].end - slots[future_idx[0]].start).total_seconds() / 3600.0
         if future_idx
         else 0.0
     )
-    SESSION_SLOTS = min(8, m)  # 2 hours at 15-min resolution
+    SESSION_HOURS = 2.0
+    if slot_hours > 1e-9:
+        SESSION_SLOTS = min(round(SESSION_HOURS / slot_hours), m)
+    else:
+        SESSION_SLOTS = min(8, m)  # fallback guard, should not normally trigger
     session_ev_indices: list[int] = []  # indices into active_evs
     session_slots_set: set[int] = set()
     if active_evs and slot_hours > 0:

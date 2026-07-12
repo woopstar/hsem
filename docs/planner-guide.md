@@ -734,10 +734,12 @@ conceptually cleaner and more accurate.
 ### Session-aware EV demand
 
 When an EV is **actively charging** (session in progress, current draw
-detected), the next 2 hours (8 slots at 15-minute granularity) are treated
-as **certain demand** in the MILP.  The live charger power is used as a
-fixed lower bound on EV load for those slots, preventing the MILP from
-re-allocating demand away from a charging session that is already underway:
+detected), the next 2 hours are treated as **certain demand** in the MILP.
+The number of slots covered is derived from the configured slot interval
+(8 slots at 15-minute, 4 at 30-minute, 2 at 60-minute).  The live charger
+power is used as a fixed lower bound on EV load for those slots, preventing
+the MILP from re-allocating demand away from a charging session that is
+already underway:
 
 ```text
 For slots t in [now, now + 2h]:
