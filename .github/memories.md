@@ -328,6 +328,27 @@ b_ub[ev_row] = shortfall
   in `ev_total_rows` alongside `ev_soc_rows`, `ev_deadline_rows`,
   `ev_post_deadline_rows`, and `ev_surplus_rows`.
 
+## EV Pre-Deadline Benefit / Charge-Past-Target Mutual Exclusivity (Issue #643)
+
+In `milp_optimizer.py`, the pre-deadline benefit block and the
+charge-past-target benefit block both add benefit coefficients to the same
+`ev_c[t]` LP variable.  Today `engine_core.py`'s `_build_ev_configs_for_milp()`
+sets `EVConfig` fields such that they are never both true in practice, but
+`milp_optimizer.py` itself does not enforce this.  If any future caller or test
+constructs an `EVConfig` where both are true, the two benefit blocks would
+stack, double-counting the reward on the same variable.
+
+**Invariant**: The LP construction must guard the pre-deadline benefit block
+with `and not ev.charge_past_target`, mirroring the existing
+post-deadline zero-charge and target-cap constraint guards.  This makes the
+LP itself robust regardless of what any caller does.
+
+- The guard is a one-line addition to the outer condition of the pre-deadline
+  benefit block (search for `ev_penalty_cost = max(p_imp_max, 0.1) *
+  max(energy_needed, 1.0) * 10.0`).
+- This follows the exact same pattern already used by the post-deadline
+  zero-charge constraint and the target-cap constraint in the same file.
+
 ---
 
 ## Discharge Concentration — Per-Day Budget Pools

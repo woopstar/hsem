@@ -85,7 +85,7 @@ When an EV's `charge_past_target` flag is `True` (EV already at user-configured 
 - An **avoided-future-import-cost benefit** (`future_value_per_kwh`, issue #630) is added to the objective, falling back to a tiny fixed tiebreaker when no future price data is available (see Objective function below)
 
 When an EV has a deadline and `charge_past_target=False` (normal mode):
-- **Pre-deadline slots** (`t ≤ D`): direct benefit `-ev_penalty_cost` on `ev_c[t]` forces charging
+- **Pre-deadline slots** (`t \u2264 D`): direct benefit `-ev_penalty_cost` on `ev_c[t]` forces charging.  This benefit is **mutually exclusive** with `charge_past_target` — the LP guards the pre-deadline benefit block with `and not ev.charge_past_target`, mirroring the post-deadline zero-charge and target-cap constraint guards.
 - **Post-deadline slots** (`t > D`): hard constraint `ev_c[t] = 0` — charging is forbidden
 
 ### Fuse constraint extension (issue #567)
@@ -168,6 +168,8 @@ $$
 $$
 
 This direct benefit on pre-deadline slots ensures the LP always prefers charging over paying the deadline penalty. Post-deadline slots ($t > D_v$) have zero coefficient unless `charge_past_target=True`.
+
+The pre-deadline benefit block and the charge-past-target benefit block are **mutually exclusive** by design. The LP construction guards the pre-deadline block with `and not ev.charge_past_target`, mirroring the post-deadline zero-charge constraint's guard. An EV in charge-past-target mode never receives the large penalty-driven benefit — only the `future_value_per_kwh` benefit (or its tiebreaker fallback) applies. This exclusion is enforced directly in the LP construction rather than relying on caller discipline in `engine_core.py`.
 
 Plus EV charge-past-target benefit (discounted, per charge-past-target EV $v$):
 
