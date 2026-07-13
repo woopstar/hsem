@@ -628,28 +628,27 @@ def score_plan(
         #    import price of the charge slot — the price of the energy that
         #    was lost during input (issue #655).
         #
-        #    Discharge-side loss is priced at max(imp_price_obj,
-        #    p_exp_effective) — the higher of the sanitised import price and
-        #    the per-slot export price (after min-export-price clamp).  This
-        #    is the conservative "max-price" convention from issue #641:
+        #    Discharge-side loss is priced based on the slot's actual
+        #    resolved energy flow (destination-aware pricing, issue #641):
         #
-        #    - House-load discharge: lost energy's marginal value = import
-        #      price (avoided import cost).
-        #    - Export-destined discharge: lost energy's marginal value =
-        #      export price (foregone export revenue).
+        #    - If the slot is a net EXPORTER (grid_export_kwh > 0): the
+        #      discharge is destined for export, so the lost energy's true
+        #      marginal value is the export price (foregone export revenue).
+        #      Use the sanitised export price (after min-export-price clamp,
+        #      floored at 0).
+        #    - Otherwise (slot is importing or idle): the discharge serves
+        #      house load, so the lost energy's true marginal value is the
+        #      import price (avoided import cost).  Use imp_price_obj.
         #
-        #    Since the cost function scores a finished plan, it could in
-        #    principle split the cost by destination using the LP's ge[t]
-        #    values.  However, the max-price convention keeps the formula
-        #    identical between the LP objective and the scorer — required
-        #    by the repo invariant that milp_optimizer.py and
-        #    cost_function.py stay consistent.
-        #
-        #    In practice, because export prices rarely exceed import prices
-        #    (and the LP's export-≤-import clamp enforces p_exp ≤ p_imp),
-        #    the max reduces to imp_price_obj in the common case.  The max
-        #    matters only when p_exp > imp_price_obj (e.g. negative import
-        #    prices overlapping positive export tariffs).
+        #    This differs from the LP's pre-solve objective coefficient,
+        #    which uses imp_price_obj unconditionally as a conservative
+        #    approximation (the LP cannot know the destination before
+        #    solving).  The scorer has access to the solved energy flows and
+        #    can make the correct destination-aware valuation.  This is not
+        #    a violation of the LP/cost-function consistency rule — the
+        #    rule requires that the LP's decisions are scoreable
+        #    consistently, not that a necessarily-uninformed pre-solve
+        #    coefficient matches a fully-informed post-solve number.
         charge_loss_fraction = 1.0 - charge_eff
         discharge_loss_fraction = 1.0 - discharge_eff
         if slot.batteries_charged_kwh > 1e-9 and charge_loss_fraction > 1e-9:
@@ -659,17 +658,23 @@ def score_plan(
             conversion_loss_cost_disc += conv * discount
         if slot.batteries_discharged_kwh > 1e-9 and discharge_loss_fraction > 1e-9:
             lost_kwh_discharge = slot.batteries_discharged_kwh * discharge_loss_fraction
-            # Discharge loss: max-price convention (issue #641).
-            # Apply the same min-export-price clamp used for export
-            # revenue, so the loss price is consistent.
-            exp_price_for_loss = exp_price
-            if (
-                weights.export_min_price > 1e-9
-                and exp_price_for_loss < weights.export_min_price
-            ):
-                exp_price_for_loss = 0.0
-            p_loss_discharge = max(imp_price_obj, max(exp_price_for_loss, 0.0))
-            conv = lost_kwh_discharge * p_loss_discharge
+            # Destination-aware discharge loss pricing (issue #641).
+            # If the slot is a net exporter, the discharge is destined for
+            # export — price loss at the export price (foregone revenue).
+            # Otherwise, price at the import price (avoided import cost).
+            if slot.grid_export_kwh > 1e-9:
+                # Export-destined discharge: use sanitised export price.
+                p_loss = exp_price
+                if (
+                    weights.export_min_price > 1e-9
+                    and p_loss < weights.export_min_price
+                ):
+                    p_loss = 0.0
+                p_loss = max(p_loss, 0.0)
+            else:
+                # House-load-covering discharge: use import price (unchanged).
+                p_loss = imp_price_obj
+            conv = lost_kwh_discharge * p_loss
             conversion_loss_cost += conv
             conversion_loss_cost_disc += conv * discount
 

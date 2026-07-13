@@ -243,7 +243,8 @@ def solve_milp(
         - ``slots`` is a list of :class:`PlannedSlot` copies with MILP-derived
           recommendations.
         - ``diagnostics`` is a dict with keys ``"s_max_pen"``, ``"s_min_pen"``,
-          ``"has_violations"``, ``"total_violation_kwh"``.
+          ``"has_violations"``, ``"total_violation_kwh"``,
+          ``"discharge_loss_cost_destination_aware"``.
         Returns ``None`` if the solver fails (unrelated to constraint
         violations — e.g., solver crash or numerical issue).
     """
@@ -337,13 +338,6 @@ def solve_milp(
                 float(np.max(p_exp[blocked])),
             )
         p_exp = np.where(blocked, 0.0, p_exp)
-
-    # Save export price after min-export-price clamp but BEFORE the
-    # export-≤-import clamp.  This copy is used for discharge-side
-    # conversion loss pricing where we need the original export value
-    # (the true foregone-export-revenue opportunity cost), not the
-    # solver-stability-clamped value needed for the gi/ge objective.
-    p_exp_for_loss = p_exp.copy()
 
     # Clamp export price to never exceed import price for the same slot.
     # Without this, slots where p_exp[t] > p_imp[t] create an unbounded LP
@@ -589,27 +583,20 @@ def solve_milp(
         # this slot's import price (where the charge occurs).
         c_obj[ec_off + t] = (charge_loss * p_imp_obj[t]) * discount
         # Discharge-side conversion loss: energy lost during discharge.
-        # Priced at max(p_imp_obj[t], p_exp_for_loss[t]) — the higher of
-        # the sanitised import price and the per-slot export price (after
-        # min-export-price clamp but before the export-≤-import LP-stability
-        # clamp).  This is the conservative "max-price" convention from
-        # issue #641:
+        # Priced at the sanitised import price of the discharge slot.
         #
-        # - When the slot's discharge serves house load, the lost energy's
-        #   true marginal value = import price (avoided import cost).
-        # - When the slot's discharge is destined for export, the lost
-        #   energy's true marginal value = export price (foregone export
-        #   revenue).
+        # NOTE (issue #641): This is a CONSERVATIVE APPROXIMATION.  The
+        # LP cannot know the destination of discharged energy (house load
+        # vs. export) before solving, because the gi[t]/ge[t] split is
+        # itself an LP decision.  Defaulting to the (typically higher)
+        # import price is the safe choice — it never leads the LP to be
+        # overly optimistic about an export cycle's profitability.
         #
-        # Since the LP cannot know the destination split a priori, using
-        # max(imp, exp) is a safe conservative approximation that never
-        # under-prices loss.  In practice, because the export-≤-import
-        # clamp ensures p_exp ≤ p_imp for solver stability, the max
-        # reduces to p_imp_obj in the common case (both prices positive).
-        # The max matters only when p_exp > p_imp_obj, which occurs with
-        # negative import prices overlapping positive export tariffs.
-        p_loss_discharge = max(p_imp_obj[t], max(p_exp_for_loss[t], 0.0))
-        c_obj[ed_off + t] = (discharge_loss * p_loss_discharge) * discount
+        # The accurate destination-aware cost is computed post-hoc in
+        # cost_function.py::score_plan() (which sees the solved
+        # grid_export_kwh/grid_import_kwh fields) and reported in the
+        # diagnostics dict as "discharge_loss_cost_destination_aware".
+        c_obj[ed_off + t] = (discharge_loss * p_imp_obj[t]) * discount
         # Cycle cost through auxiliary variable m[t] (= max(ec, ed))
         c_obj[m_off + t] = cycle_cost_per_kwh * discount
         c_obj[gi_off + t] = p_imp_obj[t] * discount  # grid import cost
@@ -1498,6 +1485,38 @@ def solve_milp(
         total_curtailment_kwh,
     )
 
+    # ------------------------------------------------------------------
+    # Post-hoc destination-aware discharge loss cost (issue #641).
+    #
+    # The LP's pre-solve objective uses p_imp_obj for ed[t] as a
+    # conservative approximation (the LP cannot know the discharge
+    # destination before solving).  Once the LP has solved and the
+    # per-slot grid_export_kwh / grid_import_kwh fields are written,
+    # we can compute the economically accurate cost using the actual
+    # destination of each discharged kWh.
+    #
+    # This value should match cost_function.py::score_plan()'s
+    # conversion_loss_cost for the discharge-side portion.
+    # ------------------------------------------------------------------
+    discharge_loss_dest_aware = 0.0
+    for t in range(m):
+        slot_i = future_idx[t]
+        s = out_slots[slot_i]
+        if s.batteries_discharged_kwh <= 1e-9:
+            continue
+        lost_kwh = s.batteries_discharged_kwh * discharge_loss
+        if s.grid_export_kwh > 1e-9:
+            # Export-destined discharge: price at export price.
+            exp_p = slots[slot_i].price.export_price
+            # Apply same sanitisation as cost_function.py
+            if min_export_price > 1e-9 and exp_p < min_export_price:
+                exp_p = 0.0
+            p_loss = max(exp_p, 0.0)
+        else:
+            # House-load-covering discharge: price at import price.
+            p_loss = p_imp_obj[t]
+        discharge_loss_dest_aware += lost_kwh * p_loss
+
     diagnostics: dict = {
         "s_max_pen": s_max_pen_list,
         "s_min_pen": s_min_pen_list,
@@ -1506,6 +1525,7 @@ def solve_milp(
         "total_fuse_violation_kwh": round(total_fuse_violation_kwh, 4),
         "terminal_soc_credit": round(terminal_soc_credit, 4),
         "total_curtailment_kwh": round(total_curtailment_kwh, 4),
+        "discharge_loss_cost_destination_aware": round(discharge_loss_dest_aware, 6),
     }
 
     # --- EV diagnostics ---
