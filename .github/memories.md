@@ -417,10 +417,13 @@ Always check `docs/huawei_entities.md` before looking elsewhere.
 
 ## MILP Energy Flow Source-of-Truth Rule (issue #637)
 
-`solve_milp()` now writes **every** per-slot energy flow field directly from
-the LP solution: `batteries_discharged_kwh`, `grid_import_kwh`, and
-`grid_export_kwh`.  These are the **source of truth** for MILP-sourced
-candidates.
+`solve_milp()` writes **every** per-slot energy flow field
+(`batteries_charged_kwh`, `batteries_discharged_kwh`, `grid_import_kwh`,
+`grid_export_kwh`) from a **single merged write-out pass** that first
+resolves degenerate LP vertices (simultaneous charge+discharge) and then
+derives grid import/export from the slot's energy balance equation using
+the **same resolved** ec/ed values.  There is no second pass that reads
+raw LP arrays independently.
 
 - `simulate_soc()` accepts an optional `milp_prepopulated=True` parameter.
   When ``True``, it preserves the LP's pre-populated energy flow values
@@ -437,6 +440,27 @@ LP-derived per-slot energy flows (``batteries_discharged_kwh``,
 ``grid_import_kwh``, ``grid_export_kwh``) on MILP-sourced slots.
 If a step needs to adjust these values, it must be part of the LP
 formulation itself, not a downstream patch.
+
+### Degenerate-Vertex Consistency Rule (issue #659)
+
+When the LP write-out path resolves a degenerate/ambiguous solution (the
+mutex / "Bug J" simultaneous charge+discharge resolution), **every**
+downstream field derived from that slot's energy flow — charge, discharge,
+grid import, grid export — must come from the **same resolved decision**
+and must be written in the same loop iteration.
+
+**Never** re-read from raw, pre-resolution LP arrays (``ed_sol``,
+``gi_sol``, ``ge_sol``) in a separate pass.  The raw LP values were
+computed under the original (possibly now-invalid) ec/ed combination and
+will not satisfy the energy balance once ec/ed are adjusted.
+
+**Penalty-guarded net preservation**: When collapsing a degenerate vertex
+to its net direction (ec − ed), the LP's SoC penalty variables
+(``s_max_pen[t]``, ``s_min_pen[t]``) must be checked first.  If either
+penalty is active (``> 1e-6``), the vertex sits at a SoC bound where
+ec≈ed is solver noise — both ec and ed must be zeroed.  Preserving the
+net residual at a penalty-bound slot would inject a spurious charge or
+discharge into a battery that is already at its capacity limit.
 
 ---
 

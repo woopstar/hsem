@@ -299,6 +299,43 @@ class TestArbitrageNegatives:
 # ===========================================================================
 
 
+class TestArbitrageDegenerateVertexRegression:
+    """Regression: degenerate LP vertex must not charge a full battery.
+
+    Issue #659 fixed energy-flow write-out inconsistency, but
+    introduced a regression where collapsing a degenerate vertex to
+    its net direction at a SoC-bound slot would inject a spurious
+    charge into a full battery.  The fix checks SoC penalty variables
+    to distinguish genuine economic signals from solver noise at
+    SoC bounds.
+    """
+
+    def test_no_net_charge_from_degenerate_vertex_at_soc_ceiling(self):
+        """Battery at 100% SoC, cheap noon, 100% efficiency, zero cycle cost.
+
+        The LP solver can produce a degenerate vertex at the cheap slot
+        with both ec and ed positive (a wash cycle).  The mutex
+        resolution must NOT collapse this to a net charge into an
+        already-full battery.
+
+        Uses the same fixture as test_no_charge_when_battery_full:
+        battery_soc_pct=100.0, rated 10 kWh, cheap noon 0.66, 100%
+        efficiency, zero cycle cost.
+        """
+        result = run_planner(
+            _make_arbitrage_input(
+                battery_soc_pct=100.0,
+                battery_rated_capacity_kwh=10.0,
+            )
+        )
+        for s in result.slots:
+            if s.recommendation == _CHARGE_GRID:
+                raise AssertionError(
+                    f"unexpected grid charge at {s.start.isoformat()} "
+                    f"(battery full — degenerate vertex should have been zeroed)"
+                )
+
+
 class TestArbitrageVsSeasonalFallback:
     @pytest.mark.skip(
         reason="MILP-only mode: schedule-based arbitrage not applied on winner"
