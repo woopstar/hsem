@@ -868,6 +868,60 @@ def test_charge_past_target_unaffected_by_target_cap():
 
 
 @_pytestmark_scipy
+def test_pre_deadline_benefit_mutually_exclusive_with_charge_past_target():
+    """Pre-deadline benefit block must not fire when charge_past_target=True.
+
+    When both charge_past_target and a pre-deadline benefit condition
+    (deadline_slot set, target_kwh > initial_soc_kwh) are true for the
+    same EVConfig, only the charge-past-target benefit should apply.
+    The MILP itself must enforce this mutual exclusion rather than
+    relying on caller discipline in engine_core.py.
+
+    Verification: set future_value_per_kwh below export price so that
+    the charge-past-target benefit alone would lose to export.  If the
+    pre-deadline benefit block also fired, its large penalty-driven
+    benefit (~20/kWh) would override export and force EV charging.
+    """
+    slots = [
+        _make_slot(hour=14, day=15, import_price=1.50, export_price=0.89, pv_kwh=5.0)
+    ]
+
+    ev = EVConfig(
+        enabled=True,
+        initial_soc_kwh=0.0,  # far below target — pre-deadline condition applies
+        target_kwh=10.0,  # needs 10 kWh — pre-deadline condition applies
+        capacity_kwh=50.0,
+        max_charge_per_slot=10.0,
+        charger_efficiency=1.0,
+        deadline_slot=0,  # deadline set — pre-deadline condition applies
+        charge_past_target=True,  # but charge-past-target is also enabled!
+        future_value_per_kwh=0.40,  # below export price of 0.89
+    )
+
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=0.001,
+        max_charge_per_slot=0.001,
+        max_discharge_per_slot=None,
+        ev_configs=[ev],
+    )
+
+    assert result is not None
+    out_slots, _diag = result
+
+    # When only charge-past-target benefit applies (0.40/kWh), export
+    # (0.89/kWh) is more valuable — surplus should be exported, not
+    # diverted to the EV.  If the pre-deadline benefit had also fired,
+    # the combined benefit (~20/kWh) would force EV charging here.
+    assert out_slots[0].ev_total_planned_load_kwh == pytest.approx(0.0, abs=1e-6), (
+        "EV should not charge from surplus when future_value_per_kwh < export, "
+        "proving the pre-deadline benefit block did not also fire"
+    )
+
+
+@_pytestmark_scipy
 def test_full_planner_with_ev_integration():
     """Full planner run with EV enabled produces valid output.
 

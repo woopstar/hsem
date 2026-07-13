@@ -412,6 +412,14 @@ coefficient of `-ev_penalty_cost`, creating a direct benefit that forces the LP
 to charge the EV. The LP will use PV surplus first (free), then grid import
 (costs `p_imp[t]`) when PV alone is insufficient.
 
+This pre-deadline benefit is **mutually exclusive** with `charge_past_target`.
+The LP construction guards the pre-deadline benefit block with
+`and not ev.charge_past_target` (mirroring the post-deadline zero-charge and
+target-cap constraints), so an EV in charge-past-target mode never receives the
+large penalty-driven benefit. The LP enforces this exclusion directly — it does
+not rely on caller discipline in `engine_core.py` to prevent both conditions
+from being true simultaneously.
+
 **Post-deadline slots** (`t > D`):
 - When `charge_past_target=False`: `ev_c[t]` is hard-constrained to zero —
   no charging allowed after the deadline.

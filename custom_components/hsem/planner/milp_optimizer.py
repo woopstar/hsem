@@ -630,7 +630,11 @@ def solve_milp(
     # Must be high enough that the MILP always prefers meeting the target
     # when it is physically possible within the available slots.
     for ev_idx, ev in enumerate(active_evs):
-        if ev.deadline_slot is not None and ev.target_kwh > ev.initial_soc_kwh + 1e-9:
+        if (
+            ev.deadline_slot is not None
+            and ev.target_kwh > ev.initial_soc_kwh + 1e-9
+            and not ev.charge_past_target
+        ):
             # Penalty per kWh shortfall: proportional to energy needed,
             # not full capacity. This ensures the MILP prioritizes the EV
             # when it needs significant energy, but doesn't force EV charging
