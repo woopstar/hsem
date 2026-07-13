@@ -301,10 +301,15 @@ This mode is used for MILP-sourced candidates.  `solve_milp()` populates
 these fields in a **single merged write-out pass** (issue #659) that:
 
 1. Resolves degenerate LP vertices (simultaneous charge+discharge) by
-   collapsing to the net direction — but only when the LP's SoC penalty
-   variables indicate the net residual is a genuine economic signal
-   rather than noise at a SoC bound.  At a bound (penalty active),
-   both ec and ed are zeroed.
+   checking actual resolved SoC headroom at each slot in chronological
+   order (issue #662).  The net residual (ec − ed) is clamped against
+   the remaining ceiling headroom (``usable_kwh − running_soc``) or
+   floor headroom (``running_soc − 0``).  If the available headroom is
+   ≤ ``_MIN_ACTION_KWH`` the vertex is treated as solver noise and both
+   ec and ed are zeroed.  The structurally-dead ``net_charge_profit``
+   heuristic and the per-slot LP ``s_max_pen``/``s_min_pen`` variables
+   are **not** used for this resolution — they cannot distinguish
+   horizon-wide degeneracy from genuine economic signals.
 2. Writes `batteries_charged_kwh` and `batteries_discharged_kwh` from the
    **resolved** ec/ed (not the raw LP arrays).
 3. Derives `grid_import_kwh` and `grid_export_kwh` from the slot's energy
