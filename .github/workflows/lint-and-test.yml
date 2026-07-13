@@ -7,13 +7,12 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
-permissions:
-  contents: read
-
 jobs:
   lint:
     name: Lint with tox
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v7.0.0
 
@@ -44,6 +43,8 @@ jobs:
   type-check:
     name: Type check with tox
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v7.0.0
 
@@ -69,6 +70,8 @@ jobs:
   quality:
     name: Static quality checks with tox
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v7.0.0
 
@@ -94,6 +97,8 @@ jobs:
   tests:
     name: Tests with tox
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v7.0.0
 
