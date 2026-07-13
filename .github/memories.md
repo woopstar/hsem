@@ -446,15 +446,21 @@ formulation itself, not a downstream patch.
 When the LP write-out path resolves a degenerate/ambiguous solution (the
 mutex / "Bug J" simultaneous charge+discharge resolution), **every**
 downstream field derived from that slot's energy flow — charge, discharge,
-grid import, grid export — must come from the **same resolved decision**.
+grid import, grid export — must come from the **same resolved decision**
+and must be written in the same loop iteration.
 
 **Never** re-read from raw, pre-resolution LP arrays (``ed_sol``,
 ``gi_sol``, ``ge_sol``) in a separate pass.  The raw LP values were
 computed under the original (possibly now-invalid) ec/ed combination and
 will not satisfy the energy balance once ec/ed are adjusted.
 
-All four energy-flow fields must be written in the same loop iteration
-that performs the resolution.
+**Penalty-guarded net preservation**: When collapsing a degenerate vertex
+to its net direction (ec − ed), the LP's SoC penalty variables
+(``s_max_pen[t]``, ``s_min_pen[t]``) must be checked first.  If either
+penalty is active (``> 1e-6``), the vertex sits at a SoC bound where
+ec≈ed is solver noise — both ec and ed must be zeroed.  Preserving the
+net residual at a penalty-bound slot would inject a spurious charge or
+discharge into a battery that is already at its capacity limit.
 
 ---
 

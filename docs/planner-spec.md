@@ -301,7 +301,10 @@ This mode is used for MILP-sourced candidates.  `solve_milp()` populates
 these fields in a **single merged write-out pass** (issue #659) that:
 
 1. Resolves degenerate LP vertices (simultaneous charge+discharge) by
-   collapsing to the net direction.
+   collapsing to the net direction — but only when the LP's SoC penalty
+   variables indicate the net residual is a genuine economic signal
+   rather than noise at a SoC bound.  At a bound (penalty active),
+   both ec and ed are zeroed.
 2. Writes `batteries_charged_kwh` and `batteries_discharged_kwh` from the
    **resolved** ec/ed (not the raw LP arrays).
 3. Derives `grid_import_kwh` and `grid_export_kwh` from the slot's energy

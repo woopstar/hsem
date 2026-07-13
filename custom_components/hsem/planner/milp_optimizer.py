@@ -1114,6 +1114,8 @@ def solve_milp(
     # Extract curtailment solution early — needed for the energy balance
     # derivation in the merged write-out loop below.
     curt_sol_full = result.x[curt_off : curt_off + m]
+    s_max_pen_vals = [float(v) for v in result.x[s_max_off : s_max_off + m]]
+    s_min_pen_vals = [float(v) for v in result.x[s_min_off : s_min_off + m]]
 
     # ------------------------------------------------------------------
     # Single merged energy-flow write-out pass (issue #659).
@@ -1144,16 +1146,23 @@ def solve_milp(
             # avoided import (p_imp), not export revenue (p_exp).
             #
             # When the round-trip is NOT profitable, collapse the
-            # degenerate vertex to its net direction instead of
-            # zeroing both — the LP expressed a net charge or
-            # discharge through the vertex and that net effect must
-            # be preserved (issue #659).
+            # degenerate vertex to its net direction — but ONLY when
+            # the LP's SoC penalty variables indicate the net residual
+            # is a genuine economic signal rather than noise at a SoC
+            # bound (issue #659).  If either s_max_pen[t] or
+            # s_min_pen[t] is active, the vertex sits at a bound where
+            # ec~ed is solver noise — zero both.
             net_charge_profit = (
                 p_imp[lp_t] * discharge_eff
                 - p_imp[lp_t] / charge_eff
                 - 2.0 * cycle_cost_per_kwh
             )
-            if net_charge_profit > 0:
+            has_penalty = s_max_pen_vals[lp_t] > 1e-6 or s_min_pen_vals[lp_t] > 1e-6
+            if net_charge_profit > 0 and not has_penalty:
+                ed_kwh = 0.0
+            elif has_penalty:
+                # Degenerate vertex at a SoC bound — noise, not signal.
+                ec_kwh = 0.0
                 ed_kwh = 0.0
             elif ec_kwh > ed_kwh:
                 # Net charge: keep the delta, zero the discharge
@@ -1331,13 +1340,10 @@ def solve_milp(
                 s.estimated_cost_currency = round(net * s.price.export_price, 4)
 
     # ------------------------------------------------------------------
-    # Extract penalty variable values and compute violation diagnostics
+    # Compute violation diagnostics from early-extracted penalty values
     # ------------------------------------------------------------------
-    s_max_pen_sol = result.x[s_max_off : s_max_off + m]
-    s_min_pen_sol = result.x[s_min_off : s_min_off + m]
-
-    s_max_pen_list = [float(v) for v in s_max_pen_sol]
-    s_min_pen_list = [float(v) for v in s_min_pen_sol]
+    s_max_pen_list = list(s_max_pen_vals)
+    s_min_pen_list = list(s_min_pen_vals)
     total_violation = sum(s_max_pen_list) + sum(s_min_pen_list)
     has_violations = total_violation > 1e-6
 
