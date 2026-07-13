@@ -383,6 +383,8 @@ Always check `docs/huawei_entities.md` before looking elsewhere.
 | #582 | EV charger power oscillates due to frequent MILP re-solves | Closed (reverted) |
 | #630 | EV charge-past-target valued at flat 0.0001 instead of avoided-cost | Closed |
 | #637 | simulate_soc overwrites MILP's ed[t] with greedy discharge allocation | Closed |
+| #659 | Energy-flow write-out inconsistency in MILP degenerate-vertex resolution | Closed (PR #660) |
+| #662 | Degenerate-vertex net-direction collapse still charges a full battery | Fixed in this PR |
 
 ---
 
@@ -441,7 +443,7 @@ LP-derived per-slot energy flows (``batteries_discharged_kwh``,
 If a step needs to adjust these values, it must be part of the LP
 formulation itself, not a downstream patch.
 
-### Degenerate-Vertex Consistency Rule (issue #659)
+### Degenerate-Vertex Consistency Rule (issue #659, #662)
 
 When the LP write-out path resolves a degenerate/ambiguous solution (the
 mutex / "Bug J" simultaneous charge+discharge resolution), **every**
@@ -454,13 +456,27 @@ and must be written in the same loop iteration.
 computed under the original (possibly now-invalid) ec/ed combination and
 will not satisfy the energy balance once ec/ed are adjusted.
 
-**Penalty-guarded net preservation**: When collapsing a degenerate vertex
-to its net direction (ec − ed), the LP's SoC penalty variables
-(``s_max_pen[t]``, ``s_min_pen[t]``) must be checked first.  If either
-penalty is active (``> 1e-6``), the vertex sits at a SoC bound where
-ec≈ed is solver noise — both ec and ed must be zeroed.  Preserving the
-net residual at a penalty-bound slot would inject a spurious charge or
-discharge into a battery that is already at its capacity limit.
+**Headroom-based net preservation (issue #662)**: When collapsing a
+degenerate vertex, validate the net residual (ec - ed) against the
+**actual resolved SoC headroom** at that slot in chronological order.
+Maintain a running resolved SoC (``running_soc``) initialised to
+``current_kwh`` and updated by ``resolved_charge - resolved_discharge``
+after every slot.  For a net-charge candidate (``net > 0``), clamp to
+``min(net, usable_kwh - running_soc)``; for a net-discharge candidate
+(``net < 0``), clamp to ``min(-net, running_soc)``.  If the clamped value
+is <= ``_MIN_ACTION_KWH``, zero both ec and ed — the vertex is solver
+noise with no meaningful headroom.
+
+**Warning**: The ``net_charge_profit`` expression
+(``p_imp * (eta_dis - 1/eta_chg) - 2*cycle_cost``) is structurally
+**always** <= 0 for any realistic ``discharge_eff <= 1 <= 1/charge_eff``
+and ``cycle_cost_per_kwh >= 0``.  It must **never** be used as a
+discriminating signal for degenerate-vertex resolution — it cannot
+distinguish a genuine economic signal from solver noise.  Likewise,
+the LP's ``s_max_pen[t]`` / ``s_min_pen[t]`` penalty variables are a
+**per-slot, hard-bound-violation** signal, not a horizon-wide degeneracy
+signal — they miss degenerate vertices where SoC is merely *near*
+(not at) a bound, and must not be used for this resolution.
 
 ---
 

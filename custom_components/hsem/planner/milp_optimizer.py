@@ -1132,46 +1132,60 @@ def solve_milp(
     # milp_prepopulated=True — never re-derive a different (greedy)
     # value from the recommendation label and net_demand.
     # ------------------------------------------------------------------
+    running_soc = current_kwh
     for lp_t, slot_i in enumerate(future_idx):
         ec_kwh = float(ec_sol[lp_t])
         ed_kwh = float(ed_sol[lp_t])
         ge_kwh = float(result.x[ge_off + lp_t])  # raw LP export (for recommendation)
 
         if ec_kwh > _MIN_ACTION_KWH and ed_kwh > _MIN_ACTION_KWH:
-            # Mutual exclusion is guaranteed by the LP constraint
-            # (ec/max_charge + ed/max_dis <= 1).  If we reach here,
-            # it is due to numerical tolerance at a degenerate LP
-            # vertex.  Resolve by checking whether the round-trip is
-            # net profitable (Bug J fix).  The value of discharging is
-            # avoided import (p_imp), not export revenue (p_exp).
+            # Degenerate LP vertex (simultaneous charge+discharge).
+            # The LP is indifferent among cost-equivalent ec/ed
+            # combinations.  Check actual SoC headroom at this point
+            # in the resolved trajectory to distinguish a genuine
+            # economic signal from solver noise near a SoC bound
+            # (issue #662).
             #
-            # When the round-trip is NOT profitable, collapse the
-            # degenerate vertex to its net direction — but ONLY when
-            # the LP's SoC penalty variables indicate the net residual
-            # is a genuine economic signal rather than noise at a SoC
-            # bound (issue #659).  If either s_max_pen[t] or
-            # s_min_pen[t] is active, the vertex sits at a bound where
-            # ec~ed is solver noise — zero both.
-            net_charge_profit = (
-                p_imp[lp_t] * discharge_eff
-                - p_imp[lp_t] / charge_eff
-                - 2.0 * cycle_cost_per_kwh
-            )
-            has_penalty = s_max_pen_vals[lp_t] > 1e-6 or s_min_pen_vals[lp_t] > 1e-6
-            if net_charge_profit > 0 and not has_penalty:
-                ed_kwh = 0.0
-            elif has_penalty:
-                # Degenerate vertex at a SoC bound — noise, not signal.
-                ec_kwh = 0.0
-                ed_kwh = 0.0
-            elif ec_kwh > ed_kwh:
-                # Net charge: keep the delta, zero the discharge
-                ec_kwh = ec_kwh - ed_kwh
-                ed_kwh = 0.0
+            # net_charge_profit = p_imp·(η_dis − 1/η_chg) − 2·cycle_cost
+            # is structurally always ≤ 0 for realistic efficiencies
+            # and costs, so it cannot discriminate.  The LP's
+            # s_max_pen/s_min_pen variables are a per-slot
+            # hard-bound-violation signal, not a horizon-wide
+            # degeneracy signal — they miss degenerate vertices
+            # where SoC is merely near (not at) a bound.
+            # Use actual resolved SoC headroom instead.
+            net = ec_kwh - ed_kwh
+            if net > _MIN_ACTION_KWH:
+                # Net charge candidate: clamp to remaining ceiling
+                # headroom.  usable_kwh is the energy available
+                # between end_of_discharge_soc and max_soc;
+                # running_soc is measured from the same floor.
+                headroom = usable_kwh - running_soc
+                if headroom <= _MIN_ACTION_KWH:
+                    ec_kwh = 0.0
+                    ed_kwh = 0.0
+                else:
+                    chosen = min(net, headroom)
+                    ec_kwh = chosen
+                    ed_kwh = 0.0
+            elif net < -_MIN_ACTION_KWH:
+                # Net discharge candidate: clamp to remaining floor
+                # headroom.  The discharge floor is already baked
+                # into current_kwh/usable_kwh (see usable_capacity),
+                # so 0.0 is the floor reference for running_soc.
+                floor_headroom = running_soc
+                if floor_headroom <= _MIN_ACTION_KWH:
+                    ec_kwh = 0.0
+                    ed_kwh = 0.0
+                else:
+                    chosen = min(-net, floor_headroom)
+                    ec_kwh = 0.0
+                    ed_kwh = chosen
             else:
-                # Net discharge (or equal): keep the delta, zero the charge
-                ed_kwh = ed_kwh - ec_kwh
+                # Net ~0 (both within _MIN_ACTION_KWH of each other):
+                # pure wash vertex — zero both.
                 ec_kwh = 0.0
+                ed_kwh = 0.0
 
         if ec_kwh > _MIN_ACTION_KWH:
             # Use BatteriesChargeSolar when PV surplus is available,
@@ -1241,6 +1255,10 @@ def solve_milp(
         else:
             out_slots[slot_i].grid_import_kwh = 0.0
             out_slots[slot_i].grid_export_kwh = round(-net_flow, 3)
+
+        # Advance resolved SoC for headroom-based degenerate-vertex
+        # resolution in subsequent slots (issue #662).
+        running_soc += resolved_charge - resolved_discharge
 
     # ------------------------------------------------------------------
     # Write MILP-derived EV charging decisions to output slots
