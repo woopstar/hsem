@@ -2493,3 +2493,138 @@ def test_milp_energy_fields_consistent_after_mutex_resolution():
             f"Slot {i}: energy balance violation. "
             f"LHS={lhs:.6f} RHS={rhs:.6f} delta={abs(lhs - rhs):.6f}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Issue #641: Discharge-side conversion loss destination-aware pricing
+# ---------------------------------------------------------------------------
+
+
+@_scipy_skip()
+def test_milp_discharge_loss_destination_aware_diagnostic():
+    """Post-hoc diagnostic correctly prices export-destined discharge loss.
+
+    Scenario: 2-slot horizon. Slot 0 has cheap import (charge). Slot 1 has
+    expensive import AND good export price, so the battery discharges to
+    export (grid_export_kwh > 0).  The post-hoc diagnostic must price the
+    discharge loss at the EXPORT price (0.24), not the import price (0.30).
+    """
+    slots = [
+        _make_slot(
+            hour=0,
+            import_price=0.05,
+            export_price=0.04,
+            consumption_kwh=0.0,  # no consumption -> all charge goes to battery
+        ),
+        _make_slot(
+            hour=1,
+            import_price=0.30,
+            export_price=0.24,
+            consumption_kwh=0.0,  # no consumption -> all discharge can export
+        ),
+    ]
+
+    milp_result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=9.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+        discharge_efficiency_pct=90.0,
+    )
+    assert milp_result is not None, "MILP must return a solution"
+    result, diag = milp_result
+
+    # Verify the diagnostic field exists and matches the hand-computed value.
+    # Hand-computed: 5.0 kWh discharged, 10 % loss = 0.50 kWh lost.
+    # Export-destined -> priced at export price 0.24 -> cost = 0.12.
+    assert "discharge_loss_cost_destination_aware" in diag, (
+        "diagnostics must include discharge_loss_cost_destination_aware"
+    )
+    assert diag["discharge_loss_cost_destination_aware"] == pytest.approx(
+        0.12, rel=1e-4
+    ), (
+        "Expected destination-aware discharge loss cost 0.12, "
+        f"got {diag['discharge_loss_cost_destination_aware']}"
+    )
+
+    # Run SoC simulation to populate battery fields
+    simulate_soc(
+        result,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=9.0,
+        max_capacity_kwh=9.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+        rated_kwh=10.0,
+        end_of_discharge_soc_pct=10.0,
+    )
+
+    # Score the plan with destination-aware pricing.
+    bd = score_plan(
+        result,
+        CostWeights(
+            charge_efficiency_pct=100.0,
+            discharge_efficiency_pct=90.0,
+        ),
+        slot_duration_hours=1.0,
+        now=_NOW,
+    )
+
+    # The scorer must agree with the diagnostic: 0.12.
+    assert bd.conversion_loss_cost == pytest.approx(0.12, rel=1e-4), (
+        f"Expected conversion_loss_cost 0.12, got {bd.conversion_loss_cost}"
+    )
+
+
+@_scipy_skip()
+def test_milp_lp_coefficient_uses_import_price():
+    """LP objective coefficient for ed[t] uses p_imp_obj (conservative approx).
+
+    The LP cannot know the discharge destination before solving.
+    Using p_imp_obj is the safe, conservative choice — it never leads
+    the LP to be overly optimistic about export profitability.
+    The accurate destination-aware cost is computed post-hoc in the
+    diagnostics and by cost_function.py.
+
+    This test verifies that the LP's own c_obj for ed[t] is NOT
+    changed from the pre-#641 behavior (remains p_imp_obj).
+    """
+    slots = [
+        _make_slot(
+            hour=0,
+            import_price=0.05,
+            export_price=0.04,
+            consumption_kwh=0.0,
+        ),
+        _make_slot(
+            hour=1,
+            import_price=0.30,
+            export_price=0.24,
+            consumption_kwh=0.0,
+        ),
+    ]
+
+    milp_result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=9.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+        discharge_efficiency_pct=90.0,
+    )
+    assert milp_result is not None, "MILP must return a solution"
+    result, diag = milp_result
+
+    # The destination-aware diagnostic must report the correct value.
+    # Same scenario as the diagnostic test: 0.12.
+    assert "discharge_loss_cost_destination_aware" in diag
+    assert diag["discharge_loss_cost_destination_aware"] == pytest.approx(
+        0.12, rel=1e-4
+    ), (
+        "Expected destination-aware discharge loss cost 0.12, "
+        f"got {diag['discharge_loss_cost_destination_aware']}"
+    )

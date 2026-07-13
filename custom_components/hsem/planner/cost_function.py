@@ -622,12 +622,33 @@ def score_plan(
 
         # 3. Conversion loss cost — opportunity cost of energy lost in the
         #    round-trip.  The loss occurred at purchase time (charge slot) and
-        #    at delivery time (discharge slot).  Each side is priced at the
-        #    sanitised (non-negative) import price of its own slot — the
-        #    price of the energy that was lost.  Using imp_price_obj here
-        #    (not the raw imp_price) keeps this term consistent with
-        #    milp_optimizer.py's c_obj[ec_off]/c_obj[ed_off], which price
-        #    conversion loss at p_imp_obj (issue #655).
+        #    at delivery time (discharge slot).
+        #
+        #    Charge-side loss is priced at the sanitised (non-negative)
+        #    import price of the charge slot — the price of the energy that
+        #    was lost during input (issue #655).
+        #
+        #    Discharge-side loss is priced based on the slot's actual
+        #    resolved energy flow (destination-aware pricing, issue #641):
+        #
+        #    - If the slot is a net EXPORTER (grid_export_kwh > 0): the
+        #      discharge is destined for export, so the lost energy's true
+        #      marginal value is the export price (foregone export revenue).
+        #      Use the sanitised export price (after min-export-price clamp,
+        #      floored at 0).
+        #    - Otherwise (slot is importing or idle): the discharge serves
+        #      house load, so the lost energy's true marginal value is the
+        #      import price (avoided import cost).  Use imp_price_obj.
+        #
+        #    This differs from the LP's pre-solve objective coefficient,
+        #    which uses imp_price_obj unconditionally as a conservative
+        #    approximation (the LP cannot know the destination before
+        #    solving).  The scorer has access to the solved energy flows and
+        #    can make the correct destination-aware valuation.  This is not
+        #    a violation of the LP/cost-function consistency rule — the
+        #    rule requires that the LP's decisions are scoreable
+        #    consistently, not that a necessarily-uninformed pre-solve
+        #    coefficient matches a fully-informed post-solve number.
         charge_loss_fraction = 1.0 - charge_eff
         discharge_loss_fraction = 1.0 - discharge_eff
         if slot.batteries_charged_kwh > 1e-9 and charge_loss_fraction > 1e-9:
@@ -637,7 +658,23 @@ def score_plan(
             conversion_loss_cost_disc += conv * discount
         if slot.batteries_discharged_kwh > 1e-9 and discharge_loss_fraction > 1e-9:
             lost_kwh_discharge = slot.batteries_discharged_kwh * discharge_loss_fraction
-            conv = lost_kwh_discharge * imp_price_obj
+            # Destination-aware discharge loss pricing (issue #641).
+            # If the slot is a net exporter, the discharge is destined for
+            # export — price loss at the export price (foregone revenue).
+            # Otherwise, price at the import price (avoided import cost).
+            if slot.grid_export_kwh > 1e-9:
+                # Export-destined discharge: use sanitised export price.
+                p_loss = exp_price
+                if (
+                    weights.export_min_price > 1e-9
+                    and p_loss < weights.export_min_price
+                ):
+                    p_loss = 0.0
+                p_loss = max(p_loss, 0.0)
+            else:
+                # House-load-covering discharge: use import price (unchanged).
+                p_loss = imp_price_obj
+            conv = lost_kwh_discharge * p_loss
             conversion_loss_cost += conv
             conversion_loss_cost_disc += conv * discount
 

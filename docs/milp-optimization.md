@@ -128,7 +128,7 @@ $$
     + & \epsilon_{\mathrm{chg}} \cdot p_{\mathrm{imp}}[t] \cdot ec[t]
     && \text{charge-side conversion loss cost} \\
     + & \epsilon_{\mathrm{dis}} \cdot p_{\mathrm{imp}}[t] \cdot ed[t]
-    && \text{discharge-side conversion loss cost} \\
+    && \text{discharge-side conversion loss cost *} \\
     + & p_{\mathrm{soc}} \cdot \bigl( \mathrm{s\_max\_pen}[t] + \mathrm{s\_min\_pen}[t] \bigr)
     && \text{SoC soft-constraint penalties} \\
     + & p_{\mathrm{fuse}} \cdot \mathrm{gi\_pen}[t]
@@ -150,7 +150,7 @@ Where:
 | Symbol | Description |
 |---|---|
 | $\delta_t$ | Time discount per slot: $\delta_t = r^{\Delta t}$ where $\Delta t$ is hours from now |
-| $p_{\mathrm{imp}}[t]$ | Grid import price (currency/kWh) |
+| $p_{\mathrm{imp}}[t]$ | Grid import price (currency/kWh).  Sanitised to `max(p_imp_raw[t], 0)` (issue #655).  Also used as a **conservative approximation** for the LP's discharge-side conversion loss coefficient (see note below). |
 | $p_{\mathrm{exp}}[t]$ | Grid export price (currency/kWh). Before solving, `p_exp` is sanitised: (1) clamped to 0 when below `min_export_price` (physically blocked export), and (2) clamped to `min(p_exp, p_imp)` to prevent an unbounded LP when `p_exp > p_imp` in any slot (issue #635). |
 | $\alpha$ | Battery cycle cost per kWh: $\alpha = \frac{P \cdot L_{pct}/100}{2 \cdot N \cdot C_u}$ |
 | $\epsilon_{\mathrm{chg}}$ | Charge-side loss fraction: $\epsilon_{\mathrm{chg}} = 1 - \eta_{\mathrm{chg}}$ |
@@ -291,7 +291,46 @@ Without this, slots where `p_exp > p_imp` create an **unbounded LP** (HiGHS stat
 
 This condition occurs in practice whenever negative import spot prices coincide with positive export tariffs (common in DK/DE/NL markets during high wind/solar hours), or when asymmetric import/export grid fees create an apparent export-price premium.
 
-The clamp is economically correct — no rational agent imports and exports simultaneously for profit — and capping the achievable arbitrage spread removes the unbounded direction without changing any other optimisation behaviour.
+The clamp is economically correct and capping the achievable arbitrage spread removes the unbounded direction without changing any other optimisation behaviour.
+
+### 3. Discharge-side loss pricing: destination-aware valuation (issue #641)
+
+The LP's pre-solve objective uses `p_imp[t]` (the sanitised import price)
+for the discharge-side conversion loss coefficient.  This is a
+**conservative approximation**: the LP cannot know before solving whether
+the discharged energy will go to house load (correctly valued at import
+price) or to export (correctly valued at export price), because the
+gi[t]/ge[t] split is itself an LP decision.
+
+Defaulting to the (typically higher) import price is the safe choice for
+the LP's own optimization — it never leads the LP to be overly optimistic
+about an export cycle's profitability.  After the LP solves and the
+per-slot grid_export_kwh / grid_import_kwh fields are written, the
+**destination-aware** cost is computed:
+
+```text
+For each slot:
+  if grid_export_kwh > 0 (net exporter):
+    p_loss = max(export_price, 0)  # after min-export-price clamp
+  else (net importer or idle):
+    p_loss = max(import_price, 0)
+  discharge_loss_cost = batteries_discharged * (1 - dis_eff) * p_loss
+```
+
+This destination-aware valuation is used by:
+- `cost_function.py::score_plan()` — the authoritative scorer (sees the
+  solved energy flows).
+- The `discharge_loss_cost_destination_aware` key in `solve_milp()`'s
+  returned diagnostics dict (post-hoc).
+
+The LP objective coefficient and the scored cost are allowed to differ
+because they answer different questions: the LP must decide before knowing
+the outcome (conservative approximation), while the scorer evaluates the
+finished plan with full information (accurate valuation).  This is not a
+violation of the LP/cost-function consistency rule — the rule requires
+that the LP's decisions are scoreable consistently, not that a
+necessarily-uninformed pre-solve coefficient matches a fully-informed
+post-solve number.
 
 ---
 

@@ -303,6 +303,101 @@ class TestConversionLoss:
         )
         assert bd.conversion_loss_cost == pytest.approx(0.0)
 
+    # ------------------------------------------------------------------
+    # Discharge-side loss: destination-aware pricing (issue #641)
+    # ------------------------------------------------------------------
+
+    def test_discharge_loss_export_destined_uses_export_price(self):
+        """Export-destined discharge: loss priced at export price (issue #641 fix).
+
+        When the slot is a net exporter (grid_export_kwh > 0), the
+        discharge is destined for export.  The lost energy's true marginal
+        value is the export price (foregone export revenue), NOT the import
+        price (avoided import cost).
+
+        import=0.30, export=0.10 (import > export, the COMMON case).
+        Old (broken) behaviour: loss at import price = 0.30 -> cost 0.03.
+        New (correct) behaviour: loss at export price = 0.10 -> cost 0.01.
+        """
+        slot = _make_slot(
+            import_price=0.30,
+            export_price=0.10,
+            grid_export_kwh=0.5,  # net exporter
+            batteries_discharged_kwh=1.0,
+        )
+        bd = score_plan(
+            [slot],
+            CostWeights(charge_efficiency_pct=100.0, discharge_efficiency_pct=90.0),
+        )
+        # discharge_loss_fraction = 1 - 0.90 = 0.10
+        # lost_kwh = 1.0 * 0.10 = 0.10
+        # cost = 0.10 * 0.10 = 0.01 (export price, NOT import price)
+        assert bd.conversion_loss_cost == pytest.approx(0.01, rel=1e-5)
+
+    def test_discharge_loss_house_load_uses_import_price(self):
+        """House-load discharge: loss priced at import price (regression guard).
+
+        When the slot is NOT exporting (grid_export_kwh == 0), the
+        discharge serves house load.  Import price is the correct
+        valuation (avoided import cost) — must remain UNCHANGED.
+        """
+        slot = _make_slot(
+            import_price=0.30,
+            export_price=0.10,
+            grid_import_kwh=0.5,  # net importer
+            grid_export_kwh=0.0,
+            batteries_discharged_kwh=1.0,
+        )
+        bd = score_plan(
+            [slot],
+            CostWeights(charge_efficiency_pct=100.0, discharge_efficiency_pct=90.0),
+        )
+        # lost_kwh = 0.10, cost = 0.10 * 0.30 = 0.03 (unchanged)
+        assert bd.conversion_loss_cost == pytest.approx(0.03, rel=1e-5)
+
+    def test_discharge_loss_both_negative_uses_zero(self):
+        """When both prices negative, loss floor is 0 (no negative pricing).
+
+        Both sanitised prices are 0, so the cost is 0 regardless of
+        destination.
+        """
+        slot = _make_slot(
+            import_price=-0.10,
+            export_price=-0.05,
+            grid_import_kwh=0.5,
+            batteries_discharged_kwh=1.0,
+        )
+        bd = score_plan(
+            [slot],
+            CostWeights(charge_efficiency_pct=100.0, discharge_efficiency_pct=90.0),
+        )
+        assert bd.conversion_loss_cost == pytest.approx(0.0)
+
+    def test_discharge_loss_export_below_min_price_uses_zero(self):
+        """Export below min_export_price: loss priced at 0 for export slots.
+
+        When the applier blocks export (export < min_export_price), the
+        effective export price is 0.  An export-destined discharge in such
+        a slot should have its loss priced at 0.
+        """
+        slot = _make_slot(
+            import_price=0.20,
+            export_price=0.02,
+            grid_export_kwh=0.5,
+            batteries_discharged_kwh=1.0,
+        )
+        bd = score_plan(
+            [slot],
+            CostWeights(
+                charge_efficiency_pct=100.0,
+                discharge_efficiency_pct=90.0,
+                export_min_price=0.05,
+            ),
+        )
+        # export_price 0.02 < min 0.05 -> clamped to 0.0
+        # lost_kwh = 0.10, cost = 0.10 * 0.0 = 0.0
+        assert bd.conversion_loss_cost == pytest.approx(0.0)
+
 
 # ===========================================================================
 # 5. Battery cycle cost component

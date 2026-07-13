@@ -247,15 +247,59 @@ roundtrip_loss  = 1 − roundtrip_yield
 
 Example (90 % / 90 %): yield = 0.81, loss = 19 %.
 
+### Conversion loss pricing (issue #641)
+
+Each side of the round-trip is priced independently at its own slot's price:
+
+- **Charge-side loss**: Priced at the sanitised import price of the charge
+  slot (`max(import_price, 0)`).  The lost energy was purchased at that
+  price.
+- **Discharge-side loss**: Priced based on the slot's resolved energy flow
+  (destination-aware).  After the MILP solves and the per-slot
+  `grid_export_kwh` / `grid_import_kwh` fields are populated:
+
+  - **If the slot is a net EXPORTER** (`grid_export_kwh > 0`): the
+    discharge is destined for export, so the lost energy's true marginal
+    value is the export price (foregone export revenue).  Use the
+    sanitised export price (`max(export_price, 0)` after min-export-price
+    clamp).
+  - **Otherwise** (net importer or idle): the discharge serves house load,
+    so the lost energy's marginal value is the import price (avoided
+    import cost).  Use `max(import_price, 0)`.
+
+```text
+For each slot:
+  if grid_export_kwh > 0:
+    p_loss = max(export_price, 0)  # after min-export-price clamp
+  else:
+    p_loss = max(import_price, 0)
+  discharge_loss_cost[t] = batteries_discharged[t] * (1 - dis_eff) * p_loss
+```
+
+The LP's pre-solve objective coefficient for `ed[t]` uses the import price
+unconditionally as a **conservative approximation** — the LP cannot know
+the discharge destination before solving.  The destination-aware
+valuation is applied post-hoc by `cost_function.py::score_plan()` (the
+authoritative scorer) and reported in `solve_milp()`'s diagnostics dict as
+`discharge_loss_cost_destination_aware`.  This asymmetry is intentional:
+the LP must decide before knowing the outcome, while the scorer evaluates
+the finished plan with full information.
+
 ### Invariants for tests
 
-- Charging 10 kWh at 90 % efficiency must draw 10 / 0.9 ≈ 11.11 kWh from the grid.
+- Charging 10 kWh at 90 % efficiency must draw 10 / 0.9 approx 11.11 kWh from the grid.
 - Charging 10 kWh at 100 % efficiency must draw exactly 10 kWh from the grid.
 - Discharging 10 kWh battery energy at 90 % efficiency must deliver 9 kWh to the house.
-- The round-trip cost term (`conversion_loss_cost`) must use
-  `1 − charge_eff × discharge_eff` when explicit efficiencies are set.
-- When both efficiencies are 100 %, the legacy `conversion_loss_pct` field drives
-  the `conversion_loss_cost` term (backwards compatibility).
+- The round-trip cost term (conversion_loss_cost) must use
+  1 - charge_eff * discharge_eff when explicit efficiencies are set.
+- When both efficiencies are 100 %, the legacy conversion_loss_pct field drives
+  the conversion_loss_cost term (backwards compatibility).
+- Discharge-side conversion loss MUST be destination-aware: export slots use
+  the export price, house-load slots use the import price (issue #641).
+- An export-destined discharge slot (grid_export_kwh > 0) must have a LOWER
+  loss cost than the old import-only-priced value when export < import.
+- A house-load discharge slot (grid_export_kwh == 0) must have the SAME
+  loss cost as before the fix (import-price valuation, regression guard).
 
 ## SoC simulation
 
@@ -830,9 +874,13 @@ high-price periods and biases the selector against discharging.
 
 Import prices are sanitised the same way as the MILP's own objective
 (`imp_price_obj = max(imp_price, 0.0)`) before being used anywhere in
-`score_plan` - including the import-cost term itself and the
-conversion-loss term - so a negative-price slot never scores as a synthetic
-profit when the LP itself never realises one.
+`score_plan` - including the import-cost term itself.  The charge-side
+conversion loss term also uses `imp_price_obj`.  For the discharge-side
+conversion loss, destination-aware pricing applies (issue #641):
+export-destined discharge is priced at the sanitised export price, while
+house-load discharge uses `imp_price_obj` — see Battery efficiency /
+Conversion loss pricing above.  The LP's pre-solve objective uses
+`imp_price_obj` unconditionally as a conservative approximation.
 
 Terminal-SoC accounting is **only active** when both `initial_battery_kwh`
 and `replacement_price_per_kwh` are supplied to `score_plan`.  Unit tests
