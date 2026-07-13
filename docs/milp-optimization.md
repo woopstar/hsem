@@ -127,7 +127,7 @@ $$
     && \text{battery cycle cost (depreciation)} \\
     + & \epsilon_{\mathrm{chg}} \cdot p_{\mathrm{imp}}[t] \cdot ec[t]
     && \text{charge-side conversion loss cost} \\
-    + & \epsilon_{\mathrm{dis}} \cdot p_{\mathrm{imp}}[t] \cdot ed[t]
+    + & \epsilon_{\mathrm{dis}} \cdot \max\bigl(p_{\mathrm{imp}}[t],\, p_{\mathrm{exp}}^{\mathrm{loss}}[t]\bigr) \cdot ed[t]
     && \text{discharge-side conversion loss cost} \\
     + & p_{\mathrm{soc}} \cdot \bigl( \mathrm{s\_max\_pen}[t] + \mathrm{s\_min\_pen}[t] \bigr)
     && \text{SoC soft-constraint penalties} \\
@@ -150,7 +150,7 @@ Where:
 | Symbol | Description |
 |---|---|
 | $\delta_t$ | Time discount per slot: $\delta_t = r^{\Delta t}$ where $\Delta t$ is hours from now |
-| $p_{\mathrm{imp}}[t]$ | Grid import price (currency/kWh) |
+| $p_{\mathrm{imp}}[t]$ | Sanitised grid import price (currency/kWh): $\max(p_{\mathrm{imp\_raw}}[t], 0)$.  Negative import prices are clamped to zero to prevent unbounded LP behaviour — the LP never earns synthetic profit from a negative price slot (issue #655). |
 | $p_{\mathrm{exp}}[t]$ | Grid export price (currency/kWh). Before solving, `p_exp` is sanitised: (1) clamped to 0 when below `min_export_price` (physically blocked export), and (2) clamped to `min(p_exp, p_imp)` to prevent an unbounded LP when `p_exp > p_imp` in any slot (issue #635). |
 | $\alpha$ | Battery cycle cost per kWh: $\alpha = \frac{P \cdot L_{pct}/100}{2 \cdot N \cdot C_u}$ |
 | $\epsilon_{\mathrm{chg}}$ | Charge-side loss fraction: $\epsilon_{\mathrm{chg}} = 1 - \eta_{\mathrm{chg}}$ |
@@ -291,7 +291,42 @@ Without this, slots where `p_exp > p_imp` create an **unbounded LP** (HiGHS stat
 
 This condition occurs in practice whenever negative import spot prices coincide with positive export tariffs (common in DK/DE/NL markets during high wind/solar hours), or when asymmetric import/export grid fees create an apparent export-price premium.
 
-The clamp is economically correct — no rational agent imports and exports simultaneously for profit — and capping the achievable arbitrage spread removes the unbounded direction without changing any other optimisation behaviour.
+The clamp is economically correct and capping the achievable arbitrage spread removes the unbounded direction without changing any other optimisation behaviour.
+
+### 3. Discharge-side loss pricing: max-price convention (issue #641)
+
+The energy lost to discharge-side conversion inefficiency is priced using
+the higher of the sanitised import price and the (pre-clamp) export price:
+
+```text
+p_loss_discharge[t] = max(p_imp_obj[t], max(p_exp_for_loss[t], 0))
+```
+
+where `p_exp_for_loss[t]` is the slot's export price after the
+min-export-price clamp but **before** the export-to-import clamp.
+
+**Rationale:** The true marginal value of lost discharge energy depends on
+where the discharged energy was destined:
+
+- **House-load coverage:** The alternative is importing, so lost kWh are
+  valued at the import price (avoided import cost).
+- **Export:** The alternative is exporting that kWh, so lost kWh are valued
+  at the export price (foregone export revenue).
+
+Since the LP cannot know the destination split before solving, using
+`max(p_imp_obj, p_exp_for_loss)` is a conservative approximation that never
+under-prices loss.  In the common case (both prices positive), the max
+reduces to `p_imp_obj`, identical to the pre-#641 behaviour.  The max
+matters only when `p_exp_for_loss > p_imp_obj`, which occurs when negative
+import prices overlap positive export tariffs.
+
+Using the export price **before** the export-to-import clamp (but after
+the min-export-price clamp) is deliberate.  The export-to-import clamp is a
+solver-stability mechanism for the `gi[t]` / `ge[t]` arbitrage direction.
+The discharge variable `ed[t]` is physically bounded, so using the pre-clamp
+export price for its loss coefficient cannot re-introduce unboundedness.
+This also matches what `cost_function.py` sees (the scorer does not apply
+the export-to-import clamp), keeping the two files consistent.
 
 ---
 

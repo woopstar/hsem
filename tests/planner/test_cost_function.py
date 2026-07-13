@@ -303,6 +303,97 @@ class TestConversionLoss:
         )
         assert bd.conversion_loss_cost == pytest.approx(0.0)
 
+    # ------------------------------------------------------------------
+    # Discharge-side loss: max-price convention (issue #641)
+    # ------------------------------------------------------------------
+
+    def test_discharge_loss_uses_import_price_when_higher(self):
+        """When import > export, discharge loss uses import price (unchanged).
+
+        This is the common case: both prices positive, import > export.
+        max(p_imp, p_exp) = p_imp, so behaviour is identical to before #641.
+        """
+        slot = _make_slot(
+            import_price=0.30,
+            export_price=0.10,
+            batteries_discharged_kwh=1.0,
+        )
+        bd = score_plan(
+            [slot],
+            CostWeights(charge_efficiency_pct=100.0, discharge_efficiency_pct=90.0),
+        )
+        # discharge_loss_fraction = 1 - 0.90 = 0.10
+        # lost_kwh = 1.0 * 0.10 = 0.10
+        # cost = 0.10 * max(0.30, max(0.10, 0)) = 0.10 * 0.30 = 0.03
+        assert bd.conversion_loss_cost == pytest.approx(0.03, rel=1e-5)
+
+    def test_discharge_loss_uses_export_price_when_higher(self):
+        """When export > import, discharge loss uses export price (issue #641).
+
+        This occurs with negative import prices + positive export tariffs.
+        The lost energy's true opportunity cost is the foregone export
+        revenue, not the avoided import cost.  Using max(p_imp_obj, p_exp)
+        correctly captures this.
+        """
+        slot = _make_slot(
+            import_price=-0.05,
+            export_price=0.15,
+            batteries_discharged_kwh=1.0,
+        )
+        bd = score_plan(
+            [slot],
+            CostWeights(charge_efficiency_pct=100.0, discharge_efficiency_pct=90.0),
+        )
+        # imp_price_obj = max(-0.05, 0) = 0.00
+        # p_loss_discharge = max(0.00, max(0.15, 0)) = 0.15
+        # lost_kwh = 1.0 * 0.10 = 0.10
+        # cost = 0.10 * 0.15 = 0.015
+        #
+        # Old (pre-#641) behaviour: 0.10 * 0.00 = 0.00
+        assert bd.conversion_loss_cost == pytest.approx(0.015, rel=1e-5)
+
+    def test_discharge_loss_both_negative_uses_zero(self):
+        """When both prices negative, loss floor is 0 (no negative pricing).
+
+        max(max(p_imp, 0), max(p_exp, 0)) = max(0, 0) = 0.
+        """
+        slot = _make_slot(
+            import_price=-0.10,
+            export_price=-0.05,
+            batteries_discharged_kwh=1.0,
+        )
+        bd = score_plan(
+            [slot],
+            CostWeights(charge_efficiency_pct=100.0, discharge_efficiency_pct=90.0),
+        )
+        # Both clamped to 0 → cost = 0
+        assert bd.conversion_loss_cost == pytest.approx(0.0)
+
+    def test_discharge_loss_respects_min_export_price(self):
+        """Export price below min_export_price is clamped to 0 for loss calc.
+
+        When the applier's export_min_price blocks export, the effective
+        export price is 0.  The max-price formula then uses import price
+        (or 0 if import is also negative), matching the MILP's clamping.
+        """
+        slot = _make_slot(
+            import_price=0.20,
+            export_price=0.02,
+            batteries_discharged_kwh=1.0,
+        )
+        bd = score_plan(
+            [slot],
+            CostWeights(
+                charge_efficiency_pct=100.0,
+                discharge_efficiency_pct=90.0,
+                export_min_price=0.05,
+            ),
+        )
+        # exp_price_for_loss = 0.02 < 0.05 → clamped to 0.0
+        # p_loss_discharge = max(0.20, max(0.0, 0)) = 0.20
+        # lost_kwh = 0.10, cost = 0.10 * 0.20 = 0.02
+        assert bd.conversion_loss_cost == pytest.approx(0.02, rel=1e-5)
+
 
 # ===========================================================================
 # 5. Battery cycle cost component

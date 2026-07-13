@@ -622,12 +622,34 @@ def score_plan(
 
         # 3. Conversion loss cost — opportunity cost of energy lost in the
         #    round-trip.  The loss occurred at purchase time (charge slot) and
-        #    at delivery time (discharge slot).  Each side is priced at the
-        #    sanitised (non-negative) import price of its own slot — the
-        #    price of the energy that was lost.  Using imp_price_obj here
-        #    (not the raw imp_price) keeps this term consistent with
-        #    milp_optimizer.py's c_obj[ec_off]/c_obj[ed_off], which price
-        #    conversion loss at p_imp_obj (issue #655).
+        #    at delivery time (discharge slot).
+        #
+        #    Charge-side loss is priced at the sanitised (non-negative)
+        #    import price of the charge slot — the price of the energy that
+        #    was lost during input (issue #655).
+        #
+        #    Discharge-side loss is priced at max(imp_price_obj,
+        #    p_exp_effective) — the higher of the sanitised import price and
+        #    the per-slot export price (after min-export-price clamp).  This
+        #    is the conservative "max-price" convention from issue #641:
+        #
+        #    - House-load discharge: lost energy's marginal value = import
+        #      price (avoided import cost).
+        #    - Export-destined discharge: lost energy's marginal value =
+        #      export price (foregone export revenue).
+        #
+        #    Since the cost function scores a finished plan, it could in
+        #    principle split the cost by destination using the LP's ge[t]
+        #    values.  However, the max-price convention keeps the formula
+        #    identical between the LP objective and the scorer — required
+        #    by the repo invariant that milp_optimizer.py and
+        #    cost_function.py stay consistent.
+        #
+        #    In practice, because export prices rarely exceed import prices
+        #    (and the LP's export-≤-import clamp enforces p_exp ≤ p_imp),
+        #    the max reduces to imp_price_obj in the common case.  The max
+        #    matters only when p_exp > imp_price_obj (e.g. negative import
+        #    prices overlapping positive export tariffs).
         charge_loss_fraction = 1.0 - charge_eff
         discharge_loss_fraction = 1.0 - discharge_eff
         if slot.batteries_charged_kwh > 1e-9 and charge_loss_fraction > 1e-9:
@@ -637,7 +659,17 @@ def score_plan(
             conversion_loss_cost_disc += conv * discount
         if slot.batteries_discharged_kwh > 1e-9 and discharge_loss_fraction > 1e-9:
             lost_kwh_discharge = slot.batteries_discharged_kwh * discharge_loss_fraction
-            conv = lost_kwh_discharge * imp_price_obj
+            # Discharge loss: max-price convention (issue #641).
+            # Apply the same min-export-price clamp used for export
+            # revenue, so the loss price is consistent.
+            exp_price_for_loss = exp_price
+            if (
+                weights.export_min_price > 1e-9
+                and exp_price_for_loss < weights.export_min_price
+            ):
+                exp_price_for_loss = 0.0
+            p_loss_discharge = max(imp_price_obj, max(exp_price_for_loss, 0.0))
+            conv = lost_kwh_discharge * p_loss_discharge
             conversion_loss_cost += conv
             conversion_loss_cost_disc += conv * discount
 

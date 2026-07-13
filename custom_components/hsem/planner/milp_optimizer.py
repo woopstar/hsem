@@ -338,6 +338,13 @@ def solve_milp(
             )
         p_exp = np.where(blocked, 0.0, p_exp)
 
+    # Save export price after min-export-price clamp but BEFORE the
+    # export-≤-import clamp.  This copy is used for discharge-side
+    # conversion loss pricing where we need the original export value
+    # (the true foregone-export-revenue opportunity cost), not the
+    # solver-stability-clamped value needed for the gi/ge objective.
+    p_exp_for_loss = p_exp.copy()
+
     # Clamp export price to never exceed import price for the same slot.
     # Without this, slots where p_exp[t] > p_imp[t] create an unbounded LP
     # (HiGHS status=3): both gi[t] and ge[t] are [0, ∞) and linked only
@@ -581,9 +588,28 @@ def solve_milp(
         # Charge-side conversion loss: energy lost during charge, priced at
         # this slot's import price (where the charge occurs).
         c_obj[ec_off + t] = (charge_loss * p_imp_obj[t]) * discount
-        # Discharge-side conversion loss: energy lost during discharge, priced
-        # at this slot's import price (where the discharge occurs).
-        c_obj[ed_off + t] = (discharge_loss * p_imp_obj[t]) * discount
+        # Discharge-side conversion loss: energy lost during discharge.
+        # Priced at max(p_imp_obj[t], p_exp_for_loss[t]) — the higher of
+        # the sanitised import price and the per-slot export price (after
+        # min-export-price clamp but before the export-≤-import LP-stability
+        # clamp).  This is the conservative "max-price" convention from
+        # issue #641:
+        #
+        # - When the slot's discharge serves house load, the lost energy's
+        #   true marginal value = import price (avoided import cost).
+        # - When the slot's discharge is destined for export, the lost
+        #   energy's true marginal value = export price (foregone export
+        #   revenue).
+        #
+        # Since the LP cannot know the destination split a priori, using
+        # max(imp, exp) is a safe conservative approximation that never
+        # under-prices loss.  In practice, because the export-≤-import
+        # clamp ensures p_exp ≤ p_imp for solver stability, the max
+        # reduces to p_imp_obj in the common case (both prices positive).
+        # The max matters only when p_exp > p_imp_obj, which occurs with
+        # negative import prices overlapping positive export tariffs.
+        p_loss_discharge = max(p_imp_obj[t], max(p_exp_for_loss[t], 0.0))
+        c_obj[ed_off + t] = (discharge_loss * p_loss_discharge) * discount
         # Cycle cost through auxiliary variable m[t] (= max(ec, ed))
         c_obj[m_off + t] = cycle_cost_per_kwh * discount
         c_obj[gi_off + t] = p_imp_obj[t] * discount  # grid import cost

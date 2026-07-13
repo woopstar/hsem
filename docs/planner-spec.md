@@ -247,6 +247,42 @@ roundtrip_loss  = 1 − roundtrip_yield
 
 Example (90 % / 90 %): yield = 0.81, loss = 19 %.
 
+### Conversion loss pricing (issue #641)
+
+Each side of the round-trip is priced independently at its own slot's price:
+
+- Charge-side loss: Priced at the sanitised import price of the charge
+  slot (max(p_imp, 0)). The lost energy was purchased at that price.
+- Discharge-side loss: Priced at max(p_imp_obj, p_exp_for_loss), the
+  higher of the sanitised import price and the per-slot export price
+  (after min-export-price clamp, before the export-to-import clamp).
+
+```text
+p_imp_obj        = max(import_price, 0)
+p_exp_for_loss   = max(export_price, 0)  # after min-export-price clamp
+p_loss_discharge = max(p_imp_obj, p_exp_for_loss)
+discharge_loss_cost[t] = batteries_discharged[t] * (1 - dis_eff) * p_loss_discharge
+```
+
+Rationale: The true marginal value of lost discharge energy depends on
+its destination:
+
+- House-load coverage: The alternative is grid import, so lost kWh are
+  valued at import price (avoided import cost).
+- Export: The alternative is grid export, so lost kWh are valued at
+  export price (foregone export revenue).
+
+Since the LP cannot know the destination split before solving, using
+max(p_imp_obj, p_exp_for_loss) is a conservative approximation that never
+under-prices loss. In the common case (both prices positive, export <=
+import after the export-to-import clamp), this reduces to p_imp_obj,
+identical to the pre-#641 behaviour. The max matters only when
+p_exp_for_loss > p_imp_obj (e.g. negative import prices overlapping
+positive export tariffs).
+
+Both milp_optimizer.py and cost_function.py use the same max-price
+convention, keeping the LP objective and the scorer consistent.
+
 ### Invariants for tests
 
 - Charging 10 kWh at 90 % efficiency must draw 10 / 0.9 ≈ 11.11 kWh from the grid.
@@ -256,6 +292,11 @@ Example (90 % / 90 %): yield = 0.81, loss = 19 %.
   `1 − charge_eff × discharge_eff` when explicit efficiencies are set.
 - When both efficiencies are 100 %, the legacy `conversion_loss_pct` field drives
   the `conversion_loss_cost` term (backwards compatibility).
+- Discharge-side conversion loss must use max(p_imp_obj, p_exp_for_loss),
+  never unconditionally p_imp_obj alone (issue #641).
+- When p_exp_for_loss > p_imp_obj, discharge loss cost must exceed the
+  old import-only valuation. When p_imp_obj >= p_exp_for_loss, the cost
+  must match the pre-#641 import-price valuation.
 
 ## SoC simulation
 
@@ -830,9 +871,13 @@ high-price periods and biases the selector against discharging.
 
 Import prices are sanitised the same way as the MILP's own objective
 (`imp_price_obj = max(imp_price, 0.0)`) before being used anywhere in
-`score_plan` - including the import-cost term itself and the
-conversion-loss term - so a negative-price slot never scores as a synthetic
-profit when the LP itself never realises one.
+`score_plan` - including the import-cost term itself.  The charge-side
+conversion loss term also uses `imp_price_obj`.  For the discharge-side
+conversion loss, the max-price convention from issue #641 applies:
+`max(imp_price_obj, max(exp_price_effective, 0))` — see Battery
+efficiency / Conversion loss pricing above.  Both conventions ensure a
+negative-price slot never scores as a synthetic profit when the LP itself
+never realises one.
 
 Terminal-SoC accounting is **only active** when both `initial_battery_kwh`
 and `replacement_price_per_kwh` are supplied to `score_plan`.  Unit tests
