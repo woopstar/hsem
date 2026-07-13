@@ -2536,12 +2536,17 @@ def test_milp_discharge_loss_destination_aware_diagnostic():
     assert milp_result is not None, "MILP must return a solution"
     result, diag = milp_result
 
-    # Verify the diagnostic field exists and is non-negative
+    # Verify the diagnostic field exists and matches the hand-computed value.
+    # Hand-computed: 5.0 kWh discharged, 10 % loss = 0.50 kWh lost.
+    # Export-destined -> priced at export price 0.24 -> cost = 0.12.
     assert "discharge_loss_cost_destination_aware" in diag, (
         "diagnostics must include discharge_loss_cost_destination_aware"
     )
-    assert diag["discharge_loss_cost_destination_aware"] >= 0.0, (
-        "destination-aware cost must be non-negative"
+    assert diag["discharge_loss_cost_destination_aware"] == pytest.approx(
+        0.12, rel=1e-4
+    ), (
+        "Expected destination-aware discharge loss cost 0.12, "
+        f"got {diag['discharge_loss_cost_destination_aware']}"
     )
 
     # Run SoC simulation to populate battery fields
@@ -2568,15 +2573,9 @@ def test_milp_discharge_loss_destination_aware_diagnostic():
         now=_NOW,
     )
 
-    # Verify the cost function's conversion_loss_cost is non-negative
-    assert bd.conversion_loss_cost >= 0.0, (
-        f"conversion_loss_cost must be non-negative, got {bd.conversion_loss_cost}"
-    )
-
-    # Verify that export-destined discharge slots exist and are scored.
-    # The key invariant: conversion_loss_cost must be non-negative and finite.
-    assert bd.conversion_loss_cost >= 0.0, (
-        f"conversion_loss_cost must be non-negative, got {bd.conversion_loss_cost}"
+    # The scorer must agree with the diagnostic: 0.12.
+    assert bd.conversion_loss_cost == pytest.approx(0.12, rel=1e-4), (
+        f"Expected conversion_loss_cost 0.12, got {bd.conversion_loss_cost}"
     )
 
 
@@ -2620,12 +2619,12 @@ def test_milp_lp_coefficient_uses_import_price():
     assert milp_result is not None, "MILP must return a solution"
     result, diag = milp_result
 
-    # The LP's own decision uses p_imp_obj for ed[t].
-    # We verify this indirectly: the plan is produced and can be scored.
-    # If the LP had used export price for discharge loss, the objective
-    # would have been different (lower for export slots), but the plan
-    # structure (which slots charge/discharge) should still be optimal
-    # with the conservative import-price assumption.
-    assert result is not None
-    # Verify diagnostic exists
+    # The destination-aware diagnostic must report the correct value.
+    # Same scenario as the diagnostic test: 0.12.
     assert "discharge_loss_cost_destination_aware" in diag
+    assert diag["discharge_loss_cost_destination_aware"] == pytest.approx(
+        0.12, rel=1e-4
+    ), (
+        "Expected destination-aware discharge loss cost 0.12, "
+        f"got {diag['discharge_loss_cost_destination_aware']}"
+    )
