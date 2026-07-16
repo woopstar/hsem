@@ -304,6 +304,25 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         self._window_hys_previous_rec: str | None = None
         self._window_hys_previous_slot_start: datetime | None = None
 
+        # Event-driven re-planning — track state at last plan to avoid
+        # re-solving the MILP when nothing material has changed.
+        self._last_plan_ev_connected: bool = False
+        self._last_plan_ev_charging: bool = False
+        self._last_plan_ev_soc_below_target: bool = False
+        self._last_plan_ev_second_connected: bool = False
+        self._last_plan_ev_second_charging: bool = False
+        self._last_plan_ev_second_soc_below_target: bool = False
+        self._last_plan_force_mode: str = "auto"
+        self._last_plan_slot_start: datetime | None = None
+        self._last_plan_import_price: float | None = None
+        # EV planned-load config that affects planner optimisation.
+        self._last_plan_ev_target_soc: float | None = None
+        self._last_plan_ev_smart_charging: bool | None = None
+        self._last_plan_ev_deadline: datetime | None = None
+        self._last_plan_ev2_target_soc: float | None = None
+        self._last_plan_ev2_smart_charging: bool | None = None
+        self._last_plan_ev2_deadline: datetime | None = None
+
         # Solar forecast accuracy auto-corrector (issue #602).
         self._solar_corrector: SolarForecastCorrector = SolarForecastCorrector()
         # Set of slot start times already fed to the solar corrector.
@@ -777,6 +796,11 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 # 8. Run the pure-Python planner engine — only when all data
                 #    is ready.  Skip when consumption averages are still
                 #    pending (first cycle, sensor restore not done).
+                #
+                #    Event-driven re-planning: only re-solve the MILP when
+                #    something material changed (EV state, slot boundary,
+                #    price period, forced mode).  Between events, the
+                #    previous plan is reused to prevent oscillation.
 
                 # Collect session EV charge power for session-aware MILP
                 # optimisation (issue #615).  When an EV is actively charging
@@ -794,79 +818,110 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                         live.ev_second.power_w or 0.0
                     ) / 1000.0
 
-                planner_input = build_planner_input(
-                    cfg=cfg,
-                    live=self._live,
-                    hourly_recommendations=self._hourly_recommendations,
-                    batteries_schedules=self._batteries_schedules,
-                    previous_winner_name=self._previous_planner_winner_name,
-                    previous_winner_score=self._previous_planner_winner_score,
-                    ev_session_kw=ev_session_kw if ev_session_kw else None,
-                    dynamic_discharge_floor_pct=_dynamic_floor_pct,
-                    capacity_learner=getattr(
-                        self, "_capacity_learner", CapacityLearner()
-                    ),
-                )
-                # Wire the solar forecast corrector into the planner input so
-                # populate_solcast can apply per-hour accuracy corrections (issue #602).
-                planner_input.solar_corrector = self._solar_corrector
-                # Retain for diagnostics dumps (cleared on each cycle).
-                self._last_planner_input = planner_input
+                # Determine whether a full re-plan is needed.
+                should_replan = self._should_replan(live, now)
 
-                # Debug: log per-hour consumption total reaching the planner
-                # (after builder's *slots_per_hour scaling).
-                total_1d = sum(
-                    c.avg_1d for c in planner_input.consumption_averages if c.avg_1d > 0
-                )
-                async_log(
-                    "debug",
-                    "[builder] consumption per-hour total reaching planner:"
-                    " avg_1d=%.2f kWh"
-                    " over %d hours",
-                    total_1d,
-                    len(planner_input.consumption_averages),
-                )
-
-                # Propagate the verbose-logging flag into the pure-Python
-                # planner so detailed slot-level decisions appear in the
-                # standard Home Assistant log when the user enables
-                # verbose logging.
-                set_hsem_verbose(cfg.verbose_logging)
-                planner_output = run_planner(planner_input)
-                self._last_planner_output = planner_output
-
-                for warning in planner_output.warnings:
-                    async_log("debug", "[planner] %s", warning)
-
-                self._current_required_battery = planner_output.required_capacity_kwh
-                self._data_quality = planner_output.data_quality
-                self._ev_charging_plan = planner_output.ev_charging_plan
-                self._ev_second_charging_plan = planner_output.ev_second_charging_plan
-
-                # Warn when an EV is physically charging but no current or future
-                # slot carries ev_total_planned_load_kwh > 0.  This surfaces the
-                # mismatch between live hardware state and planner intent so it is
-                # visible in logs without requiring a deep dive into slot attributes.
-                if self._live.any_ev_charging:
-                    has_planned = any(
-                        s.ev_total_planned_load_kwh > 1e-9
-                        for s in planner_output.slots
-                        if s.end > now
+                if should_replan:
+                    planner_input = build_planner_input(
+                        cfg=cfg,
+                        live=self._live,
+                        hourly_recommendations=self._hourly_recommendations,
+                        batteries_schedules=self._batteries_schedules,
+                        previous_winner_name=self._previous_planner_winner_name,
+                        previous_winner_score=self._previous_planner_winner_score,
+                        ev_session_kw=ev_session_kw if ev_session_kw else None,
+                        dynamic_discharge_floor_pct=_dynamic_floor_pct,
+                        capacity_learner=getattr(
+                            self, "_capacity_learner", CapacityLearner()
+                        ),
                     )
-                    if not has_planned:
-                        async_log(
-                            "debug",
-                            "[planner] WARNING: EV is physically charging but no "
-                            "current or future slot has ev_total_planned_load_kwh > 0. "
-                            "The EV load is either outside the planning window, "
-                            "smart charging is disabled, or base_load_includes_ev is "
-                            "set but the plan produced zero accounted load. "
-                            "Check EV plan state and slot attributes.",
+                    # Wire the solar forecast corrector into the planner input so
+                    # populate_solcast can apply per-hour accuracy corrections (issue #602).
+                    planner_input.solar_corrector = self._solar_corrector
+                    # Retain for diagnostics dumps (cleared on each cycle).
+                    self._last_planner_input = planner_input
+
+                    # Debug: log per-hour consumption total reaching the planner
+                    # (after builder's *slots_per_hour scaling).
+                    total_1d = sum(
+                        c.avg_1d
+                        for c in planner_input.consumption_averages
+                        if c.avg_1d > 0
+                    )
+                    async_log(
+                        "debug",
+                        "[builder] consumption per-hour total reaching planner:"
+                        " avg_1d=%.2f kWh"
+                        " over %d hours",
+                        total_1d,
+                        len(planner_input.consumption_averages),
+                    )
+
+                    # Propagate the verbose-logging flag into the pure-Python
+                    # planner so detailed slot-level decisions appear in the
+                    # standard Home Assistant log when the user enables
+                    # verbose logging.
+                    set_hsem_verbose(cfg.verbose_logging)
+                    planner_output = run_planner(planner_input)
+                    self._last_planner_output = planner_output
+
+                    # Record the time this plan was created so the slot-boundary
+                    # check in _should_replan uses the actual plan time.
+                    self._last_plan_slot_start = now
+
+                    for warning in planner_output.warnings:
+                        async_log("debug", "[planner] %s", warning)
+
+                    self._current_required_battery = (
+                        planner_output.required_capacity_kwh
+                    )
+                    self._data_quality = planner_output.data_quality
+                    self._ev_charging_plan = planner_output.ev_charging_plan
+                    self._ev_second_charging_plan = (
+                        planner_output.ev_second_charging_plan
+                    )
+
+                    # Warn when an EV is physically charging but no current or
+                    # future slot carries ev_total_planned_load_kwh > 0.
+                    if self._live.any_ev_charging:
+                        has_planned = any(
+                            s.ev_total_planned_load_kwh > 1e-9
+                            for s in planner_output.slots
+                            if s.end > now
                         )
+                        if not has_planned:
+                            async_log(
+                                "debug",
+                                "[planner] WARNING: EV is physically charging but no "
+                                "current or future slot has ev_total_planned_load_kwh"
+                                " > 0. The EV load is either outside the planning"
+                                " window, smart charging is disabled, or"
+                                " base_load_includes_ev is set but the plan produced"
+                                " zero accounted load. Check EV plan state and slot"
+                                " attributes.",
+                            )
+                else:
+                    # No material changes — reuse the previous plan.
+                    assert self._last_planner_output is not None, (
+                        "_last_planner_output must be set when _should_replan"
+                        " returns False"
+                    )
+                    planner_output = self._last_planner_output
+                    async_log(
+                        "debug",
+                        "[replan] Skipping planner — no material changes detected."
+                        " Reusing plan from %s.",
+                        self._last_plan_slot_start.isoformat()
+                        if self._last_plan_slot_start
+                        else "(unknown)",
+                    )
+
+                # Persist current state so the next cycle can detect changes.
+                self._persist_plan_state(live)
 
                 # -----------------------------------------------------------------------
-                # Window-level hysteresis — prevent rapid charge↔discharge toggles
-                # near schedule-window boundaries (issue #315).
+                # Window-level hysteresis — prevent rapid recommendation toggles
+                # within a slot (issue #315).
                 # -----------------------------------------------------------------------
                 # Apply to planner output slots BEFORE _apply_planner_output so that
                 # the held recommendation propagates to hourly_recommendations.
@@ -1180,6 +1235,234 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
     # Planner bridge helpers
     # ------------------------------------------------------------------
 
+    def _should_replan(self, live: LiveState, now: datetime) -> bool:
+        """Determine whether the planner should be re-run.
+
+        Returns ``True`` when a material event occurred since the last plan:
+
+        - EV connection state changed (plugged in or unplugged)
+        - EV charging state changed (started or stopped)
+        - EV SoC crossed the target threshold
+        - Forced working mode changed
+        - Crossed into a new recommendation slot
+        - Import price changed significantly (new price period)
+
+        Returns ``False`` when nothing material changed — the previous
+        plan can be reused.
+        """
+        # First run — always plan.
+        if self._last_planner_output is None:
+            return True
+
+        # Slot boundary crossed — new slot needs a fresh plan.
+        if self._last_plan_slot_start is not None:
+            slot_minutes = self._cfg.recommendation_interval_minutes
+            # Compute the start of the recommendation slot containing *dt*.
+            # Slots are aligned to wall-clock time (00:00, 00:15, …).
+            total_minutes = now.hour * 60 + now.minute
+            now_slot_idx = total_minutes // slot_minutes
+            last_total = (
+                self._last_plan_slot_start.hour * 60 + self._last_plan_slot_start.minute
+            )
+            last_slot_idx = last_total // slot_minutes
+            # Also re-plan if the date changed (midnight crossing).
+            if (
+                now_slot_idx != last_slot_idx
+                or now.date() != self._last_plan_slot_start.date()
+            ):
+                async_log(
+                    "debug",
+                    "[replan] Slot boundary crossed (last=%s, now=%s) — re-planning.",
+                    self._last_plan_slot_start.isoformat(),
+                    now.isoformat(),
+                )
+                return True
+
+        # EV connection state changed.
+        if live.ev.is_connected != self._last_plan_ev_connected:
+            async_log(
+                "debug",
+                "[replan] EV connected state changed (%s → %s) — re-planning.",
+                self._last_plan_ev_connected,
+                live.ev.is_connected,
+            )
+            return True
+
+        # EV charging state changed.
+        if live.ev.is_charging != self._last_plan_ev_charging:
+            async_log(
+                "debug",
+                "[replan] EV charging state changed (%s → %s) — re-planning.",
+                self._last_plan_ev_charging,
+                live.ev.is_charging,
+            )
+            return True
+
+        # EV SoC crossed target threshold.
+        ev_soc_below = (
+            live.ev.soc_pct is not None
+            and live.ev.soc_target_pct is not None
+            and live.ev.soc_pct < live.ev.soc_target_pct
+        )
+        if ev_soc_below != self._last_plan_ev_soc_below_target:
+            async_log(
+                "debug",
+                "[replan] EV SoC target threshold crossed — re-planning.",
+            )
+            return True
+
+        # Second EV connection state changed.
+        if live.ev_second.is_connected != self._last_plan_ev_second_connected:
+            async_log(
+                "debug",
+                "[replan] EV2 connected state changed — re-planning.",
+            )
+            return True
+
+        # Second EV charging state changed.
+        if live.ev_second.is_charging != self._last_plan_ev_second_charging:
+            async_log(
+                "debug",
+                "[replan] EV2 charging state changed — re-planning.",
+            )
+            return True
+
+        # Second EV SoC crossed target threshold.
+        ev2_soc_below = (
+            live.ev_second.soc_pct is not None
+            and live.ev_second.soc_target_pct is not None
+            and live.ev_second.soc_pct < live.ev_second.soc_target_pct
+        )
+        if ev2_soc_below != self._last_plan_ev_second_soc_below_target:
+            async_log(
+                "debug",
+                "[replan] EV2 SoC target threshold crossed — re-planning.",
+            )
+            return True
+
+        # EV planned-load config changed (target SoC, smart charging, deadline).
+        # These are live-state values that reflect the user's config choices.
+        if self._last_plan_ev_target_soc is not None:
+            cur_target = live.ev_planned_load_target_soc_pct or 80.0
+            if abs(cur_target - self._last_plan_ev_target_soc) > 0.5:
+                async_log(
+                    "debug",
+                    "[replan] EV target SoC changed (%.1f → %.1f) — re-planning.",
+                    self._last_plan_ev_target_soc,
+                    cur_target,
+                )
+                return True
+
+        if self._last_plan_ev_smart_charging is not None:
+            cur_smart = live.ev_planned_load_smart_charging_enabled
+            if cur_smart != self._last_plan_ev_smart_charging:
+                async_log(
+                    "debug",
+                    "[replan] EV smart charging toggled (%s → %s) — re-planning.",
+                    self._last_plan_ev_smart_charging,
+                    cur_smart,
+                )
+                return True
+
+        if self._last_plan_ev_deadline is not None:
+            cur_deadline = live.ev_planned_load_deadline
+            if cur_deadline != self._last_plan_ev_deadline:
+                async_log(
+                    "debug",
+                    "[replan] EV deadline changed — re-planning.",
+                )
+                return True
+
+        if self._last_plan_ev2_target_soc is not None:
+            cur_target2 = live.ev_second_planned_load_target_soc_pct or 80.0
+            if abs(cur_target2 - self._last_plan_ev2_target_soc) > 0.5:
+                async_log(
+                    "debug",
+                    "[replan] EV2 target SoC changed (%.1f → %.1f) — re-planning.",
+                    self._last_plan_ev2_target_soc,
+                    cur_target2,
+                )
+                return True
+
+        if self._last_plan_ev2_smart_charging is not None:
+            cur_smart2 = live.ev_second_planned_load_smart_charging_enabled
+            if cur_smart2 != self._last_plan_ev2_smart_charging:
+                async_log(
+                    "debug",
+                    "[replan] EV2 smart charging toggled (%s → %s) — re-planning.",
+                    self._last_plan_ev2_smart_charging,
+                    cur_smart2,
+                )
+                return True
+
+        if self._last_plan_ev2_deadline is not None:
+            cur_deadline2 = live.ev_second_planned_load_deadline
+            if cur_deadline2 != self._last_plan_ev2_deadline:
+                async_log(
+                    "debug",
+                    "[replan] EV2 deadline changed — re-planning.",
+                )
+                return True
+
+        # Forced working mode changed.
+        if live.force_working_mode_state != self._last_plan_force_mode:
+            async_log(
+                "debug",
+                "[replan] Force working mode changed — re-planning.",
+            )
+            return True
+
+        # Import price changed significantly (new price period).
+        if self._last_plan_import_price is not None:
+            price_delta = abs(
+                (live.import_electricity_price or 0.0) - self._last_plan_import_price
+            )
+            if price_delta > 0.001:
+                async_log(
+                    "debug",
+                    "[replan] Import price changed (%.4f → %.4f) — re-planning.",
+                    self._last_plan_import_price,
+                    live.import_electricity_price,
+                )
+                return True
+
+        # Nothing material changed — stick to the plan.
+        return False
+
+    def _persist_plan_state(self, live: LiveState) -> None:
+        """Record the current state after a successful plan run.
+
+        Called after every planner run so ``_should_replan`` can compare
+        against the state that existed when the plan was created.
+        """
+        self._last_plan_ev_connected = live.ev.is_connected
+        self._last_plan_ev_charging = live.ev.is_charging
+        self._last_plan_ev_soc_below_target = (
+            live.ev.soc_pct is not None
+            and live.ev.soc_target_pct is not None
+            and live.ev.soc_pct < live.ev.soc_target_pct
+        )
+        self._last_plan_ev_second_connected = live.ev_second.is_connected
+        self._last_plan_ev_second_charging = live.ev_second.is_charging
+        self._last_plan_ev_second_soc_below_target = (
+            live.ev_second.soc_pct is not None
+            and live.ev_second.soc_target_pct is not None
+            and live.ev_second.soc_pct < live.ev_second.soc_target_pct
+        )
+        self._last_plan_force_mode = live.force_working_mode_state
+        self._last_plan_import_price = live.import_electricity_price
+        # EV planned-load config values (target SoC, smart charging, deadline).
+        self._last_plan_ev_target_soc = live.ev_planned_load_target_soc_pct or 80.0
+        self._last_plan_ev_smart_charging = live.ev_planned_load_smart_charging_enabled
+        self._last_plan_ev_deadline = live.ev_planned_load_deadline
+        self._last_plan_ev2_target_soc = (
+            live.ev_second_planned_load_target_soc_pct or 80.0
+        )
+        self._last_plan_ev2_smart_charging = (
+            live.ev_second_planned_load_smart_charging_enabled
+        )
+        self._last_plan_ev2_deadline = live.ev_second_planned_load_deadline
+
     def _apply_planner_output(self, output: PlannerOutput) -> None:
         """Write :class:`PlannerOutput` decisions back into the recommendation list.
 
@@ -1458,7 +1741,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         try:
             config_dir = self.hass.config.config_dir
             self._financial_tracker.history_file = str(
-                Path(config_dir) / "hsem_financial_history.json"
+                Path(config_dir) / ".storage" / "hsem_financial_history.json"
             )
             await self._load_financial_tracker()
             self._financial_tracker_initialized = True
@@ -1616,7 +1899,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         try:
             config_dir = self.hass.config.config_dir
             self._savings_tracker.history_file = str(
-                Path(config_dir) / "hsem_savings_history.json"
+                Path(config_dir) / ".storage" / "hsem_savings_history.json"
             )
             await self._savings_tracker.load_history()
             self._savings_tracker_initialized = True
@@ -1642,7 +1925,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         try:
             config_dir = self.hass.config.config_dir
             self._daily_tracker.history_file = str(
-                Path(config_dir) / "hsem_daily_history.json"
+                Path(config_dir) / ".storage" / "hsem_daily_history.json"
             )
             await self._daily_tracker.load_history()
 

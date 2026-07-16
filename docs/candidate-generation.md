@@ -132,11 +132,14 @@ When active:
 
 ### Window-level hysteresis (issue #315)
 
-Prevents rapid charge↔discharge toggles near schedule-window boundaries.
+Prevents rapid recommendation toggling by enforcing a minimum hold time.
 
 - **Charge-type**: `batteries_charge_grid`, `batteries_charge_solar`, `ev_smart_charging`
 - **Discharge-type**: `batteries_discharge_mode`, `force_batteries_discharge`, `force_export`
 - **Neutral**: `batteries_wait_mode`, `time_passed`, `missing_input_entities`, `None`
 
-Only cross-category transitions are held. The hold time is configured by
-`planner_window_hysteresis_minutes` (default: 0, disabled).
+All actionable recommendation changes are held within the hold window,
+including within-category flips (e.g. `ev_smart_charging` ↔
+`batteries_charge_solar`).  Only transitions to/from neutral pass through.
+The hold time is configured by `planner_window_hysteresis_minutes`
+(default: 10).

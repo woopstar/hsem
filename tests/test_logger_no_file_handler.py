@@ -1,12 +1,14 @@
 """Regression tests for :mod:`custom_components.hsem.utils.logger`.
 
-These tests verify that HSEM logging uses a dedicated ``RotatingFileHandler``
+These tests verify that HSEM logging uses a non-blocking
+``QueueHandler`` → ``QueueListener`` → ``RotatingFileHandler`` chain
 for its own ``hsem.log`` file and does **not** propagate to Home Assistant's
 root logger (to avoid flooding ``home-assistant.log`` with planner debug output).
 
 Key contract:
-* ``HSEM_LOGGER`` owns exactly one handler — a ``RotatingFileHandler`` for
-  ``hsem.log`` in the HA config directory.
+* ``HSEM_LOGGER`` owns exactly one handler — a ``QueueHandler`` that
+  feeds a background ``QueueListener`` thread.
+* The ``QueueListener`` owns the ``RotatingFileHandler`` for ``hsem.log``.
 * ``HSEM_LOGGER.propagate`` is ``False`` so planner detail stays out of the
   main HA log unless the user explicitly enables ``custom_components.hsem``
   in the ``logger:`` YAML block.
@@ -14,14 +16,15 @@ Key contract:
   of truth for verbosity.
 * ``log_planner`` offloads file I/O to a thread pool when the event loop is
   running.  Both ``log_planner`` and direct ``_LOGGER.debug()`` calls target
-  ``HSEM_LOGGER`` — the single file handler captures everything.
+  ``HSEM_LOGGER`` — the ``QueueHandler`` + ``QueueListener`` chain ensures
+  non-blocking behaviour.
 """
 
 from __future__ import annotations
 
 import io
 import logging
-from logging.handlers import RotatingFileHandler
+from logging.handlers import QueueHandler
 from pathlib import Path
 
 from custom_components.hsem.utils import logger as logger_module
@@ -45,16 +48,14 @@ def _attach_capture_handler() -> logging.StreamHandler:
 class TestLoggerHandlerHygiene:
     """Verify the HSEM logger uses its dedicated file handler."""
 
-    def test_logger_owns_rotating_file_handler(self, tmp_path: Path) -> None:
-        """HSEM_LOGGER must have a RotatingFileHandler after init."""
+    def test_logger_owns_queue_handler(self, tmp_path: Path) -> None:
+        """HSEM_LOGGER must have a QueueHandler after init."""
         config_dir = str(tmp_path)
         logger_module.init_hsem_logger_sync(config_dir)
         try:
-            has_rfh = any(
-                isinstance(h, RotatingFileHandler) for h in HSEM_LOGGER.handlers
-            )
-            assert has_rfh, (
-                "HSEM_LOGGER must have a RotatingFileHandler for hsem.log "
+            has_qh = any(isinstance(h, QueueHandler) for h in HSEM_LOGGER.handlers)
+            assert has_qh, (
+                "HSEM_LOGGER must have a QueueHandler for hsem.log "
                 "after init_hsem_logger_sync is called."
             )
         finally:
@@ -105,10 +106,8 @@ class TestLoggerHandlerHygiene:
         logger_module.init_hsem_logger_sync(config_dir)
         logger_module.init_hsem_logger_sync(config_dir)
         try:
-            count = sum(
-                1 for h in HSEM_LOGGER.handlers if isinstance(h, RotatingFileHandler)
-            )
-            assert count == 1, f"Expected 1 RotatingFileHandler, got {count}"
+            count = sum(1 for h in HSEM_LOGGER.handlers if isinstance(h, QueueHandler))
+            assert count == 1, f"Expected 1 QueueHandler, got {count}"
         finally:
             logger_module.close_hsem_logger_sync()
 

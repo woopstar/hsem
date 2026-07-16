@@ -262,8 +262,8 @@ class SensorConfig:
     planner_hysteresis_absolute: float = 0.0
     planner_hysteresis_percentage: float = 5.0
     # Window-level hysteresis — minimum hold time (minutes) before allowing
-    # a charge↔discharge transition.  0 disables the feature.
-    planner_window_hysteresis_minutes: int = 0
+    # any recommendation change.  0 disables the feature.
+    planner_window_hysteresis_minutes: int = 10
 
     # Embedded OCPP 1.6 server for EV charger control (issue #603).
     ocpp_enabled: bool = False

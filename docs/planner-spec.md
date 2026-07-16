@@ -1053,14 +1053,15 @@ Two categories are defined:
 - **Neutral**: ``batteries_wait_mode``, ``time_passed``,
   ``missing_input_entities``, ``None``
 
-Only cross-category transitions (charge ↔ discharge) are held.  Same-category
-changes (e.g. grid-charge → solar-charge) and transitions to/from neutral
-are always allowed.
+All actionable recommendation changes are held within the hold window,
+including within-category flips such as ``batteries_charge_solar`` ↔
+``ev_smart_charging``.  Only transitions to/from neutral pass through
+immediately.
 
 The hold time is configured by ``planner_window_hysteresis_minutes``
-(default: 0, disabled).  When set to a positive integer, a charge→discharge
-or discharge→charge transition on the current slot is suppressed unless the
-new category has been active for at least this many minutes.
+(default: 10).  When set to a positive integer, any recommendation
+change on the current slot is suppressed unless the previous
+recommendation has been active for at least this many minutes.
 
 The previous recommendation and its slot start time are persisted across
 planner runs by the coordinator so the elapsed time is measured from the
@@ -1075,9 +1076,11 @@ to the ``hourly_recommendations`` list and ultimately to hardware writes.
 ### Invariants for window-level hysteresis tests
 
 - First run (no previous state) always accepts the new recommendation.
-- Same-category transitions are never held.
-- Cross-category transitions within the hold time keep the previous recommendation.
-- Cross-category transitions after the hold time expires switch to the new one.
+- Any actionable recommendation change within the hold time keeps the
+  previous recommendation (including within-category flips such as
+  ``ev_smart_charging`` ↔ ``batteries_charge_solar``).
+- Transitions to/from neutral are never held.
+- Changes after the hold time expires switch to the new recommendation.
 - Neutral recommendations never trigger hold behaviour.
 - Feature disabled (hold minutes = 0) always allows the switch.
 

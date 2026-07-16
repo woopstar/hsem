@@ -745,7 +745,7 @@ def apply_arbitrage_grid_charge(
 
 
 # ---------------------------------------------------------------------------
-# Window-level hysteresis — prevent rapid charge↔discharge toggles
+# Window-level hysteresis — prevent rapid recommendation toggles
 # ---------------------------------------------------------------------------
 
 
@@ -757,24 +757,18 @@ def apply_window_hysteresis(
     previous_current_recommendation: str | None,
     previous_current_slot_start: datetime | None,
 ) -> tuple[str | None, datetime | None]:
-    """Apply minimum hold time before allowing charge↔discharge transitions.
+    """Apply minimum hold time before allowing any recommendation change.
 
-    Prevents rapid toggling between charge and discharge behaviour near the
-    boundary of schedule windows.  If the current slot's recommendation
-    would flip between charge-type and discharge-type, and the new regime
-    has been in place for less than ``window_hysteresis_minutes``, the
-    previous recommendation is kept.
+    Prevents rapid toggling between recommendations (both cross-category
+    charge↔discharge flips and within-category flips such as
+    ``batteries_charge_solar`` ↔ ``ev_smart_charging``) by enforcing a
+    minimum hold time.  If the current slot's recommendation would change
+    and the previous recommendation has been in place for less than
+    ``window_hysteresis_minutes``, the previous recommendation is kept.
 
-    The function considers two broad categories:
-    - **Charge-type**: ``batteries_charge_grid``, ``batteries_charge_solar``,
-      ``ev_smart_charging``
-    - **Discharge-type**: ``batteries_discharge_mode``,
-      ``force_batteries_discharge``, ``force_export``
-    - **Neutral** (no change needed): ``batteries_wait_mode``,
-      ``time_passed``, ``missing_input_entities``, ``None``
-
-    Transitioning within the same category (e.g. grid-charge → solar-charge)
-    is always allowed — only cross-category flips are held.
+    Neutral recommendations (``batteries_wait_mode``, ``time_passed``,
+    ``missing_input_entities``, ``None``) are never held — only actionable
+    recommendations are subject to the hold timer.
 
     Args:
         slots:
@@ -820,18 +814,18 @@ def apply_window_hysteresis(
     if previous_current_recommendation is None or previous_current_slot_start is None:
         return new_rec, new_start
 
+    # Neutral recommendations never trigger a hold — if the new or previous
+    # recommendation is neutral, allow the transition immediately.
     new_category = _rec_category(new_rec)
     prev_category = _rec_category(previous_current_recommendation)
-
-    # If the recommendation hasn't changed category, no hold needed
-    if (
-        new_category == prev_category
-        or new_category == "neutral"
-        or prev_category == "neutral"
-    ):
+    if new_category == "neutral" or prev_category == "neutral":
         return new_rec, new_start
 
-    # Category changed — check hold time
+    # If the recommendation hasn't changed at all, no hold needed
+    if new_rec == previous_current_recommendation:
+        return new_rec, new_start
+
+    # Recommendation changed — check hold time
     elapsed_minutes = (now - previous_current_slot_start).total_seconds() / 60.0
     if elapsed_minutes < window_hysteresis_minutes:
         # Hold the previous recommendation

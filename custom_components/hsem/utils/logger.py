@@ -41,17 +41,20 @@ Why a dedicated file instead of reusing ``home-assistant.log``:
 Design note — blocking I/O:
 
 ``RotatingFileHandler`` performs synchronous ``open()`` / ``write()`` /
-``rotate()`` calls.  When invoked from inside the event loop (which all HSEM
-async code is), Home Assistant raises a ``Detected blocking call to open``
-warning.  To avoid this, :func:`log_planner` (called from synchronous planner
-code) offloads file I/O to a global ``ThreadPoolExecutor`` when a running
-event loop is detected, falling back to a direct write only when no loop is
-present.  Async code simply calls ``_LOGGER.debug()`` directly — Python's
-logging module handles the rest.
+``rotate()`` calls.  To avoid Home Assistant's ``Detected blocking call to
+open`` warning, the logger uses a ``QueueHandler`` → ``QueueListener`` →
+``RotatingFileHandler`` chain.  The ``QueueHandler`` enqueues records without
+blocking the calling thread (safe inside the event loop), and a background
+``QueueListener`` thread drains the queue to the ``RotatingFileHandler``.
+
+:func:`log_planner` (called from synchronous planner code) additionally
+offloads to a ``ThreadPoolExecutor`` when a running event loop is detected,
+which is redundant with the ``QueueHandler`` but provides a belt-and-braces
+guarantee for the planner path.
 
 The init/teardown methods (:func:`init_hsem_logger` / :func:`close_hsem_logger`)
 are exposed as coroutines that offload file-handler setup to the executor so they can be
-safely called from ``async_setup_entry`` / ``async_unload_entry``.
+safely called from ``async_setup_entry`` / ``async_unload_entry".
 """
 
 from __future__ import annotations
@@ -60,7 +63,9 @@ import asyncio
 import logging
 import logging.handlers
 import os
+import queue
 from concurrent.futures import ThreadPoolExecutor
+from logging.handlers import QueueHandler, QueueListener
 from typing import cast
 
 # ---------------------------------------------------------------------------
@@ -93,6 +98,10 @@ HSEM_LOGGER.propagate = False
 
 # Global thread-pool for async file-handler I/O.
 _HSEM_EXECUTOR: ThreadPoolExecutor | None = None
+
+# QueueListener thread that drains the log queue to the file handler.
+# Non-None once init_hsem_logger_sync has set up the handler chain.
+_HSEM_QUEUE_LISTENER: QueueListener | None = None
 
 
 def _get_executor() -> ThreadPoolExecutor:
@@ -135,13 +144,36 @@ def _build_hsem_file_handler(
 def init_hsem_logger_sync(hass_config_path: str) -> None:
     """Set up the HSEM file handler (synchronous — call from executor or init).
 
+    Uses a ``QueueHandler`` → ``QueueListener`` → ``RotatingFileHandler``
+    chain.  The ``QueueHandler`` accepts records without blocking the
+    calling thread (crucial inside the event loop), while the background
+    ``QueueListener`` thread performs the actual file I/O.
+
     Args:
         hass_config_path: Absolute path to the Home Assistant config directory.
     """
-    # Remove any existing handlers to avoid duplicates on re-init.
+    global _HSEM_QUEUE_LISTENER  # noqa: PLW0603
+
+    # Stop any existing listener before replacing the handler chain.
+    if _HSEM_QUEUE_LISTENER is not None:
+        _HSEM_QUEUE_LISTENER.stop()
+        _HSEM_QUEUE_LISTENER = None
+
     HSEM_LOGGER.handlers.clear()
-    handler = _build_hsem_file_handler(hass_config_path)
-    HSEM_LOGGER.addHandler(handler)
+
+    # The file handler performs the actual synchronous disk I/O.
+    file_handler = _build_hsem_file_handler(hass_config_path)
+
+    # Queue: records are enqueued without blocking — safe inside the
+    # event loop.  The listener thread drains them to the file handler.
+    log_queue: queue.Queue[logging.LogRecord] = queue.Queue()
+    queue_handler = QueueHandler(log_queue)
+    HSEM_LOGGER.addHandler(queue_handler)
+
+    _HSEM_QUEUE_LISTENER = QueueListener(
+        log_queue, file_handler, respect_handler_level=True
+    )
+    _HSEM_QUEUE_LISTENER.start()
 
 
 def close_hsem_logger_sync() -> None:
@@ -149,6 +181,14 @@ def close_hsem_logger_sync() -> None:
 
     Must be called from the executor during teardown.
     """
+    global _HSEM_QUEUE_LISTENER  # noqa: PLW0603
+
+    # Stop the background listener thread first so no new records are
+    # dispatched to handlers while we tear them down.
+    if _HSEM_QUEUE_LISTENER is not None:
+        _HSEM_QUEUE_LISTENER.stop()
+        _HSEM_QUEUE_LISTENER = None
+
     for handler in list(HSEM_LOGGER.handlers):  # NOSONAR -- mutation-safe iteration
         handler.close()
         HSEM_LOGGER.removeHandler(handler)

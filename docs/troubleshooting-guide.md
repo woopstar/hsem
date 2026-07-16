@@ -303,12 +303,13 @@ strategies.
 
 **5b. Window hysteresis preventing slot-level changes**
 
-`planner_window_hysteresis_minutes` prevents charge↔discharge toggles near
-schedule boundaries. When enabled, a slot's recommendation is locked once a
-window starts.
+`planner_window_hysteresis_minutes` prevents rapid recommendation toggling
+(e.g. ``ev_smart_charging`` ↔ ``batteries_charge_solar``) by enforcing a
+minimum hold time. When enabled, a slot's recommendation is locked once
+established.
 
-- **Check:** HSEM → **Configure** → **Batteries Hysteresis** step.
-  _Window Hysteresis_ value (0 = disabled).
+- **Check:** HSEM → **Configure** → **Battery Economics & Hysteresis** step.
+  _Window Hysteresis Hold Time_ value (0 = disabled).
 - **Fix:** Set to 0 to disable window hysteresis, or lower it if slots are
   staying locked too long.
 

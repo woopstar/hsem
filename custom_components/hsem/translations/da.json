@@ -1039,7 +1039,14 @@
     },
     "sensor": {
       "applier_status": {
-        "name": "Inverter-status"
+        "name": "Inverter-status",
+        "state": {
+          "ok": "OK",
+          "unverified": "Ikke verificeret",
+          "failed": "Fejlet",
+          "skipped": "Sprunget over",
+          "pending": "Afventer"
+        }
       },
       "battery_soc": {
         "name": "Batteriets ladetilstand"
@@ -1048,28 +1055,67 @@
         "name": "Daglig Plan vs Faktisk"
       },
       "degraded_mode": {
-        "name": "Systemtilstand"
+        "name": "Systemtilstand",
+        "state": {
+          "ok": "OK",
+          "degraded": "Degraderet",
+          "error": "Fejl"
+        }
       },
       "effective_discharge_floor": {
         "name": "Effektivt afladningsgulv"
       },
       "ev_charging": {
-        "name": "EV opladning aktiv"
+        "name": "EV opladning aktiv",
+        "state": {
+          "on": "Tændt",
+          "off": "Slukket"
+        }
       },
       "ev_optimal_charging_plan": {
-        "name": "EV Optimal Opladningsplan"
+        "name": "EV Optimal Opladningsplan",
+        "state": {
+          "charging": "Oplader",
+          "fully_charged": "Fuldt opladet",
+          "not_connected": "Ikke tilsluttet",
+          "smart_charging_disabled": "Smart opladning deaktiveret",
+          "waiting": "Venter",
+          "unavailable": "Utilgængelig"
+        }
       },
       "ev_second_optimal_charging_plan": {
-        "name": "EV 2 Optimal Opladningsplan"
+        "name": "EV 2 Optimal Opladningsplan",
+        "state": {
+          "charging": "Oplader",
+          "fully_charged": "Fuldt opladet",
+          "not_connected": "Ikke tilsluttet",
+          "smart_charging_disabled": "Smart opladning deaktiveret",
+          "waiting": "Venter",
+          "unavailable": "Utilgængelig"
+        }
       },
       "force_mode": {
-        "name": "Tving arbejdstilstand"
+        "name": "Tving arbejdstilstand",
+        "state": {
+          "auto": "Auto",
+          "batteries_charge_grid": "Oplad fra net",
+          "batteries_charge_solar": "Oplad fra sol",
+          "ev_smart_charging": "EV smart opladning",
+          "batteries_discharge_mode": "Aflad",
+          "force_batteries_discharge": "Tving afladning",
+          "force_export": "Tving eksport",
+          "batteries_wait_mode": "Vent"
+        }
       },
       "forecast_accuracy": {
         "name": "Prognose-nøjagtighed"
       },
       "hardware_writes": {
-        "name": "Hardware-skrivninger"
+        "name": "Hardware-skrivninger",
+        "state": {
+          "allowed": "Tilladt",
+          "blocked": "Blokeret"
+        }
       },
       "last_updated": {
         "name": "Sidst opdateret"
@@ -1099,7 +1145,11 @@
         "name": "Planstrategi"
       },
       "read_only": {
-        "name": "Skrivebeskyttet tilstand"
+        "name": "Skrivebeskyttet tilstand",
+        "state": {
+          "on": "Tændt",
+          "off": "Slukket"
+        }
       },
       "recommendation_interval": {
         "name": "Anbefalingsinterval"
@@ -1108,7 +1158,18 @@
         "name": "Opdateringsinterval"
       },
       "working_mode": {
-        "name": "Arbejdstilstand"
+        "name": "Arbejdstilstand",
+        "state": {
+          "time_passed": "Tid passeret",
+          "missing_input_entities": "Manglende input-enheder",
+          "batteries_charge_grid": "Oplad fra net",
+          "batteries_charge_solar": "Oplad fra sol",
+          "ev_smart_charging": "EV smart opladning",
+          "batteries_discharge_mode": "Aflad",
+          "force_batteries_discharge": "Tving afladning",
+          "force_export": "Tving eksport",
+          "batteries_wait_mode": "Vent"
+        }
       }
     }
   },

@@ -19,6 +19,7 @@ from __future__ import annotations
 from typing import Any, override
 
 from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor.const import SensorDeviceClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_OFF, STATE_ON, EntityCategory
 from homeassistant.helpers.restore_state import RestoreEntity
@@ -52,6 +53,9 @@ class HSEMReadOnlySensor(
 
     _attr_icon = "mdi:eye-off-outline"
     _attr_has_entity_name = True
+    _attr_translation_key = "read_only"
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = [STATE_ON, STATE_OFF]
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(

@@ -88,10 +88,10 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_planner_hysteresis_enabled": True,
     "hsem_planner_hysteresis_absolute": 0.0,
     "hsem_planner_hysteresis_percentage": 5.0,
-    # Window-level hysteresis — prevent rapid charge/discharge toggles
-    # near window boundaries by enforcing a minimum hold time (minutes).
-    # 0 disables the feature.
-    "hsem_planner_window_hysteresis_minutes": 0,
+    # Window-level hysteresis — prevent rapid recommendation toggles
+    # (e.g. ev_smart_charging ↔ batteries_charge_solar) by enforcing a
+    # minimum hold time (minutes).  0 disables the feature.
+    "hsem_planner_window_hysteresis_minutes": 10,
     "hsem_house_consumption_energy_weight_14d": 15,
     "hsem_house_consumption_energy_weight_1d": 25,
     "hsem_house_consumption_energy_weight_3d": 30,

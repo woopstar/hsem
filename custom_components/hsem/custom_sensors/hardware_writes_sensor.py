@@ -22,6 +22,7 @@ from __future__ import annotations
 from typing import Any, override
 
 from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor.const import SensorDeviceClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.helpers.restore_state import RestoreEntity
@@ -60,6 +61,9 @@ class HSEMHardwareWritesSensor(
 
     _attr_icon = "mdi:transmission-tower"
     _attr_has_entity_name = True
+    _attr_translation_key = "hardware_writes"
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = sorted(_VALID_STATES)
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(
