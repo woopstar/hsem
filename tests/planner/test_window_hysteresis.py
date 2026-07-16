@@ -1,19 +1,19 @@
 """Tests for window-level hysteresis (issue #315).
 
-Window-level hysteresis prevents rapid toggling between charge and discharge
-recommendations near schedule-window boundaries.  When the current slot's
-recommendation changes category (charge ↔ discharge), the previous
-recommendation is held for a configurable minimum time.
+Window-level hysteresis prevents rapid toggling between any non-neutral
+recommendations.  When the current slot's recommendation changes and the
+previous recommendation has been in effect for less than the configured
+hold time, the previous recommendation is kept.
 
 Acceptance criteria
 -------------------
-1. Charge/discharge does not flap around boundary conditions.
+1. All actionable recommendation flips are held within the hold window,
+   including within-category flips (e.g. ev_smart_charging ↔
+   batteries_charge_solar, batteries_charge_grid ↔ batteries_charge_solar).
 2. Minimum hold time is configurable.
-3. Only cross-category flips (charge ↔ discharge) are held;
-   same-category changes (e.g. grid-charge → solar-charge) are allowed.
-4. Neutral recommendations (wait_mode, time_passed, None) do not trigger hold.
-5. Feature disabled (0 min) always allows the switch.
-6. First run (no previous state) always accepts the new recommendation.
+3. Neutral recommendations (wait_mode, time_passed, None) do not trigger hold.
+4. Feature disabled (0 min) always allows the switch.
+5. First run (no previous state) always accepts the new recommendation.
 """
 
 from __future__ import annotations
@@ -74,11 +74,12 @@ class TestWindowHysteresis:
         )
 
     # ------------------------------------------------------------------
-    # Same-category transitions (no hold needed)
+    # Within-category transitions (must be held)
     # ------------------------------------------------------------------
 
-    def test_charge_to_charge_no_hold(self):
-        """Same-category change (grid-charge → solar-charge) must not hold."""
+    def test_charge_to_charge_within_hold(self):
+        """Within-category change (grid-charge → solar-charge) must be held
+        within the hold window."""
         slots = _make_slots(
             Recommendations.BatteriesChargeSolar.value,
         )
@@ -89,12 +90,16 @@ class TestWindowHysteresis:
             previous_current_recommendation=Recommendations.BatteriesChargeGrid.value,
             previous_current_slot_start=_NOW - timedelta(minutes=5),
         )
-        assert rec == Recommendations.BatteriesChargeSolar.value, (
-            "Same-category charge change must not be held"
+        assert rec == Recommendations.BatteriesChargeGrid.value, (
+            "Within-category charge change must be held within hold window"
+        )
+        assert slots[0].recommendation == Recommendations.BatteriesChargeGrid.value, (
+            "Slot recommendation must reflect the held value"
         )
 
-    def test_discharge_to_discharge_no_hold(self):
-        """Same-category change (discharge → force-discharge) must not hold."""
+    def test_discharge_to_discharge_within_hold(self):
+        """Within-category change (discharge → force-discharge) must be held
+        within the hold window."""
         slots = _make_slots(
             Recommendations.ForceBatteriesDischarge.value,
         )
@@ -105,8 +110,49 @@ class TestWindowHysteresis:
             previous_current_recommendation=Recommendations.BatteriesDischargeMode.value,
             previous_current_slot_start=_NOW - timedelta(minutes=5),
         )
-        assert rec == Recommendations.ForceBatteriesDischarge.value, (
-            "Same-category discharge change must not be held"
+        assert rec == Recommendations.BatteriesDischargeMode.value, (
+            "Within-category discharge change must be held within hold window"
+        )
+        assert (
+            slots[0].recommendation == Recommendations.BatteriesDischargeMode.value
+        ), "Slot recommendation must reflect the held value"
+
+    def test_ev_smart_charging_to_solar_within_hold(self):
+        """Within-category change (ev_smart_charging → batteries_charge_solar)
+        must be held within the hold window — this is the primary oscillation
+        pattern observed in production (MILP re-solving)."""
+        slots = _make_slots(
+            Recommendations.BatteriesChargeSolar.value,
+        )
+        rec, _ = apply_window_hysteresis(
+            slots,
+            _NOW,
+            window_hysteresis_minutes=10,
+            previous_current_recommendation=Recommendations.EVSmartCharging.value,
+            previous_current_slot_start=_NOW - timedelta(minutes=2),
+        )
+        assert rec == Recommendations.EVSmartCharging.value, (
+            "ev_smart_charging → batteries_charge_solar must be held within hold window"
+        )
+
+    # ------------------------------------------------------------------
+    # Within-category transitions after hold time expires
+    # ------------------------------------------------------------------
+
+    def test_charge_to_charge_after_hold(self):
+        """Within-category change after hold time must be allowed."""
+        slots = _make_slots(
+            Recommendations.BatteriesChargeSolar.value,
+        )
+        rec, _ = apply_window_hysteresis(
+            slots,
+            _NOW,
+            window_hysteresis_minutes=5,
+            previous_current_recommendation=Recommendations.BatteriesChargeGrid.value,
+            previous_current_slot_start=_NOW - timedelta(minutes=10),
+        )
+        assert rec == Recommendations.BatteriesChargeSolar.value, (
+            "Within-category charge change after hold time must be allowed"
         )
 
     # ------------------------------------------------------------------

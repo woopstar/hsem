@@ -10,6 +10,7 @@ __pycache__
 # misc
 .coverage
 coverage.xml
+test-results.xml
 notes.txt
 .venv
 .DS_Store

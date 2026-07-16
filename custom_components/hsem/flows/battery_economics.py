@@ -1,9 +1,8 @@
-"""Config flow step for battery economics (depreciation and efficiency).
+"""Config flow step for battery economics and planner hysteresis.
 
-This module was extracted from the over-sized ``huawei_solar.py`` flow step.
-It contains only the configurables that affect battery depreciation and
-round-trip conversion loss — purchase price, expected cycles, cycle cost,
-and charge/discharge efficiency.
+This module covers battery depreciation, round-trip efficiency, and
+planner anti-flapping hysteresis settings — both plan-level (issue #372)
+and window-level (issue #315).
 """
 
 import voluptuous as vol
@@ -26,7 +25,8 @@ async def get_battery_economics_step_schema(  # NOSONAR
             or ``None`` for the initial config flow.
 
     Returns:
-        A ``vol.Schema`` with number/selector inputs for battery economics.
+        A ``vol.Schema`` with number/selector inputs for battery economics
+        and planner hysteresis.
     """
     return vol.Schema(
         {
@@ -119,6 +119,59 @@ async def get_battery_economics_step_schema(  # NOSONAR
                     }
                 }
             ),
+            # --- Planner hysteresis (anti-flapping, issues #315 / #372) ---
+            vol.Required(
+                "hsem_planner_hysteresis_enabled",
+                default=get_config_value(
+                    config_entry, "hsem_planner_hysteresis_enabled"
+                ),
+            ): selector({"boolean": {}}),
+            vol.Required(
+                "hsem_planner_hysteresis_absolute",
+                default=get_config_value(
+                    config_entry, "hsem_planner_hysteresis_absolute"
+                ),
+            ): selector(
+                {
+                    "number": {
+                        "min": 0,
+                        "max": 1,
+                        "step": 0.01,
+                        "mode": "box",
+                    }
+                }
+            ),
+            vol.Required(
+                "hsem_planner_hysteresis_percentage",
+                default=get_config_value(
+                    config_entry, "hsem_planner_hysteresis_percentage"
+                ),
+            ): selector(
+                {
+                    "number": {
+                        "min": 0,
+                        "max": 25,
+                        "step": 0.5,
+                        "unit_of_measurement": PERCENTAGE,
+                        "mode": "slider",
+                    }
+                }
+            ),
+            vol.Required(
+                "hsem_planner_window_hysteresis_minutes",
+                default=get_config_value(
+                    config_entry, "hsem_planner_window_hysteresis_minutes"
+                ),
+            ): selector(
+                {
+                    "number": {
+                        "min": 0,
+                        "max": 60,
+                        "step": 1,
+                        "mode": "box",
+                    }
+                }
+            ),
         }
     )
 
@@ -141,6 +194,10 @@ async def validate_battery_economics_input(
         "hsem_batteries_capacity_loss_pct",
         "hsem_batteries_charge_efficiency",
         "hsem_batteries_discharge_efficiency",
+        "hsem_planner_hysteresis_enabled",
+        "hsem_planner_hysteresis_absolute",
+        "hsem_planner_hysteresis_percentage",
+        "hsem_planner_window_hysteresis_minutes",
     ]
     required_errors: dict[str, str] = {
         f: "required" for f in scalar_required if f not in user_input

@@ -264,7 +264,11 @@
           "hsem_batteries_cycle_cost": "Battery Cycle Cost (EUR/kWh)",
           "hsem_batteries_capacity_loss_pct": "Battery Capacity Loss at End-of-Life (%)",
           "hsem_batteries_charge_efficiency": "Battery Charge Efficiency (%)",
-          "hsem_batteries_discharge_efficiency": "Battery Discharge Efficiency (%)"
+          "hsem_batteries_discharge_efficiency": "Battery Discharge Efficiency (%)",
+          "hsem_planner_hysteresis_enabled": "Plan-level Hysteresis",
+          "hsem_planner_hysteresis_absolute": "Hysteresis Absolute Threshold",
+          "hsem_planner_hysteresis_percentage": "Hysteresis Percentage Threshold (%)",
+          "hsem_planner_window_hysteresis_minutes": "Window Hysteresis Hold Time (minutes)"
         },
         "data_description": {
           "hsem_batteries_purchase_price": "Enter the total purchase price of your battery system in EUR. Used together with expected cycles and usable capacity to calculate the depreciation cost per kWh and the recommended minimum export price threshold.",
@@ -272,10 +276,14 @@
           "hsem_batteries_cycle_cost": "Optional extra per-kWh cost of cycling the battery (EUR/kWh). Added on top of the auto-calculated depreciation threshold. Set to 0 to rely solely on the depreciation guard. Example: 0.02 means the planner requires 2 cent extra spread per kWh cycled before approving grid charging.",
           "hsem_batteries_capacity_loss_pct": "Expected capacity loss at end-of-life as a percentage. LiFePO4 typically reaches 80% capacity after ~6000 cycles (20% loss). Default 30% adds margin for calendar ageing.",
           "hsem_batteries_charge_efficiency": "Specify the charge-side efficiency of your battery as a percentage (0â€“100). Energy stored in the battery equals the input energy multiplied by this factor. Typical lithium batteries achieve 95â€“98 %. Defaults to 98 %.",
-          "hsem_batteries_discharge_efficiency": "Specify the discharge-side efficiency of your battery as a percentage (0â€“100). Energy delivered to the house equals the battery energy removed multiplied by this factor. Typical lithium batteries achieve 95â€“98 %. Defaults to 98 %."
+          "hsem_batteries_discharge_efficiency": "Specify the discharge-side efficiency of your battery as a percentage (0â€“100). Energy delivered to the house equals the battery energy removed multiplied by this factor. Typical lithium batteries achieve 95â€“98 %. Defaults to 98 %.",
+          "hsem_planner_hysteresis_enabled": "When enabled, the planner keeps the active candidate plan unless a new plan improves the score by more than the configured thresholds. Prevents oscillation between equally-scored strategies.",
+          "hsem_planner_hysteresis_absolute": "Minimum absolute score improvement required to switch to a new plan. 0.00 disables the absolute threshold. The score uses the same currency as your electricity prices, so a value of 0.01 requires at least 1 cent/kWh-equivalent improvement before switching.",
+          "hsem_planner_hysteresis_percentage": "Minimum percentage score improvement required to switch to a new plan. 0% disables the percentage threshold. Default 5% prevents flapping between nearly-identical plans.",
+          "hsem_planner_window_hysteresis_minutes": "Minimum time (minutes) a recommendation must be held before it can change. Prevents rapid toggling such as ev_smart_charging ↔ batteries_charge_solar. 0 disables the feature. Default 10."
         },
-        "description": "Configure battery economics parameters that affect depreciation calculations and round-trip efficiency.",
-        "title": "Battery Economics"
+        "description": "Configure battery economics parameters and planner hysteresis (anti-flapping).",
+        "title": "Battery Economics & Hysteresis"
       },
       "init": {
         "data": {
@@ -730,7 +738,11 @@
           "hsem_batteries_cycle_cost": "Battery Cycle Cost (EUR/kWh)",
           "hsem_batteries_capacity_loss_pct": "Battery Capacity Loss at End-of-Life (%)",
           "hsem_batteries_charge_efficiency": "Battery Charge Efficiency (%)",
-          "hsem_batteries_discharge_efficiency": "Battery Discharge Efficiency (%)"
+          "hsem_batteries_discharge_efficiency": "Battery Discharge Efficiency (%)",
+          "hsem_planner_hysteresis_enabled": "Plan-level Hysteresis",
+          "hsem_planner_hysteresis_absolute": "Hysteresis Absolute Threshold",
+          "hsem_planner_hysteresis_percentage": "Hysteresis Percentage Threshold (%)",
+          "hsem_planner_window_hysteresis_minutes": "Window Hysteresis Hold Time (minutes)"
         },
         "data_description": {
           "hsem_batteries_purchase_price": "Enter the total purchase price of your battery system in EUR. Used together with expected cycles and usable capacity to calculate the depreciation cost per kWh and the recommended minimum export price threshold.",
@@ -738,10 +750,14 @@
           "hsem_batteries_cycle_cost": "Optional extra per-kWh cost of cycling the battery (EUR/kWh). Added on top of the auto-calculated depreciation threshold. Set to 0 to rely solely on the depreciation guard. Example: 0.02 means the planner requires 2 cent extra spread per kWh cycled before approving grid charging.",
           "hsem_batteries_capacity_loss_pct": "Expected capacity loss at end-of-life as a percentage. LiFePO4 typically reaches 80% capacity after ~6000 cycles (20% loss). Default 30% adds margin for calendar ageing.",
           "hsem_batteries_charge_efficiency": "Specify the charge-side efficiency of your battery as a percentage (0â€“100). Energy stored in the battery equals the input energy multiplied by this factor. Typical lithium batteries achieve 95â€“98 %. Defaults to 98 %.",
-          "hsem_batteries_discharge_efficiency": "Specify the discharge-side efficiency of your battery as a percentage (0â€“100). Energy delivered to the house equals the battery energy removed multiplied by this factor. Typical lithium batteries achieve 95â€“98 %. Defaults to 98 %."
+          "hsem_batteries_discharge_efficiency": "Specify the discharge-side efficiency of your battery as a percentage (0â€“100). Energy delivered to the house equals the battery energy removed multiplied by this factor. Typical lithium batteries achieve 95â€“98 %. Defaults to 98 %.",
+          "hsem_planner_hysteresis_enabled": "When enabled, the planner keeps the active candidate plan unless a new plan improves the score by more than the configured thresholds. Prevents oscillation between equally-scored strategies.",
+          "hsem_planner_hysteresis_absolute": "Minimum absolute score improvement required to switch to a new plan. 0.00 disables the absolute threshold. The score uses the same currency as your electricity prices, so a value of 0.01 requires at least 1 cent/kWh-equivalent improvement before switching.",
+          "hsem_planner_hysteresis_percentage": "Minimum percentage score improvement required to switch to a new plan. 0% disables the percentage threshold. Default 5% prevents flapping between nearly-identical plans.",
+          "hsem_planner_window_hysteresis_minutes": "Minimum time (minutes) a recommendation must be held before it can change. Prevents rapid toggling such as ev_smart_charging ↔ batteries_charge_solar. 0 disables the feature. Default 10."
         },
-        "description": "Configure battery economics parameters that affect depreciation calculations and round-trip efficiency.",
-        "title": "Battery Economics"
+        "description": "Configure battery economics parameters and planner hysteresis (anti-flapping).",
+        "title": "Battery Economics & Hysteresis"
       },
       "init": {
         "data": {
@@ -923,7 +939,14 @@
   "entity": {
     "sensor": {
       "applier_status": {
-        "name": "Applier Status"
+        "name": "Applier Status",
+        "state": {
+          "ok": "OK",
+          "unverified": "Unverified",
+          "failed": "Failed",
+          "skipped": "Skipped",
+          "pending": "Pending"
+        }
       },
       "battery_soc": {
         "name": "Battery State of Charge"
@@ -932,25 +955,64 @@
         "name": "Daily Plan vs Actual"
       },
       "degraded_mode": {
-        "name": "System Health"
+        "name": "System Health",
+        "state": {
+          "ok": "OK",
+          "degraded": "Degraded",
+          "error": "Error"
+        }
       },
       "ev_charging": {
-        "name": "EV Charging Active"
+        "name": "EV Charging Active",
+        "state": {
+          "on": "On",
+          "off": "Off"
+        }
       },
       "ev_optimal_charging_plan": {
-        "name": "EV Optimal Charging Plan"
+        "name": "EV Optimal Charging Plan",
+        "state": {
+          "charging": "Charging",
+          "fully_charged": "Fully Charged",
+          "not_connected": "Not Connected",
+          "smart_charging_disabled": "Smart Charging Disabled",
+          "waiting": "Waiting",
+          "unavailable": "Unavailable"
+        }
       },
       "ev_second_optimal_charging_plan": {
-        "name": "EV 2 Optimal Charging Plan"
+        "name": "EV 2 Optimal Charging Plan",
+        "state": {
+          "charging": "Charging",
+          "fully_charged": "Fully Charged",
+          "not_connected": "Not Connected",
+          "smart_charging_disabled": "Smart Charging Disabled",
+          "waiting": "Waiting",
+          "unavailable": "Unavailable"
+        }
       },
       "force_mode": {
-        "name": "Force Working Mode"
+        "name": "Force Working Mode",
+        "state": {
+          "auto": "Auto",
+          "batteries_charge_grid": "Charge from Grid",
+          "batteries_charge_solar": "Charge from Solar",
+          "ev_smart_charging": "EV Smart Charging",
+          "batteries_discharge_mode": "Discharge",
+          "force_batteries_discharge": "Force Discharge",
+          "force_export": "Force Export",
+          "batteries_wait_mode": "Wait"
+        }
       },
       "forecast_accuracy": {
         "name": "Forecast Accuracy"
       },
       "hardware_writes": {
-        "name": "Hardware Writes"
+        "name": "Hardware Writes",
+        "state": {
+          "allowed": "Allowed",
+          "blocked": "Blocked"
+        }
       },
       "last_updated": {
         "name": "Last Updated"
@@ -968,7 +1030,11 @@
         "name": "Plan Strategy"
       },
       "read_only": {
-        "name": "Read-Only Mode"
+        "name": "Read-Only Mode",
+        "state": {
+          "on": "On",
+          "off": "Off"
+        }
       },
       "recommendation_interval": {
         "name": "Recommendation Interval"
@@ -977,7 +1043,18 @@
         "name": "Update Interval"
       },
       "working_mode": {
-        "name": "Working Mode Sensor"
+        "name": "Working Mode Sensor",
+        "state": {
+          "time_passed": "Time Passed",
+          "missing_input_entities": "Missing Input Entities",
+          "batteries_charge_grid": "Charge from Grid",
+          "batteries_charge_solar": "Charge from Solar",
+          "ev_smart_charging": "EV Smart Charging",
+          "batteries_discharge_mode": "Discharge",
+          "force_batteries_discharge": "Force Discharge",
+          "force_export": "Force Export",
+          "batteries_wait_mode": "Wait"
+        }
       },
       "effective_discharge_floor": {
         "name": "Effective Discharge Floor"

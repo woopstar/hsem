@@ -31,6 +31,7 @@ from __future__ import annotations
 from typing import Any, override
 
 from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor.const import SensorDeviceClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.helpers.restore_state import RestoreEntity
@@ -69,6 +70,13 @@ class HSEMDegradedModeSensor(
 
     _attr_icon = "mdi:shield-check"
     _attr_has_entity_name = True
+    _attr_translation_key = "degraded_mode"
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = [
+        DegradedMode.OK.value,
+        DegradedMode.Degraded.value,
+        DegradedMode.Error.value,
+    ]
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(

@@ -19,6 +19,7 @@ import asyncio
 from typing import Any, override
 
 from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor.const import SensorDeviceClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import MATCH_ALL
 
@@ -38,6 +39,7 @@ from custom_components.hsem.utils.degraded_mode import hardware_writes_allowed
 from custom_components.hsem.utils.inverter_verify import ApplyStatus, CycleApplySummary
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 from custom_components.hsem.utils.misc import calculate_recommended_threshold
+from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.sensornames.diagnostics import (
     get_working_mode_sensor_entity_id,
     get_working_mode_sensor_name,
@@ -65,6 +67,9 @@ class HSEMWorkingModeSensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
 
     _attr_icon = "mdi:chart-timeline-variant"
     _attr_has_entity_name = True
+    _attr_translation_key = "working_mode"
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = [r.value for r in Recommendations]
     _unrecorded_attributes = frozenset({MATCH_ALL})
 
     def __init__(

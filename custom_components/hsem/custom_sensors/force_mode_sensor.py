@@ -22,6 +22,7 @@ from __future__ import annotations
 from typing import Any, override
 
 from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor.const import SensorDeviceClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN, EntityCategory
 from homeassistant.helpers.restore_state import RestoreEntity
@@ -31,6 +32,7 @@ from custom_components.hsem.coordinator import (
     HSEMDataUpdateCoordinator,
 )
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
+from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.sensornames.diagnostics import (
     get_force_mode_sensor_entity_id,
     get_force_mode_sensor_name,
@@ -55,6 +57,13 @@ class HSEMForceModeSensor(
 
     _attr_icon = "mdi:hand-pointing-right"
     _attr_has_entity_name = True
+    _attr_translation_key = "force_mode"
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = ["auto"] + [
+        r.value
+        for r in Recommendations
+        if r not in (Recommendations.TimePassed, Recommendations.MissingInputEntities)
+    ]
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(
