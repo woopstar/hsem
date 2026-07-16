@@ -306,10 +306,10 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
 
         # Event-driven re-planning — track state at last plan to avoid
         # re-solving the MILP when nothing material has changed.
-        self._last_plan_ev_connected: bool = False
+        self._last_plan_ev_connected: bool | None = False
         self._last_plan_ev_charging: bool = False
         self._last_plan_ev_soc_below_target: bool = False
-        self._last_plan_ev_second_connected: bool = False
+        self._last_plan_ev_second_connected: bool | None = False
         self._last_plan_ev_second_charging: bool = False
         self._last_plan_ev_second_soc_below_target: bool = False
         self._last_plan_force_mode: str = "auto"
