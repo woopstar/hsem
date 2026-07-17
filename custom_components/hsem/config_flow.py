@@ -8,6 +8,7 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigEntry, ConfigFlowResult
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 
 from custom_components.hsem.const import DEFAULT_CONFIG_VALUES, DOMAIN, NAME
 from custom_components.hsem.flows.batteries_excess_export import (
@@ -175,6 +176,26 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
         if config_entry.version == 1:
             data = _migrate_v1_to_v2(dict(config_entry.data))
             hass.config_entries.async_update_entry(config_entry, data=data, version=2)
+            # v6.0.0 (#523) prefixed every entity unique_id with the config
+            # entry id, but shipped no entity-registry migration -- so existing
+            # v5 entities were orphaned and re-created with a "_2" suffix (losing
+            # their entity_id and long-term statistics). Rename the registry
+            # entries IN PLACE so entity_id + history are preserved.
+            _prefix = f"{DOMAIN}_{config_entry.entry_id}_"
+
+            @callback
+            def _migrate_unique_id(
+                entity_entry: er.RegistryEntry,
+            ) -> dict[str, str] | None:
+                uid = entity_entry.unique_id
+                if not uid.startswith(f"{DOMAIN}_") or uid.startswith(_prefix):
+                    return None
+                return {"new_unique_id": f"{_prefix}{uid[len(DOMAIN) + 1 :]}"}
+
+            await er.async_migrate_entries(
+                hass, config_entry.entry_id, _migrate_unique_id
+            )
+
             _LOGGER.info(
                 "Config entry %s migrated from v1 to v2",
                 config_entry.entry_id,
