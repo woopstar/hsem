@@ -679,7 +679,7 @@ class TestPlannerEngineEVIntegration:
     def test_cheap_grid_can_still_charge_battery_while_ev_charging(self):
         """When grid price is cheap, home battery may grid-charge even during EV charging.
 
-        Set up cheapest grid price at 02:00 (0.01 EUR/kWh) with EV also charging.
+        Set up cheapest grid price at 02:00 (0.01 /kWh) with EV also charging.
         The planner may still assign BatteriesChargeGrid to cheap slots even
         when EV is scheduled there.
         """
