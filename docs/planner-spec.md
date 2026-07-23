@@ -686,7 +686,7 @@ The cost function returns **two distinct aggregates** for every plan
 (issue #413):
 
 - `total_cost` — the **money outcome** of the plan within the horizon.
-  Pure DKK / EUR.  Auditable; directly comparable to a real electricity bill.
+  Pure monetary value.  Auditable; directly comparable to a real electricity bill.
 - `score` — the **selector objective**.  Equals `total_cost` plus every
   synthetic penalty plus the terminal-SoC opportunity cost.  The candidate
   selector picks the plan with the **lowest score** — not the lowest money

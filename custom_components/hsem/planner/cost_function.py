@@ -55,7 +55,7 @@ Selector-only terms (added on top of ``total_cost`` to produce ``score``):
    no longer *over-penalises* discharge in slots where the replacement price
    does not exceed that slot's own import price.
 
-All monetary values are in the caller's local currency (e.g. DKK or EUR).
+All monetary values are in the caller's local currency.
 
 Design constraints
 ------------------
