@@ -178,10 +178,10 @@
       "huawei_solar": {
         "data": {
           "hsem_batteries_charge_efficiency": "Batteri-opladningseffektivitet (%)",
-          "hsem_batteries_cycle_cost": "Batteri-cyklusomkostning (EUR/kWh)",
+          "hsem_batteries_cycle_cost": "Batteri-cyklusomkostning (pr. kWh)",
           "hsem_batteries_discharge_efficiency": "Batteri-afladningseffektivitet (%)",
           "hsem_batteries_expected_cycles": "Forventede battericyklusser",
-          "hsem_batteries_purchase_price": "Batteri-købspris (EUR)",
+          "hsem_batteries_purchase_price": "Batteri-købspris",
           "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Huawei-batterier overskydende PV-energianvendelse i TOU",
           "hsem_huawei_solar_batteries_end_of_discharge_soc": "Huawei-batterier afladningsstop SOC (%)",
           "hsem_huawei_solar_batteries_charging_cutoff_capacity": "Huawei-batterier opladningsstopkapacitet (maks. SoC %)",
@@ -201,9 +201,9 @@
         "data_description": {
           "hsem_batteries_charge_efficiency": "Angiv batteriets opladningseffektivitet som en procentdel (0-100). Energi lagret i batteriet = inputenergi Å— denne faktor. Typiske lithium-batterier opnår 95-98%. Standard: 98%.",
           "hsem_batteries_discharge_efficiency": "Angiv batteriets afladningseffektivitet som en procentdel (0-100). Energi leveret til huset = fjernet batterienergi Å— denne faktor. Typiske lithium-batterier opnår 95-98%. Standard: 98%.",
-          "hsem_batteries_cycle_cost": "Valgfri ekstra per-kWh-omkostning ved at cykle batteriet (EUR/kWh). Tilføjes oven på den automatisk beregnede afskrivningstærskel. Sæt til 0 for kun at stole på afskrivningsbeskyttelsen.",
+          "hsem_batteries_cycle_cost": "Valgfri ekstra per-kWh-omkostning ved at cykle batteriet (pr. kWh). Tilføjes oven på den automatisk beregnede afskrivningstærskel. Sæt til 0 for kun at stole på afskrivningsbeskyttelsen.",
           "hsem_batteries_expected_cycles": "Indtast det forventede antal fulde opladnings-/afladningscyklusser i batteriets levetid. Bruges til at beregne afskrivningsomkostning pr. kWh. Typiske LiFePO4-batterier understøtter 4000-8000 cyklusser.",
-          "hsem_batteries_purchase_price": "Indtast den samlede købspris for dit batterisystem i EUR. Bruges sammen med forventede cyklusser og brugbar kapacitet til at beregne afskrivningsomkostning pr. kWh.",
+          "hsem_batteries_purchase_price": "Indtast den samlede købspris for dit batterisystem. Bruges sammen med forventede cyklusser og brugbar kapacitet til at beregne afskrivningsomkostning pr. kWh.",
           "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Vælg den sensor, der giver indstilling for overskydende PV-energianvendelse i TOU-perioder.",
           "hsem_huawei_solar_batteries_end_of_discharge_soc": "Angiv afladningsstop SOC-procent for dine Huawei-batterier. Når batteriet når dette SOC-niveau, stopper det afladning for at forhindre dybdeafladning.",
           "hsem_huawei_solar_batteries_charging_cutoff_capacity": "Vælg den enhed, der definerer den maksimale ladetilstand (SoC), batteriet må nå under opladning. Typisk 90-100%. Bruges af SoC-simuleringen som den øvre SoC-grænse.",
@@ -225,17 +225,17 @@
       },
       "battery_economics": {
         "data": {
-          "hsem_batteries_purchase_price": "Batteri-købspris (EUR)",
+          "hsem_batteries_purchase_price": "Batteri-købspris",
           "hsem_batteries_expected_cycles": "Forventede battericyklusser",
-          "hsem_batteries_cycle_cost": "Batteri-cyklusomkostning (EUR/kWh)",
+          "hsem_batteries_cycle_cost": "Batteri-cyklusomkostning (pr. kWh)",
           "hsem_batteries_charge_efficiency": "Batteri-opladningseffektivitet (%)",
           "hsem_batteries_discharge_efficiency": "Batteri-afladningseffektivitet (%)",
           "hsem_batteries_capacity_loss_pct": "Kapacitetstab (%)"
         },
         "data_description": {
-          "hsem_batteries_purchase_price": "Indtast den samlede købspris for dit batterisystem i EUR. Bruges sammen med forventede cyklusser og brugbar kapacitet til at beregne afskrivningsomkostning pr. kWh.",
+          "hsem_batteries_purchase_price": "Indtast den samlede købspris for dit batterisystem. Bruges sammen med forventede cyklusser og brugbar kapacitet til at beregne afskrivningsomkostning pr. kWh.",
           "hsem_batteries_expected_cycles": "Indtast det forventede antal fulde opladnings-/afladningscyklusser i batteriets levetid. Bruges til at beregne afskrivningsomkostning pr. kWh. Typiske LiFePO4-batterier understøtter 4000-8000 cyklusser.",
-          "hsem_batteries_cycle_cost": "Valgfri ekstra per-kWh-omkostning ved at cykle batteriet (EUR/kWh). Tilføjes oven på den automatisk beregnede afskrivningstærskel. Sæt til 0 for kun at stole på afskrivningsbeskyttelsen.",
+          "hsem_batteries_cycle_cost": "Valgfri ekstra per-kWh-omkostning ved at cykle batteriet (pr. kWh). Tilføjes oven på den automatisk beregnede afskrivningstærskel. Sæt til 0 for kun at stole på afskrivningsbeskyttelsen.",
           "hsem_batteries_charge_efficiency": "Angiv batteriets opladningseffektivitet som en procentdel (0-100). Energi lagret i batteriet = inputenergi Å— denne faktor. Typiske lithium-batterier opnår 95-98%. Standard: 98%.",
           "hsem_batteries_discharge_efficiency": "Angiv batteriets afladningseffektivitet som en procentdel (0-100). Energi leveret til huset = fjernet batterienergi Å— denne faktor. Typiske lithium-batterier opnår 95-98%. Standard: 98%.",
           "hsem_batteries_capacity_loss_pct": "Forventet kapacitetstab ved end-of-life for batteriet (0-100%)."
@@ -644,10 +644,10 @@
       "huawei_solar": {
         "data": {
           "hsem_batteries_charge_efficiency": "Battery Charge Efficiency (%)",
-          "hsem_batteries_cycle_cost": "Battery Cycle Cost (EUR/kWh)",
+          "hsem_batteries_cycle_cost": "Battery Cycle Cost (pr. kWh)",
           "hsem_batteries_discharge_efficiency": "Battery Discharge Efficiency (%)",
           "hsem_batteries_expected_cycles": "Expected Battery Cycles",
-          "hsem_batteries_purchase_price": "Battery Purchase Price (EUR)",
+          "hsem_batteries_purchase_price": "Battery Purchase Price",
           "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Huawei Batteries Excess PV energy use in TOU",
           "hsem_huawei_solar_batteries_forcible_charge": "Battery Forcible Charge State",
           "hsem_huawei_solar_batteries_end_of_discharge_soc": "Huawei Batteries End of Discharge SOC (%)",
@@ -667,9 +667,9 @@
         "data_description": {
           "hsem_batteries_charge_efficiency": "Specify the charge-side efficiency of your battery as a percentage (0–100). Energy stored in the battery equals the input energy multiplied by this factor. Typical lithium batteries achieve 95–98 %. Defaults to 98 %.",
           "hsem_batteries_discharge_efficiency": "Specify the discharge-side efficiency of your battery as a percentage (0–100). Energy delivered to the house equals the battery energy removed multiplied by this factor. Typical lithium batteries achieve 95–98 %. Defaults to 98 %.",
-          "hsem_batteries_cycle_cost": "Optional extra per-kWh cost of cycling the battery (EUR/kWh). Added on top of the auto-calculated depreciation threshold. Set to 0 to rely solely on the depreciation guard. Example: 0.02 means the planner requires 2 cent extra spread per kWh cycled before approving grid charging.",
+          "hsem_batteries_cycle_cost": "Optional extra per-kWh cost of cycling the battery (pr. kWh). Added on top of the auto-calculated depreciation threshold. Set to 0 to rely solely on the depreciation guard. Example: 0.02 means the planner requires 2 cent extra spread per kWh cycled before approving grid charging.",
           "hsem_batteries_expected_cycles": "Enter the expected number of full charge/discharge cycles over the battery's lifetime. Used to calculate depreciation cost per kWh and the recommended minimum export price threshold. Typical LiFePO4 batteries support 4000–8000 cycles.",
-          "hsem_batteries_purchase_price": "Enter the total purchase price of your battery system in EUR. Used together with expected cycles and usable capacity to calculate the depreciation cost per kWh and the recommended minimum export price threshold.",
+          "hsem_batteries_purchase_price": "Enter the total purchase price of your battery system in your local currency. Used together with expected cycles and usable capacity to calculate the depreciation cost per kWh and the recommended minimum export price threshold.",
           "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Select the sensor that provides setting for excess PV energy use in TOU periods.",
           "hsem_huawei_solar_batteries_forcible_charge": "Sensor showing current forcible charge/discharge state (e.g. Stopped, Discharging at 5000W for 60 minutes)",
           "hsem_huawei_solar_batteries_end_of_discharge_soc": "Specify the end of discharge SOC percentage for your Huawei batteries. When the battery reaches this SOC level, it will stop discharging to prevent deep discharge and potential damage to the battery.",

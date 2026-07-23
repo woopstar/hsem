@@ -32,7 +32,7 @@ _DEFAULT_SUMMER_ISO = "2024-06-15T00:00:00+02:00"
 # Base 24-hour time-series helpers
 # ---------------------------------------------------------------------------
 
-# Danish-style spot prices (EUR/kWh, roughly realistic day-ahead pattern)
+# Danish-style spot prices (roughly realistic day-ahead pattern)
 # Index 0 = 00:00-01:00, index 23 = 23:00-24:00
 _SPOT_PRICES_SUMMER = [
     # 00-06: cheap overnight

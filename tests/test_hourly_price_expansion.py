@@ -538,7 +538,7 @@ class TestVatCurrencyTransparency:
             assert sp.export_price == pytest.approx(0.987654, rel=1e-6)
 
     def test_large_price_values_preserved(self):
-        # Extreme price spike (e.g. 10 EUR/kWh = 74 DKK/kWh during energy crisis).
+        # Extreme price spike (e.g. 10/kWh = 74/kWh during energy crisis).
         imp = dict.fromkeys(range(24), 74.0)
         exp = dict.fromkeys(range(24), 55.0)
         slots = expand_hourly_prices_to_slots(self.now, imp, exp)

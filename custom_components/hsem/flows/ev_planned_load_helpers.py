@@ -32,7 +32,7 @@ from custom_components.hsem.utils.misc import get_config_value
 _CAPACITY_SELECTOR = selector(
     {
         "number": {
-            "min": 1.0,
+            "min": 0.0,
             "max": 200.0,
             "step": 0.5,
             "unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR,
@@ -44,7 +44,7 @@ _CAPACITY_SELECTOR = selector(
 _POWER_KW_SELECTOR = selector(
     {
         "number": {
-            "min": 0.1,
+            "min": 0.0,
             "max": 50.0,
             "step": 0.1,
             "unit_of_measurement": UnitOfPower.KILO_WATT,

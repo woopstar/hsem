@@ -576,7 +576,7 @@ class TestForceExport:
             soc_high_penalty_weight=0.0,
         )
         bd = score_plan([slot], weights)
-        # 2.0 kWh × 0.15 EUR/kWh = 0.30 revenue
+        # 2.0 kWh × 0.15/kWh = 0.30 revenue
         assert bd.export_revenue == pytest.approx(0.30, abs=1e-6)
         assert bd.import_cost == pytest.approx(0.0, abs=1e-6)
         # total = 0 - 0.30 = -0.30 (net revenue)

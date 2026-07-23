@@ -212,10 +212,10 @@
       "huawei_solar": {
         "data": {
           "hsem_batteries_charge_efficiency": "Battery Charge Efficiency (%)",
-          "hsem_batteries_cycle_cost": "Battery Cycle Cost (EUR/kWh)",
+          "hsem_batteries_cycle_cost": "Battery Cycle Cost (per kWh)",
           "hsem_batteries_discharge_efficiency": "Battery Discharge Efficiency (%)",
           "hsem_batteries_expected_cycles": "Expected Battery Cycles",
-          "hsem_batteries_purchase_price": "Battery Purchase Price (EUR)",
+          "hsem_batteries_purchase_price": "Battery Purchase Price",
           "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Huawei Batteries Excess PV energy use in TOU",
           "hsem_huawei_solar_batteries_forcible_charge": "Battery Forcible Charge State",
           "hsem_huawei_solar_batteries_end_of_discharge_soc": "Huawei Batteries End of Discharge SOC (%)",
@@ -235,9 +235,9 @@
         "data_description": {
           "hsem_batteries_charge_efficiency": "Specify the charge-side efficiency of your battery as a percentage (0â€“100). Energy stored in the battery equals the input energy multiplied by this factor. Typical lithium batteries achieve 95â€“98 %. Defaults to 98 %.",
           "hsem_batteries_discharge_efficiency": "Specify the discharge-side efficiency of your battery as a percentage (0â€“100). Energy delivered to the house equals the battery energy removed multiplied by this factor. Typical lithium batteries achieve 95â€“98 %. Defaults to 98 %.",
-          "hsem_batteries_cycle_cost": "Optional extra per-kWh cost of cycling the battery (EUR/kWh). Added on top of the auto-calculated depreciation threshold. Set to 0 to rely solely on the depreciation guard. Example: 0.02 means the planner requires 2 cent extra spread per kWh cycled before approving grid charging.",
+          "hsem_batteries_cycle_cost": "Optional extra per-kWh cost of cycling the battery (per kWh). Added on top of the auto-calculated depreciation threshold. Set to 0 to rely solely on the depreciation guard. Example: 0.02 means the planner requires 2 cent extra spread per kWh cycled before approving grid charging.",
           "hsem_batteries_expected_cycles": "Enter the expected number of full charge/discharge cycles over the battery's lifetime. Used to calculate depreciation cost per kWh and the recommended minimum export price threshold. Typical LiFePO4 batteries support 4000â€“8000 cycles.",
-          "hsem_batteries_purchase_price": "Enter the total purchase price of your battery system in EUR. Used together with expected cycles and usable capacity to calculate the depreciation cost per kWh and the recommended minimum export price threshold.",
+          "hsem_batteries_purchase_price": "Enter the total purchase price of your battery system in your local currency. Used together with expected cycles and usable capacity to calculate the depreciation cost per kWh and the recommended minimum export price threshold.",
           "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Select the sensor that provides setting for excess PV energy use in TOU periods.",
           "hsem_huawei_solar_batteries_forcible_charge": "Sensor showing current forcible charge/discharge state (e.g. Stopped, Discharging at 5000W for 60 minutes)",
           "hsem_huawei_solar_batteries_end_of_discharge_soc": "Specify the end of discharge SOC percentage for your Huawei batteries. When the battery reaches this SOC level, it will stop discharging to prevent deep discharge and potential damage to the battery.",
@@ -259,9 +259,9 @@
       },
       "battery_economics": {
         "data": {
-          "hsem_batteries_purchase_price": "Battery Purchase Price (EUR)",
+          "hsem_batteries_purchase_price": "Battery Purchase Price",
           "hsem_batteries_expected_cycles": "Expected Battery Cycles",
-          "hsem_batteries_cycle_cost": "Battery Cycle Cost (EUR/kWh)",
+          "hsem_batteries_cycle_cost": "Battery Cycle Cost (per kWh)",
           "hsem_batteries_capacity_loss_pct": "Battery Capacity Loss at End-of-Life (%)",
           "hsem_batteries_charge_efficiency": "Battery Charge Efficiency (%)",
           "hsem_batteries_discharge_efficiency": "Battery Discharge Efficiency (%)",
@@ -271,9 +271,9 @@
           "hsem_planner_window_hysteresis_minutes": "Window Hysteresis Hold Time (minutes)"
         },
         "data_description": {
-          "hsem_batteries_purchase_price": "Enter the total purchase price of your battery system in EUR. Used together with expected cycles and usable capacity to calculate the depreciation cost per kWh and the recommended minimum export price threshold.",
+          "hsem_batteries_purchase_price": "Enter the total purchase price of your battery system in your local currency. Used together with expected cycles and usable capacity to calculate the depreciation cost per kWh and the recommended minimum export price threshold.",
           "hsem_batteries_expected_cycles": "Enter the expected number of full charge/discharge cycles over the battery's lifetime. Used to calculate depreciation cost per kWh and the recommended minimum export price threshold. Typical LiFePO4 batteries support 4000â€“8000 cycles.",
-          "hsem_batteries_cycle_cost": "Optional extra per-kWh cost of cycling the battery (EUR/kWh). Added on top of the auto-calculated depreciation threshold. Set to 0 to rely solely on the depreciation guard. Example: 0.02 means the planner requires 2 cent extra spread per kWh cycled before approving grid charging.",
+          "hsem_batteries_cycle_cost": "Optional extra per-kWh cost of cycling the battery (per kWh). Added on top of the auto-calculated depreciation threshold. Set to 0 to rely solely on the depreciation guard. Example: 0.02 means the planner requires 2 cent extra spread per kWh cycled before approving grid charging.",
           "hsem_batteries_capacity_loss_pct": "Expected capacity loss at end-of-life as a percentage. LiFePO4 typically reaches 80% capacity after ~6000 cycles (20% loss). Default 30% adds margin for calendar ageing.",
           "hsem_batteries_charge_efficiency": "Specify the charge-side efficiency of your battery as a percentage (0â€“100). Energy stored in the battery equals the input energy multiplied by this factor. Typical lithium batteries achieve 95â€“98 %. Defaults to 98 %.",
           "hsem_batteries_discharge_efficiency": "Specify the discharge-side efficiency of your battery as a percentage (0â€“100). Energy delivered to the house equals the battery energy removed multiplied by this factor. Typical lithium batteries achieve 95â€“98 %. Defaults to 98 %.",
@@ -686,10 +686,10 @@
       "huawei_solar": {
         "data": {
           "hsem_batteries_charge_efficiency": "Battery Charge Efficiency (%)",
-          "hsem_batteries_cycle_cost": "Battery Cycle Cost (EUR/kWh)",
+          "hsem_batteries_cycle_cost": "Battery Cycle Cost (per kWh)",
           "hsem_batteries_discharge_efficiency": "Battery Discharge Efficiency (%)",
           "hsem_batteries_expected_cycles": "Expected Battery Cycles",
-          "hsem_batteries_purchase_price": "Battery Purchase Price (EUR)",
+          "hsem_batteries_purchase_price": "Battery Purchase Price",
           "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Huawei Batteries Excess PV energy use in TOU",
           "hsem_huawei_solar_batteries_forcible_charge": "Battery Forcible Charge State",
           "hsem_huawei_solar_batteries_end_of_discharge_soc": "Huawei Batteries End of Discharge SOC (%)",
@@ -709,9 +709,9 @@
         "data_description": {
           "hsem_batteries_charge_efficiency": "Specify the charge-side efficiency of your battery as a percentage (0â€“100). Energy stored in the battery equals the input energy multiplied by this factor. Typical lithium batteries achieve 95â€“98 %. Defaults to 98 %.",
           "hsem_batteries_discharge_efficiency": "Specify the discharge-side efficiency of your battery as a percentage (0â€“100). Energy delivered to the house equals the battery energy removed multiplied by this factor. Typical lithium batteries achieve 95â€“98 %. Defaults to 98 %.",
-          "hsem_batteries_cycle_cost": "Optional extra per-kWh cost of cycling the battery (EUR/kWh). Added on top of the auto-calculated depreciation threshold. Set to 0 to rely solely on the depreciation guard. Example: 0.02 means the planner requires 2 cent extra spread per kWh cycled before approving grid charging.",
+          "hsem_batteries_cycle_cost": "Optional extra per-kWh cost of cycling the battery (per kWh). Added on top of the auto-calculated depreciation threshold. Set to 0 to rely solely on the depreciation guard. Example: 0.02 means the planner requires 2 cent extra spread per kWh cycled before approving grid charging.",
           "hsem_batteries_expected_cycles": "Enter the expected number of full charge/discharge cycles over the battery's lifetime. Used to calculate depreciation cost per kWh and the recommended minimum export price threshold. Typical LiFePO4 batteries support 4000â€“8000 cycles.",
-          "hsem_batteries_purchase_price": "Enter the total purchase price of your battery system in EUR. Used together with expected cycles and usable capacity to calculate the depreciation cost per kWh and the recommended minimum export price threshold.",
+          "hsem_batteries_purchase_price": "Enter the total purchase price of your battery system in your local currency. Used together with expected cycles and usable capacity to calculate the depreciation cost per kWh and the recommended minimum export price threshold.",
           "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Select the sensor that provides setting for excess PV energy use in TOU periods.",
           "hsem_huawei_solar_batteries_forcible_charge": "Sensor showing current forcible charge/discharge state (e.g. Stopped, Discharging at 5000W for 60 minutes)",
           "hsem_huawei_solar_batteries_end_of_discharge_soc": "Specify the end of discharge SOC percentage for your Huawei batteries. When the battery reaches this SOC level, it will stop discharging to prevent deep discharge and potential damage to the battery.",
@@ -733,9 +733,9 @@
       },
       "battery_economics": {
         "data": {
-          "hsem_batteries_purchase_price": "Battery Purchase Price (EUR)",
+          "hsem_batteries_purchase_price": "Battery Purchase Price",
           "hsem_batteries_expected_cycles": "Expected Battery Cycles",
-          "hsem_batteries_cycle_cost": "Battery Cycle Cost (EUR/kWh)",
+          "hsem_batteries_cycle_cost": "Battery Cycle Cost (per kWh)",
           "hsem_batteries_capacity_loss_pct": "Battery Capacity Loss at End-of-Life (%)",
           "hsem_batteries_charge_efficiency": "Battery Charge Efficiency (%)",
           "hsem_batteries_discharge_efficiency": "Battery Discharge Efficiency (%)",
@@ -745,9 +745,9 @@
           "hsem_planner_window_hysteresis_minutes": "Window Hysteresis Hold Time (minutes)"
         },
         "data_description": {
-          "hsem_batteries_purchase_price": "Enter the total purchase price of your battery system in EUR. Used together with expected cycles and usable capacity to calculate the depreciation cost per kWh and the recommended minimum export price threshold.",
+          "hsem_batteries_purchase_price": "Enter the total purchase price of your battery system in your local currency. Used together with expected cycles and usable capacity to calculate the depreciation cost per kWh and the recommended minimum export price threshold.",
           "hsem_batteries_expected_cycles": "Enter the expected number of full charge/discharge cycles over the battery's lifetime. Used to calculate depreciation cost per kWh and the recommended minimum export price threshold. Typical LiFePO4 batteries support 4000â€“8000 cycles.",
-          "hsem_batteries_cycle_cost": "Optional extra per-kWh cost of cycling the battery (EUR/kWh). Added on top of the auto-calculated depreciation threshold. Set to 0 to rely solely on the depreciation guard. Example: 0.02 means the planner requires 2 cent extra spread per kWh cycled before approving grid charging.",
+          "hsem_batteries_cycle_cost": "Optional extra per-kWh cost of cycling the battery (per kWh). Added on top of the auto-calculated depreciation threshold. Set to 0 to rely solely on the depreciation guard. Example: 0.02 means the planner requires 2 cent extra spread per kWh cycled before approving grid charging.",
           "hsem_batteries_capacity_loss_pct": "Expected capacity loss at end-of-life as a percentage. LiFePO4 typically reaches 80% capacity after ~6000 cycles (20% loss). Default 30% adds margin for calendar ageing.",
           "hsem_batteries_charge_efficiency": "Specify the charge-side efficiency of your battery as a percentage (0â€“100). Energy stored in the battery equals the input energy multiplied by this factor. Typical lithium batteries achieve 95â€“98 %. Defaults to 98 %.",
           "hsem_batteries_discharge_efficiency": "Specify the discharge-side efficiency of your battery as a percentage (0â€“100). Energy delivered to the house equals the battery energy removed multiplied by this factor. Typical lithium batteries achieve 95â€“98 %. Defaults to 98 %.",

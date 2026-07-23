@@ -113,7 +113,7 @@ class SensorConfig:
             Defaults to 97 % (3 % discharge-side loss).
         batteries_purchase_price: Battery pack purchase price for depreciation calc.
         batteries_expected_cycles: Expected total cycle life of the battery.
-        batteries_cycle_cost: User-configured extra per-kWh cycle cost (EUR/kWh).
+        batteries_cycle_cost: User-configured extra per-kWh cycle cost.
             Added to the auto-derived depreciation threshold.  0.0 = disabled.
 
         batteries_schedule_1: First discharge-window schedule config.
