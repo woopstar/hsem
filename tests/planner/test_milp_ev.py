@@ -965,3 +965,64 @@ def test_full_planner_with_ev_integration():
             assert diag["ev"]["ev0"]["deadline_met"] is True, (
                 "MILP should meet EV deadline in summer scenario"
             )
+
+
+@_pytestmark_scipy
+def test_ev_discharge_guard_blocks_battery_discharging_into_ev():
+    """Battery must not discharge to cover EV load in avg_house_consumption.
+
+    When base_load_includes_ev=True, the EV load is already captured in
+    avg_house_consumption_kwh.  The battery must not discharge to cover
+    this portion of the load — the EV is served by grid (or PV).
+
+    Setup: 4 slots with house consumption that includes EV load.
+    Slot 0 has high house consumption (house 1.0 + EV 5.0 kWh),
+    ev_accounted_load_kwh=5.0.  The battery should discharge at most
+    1.0 kWh (the house-only portion), not 6.0 kWh.
+    """
+    slots = _build_slots(4, start_hour=14, import_price=0.30, consumption_kwh=0.5)
+    # Override slot 0 (current slot at 14:00) to simulate live injection
+    # where avg_house_consumption includes EV load.
+    slots[0].avg_house_consumption_kwh = 6.0  # 1.0 house + 5.0 EV
+    slots[0].ev_accounted_load_kwh = 5.0
+    slots[0].ev_planned_load_kwh = 0.0
+    slots[0].ev_total_planned_load_kwh = 5.0
+    slots[0].estimated_net_consumption_kwh = 6.0  # no PV
+
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=10.0,
+        usable_kwh=10.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+        # No EV co-optimisation — this is the non-co-optimisation path
+        ev_configs=None,
+    )
+
+    assert result is not None, "MILP must return a solution"
+    out_slots, _diag = result
+
+    # Slot 0: house=6.0 (1.0 house + 5.0 EV), no PV.
+    # Without the guard, the battery would discharge 5.0 kWh to cover
+    # the full demand.  With the guard, it should discharge at most
+    # ~1.0 kWh (the house-only portion).
+    s0 = out_slots[0]
+    # The discharge should not exceed the house-only demand (~1.0 kWh).
+    # With discharge_eff=0.97 (default), ed * 0.97 <= max(0, 6.0 - 5.0) = 1.0
+    # so ed <= 1.0 / 0.97 ≈ 1.031
+    max_allowed_dis = 1.0 / 0.97  # approximately 1.031
+    assert s0.batteries_discharged_kwh <= max_allowed_dis + 0.01, (
+        f"Battery discharged {s0.batteries_discharged_kwh:.3f} kWh "
+        f"into EV load (house=6.0 incl 5.0 EV). "
+        f"Should be ≤ {max_allowed_dis:.3f} kWh."
+    )
+
+    # The grid must cover the remaining demand.
+    # Total demand: 6.0 kWh. Battery discharge: ~1.03 kWh DC = ~1.0 kWh AC.
+    # Grid import should cover the rest: ~5.0 kWh (EV) + small amount.
+    assert s0.grid_import_kwh > 4.0, (
+        f"Grid should cover EV demand. "
+        f"Got grid_import={s0.grid_import_kwh:.3f} kWh, "
+        f"discharge={s0.batteries_discharged_kwh:.3f} kWh"
+    )

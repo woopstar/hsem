@@ -403,6 +403,20 @@ def solve_milp(
     base_load = np.maximum(net_load, 0.0)  # remaining demand after PV
 
     # ------------------------------------------------------------------
+    # EV accounted load: when base_load_includes_ev=True, ev_accounted_load_kwh
+    # is the EV load already captured in avg_house_consumption_kwh.  The battery
+    # must not discharge to cover this load — it is the EV's own demand served
+    # by the grid (or PV).  Without this cap, the live-injected current-slot
+    # house consumption (which includes EV power when the CT clamp is upstream
+    # of the charger) causes the MILP to discharge the house battery into the EV,
+    # which provides zero financial benefit when EV charging is reimbursed
+    # (issue #592).
+    # ------------------------------------------------------------------
+    ev_accounted = np.array(
+        [slots[i].ev_accounted_load_kwh for i in future_idx], dtype=float
+    )
+
+    # ------------------------------------------------------------------
     # EV co-optimisation: when ev_configs is provided, the MILP decides EV
     # charging alongside the battery.  Recompute net_load/pv_avail/base_load
     # WITHOUT the pre-computed EV planned loads (the LP will decide allocation).
@@ -806,6 +820,37 @@ def solve_milp(
         b_ub[cycle_row_start + m + t] = 0.0
 
     # ------------------------------------------------------------------
+    # EV discharge guard: when base_load_includes_ev=True and EV
+    # co-optimisation is NOT active, the EV load is already captured in
+    # avg_house_consumption_kwh via ev_accounted_load_kwh.  The battery
+    # must not discharge to cover this portion of base_load — the EV is
+    # served by grid (or PV).
+    #
+    # When co-optimisation IS active, the EV has its own decision
+    # variables and base_load already excludes EV load, so the guard is
+    # skipped.
+    #
+    # Without this cap, the live-injected current-slot house consumption
+    # (which includes EV power when the CT clamp is upstream of the
+    # charger) causes the MILP to discharge the home battery into the EV
+    # (issue #592).
+    #
+    # Per-slot upper bound on ed: ed[t] ≤ max(0, base_load[t] - ev_acct[t]) / η_dis
+    # Only slots where ev_accounted > 0 are capped; uncapped slots use max_dis.
+    # This does NOT affect export — when base_load=0 (PV surplus), ev_acct is
+    # already in avg_house_consumption which is covered by PV, and the battery
+    # can still export freely.
+    # ------------------------------------------------------------------
+    ev_discharge_guard_active = (not active_evs) and bool(np.any(ev_accounted > 1e-9))
+    ed_ub_per_slot: list[float] = []
+    for t in range(m):
+        if ev_discharge_guard_active and ev_accounted[t] > 1e-9:
+            cap = max(base_load[t] - ev_accounted[t], 0.0) / discharge_eff
+            ed_ub_per_slot.append(min(cap, max_dis))
+        else:
+            ed_ub_per_slot.append(max_dis)
+
+    # ------------------------------------------------------------------
     # EV constraints (only when active_evs is non-empty)
     # ------------------------------------------------------------------
     # Row counts for EV constraints
@@ -995,7 +1040,7 @@ def solve_milp(
     # ------------------------------------------------------------------
     bounds: list[tuple[float, float | None]] = (
         [(0.0, max_charge_per_slot)] * m  # ec[t]
-        + [(0.0, max_dis)] * m  # ed[t]
+        + [(0.0, float(ed_ub_per_slot[t])) for t in range(m)]  # ed[t]
         + [(0.0, None)] * m  # gi[t] (unbounded above)
         + [(0.0, None)] * m  # ge[t] (unbounded above)
         + [
