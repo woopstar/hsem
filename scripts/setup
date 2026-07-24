@@ -1,11 +1,7 @@
-#!/usr/bin/env bash
+#!/usr/bin/env sh
 
-set -e
-
-sudo chown -R vscode:vscode /workspaces
+apk add --no-cache bash tox
 
 cd "$(dirname "$0")/.."
 
 python3 -m pip install --requirement requirements.txt
-
-sudo apt-get update

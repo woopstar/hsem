@@ -14,7 +14,6 @@ test-results.xml
 notes.txt
 .venv
 .DS_Store
-scripts/sync.*
 .tox
 logs
 
@@ -23,3 +22,4 @@ config/*
 !config/configuration.yaml
 
 cycle.log
+core
