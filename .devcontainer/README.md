@@ -13,6 +13,42 @@ In the container you will have a dedicated Home Assistant core instance running 
 - [Visual Studio code](https://code.visualstudio.com/)
 - [Remote - Containers (VSC Extension)][extension-link]
 
+**YubiKey / GPG Support**
+
+The devcontainer is pre-configured to use your YubiKey for SSH authentication and GPG signing:
+
+- `gnupg`, `gpg-agent`, `pinentry`, `socat`, `openssh-client`, and `git` are installed in the container
+- Your host `~/.ssh`, `~/.gnupg`, and `~/.gitconfig` are mounted into the container
+- `yubikey-manager` CLI (`ykman`) is available for managing your YubiKey
+
+**macOS setup**: Docker Desktop runs inside a Linux VM and cannot forward Unix domain
+sockets (like `gpg-agent.ssh`) across the VM boundary. This devcontainer uses a TCP
+relay to bridge the SSH and GPG agents from host to container.
+
+1. **Install the relay as a macOS LaunchAgent** (runs at login, restarts automatically):
+   ```sh
+   sh .devcontainer/scripts/install-agent-relay.sh install
+   ```
+   This starts TCP relays on ports 9999 (SSH agent), 9998 (GPG agent), 9997 (scdaemon).
+
+2. **Check status**:
+   ```sh
+   sh .devcontainer/scripts/install-agent-relay.sh status
+   ```
+
+3. **Open the devcontainer** in VS Code (`F1` → `Remote-Containers: Reopen in Container`).
+   The `postCreateCommand` automatically starts the container-side socat bridge.
+
+4. **Verify**: run `ssh -T git@github.com` and `gpg --card-status` in the container terminal.
+
+To uninstall the relay:
+   ```sh
+   sh .devcontainer/scripts/install-agent-relay.sh uninstall
+   ```
+
+**Linux note**: On a native Linux Docker host, you can add `--privileged` and USB
+device mounts via `runArgs` in `devcontainer.json` for direct hardware access.
+
 [More info about requirements and devcontainer in general](https://code.visualstudio.com/docs/remote/containers#_getting-started)
 
 [extension-link]: https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers

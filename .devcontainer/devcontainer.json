@@ -1,13 +1,22 @@
 // See https://containers.dev/implementors/json_reference/ for format details.
-// Note that python:0-3.10-bullseye should be used for local arm64/Apple Silicon.
-// Depending on setup, "remoteUser": "vscode", might be preferred to add.
 {
   "name": "HSEM",
-  "image": "python:3.14.2-alpine",
-  "postCreateCommand": "scripts/setup",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "postCreateCommand": "devcontainer-agent-bridge.sh /bin/sh -c 'echo SSH agent ready in container || true'",
+  "remoteUser": "root",
   "forwardPorts": [8123],
   "mounts": [
     "type=bind,source=${localEnv:HOME}/.ssh,target=/root/.ssh,readonly",
-    "type=bind,source=${localEnv:HOME}/.gnupg,target=/root/.gnupg,readonly"
-  ]
+    "type=bind,source=${localEnv:HOME}/.gnupg,target=/root/.gnupg",
+    "type=bind,source=${localEnv:HOME}/.gitconfig,target=/root/.gitconfig,readonly"
+  ],
+  "containerEnv": {
+    "SSH_AUTH_SOCK": "/tmp/ssh-agent.sock",
+    "SSH_AGENT_PORT": "9999",
+    "GPG_AGENT_PORT": "9998",
+    "SCDAEMON_PORT": "9997",
+    "SSH_AGENT_HOST": "host.docker.internal"
+  }
 }
