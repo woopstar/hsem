@@ -228,7 +228,54 @@ def _inject_live_data_into_current_slot(
                 slot.solcast_pv_estimate_kwh = round(live_pv_kwh, 3)
 
             if inp.live_house_consumption_w > 1e-9:
-                live_load_kwh = (inp.live_house_consumption_w / 1000.0) * slot_hours
+                # When house power includes EV charger load, the live reading
+                # may include EV power that the battery must not serve.
+                #
+                # Layer 1: if ev_session_charge_kw is available (EV actively
+                # charging with a known power reading), subtract it directly.
+                #
+                # Layer 2: otherwise, if the live reading is dramatically
+                # higher than the forecast (>3×), cap the injection at the
+                # forecast value.  A 3× spike is unambiguous EV load — normal
+                # house load does not triple between slots (issue #592).
+                live_house_w = inp.live_house_consumption_w
+                if inp.house_power_includes_ev:
+                    ev_ac_w = 0.0
+                    if (
+                        inp.ev_session_charge_kw is not None
+                        and inp.ev_session_charge_kw > 1e-9
+                    ):
+                        ev_ac_w += inp.ev_session_charge_kw * 1000.0
+                    if (
+                        inp.ev_second_session_charge_kw is not None
+                        and inp.ev_second_session_charge_kw > 1e-9
+                    ):
+                        ev_ac_w += inp.ev_second_session_charge_kw * 1000.0
+                    live_house_w = max(live_house_w - ev_ac_w, 0.0)
+
+                live_load_kwh = (live_house_w / 1000.0) * slot_hours
+
+                # If the live reading (after subtracting known EV power) still
+                # exceeds the forecast by >3×, it likely contains unmeasured EV
+                # load.  Cap at the forecast to prevent the battery from
+                # serving unknown EV demand.
+                forecast = slot.avg_house_consumption_kwh
+                if (
+                    inp.house_power_includes_ev
+                    and live_load_kwh > forecast * 3.0
+                    and forecast > 1e-9
+                ):
+                    log_planner(
+                        "debug",
+                        "[core] _inject_live_data  slot=%s  "
+                        "live %.3f kWh > 3× forecast %.3f kWh — "
+                        "capping at forecast (probable unmeasured EV load)",
+                        slot.start.isoformat(),
+                        live_load_kwh,
+                        forecast,
+                    )
+                    live_load_kwh = forecast
+
                 log_planner(
                     "debug",
                     "[core] _inject_live_data  slot=%s  "

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# ruff: noqa: T201
 """
 Backfill statistics from a Home Assistant SQLite backup into the running
 database after a mass deletion (e.g. Developer Tools → Statistics →
@@ -28,9 +29,7 @@ Usage
 
 import argparse
 import sqlite3
-import sys
 from typing import Any
-
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
