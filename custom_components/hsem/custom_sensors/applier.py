@@ -309,15 +309,16 @@ async def async_apply_battery_settings(
     recommendation = rec.recommendation
 
     # When an EV is actively charging and we are NOT in a forced-discharge
-    # or forced-export recommendation, cap the battery discharge power at 0
-    # to prevent the Huawei inverter from physically discharging into the EV
-    # (issue #592).  The inverter's CT clamp sees the full EV load as demand
-    # and will offset it from the battery unless the discharge power is
-    # explicitly restricted.
+    # or forced-export recommendation, cap the battery discharge power to
+    # the historical weighted average house consumption to prevent the
+    # Huawei inverter from physically discharging into the EV (issue #592).
     #
-    # This applies regardless of whether the planner successfully capped the
-    # consumption forecast — the physical hardware must be told not to
-    # discharge.
+    # The inverter's CT clamp sees the full EV load as demand and will
+    # offset it from the battery unless the discharge power is explicitly
+    # restricted.  Instead of a hard 0 W cap, we set the limit to the
+    # historical average house consumption (converted to Watts) so that
+    # the battery still covers normal house load while 100% of the EV
+    # load goes to the grid.
     ev_active = live.ev.is_charging or live.ev_second.is_charging
     if (
         ev_active
@@ -328,26 +329,40 @@ async def async_apply_battery_settings(
         )
     ):
         discharge_entity = cfg.huawei_solar_batteries_maximum_discharging_power
-        if discharge_entity is not None and live.huawei_batteries_max_discharge_power_w != 0:
-            _de3: str = discharge_entity  # narrowed for closure
-            ev_discharge_result = await async_write_and_verify(
-                entity_id=_de3,
-                desired=0,
-                writer=lambda: async_set_number_value(sensor, _de3, 0),
-                reader=lambda: _read_number_state(sensor, _de3),
+        if discharge_entity is not None:
+            # Use the weighted average house consumption from the current
+            # recommendation slot (already capped by the planner's 3×
+            # forecast guard in PR #681).  Convert kWh to Watts using the
+            # slot duration.
+            slot_hours = (rec.end - rec.start).total_seconds() / 3600.0
+            house_avg_w = (
+                int(rec.avg_house_consumption_kwh / slot_hours * 1000.0)
+                if slot_hours > 1e-9
+                and rec.avg_house_consumption_kwh > 1e-9
+                else 0
             )
-            summary.results.append(ev_discharge_result)
-            _LOGGER.debug(
-                "EV active — capped max discharge power to 0 W to prevent "
-                "battery from discharging into EV.",
-                "debug",
-            )
-            if ev_discharge_result.status == ApplyStatus.FAILED:
-                _LOGGER.debug(
-                    f"EV discharge cap write FAILED for {discharge_entity}.",
-                    "error",
+            if live.huawei_batteries_max_discharge_power_w != house_avg_w:
+                _de3: str = discharge_entity  # narrowed for closure
+                ev_discharge_result = await async_write_and_verify(
+                    entity_id=_de3,
+                    desired=house_avg_w,
+                    writer=lambda: async_set_number_value(sensor, _de3, house_avg_w),
+                    reader=lambda: _read_number_state(sensor, _de3),
                 )
-                return summary
+                summary.results.append(ev_discharge_result)
+                _LOGGER.debug(
+                    "EV active — capped max discharge power to %d W "
+                    "(house avg %.3f kWh/slot) to prevent battery from "
+                    "discharging into EV.",
+                    house_avg_w,
+                    rec.avg_house_consumption_kwh,
+                )
+                if ev_discharge_result.status == ApplyStatus.FAILED:
+                    _LOGGER.debug(
+                        f"EV discharge cap write FAILED for {discharge_entity}.",
+                        "error",
+                    )
+                    return summary
 
     # If we're switching away from force discharge, explicitly stop any
     # active forcible charge/discharge before applying the new mode.
