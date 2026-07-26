@@ -7,10 +7,6 @@
   "postCreateCommand": "if [ -z \"$CI\" ]; then devcontainer-agent-bridge.sh /bin/sh -c 'echo SSH agent ready in container || true'; fi && pip install --no-cache-dir --requirement /workspaces/hsem/requirements.txt --requirement /workspaces/hsem/requirements_test.txt --requirement /workspaces/hsem/requirements_lint.txt --requirement /workspaces/hsem/requirements_typing.txt"
   "remoteUser": "root",
   "forwardPorts": [8123],
-  "mounts": [
-    "type=bind,source=${localEnv:HOME}/.ssh,target=/root/.ssh,readonly",
-    "type=bind,source=${localEnv:HOME}/.gnupg,target=/root/.gnupg"
-  ],
   "containerEnv": {
     "SSH_AUTH_SOCK": "/tmp/ssh-agent.sock",
     "SSH_AGENT_PORT": "9999",
