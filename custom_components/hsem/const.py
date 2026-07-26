@@ -14,9 +14,6 @@ DEFAULT_HSEM_BATTERIES_WAIT_MODE = ["00:00-00:01/1234567/+"]
 # TOU mode for force charging the battery.
 DEFAULT_HSEM_TOU_MODES_FORCE_CHARGE = ["00:00-23:59/1234567/+"]
 
-# TOU mode for force discharging the battery.
-DEFAULT_HSEM_TOU_MODES_FORCE_DISCHARGE = ["00:00-23:59/1234567/-"]
-
 # Minimum required version of Huawei Solar.
 MIN_HUAWEI_SOLAR_VERSION = "1.5.0a1"
 

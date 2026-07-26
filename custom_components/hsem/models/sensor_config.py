@@ -286,13 +286,6 @@ class SensorConfig:
             self.batteries_schedule_3,
         ]
 
-    def ev_chargers(self) -> list[tuple[str, EVChargerConfig]]:
-        """Return all configured EV charger configs as (label, config) pairs."""
-        chargers: list[tuple[str, EVChargerConfig]] = [("ev", self.ev)]
-        if self.ev_second_enabled:
-            chargers.append(("ev_second", self.ev_second))
-        return chargers
-
     def weights_sum(self) -> int:
         """Return the sum of all four consumption weights."""
         return (

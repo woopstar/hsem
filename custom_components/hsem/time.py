@@ -72,11 +72,6 @@ TIME_DESCRIPTIONS: tuple[HSEMTimeEntityDescription, ...] = (
     ),
 )
 
-# Keep TIMES for backwards compat with existing tests that import it.
-TIMES: dict[str, dict[str, str]] = {
-    desc.key: {"name": "", "description": ""} for desc in TIME_DESCRIPTIONS
-}
-
 
 async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
     hass: HomeAssistant,
