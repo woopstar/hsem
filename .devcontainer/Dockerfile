@@ -23,6 +23,7 @@ RUN apk add --no-cache \
     && pip install --no-cache-dir uv yubikey-manager \
     && apk del pcsc-lite-dev gcc musl-dev swig
 
-# Copy the SSH agent bridge script
+# Copy devcontainer helper scripts
 COPY scripts/devcontainer-agent-bridge.sh /usr/local/bin/devcontainer-agent-bridge.sh
-RUN chmod +x /usr/local/bin/devcontainer-agent-bridge.sh
+COPY scripts/setup-python-deps.sh /usr/local/bin/setup-python-deps.sh
+RUN chmod +x /usr/local/bin/devcontainer-agent-bridge.sh /usr/local/bin/setup-python-deps.sh
