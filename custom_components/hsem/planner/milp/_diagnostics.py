@@ -5,17 +5,16 @@ Extracted from ``solve_milp`` so the orchestrator remains under 30 KB.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Any
 
 import numpy as np
 
-if TYPE_CHECKING:
-    from custom_components.hsem.models.ev_config import EVConfig
-    from custom_components.hsem.models.planned_slot import PlannedSlot
+from custom_components.hsem.models.ev_config import EVConfig
+from custom_components.hsem.models.planned_slot import PlannedSlot
 
 
 def _compute_milp_diagnostics(
-    result: object,  # scipy.optimize.OptimizeResult
+    result: Any,  # scipy.optimize.OptimizeResult
     out_slots: list[PlannedSlot],
     slots: list[PlannedSlot],
     future_idx: list[int],

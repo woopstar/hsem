@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from custom_components.hsem.models.ev_config import EVConfig
+from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.planner.candidate_selector import (
     ev_future_charge_value_per_kwh,
 )
@@ -16,7 +17,7 @@ from custom_components.hsem.utils.datetime_utils import as_tz
 
 
 def _build_ev_configs_for_milp(
-    inp,  # PlannerInput
+    inp: PlannerInput,
     slots: list,
     now: datetime,
 ) -> list[EVConfig] | None:

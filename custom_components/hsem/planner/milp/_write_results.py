@@ -7,13 +7,11 @@ from __future__ import annotations
 
 import copy
 from datetime import datetime
-from typing import TYPE_CHECKING
 
 import numpy as np
 
-if TYPE_CHECKING:
-    from custom_components.hsem.models.ev_config import EVConfig
-    from custom_components.hsem.models.planned_slot import PlannedSlot
+from custom_components.hsem.models.ev_config import EVConfig
+from custom_components.hsem.models.planned_slot import PlannedSlot
 
 
 def _write_milp_results_to_slots(
@@ -41,7 +39,6 @@ def _write_milp_results_to_slots(
     curt_sol_full: np.ndarray,  # type: ignore[name-defined]
     *,
     _min_action_kwh: float = 1e-4,
-    Recommendations: object | None = None,
 ) -> list[PlannedSlot]:
     """Write MILP solution into a deep-copied slot list.
 

@@ -36,6 +36,10 @@ from custom_components.hsem.planner.candidate_generator import (
     CandidatePlan,
     generate_candidates,
 )
+from custom_components.hsem.planner.candidate_selector import (
+    _validate_candidate,
+    select_best_candidate,
+)
 from custom_components.hsem.planner.candidates._mutations import (
     _apply_passive_solar,
     _clear_all_charge_discharge,
@@ -45,10 +49,6 @@ from custom_components.hsem.planner.candidates._mutations import (
     _remove_solar_charge,
 )
 from custom_components.hsem.planner.candidates._soc_plan import _apply_soc_plan
-from custom_components.hsem.planner.candidate_selector import (
-    _validate_candidate,
-    select_best_candidate,
-)
 from custom_components.hsem.planner.cost_function import CostWeights
 from custom_components.hsem.planner.slot_population import (
     build_slots,
