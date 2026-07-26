@@ -4,7 +4,7 @@
   "build": {
     "dockerfile": "Dockerfile"
   },
-  "postCreateCommand": "if [ -z \"$CI\" ]; then devcontainer-agent-bridge.sh /bin/sh -c 'echo SSH agent ready in container || true'; fi && setup-python-deps.sh"
+  "postCreateCommand": "if [ -z \"$CI\" ]; then devcontainer-agent-bridge.sh /bin/sh -c 'echo SSH agent ready in container || true'; fi && setup-python-deps.sh",
   "remoteUser": "root",
   "forwardPorts": [8123],
   "mounts": [
@@ -12,6 +12,7 @@
     "type=bind,source=${localEnv:HOME}/.gnupg,target=/root/.gnupg"
   ],
   "containerEnv": {
+    "WORKSPACE_DIR": "/workspaces/hsem",
     "SSH_AUTH_SOCK": "/tmp/ssh-agent.sock",
     "SSH_AGENT_PORT": "9999",
     "GPG_AGENT_PORT": "9998",

@@ -3,8 +3,10 @@
 # Runs as postCreateCommand — always, whether local dev or CI.
 set -eu
 
+WORKSPACE_DIR="${WORKSPACE_DIR:-/workspaces/hsem}"
+
 pip install --no-cache-dir \
-    --requirement /workspaces/hsem/requirements.txt \
-    --requirement /workspaces/hsem/requirements_test.txt \
-    --requirement /workspaces/hsem/requirements_lint.txt \
-    --requirement /workspaces/hsem/requirements_typing.txt
+    --requirement "${WORKSPACE_DIR}/requirements.txt" \
+    --requirement "${WORKSPACE_DIR}/requirements_test.txt" \
+    --requirement "${WORKSPACE_DIR}/requirements_lint.txt" \
+    --requirement "${WORKSPACE_DIR}/requirements_typing.txt"
