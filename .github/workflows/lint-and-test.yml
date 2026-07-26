@@ -10,6 +10,30 @@ on:
 permissions: {}
 
 jobs:
+  validate:
+    name: Validate configs and scripts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+
+      - name: Validate YAML
+        run: python3 scripts/validate-yaml.py
+
+      - name: Validate JSON/JSONC
+        run: python3 scripts/validate-json.py
+
+      - name: Lint shell scripts
+        uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: './scripts'
+
   quality:
     name: Quality gates (devcontainer)
     runs-on: ubuntu-latest
