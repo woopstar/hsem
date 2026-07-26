@@ -24,18 +24,7 @@ jobs:
       - name: Run all quality gates
         uses: devcontainers/ci@v0.3
         with:
-          runCmd: |
-            echo "=== Lint ==="
-            scripts/quality lint
-            echo ""
-            echo "=== Type Check ==="
-            scripts/quality typing
-            echo ""
-            echo "=== Quality ==="
-            scripts/quality quality
-            echo ""
-            echo "=== Tests ==="
-            scripts/quality test || true
+          runCmd: scripts/quality all
 
       - name: Verify tests passed
         run: |
