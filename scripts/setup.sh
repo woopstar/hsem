@@ -2,6 +2,6 @@
 
 apk add --no-cache bash tox
 
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit
 
 python3 -m pip install --requirement requirements.txt
