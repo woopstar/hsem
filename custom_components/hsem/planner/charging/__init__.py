@@ -22,5 +22,4 @@ __all__ = [
     "apply_arbitrage_grid_charge",
     "apply_charge_schedules",
     "apply_opportunistic_charge",
-    "_apply_grid_charge",
 ]

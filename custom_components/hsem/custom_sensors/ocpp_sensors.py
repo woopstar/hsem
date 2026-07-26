@@ -104,7 +104,7 @@ class HSEMOCPPChargerStatusSensor(
         """Return the unique ID."""
         return self._attr_unique_id
 
-    @property  # type: ignore[misc]
+    @property  # type: ignore[misc]  # HA stub declares state as @final
     @override
     def state(self) -> str:
         """Return the charger connection/charging status."""
@@ -219,7 +219,7 @@ class HSEMOCPPChargerPowerSensor(
         """Return the unique ID."""
         return self._attr_unique_id
 
-    @property  # type: ignore[misc]
+    @property  # type: ignore[misc]  # HA stub declares state as @final
     @override
     def state(self) -> float | str:
         """Return the current charging power in kW."""
@@ -308,7 +308,7 @@ class HSEMOCPPChargerInfoSensor(
         """Return the unique ID."""
         return self._attr_unique_id
 
-    @property  # type: ignore[misc]
+    @property  # type: ignore[misc]  # HA stub declares state as @final
     @override
     def state(self) -> str:
         """Return the charger model or 'disconnected'."""
@@ -414,7 +414,7 @@ class HSEMOCPPChargerSessionsSensor(
         """Return the unique ID."""
         return self._attr_unique_id
 
-    @property  # type: ignore[misc]
+    @property  # type: ignore[misc]  # HA stub declares state as @final
     @override
     def state(self) -> str:
         """Return the session count."""

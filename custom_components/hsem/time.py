@@ -26,7 +26,7 @@ from custom_components.hsem.utils.sensornames.ev import (
 
 _ICON_CLOCK = "mdi:clock"
 
-# One description per time entity.  Keys are sourced from sensornames.py so
+# One description per time entity.  Keys are sourced from sensornames/ package so
 # that unique_ids and entity_ids are defined in one place.  Display names
 # come from translations via translation_key.
 TIME_DESCRIPTIONS: tuple[HSEMTimeEntityDescription, ...] = (

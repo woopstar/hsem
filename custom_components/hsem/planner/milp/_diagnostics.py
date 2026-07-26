@@ -23,10 +23,7 @@ def _compute_milp_diagnostics(
     s_min_off: int,
     curt_off: int,
     gi_off: int,
-    ge_off: int,
     gi_pen_off: int,
-    current_kwh: float,
-    usable_kwh: float,
     replacement_price_per_kwh: float | None,
     min_export_price: float,
     p_imp_obj: np.ndarray,  # type: ignore[name-defined]
@@ -49,7 +46,7 @@ def _compute_milp_diagnostics(
         slots: Original (unmodified) slot list.
         future_idx: Indices of future (LP-variable) slots.
         m: Number of active LP slots.
-        s_max_off, s_min_off, curt_off, gi_off, ge_off, gi_pen_off:
+        s_max_off, s_min_off, curt_off, gi_off, gi_pen_off:
             Variable offsets into ``result.x``.
         current_kwh: Battery energy at horizon start (above floor, kWh).
         usable_kwh: Maximum usable energy (kWh).

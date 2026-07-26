@@ -23,7 +23,6 @@ def _write_milp_results_to_slots(
     result_x: np.ndarray,  # type: ignore[name-defined]
     m: int,
     ge_off: int,
-    curt_off: int,
     active_evs: list[EVConfig],
     ev_var_offsets: list[int],
     pv_avail: np.ndarray,  # type: ignore[name-defined]
@@ -51,7 +50,6 @@ def _write_milp_results_to_slots(
         result_x: Full LP solution vector.
         m: Number of active LP slots (``len(future_idx)``).
         ge_off: Offset of ``ge[t]`` variables in *result_x*.
-        curt_off: Offset of ``curt[t]`` variables in *result_x*.
         active_evs: List of active EV configs for EV write-out.
         ev_var_offsets: Start offset of each EV's ``ev_c[t]`` block.
         pv_avail: Per-slot PV surplus (positive kWh).

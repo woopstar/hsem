@@ -111,7 +111,7 @@ HA-dependent sensor entities that consume coordinator data.
 |---|---|
 | `planner/engine_core.py` | Orchestrates the full planning pipeline |
 | `planner/slot_population.py` | Builds time horizon, populates prices/PV/consumption |
-| `planner/charge_scheduler.py` | Assigns charge recommendations |
+| `planner/charge_scheduler.py` | Assigns charge recommendations (planner/charging/ sub-package) |
 | `planner/discharge_scheduler.py` | Assigns discharge recommendations |
 | `planner/candidate_generator.py` | Generates 8+ candidate strategies |
 | `planner/candidate_selector.py` | Scores, validates, picks best candidate |
@@ -127,7 +127,7 @@ HA-dependent sensor entities that consume coordinator data.
 |---|---|
 | `utils/recommendations.py` | `Recommendations` enum + canonical frozensets |
 | `utils/misc.py` | Shared math helpers, config reading, entity lookups |
-| `utils/sensornames.py` | All HA entity name constants |
+| `utils/sensornames/` | All HA entity name constants (sub-package) |
 | `utils/prices.py` | Price lookup, grid fee calculation |
 | `utils/huawei.py` | Huawei Solar inverter API helpers |
 | `utils/logger.py` | `HSEM_LOGGER` — rotating file handler |
@@ -275,7 +275,8 @@ flowchart TD
     subgraph Planner[planner]
         Engine[engine_core.py]
         SlotPopulation[slot_population.py]
-        Charge[charge_scheduler.py]
+        Charge[charge_scheduler.py
+              + charging/ sub-package]
         Discharge[discharge_scheduler.py]
         Candidates[candidate_generator.py]
         Selector[candidate_selector.py]
