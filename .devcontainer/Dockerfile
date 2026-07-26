@@ -18,6 +18,7 @@ RUN apk add --no-cache \
     bash \
     nodejs \
     npm \
+    shellcheck \
     gcc \
     musl-dev \
     swig \
