@@ -124,7 +124,8 @@ The `m[t]` constraints are: `m[t] >= ec[t]` and `m[t] >= ed[t]`.
 
 - **Hard limit: 30 KB per file** in the planner and utils layers.
 - If a file exceeds 30 KB, split it before adding more features.
-- Current oversized files tracked in issues: engine.py (#441), charge_scheduler.py (#442), coordinator.py (#443).
+- Current oversized planner files: `milp_optimizer.py` (75 KB), `engine_core.py` (50 KB),
+  `cost_function.py` (39 KB), `candidate_generator.py` (36 KB), `charge_scheduler.py` (35 KB).
 
 ---
 
@@ -380,32 +381,6 @@ When adding a new sensor/entity from the inverter:
 
 Never hardcode entity IDs — always use `sensornames.py` constants.
 Always check `docs/huawei_entities.md` before looking elsewhere.
-
----
-
-## Open Refactor Issues
-
-| Issue | Title | Status |
-|---|---|---|
-| #439 | Move `_DISCHARGE_RECS` to `utils/recommendations.py` | Closed |
-| #440 | Extract `clamp_efficiency()` to `utils/misc.py` | Closed |
-| #441 | Split `engine.py` into 3 modules | Closed |
-| #442 | Split `charge_scheduler.py` into charge + discharge | Closed |
-| #443 | Split `coordinator.py` into coordinator + builder | Closed |
-
-## Open Bug Issues
-
-| Issue | Title | Status |
-|---|---|---|
-| #444 | MILP cycle cost `ec+ed` vs `max(ec,ed)` | Closed |
-| #445 | `_apply_soc_plan` uses `0.30` proxy threshold | Closed |
-| #446 | `concentrate_discharge` greedy `break` skips viable slots | Fixed in #452 |
-| #447 | Partial-SoC fractions collapse to floor at low SoC | Open
-| #582 | EV charger power oscillates due to frequent MILP re-solves | Closed (reverted) |
-| #630 | EV charge-past-target valued at flat 0.0001 instead of avoided-cost | Closed |
-| #637 | simulate_soc overwrites MILP's ed[t] with greedy discharge allocation | Closed |
-| #659 | Energy-flow write-out inconsistency in MILP degenerate-vertex resolution | Closed (PR #660) |
-| #662 | Degenerate-vertex net-direction collapse still charges a full battery | Fixed in this PR |
 
 ---
 

@@ -19,7 +19,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from custom_components.hsem.models.planned_slot import PlannedSlot
-from custom_components.hsem.planner.candidate_generator import (
+from custom_components.hsem.planner.candidates._aggressive import (
     _apply_aggressive_strategy,
 )
 from custom_components.hsem.utils.prices import SlotPrice

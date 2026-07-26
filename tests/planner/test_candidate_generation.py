@@ -34,15 +34,17 @@ from custom_components.hsem.planner.candidate_generator import (
     CANDIDATE_PASSIVE,
     CANDIDATE_SOLAR_ONLY,
     CandidatePlan,
+    generate_candidates,
+)
+from custom_components.hsem.planner.candidates._mutations import (
     _apply_passive_solar,
-    _apply_soc_plan,
     _clear_all_charge_discharge,
     _copy_slots,
     _remove_all_charge,
     _remove_grid_charge,
     _remove_solar_charge,
-    generate_candidates,
 )
+from custom_components.hsem.planner.candidates._soc_plan import _apply_soc_plan
 from custom_components.hsem.planner.candidate_selector import (
     _validate_candidate,
     select_best_candidate,
