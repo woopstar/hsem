@@ -9,8 +9,7 @@
   "forwardPorts": [8123],
   "mounts": [
     "type=bind,source=${localEnv:HOME}/.ssh,target=/root/.ssh,readonly",
-    "type=bind,source=${localEnv:HOME}/.gnupg,target=/root/.gnupg",
-    "type=bind,source=${localEnv:HOME}/.gitconfig,target=/root/.gitconfig,readonly"
+    "type=bind,source=${localEnv:HOME}/.gnupg,target=/root/.gnupg"
   ],
   "containerEnv": {
     "SSH_AUTH_SOCK": "/tmp/ssh-agent.sock",
