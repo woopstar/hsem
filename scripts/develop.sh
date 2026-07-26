@@ -2,7 +2,7 @@
 
 set -e
 
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit
 
 # Create config dir if not present
 if [[ ! -d "${PWD}/config" ]]; then
