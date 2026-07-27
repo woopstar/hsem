@@ -4,22 +4,21 @@ This document defines code quality standards tailored for agentic coding and AI-
 
 ## Overview
 
-HSEM uses a unified lint pipeline — **isort + black + ruff** — as the single source of truth for
-code quality. All three tools are invoked via a single command: `tox -e lint`. This ensures:
+HSEM uses a unified lint pipeline — **ruff** — as the single source of truth for
+code quality. All tools are invoked via `./scripts/quality.sh`. This ensures:
 
 - **Consistency**: All code follows identical formatting rules across all tools
 - **Determinism**: Code quality is reproducible and predictable
 - **Reduced Review Friction**: Automated checks catch issues before review
 - **Agentic Reliability**: AI agents can reliably produce code that passes all checks
-- **Single entry point**: One command (`tox -e lint`) covers import sorting, formatting, and linting
+- **Single entry point**: One command (`./scripts/quality.sh lint`) covers formatting and linting
 
 ## Core Quality Principles
 
-### 1. **`tox -e lint` is Non-Negotiable**
+### 1. **`./scripts/quality.sh lint` is Non-Negotiable**
 
-Before every commit, run the single unified lint command:
 ```bash
-tox -e lint
+./scripts/quality.sh lint
 ```
 
 This runs in order:
@@ -167,14 +166,14 @@ for sensor in sensors:
 Before every commit, run:
 
 ```bash
-# 1. Format and lint (single command — isort + black + ruff format + ruff check)
-tox -e lint
+# 1. Format and lint
+./scripts/quality.sh lint
 
 # 2. Type checking
-mypy custom_components tests
+./scripts/quality.sh typing
 
 # 3. Run all tests
-pytest tests/ -v
+./scripts/quality.sh test
 
 # 4. Verify no unintended changes
 git status
@@ -191,13 +190,11 @@ The following checks run on every PR:
 
 | Check | Tool | Command | Purpose |
 |-------|------|---------|--------|
-| Import sorting | `isort` | `tox -e lint` | Consistent import order |
-| Formatting | `black` | `tox -e lint` | Consistent code style (88-char lines) |
-| Ruff format | `ruff format` | `tox -e lint` | Ruff-native formatting pass |
-| Linting | `ruff check` | `tox -e lint` | Bugs, style issues, complexity |
-| Type Checking | `mypy` | `tox -e typing` | Type errors and unsafe code |
-| Tests | `pytest` | `pytest tests/` | Verifies functionality |
-| Coverage | `coverage` | `pytest --cov` | Ensures new code is tested |
+| Formatting | `ruff format` | `./scripts/quality.sh lint` | Consistent code style |
+| Linting | `ruff check` | `./scripts/quality.sh lint` | Bugs, style issues, complexity |
+| Type Checking | `mypy` | `./scripts/quality.sh typing` | Type errors and unsafe code |
+| Tests | `pytest` | `./scripts/quality.sh test` | Verifies functionality |
+| Coverage | `coverage` | `--cov` flag | Ensures new code is tested |
 
 **All checks must pass before merge.**
 
@@ -210,7 +207,7 @@ The following checks run on every PR:
 
 ## Lint Pipeline Configuration
 
-All tool configuration lives in `pyproject.toml` and `tox.ini`.
+All tool configuration lives in `pyproject.toml`.
 
 ### Tool settings
 
@@ -293,8 +290,8 @@ def process(items: list[int]) -> dict[str, int]:
 
 When working with this codebase, ensure:
 
-1. **Always run `tox -e lint`** before creating a commit (single command: isort + black + ruff format + ruff check)
-2. **Never submit a PR** that hasn’t passed `tox -e lint` cleanly
+1. **Always run `./scripts/quality.sh lint`** before creating a commit
+2. **Never submit a PR** that hasn't passed `./scripts/quality.sh lint` cleanly
 3. **Ask for clarification** if code quality requirements conflict with implementation needs
 4. **Reference issues** for any technical decisions or trade-offs
 5. **Write tests alongside features** — testing is not optional

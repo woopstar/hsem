@@ -11,20 +11,18 @@ Activate this skill **before every commit** and **before opening any PR**.
 
 Run these in order. If any fails, fix the issues before proceeding.
 
-### Gate 1: Lint (`tox -e lint`)
+### Gate 1: Lint
 
 ```bash
-tox -e lint
+./scripts/quality.sh lint
 ```
 
-Runs: isort → black → ruff format → ruff check
+Runs: ruff format → ruff check. Auto-formats and checks for style violations.
 
-This auto-formats and checks for style violations. Fix any remaining lint errors.
-
-### Gate 2: Type Checking (`tox -e typing`)
+### Gate 2: Type Checking
 
 ```bash
-tox -e typing
+./scripts/quality.sh typing
 ```
 
 Runs: mypy type checking. Must pass with **0 errors**.
@@ -33,27 +31,32 @@ Rules:
 - `disable_error_code` is empty in `pyproject.toml` — never add new suppressions
 - No `# type: ignore` without a comment justifying why
 
-### Gate 3: Quality (`tox -e quality`)
+### Gate 3: Quality
 
 ```bash
-tox -e quality
+./scripts/quality.sh quality
 ```
 
 Runs: pyright + vulture static checks. Must pass with **0 errors**.
 
-### Gate 4: Tests (`tox -e py314`)
+### Gate 4: Tests
 
 ```bash
-tox -e py314
+./scripts/quality.sh test
 ```
 
 Runs: pytest with coverage on Python 3.14.
 
 For faster iteration during development:
 ```bash
-pytest tests/                          # all tests
-pytest tests/test_module.py            # specific file
-pytest tests/test_module.py::test_fn   # specific test
+./scripts/quality.sh test tests/test_module.py           # specific file
+./scripts/quality.sh test tests/test_module.py::test_fn   # specific test
+```
+
+### All Gates at Once
+
+```bash
+./scripts/quality.sh all
 ```
 
 ## File Size Check

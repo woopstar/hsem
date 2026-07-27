@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
 
-apk add --no-cache bash tox
+apk add --no-cache bash
 
 cd "$(dirname "$0")/.." || exit
 

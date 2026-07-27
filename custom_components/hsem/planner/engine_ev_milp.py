@@ -13,6 +13,7 @@ from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.planner.candidate_selector import (
     ev_future_charge_value_per_kwh,
 )
+from custom_components.hsem.utils.units import timedelta_to_hours
 from custom_components.hsem.utils.datetime_utils import as_tz
 
 

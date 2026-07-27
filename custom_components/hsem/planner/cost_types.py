@@ -106,6 +106,7 @@ class CostWeights:
     battery_purchase_price: float = 0.0
     battery_rated_capacity_kwh: float = 10.0
     battery_expected_cycles: int = 6000
+    battery_capacity_loss_pct: float = 30.0
 
     # Separate charge / discharge efficiencies
     charge_efficiency_pct: float = 100.0

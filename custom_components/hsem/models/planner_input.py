@@ -115,10 +115,10 @@ class PlannerInput:
     # --- battery economics ---
     battery_purchase_price: float = 0.0
     battery_expected_cycles: int = 6000
-    #: Additional per-kWh cost of one charge/discharge cycle (wear / tear).
-    #: Added to the min-price-difference guard so the planner only charges
-    #: from the grid when the price spread covers loss **and** wear.
-    #: 0.0 means no extra guard beyond the depreciation threshold.
+    #: Per-kWh extra margin added to the auto-calculated cycle cost.
+    #: The effective cycle cost used by the planner is returned by
+    #: ``resolve_cycle_cost()`` in ``utils/misc.py`` — the single source
+    #: of truth.  Set to 0.0 for no extra margin beyond depreciation.
     battery_cycle_cost_per_kwh: float = 0.0
 
     #: Expected battery capacity loss at end-of-life as a percentage (0-100).

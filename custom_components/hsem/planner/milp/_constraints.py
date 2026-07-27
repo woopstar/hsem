@@ -40,6 +40,7 @@ def _build_constraints(
     max_dis: float,
     max_grid_import_per_slot_kwh: float,
     fuse_active: bool,
+    no_export: bool,
     session_slots_set: set[int],
     session_ev_indices: list[int],
     session_slots: int,
@@ -156,13 +157,26 @@ def _build_constraints(
     # This does NOT affect export — when base_load=0 (PV surplus), ev_acct is
     # already in avg_house_consumption which is covered by PV, and the battery
     # can still export freely.
+    #
+    # When no_export=True, the per-slot cap is extended to ALL slots:
+    # ed[t] ≤ base_load[t] / η_dis.  This prevents the battery from
+    # exporting to the grid — it only serves house load.  Used when the
+    # user has disabled excess export in the config flow.
     # ------------------------------------------------------------------
     ev_discharge_guard_active = (not active_evs) and bool(np.any(ev_accounted > 1e-9))
     ed_ub_per_slot: list[float] = []
     for t in range(m):
+        # Per-slot cap: battery must not discharge more than what's needed
+        # to cover house load (minus EV-accounted load when applicable).
+        # When no_export=True, all slots get this cap.  Otherwise, only
+        # EV-accounted slots get it.
+        cap_house_load = base_load[t] / discharge_eff
         if ev_discharge_guard_active and ev_accounted[t] > 1e-9:
-            cap = max(base_load[t] - ev_accounted[t], 0.0) / discharge_eff
-            ed_ub_per_slot.append(min(cap, max_dis))
+            cap_house_load = max(base_load[t] - ev_accounted[t], 0.0) / discharge_eff
+        if no_export or (
+            ev_discharge_guard_active and ev_accounted[t] > 1e-9
+        ):
+            ed_ub_per_slot.append(min(cap_house_load, max_dis))
         else:
             ed_ub_per_slot.append(max_dis)
 
@@ -285,7 +299,7 @@ def _build_constraints(
                     b_ub[ev_row] = 0.0
                     ev_row += 1
 
-            # Surplus-only constraint for charge-past-target EVs:
+    # Surplus-only constraint for charge-past-target EVs:
             # ev_c[t] / charger_eff ≤ max(0, pv[t] - base_load[t])
             # This ensures past-target charging ONLY uses genuine PV
             # surplus — never battery discharge or grid import.

@@ -101,10 +101,10 @@ Branch naming: `<type>/<issue-number>-<slug>`
 ## Quality Gates (All Four Must Pass)
 
 ```bash
-tox -e lint      # isort + black + ruff format + ruff check
-tox -e typing    # mypy — 0 errors
-tox -e quality   # pyright + vulture — 0 errors
-tox -e py314     # pytest with coverage
+./scripts/quality.sh lint     # ruff format + ruff check
+./scripts/quality.sh typing   # mypy — 0 errors
+./scripts/quality.sh quality  # pyright + vulture — 0 errors
+./scripts/quality.sh test     # pytest with coverage
 ```
 
 ---
@@ -112,6 +112,6 @@ tox -e py314     # pytest with coverage
 ## Commit & PR
 
 - Conventional Commits: `<type>(<scope>): <description>`
-- PR description: summary, files changed, what changed and why, tests, tox results
+- PR description: summary, files changed, what changed and why, tests, quality gate results
 - Include `Fixes #<ISSUE_NUMBER>` if applicable
 - Never merge without explicit permission

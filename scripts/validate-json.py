@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Validate all JSON/JSONC files in the repo."""
+
 import json
 import re
 import sys

@@ -33,6 +33,7 @@ from typing import Any
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
+
 def _build_metadata_map(source_cur, target_cur):
     """Return (source_id→statistic_id, statistic_id→target_id)."""
     source_cur.execute("SELECT id, statistic_id FROM statistics_meta")
@@ -45,6 +46,7 @@ def _build_metadata_map(source_cur, target_cur):
 
 
 # ── per-table import ─────────────────────────────────────────────────────────
+
 
 def _import_table(
     *,
@@ -67,10 +69,7 @@ def _import_table(
     col_list = ", ".join(cols_no_id)
     placeholders = ", ".join(["?"] * len(cols_no_id))
 
-    insert_sql = (
-        f"INSERT OR IGNORE INTO {table} ({col_list}) "
-        f"VALUES ({placeholders})"
-    )
+    insert_sql = f"INSERT OR IGNORE INTO {table} ({col_list}) VALUES ({placeholders})"
 
     # metadata_id position within cols_no_id
     meta_idx = cols_no_id.index("metadata_id")
@@ -144,6 +143,7 @@ def _import_table(
 
 
 # ── main ─────────────────────────────────────────────────────────────────────
+
 
 def backfill(source_db: str, target_db: str, dry_run: bool = False) -> None:
     # Open backup read-only so we can't corrupt it by accident.

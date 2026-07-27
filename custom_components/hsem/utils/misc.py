@@ -123,6 +123,58 @@ def get_max_discharge_power(usable_capacity: int) -> int:
     return mapping.get(usable_capacity, 2500)
 
 
+def resolve_cycle_cost(
+    purchase_price: float,
+    usable_kwh: float,
+    expected_cycles: int,
+    capacity_loss_pct: float = 30.0,
+    user_margin: float = 0.0,
+) -> float:
+    """Canonical battery cycle depreciation cost per kWh of throughput.
+
+    **This is the single source of truth** for cycle cost across the entire
+    codebase — MILP objective, cost function, heuristic charge passes, and
+    recommended threshold all derive from this one function.
+
+    Formula::
+
+        auto = (purchase_price × capacity_loss_pct / 100)
+               / (2 × usable_kwh × expected_cycles)
+
+        result = max(auto, user_margin)
+
+    The ``2×`` factor accounts for one full cycle (charge + discharge).
+    ``capacity_loss_pct`` accounts for the fractional capacity lost over the
+    battery's lifetime (e.g. 30 % loss at EOL, 70 % retained).
+
+    ``user_margin`` acts as a floor: set a positive value to add extra
+    friction beyond the auto-calculated depreciation.  Returns 0.0 when
+    any required value is non-positive.
+
+    Args:
+        purchase_price: Total battery system cost in local currency.
+        usable_kwh: Usable battery capacity in kWh (live, not rated).
+        expected_cycles: Total expected lifetime charge/discharge cycles.
+        capacity_loss_pct: Battery capacity lost at end-of-life as a
+            percentage of original capacity (0-100).  LiFePO4 EOL is
+            typically defined at 80 % retained = 20 % loss.
+            Default 30 % includes margin for calendar ageing.
+        user_margin: Additional per-kWh margin (≥ 0) added to the
+            auto-calculated cost.  Default 0.0 (no extra margin).
+
+    Returns:
+        Depreciation cost per kWh of battery throughput (local currency / kWh).
+    """
+    if purchase_price <= 1e-9 or expected_cycles <= 0 or usable_kwh <= 1e-9:
+        return max(0.0, user_margin)
+
+    capacity_loss_dec = max(min(capacity_loss_pct, 100.0), 0.0) / 100.0
+    auto = (purchase_price * capacity_loss_dec) / (
+        2 * expected_cycles * usable_kwh
+    )
+    return max(auto, user_margin)
+
+
 def calculate_recommended_threshold(
     purchase_price: float,
     expected_cycles: int,
@@ -131,6 +183,9 @@ def calculate_recommended_threshold(
 ) -> float:
     """Calculate the recommended price threshold based on battery depreciation.
 
+    Deprecated thin wrapper around :func:`resolve_cycle_cost` that rounds
+    the result to 3 decimal places for display purposes.
+
     The threshold represents the minimum price spread required for grid
     charging to be economically rational.  It covers only battery
     depreciation — conversion (in)efficiency losses are handled separately
@@ -138,35 +193,23 @@ def calculate_recommended_threshold(
     term, both of which price the losses using the actual import price of
     each slot rather than a fixed add-on.
 
-    **Depreciation term**::
-
-        depreciation = (purchase_price × capacity_loss_pct / 100)
-                       / (2 × usable_capacity × expected_cycles)
-
-    The ``2×`` factor accounts for one full cycle (charge + discharge).
-
     Args:
         purchase_price: Total battery system cost in local currency.
         expected_cycles: Total expected lifetime charge/discharge cycles.
         usable_capacity: Usable battery capacity in kWh.
-        capacity_loss_pct: Battery capacity lost at end-of-life as a percentage
-            of original capacity (0-100).  LiFePO4 EOL is typically defined at
-            80% retained capacity = 20% loss.  Defaults to 30% to account for
-            both EOL degradation and calendar ageing.
+        capacity_loss_pct: Battery capacity lost at end-of-life as a
+            percentage of original capacity (0-100).  Defaults to 30 %.
 
     Returns:
         Depreciation cost per kWh of battery throughput, rounded to 3 decimal
         places (local currency / kWh).
     """
-    if purchase_price <= 0 or expected_cycles <= 0 or usable_capacity <= 0:
-        return 0.0
-
-    # Depreciation cost per kWh of throughput.
-    # The 2× factor accounts for charge + discharge per full cycle.
-    # Capacity loss accounts for residual value at end-of-life.
-    capacity_loss_dec = max(min(capacity_loss_pct, 100.0), 0.0) / 100.0
-    depr = (purchase_price * capacity_loss_dec) / (
-        2 * expected_cycles * usable_capacity
+    return round(
+        resolve_cycle_cost(
+            purchase_price=purchase_price,
+            usable_kwh=usable_capacity,
+            expected_cycles=expected_cycles,
+            capacity_loss_pct=capacity_loss_pct,
+        ),
+        3,
     )
-
-    return round(depr, 3)

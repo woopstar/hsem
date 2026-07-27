@@ -13,7 +13,7 @@ please refer to `AGENTS.md`.
 2. **Verify Python 3.14** — Ensure you're using Python 3.14 (see `.python-version`)
 3. **Create a feature branch** — Use format: `feat/<issue-number>-<description>`
 4. **Make focused changes** — Solve one issue at a time
-5. **Run quality checks** — `tox -e lint`, `tox -e typing`, `tox -e quality`, `tox -e py314`
+5. **Run quality checks** — `./scripts/quality.sh lint`, `./scripts/quality.sh typing`, `./scripts/quality.sh quality`, `./scripts/quality.sh test`
 6. **Submit PR for review** — Do not merge without explicit permission
 
 ## Core Principles
@@ -32,10 +32,10 @@ please refer to `AGENTS.md`.
    - Keep changes focused and minimal
 
 3. **Code Quality**
-   - Run `tox -e lint` before committing (isort + black + ruff format + ruff check)
-   - Run `tox -e typing` after lint (mypy type checking)
-   - Run `tox -e quality` after typing (pyright + vulture)
-   - Run `tox -e py314` to run tests with coverage before opening a PR
+   - Run `./scripts/quality.sh lint` before committing (ruff format + ruff check)
+   - Run `./scripts/quality.sh typing` after lint (mypy type checking)
+   - Run `./scripts/quality.sh quality` after typing (pyright + vulture)
+   - Run `./scripts/quality.sh test` to run tests with coverage before opening a PR
    - Include type hints for all public functions
    - Write docstrings for all public modules, classes, and functions
    - Write tests for new functionality
@@ -128,13 +128,13 @@ git checkout -b feat/<issue-number>-<description>
 # 3. Make your changes and write tests
 
 # 4. Format and lint (REQUIRED)
-tox -e lint
+./scripts/quality.sh lint
 # 5. Type check (REQUIRED)
-tox -e typing
+./scripts/quality.sh typing
 # 6. Quality checks (REQUIRED)
-tox -e quality
+./scripts/quality.sh quality
 # 7. Run tests (REQUIRED)
-tox -e py314
+./scripts/quality.sh test
 
 # 8. Verify changes
 git status
@@ -186,17 +186,17 @@ See `AGENTS.md` → **Home Assistant Compliance** section for detailed requireme
 **REQUIRED before every commit:**
 
 ```bash
-# Step 1: Format and lint (MUST be done — isort + black + ruff format + ruff check)
-tox -e lint
+# Step 1: Format and lint (MUST be done)
+./scripts/quality.sh lint
 
 # Step 2: Type checking
-mypy custom_components tests
+./scripts/quality.sh typing
 
 # Step 3: Quality checks (pyright + vulture)
-tox -e quality
+./scripts/quality.sh quality
 
 # Step 4: Run tests with coverage
-tox -e py314
+./scripts/quality.sh test
 
 # Step 5: Verify no unintended changes
 git status
@@ -281,7 +281,7 @@ atomic and focused ✅ Reference `AGENTS.md` for comprehensive rules
 
 ## What to Avoid
 
-❌ Submitting a PR without running `tox -e lint`, `tox -e typing`, `tox -e quality`, and `tox -e py314` first ❌ Ignoring lint warnings or errors
+❌ Submitting a PR without running `./scripts/quality.sh all` first ❌ Ignoring lint warnings or errors
 ❌ Using Python versions other than 3.14 ❌ Refactoring unrelated code ❌ Changing planner or safety
 features without explicit issue ❌ Reformatting code outside your changes ❌ Adding new dependencies
 without justification ❌ Changing logging levels or sensitive output ❌ Modifying configuration
@@ -301,7 +301,7 @@ explicit permission
 - **General rules and constraints**: See `AGENTS.md`
 - **Home Assistant requirements**: See `AGENTS.md` → **Home Assistant Compliance**
 - **Python version issues**: Ensure you're using Python 3.14 from `.python-version`
-- **Lint/format errors**: Run `tox -e lint` to auto-fix most issues (isort, black, ruff format, ruff check)
+- **Lint/format errors**: Run `./scripts/quality.sh lint` to auto-fix most issues
 - **Unclear requirements**: Stop and ask for clarification before implementing
 - **Design decisions**: Refer to `docs/` directory for architecture notes
 - **Code quality**: When in doubt, run the full pre-commit checklist

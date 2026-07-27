@@ -24,7 +24,7 @@ It contains the complete Home Assistant development compliance checklist:
 - Translations, entity base classes, and device info
 - Style guidelines (import order, docstrings, logging, type hints)
 - PR scope rules and testing requirements
-- Quality gates: `tox -e lint`, `tox -e typing`, `tox -e quality`, `tox -e py314`
+- Quality gates: `./scripts/quality.sh lint`, `./scripts/quality.sh typing`, `./scripts/quality.sh quality`, `./scripts/quality.sh test`
 
 ---
 
@@ -48,10 +48,10 @@ When asked to solve a GitHub issue, always follow these steps in order:
 7. **Add or update regression tests** — Cover the bug or new behavior.
 8. **Run the relevant tests** — `pytest tests/` or the targeted test file.
 9. **Run lint/type + quality checks** — all four must pass before opening a PR:
-   - `tox -e lint` — isort + black + ruff format + ruff check
-   - `tox -e typing` — mypy type checking
-   - `tox -e quality` — pyright + vulture
-   - `tox -e py314` — pytest with coverage
+   - `./scripts/quality.sh lint` — ruff format + ruff check
+   - `./scripts/quality.sh typing` — mypy type checking
+   - `./scripts/quality.sh quality` — pyright + vulture
+   - `./scripts/quality.sh test` — pytest with coverage
 10. **Report a summary** including:
    - Issue title
    - Branch name
@@ -152,10 +152,10 @@ These helpers exist — never re-implement them inline:
 - Include docstrings for all public modules, classes, functions, and methods.
 - **Never use `==` or `!=` to compare floating-point values.** In production code use an epsilon
   guard (`abs(x) > 1e-9` instead of `x != 0`). In tests always use `pytest.approx()`.
-- Run `tox -e lint` before every commit (isort + black + ruff format + ruff check in one command).
-- Run `tox -e typing` after lint — mypy type checking.
-- Run `tox -e quality` after typing (pyright + vulture static checks).
-- Run `tox -e py314` to run the full test suite with coverage before opening a PR.
+- Run `./scripts/quality.sh lint` before every commit.
+- Run `./scripts/quality.sh typing` after lint — type checking.
+- Run `./scripts/quality.sh quality` after typing — static analysis.
+- Run `./scripts/quality.sh test` to run the full test suite with coverage before opening a PR.
 
 ## Write Modular Code
 - Break code into modules and components for easy reuse.

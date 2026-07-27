@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from custom_components.hsem.utils.units import hours_ahead
+
 if TYPE_CHECKING:
     from custom_components.hsem.models.ev_config import EVConfig
     from custom_components.hsem.models.planned_slot import PlannedSlot
@@ -61,8 +63,8 @@ def _build_objective(
             # Compute hours from now for this slot's midpoint
             slot = slots[future_idx[t]]
             slot_mid = slot.start + (slot.end - slot.start) / 2
-            hours_ahead = max((slot_mid - now).total_seconds() / 3600.0, 0.0)
-            discount = time_discount_rate**hours_ahead
+            ha = hours_ahead(now, slot_mid)
+            discount = time_discount_rate**ha
 
         # Charge-side conversion loss: energy lost during charge, priced at
         # this slot's import price (where the charge occurs).
@@ -190,8 +192,8 @@ def _build_objective(
                 if use_discount:
                     slot = slots[future_idx[t]]
                     slot_mid = slot.start + (slot.end - slot.start) / 2
-                    hours_ahead = max((slot_mid - now).total_seconds() / 3600.0, 0.0)
-                    discount = time_discount_rate**hours_ahead
+                    ha = hours_ahead(now, slot_mid)
+                    discount = time_discount_rate**ha
                 # Negative coefficient = reduces objective = benefit.
                 c_obj[ev_off + t] -= (ev_value / ev.charger_efficiency) * discount
 
@@ -205,8 +207,8 @@ def _build_objective(
             if use_discount:
                 slot = slots[future_idx[t]]
                 slot_mid = slot.start + (slot.end - slot.start) / 2
-                hours_ahead = max((slot_mid - now).total_seconds() / 3600.0, 0.0)
-                discount = time_discount_rate**hours_ahead
+                ha = hours_ahead(now, slot_mid)
+                discount = time_discount_rate**ha
             c_obj[gi_pen_off + t] = p_fuse * discount
 
     return c_obj

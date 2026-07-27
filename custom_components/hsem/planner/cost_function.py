@@ -94,6 +94,7 @@ from custom_components.hsem.planner.cost_types import (  # noqa: F401
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import clamp_efficiency
 from custom_components.hsem.utils.recommendations import Recommendations
+from custom_components.hsem.utils.units import hours_ahead
 
 # Re-export CostWeights and PlanCostBreakdown so existing importers don't break.
 __all__ = ["CostWeights", "PlanCostBreakdown", "compare_plans", "score_plan"]
@@ -290,8 +291,8 @@ def score_plan(
                 now is not None
             )  # guarded by use_discount = discount_rate < 1.0 and now is not None
             slot_mid = slot.start + (slot.end - slot.start) / 2
-            hours_ahead = max((slot_mid - now).total_seconds() / 3600.0, 0.0)
-            discount = discount_rate**hours_ahead
+            hours_ahead_val = hours_ahead(now, slot_mid)
+            discount = discount_rate**hours_ahead_val
         else:
             discount = 1.0
 

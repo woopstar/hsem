@@ -1,8 +1,9 @@
 """Explicit unit-conversion helpers for HSEM (issue #290).
 
 This module provides named conversion functions that make W/kW, Wh/kWh,
-and price-per-unit transformations explicit and auditable.  Every function
-is a pure one-liner — the value is in the *name*, not the arithmetic.
+price-per-unit transformations, duration conversions, and battery economics
+explicit and auditable.  Every function is a pure one-liner — the value is
+in the *name*, not the arithmetic.
 
 All functions accept ``int`` or ``float`` and return ``float``.
 
@@ -12,21 +13,22 @@ Usage
 ...     watt_to_kilowatt, kilowatt_to_watt,
 ...     watthours_to_kilowatthours, kilowatthours_to_watthours,
 ...     power_to_energy_kwh, energy_to_power_kw,
+...     timedelta_to_hours, slot_duration_hours, hours_ahead,
+...     roundtrip_loss_pct, usable_kwh_from_rated,
+...     max_energy_per_slot_kwh,
 ... )
 >>>
 >>> watt_to_kilowatt(5000.0)          # 5000 W → 5.0 kW
 5.0
->>> kilowatt_to_watt(5.0)              # 5.0 kW → 5000 W
-5000.0
->>> watthours_to_kilowatthours(10000.0)  # 10000 Wh → 10.0 kWh
-10.0
->>> power_to_energy_kwh(power_kw=5.0, duration_h=2.0)  # 5 kW × 2 h → 10 kWh
-10.0
->>> energy_to_power_kw(energy_kwh=10.0, duration_h=2.0)  # 10 kWh ÷ 2 h → 5 kW
-5.0
+>>> timedelta_to_hours(timedelta(minutes=90))  # 90 min → 1.5 h
+1.5
+>>> roundtrip_loss_pct(97.0, 97.0)   # (1-0.97*0.97)*100
+5.91
 """
 
 from __future__ import annotations
+
+from datetime import datetime, timedelta
 
 # ---------------------------------------------------------------------------
 # Power conversions (W ↔ kW)
@@ -87,6 +89,56 @@ def kilowatthours_to_watthours(energy_kwh: float) -> float:
 
 
 # ---------------------------------------------------------------------------
+# Duration conversions
+# ---------------------------------------------------------------------------
+
+
+def timedelta_to_hours(td: timedelta) -> float:
+    """Convert a ``timedelta`` to hours.
+
+    Canonical replacement for ``td.total_seconds() / 3600.0``.
+
+    Args:
+        td: Time duration.
+
+    Returns:
+        Duration in hours (h).
+    """
+    return td.total_seconds() / 3600.0
+
+
+def slot_duration_hours(slot_start: datetime, slot_end: datetime) -> float:
+    """Return the duration of a time slot in hours.
+
+    Canonical replacement for ``(end - start).total_seconds() / 3600.0``.
+
+    Args:
+        slot_start: Slot start time.
+        slot_end: Slot end time.
+
+    Returns:
+        Slot duration in hours (h).
+    """
+    return timedelta_to_hours(slot_end - slot_start)
+
+
+def hours_ahead(now: datetime, future_time: datetime) -> float:
+    """Return the hours from *now* to *future_time* (≥ 0).
+
+    Canonical replacement for
+    ``max((future_time - now).total_seconds() / 3600.0, 0.0)``.
+
+    Args:
+        now: Current time (timezone-aware).
+        future_time: Target time (same timezone as *now*).
+
+    Returns:
+        Non-negative hours ahead.
+    """
+    return max(timedelta_to_hours(future_time - now), 0.0)
+
+
+# ---------------------------------------------------------------------------
 # Duration-aware conversions (power ⇄ energy)
 # ---------------------------------------------------------------------------
 
@@ -122,6 +174,86 @@ def energy_to_power_kw(energy_kwh: float, duration_h: float) -> float:
         return 0.0
 
     return energy_kwh / duration_h
+
+
+# ---------------------------------------------------------------------------
+# Battery / efficiency helpers
+# ---------------------------------------------------------------------------
+
+
+def roundtrip_loss_pct(
+    charge_efficiency_pct: float,
+    discharge_efficiency_pct: float,
+) -> float:
+    """Return the roundtrip energy loss as a percentage (0–100).
+
+    ``loss_pct = (1 − (charge_eff × discharge_eff)) × 100``
+
+    Replacement for the ``(1.0 - cd * dd) * 100.0`` pattern.
+
+    Args:
+        charge_efficiency_pct: Charge-side efficiency (0–100).
+        discharge_efficiency_pct: Discharge-side efficiency (0–100).
+
+    Returns:
+        Roundtrip loss in percentage points (e.g. 5.91 for 97 % each way).
+    """
+    return (
+        1.0
+        - (charge_efficiency_pct / 100.0) * (discharge_efficiency_pct / 100.0)
+    ) * 100.0
+
+
+def usable_kwh_from_rated(
+    rated_capacity_kwh: float,
+    min_soc_pct: float,
+    max_soc_pct: float,
+) -> float:
+    """Return usable battery capacity in kWh given a DoD window.
+
+    ``usable = rated × (max_soc_pct − min_soc_pct) / 100``
+
+    Replacement for the ``rated * (max-min) / 100`` pattern.
+
+    Args:
+        rated_capacity_kwh: Nameplate battery capacity (kWh).
+        min_soc_pct: Minimum allowed SoC as a percentage (0–100).
+        max_soc_pct: Maximum allowed SoC as a percentage (0–100).
+
+    Returns:
+        Usable capacity in kWh.
+    """
+    if rated_capacity_kwh <= 0 or min_soc_pct >= max_soc_pct:
+        return 0.0
+    return rated_capacity_kwh * (max_soc_pct - min_soc_pct) / 100.0
+
+
+def max_energy_per_slot_kwh(
+    power_w: float,
+    interval_minutes: int,
+    efficiency_fraction: float = 1.0,
+) -> float:
+    """Return the maximum energy (kWh) deliverable in one planner slot.
+
+    ``energy = (power_w / 1000 × efficiency) / (60 / interval_minutes)``
+
+    Replacement for the
+    ``(power_w / 1000 * eff) / (60 / interval_minutes)`` pattern used for
+    max charge/discharge per slot.
+
+    Args:
+        power_w: Maximum power in Watts (W).
+        interval_minutes: Planner interval length (minutes).
+        efficiency_fraction: Efficiency as a fraction (0–1).  Default 1.0
+            for no efficiency adjustment.
+
+    Returns:
+        Maximum energy per slot in kWh.
+    """
+    if power_w <= 0 or interval_minutes <= 0:
+        return 0.0
+    slot_hours = interval_minutes / 60.0
+    return watt_to_kilowatt(power_w) * efficiency_fraction * slot_hours
 
 
 # ---------------------------------------------------------------------------

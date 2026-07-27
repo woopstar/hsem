@@ -167,11 +167,11 @@ If credentials, API keys, or tokens are required:
   requested.
 - Keep commits small and focused.
 - Avoid introducing new dependencies unless justified and discussed with the user.
-- Apply Python style rules as defined in `pyproject.toml` and `tox.ini`.
-- Run `tox -e lint` locally before committing (runs isort, black, ruff format, ruff check).
-- Run `tox -e typing` after lint — mypy type checking.
-- Run `tox -e quality` after typing (pyright + vulture static checks).
-- Run `tox -e py314` to run the full test suite with coverage before opening a PR.
+- Apply Python style rules as defined in `pyproject.toml`.
+- Run `./scripts/quality.sh lint` locally before committing.
+- Run `./scripts/quality.sh typing` after lint — mypy type checking.
+- Run `./scripts/quality.sh quality` after typing (pyright + vulture static checks).
+- Run `./scripts/quality.sh test` to run the full test suite with coverage before opening a PR.
 - See `CODE_QUALITY_STANDARDS.md` for full quality rules and conventions.
 - **Never use `==` or `!=` to compare floating-point values.** In production code use an epsilon
   guard (e.g. `abs(x) > 1e-9` instead of `x != 0`). In tests always use `pytest.approx()`.
@@ -256,9 +256,9 @@ Before creating a commit, the agent MUST report the result of:
 
 Before submitting a PR, the agent MUST:
 
-- Run `tox -e lint` to format and lint all code (runs isort, black, ruff format, and ruff check)
-- Run `tox -e quality` after lint (runs pyright and vulture static checks)
-- Run all tests locally: `pytest tests/`
+- Run `./scripts/quality.sh lint` to format and lint all code
+- Run `./scripts/quality.sh quality` after lint (runs pyright and vulture static checks)
+- Run all tests locally: `./scripts/quality.sh test`
 - Verify `git status` shows only intended changes
 - Commit changes with: `git commit -m "<type>(<scope>): <description>"`
 
@@ -333,13 +333,13 @@ A change is considered complete when:
 - All relevant tests pass locally and in CI
 - New behavior is covered by tests (where feasible)
 - Code follows project style and conventions (enforced by isort, black, and ruff)
-- **All lint checks pass** (`tox -e lint` — runs isort, black, ruff format, ruff check)
-- **Type checks pass** (`tox -e typing` — runs mypy)
-- **Quality checks pass** (`tox -e quality` — runs pyright and vulture)
-- **Tests pass** (`tox -e py314` — runs pytest with coverage)
+- **All lint checks pass** (`./scripts/quality.sh lint`)
+- **Type checks pass** (`./scripts/quality.sh typing` — runs mypy)
+- **Quality checks pass** (`./scripts/quality.sh quality` — runs pyright and vulture)
+- **Tests pass** (`./scripts/quality.sh test` — runs pytest with coverage)
 - Documentation is updated if configuration, API, or user-facing changes are made
 - No secrets are committed
-- All linting, formatting, type, quality, and test checks pass (`tox -e lint`, `tox -e typing`, `tox -e quality`, `tox -e py314` and CI)
+- All linting, formatting, type, quality, and test checks pass (`./scripts/quality.sh all` and CI)
 - The implementation adheres strictly to the No-Assumption Rule
 - The change aligns with Home Assistant integration standards
 - Code quality is enhanced (no technical debt introduced)
