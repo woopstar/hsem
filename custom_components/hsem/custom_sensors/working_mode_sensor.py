@@ -419,7 +419,19 @@ class HSEMWorkingModeSensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
             # resolved recommendation (e.g. ev_smart_charging) rather than
             # the raw planner output (e.g. batteries_charge_solar).
             data.state = hourly_rec.recommendation
-            _LOGGER.debug(f"Current hourly recommendation: {hourly_rec}")
+            _LOGGER.debug(
+                "Current hourly recommendation: state=%s  "
+                "ev_charger_calculated_power=%dW  "
+                "ev_second_charger_calculated_power=%dW  "
+                "ev_total_planned_load_kwh=%.3f  "
+                "ev_planned_load_kwh=%.3f  ev_accounted_load_kwh=%.3f",
+                hourly_rec.recommendation,
+                hourly_rec.ev_charger_calculated_power,
+                hourly_rec.ev_second_charger_calculated_power,
+                hourly_rec.ev_total_planned_load_kwh,
+                hourly_rec.ev_planned_load_kwh,
+                hourly_rec.ev_accounted_load_kwh,
+            )
 
         # Gate hardware writes on read_only and degraded mode.
         writes_safe = hardware_writes_allowed(live.degraded_mode)

@@ -27,6 +27,7 @@ from typing import Any
 from homeassistant.const import STATE_UNAVAILABLE
 
 from custom_components.hsem.utils.datetime_utils import utc_key
+from custom_components.hsem.utils.logger import log_planner
 
 # ---------------------------------------------------------------------------
 # Public data structures
@@ -390,11 +391,26 @@ def build_ev_charging_plan(
     plan.total_kwh_needed = round(energy_needed, 3)
     plan.deadline = inp.deadline
 
+    log_planner(
+        "debug",
+        "[ev_planner] build_ev_charging_plan START  soc=%.1f%%  target=%.1f%%  "
+        "needed=%.3fkWh  deadline=%s",
+        inp.current_soc_pct,
+        inp.target_soc_pct,
+        energy_needed,
+        inp.deadline.isoformat() if inp.deadline else "none",
+    )
+
     # When energy_needed ≈ 0 the EV is at or above target SoC.
     # Charge-past-target is handled exclusively by the MILP — the EV
     # planner plays no role in that decision.
     if abs(energy_needed) < 1e-9:
         plan.state = "fully_charged"
+        log_planner(
+            "debug",
+            "[ev_planner] build_ev_charging_plan DONE  state=fully_charged  "
+            "energy_needed=0 (already at or above target SoC)",
+        )
         return plan
 
     # --- Candidate slot filtering (before effective deadline) ---
@@ -428,6 +444,12 @@ def build_ev_charging_plan(
         if deadline_clamped:
             plan.data_quality["effective_deadline"] = effective_deadline.isoformat()
             plan.data_quality["deadline_clamped"] = True
+        log_planner(
+            "debug",
+            "[ev_planner] build_ev_charging_plan DONE  state=waiting  "
+            "no candidate slots before effective_deadline=%s",
+            effective_deadline.isoformat(),
+        )
         return plan
 
     # --- Two-pass slot selection ---
@@ -489,6 +511,15 @@ def build_ev_charging_plan(
         slot_hours = avail_min / 60.0
         ac_power_w = (allocated / eff) / slot_hours * 1000.0
         if ac_power_w < inp.charger_min_power_w - 1e-9:
+            log_planner(
+                "debug",
+                "[ev_planner] slot_skipped  start=%s  end=%s  "
+                "reason=ac_power_below_minimum  ac_power_w=%.0f  min_power_w=%.0f",
+                s_start.isoformat(),
+                s_end.isoformat(),
+                ac_power_w,
+                inp.charger_min_power_w,
+            )
             continue
 
         # ``allocated`` is battery-side kWh delivered to the EV.
@@ -520,6 +551,23 @@ def build_ev_charging_plan(
         selected.append(ev_slot)
         remaining_energy -= allocated
 
+        log_planner(
+            "debug",
+            "[ev_planner] slot_selected  start=%s  end=%s  "
+            "surplus=%.3fkWh  import_price=%.4f  "
+            "allocated=%.3fkWh  ac_load=%.3fkWh  "
+            "solar_surplus=%.3fkWh  import_needed=%.3fkWh  cost=%.4f",
+            s_start.isoformat(),
+            s_end.isoformat(),
+            net_surplus,
+            slot_import_price[i],
+            allocated,
+            ac_load,
+            net_surplus_used,
+            import_needed,
+            cost,
+        )
+
     # --- Pass 3 removed ---
     # Charge-past-target is now handled exclusively by the MILP.
     # When the MILP wins, it co-optimises the EV alongside the battery
@@ -545,6 +593,16 @@ def build_ev_charging_plan(
         )
     else:
         plan.state = "waiting"
+
+    log_planner(
+        "debug",
+        "[ev_planner] build_ev_charging_plan DONE  state=%s  slots=%d  "
+        "total_allocated=%.3fkWh  remaining=%.3fkWh",
+        plan.state,
+        len(selected),
+        energy_needed - remaining_energy,
+        remaining_energy,
+    )
 
     # Surface the effective deadline (and whether the one-midnight-crossing
     # cap actually changed the user-configured deadline) so the success path

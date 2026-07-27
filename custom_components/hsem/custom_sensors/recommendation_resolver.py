@@ -13,6 +13,7 @@ from __future__ import annotations
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.utils.conversion import convert_to_float
+from custom_components.hsem.utils.logger import HSEM_LOGGER
 from custom_components.hsem.utils.recommendations import Recommendations
 
 
@@ -43,14 +44,24 @@ def resolve_current_recommendation(
     if rec is None:
         return
 
+    original_recommendation = rec.recommendation
+
     # 1. Negative import price → force export
     import_price = convert_to_float(live.import_electricity_price)
     if import_price is not None and import_price < 0:
         rec.recommendation = Recommendations.ForceExport.value
+        HSEM_LOGGER.debug(
+            "[resolver] negative import price (%.4f) → overriding %s to force_export",
+            import_price,
+            original_recommendation,
+        )
         return
 
     # 2. Grid charging in progress → preserve, do not override
     if rec.recommendation == Recommendations.BatteriesChargeGrid.value:
+        HSEM_LOGGER.debug(
+            "[resolver] batteries_charge_grid active → keeping recommendation unchanged"
+        )
         return
 
     # 3. Any EV is actively charging AND the planner allocated EV load for
@@ -70,9 +81,31 @@ def resolve_current_recommendation(
         or rec.ev_second_charger_calculated_power > 1e-9
         or rec.ev_total_planned_load_kwh > 1e-9
     )
-    if (live.ev.is_charging or live.ev_second.is_charging) and planner_allocated_ev:
+    ev_actively_charging = live.ev.is_charging or live.ev_second.is_charging
+
+    if ev_actively_charging and planner_allocated_ev:
         rec.recommendation = Recommendations.EVSmartCharging.value
+        HSEM_LOGGER.debug(
+            "[resolver] EV actively charging + planner_allocated_ev=True "
+            "(ev_power=%dW ev2_power=%dW ev_total_load=%.3fkWh) "
+            "→ overriding %s to ev_smart_charging",
+            rec.ev_charger_calculated_power,
+            rec.ev_second_charger_calculated_power,
+            rec.ev_total_planned_load_kwh,
+            original_recommendation,
+        )
         return
+
+    if ev_actively_charging and not planner_allocated_ev:
+        HSEM_LOGGER.debug(
+            "[resolver] EV actively charging but planner_allocated_ev=False "
+            "(ev_power=%dW ev2_power=%dW ev_total_load=%.3fkWh) "
+            "→ keeping original recommendation %s",
+            rec.ev_charger_calculated_power,
+            rec.ev_second_charger_calculated_power,
+            rec.ev_total_planned_load_kwh,
+            original_recommendation,
+        )
 
     # 4. Battery has enough energy to cover remaining scheduled discharge needs
     if (
@@ -81,3 +114,10 @@ def resolve_current_recommendation(
         > batteries_schedules_remaining_capacity_needed
     ):
         rec.recommendation = Recommendations.BatteriesDischargeMode.value
+        HSEM_LOGGER.debug(
+            "[resolver] battery above schedule need (%.2f > %.2f kWh) "
+            "→ overriding %s to batteries_discharge_mode",
+            live.battery_current_capacity_kwh,
+            batteries_schedules_remaining_capacity_needed,
+            original_recommendation,
+        )
