@@ -986,6 +986,14 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                         now_slot.ev_charger_calculated_power = (
                             round(pwr_kw * 1000) if pwr_kw > 0 else 0.0
                         )
+                        async_log(
+                            "debug",
+                            "[coordinator] Auto-Full EV: negative price (%.4f) "
+                            "→ overriding current slot to ev_smart_charging "
+                            "at %dW",
+                            live.import_electricity_price,
+                            now_slot.ev_charger_calculated_power,
+                        )
 
                 # 8c. Force-charge-now override: when the user toggles the
                 # "EV Force Charge Now" switch, override the current slot's
@@ -1025,6 +1033,13 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                             now_slot.ev_charger_calculated_power = (
                                 round(pwr_kw * 1000) if pwr_kw > 0 else 0.0
                             )
+                            async_log(
+                                "debug",
+                                "[coordinator] Force-Charge-Now: primary EV "
+                                "→ overriding current slot to ev_smart_charging "
+                                "at %dW",
+                                now_slot.ev_charger_calculated_power,
+                            )
                         if force_second:
                             now_slot.recommendation = (
                                 Recommendations.EVSmartCharging.value
@@ -1038,6 +1053,13 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                             )
                             now_slot.ev_second_charger_calculated_power = (
                                 round(pwr_kw * 1000) if pwr_kw > 0 else 0.0
+                            )
+                            async_log(
+                                "debug",
+                                "[coordinator] Force-Charge-Now: second EV "
+                                "→ overriding current slot to ev_smart_charging "
+                                "at %dW",
+                                now_slot.ev_second_charger_calculated_power,
                             )
 
                 # 9. Find the current time-slot recommendation.

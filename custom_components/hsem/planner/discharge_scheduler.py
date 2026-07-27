@@ -249,11 +249,14 @@ def apply_excess_export(
     log_planner(
         "debug",
         "[disch] apply_excess_export  budget=%.3f  current=%.3f  required=%.3f  "
-        "price_threshold=%.4f",
+        "price_threshold=%.4f  recommended_threshold=%.4f  "
+        "effective_min_export_price=%.4f",
         battery_discharge_budget_kwh,
         current_capacity,
         required_capacity,
         export_price_threshold,
+        recommended_threshold,
+        max(export_min_price, recommended_threshold),
     )
     if battery_discharge_budget_kwh < 0:
         log_planner(

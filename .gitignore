@@ -23,3 +23,5 @@ config/*
 
 cycle.log
 core
+
+test-results.xml

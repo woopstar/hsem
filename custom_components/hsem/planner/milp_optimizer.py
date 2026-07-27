@@ -184,7 +184,8 @@ def solve_milp(
         "debug",
         "[milp] solve_milp  slots=%d  current=%.3f  usable=%.3f  "
         "max_chg=%.3f  max_dis=%s  cycle_cost=%.6f  "
-        "chg_eff=%.2f  dis_eff=%.2f  discount=%.4f  repl_price=%s",
+        "chg_eff=%.2f  dis_eff=%.2f  discount=%.4f  repl_price=%s  "
+        "no_export=%s  min_export_price=%.4f  fuse=%s",
         len(slots),
         current_kwh,
         usable_kwh,
@@ -198,6 +199,13 @@ def solve_milp(
             f"{replacement_price_per_kwh:.6f}"
             if replacement_price_per_kwh is not None
             else "None"
+        ),
+        no_export,
+        min_export_price,
+        (
+            f"{main_fuse_amps:.1f}A/{main_fuse_phases}ph"
+            if main_fuse_amps is not None
+            else "disabled"
         ),
     )
 
@@ -394,9 +402,7 @@ def solve_milp(
     # stacking battery charge on top of the EV draw.
     # ------------------------------------------------------------------
     slot_hours = (
-        slot_duration_hours(
-            slots[future_idx[0]].start, slots[future_idx[0]].end
-        )
+        slot_duration_hours(slots[future_idx[0]].start, slots[future_idx[0]].end)
         if future_idx
         else 0.0
     )

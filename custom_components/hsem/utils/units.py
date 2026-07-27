@@ -199,8 +199,7 @@ def roundtrip_loss_pct(
         Roundtrip loss in percentage points (e.g. 5.91 for 97 % each way).
     """
     return (
-        1.0
-        - (charge_efficiency_pct / 100.0) * (discharge_efficiency_pct / 100.0)
+        1.0 - (charge_efficiency_pct / 100.0) * (discharge_efficiency_pct / 100.0)
     ) * 100.0
 
 

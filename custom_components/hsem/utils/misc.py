@@ -9,6 +9,7 @@ from typing import Any
 
 from custom_components.hsem.const import DEFAULT_CONFIG_VALUES
 from custom_components.hsem.utils.conversion import convert_months_to_int  # noqa: F401
+from custom_components.hsem.utils.logger import log_planner
 
 
 def generate_hash(input_sensor: str) -> str:
@@ -166,13 +167,37 @@ def resolve_cycle_cost(
         Depreciation cost per kWh of battery throughput (local currency / kWh).
     """
     if purchase_price <= 1e-9 or expected_cycles <= 0 or usable_kwh <= 1e-9:
-        return max(0.0, user_margin)
+        result = max(0.0, user_margin)
+        log_planner(
+            "debug",
+            "[cycle_cost] resolve_cycle_cost  auto=0.000000  "
+            "user_margin=%.6f  result=%.6f  "
+            "reason=missing_input (price=%.2f cycles=%d usable=%.3f)",
+            user_margin,
+            result,
+            purchase_price,
+            expected_cycles,
+            usable_kwh,
+        )
+        return result
 
     capacity_loss_dec = max(min(capacity_loss_pct, 100.0), 0.0) / 100.0
-    auto = (purchase_price * capacity_loss_dec) / (
-        2 * expected_cycles * usable_kwh
+    auto = (purchase_price * capacity_loss_dec) / (2 * expected_cycles * usable_kwh)
+    result = max(auto, user_margin)
+    log_planner(
+        "debug",
+        "[cycle_cost] resolve_cycle_cost  auto=%.6f  user_margin=%.6f  "
+        "result=%.6f  "
+        "inputs=(price=%.2f usable=%.3f cycles=%d loss=%.1f%%)",
+        auto,
+        user_margin,
+        result,
+        purchase_price,
+        usable_kwh,
+        expected_cycles,
+        capacity_loss_pct,
     )
-    return max(auto, user_margin)
+    return result
 
 
 def calculate_recommended_threshold(
