@@ -179,6 +179,12 @@ def _schedule_slots(
             "debug",
             "[core] _schedule_slots  pass=excess_export  enabled=True",
         )
+    else:
+        log_planner(
+            "debug",
+            "[core] _schedule_slots  pass=excess_export  enabled=False  "
+            "→ MILP no_export constraint active (battery will not export to grid)",
+        )
     apply_optimization_strategy(
         slots,
         now,

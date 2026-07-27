@@ -314,6 +314,25 @@ def generate_candidates(
             main_fuse_amps=inp.main_fuse_amps,
             main_fuse_phases=inp.main_fuse_phases,
         )
+        log_planner(
+            "debug",
+            "[gen] MILP solve called  cycle_cost=%.6f  no_export=%s  "
+            "excess_export_enabled=%s  min_export_price=%.4f  "
+            "ev_configs=%d",
+            effective_cycle_cost,
+            not inp.excess_export_enabled,
+            inp.excess_export_enabled,
+            max(
+                inp.export_min_price,
+                calculate_recommended_threshold(
+                    purchase_price=inp.battery_purchase_price,
+                    expected_cycles=inp.battery_expected_cycles,
+                    usable_capacity=usable_kwh,
+                    capacity_loss_pct=inp.battery_capacity_loss_pct,
+                ),
+            ),
+            len(ev_configs) if ev_configs else 0,
+        )
         if milp_result is not None:
             milp_slots, milp_diag = milp_result
             candidates.append(
