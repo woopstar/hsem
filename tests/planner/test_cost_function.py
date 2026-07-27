@@ -870,9 +870,7 @@ class TestComparePlansKnownWinner:
         )
 
         usable_kwh = 10.0 * (100.0 - 10.0) / 100.0  # 9.0
-        expected_cycle_cost_per_kwh = (25_000.0 * 0.30) / (
-            2.0 * usable_kwh * 6000
-        )
+        expected_cycle_cost_per_kwh = (25_000.0 * 0.30) / (2.0 * usable_kwh * 6000)
         # max(9,0) + max(0,9) = 9 + 9 = 18 kWh throughput counted
         expected_cycle_cost = 18.0 * expected_cycle_cost_per_kwh
 

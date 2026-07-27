@@ -394,9 +394,7 @@ def solve_milp(
     # stacking battery charge on top of the EV draw.
     # ------------------------------------------------------------------
     slot_hours = (
-        slot_duration_hours(
-            slots[future_idx[0]].start, slots[future_idx[0]].end
-        )
+        slot_duration_hours(slots[future_idx[0]].start, slots[future_idx[0]].end)
         if future_idx
         else 0.0
     )

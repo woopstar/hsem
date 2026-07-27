@@ -169,9 +169,7 @@ def resolve_cycle_cost(
         return max(0.0, user_margin)
 
     capacity_loss_dec = max(min(capacity_loss_pct, 100.0), 0.0) / 100.0
-    auto = (purchase_price * capacity_loss_dec) / (
-        2 * expected_cycles * usable_kwh
-    )
+    auto = (purchase_price * capacity_loss_dec) / (2 * expected_cycles * usable_kwh)
     return max(auto, user_margin)
 
 
