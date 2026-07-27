@@ -7,6 +7,7 @@ import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigEntry, ConfigFlowResult
+from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 
@@ -755,7 +756,7 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
             state = self.hass.states.get(entity_id)
             if state is None:
                 errors[field_key] = "entity_not_found"
-            elif state.state in ("unknown", "unavailable"):
+            elif state.state in (STATE_UNKNOWN, STATE_UNAVAILABLE):
                 _LOGGER.warning(
                     "Connection test: %s (%s) is '%s'",
                     label,

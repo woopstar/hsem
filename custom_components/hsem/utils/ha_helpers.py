@@ -234,38 +234,6 @@ def ha_get_entity_state_and_convert(
         )
 
 
-async def async_remove_entity_from_ha(self: Any, entity_unique_id: str) -> bool:
-    """Remove an entity from Home Assistant by its unique ID.
-
-    Args:
-        self: The calling coordinator or component instance.
-        entity_unique_id: The unique ID of the entity to remove.
-
-    Returns:
-        True if the entity was found and removed, False otherwise.
-    """
-    # Check if the entity exists
-    entity_exists = await async_resolve_entity_id_from_unique_id(self, entity_unique_id)
-    if not entity_exists:
-        return False
-
-    # Get the entity registry
-    registry = er.async_get(self.hass)
-
-    # Fetch the entity ID for the unique ID
-    existing_entry = registry.async_get_entity_id("sensor", DOMAIN, entity_unique_id)
-
-    # Remove the entity if it exists in the registry
-    if existing_entry:
-        _LOGGER.debug(
-            f"Removing existing entity with unique ID '{entity_unique_id}' before re-adding."
-        )
-        registry.async_remove(existing_entry)
-        return True
-    else:
-        return False
-
-
 async def async_entity_exists(hass: Any, entity_id: str) -> bool:  # NOSONAR
     """Check whether an entity exists in Home Assistant.
 

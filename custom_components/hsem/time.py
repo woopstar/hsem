@@ -26,7 +26,7 @@ from custom_components.hsem.utils.sensornames.ev import (
 
 _ICON_CLOCK = "mdi:clock"
 
-# One description per time entity.  Keys are sourced from sensornames.py so
+# One description per time entity.  Keys are sourced from sensornames/ package so
 # that unique_ids and entity_ids are defined in one place.  Display names
 # come from translations via translation_key.
 TIME_DESCRIPTIONS: tuple[HSEMTimeEntityDescription, ...] = (
@@ -71,11 +71,6 @@ TIME_DESCRIPTIONS: tuple[HSEMTimeEntityDescription, ...] = (
         translation_key="ev_second_deadline",
     ),
 )
-
-# Keep TIMES for backwards compat with existing tests that import it.
-TIMES: dict[str, dict[str, str]] = {
-    desc.key: {"name": "", "description": ""} for desc in TIME_DESCRIPTIONS
-}
 
 
 async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async

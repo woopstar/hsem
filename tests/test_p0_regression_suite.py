@@ -721,26 +721,38 @@ class TestP008MagicThresholds:
         import ast
         import pathlib
 
-        for mod_name in ("charge_scheduler.py", "discharge_scheduler.py"):
-            source = pathlib.Path(
-                f"custom_components/hsem/planner/{mod_name}"
-            ).read_text(encoding="utf-8")
-            tree = ast.parse(source)
+        # charge_scheduler.py is now a thin re-export; the actual import lives
+        # in the implementation module under planner/charging/.
+        source = pathlib.Path(
+            "custom_components/hsem/planner/charging/pre_charge.py"
+        ).read_text(encoding="utf-8")
+        tree = ast.parse(source)
 
-            imported_names: set[str] = set()
-            for node in ast.walk(tree):
-                if isinstance(node, ast.ImportFrom):
-                    for alias in node.names:
-                        imported_names.add(alias.asname or alias.name)
+        imported_names: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                for alias in node.names:
+                    imported_names.add(alias.asname or alias.name)
 
-            if mod_name == "charge_scheduler.py":
-                assert "SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH" in imported_names, (
-                    f"{mod_name} must import SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH"
-                )
-            elif mod_name == "discharge_scheduler.py":
-                assert "NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH" in imported_names, (
-                    f"{mod_name} must import NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH"
-                )
+        assert "SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH" in imported_names, (
+            "charging/pre_charge.py must import SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH"
+        )
+
+        # Also verify discharge_scheduler.py still imports its constant.
+        source = pathlib.Path(
+            "custom_components/hsem/planner/discharge_scheduler.py"
+        ).read_text(encoding="utf-8")
+        tree = ast.parse(source)
+
+        imported_names = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                for alias in node.names:
+                    imported_names.add(alias.asname or alias.name)
+
+        assert "NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH" in imported_names, (
+            "discharge_scheduler.py must import NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH"
+        )
 
     def test_near_zero_threshold_used_in_optimization_strategy(self) -> None:
         """A slot at exactly NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH gets BatteriesChargeSolar

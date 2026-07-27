@@ -14,9 +14,6 @@ DEFAULT_HSEM_BATTERIES_WAIT_MODE = ["00:00-00:01/1234567/+"]
 # TOU mode for force charging the battery.
 DEFAULT_HSEM_TOU_MODES_FORCE_CHARGE = ["00:00-23:59/1234567/+"]
 
-# TOU mode for force discharging the battery.
-DEFAULT_HSEM_TOU_MODES_FORCE_DISCHARGE = ["00:00-23:59/1234567/-"]
-
 # Minimum required version of Huawei Solar.
 MIN_HUAWEI_SOLAR_VERSION = "1.5.0a1"
 
@@ -167,36 +164,6 @@ CAP7_DOWN = 0.85  # 7d cannot go below 85% of 14d
 CAP7_UP = 1.15  # 7d cannot go above 115% of 14d
 CAP14_DOWN = 0.90  # 14d cannot go below 90% of 7d_eff
 CAP14_UP = 1.10  # 14d cannot go above 110% of 7d_eff
-
-# --- Spike detection thresholds (ratios) ---
-# 1d vs 7d
-SPIKE1_RATIO_MIN = 1.30  # ≤ → no spike
-SPIKE1_RATIO_MAX = 2.00  # ≥ → max severity
-SPIKE1_REDUCE_FRACTION_MAX = 0.50  # at max severity, reallocate up to 50% of 1d weight
-SPIKE1_REDIST_TO_3D = 0.20
-SPIKE1_REDIST_TO_7D = 0.55
-SPIKE1_REDIST_TO_14D = 0.25
-
-# 3d vs 7d (milder than 1d)
-SPIKE3_RATIO_MIN = 1.20
-SPIKE3_RATIO_MAX = 1.80
-SPIKE3_REDUCE_FRACTION_MAX = 0.30
-SPIKE3_REDIST_TO_7D = 0.60
-SPIKE3_REDIST_TO_14D = 0.40
-
-# 7d vs 14d (recent window vs longer history)
-# If 7d >> 14d, nudge some weight from 7d to 14d to avoid overreacting to short bursts.
-SPIKE7_RATIO_MIN = 1.20
-SPIKE7_RATIO_MAX = 1.60
-SPIKE7_REDUCE_FRACTION_MAX = 0.20
-SPIKE7_REDIST_TO_14D = 1.00  # all freed 7d weight goes to 14d
-
-# 14d vs 7d (long window dominating)
-# If 14d >> 7d, nudge some weight from 14d to 7d to adapt to newer reality.
-SPIKE14_RATIO_MIN = 1.15
-SPIKE14_RATIO_MAX = 1.50
-SPIKE14_REDUCE_FRACTION_MAX = 0.15
-SPIKE14_REDIST_TO_7D = 1.00  # all freed 14d weight goes to 7d
 
 # --- Capping of short windows vs calm baseline (7d/14d) ---
 BASELINE_7D_SHARE = 0.70  # baseline = 0.70*7d + 0.30*14d
