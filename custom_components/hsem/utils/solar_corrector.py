@@ -32,9 +32,6 @@ MAX_RESIDUALS: int = 4
 # Number of slots over which the intra-hour residual correction decays to 1.0.
 RESIDUAL_DECAY_SLOTS: int = 8
 
-# Confidence range.
-CONFIDENCE_MIN: float = 0.10
-CONFIDENCE_MAX: float = 0.90
 CONFIDENCE_DEFAULT: float = 0.50
 
 # Threshold below which forecast kWh is treated as zero to avoid division by zero.

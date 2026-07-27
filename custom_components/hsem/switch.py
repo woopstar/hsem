@@ -38,7 +38,7 @@ from custom_components.hsem.utils.sensornames.ml import (
 _ICON_TOGGLE = "mdi:toggle-switch"
 _ICON_EV = "mdi:ev-station"
 
-# One description per switch.  Keys are sourced from sensornames.py so that
+# One description per switch.  Keys are sourced from sensornames/ package so that
 # unique_ids and entity_ids are defined in one place.  Display names come
 # from translations via translation_key.
 SWITCH_DESCRIPTIONS: tuple[HSEMSwitchEntityDescription, ...] = (

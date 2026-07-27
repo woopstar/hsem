@@ -321,11 +321,6 @@ def get_force_working_mode_selector_key() -> str:
     return f"{DOMAIN}_force_working_mode"
 
 
-def get_force_working_mode_selector_name() -> str:
-    """Return the display name for the force-working-mode select entity."""
-    return "Force Working Mode"
-
-
 def get_force_working_mode_selector_unique_id(entry_id: str) -> str:
     """Return the unique_id for the force-working-mode select entity.
 
@@ -344,11 +339,6 @@ def get_force_working_mode_selector_entity_id() -> str:
 def get_solcast_likelihood_selector_key() -> str:
     """Return the entity description key for the solcast likelihood select entity."""
     return f"{DOMAIN}_solcast_likelihood"
-
-
-def get_solcast_likelihood_selector_name() -> str:
-    """Return the display name for the solcast likelihood select entity."""
-    return "Solcast PV Forecast Likelihood"
 
 
 def get_solcast_likelihood_selector_unique_id(entry_id: str) -> str:

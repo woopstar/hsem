@@ -22,7 +22,7 @@ Read `.github/memories.md`. Pay special attention to:
 - MILP variable vector layout (8*n base, growing with EV co-optimisation)
 - File size limits (30 KB hard limit in planner/ and utils/)
 - Cycle cost formula with mandatory 2x denominator
-- Open refactor and bug issues
+- File organization patterns (by responsibility, not by theme)
 - Huawei entity wiring protocol
 - Testing and logging rules
 

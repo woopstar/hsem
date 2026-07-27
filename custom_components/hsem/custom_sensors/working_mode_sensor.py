@@ -334,6 +334,19 @@ class HSEMWorkingModeSensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
         if self._update_task is not None and not self._update_task.done():
             self._update_task.cancel()
 
+    def _on_update_task_done(self, task: asyncio.Task) -> None:
+        """Log any unhandled exception from the coordinator-update task.
+
+        Registered as a ``done_callback`` on ``_update_task`` so that
+        uncaught exceptions inside ``_async_on_coordinator_update()`` are
+        recorded without breaking the task lifecycle.
+        """
+        exc = task.exception()
+        if exc is not None:
+            _LOGGER.error(
+                "Unhandled exception in working-mode update task: %s", exc
+            )
+
     # ------------------------------------------------------------------
     # Coordinator callback
     # ------------------------------------------------------------------
@@ -352,6 +365,7 @@ class HSEMWorkingModeSensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
             self._async_on_coordinator_update(),
             name="hsem_working_mode_update",
         )
+        self._update_task.add_done_callback(self._on_update_task_done)
 
     async def _async_on_coordinator_update(self) -> None:
         """Apply hardware writes then write state to HA.

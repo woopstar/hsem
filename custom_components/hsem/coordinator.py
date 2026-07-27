@@ -34,7 +34,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Event, HomeAssistant
@@ -390,8 +390,8 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         # is available when accumulation runs.
         try:
             await self._init_financial_tracker()
-        except Exception:
-            async_log("error", "Failed to initialise financial tracker")
+        except Exception as e:
+            async_log("error", "Failed to initialise financial tracker: %s", e)
 
         # Start the embedded OCPP 1.6 server if enabled (issue #603).
         cfg = build_sensor_config(self._config_entry)
@@ -406,8 +406,8 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 )
                 await self._ocpp_server.start()
                 async_log("info", "OCPP server started on port %d", cfg.ocpp_port)
-            except Exception:
-                async_log("error", "Failed to start OCPP server")
+            except Exception as e:
+                async_log("error", "Failed to start OCPP server: %s", e)
                 self._ocpp_server = None
 
         # Run an immediate first cycle so entities have data before first render.
@@ -1067,11 +1067,12 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 # -----------------------------------------------------------------------
                 try:
                     await self._accumulate_daily_plan_actuals(now, live, planner_output)
-                except Exception:
+                except Exception as e:
                     async_log(
                         "error",
                         "Daily plan-vs-actual accumulation failed — "
-                        "continuing without updating daily metrics.",
+                        "continuing without updating daily metrics: %s",
+                        e,
                     )
 
                 # -----------------------------------------------------------------------
@@ -1079,11 +1080,12 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 # -----------------------------------------------------------------------
                 try:
                     await self._accumulate_financials(now, live)
-                except Exception:
+                except Exception as e:
                     async_log(
                         "error",
                         "Financial tracker accumulation failed — "
-                        "continuing without updating financial metrics.",
+                        "continuing without updating financial metrics: %s",
+                        e,
                     )
 
                 # -----------------------------------------------------------------------
@@ -1091,11 +1093,12 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 # -----------------------------------------------------------------------
                 try:
                     await self._accumulate_savings(now, live, planner_output)
-                except Exception:
+                except Exception as e:
                     async_log(
                         "error",
                         "Savings tracker accumulation failed — "
-                        "continuing without updating savings metrics.",
+                        "continuing without updating savings metrics: %s",
+                        e,
                     )
 
             # -----------------------------------------------------------------------
@@ -1179,6 +1182,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
     # DataUpdateCoordinator override
     # ------------------------------------------------------------------
 
+    @override
     async def _async_update_data(self) -> CoordinatorData:
         """Called by DataUpdateCoordinator's internal timer (fallback only).
 

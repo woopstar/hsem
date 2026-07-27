@@ -537,24 +537,6 @@ def usable_capacity(
 # ---------------------------------------------------------------------------
 
 
-def compute_spike_severity(ratio: float, ratio_min: float, ratio_max: float) -> float:
-    """Return a severity value in [0, 1] for spike detection.
-
-    Args:
-        ratio: Observed ratio between two consumption windows.
-        ratio_min: Lower threshold below which severity is 0.
-        ratio_max: Upper threshold above which severity is 1.
-
-    Returns:
-        Float in [0, 1].
-    """
-    if ratio <= ratio_min:
-        return 0.0
-    if ratio >= ratio_max:
-        return 1.0
-    return (ratio - ratio_min) / (ratio_max - ratio_min)
-
-
 def detect_outliers_iqr(
     values: list[float],
     multiplier: float = IQR_OUTLIER_MULTIPLIER,

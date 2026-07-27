@@ -7,10 +7,10 @@
 It contains:
 - Module responsibility map for all planner and utils files
 - Canonical patterns you must use (never re-invent)
-- MILP variable vector layout (6*n)
+- MILP variable vector layout (8*n)
 - File size limits and oversized files
 - Cycle cost formula with the mandatory 2x denominator
-- All open refactor and bug issues (#439–#447)
+- File organization patterns (by responsibility, not by theme)
 - Huawei entity wiring protocol
 - Logging and testing rules
 

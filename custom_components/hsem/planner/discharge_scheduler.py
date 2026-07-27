@@ -161,6 +161,9 @@ def calculate_required_battery_until_solar(
 ) -> float:
     """Estimate battery capacity needed until the first solar surplus slot.
 
+    Slots are sorted by start time before scanning, so calling code does not
+    need to guarantee chronological order.
+
     Scans forward from *now* and accumulates positive net-consumption until
     a slot with negative net-consumption (solar surplus) is found.
 
@@ -174,7 +177,7 @@ def calculate_required_battery_until_solar(
         Required battery capacity in kWh (including safety buffer).
     """
     required = 0.0
-    for slot in slots:
+    for slot in sorted(slots, key=lambda s: s.start):
         if as_tz(slot.start, now.tzinfo) < now:
             continue
         if slot.estimated_net_consumption_kwh < 0:

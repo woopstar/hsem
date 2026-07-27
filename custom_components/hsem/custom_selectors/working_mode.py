@@ -56,7 +56,7 @@ class HSEMWorkingModeSelector(HSEMEntity, SelectEntity):
         self.hass = hass
         self._config_entry = config_entry
         self.entity_description = description
-        # unique_id and entity_id are sourced from sensornames.py to keep
+        # unique_id and entity_id are sourced from sensornames/ package to keep
         # all HSEM entity identifiers in one canonical location.
         self._attr_unique_id = get_force_working_mode_selector_unique_id(
             config_entry.entry_id

@@ -276,7 +276,11 @@ def select_best_candidate(  # NOSONAR
 
     if not eligible:
         # Degenerate case — fall back to baseline regardless of validity
-        winner = _find_by_name(candidates, CANDIDATE_BASELINE) or candidates[0]
+        winner = _find_by_name(candidates, CANDIDATE_BASELINE)
+        if winner is None and candidates:
+            winner = candidates[0]
+        if winner is None:
+            raise RuntimeError("[selector] No candidates available")
         winner.is_valid = True
         winner.rejection_reason = ""
         log_planner(

@@ -28,9 +28,11 @@ from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.planner import run_planner
 from custom_components.hsem.planner.candidate_generator import (
     CANDIDATE_MILP,
-    _apply_aggressive_strategy,
-    _copy_slots,
 )
+from custom_components.hsem.planner.candidates._aggressive import (
+    _apply_aggressive_strategy,
+)
+from custom_components.hsem.planner.candidates._mutations import _copy_slots
 from custom_components.hsem.planner.cost_function import CostWeights, score_plan
 from custom_components.hsem.planner.milp_optimizer import is_scipy_available, solve_milp
 from custom_components.hsem.planner.soc_simulation import simulate_soc
