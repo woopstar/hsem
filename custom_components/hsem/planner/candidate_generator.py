@@ -56,7 +56,10 @@ from custom_components.hsem.planner.milp_optimizer import (
     solve_milp,
 )
 from custom_components.hsem.utils.logger import log_planner
-from custom_components.hsem.utils.misc import calculate_recommended_threshold
+from custom_components.hsem.utils.misc import (
+    calculate_recommended_threshold,
+    resolve_cycle_cost,
+)
 from custom_components.hsem.utils.recommendations import (
     CHARGE_RECS as _CHARGE_RECS,
     DISCHARGE_RECS as _DISCHARGE_RECS,
@@ -275,20 +278,15 @@ def generate_candidates(
 
     # 9. MILP — globally-optimal LP solution (requires scipy, falls back gracefully)
     if is_scipy_available():
-        # Compute the auto-derived cycle cost the same way as the cost
-        # function's _resolve_cycle_cost(), so the MILP optimises against
-        # the same cycle-wear cost as the selector.
-        # cycle_cost = purchase_price / (2 * usable_kwh * expected_cycles)
-        auto_cycle_cost = (
-            inp.battery_purchase_price / (2 * usable_kwh * inp.battery_expected_cycles)
-            if inp.battery_purchase_price > 1e-9
-            and usable_kwh > 1e-9
-            and inp.battery_expected_cycles > 0
-            else 0.0
+        # Use the canonical resolve_cycle_cost() — same as engine_core and
+        # cost_helpers.py — so the MILP optimises against the same value.
+        effective_cycle_cost = resolve_cycle_cost(
+            purchase_price=inp.battery_purchase_price,
+            usable_kwh=usable_kwh,
+            expected_cycles=inp.battery_expected_cycles,
+            capacity_loss_pct=inp.battery_capacity_loss_pct,
+            user_margin=inp.battery_cycle_cost_per_kwh,
         )
-        # Use the higher of the auto-derived cycle cost and any
-        # user-configured extra margin.
-        effective_cycle_cost = max(auto_cycle_cost, inp.battery_cycle_cost_per_kwh)
 
         milp_result = solve_milp(
             baseline_slots,
@@ -312,6 +310,7 @@ def generate_candidates(
                 ),
             ),
             ev_configs=ev_configs,
+            no_export=not inp.excess_export_enabled,
             main_fuse_amps=inp.main_fuse_amps,
             main_fuse_phases=inp.main_fuse_phases,
         )

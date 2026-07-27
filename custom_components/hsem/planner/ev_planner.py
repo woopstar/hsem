@@ -648,6 +648,7 @@ def rebuild_ev_plan_from_slots(
         the MILP's per-EV slot decisions.
     """
     from custom_components.hsem.utils.datetime_utils import as_tz
+    from custom_components.hsem.utils.units import slot_duration_hours
 
     eff = max(charger_efficiency_pct, 1.0) / 100.0
     charging_slots: list[EVChargingSlot] = []
@@ -667,7 +668,7 @@ def rebuild_ev_plan_from_slots(
         if power_w < 1e-9:
             continue
         # Convert AC power (W) back to AC load (kWh) using the slot duration.
-        slot_hours = (s.end - s.start).total_seconds() / 3600.0
+        slot_hours = slot_duration_hours(s.start, s.end)
         ac_load = power_w * slot_hours / 1000.0
 
         # Convert AC load back to DC-side delivered energy for display.

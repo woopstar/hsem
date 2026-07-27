@@ -27,6 +27,7 @@ from custom_components.hsem.models.ev_config import EVConfig
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import clamp_efficiency
+from custom_components.hsem.utils.units import slot_duration_hours, timedelta_to_hours
 
 if TYPE_CHECKING:
     from custom_components.hsem.models.planned_slot import PlannedSlot
@@ -59,6 +60,7 @@ def solve_milp(
     *,
     min_export_price: float = 0.0,
     ev_configs: list[EVConfig] | None = None,
+    no_export: bool = False,
     main_fuse_amps: float | None = None,
     main_fuse_phases: int = 3,
 ) -> tuple[list[PlannedSlot], dict] | None:
@@ -143,6 +145,7 @@ def solve_milp(
             - Deciding between ``ForceBatteriesDischarge`` and
               ``BatteriesDischargeMode`` in post-processing.
             Defaults to 0.0.
+        evalue passed to ``_build_constraints.no_export``.
         ev_configs:
             Optional list of :class:`EVConfig` objects (one per EV).  When
             provided, the MILP co-optimises EV charging alongside the battery.
@@ -151,6 +154,10 @@ def solve_milp(
             slots is ignored for EV-enabled slots (the MILP decides allocation).
             ``None`` (default) uses pre-computed ``ev_planned_load_kwh`` as
             fixed inputs (backward-compatible behaviour).
+        no_export:
+            When ``True``, caps battery discharge per slot so the battery
+            never exports to the grid — it only serves house load.  The
+            per-slot cap is ``ed[t] ≤ base_load[t] / discharge_eff``.
         main_fuse_amps:
             Main fuse/breaker rating in amps.  When provided and > 0, a soft
             constraint limits total grid import power per slot to
@@ -387,7 +394,9 @@ def solve_milp(
     # stacking battery charge on top of the EV draw.
     # ------------------------------------------------------------------
     slot_hours = (
-        (slots[future_idx[0]].end - slots[future_idx[0]].start).total_seconds() / 3600.0
+        slot_duration_hours(
+            slots[future_idx[0]].start, slots[future_idx[0]].end
+        )
         if future_idx
         else 0.0
     )
@@ -441,7 +450,7 @@ def solve_milp(
         # Formula: amps * 230V * phases / 1000 (kW) * (interval_minutes / 60) (hours)
         # We derive interval_minutes from the first slot's duration
         first_slot = slots[future_idx[0]]
-        interval_minutes = (first_slot.end - first_slot.start).total_seconds() / 60.0
+        interval_minutes = timedelta_to_hours(first_slot.end - first_slot.start) * 60.0
         assert main_fuse_amps is not None  # guarded by fuse_active
         max_grid_import_per_slot_kwh = (
             main_fuse_amps
@@ -482,20 +491,67 @@ def solve_milp(
     from custom_components.hsem.planner.milp._objective import _build_objective
 
     c_obj = _build_objective(
-        slots, future_idx, now, m, n_vars, ec_off, ed_off, gi_off, ge_off,
-        m_off, s_max_off, s_min_off, gi_pen_off, ev_var_offsets, ev_pen_offsets,
-        active_evs, p_imp, p_imp_obj, p_exp, p_soc, cycle_cost_per_kwh,
-        charge_loss, discharge_loss, time_discount_rate,
-        replacement_price_per_kwh, fuse_active,
+        slots,
+        future_idx,
+        now,
+        m,
+        n_vars,
+        ec_off,
+        ed_off,
+        gi_off,
+        ge_off,
+        m_off,
+        s_max_off,
+        s_min_off,
+        gi_pen_off,
+        ev_var_offsets,
+        ev_pen_offsets,
+        active_evs,
+        p_imp,
+        p_imp_obj,
+        p_exp,
+        p_soc,
+        cycle_cost_per_kwh,
+        charge_loss,
+        discharge_loss,
+        time_discount_rate,
+        replacement_price_per_kwh,
+        fuse_active,
     )
 
     constraints = _build_constraints(
-        m, n_vars, ec_off, ed_off, gi_off, ge_off, pv_off, m_off, curt_off,
-        gi_pen_off, s_max_off, s_min_off, ev_var_offsets, ev_pen_offsets,
-        active_evs, pv_avail, base_load, ev_accounted, charge_eff, discharge_eff,
-        current_kwh, usable_kwh, max_charge_per_slot, max_dis,
-        max_grid_import_per_slot_kwh, fuse_active, session_slots_set,
-        session_ev_indices, SESSION_SLOTS, slot_hours, _has_session_demand,
+        m,
+        n_vars,
+        ec_off,
+        ed_off,
+        gi_off,
+        ge_off,
+        pv_off,
+        m_off,
+        curt_off,
+        gi_pen_off,
+        s_max_off,
+        s_min_off,
+        ev_var_offsets,
+        ev_pen_offsets,
+        active_evs,
+        pv_avail,
+        base_load,
+        ev_accounted,
+        charge_eff,
+        discharge_eff,
+        current_kwh,
+        usable_kwh,
+        max_charge_per_slot,
+        max_dis,
+        max_grid_import_per_slot_kwh,
+        fuse_active,
+        no_export,
+        session_slots_set,
+        session_ev_indices,
+        SESSION_SLOTS,
+        slot_hours,
+        _has_session_demand,
     )
 
     A_eq = constraints["A_eq"]

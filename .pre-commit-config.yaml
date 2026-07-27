@@ -14,26 +14,26 @@ repos:
   - repo: local
     hooks:
       - id: lint
-        name: Format and lint (isort + black + ruff)
+        name: Format and lint (ruff)
         language: system
-        entry: tox
-        args: [-e, lint]
+        entry: ./scripts/quality.sh
+        args: [lint]
         pass_filenames: false
         always_run: true
 
       - id: typing
         name: Type check (mypy)
         language: system
-        entry: tox
-        args: [-e, typing]
+        entry: ./scripts/quality.sh
+        args: [typing]
         pass_filenames: false
         always_run: true
 
       - id: quality
         name: Quality checks (pyright + vulture)
         language: system
-        entry: tox
-        args: [-e, quality]
+        entry: ./scripts/quality.sh
+        args: [quality]
         pass_filenames: false
         always_run: true
 

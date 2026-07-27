@@ -69,8 +69,14 @@ from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import (
     calculate_recommended_threshold,
     clamp_efficiency,
+    resolve_cycle_cost,
 )
 from custom_components.hsem.utils.recommendations import Recommendations
+from custom_components.hsem.utils.units import (
+    hours_ahead,
+    max_energy_per_slot_kwh,
+    roundtrip_loss_pct,
+)
 
 
 def _schedule_slots(
@@ -80,9 +86,16 @@ def _schedule_slots(
     current_kwh: float,
     usable_kwh: float,
     rt: float,
+    effective_cycle_cost: float,
     warnings: list[str],
 ) -> tuple[float, float | None, float, float, list[str]]:
-    """All charge/discharge scheduling passes."""
+    """All charge/discharge scheduling passes.
+
+    Args:
+        effective_cycle_cost: Resolved per-kWh cycle cost used by all charge
+            passes.  Computed as ``max(auto_calc, user_configured_margin)`` by
+            the caller so heuristic and MILP paths use the same value.
+    """
     mark_time_passed(slots, now)
     apply_discharge_schedules(slots, inp.battery_schedules, now)
     log_planner(
@@ -90,13 +103,16 @@ def _schedule_slots(
         "[core] _schedule_slots  pass=discharge_schedules  slots=%d",
         len(slots),
     )
-    cd = inp.battery_charge_efficiency_pct / 100.0
-    dd = inp.battery_discharge_efficiency_pct / 100.0
-    rlp = (1.0 - cd * dd) * 100.0
-    mcphi = (inp.battery_max_charge_power_w / 1000 * cd) / (60 / inp.interval_minutes)
-    # `rt` is depreciation-only — conversion losses are priced per-slot
-    # by the MILP objective, the cost function, and the arbitrage-grid-charge
-    # pass (`conversion_loss_pct`).  No need to subtract a fixed add-on.
+    cd = clamp_efficiency(inp.battery_charge_efficiency_pct)
+    rlp = roundtrip_loss_pct(
+        inp.battery_charge_efficiency_pct,
+        inp.battery_discharge_efficiency_pct,
+    )
+    mcphi = max_energy_per_slot_kwh(
+        inp.battery_max_charge_power_w,
+        inp.interval_minutes,
+        efficiency_fraction=cd,
+    )
     apply_charge_schedules(
         slots,
         inp.battery_schedules,
@@ -104,7 +120,7 @@ def _schedule_slots(
         mcphi,
         current_kwh=current_kwh,
         usable_kwh=usable_kwh,
-        cycle_cost_per_kwh=inp.battery_cycle_cost_per_kwh,
+        cycle_cost_per_kwh=effective_cycle_cost,
         recommended_threshold=rt,
     )
     apply_opportunistic_charge(
@@ -114,7 +130,7 @@ def _schedule_slots(
         usable_kwh,
         mcphi,
         rt,
-        cycle_cost_per_kwh=inp.battery_cycle_cost_per_kwh,
+        cycle_cost_per_kwh=effective_cycle_cost,
     )
     apply_arbitrage_grid_charge(
         slots,
@@ -124,13 +140,16 @@ def _schedule_slots(
         usable_kwh,
         mcphi,
         conversion_loss_pct=rlp,
-        cycle_cost_per_kwh=inp.battery_cycle_cost_per_kwh,
+        cycle_cost_per_kwh=effective_cycle_cost,
         recommended_threshold=rt,
     )
-    mcps = (inp.battery_max_charge_power_w / 1000 * cd) / (60 / inp.interval_minutes)
+    mcps = mcphi  # same formula — max charge energy per slot
     mdps: float | None = None
     if inp.battery_max_discharge_power_w is not None:
-        mdps = (inp.battery_max_discharge_power_w / 1000) / (60 / inp.interval_minutes)
+        mdps = max_energy_per_slot_kwh(
+            inp.battery_max_discharge_power_w,
+            inp.interval_minutes,
+        )
     max_soc_kwh = usable_kwh
     populate_battery_capacity(slots, now, current_kwh, usable_kwh)
     rc = calculate_required_battery_until_solar(
@@ -242,8 +261,6 @@ def _select_candidate(
         f"applied={hyst.applied}" if hyst.applied else "inactive",
     )
     return candidates, winner, rejected, hyst
-
-
 
 
 def run_planner(inp: PlannerInput) -> PlannerOutput:
@@ -402,17 +419,37 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         warnings.append(
             f"Recommended price threshold: {rt:.4f} (depreciation + conversion loss)."
         )
+
+    # Resolve the effective cycle cost once so the MILP, cost function, and
+    # heuristic charge passes all use the same value.
+    # Uses resolve_cycle_cost() — the single source of truth.
+    effective_cycle_cost = resolve_cycle_cost(
+        purchase_price=inp.battery_purchase_price,
+        usable_kwh=usable_kwh,
+        expected_cycles=inp.battery_expected_cycles,
+        capacity_loss_pct=inp.battery_capacity_loss_pct,
+        user_margin=inp.battery_cycle_cost_per_kwh,
+    )
+
     # Step 3 — charge/discharge scheduling
     log_planner(
         "debug",
         "[core] run_planner  step=3_schedule_slots START  "
-        "current=%.3f  usable=%.3f  rt=%.4f",
+        "current=%.3f  usable=%.3f  rt=%.4f  cycle_cost=%.6f",
         current_kwh,
         usable_kwh,
         rt,
+        effective_cycle_cost,
     )
     mcps, mdps, max_soc_kwh, rc, warnings = _schedule_slots(
-        slots, inp, now, current_kwh, usable_kwh, rt, warnings
+        slots,
+        inp,
+        now,
+        current_kwh,
+        usable_kwh,
+        rt,
+        effective_cycle_cost,
+        warnings,
     )
     log_planner(
         "debug",
@@ -422,9 +459,11 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     cw = CostWeights(
         min_soc_pct=_effective_eod_soc,
         max_soc_pct=inp.battery_max_soc_pct,
+        cycle_cost_per_kwh=effective_cycle_cost,
         battery_purchase_price=inp.battery_purchase_price,
         battery_rated_capacity_kwh=inp.battery_rated_capacity_kwh,
         battery_expected_cycles=inp.battery_expected_cycles,
+        battery_capacity_loss_pct=inp.battery_capacity_loss_pct,
         charge_efficiency_pct=inp.battery_charge_efficiency_pct,
         discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
         export_min_price=inp.export_min_price,
@@ -605,7 +644,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
                 s_end_tz = as_tz(s.end, now.tzinfo)
                 if as_tz(s.start, now.tzinfo) <= now < s_end_tz:
                     remaining_h = max(
-                        (s_end_tz - now).total_seconds() / 3600.0,
+                        hours_ahead(now, s_end_tz),
                         1.0 / 3600.0,
                     )
                     ev_energy = round((ev_w / 1000.0) * remaining_h, 3)

@@ -70,6 +70,7 @@ from custom_components.hsem.utils.misc import (
     get_max_discharge_power,
 )
 from custom_components.hsem.utils.recommendations import Recommendations
+from custom_components.hsem.utils.units import slot_duration_hours
 from custom_components.hsem.utils.workingmodes import WorkingModes
 
 
@@ -320,13 +321,9 @@ async def async_apply_battery_settings(
     # the battery still covers normal house load while 100% of the EV
     # load goes to the grid.
     ev_active = live.ev.is_charging or live.ev_second.is_charging
-    if (
-        ev_active
-        and recommendation
-        not in (
-            Recommendations.ForceBatteriesDischarge.value,
-            Recommendations.ForceExport.value,
-        )
+    if ev_active and recommendation not in (
+        Recommendations.ForceBatteriesDischarge.value,
+        Recommendations.ForceExport.value,
     ):
         discharge_entity = cfg.huawei_solar_batteries_maximum_discharging_power
         if discharge_entity is not None:
@@ -334,11 +331,10 @@ async def async_apply_battery_settings(
             # recommendation slot (already capped by the planner's 3×
             # forecast guard in PR #681).  Convert kWh to Watts using the
             # slot duration.
-            slot_hours = (rec.end - rec.start).total_seconds() / 3600.0
+            slot_hours = slot_duration_hours(rec.start, rec.end)
             house_avg_w = (
                 int(rec.avg_house_consumption_kwh / slot_hours * 1000.0)
-                if slot_hours > 1e-9
-                and rec.avg_house_consumption_kwh > 1e-9
+                if slot_hours > 1e-9 and rec.avg_house_consumption_kwh > 1e-9
                 else 0
             )
             if live.huawei_batteries_max_discharge_power_w != house_avg_w:

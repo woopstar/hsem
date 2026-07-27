@@ -12,6 +12,7 @@ import numpy as np
 
 from custom_components.hsem.models.ev_config import EVConfig
 from custom_components.hsem.models.planned_slot import PlannedSlot
+from custom_components.hsem.utils.units import slot_duration_hours, timedelta_to_hours
 
 
 def _write_milp_results_to_slots(
@@ -269,9 +270,9 @@ def _write_milp_results_to_slots(
         # Pre-compute full slot hours for power calculation (same for all slots
         # when interval is uniform).
         first_future_slot = out_slots[future_idx[0]]
-        full_slot_hours = (
-            first_future_slot.end - first_future_slot.start
-        ).total_seconds() / 3600.0
+        full_slot_hours = slot_duration_hours(
+            first_future_slot.start, first_future_slot.end
+        )
 
         for ev_idx, ev in enumerate(active_evs):
             ev_off = ev_var_offsets[ev_idx]
@@ -306,7 +307,7 @@ def _write_milp_results_to_slots(
                 slot_end = out_slots[slot_i].end
                 if slot_start <= now < slot_end:
                     remaining_hours = max(
-                        (slot_end - now).total_seconds() / 3600.0,
+                        timedelta_to_hours(slot_end - now),
                         1.0 / 3600.0,  # 1 s minimum guard
                     )
                     ac_power_w = round(

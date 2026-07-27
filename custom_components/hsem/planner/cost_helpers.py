@@ -5,6 +5,8 @@ from __future__ import annotations
 from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.planner.cost_types import CostWeights
 from custom_components.hsem.utils.logger import log_planner
+from custom_components.hsem.utils.misc import resolve_cycle_cost
+from custom_components.hsem.utils.units import usable_kwh_from_rated
 
 # ---------------------------------------------------------------------------
 # Override detection helpers
@@ -65,8 +67,10 @@ def _resolve_cycle_cost(weights: CostWeights) -> float:
 
         purchase_price / (2 × usable_kwh × expected_cycles)
 
-    If ``weights.cycle_cost_per_kwh`` is explicitly set (not ``None``), that
-    value is used directly.  Returns 0.0 when any required value is non-positive
+    When ``weights.cycle_cost_per_kwh`` is explicitly set (not ``None``), that
+    value is used directly — the caller is responsible for resolving auto vs.
+    user margin.  When ``None``, the value is auto-calculated from the battery
+    economics fields.  Returns 0.0 when any required value is non-positive
     or missing.
 
     Args:
@@ -89,12 +93,18 @@ def _resolve_cycle_cost(weights: CostWeights) -> float:
         and weights.battery_rated_capacity_kwh > 1e-9
         and weights.battery_expected_cycles > 0
     ):
-        dod_fraction = (weights.max_soc_pct - weights.min_soc_pct) / 100.0
-        usable_kwh = weights.battery_rated_capacity_kwh * dod_fraction
+        usable_kwh = usable_kwh_from_rated(
+            weights.battery_rated_capacity_kwh,
+            weights.min_soc_pct,
+            weights.max_soc_pct,
+        )
         if usable_kwh < 1e-9:
-            usable_kwh = weights.battery_rated_capacity_kwh  # fallback: full rated
-        result = weights.battery_purchase_price / (
-            2 * usable_kwh * weights.battery_expected_cycles
+            usable_kwh = weights.battery_rated_capacity_kwh
+        result = resolve_cycle_cost(
+            purchase_price=weights.battery_purchase_price,
+            usable_kwh=usable_kwh,
+            expected_cycles=weights.battery_expected_cycles,
+            capacity_loss_pct=weights.battery_capacity_loss_pct,
         )
         log_planner(
             "debug",

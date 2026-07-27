@@ -12,26 +12,23 @@ This document describes the static quality tools available in HSEM and how to ru
 | **Vulture** | Dead-code and unused-symbol detection | `vulture_whitelist.py` |
 | **mypy** | Type checking | `pyproject.toml [tool.mypy]` |
 | **ruff** | Linting and formatting | `pyproject.toml [tool.ruff]` |
-| **black** | Code formatting | `tox.ini [testenv:lint]` |
-| **isort** | Import sorting | `tox.ini [testenv:lint]` |
 
 ---
 
 ## Local Commands
 
-### Run all lint/format checks (isort + black + ruff)
+### Run all lint/format checks (ruff)
 
 ```bash
-tox -e lint
+./scripts/quality.sh lint
 ```
 
-This runs isort, black, ruff format, and ruff check in sequence. All four must pass
-before a PR can be opened.
+This runs ruff format and ruff check. Must pass before a PR can be opened.
 
 ### Run mypy type checking
 
 ```bash
-tox -e typing
+./scripts/quality.sh typing
 ```
 
 ### Run Pyright type checker
@@ -55,26 +52,25 @@ unused because they are called dynamically by HA.
 ### Run all quality checks (Pyright + Vulture)
 
 ```bash
-tox -e quality
+./scripts/quality.sh quality
 ```
 
 ### Run tests with coverage
 
 ```bash
-tox -e py314
+./scripts/quality.sh test
 ```
 
-This runs `pytest` with coverage reporting. The `py314` tox environment runs on Python 3.14
-and includes HA test dependencies.
+This runs `pytest` with coverage reporting.
 
 ### QA pipeline quick reference
 
 ```mermaid
 flowchart TD
-    A[Code Changes] --> B[tox -e lint]
-    B --> C[tox -e typing]
-    C --> D[tox -e quality]
-    D --> E[tox -e py314]
+    A[Code Changes] --> B[./scripts/quality.sh lint]
+    B --> C[./scripts/quality.sh typing]
+    C --> D[./scripts/quality.sh quality]
+    D --> E[./scripts/quality.sh test]
     E --> F{All pass?}
     F -->|Yes| G[Open PR]
     F -->|No| H[Fix issues] --> B
@@ -139,4 +135,4 @@ PRs until the warning baseline is fully resolved.
 1. Resolve the remaining `CoordinatorEntity` invariance warnings (requires HA framework fix
    or a type-ignore comment on each `super().__init__()` call).
 2. Set `continue-on-error: false` in the CI workflow once the warning count is zero.
-3. Add `tox -e quality` to the local pre-commit checklist.
+3. Run `./scripts/quality.sh quality` to verify no regressions before PRs.

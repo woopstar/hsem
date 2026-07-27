@@ -343,9 +343,7 @@ class HSEMWorkingModeSensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
         """
         exc = task.exception()
         if exc is not None:
-            _LOGGER.error(
-                "Unhandled exception in working-mode update task: %s", exc
-            )
+            _LOGGER.error("Unhandled exception in working-mode update task: %s", exc)
 
     # ------------------------------------------------------------------
     # Coordinator callback

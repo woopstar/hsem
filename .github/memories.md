@@ -139,14 +139,25 @@ The `m[t]` constraints are: `m[t] >= ec[t]` and `m[t] >= ed[t]`.
 
 ## Cycle Cost Formula
 
+**Single source of truth:** ``resolve_cycle_cost()`` in ``utils/misc.py``.
+
 $$
 cycle\_cost\_per\_kwh = \frac{purchase\_price \times capacity\_loss\_pct / 100}{2 \times usable\_kwh \times expected\_cycles}
 $$
 
-The `2x` denominator accounts for one full round-trip (charge + discharge = 2 × usable_kwh throughput per cycle).
-`capacity_loss_pct` (configurable via `hsem_batteries_capacity_loss_pct`, default 30 %) accounts for the
-fraction of battery value consumed over its lifetime.
-Do **not** remove or change this factor without updating `docs/planner-spec.md`.
+Returns ``max(auto, user_margin)`` where ``user_margin`` is ``battery_cycle_cost_per_kwh``
+from the config flow (default 0.0).
+
+The ``2×`` denominator accounts for one full round-trip (charge + discharge = 2 × usable_kwh throughput per cycle).
+``capacity_loss_pct`` (configurable via ``hsem_batteries_capacity_loss_pct``, default 30 %) accounts for the
+fraction of battery value consumed over its lifetime.  LiFePO4 EOL retention is typically 80 %, so
+``capacity_loss_pct`` captures the 20 % lost value plus margin for calendar ageing.
+
+With ``battery_cycle_cost_per_kwh = 0.0`` (the default), the effective cycle cost is purely the
+auto-calculated depreciation — no extra margin.  Set a positive value to add additional friction
+for even more conservative cycling behaviour.
+
+Do **not** remove or change this factor without updating ``docs/planner-spec.md``.
 
 ---
 
@@ -390,7 +401,7 @@ Always check `docs/huawei_entities.md` before looking elsewhere.
 - Every planner math change requires a unit test verifying the cost identity:
   `winner.total_cost == final_output.total_cost`
 - Run `pytest tests/` before every PR.
-- Run `tox -e lint` then `tox -e quality` before every commit.
+- Run `./scripts/quality.sh lint` then `./scripts/quality.sh quality` before every commit.
 - Use `pytest.approx()` for all float comparisons in tests.
 
 ---

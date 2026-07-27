@@ -107,6 +107,7 @@ from custom_components.hsem.utils.prediction_tracker import (
 )
 from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.solar_corrector import SolarForecastCorrector
+from custom_components.hsem.utils.units import usable_kwh_from_rated
 from custom_components.hsem.utils.weekday_profile import weekday_profile
 
 if TYPE_CHECKING:
@@ -751,7 +752,9 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                     max_soc_pct = (
                         live.huawei_batteries_charging_cutoff_capacity_pct or 100.0
                     )
-                    _usable_kwh = rated_kwh * (max_soc_pct - min_soc_pct) / 100.0
+                    _usable_kwh = usable_kwh_from_rated(
+                        rated_kwh, min_soc_pct, max_soc_pct
+                    )
                     _current_kwh = (
                         (live.huawei_batteries_soc_pct or 0.0) / 100.0 * _usable_kwh
                     )

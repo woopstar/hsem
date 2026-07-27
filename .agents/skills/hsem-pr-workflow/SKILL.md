@@ -15,10 +15,15 @@ Activate this skill when:
 Before opening a PR, all four quality gates must pass:
 
 ```bash
-tox -e lint      # isort + black + ruff format + ruff check
-tox -e typing    # mypy — 0 errors
-tox -e quality   # pyright + vulture — 0 errors
-tox -e py314     # pytest with coverage
+./scripts/quality.sh lint     # ruff format + ruff check
+./scripts/quality.sh typing   # mypy — 0 errors
+./scripts/quality.sh quality  # pyright + vulture — 0 errors
+./scripts/quality.sh test     # pytest with coverage
+```
+
+Or run all at once:
+```bash
+./scripts/quality.sh all
 ```
 
 Verify: `git --no-optional-locks status` shows only intended changes.
@@ -106,7 +111,7 @@ rm /tmp/pr_body.md
 ## Merge Rules
 
 Before merging ANY PR:
-- [ ] All four quality gates pass (`tox -e lint`, `tox -e typing`, `tox -e quality`, `tox -e py314`)
+- [ ] All four quality gates pass (`./scripts/quality.sh all`)
 - [ ] All CI/status checks are green
 - [ ] Code review requirements are met (if applicable)
 - [ ] Tests passing locally and in CI

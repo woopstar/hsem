@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from custom_components.hsem.utils.logger import log_planner
+from custom_components.hsem.utils.units import slot_duration_hours
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -157,7 +158,7 @@ class DynamicDischargeFloor:
         bridge_duration_hours = 0.0
 
         for s in future:
-            slot_hours = (s.end - s.start).total_seconds() / 3600.0
+            slot_hours = slot_duration_hours(s.start, s.end)
 
             net = getattr(s, "estimated_net_consumption_kwh", 0.0) or 0.0
 

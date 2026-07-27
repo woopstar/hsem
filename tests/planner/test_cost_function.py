@@ -414,15 +414,14 @@ class TestCycleCost:
         assert bd.cycle_cost == pytest.approx(0.05, rel=1e-5)
 
     def test_auto_cycle_cost_from_economics(self):
-        """Auto-derived cycle cost: 10000 / (2 × 10 × 6000) = 0.0833 per kWh.
+        """Auto-derived cycle cost with default capacity_loss_pct=30%.
 
-        The 2× accounts for the max(charge, discharge) throughput counting
-        which sees both directions of every full cycle.
+        Formula: (10000 × 0.30) / (2 × 10 × 6000) = 3000 / 120000 = 0.025 per kWh.
+        The 2× accounts for charge + discharge per full cycle.
+        capacity_loss_pct accounts for battery value lost at EOL (70 % retained).
         Sets min_soc_pct=0 so usable capacity equals rated capacity.
         """
-        expected_per_kwh = 10_000.0 / (
-            2.0 * 10.0 * 6000
-        )  # 2× for throughput double-count
+        expected_per_kwh = (10_000.0 * 0.30) / (2.0 * 10.0 * 6000)
         slot = _make_slot(batteries_charged_kwh=1.0, batteries_discharged_kwh=0.0)
         bd = score_plan(
             [slot],
@@ -431,6 +430,7 @@ class TestCycleCost:
                 battery_purchase_price=10_000.0,
                 battery_rated_capacity_kwh=10.0,
                 battery_expected_cycles=6000,
+                battery_capacity_loss_pct=30.0,
                 min_soc_pct=0.0,
                 max_soc_pct=100.0,
             ),
@@ -819,9 +819,9 @@ class TestComparePlansKnownWinner:
         Charge slot: 9 kWh charged @ 0.22 DKK, no discharge.
         Discharge slot: 9 kWh discharged @ 1.68 DKK, no charge.
         Usable capacity = 10 × (100−10)/100 = 9 kWh.
-        cycle_cost_per_kwh (with 2× fix) = 25000 / (2 × 9 × 6000) ≈ 0.23148 DKK.
+        cycle_cost_per_kwh = (25000 × 0.30) / (2 × 9 × 6000) ≈ 0.06944 DKK.
         Charged throughput counted = 9 kWh, discharged = 9 kWh.
-        Each counted via max(charge, discharge) = 9 each = 18 total × 0.23148 ≈ 4.17.
+        Each counted via max(charge, discharge) = 9 each = 18 total × 0.06944 ≈ 1.25.
 
         The arbitrage plan must be cheaper than a no-action plan importing
         9 kWh at 1.68 DKK (15.12 DKK).
@@ -861,6 +861,7 @@ class TestComparePlansKnownWinner:
             battery_purchase_price=25_000.0,
             battery_rated_capacity_kwh=10.0,
             battery_expected_cycles=6000,
+            battery_capacity_loss_pct=30.0,
             min_soc_pct=10.0,
             max_soc_pct=100.0,
             charge_efficiency_pct=95.0,
@@ -869,9 +870,9 @@ class TestComparePlansKnownWinner:
         )
 
         usable_kwh = 10.0 * (100.0 - 10.0) / 100.0  # 9.0
-        expected_cycle_cost_per_kwh = 25_000.0 / (
+        expected_cycle_cost_per_kwh = (25_000.0 * 0.30) / (
             2.0 * usable_kwh * 6000
-        )  # 2× for throughput double-count
+        )
         # max(9,0) + max(0,9) = 9 + 9 = 18 kWh throughput counted
         expected_cycle_cost = 18.0 * expected_cycle_cost_per_kwh
 

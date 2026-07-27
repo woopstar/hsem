@@ -799,14 +799,26 @@ This clamp is applied **after** the ``min_export_price`` clamp.
 
 Cycle cost should count physical battery throughput.
 
-Recommended:
+**Single source of truth:** ``resolve_cycle_cost()`` in ``utils/misc.py``.
 
 ```text
-battery_throughput_kwh = battery_charge_stored_kwh + battery_energy_removed_kwh
-cycle_cost = battery_throughput_kwh * cycle_cost_per_kwh
+battery_throughput_kwh = max(battery_charge_stored_kwh, battery_energy_removed_kwh)
+cycle_cost_kwh = resolve_cycle_cost(
+    purchase_price, usable_kwh, expected_cycles, capacity_loss_pct, user_margin
+)
+cycle_cost = battery_throughput_kwh * cycle_cost_kwh
 ```
 
-If using equivalent full cycles, document the formula.
+Formula:
+
+```text
+auto = (purchase_price × capacity_loss_pct / 100) / (2 × usable_kwh × expected_cycles)
+result = max(auto, user_margin)
+```
+
+The ``2×`` factor accounts for one full round-trip (charge + discharge).
+``capacity_loss_pct`` accounts for residual value at EOL (LiFePO4 retains ~70 % at EOL,
+so ~30 % is lost).
 
 Avoid double-counting the same energy as both charge and discharge unless the cycle-cost definition explicitly expects throughput.
 

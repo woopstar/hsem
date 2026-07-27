@@ -51,7 +51,7 @@
 2. **Always check `huawei_entities.md`** before using a battery/inverter value
 3. Use Mermaid for architecture and flow diagrams; do not use ASCII/Markdown box diagrams
 4. Use math equations (`$$ ... $$`) for formulas rather than plain text/code-block formulas
-5. Run `tox -e lint` before every commit
-6. Run `tox -e quality` after lint
-7. Run `pytest tests/` before every PR
+5. Run `./scripts/quality.sh lint` before every commit
+6. Run `./scripts/quality.sh quality` after lint
+7. Run `./scripts/quality.sh test` before every PR
 8. See `AGENTS.md` and `CLAUDE.md` for full development rules
