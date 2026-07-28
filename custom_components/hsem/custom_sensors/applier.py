@@ -311,15 +311,20 @@ async def async_apply_battery_settings(
 
     # When an EV is actively charging and we are NOT in a forced-discharge
     # or forced-export recommendation, cap the battery discharge power to
-    # the historical weighted average house consumption to prevent the
-    # Huawei inverter from physically discharging into the EV (issue #592).
+    # prevent the Huawei inverter from physically discharging into the EV.
     #
     # The inverter's CT clamp sees the full EV load as demand and will
     # offset it from the battery unless the discharge power is explicitly
-    # restricted.  Instead of a hard 0 W cap, we set the limit to the
-    # historical average house consumption (converted to Watts) so that
-    # the battery still covers normal house load while 100% of the EV
-    # load goes to the grid.
+    # restricted.  The cap depends on whether HSEM actually planned the EV
+    # charging for this slot:
+    #
+    # - HSEM-planned (issue #592): cap to the historical average house
+    #   consumption so the battery still covers normal house load while
+    #   100 % of the EV load goes to the grid.
+    #
+    # - Unplanned / ghost charging: the EV is charging without HSEM's
+    #   permission (e.g. go-e's own PV-surplus latch while calc = 0).
+    #   Cap to 0 W so the battery does not feed the EV at all.
     ev_active = live.ev.is_charging or live.ev_second.is_charging
     if ev_active and recommendation not in (
         Recommendations.ForceBatteriesDischarge.value,
@@ -327,30 +332,53 @@ async def async_apply_battery_settings(
     ):
         discharge_entity = cfg.huawei_solar_batteries_maximum_discharging_power
         if discharge_entity is not None:
-            # Use the weighted average house consumption from the current
-            # recommendation slot (already capped by the planner's 3×
-            # forecast guard in PR #681).  Convert kWh to Watts using the
-            # slot duration.
-            slot_hours = slot_duration_hours(rec.start, rec.end)
-            house_avg_w = (
-                int(rec.avg_house_consumption_kwh / slot_hours * 1000.0)
-                if slot_hours > 1e-9 and rec.avg_house_consumption_kwh > 1e-9
-                else 0
+            # Determine whether HSEM actually planned EV charging.
+            # Fields come from the planner output; they are 0 when the
+            # planner decided NOT to charge the EV in this slot.
+            hsem_planned_ev = (
+                rec.ev_charger_calculated_power > 1e-9
+                or rec.ev_second_charger_calculated_power > 1e-9
+                or rec.ev_total_planned_load_kwh > 1e-9
             )
-            if live.huawei_batteries_max_discharge_power_w != house_avg_w:
+
+            if hsem_planned_ev:
+                # HSEM planned this — cap to house average as before.
+                # Use the weighted average house consumption from the
+                # current recommendation slot (already capped by the
+                # planner's 3× forecast guard in PR #681).  Convert kWh
+                # to Watts using the slot duration.
+                slot_hours = slot_duration_hours(rec.start, rec.end)
+                cap_w = (
+                    int(rec.avg_house_consumption_kwh / slot_hours * 1000.0)
+                    if slot_hours > 1e-9 and rec.avg_house_consumption_kwh > 1e-9
+                    else 0
+                )
+                cap_reason = "EV active — HSEM planned"
+            else:
+                # EV is charging without HSEM's permission (ghost
+                # charging).  Cap to 0 W so the battery does not feed
+                # the EV through the inverter's CT clamp.
+                cap_w = 0
+                cap_reason = "EV ghost-charging — HSEM did not plan"
+
+            if live.huawei_batteries_max_discharge_power_w != cap_w:
                 _de3: str = discharge_entity  # narrowed for closure
                 ev_discharge_result = await async_write_and_verify(
                     entity_id=_de3,
-                    desired=house_avg_w,
-                    writer=lambda: async_set_number_value(sensor, _de3, house_avg_w),
+                    desired=cap_w,
+                    writer=lambda: async_set_number_value(sensor, _de3, cap_w),
                     reader=lambda: _read_number_state(sensor, _de3),
                 )
                 summary.results.append(ev_discharge_result)
                 _LOGGER.debug(
-                    "EV active — capped max discharge power to %d W "
-                    "(house avg %.3f kWh/slot) to prevent battery from "
-                    "discharging into EV.",
-                    house_avg_w,
+                    "%s — capped max discharge power to %d W "
+                    "(ev_power=%dW ev2_power=%dW ev_total_load=%.3fkWh "
+                    "house_avg=%.3f kWh/slot)",
+                    cap_reason,
+                    cap_w,
+                    rec.ev_charger_calculated_power,
+                    rec.ev_second_charger_calculated_power,
+                    rec.ev_total_planned_load_kwh,
                     rec.avg_house_consumption_kwh,
                 )
                 if ev_discharge_result.status == ApplyStatus.FAILED:
