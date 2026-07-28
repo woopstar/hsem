@@ -5,6 +5,7 @@
     "dockerfile": "Dockerfile"
   },
   "postCreateCommand": "if [ -z \"$CI\" ]; then devcontainer-agent-bridge.sh /bin/sh -c 'echo SSH agent ready in container || true'; fi && setup-python-deps.sh",
+  "runArgs": ["--name", "hsem-devcontainer"],
   "remoteUser": "root",
   "forwardPorts": [8123],
   "mounts": [
