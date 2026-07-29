@@ -310,15 +310,21 @@ async def async_apply_battery_settings(
 
     # When an EV is actively charging and we are NOT in a forced-discharge
     # or forced-export recommendation, cap the battery discharge power to
-    # the historical weighted average house consumption to prevent the
-    # Huawei inverter from physically discharging into the EV (issue #592).
+    # the house-only consumption to prevent the Huawei inverter from
+    # physically discharging into the EV (issue #592).
     #
     # The inverter's CT clamp sees the full EV load as demand and will
     # offset it from the battery unless the discharge power is explicitly
-    # restricted.  Instead of a hard 0 W cap, we set the limit to the
-    # historical average house consumption (converted to Watts) so that
-    # the battery still covers normal house load while 100% of the EV
-    # load goes to the grid.
+    # restricted.  We cap at the estimated house-only load so the battery
+    # still covers normal house demand while 100% of the EV load goes to
+    # the grid.
+    #
+    # Two sources, in order of preference:
+    # 1. Live net_consumption_w (house - solar - ev) — directly measured,
+    #    already has EV power subtracted when a power sensor is available.
+    #    Not affected by polluted v5 upgrade history.
+    # 2. Historical avg_house_consumption_kwh from the planner slot —
+    #    fallback when live data is unavailable or less conservative.
     ev_active = live.ev.is_charging or live.ev_second.is_charging
     if (
         ev_active
@@ -330,17 +336,25 @@ async def async_apply_battery_settings(
     ):
         discharge_entity = cfg.huawei_solar_batteries_maximum_discharging_power
         if discharge_entity is not None:
-            # Use the weighted average house consumption from the current
-            # recommendation slot (already capped by the planner's 3×
-            # forecast guard in PR #681).  Convert kWh to Watts using the
-            # slot duration.
+            # Prefer the live net consumption reading (house minus solar
+            # minus EV) — it's always current and unaffected by polluted
+            # v5 upgrade history.  Falls back to the planner's historical
+            # average when live data is unavailable or less conservative.
             slot_hours = (rec.end - rec.start).total_seconds() / 3600.0
-            house_avg_w = (
+            live_net_w = live.net_consumption_w
+            historical_w = (
                 int(rec.avg_house_consumption_kwh / slot_hours * 1000.0)
                 if slot_hours > 1e-9
                 and rec.avg_house_consumption_kwh > 1e-9
                 else 0
             )
+            if live_net_w is not None and live_net_w > 0:
+                # Live reading is available.  Use it if it's more
+                # conservative than the historical average (protects
+                # against polluted v5 upgrade data).
+                house_avg_w = int(min(live_net_w, max(historical_w, 1)))
+            else:
+                house_avg_w = historical_w
             if live.huawei_batteries_max_discharge_power_w != house_avg_w:
                 _de3: str = discharge_entity  # narrowed for closure
                 ev_discharge_result = await async_write_and_verify(
@@ -352,9 +366,10 @@ async def async_apply_battery_settings(
                 summary.results.append(ev_discharge_result)
                 _LOGGER.debug(
                     "EV active — capped max discharge power to %d W "
-                    "(house avg %.3f kWh/slot) to prevent battery from "
-                    "discharging into EV.",
+                    "(live_net=%s W, hist_avg=%.3f kWh/slot) to prevent "
+                    "battery from discharging into EV.",
                     house_avg_w,
+                    f"{live_net_w:.0f}" if live_net_w is not None else "N/A",
                     rec.avg_house_consumption_kwh,
                 )
                 if ev_discharge_result.status == ApplyStatus.FAILED:
