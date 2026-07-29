@@ -342,17 +342,25 @@ async def async_apply_battery_settings(
             )
 
             if hsem_planned_ev:
-                # HSEM planned this — cap to house average as before.
-                # Use the weighted average house consumption from the
-                # current recommendation slot (already capped by the
-                # planner's 3× forecast guard in PR #681).  Convert kWh
-                # to Watts using the slot duration.
+                # HSEM planned this — cap to house average.
+                # Prefer the live net_consumption_w (house - solar - ev)
+                # which already has EV power subtracted.  This avoids
+                # using polluted v5 upgrade history that contains EV load
+                # in the rolling average (issue #592).
+                # Falls back to historical average when live is unavailable.
                 slot_hours = slot_duration_hours(rec.start, rec.end)
-                cap_w = (
+                historical_w = (
                     int(rec.avg_house_consumption_kwh / slot_hours * 1000.0)
                     if slot_hours > 1e-9 and rec.avg_house_consumption_kwh > 1e-9
                     else 0
                 )
+                live_net_w = live.net_consumption_w
+                if live_net_w is not None and live_net_w > 0:
+                    # Live reading available — use the more conservative
+                    # of the two sources to protect against polluted history.
+                    cap_w = int(min(live_net_w, max(historical_w, 1)))
+                else:
+                    cap_w = historical_w
                 cap_reason = "EV active — HSEM planned"
             else:
                 # EV is charging without HSEM's permission (ghost
