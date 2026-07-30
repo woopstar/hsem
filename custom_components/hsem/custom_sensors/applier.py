@@ -341,33 +341,25 @@ async def async_apply_battery_settings(
                 or rec.ev_total_planned_load_kwh > 1e-9
             )
 
-            if hsem_planned_ev:
-                # HSEM planned this — cap to house average.
-                # Prefer the live net_consumption_w (house - solar - ev)
-                # which already has EV power subtracted.  This avoids
-                # using polluted v5 upgrade history that contains EV load
-                # in the rolling average (issue #592).
-                # Falls back to historical average when live is unavailable.
-                slot_hours = slot_duration_hours(rec.start, rec.end)
-                historical_w = (
-                    int(rec.avg_house_consumption_kwh / slot_hours * 1000.0)
-                    if slot_hours > 1e-9 and rec.avg_house_consumption_kwh > 1e-9
-                    else 0
-                )
-                live_net_w = live.net_consumption_w
-                if live_net_w is not None and live_net_w > 0:
-                    # Live reading available — use the more conservative
-                    # of the two sources to protect against polluted history.
-                    cap_w = int(min(live_net_w, max(historical_w, 1)))
-                else:
-                    cap_w = historical_w
-                cap_reason = "EV active — HSEM planned"
+            # Cap to the house-only consumption using live data when
+            # available (already has EV power subtracted — unaffected
+            # by polluted v5 upgrade history).  Falls back to historical
+            # average.  Applies to both HSEM-planned and unplanned EV
+            # charging — the cap limits to house-only load in both cases.
+            slot_hours = slot_duration_hours(rec.start, rec.end)
+            historical_w = (
+                int(rec.avg_house_consumption_kwh / slot_hours * 1000.0)
+                if slot_hours > 1e-9 and rec.avg_house_consumption_kwh > 1e-9
+                else 0
+            )
+            live_net_w = live.net_consumption_w
+            if live_net_w is not None and live_net_w > 0:
+                # Live reading available — use the more conservative
+                # of the two sources to protect against polluted history.
+                cap_w = int(min(live_net_w, max(historical_w, 1)))
             else:
-                # EV is charging without HSEM's permission (ghost
-                # charging).  Cap to 0 W so the battery does not feed
-                # the EV through the inverter's CT clamp.
-                cap_w = 0
-                cap_reason = "EV ghost-charging — HSEM did not plan"
+                cap_w = historical_w
+            cap_reason = "EV active" if hsem_planned_ev else "EV active (unplanned)"
 
             if live.huawei_batteries_max_discharge_power_w != cap_w:
                 _de3: str = discharge_entity  # narrowed for closure
