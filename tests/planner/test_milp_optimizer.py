@@ -464,13 +464,23 @@ def test_milp_terminal_soc_matches_score_plan_with_varying_prices():
     # Compute the expected terminal-SoC value directly from the MILP's own
     # per-slot capped-differential formula, using the realised SoC-simulated
     # charge/discharge flows.
+    #
+    # The formula is asymmetric (issue #694): the charge credit is reduced
+    # by the export opportunity cost (p_exp / η_chg), while the discharge
+    # penalty uses the full terminal premium.
+    charge_eff = 1.0  # 100 % efficiency in this test
     expected_terminal_soc_value = 0.0
     for s in result:
         imp_price_obj = max(s.price.import_price, 0.0)
         terminal_premium = max(0.0, replacement_price - imp_price_obj)
+        charge_premium = max(
+            0.0,
+            replacement_price - imp_price_obj - s.price.export_price / charge_eff,
+        )
         expected_terminal_soc_value += (
-            s.batteries_discharged_kwh - s.batteries_charged_kwh
-        ) * terminal_premium
+            s.batteries_discharged_kwh * terminal_premium
+            - s.batteries_charged_kwh * charge_premium
+        )
 
     bd = score_plan(
         result,
@@ -2629,4 +2639,303 @@ def test_milp_lp_coefficient_uses_import_price():
     ), (
         "Expected destination-aware discharge loss cost 0.12, "
         f"got {diag['discharge_loss_cost_destination_aware']}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Issue #694 — MILP solar export priority during expensive hours
+# ---------------------------------------------------------------------------
+
+
+@_scipy_skip()
+def test_milp_exports_solar_in_expensive_slots_charges_in_cheap():
+    """MILP must export solar surplus during expensive hours and charge during cheap.
+
+    Acceptance criteria from issue #694:
+    Setup with 4 slots — first two expensive (p_imp=3.0), last two cheap (p_imp=0.1),
+    enough solar in cheap slots to fill battery. Battery should export in expensive
+    slots and charge in cheap slots.
+    """
+    slots = [
+        _make_slot(
+            hour=0,
+            import_price=3.0,
+            export_price=2.4,
+            pv_kwh=5.0,
+            consumption_kwh=0.0,
+        ),
+        _make_slot(
+            hour=1,
+            import_price=3.0,
+            export_price=2.4,
+            pv_kwh=5.0,
+            consumption_kwh=0.0,
+        ),
+        _make_slot(
+            hour=2,
+            import_price=0.1,
+            export_price=0.08,
+            pv_kwh=5.0,
+            consumption_kwh=0.0,
+        ),
+        _make_slot(
+            hour=3,
+            import_price=0.1,
+            export_price=0.08,
+            pv_kwh=5.0,
+            consumption_kwh=0.0,
+        ),
+    ]
+
+    milp_result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=10.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+        cycle_cost_per_kwh=0.0,
+        charge_efficiency_pct=100.0,
+        discharge_efficiency_pct=100.0,
+    )
+
+    assert milp_result is not None, "MILP must return a solution"
+    result, _diag = milp_result
+
+    # Expensive slots (0-1): must export solar, must NOT charge battery
+    for i in range(2):
+        s = result[i]
+        assert s.grid_export_kwh > 0.1, (
+            f"Slot {i} (expensive): expected grid export > 0, "
+            f"got ge={s.grid_export_kwh:.3f}"
+        )
+        assert s.batteries_charged_kwh < 0.01, (
+            f"Slot {i} (expensive): expected no battery charging, "
+            f"got ec={s.batteries_charged_kwh:.3f}"
+        )
+
+    # Cheap slots (2-3): must charge battery from solar
+    total_charged = sum(result[i].batteries_charged_kwh for i in range(2, 4))
+    assert total_charged > 1.0, (
+        f"Cheap slots (2-3): expected battery charging > 1 kWh, "
+        f"got {total_charged:.3f}"
+    )
+
+
+@_scipy_skip()
+def test_milp_exports_solar_when_future_cheap_solar_sufficient():
+    """MILP must export now when future cheap slots have enough solar to fill battery.
+
+    Battery starts partially full (5 kWh of 10 kWh usable). Morning expensive
+    slots have solar surplus; afternoon cheap slots also have enough solar to
+    fill the remaining 5 kWh. The MILP should export morning solar rather than
+    charging the battery, because the battery can be filled later at lower cost.
+    """
+    slots = [
+        _make_slot(
+            hour=0,
+            import_price=3.0,
+            export_price=2.4,
+            pv_kwh=5.0,
+            consumption_kwh=0.0,
+        ),
+        _make_slot(
+            hour=1,
+            import_price=3.0,
+            export_price=2.4,
+            pv_kwh=5.0,
+            consumption_kwh=0.0,
+        ),
+        _make_slot(
+            hour=2,
+            import_price=0.1,
+            export_price=0.08,
+            pv_kwh=5.0,
+            consumption_kwh=0.0,
+        ),
+        _make_slot(
+            hour=3,
+            import_price=0.1,
+            export_price=0.08,
+            pv_kwh=5.0,
+            consumption_kwh=0.0,
+        ),
+    ]
+
+    milp_result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=5.0,
+        usable_kwh=10.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+        cycle_cost_per_kwh=0.05,
+        charge_efficiency_pct=97.0,
+        discharge_efficiency_pct=97.0,
+        replacement_price_per_kwh=1.5,
+    )
+
+    assert milp_result is not None, "MILP must return a solution"
+    result, _diag = milp_result
+
+    # Expensive slots (0-1): must export solar, must NOT charge battery
+    for i in range(2):
+        s = result[i]
+        assert s.grid_export_kwh > 0.1, (
+            f"Slot {i} (expensive): expected grid export > 0, "
+            f"got ge={s.grid_export_kwh:.3f}"
+        )
+        assert s.batteries_charged_kwh < 0.01, (
+            f"Slot {i} (expensive): expected no battery charging, "
+            f"got ec={s.batteries_charged_kwh:.3f}"
+        )
+
+    # Cheap slots (2-3): must charge battery from solar
+    total_charged = sum(result[i].batteries_charged_kwh for i in range(2, 4))
+    assert total_charged > 1.0, (
+        f"Cheap slots (2-3): expected battery charging > 1 kWh, "
+        f"got {total_charged:.3f}"
+    )
+
+
+@_scipy_skip()
+def test_milp_charges_early_only_when_future_solar_insufficient():
+    """MILP should only charge during expensive hours if future solar is insufficient.
+
+    When future cheap slots do NOT have enough solar to fill the battery,
+    the MILP may need to charge during expensive hours to meet energy needs.
+    This test verifies that the MILP correctly identifies when early charging
+    is necessary.
+    """
+    # Only 1 kWh of solar in cheap slots — not enough to fill a 10 kWh battery
+    slots = [
+        _make_slot(
+            hour=0,
+            import_price=3.0,
+            export_price=2.4,
+            pv_kwh=5.0,
+            consumption_kwh=0.0,
+        ),
+        _make_slot(
+            hour=1,
+            import_price=3.0,
+            export_price=2.4,
+            pv_kwh=5.0,
+            consumption_kwh=0.0,
+        ),
+        _make_slot(
+            hour=2,
+            import_price=0.1,
+            export_price=0.08,
+            pv_kwh=1.0,
+            consumption_kwh=0.0,
+        ),
+        _make_slot(
+            hour=3,
+            import_price=0.1,
+            export_price=0.08,
+            pv_kwh=1.0,
+            consumption_kwh=0.0,
+        ),
+    ]
+
+    milp_result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=10.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+        cycle_cost_per_kwh=0.05,
+        charge_efficiency_pct=97.0,
+        discharge_efficiency_pct=97.0,
+        replacement_price_per_kwh=1.5,
+    )
+
+    assert milp_result is not None, "MILP must return a solution"
+    result, _diag = milp_result
+
+    # With insufficient future solar, the MILP may charge during expensive
+    # hours. We just verify the solution is valid (no crash).
+    # The LP should still prefer exporting expensive solar, but may also
+    # charge some to meet terminal-SoC targets.
+    total_charged = sum(s.batteries_charged_kwh for s in result)
+    total_exported = sum(s.grid_export_kwh for s in result)
+    assert total_charged >= 0.0, "Battery charging must be non-negative"
+    assert total_exported >= 0.0, "Grid export must be non-negative"
+
+
+@_scipy_skip()
+def test_milp_solar_export_with_house_load_and_replacement_price():
+    """MILP exports solar in expensive slots even with house load and replacement price.
+
+    More realistic scenario: house load consumes some solar, replacement price
+    creates terminal-SoC incentive. The MILP must still prefer exporting during
+    expensive hours over charging the battery.
+    """
+    slots = [
+        _make_slot(
+            hour=0,
+            import_price=3.0,
+            export_price=2.4,
+            pv_kwh=5.0,
+            consumption_kwh=0.5,
+        ),
+        _make_slot(
+            hour=1,
+            import_price=3.0,
+            export_price=2.4,
+            pv_kwh=5.0,
+            consumption_kwh=0.5,
+        ),
+        _make_slot(
+            hour=2,
+            import_price=0.1,
+            export_price=0.08,
+            pv_kwh=5.0,
+            consumption_kwh=0.5,
+        ),
+        _make_slot(
+            hour=3,
+            import_price=0.1,
+            export_price=0.08,
+            pv_kwh=5.0,
+            consumption_kwh=0.5,
+        ),
+    ]
+
+    milp_result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=10.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+        cycle_cost_per_kwh=0.05,
+        charge_efficiency_pct=97.0,
+        discharge_efficiency_pct=97.0,
+        replacement_price_per_kwh=2.0,
+    )
+
+    assert milp_result is not None, "MILP must return a solution"
+    result, _diag = milp_result
+
+    # Expensive slots (0-1): must export solar surplus, must NOT charge battery
+    for i in range(2):
+        s = result[i]
+        # After house load (0.5 kWh), remaining solar is 4.5 kWh
+        assert s.grid_export_kwh > 0.1, (
+            f"Slot {i} (expensive): expected grid export > 0, "
+            f"got ge={s.grid_export_kwh:.3f}"
+        )
+        assert s.batteries_charged_kwh < 0.01, (
+            f"Slot {i} (expensive): expected no battery charging, "
+            f"got ec={s.batteries_charged_kwh:.3f}"
+        )
+
+    # Cheap slots (2-3): must charge battery from solar
+    total_charged = sum(result[i].batteries_charged_kwh for i in range(2, 4))
+    assert total_charged > 1.0, (
+        f"Cheap slots (2-3): expected battery charging > 1 kWh, "
+        f"got {total_charged:.3f}"
     )

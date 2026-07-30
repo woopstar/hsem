@@ -112,13 +112,59 @@ def _build_objective(
         # The differential is computed against the sanitised import price
         # (p_imp_obj, non-negative) so that negative import prices cannot
         # artificially inflate the terminal premium.
+        #
+        # SECOND CAP (issue #694): the terminal premium must never make
+        # battery charging more attractive than grid export for the same
+        # slot.  Without this cap, a high replacement_price can cause the
+        # LP to charge from solar during expensive hours instead of
+        # exporting at peak prices — a "tunnel-vision" effect where the
+        # LP rushes to satisfy the terminal-SoC target immediately rather
+        # than deferring charging to cheaper slots with ample solar.
+        #
+        #   Export benefit:  -p_exp[t]
+        #   Charge cost:     (charge_loss·p_imp[t] - premium + cycle_cost) · η_chg
+        #
+        # Requiring export ≤ charge (both negative = both beneficial):
+        #   -p_exp[t] ≤ (charge_loss·p_imp[t] - premium + cycle_cost) · η_chg
+        #   → premium ≤ charge_loss·p_imp[t] + cycle_cost + p_exp[t] / η_chg
+        #
+        # The cap only reduces the terminal premium — it can never increase
+        # it.  When p_exp[t] is high the cap is large and rarely binds;
+        # when p_exp[t] is low (cheap slots) the cap is small, but the LP
+        # still charges in those slots because the global optimum values
+        # stored energy for future discharge windows.
         if (
             replacement_price_per_kwh is not None
             and abs(replacement_price_per_kwh) > 1e-9
         ):
             terminal_premium = max(0.0, replacement_price_per_kwh - p_imp_obj[t])
-            c_obj[ec_off + t] -= terminal_premium
-            c_obj[ed_off + t] += terminal_premium
+            # Cap the CHARGE credit only: the terminal premium for
+            # charging is reduced by the opportunity cost of not
+            # exporting the same PV surplus (issue #694).
+            #
+            #   charge_premium = repl - p_imp - p_exp / η_chg
+            #
+            # This ensures that when export prices are high (expensive
+            # slots), the charge credit is small and the LP exports.
+            # When export prices are low (cheap slots), the charge
+            # credit is close to the full terminal premium and the
+            # LP charges to store energy for future discharge windows.
+            #
+            # The discharge penalty is NOT capped — it remains at the
+            # full terminal_premium to prevent unnecessary discharging
+            # (issue #638).
+            _charge_eff = 1.0 - charge_loss
+            if _charge_eff > 1e-9:
+                _charge_premium = max(
+                    0.0,
+                    replacement_price_per_kwh
+                    - p_imp_obj[t]
+                    - p_exp[t] / _charge_eff,
+                )
+            else:
+                _charge_premium = terminal_premium
+            c_obj[ec_off + t] -= _charge_premium  # capped credit for charging
+            c_obj[ed_off + t] += terminal_premium  # full penalty for discharging
 
         # Penalty costs: high enough that penalties are zero when SoC is
         # within bounds, but absorb violations when the initial SoC is

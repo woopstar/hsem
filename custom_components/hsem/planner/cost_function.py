@@ -449,6 +449,10 @@ def score_plan(
         # (batteries_discharged_kwh) incurs a penalty.  Undiscounted —
         # matches milp_optimizer.py's treatment of this term.
         #
+        # SECOND CAP (issue #694): the terminal premium must never make
+        # battery charging more attractive than grid export.  Mirrors the
+        # identical cap in milp_optimizer.py's _build_objective().
+        #
         # Gated on initial_battery_kwh as well (even though this per-slot
         # formula no longer needs its value) to preserve the documented
         # enablement contract: terminal-SoC accounting requires BOTH
@@ -459,9 +463,28 @@ def score_plan(
             and abs(replacement_price_per_kwh) > 1e-9
         ):
             terminal_premium = max(0.0, replacement_price_per_kwh - imp_price_obj)
+            # Cap the CHARGE credit only: the terminal premium for
+            # charging is reduced by the opportunity cost of not
+            # exporting the same PV surplus (issue #694).
+            #
+            #   charge_premium = repl - p_imp - p_exp / η_chg
+            #
+            # Mirrors the identical formula in milp_optimizer.py's
+            # _build_objective().  The discharge penalty is NOT capped.
+            if charge_eff > 1e-9:
+                _charge_premium = max(
+                    0.0,
+                    replacement_price_per_kwh
+                    - imp_price_obj
+                    - slot.price.export_price / charge_eff,
+                )
+            else:
+                _charge_premium = terminal_premium
+            # Charge earns the capped credit; discharge incurs the full penalty
             terminal_soc_value += (
-                slot.batteries_discharged_kwh - slot.batteries_charged_kwh
-            ) * terminal_premium
+                -slot.batteries_charged_kwh * _charge_premium
+                + slot.batteries_discharged_kwh * terminal_premium
+            )
 
     # ``total_cost`` is money only — never includes synthetic penalties.
     total_cost = import_cost - export_revenue + conversion_loss_cost + cycle_cost_total
