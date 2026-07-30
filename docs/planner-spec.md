@@ -595,6 +595,28 @@ dominated per-slot import-saving benefits in flat/near-flat price scenarios,
 causing zero discharge even when a full battery could cover house load
 (issue #638 regression).
 
+**Charge-credit cap (issue #694):** the terminal premium is applied
+**asymmetrically**.  The charge credit is further reduced by the export
+opportunity cost — the revenue foregone by not exporting the same PV
+surplus:
+
+```
+charge_premium[t] = max(0, replacement_price_per_kwh − p_imp[t] − p_exp[t] / η_chg)
+
+c_obj[ec[t]] −= charge_premium[t]   (capped credit for charging)
+c_obj[ed[t]] += terminal_premium[t] (full penalty for discharging)
+```
+
+Without this cap, a high `replacement_price` can make the charge credit
+larger than the export benefit (`−p_exp[t]`), causing the LP to charge the
+battery from solar during expensive hours instead of exporting at peak
+prices and deferring charging to cheaper slots — a "tunnel-vision" effect.
+When `p_exp[t]` is high (expensive slots) the capped credit is small and
+the LP exports; when `p_exp[t]` is low (cheap slots) the credit is close
+to the full premium and the LP charges to store energy for future
+discharge windows.  The discharge penalty is deliberately **not** capped,
+preserving the issue #638 protection against unnecessary discharging.
+
 - **Undiscounted** — terminal SoC is a single point-in-time valuation at
   horizon end, matching `cost_function.py`'s `terminal_soc_value` treatment.
 - The differential uses the sanitised import price (`max(p_imp, 0)`) so
@@ -857,10 +879,19 @@ matches what the LP actually optimised for:
 ```text
 imp_price_obj[t]     = max(slot.price.import_price, 0.0)
 terminal_premium[t]  = max(0, replacement_price_per_kwh - imp_price_obj[t])
+charge_premium[t]    = max(0, replacement_price_per_kwh - imp_price_obj[t]
+                             - slot.price.export_price / charge_eff)
 
 terminal_soc_value = sum over all slots of:
-    (batteries_discharged_kwh[t] - batteries_charged_kwh[t]) * terminal_premium[t]
+    batteries_discharged_kwh[t] * terminal_premium[t]
+    - batteries_charged_kwh[t] * charge_premium[t]
 ```
+
+The formula is **asymmetric** (issue #694): the charge credit is reduced
+by the export opportunity cost (`p_exp / η_chg`) so that charging never
+beats exporting in the same slot, while the discharge penalty uses the
+full `terminal_premium[t]`.  This mirrors the MILP's `c_obj` terminal-SoC
+term exactly.
 
 Sign convention (per slot):
 

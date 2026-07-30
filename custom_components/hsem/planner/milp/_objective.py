@@ -157,9 +157,7 @@ def _build_objective(
             if _charge_eff > 1e-9:
                 _charge_premium = max(
                     0.0,
-                    replacement_price_per_kwh
-                    - p_imp_obj[t]
-                    - p_exp[t] / _charge_eff,
+                    replacement_price_per_kwh - p_imp_obj[t] - p_exp[t] / _charge_eff,
                 )
             else:
                 _charge_premium = terminal_premium

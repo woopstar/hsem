@@ -2717,8 +2717,7 @@ def test_milp_exports_solar_in_expensive_slots_charges_in_cheap():
     # Cheap slots (2-3): must charge battery from solar
     total_charged = sum(result[i].batteries_charged_kwh for i in range(2, 4))
     assert total_charged > 1.0, (
-        f"Cheap slots (2-3): expected battery charging > 1 kWh, "
-        f"got {total_charged:.3f}"
+        f"Cheap slots (2-3): expected battery charging > 1 kWh, got {total_charged:.3f}"
     )
 
 
@@ -2793,8 +2792,7 @@ def test_milp_exports_solar_when_future_cheap_solar_sufficient():
     # Cheap slots (2-3): must charge battery from solar
     total_charged = sum(result[i].batteries_charged_kwh for i in range(2, 4))
     assert total_charged > 1.0, (
-        f"Cheap slots (2-3): expected battery charging > 1 kWh, "
-        f"got {total_charged:.3f}"
+        f"Cheap slots (2-3): expected battery charging > 1 kWh, got {total_charged:.3f}"
     )
 
 
@@ -2936,6 +2934,5 @@ def test_milp_solar_export_with_house_load_and_replacement_price():
     # Cheap slots (2-3): must charge battery from solar
     total_charged = sum(result[i].batteries_charged_kwh for i in range(2, 4))
     assert total_charged > 1.0, (
-        f"Cheap slots (2-3): expected battery charging > 1 kWh, "
-        f"got {total_charged:.3f}"
+        f"Cheap slots (2-3): expected battery charging > 1 kWh, got {total_charged:.3f}"
     )
