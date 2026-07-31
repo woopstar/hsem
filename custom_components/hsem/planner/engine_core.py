@@ -73,6 +73,7 @@ from custom_components.hsem.utils.misc import (
 )
 from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.units import (
+    fuse_max_energy_per_slot_kwh,
     hours_ahead,
     max_energy_per_slot_kwh,
     roundtrip_loss_pct,
@@ -542,12 +543,10 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     # battery charge energy to bring total grid import within the limit.
     if inp.main_fuse_amps is not None and inp.main_fuse_amps > 0:
         slot_hours = inp.interval_minutes / 60.0
-        max_per_slot_kwh = (
-            inp.main_fuse_amps
-            * 230.0
-            * float(inp.main_fuse_phases)
-            / 1000.0
-            * slot_hours
+        max_per_slot_kwh = fuse_max_energy_per_slot_kwh(
+            inp.main_fuse_amps,
+            inp.main_fuse_phases,
+            slot_hours,
         )
 
         for s in slots:

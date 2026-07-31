@@ -90,6 +90,28 @@ if abs(value) > 1e-9:   # instead of: if value != 0
 assert result == pytest.approx(expected, rel=1e-6)
 ```
 
+### Grid fuse limit
+```python
+# ALWAYS use fuse_max_energy_per_slot_kwh() — never inline amps*230*phases/1000*hours
+from custom_components.hsem.utils.units import fuse_max_energy_per_slot_kwh
+max_kwh = fuse_max_energy_per_slot_kwh(amps, phases, slot_hours)
+```
+Used by BOTH the MILP grid-import constraint and the post-hoc EV/battery
+throttle so the optimiser and the safety clamp never disagree.
+
+### EV charger DC ↔ AC conversion
+```python
+# ALWAYS use these — never inline x / charger_efficiency or x * charger_efficiency
+from custom_components.hsem.utils.units import ev_dc_to_ac_kwh, ev_ac_to_dc_kwh
+ac_load = ev_dc_to_ac_kwh(dc_kwh, eff)   # grid/PV draw for a DC-side delivery
+dc_kwh  = ev_ac_to_dc_kwh(ac_kwh, eff)   # energy delivered to the EV battery
+```
+EV charger efficiency **percentage** → fraction uses the same
+`clamp_efficiency()` as battery efficiency (never `max(pct, 1.0) / 100.0` inline).
+Note: LP matrix *coefficients* in `planner/milp/_constraints.py` and
+`_objective.py` intentionally stay as raw `1.0 / ev.charger_efficiency`
+(they are constraint coefficients, not energy conversions) — do not wrap those.
+
 ---
 
 ## MILP Variable Vector
