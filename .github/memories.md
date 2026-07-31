@@ -544,6 +544,38 @@ incorrectly write the second EV's power into the primary field.
 
 ---
 
+## MILP Solar Export Priority (issue #694)
+
+The MILP objective function naturally prioritises exporting solar surplus
+during expensive hours over charging the battery, because:
+
+- Export revenue: ``-p_exp[t]`` — negative coefficient = profit, large
+  when prices are high.
+- Battery charge cost: ``charge_loss × p_imp_obj[t]`` — small positive
+  cost, proportional to the import price (conversion loss).
+
+The LP is a global optimiser — it sees all future slots and will defer
+battery charging to cheap slots when future solar is sufficient.
+
+**When the LP may charge during expensive hours:** only when future cheap
+slots lack enough solar surplus to fill the battery before it is needed
+(e.g., a discharge window starts before cheap solar arrives).  In that
+case the LP correctly prioritises meeting the discharge commitment over
+export revenue.
+
+**Regression tests** in ``tests/planner/test_milp_optimizer.py``:
+
+- ``test_milp_exports_solar_in_expensive_slots_charges_in_cheap`` —
+  basic 4-slot setup from the acceptance criteria.
+- ``test_milp_exports_solar_when_future_cheap_solar_sufficient`` —
+  battery starts partially full, replacement price active.
+- ``test_milp_charges_early_only_when_future_solar_insufficient`` —
+  verifies the LP only charges early when necessary.
+- ``test_milp_solar_export_with_house_load_and_replacement_price`` —
+  realistic scenario with house load and terminal-SoC incentive.
+
+---
+
 ## File Organization — By Responsibility, Not By Theme
 
 AI agents naturally bucket related things together (e.g. "all planner inputs in one file").

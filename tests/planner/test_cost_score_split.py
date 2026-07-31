@@ -167,6 +167,7 @@ class TestTerminalSoCCredit:
         # terminal_soc_value = (discharged - charged) * premium = (0 - 5) * 0.30 = -1.50.
         slot = _make_slot(
             import_price=0.0,
+            export_price=0.0,
             grid_import_kwh=1.0,
             batteries_charged_kwh=5.0,
             estimated_battery_capacity_kwh=8.0,
@@ -300,6 +301,7 @@ class TestComparePlansUsesScore:
         discharge_only_last_slot = _make_slot(
             hour=23,
             import_price=0.0,
+            export_price=0.0,
             grid_import_kwh=76.5,
             batteries_discharged_kwh=4.5,  # 5.0 -> 0.5
             estimated_battery_capacity_kwh=0.5,  # nearly empty
@@ -308,6 +310,7 @@ class TestComparePlansUsesScore:
         solar_only_last_slot = _make_slot(
             hour=23,
             import_price=0.0,
+            export_price=0.0,
             grid_import_kwh=76.5,
             batteries_charged_kwh=4.0,  # 5.0 -> 9.0
             estimated_battery_capacity_kwh=9.0,  # ends nearly full
