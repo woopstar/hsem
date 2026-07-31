@@ -453,6 +453,17 @@ bounds** on the discharge variable `ed[t]` (implemented as variable bounds in
    is skipped — `base_load` is rebuilt without EV load, so the battery can
    never serve it.
 
+   **Exactness note**: although `base_load` is net of PV and
+   `ev_accounted_load_kwh` is the gross EV load, the formula is exact —
+   there is no PV double-counting.  With `H` = gross house consumption
+   (incl. EV) and `P` = PV production, `base_load = max(H − P, 0)` and the
+   non-EV unmet demand is `max(H − ev − P, 0)`.  When `base_load > 0`:
+   `base_load − ev = H − P − ev`, identical.  When `base_load = 0`
+   (PV surplus): `H − P ≤ 0`, so both sides are 0.  Hence
+   `max(base_load − ev, 0) == max(H − ev − P, 0)` in all cases, and the
+   battery is never blocked from serving genuine non-EV house load on
+   partially PV-covered EV slots.
+
 2. **No-export cap (issue #592)** — when `excess_export_enabled = False`
    (`no_export=True`):
 

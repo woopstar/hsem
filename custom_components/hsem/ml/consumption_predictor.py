@@ -363,31 +363,83 @@ class ConsumptionPredictor:
     # ------------------------------------------------------------------
 
     def _fit(self, X: np.ndarray, y: np.ndarray, w: np.ndarray) -> None:
-        """Solve weighted ridge regression: β = (XᵀWX + αI)⁻¹ XᵀWy."""
-        k = X.shape[1]
-        sqrt_w = np.sqrt(w)
-        xw = X * sqrt_w[:, np.newaxis]
-        yw = y * sqrt_w
+        """Two-stage (backfitting) weighted ridge regression.
 
-        xtwx = xw.T @ xw
-        ridge = xtwx + self._alpha * np.eye(k, dtype=np.float64)
-        xtwy = xw.T @ yw
+        A joint ridge over 674 features with only a handful of samples is
+        hopelessly under-determined: the day-of-year sin/cos columns soak
+        up the variance and the one-hot (DOW, slot) coefficients collapse
+        to the floor, destroying the per-slot signal (the whole point of
+        the model).  We therefore fit in two stages:
 
-        try:
-            coef = np.linalg.solve(ridge, xtwy)
-        except np.linalg.LinAlgError:
-            ridge += self._alpha * np.eye(k, dtype=np.float64)
-            coef = np.linalg.solve(ridge, xtwy)
+        1. **Group means** — each (DOW, slot) one-hot coefficient is the
+           time-decay weighted mean of its samples, shrunk toward the
+           **slot-level weighted mean** (same slot across all weekdays)
+           by ``alpha``.  The slot-level prior is the architecturally
+           correct fallback: it preserves the per-slot signal for sparse
+           (DOW, slot) groups while still letting recent observations
+           pull stale groups toward current behaviour.
+        2. **Continuous features** — day-of-year (and optional
+           temperature/lag) coefficients are fitted by weighted ridge on
+           the *residual* (y minus the group mean), so they only capture
+           seasonality/weather effects the group means cannot explain.
+        """
+        n_samples = X.shape[0]
+
+        # --- Stage 1: one-hot group means with slot-level shrinkage ----
+        # Per-(DOW, slot) and per-slot weighted sums.
+        group_w: dict[int, float] = {}
+        group_wy: dict[int, float] = {}
+        slot_w: dict[int, float] = {}
+        slot_wy: dict[int, float] = {}
+        onehot_cols = X[:, : self._n_onehot]
+        for i in range(n_samples):
+            g = int(np.argmax(onehot_cols[i]))  # one-hot index for this sample
+            slot = g % self._slots_per_day
+            wi = float(w[i])
+            group_w[g] = group_w.get(g, 0.0) + wi
+            group_wy[g] = group_wy.get(g, 0.0) + wi * float(y[i])
+            slot_w[slot] = slot_w.get(slot, 0.0) + wi
+            slot_wy[slot] = slot_wy.get(slot, 0.0) + wi * float(y[i])
+
+        # Slot-level weighted mean = shrinkage prior.
+        slot_mean: dict[int, float] = {
+            s: slot_wy[s] / slot_w[s] for s in slot_w if slot_w[s] > 1e-12
+        }
+
+        coef = np.zeros(self._n_features, dtype=np.float64)
+        floor = 0.001
+        for g in range(self._n_onehot):
+            wg = group_w.get(g, 0.0)
+            if wg > 1e-12:
+                gbar = group_wy[g] / wg
+                prior = slot_mean.get(g % self._slots_per_day, gbar)
+                # Shrink the group mean toward its slot-level mean.
+                shrunk = (wg * gbar + self._alpha * prior) / (wg + self._alpha)
+                coef[g] = max(shrunk, floor)
+            else:
+                coef[g] = floor
+
+        # --- Stage 2: continuous features on the residual --------------
+        resid = y - onehot_cols @ coef[: self._n_onehot]
+        cont_cols = X[:, self._n_onehot :]
+        k_cont = cont_cols.shape[1]
+        if k_cont > 0:
+            sqrt_w = np.sqrt(w)
+            xw = cont_cols * sqrt_w[:, np.newaxis]
+            yw = resid * sqrt_w
+            ridge = xw.T @ xw + self._alpha * np.eye(k_cont, dtype=np.float64)
+            xtwy = xw.T @ yw
+            try:
+                coef[self._n_onehot :] = np.linalg.solve(ridge, xtwy)
+            except np.linalg.LinAlgError:
+                ridge += self._alpha * np.eye(k_cont, dtype=np.float64)
+                coef[self._n_onehot :] = np.linalg.solve(ridge, xtwy)
 
         self._intercept = 0.0
         self._coef = coef
 
         self._last_fit_samples = X.shape[0]
         self._last_fit_time = datetime.now().astimezone()
-
-        # Clip negative one-hot coefficients; leave continuous features unclipped.
-        floor = 0.001
-        self._coef[: self._n_onehot] = np.maximum(self._coef[: self._n_onehot], floor)
 
     def _weighted_std(self, samples: list[tuple[float, float]]) -> float:
         """Compute time-decay weighted standard deviation."""

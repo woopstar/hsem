@@ -26,7 +26,7 @@ for the HSEM (Home Smart Energy Management) project. Read this before making any
 
 | File | Responsibility |
 |---|---|
-| `consumption_predictor.py` | Weighted ridge regression model with DOW + DOY + temperature features |
+| `consumption_predictor.py` | Two-stage ridge: per-(DOW, slot) weighted group means shrunk toward slot-level means, then DOY/temp fitted on the residual |
 | `history_reader.py` | Queries HA recorder for energy accumulator and instantaneous sensor history |
 | `populator.py` | Bridges ML predictions into `HourlyRecommendation` slots with safety buffer |
 
@@ -89,6 +89,28 @@ if abs(value) > 1e-9:   # instead of: if value != 0
 # In tests always use:
 assert result == pytest.approx(expected, rel=1e-6)
 ```
+
+### Grid fuse limit
+```python
+# ALWAYS use fuse_max_energy_per_slot_kwh() — never inline amps*230*phases/1000*hours
+from custom_components.hsem.utils.units import fuse_max_energy_per_slot_kwh
+max_kwh = fuse_max_energy_per_slot_kwh(amps, phases, slot_hours)
+```
+Used by BOTH the MILP grid-import constraint and the post-hoc EV/battery
+throttle so the optimiser and the safety clamp never disagree.
+
+### EV charger DC ↔ AC conversion
+```python
+# ALWAYS use these — never inline x / charger_efficiency or x * charger_efficiency
+from custom_components.hsem.utils.units import ev_dc_to_ac_kwh, ev_ac_to_dc_kwh
+ac_load = ev_dc_to_ac_kwh(dc_kwh, eff)   # grid/PV draw for a DC-side delivery
+dc_kwh  = ev_ac_to_dc_kwh(ac_kwh, eff)   # energy delivered to the EV battery
+```
+EV charger efficiency **percentage** → fraction uses the same
+`clamp_efficiency()` as battery efficiency (never `max(pct, 1.0) / 100.0` inline).
+Note: LP matrix *coefficients* in `planner/milp/_constraints.py` and
+`_objective.py` intentionally stay as raw `1.0 / ev.charger_efficiency`
+(they are constraint coefficients, not energy conversions) — do not wrap those.
 
 ---
 
@@ -224,6 +246,63 @@ curtail for unbounded profit even without `p_exp > p_imp`.
 - Both clamps together close all known unbounded LP directions.
 - These must **never** be silently reverted in future refactors — they are
   solver-stability requirements, not cosmetic conveniences.
+
+## MILP EV Discharge Guard + No-Export Cap (Issue #592)
+
+In `planner/milp/_constraints.py`, two hard per-slot upper bounds on `ed[t]`:
+
+1. **EV discharge guard** — when EV co-optimisation is NOT active and
+   `ev_accounted_load_kwh > 0`: `ed[t] ≤ max(base_load − ev_accounted, 0) / η_dis`.
+   The formula looks like it double-counts PV (base_load is PV-netted,
+   ev_accounted is gross) but it is **exact**: with H = gross house load and
+   P = PV, `max(base_load − ev, 0) == max(H − ev − P, 0)` in all cases.
+   Do not "fix" it by re-adding PV — that would *under*-block and let the
+   battery feed the EV.
+2. **No-export cap** — when `no_export=True`: `ed[t] ≤ base_load / η_dis` on
+   every slot, so the battery can never export to the grid.
+
+Also in `_build_constraints`, the session-EV AC load is simply
+`session_charge_kw × slot_hours` — the DC/AC efficiency conversion cancels
+by definition.  Do not re-introduce a multiply-then-divide by
+`charger_efficiency`.
+
+## Live-Injection Spike Floor (Issue #592)
+
+In `planner/engine_population.py::_inject_live_data_into_current_slot`, the
+unmetered-EV spike cap is `max(3 × forecast, 0.05 kWh)`.  The absolute
+0.05 kWh floor is mandatory — without it, a ~0 forecast (night slots)
+disables the cap and the full EV spike is injected, re-opening the
+battery-into-EV hole.
+
+## EV Label Layer 2 — charge_solar is NOT protected (Issue #592 spec compliance)
+
+In `planner/engine_core.py::run_planner`, the `_EV_KEEP` frozenset must NOT
+include `BatteriesChargeSolar`.  Per `docs/planner-spec.md` Layer 2, both
+`batteries_charge_solar` and `batteries_wait_mode` are relabelled
+`ev_smart_charging` when `ev_total_planned_load_kwh > 0`.  PR #576 added
+`BatteriesChargeSolar` to the protected set, silently diverging from the
+spec — reverted.  Only `batteries_charge_grid`, `force_batteries_discharge`,
+`force_export`, `time_passed`, and `missing_input_entities` are protected.
+
+## Consumption Predictor — Two-Stage Fit (test-driven fix)
+
+`ml/consumption_predictor.py::_fit` uses a two-stage (backfitting) ridge.
+A joint ridge over 674 one-hot + continuous features with only a handful of
+samples is under-determined: the day-of-year sin/cos columns soak up the
+variance and the one-hot (DOW, slot) coefficients collapse to the floor,
+destroying the per-slot signal.  Stage 1 fits each (DOW, slot) coefficient
+as a time-decay weighted group mean shrunk toward the **slot-level** mean
+(same slot across all weekdays) by `alpha`.  Stage 2 fits DOY/temperature/lag
+on the residual.  Do not revert to a single joint ridge — it reintroduces
+the sparse-data collapse (see `tests/ml/test_consumption_predictor.py`).
+
+## EV Plan Rebuild — Solar/Import Split (MILP path)
+
+`planner/ev_planner.py::rebuild_ev_plan_from_slots` computes the
+`solar_surplus_kwh` / `import_needed_kwh` split from the slot's PV surplus
+(`max(pv − house, 0)`, capped at the AC load, converted to DC).  It must
+NOT be hardcoded to 0 — the MILP co-optimisation path decides EV charging
+alongside PV, so PV-surplus attribution is well-defined per slot.
 
 ---
 

@@ -152,11 +152,18 @@ def _build_constraints(
     # charger) causes the MILP to discharge the home battery into the EV
     # (issue #592).
     #
-    # Per-slot upper bound on ed: ed[t] ≤ max(0, base_load[t] - ev_acct[t]) / η_dis
+    # Per-slot upper bound on ed:
+    #   ed[t] ≤ max(0, base_load[t] − ev_accounted[t]) / η_dis
     # Only slots where ev_accounted > 0 are capped; uncapped slots use max_dis.
-    # This does NOT affect export — when base_load=0 (PV surplus), ev_acct is
-    # already in avg_house_consumption which is covered by PV, and the battery
-    # can still export freely.
+    #
+    # Note on PV interaction: although base_load is net of PV and
+    # ev_accounted is gross EV load, the formula is exact — not
+    # over-conservative.  With H = gross house consumption (incl. EV) and
+    # P = PV production, base_load = max(H−P, 0), and the non-EV unmet
+    # demand the battery may serve is max(H − ev − P, 0).  When
+    # base_load > 0: base_load − ev = H − P − ev, identical.  When
+    # base_load = 0 (PV surplus): H − P ≤ 0 so both sides are 0.  Hence
+    # max(base_load − ev, 0) == max(H − ev − P, 0) in all cases.
     #
     # When no_export=True, the per-slot cap is extended to ALL slots:
     # ed[t] ≤ base_load[t] / η_dis.  This prevents the battery from
@@ -323,8 +330,10 @@ def _build_constraints(
             ev = active_evs[ev_idx]
             skw = ev.session_charge_kw
             assert skw is not None
-            session_dc = skw * slot_hours * ev.charger_efficiency
-            session_ac = session_dc / ev.charger_efficiency
+            # AC-side session load per slot (kW × hours).  The DC/AC
+            # efficiency conversion cancels out by definition, so this is
+            # simply the AC power multiplied by the slot duration.
+            session_ac = skw * slot_hours
             for t in session_slots_set:
                 session_ac_by_slot[t] = session_ac_by_slot.get(t, 0.0) + session_ac
 
@@ -367,18 +376,19 @@ def _build_constraints(
     # Penalty variables are unbounded above (can absorb arbitrary
     # violations) and non-negative (violations cannot be negative).
     # ------------------------------------------------------------------
-    bounds: list[tuple[float, float | None]] = (
+    unbounded: tuple[float, float | None] = (0.0, None)
+    bounds: list[tuple[float, float | None]] = list(
         [(0.0, max_charge_per_slot)] * m  # ec[t]
         + [(0.0, float(ed_ub_per_slot[t])) for t in range(m)]  # ed[t]
-        + [(0.0, None)] * m  # gi[t] (unbounded above)
-        + [(0.0, None)] * m  # ge[t] (unbounded above)
+        + [unbounded] * m  # gi[t] (unbounded above)
+        + [unbounded] * m  # ge[t] (unbounded above)
         + [
             (pv_avail[t], pv_avail[t]) for t in range(m)
         ]  # pv[t] fixed to actual surplus
-        + [(0.0, None)] * m  # m[t] (auxiliary, unbounded above, ≥ 0)
-        + [(0.0, None)] * m  # s_max_pen[t] (penalty, ≥ 0)
-        + [(0.0, None)] * m  # s_min_pen[t] (penalty, ≥ 0)
-        + [(0.0, None)] * m  # curt[t] (curtailment, ≥ 0)
+        + [unbounded] * m  # m[t] (auxiliary, unbounded above, ≥ 0)
+        + [unbounded] * m  # s_max_pen[t] (penalty, ≥ 0)
+        + [unbounded] * m  # s_min_pen[t] (penalty, ≥ 0)
+        + [unbounded] * m  # curt[t] (curtailment, ≥ 0)
     )
     # --- EV bounds ---
     for ev_idx, ev in enumerate(active_evs):
@@ -395,7 +405,7 @@ def _build_constraints(
         bounds.append((0.0, None))
     # --- Fuse penalty bounds ---
     if fuse_active:
-        bounds += [(0.0, None)] * m  # gi_pen[t] (penalty, ≥ 0)
+        bounds += [unbounded] * m  # gi_pen[t] (penalty, ≥ 0)
 
     return {
         "A_eq": A_eq,

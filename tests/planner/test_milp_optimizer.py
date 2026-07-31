@@ -1203,11 +1203,14 @@ def test_milp_soc_rises_after_cheap_charge_slot():
 
 @_scipy_skip()
 def test_milp_overcharged_start_discharges_with_penalty():
-    """Overcharged battery (current_kwh > usable_kwh) should cause the MILP
-    to discharge aggressively with penalty variables absorbing the excess.
+    """Overcharged battery (current_kwh > usable_kwh) with discharge too
+    weak to absorb the excess in one slot → soft SoC penalty fires.
 
-    With current_kwh=12 and usable_kwh=9, the battery starts 3 kWh above max.
-    The MILP must:
+    With current_kwh=12 and usable_kwh=9, the battery starts 3 kWh above
+    max.  With max_discharge_per_slot=1.0 the LP can shed at most 1 kWh
+    per slot, so the excess cannot be absorbed immediately and
+    s_max_pen absorbs the remainder (2 kWh in slot 0, 1 kWh in slot 1,
+    decreasing over time).  The MILP must:
     - Return a valid solution (not None)
     - Discharge aggressively in early slots to bring SoC within bounds
     - Have s_max_pen violations in early slots that decrease over time
@@ -1220,7 +1223,7 @@ def test_milp_overcharged_start_discharges_with_penalty():
         current_kwh=12.0,  # 3 kWh above usable_kwh=9.0
         usable_kwh=9.0,
         max_charge_per_slot=5.0,
-        max_discharge_per_slot=5.0,
+        max_discharge_per_slot=1.0,  # too weak to absorb excess at once
         cycle_cost_per_kwh=0.01,
     )
 
@@ -1236,6 +1239,12 @@ def test_milp_overcharged_start_discharges_with_penalty():
     )
     total = diag.get("total_violation_kwh", 0.0)
     assert total > 1e-6, f"Expected penalty > 0 for overcharged start, got {total}"
+
+    # Penalty must decrease over time as the excess is discharged.
+    s_max_pen = diag.get("s_max_pen", [])
+    assert s_max_pen[0] > s_max_pen[1] > 1e-6, (
+        f"Expected decreasing s_max_pen in early slots, got {s_max_pen[:4]}"
+    )
 
     # Verify discharge happens in early slots
     early_discharge_slots = [
@@ -1446,10 +1455,16 @@ def test_main_fuse_house_load_exceeds_fuse_penalty_fires():
     """House load alone exceeds fuse → penalty fires, plan still returned.
 
     With a 1 A fuse (tiny), max per slot = 1*230*3/1000*1 = 0.69 kWh.
-    House load of 0.5 kWh per slot plus battery charging would exceed this.
-    The MILP must still return a plan with violations flagged.
+    A house load of 1.0 kWh per slot exceeds this on its own, so the
+    soft-constraint penalty variable must absorb the excess and the MILP
+    must still return a plan with violations flagged.
     """
     slots = _make_arbitrage_slots([0, 1, 2, 3], [20, 21, 22, 23])
+    # Override consumption so house load alone (1.0 kWh) exceeds the
+    # 0.69 kWh fuse limit — the LP cannot avoid a fuse violation.
+    for s in slots:
+        s.avg_house_consumption_kwh = 1.0
+        s.estimated_net_consumption_kwh = 1.0 - s.solcast_pv_estimate_kwh
 
     result = solve_milp(
         slots,
@@ -1551,6 +1566,11 @@ def test_main_fuse_diagnostics_contains_fuse_violation_kwh():
 def test_main_fuse_has_violations_flag():
     """Verify has_violations flag is set when fuse violations exist."""
     slots = _make_arbitrage_slots([0, 1, 2, 3], [20, 21, 22, 23])
+    # House load alone (1.0 kWh) exceeds the 1 A fuse limit (0.69 kWh),
+    # guaranteeing a fuse violation the LP cannot avoid.
+    for s in slots:
+        s.avg_house_consumption_kwh = 1.0
+        s.estimated_net_consumption_kwh = 1.0 - s.solcast_pv_estimate_kwh
 
     # With a very restrictive fuse, violations should occur
     result = solve_milp(
@@ -2561,7 +2581,10 @@ def test_milp_discharge_loss_destination_aware_diagnostic():
         f"got {diag['discharge_loss_cost_destination_aware']}"
     )
 
-    # Run SoC simulation to populate battery fields
+    # Run SoC simulation to populate battery fields.  MILP output must be
+    # simulated with milp_prepopulated=True so the LP-derived energy flows
+    # (including the 5.0 kWh force-discharge in slot 1) are used verbatim
+    # rather than re-derived greedily from the recommendation label.
     simulate_soc(
         result,
         _NOW,
@@ -2572,6 +2595,7 @@ def test_milp_discharge_loss_destination_aware_diagnostic():
         max_discharge_per_slot=5.0,
         rated_kwh=10.0,
         end_of_discharge_soc_pct=10.0,
+        milp_prepopulated=True,
     )
 
     # Score the plan with destination-aware pricing.

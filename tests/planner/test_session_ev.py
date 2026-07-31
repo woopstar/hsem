@@ -129,11 +129,12 @@ def test_session_charge_overrides_probabilistic_demand():
     out_slots, _diag = result
 
     # At 60-min resolution, session covers first 2 future slots
-    # (LP slots 0-1 → real slots 15:00-16:00)
+    # (LP slots 0-1 → real slots 14:00-16:00; _NOW is at the slot-0
+    # boundary, so future_idx == range(m) and out[lp_t] is LP slot lp_t).
     session_ac_per_slot = 6.0 * 1.0  # kW * hours = kWh AC
 
     for lp_idx in range(2):
-        slot = out_slots[lp_idx + 1]  # +1 because slot 0 is past
+        slot = out_slots[lp_idx]  # LP slot lp_idx == out_slots[lp_idx]
         assert slot.ev_total_planned_load_kwh == pytest.approx(
             session_ac_per_slot, rel=0.05
         ), (
@@ -189,10 +190,11 @@ def test_session_ev_fallback_beyond_session_window():
         f"Expected ~60 kWh DC total EV charge, got {ev_total_dc}"
     )
 
-    # Verify session slots have session demand (first 2 future slots)
+    # Verify session slots have session demand (first 2 future slots).
+    # _NOW is at the slot-0 boundary, so out[lp_idx] == LP slot lp_idx.
     session_ac = 6.0 * 1.0  # kWh AC per session slot
     for lp_idx in range(2):
-        slot = out_slots[lp_idx + 1]
+        slot = out_slots[lp_idx]
         assert slot.ev_total_planned_load_kwh == pytest.approx(session_ac, rel=0.05)
 
 
@@ -206,22 +208,20 @@ def test_grid_charging_blocked_during_session_demand():
     session EV demand is available.
     """
     # Build slots with high PV in early slots to provide battery charging opportunity.
-    # Slots 15:00-16:00 (LP 0-1, 2 session slots at 60-min) have session EV +
-    # enough PV for battery too.  Slot 17:00+ has only moderate PV.
+    # _NOW is at the slot-0 boundary, so LP slots 0-1 are real slots 14:00-16:00
+    # (the session slots at 60-min).  Slot 16:00+ has no PV for charging.
     slots = _build_slots(12, start_hour=14, import_price=0.05, interval_minutes=60)
 
     # Give session slots generous PV: enough to cover EV (6 kWh) AND battery (5 kWh)
     for i in range(2):
-        slots[i + 1].solcast_pv_estimate_kwh = 15.0
-        slots[i + 1].estimated_net_consumption_kwh = (
-            slots[i + 1].avg_house_consumption_kwh - 15.0
+        slots[i].solcast_pv_estimate_kwh = 15.0
+        slots[i].estimated_net_consumption_kwh = (
+            slots[i].avg_house_consumption_kwh - 15.0
         )
     # Beyond session slots: no PV for charging
-    for i in range(2, 11):
-        slots[i + 1].solcast_pv_estimate_kwh = 0.0
-        slots[i + 1].estimated_net_consumption_kwh = slots[
-            i + 1
-        ].avg_house_consumption_kwh
+    for i in range(2, 12):
+        slots[i].solcast_pv_estimate_kwh = 0.0
+        slots[i].estimated_net_consumption_kwh = slots[i].avg_house_consumption_kwh
 
     ev = EVConfig(
         enabled=True,
@@ -247,11 +247,11 @@ def test_grid_charging_blocked_during_session_demand():
     assert result is not None
     out_slots, _diag = result
 
-    # Check that session-demand slots (LP 0-1, slots 15:00-16:00 at 60-min)
+    # Check that session-demand slots (LP 0-1, slots 14:00-16:00 at 60-min)
     # don't get BatteriesChargeGrid.  They may get BatteriesChargeSolar if
     # PV available.
     for lp_idx in range(2):
-        slot = out_slots[lp_idx + 1]
+        slot = out_slots[lp_idx]
         rec = slot.recommendation
         assert rec != "batteries_charge_grid", (
             f"Slot at {slot.start} has BatteriesChargeGrid during session demand"

@@ -15,7 +15,8 @@ Usage
 ...     power_to_energy_kwh, energy_to_power_kw,
 ...     timedelta_to_hours, slot_duration_hours, hours_ahead,
 ...     roundtrip_loss_pct, usable_kwh_from_rated,
-...     max_energy_per_slot_kwh,
+...     max_energy_per_slot_kwh, fuse_max_energy_per_slot_kwh,
+...     ev_dc_to_ac_kwh, ev_ac_to_dc_kwh,
 ... )
 >>>
 >>> watt_to_kilowatt(5000.0)          # 5000 W → 5.0 kW
@@ -253,6 +254,79 @@ def max_energy_per_slot_kwh(
         return 0.0
     slot_hours = interval_minutes / 60.0
     return watt_to_kilowatt(power_w) * efficiency_fraction * slot_hours
+
+
+# ---------------------------------------------------------------------------
+# Grid fuse limit helpers
+# ---------------------------------------------------------------------------
+
+# Nominal per-phase grid voltage (V).  Used by the main-fuse import limit.
+GRID_PHASE_VOLTAGE = 230.0
+
+
+def fuse_max_energy_per_slot_kwh(
+    amps: float,
+    phases: int,
+    slot_hours: float,
+) -> float:
+    """Return the maximum grid-import energy (kWh) a main fuse allows per slot.
+
+    ``energy = amps × 230 V × phases / 1000 (kW) × slot_hours (h)``
+
+    Single source of truth for the main-fuse import cap.  Used by both the
+    MILP grid-import constraint and the post-hoc EV/battery throttle so the
+    optimiser and the safety clamp can never disagree about the limit.
+
+    Args:
+        amps: Main fuse/breaker rating in amps (A).
+        phases: Electrical phase count (1 or 3).
+        slot_hours: Slot duration in hours (h).
+
+    Returns:
+        Maximum import energy per slot in kWh.  ``0.0`` when the fuse is
+        disabled (``amps <= 0``).
+    """
+    if amps <= 0 or phases <= 0 or slot_hours <= 0:
+        return 0.0
+    return amps * GRID_PHASE_VOLTAGE * float(phases) / 1000.0 * slot_hours
+
+
+# ---------------------------------------------------------------------------
+# EV charger DC ↔ AC conversion helpers
+# ---------------------------------------------------------------------------
+
+
+def ev_dc_to_ac_kwh(dc_kwh: float, charger_efficiency: float) -> float:
+    """Convert EV-battery-side (DC) energy to the AC load the house must supply.
+
+    ``ac_kwh = dc_kwh ÷ charger_efficiency``
+
+    Args:
+        dc_kwh: Energy delivered to the EV battery (kWh, DC side).
+        charger_efficiency: Charger efficiency as a fraction (0–1).
+
+    Returns:
+        AC energy drawn from the house/grid/PV (kWh).  Returns ``0.0`` when
+        *charger_efficiency* is not positive (avoids division by zero).
+    """
+    if charger_efficiency <= 0:
+        return 0.0
+    return dc_kwh / charger_efficiency
+
+
+def ev_ac_to_dc_kwh(ac_kwh: float, charger_efficiency: float) -> float:
+    """Convert EV AC load to the energy delivered to the EV battery (DC).
+
+    ``dc_kwh = ac_kwh × charger_efficiency``
+
+    Args:
+        ac_kwh: AC energy drawn from the house/grid/PV (kWh).
+        charger_efficiency: Charger efficiency as a fraction (0–1).
+
+    Returns:
+        Energy delivered to the EV battery (kWh, DC side).
+    """
+    return ac_kwh * charger_efficiency
 
 
 # ---------------------------------------------------------------------------

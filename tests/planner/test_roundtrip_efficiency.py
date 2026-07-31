@@ -471,7 +471,12 @@ class TestPlannerInputEfficiencyFields:
         assert not math.isnan(output.plan_cost.total)
 
     def test_100pct_efficiency_no_extra_grid_import_for_charging(self) -> None:
-        """At 100 % efficiency, grid import for a charge-only slot == batteries_charged_kwh."""
+        """At 100 % efficiency, grid import for a charge-only slot == charge + house load.
+
+        The slot's grid import covers both the battery charge (1:1 at 100 %
+        charge efficiency) and the slot's house consumption.  There is no
+        conversion-loss markup on the charge portion.
+        """
         from custom_components.hsem.planner import run_planner
         from tests.planner.fixtures import make_summer_day_input
 
@@ -482,15 +487,15 @@ class TestPlannerInputEfficiencyFields:
         inp.battery_discharge_efficiency_pct = 100.0
         output = run_planner(inp)
 
-        # Find a grid-charge slot and verify grid_import == batteries_charged_kwh
+        # Find a grid-charge slot and verify grid import == charged + house load
         for slot in output.slots:
             if slot.batteries_charged_kwh > 0.1 and slot.solcast_pv_estimate_kwh < 0.01:
-                # Pure grid charge slot — grid import must equal batteries_charged_kwh
-                assert slot.grid_import_kwh == pytest.approx(
-                    slot.batteries_charged_kwh, rel=0.01
-                ), (
+                # Pure grid charge slot — grid import must equal the charged
+                # energy plus the house load served in the same slot.
+                expected = slot.batteries_charged_kwh + slot.avg_house_consumption_kwh
+                assert slot.grid_import_kwh == pytest.approx(expected, rel=0.01), (
                     f"At 100 % efficiency, grid_import ({slot.grid_import_kwh:.3f}) "
-                    f"should equal batteries_charged_kwh ({slot.batteries_charged_kwh:.3f})"
+                    f"should equal charged + house ({expected:.3f})"
                 )
                 break  # one confirmation is sufficient
 

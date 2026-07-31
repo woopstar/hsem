@@ -12,7 +12,11 @@ import numpy as np
 
 from custom_components.hsem.models.ev_config import EVConfig
 from custom_components.hsem.models.planned_slot import PlannedSlot
-from custom_components.hsem.utils.units import slot_duration_hours, timedelta_to_hours
+from custom_components.hsem.utils.units import (
+    ev_dc_to_ac_kwh,
+    slot_duration_hours,
+    timedelta_to_hours,
+)
 
 
 def _write_milp_results_to_slots(
@@ -115,10 +119,9 @@ def _write_milp_results_to_slots(
             for lp_t in range(m):
                 ev_dc = float(ev_c_sol[lp_t])
                 if ev_dc >= _min_action_kwh:
-                    ev_ac_load_by_slot[lp_t] = (
-                        ev_ac_load_by_slot.get(lp_t, 0.0)
-                        + ev_dc / ev.charger_efficiency
-                    )
+                    ev_ac_load_by_slot[lp_t] = ev_ac_load_by_slot.get(
+                        lp_t, 0.0
+                    ) + ev_dc_to_ac_kwh(ev_dc, ev.charger_efficiency)
 
     # ------------------------------------------------------------------
     # Single merged energy-flow write-out pass (issue #659).
@@ -282,7 +285,7 @@ def _write_milp_results_to_slots(
                 if ev_dc_kwh < _min_action_kwh:
                     continue
                 # AC load = DC / charger_eff (grid/PV draw)
-                ac_load = round(ev_dc_kwh / ev.charger_efficiency, 3)
+                ac_load = round(ev_dc_to_ac_kwh(ev_dc_kwh, ev.charger_efficiency), 3)
                 # Accumulate into slot EV fields (additive for multiple EVs)
                 if ev.base_load_includes_ev:
                     out_slots[slot_i].ev_accounted_load_kwh += ac_load
@@ -300,7 +303,10 @@ def _write_milp_results_to_slots(
                 # to a slot with only a few minutes remaining.  The charger
                 # physically cannot exceed its nameplate rating.
                 max_ac_power_w = round(
-                    (ev.max_charge_per_slot / ev.charger_efficiency / full_slot_hours)
+                    (
+                        ev_dc_to_ac_kwh(ev.max_charge_per_slot, ev.charger_efficiency)
+                        / full_slot_hours
+                    )
                     * 1000
                 )
                 slot_start = out_slots[slot_i].start
@@ -311,11 +317,19 @@ def _write_milp_results_to_slots(
                         1.0 / 3600.0,  # 1 s minimum guard
                     )
                     ac_power_w = round(
-                        (ev_dc_kwh / ev.charger_efficiency / remaining_hours) * 1000
+                        (
+                            ev_dc_to_ac_kwh(ev_dc_kwh, ev.charger_efficiency)
+                            / remaining_hours
+                        )
+                        * 1000
                     )
                 else:
                     ac_power_w = round(
-                        (ev_dc_kwh / ev.charger_efficiency / full_slot_hours) * 1000
+                        (
+                            ev_dc_to_ac_kwh(ev_dc_kwh, ev.charger_efficiency)
+                            / full_slot_hours
+                        )
+                        * 1000
                     )
                 ac_power_w = min(ac_power_w, max_ac_power_w)
 

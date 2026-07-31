@@ -28,6 +28,8 @@ from homeassistant.const import STATE_UNAVAILABLE
 
 from custom_components.hsem.utils.datetime_utils import utc_key
 from custom_components.hsem.utils.logger import log_planner
+from custom_components.hsem.utils.misc import clamp_efficiency
+from custom_components.hsem.utils.units import ev_dc_to_ac_kwh
 
 # ---------------------------------------------------------------------------
 # Public data structures
@@ -238,8 +240,7 @@ def max_charge_energy_for_slot(
         kWh delivered to the EV battery (battery-side, post-efficiency).
     """
     hours = slot_duration_min / 60.0
-    eff = max(charger_efficiency_pct, 1.0) / 100.0
-    return charger_power_kw * hours * eff
+    return charger_power_kw * hours * clamp_efficiency(charger_efficiency_pct)
 
 
 def remaining_minutes_in_slot(now: datetime, slot_end: datetime) -> float:
@@ -507,7 +508,7 @@ def build_ev_charging_plan(
         # physically cannot start and the energy would not be delivered.
         # Skip the slot so the planner doesn't waste PV surplus or cheap
         # grid slots on allocations that can never be realised.
-        eff = max(inp.charger_efficiency_pct, 1.0) / 100.0
+        eff = clamp_efficiency(inp.charger_efficiency_pct)
         slot_hours = avail_min / 60.0
         ac_power_w = (allocated / eff) / slot_hours * 1000.0
         if ac_power_w < inp.charger_min_power_w - 1e-9:
@@ -524,8 +525,9 @@ def build_ev_charging_plan(
 
         # ``allocated`` is battery-side kWh delivered to the EV.
         # AC load = battery-side / charger_efficiency (what grid/PV must supply).
-        eff = max(inp.charger_efficiency_pct, 1.0) / 100.0
-        ac_load = allocated / eff
+        ac_load = ev_dc_to_ac_kwh(
+            allocated, clamp_efficiency(inp.charger_efficiency_pct)
+        )
 
         net_surplus = slot_net_surplus_kwh[i]
         # net_surplus_used / import_needed are expressed as battery-side kWh
@@ -708,7 +710,7 @@ def rebuild_ev_plan_from_slots(
     from custom_components.hsem.utils.datetime_utils import as_tz
     from custom_components.hsem.utils.units import slot_duration_hours
 
-    eff = max(charger_efficiency_pct, 1.0) / 100.0
+    eff = clamp_efficiency(charger_efficiency_pct)
     charging_slots: list[EVChargingSlot] = []
     planned_load_by_slot: dict[str, float] = {}
     current_slot_planned_load_kwh: float = 0.0
@@ -733,13 +735,26 @@ def rebuild_ev_plan_from_slots(
         dc_kwh = ac_load * eff
         total_charged_kwh += dc_kwh
 
+        # Solar/import split: the MILP decides EV charging alongside PV, so
+        # any PV surplus in this slot is consumed by the EV first (before
+        # the battery).  Attribute as much of the AC load as possible to
+        # the slot's PV surplus; the remainder is grid import.  Use the
+        # house-netted surplus (PV minus house consumption) so the split
+        # matches the energy balance used elsewhere.
+        pv_kwh = max(getattr(s, "solcast_pv_estimate_kwh", 0.0), 0.0)
+        house_kwh = max(getattr(s, "avg_house_consumption_kwh", 0.0), 0.0)
+        surplus_kwh = max(pv_kwh - house_kwh, 0.0)
+        solar_used_ac = min(ac_load, surplus_kwh)
+        solar_used_dc = solar_used_ac * eff
+        import_needed = max(dc_kwh - solar_used_dc, 0.0)
+
         ev_slot = EVChargingSlot(
             start=s.start,
             end=s.end,
             estimated_charged_kwh=round(dc_kwh, 3),
             ac_load_kwh=round(ac_load, 3),
-            solar_surplus_kwh=0.0,  # MILP doesn't track this split
-            import_needed_kwh=0.0,  # MILP doesn't track this split
+            solar_surplus_kwh=round(solar_used_dc, 3),
+            import_needed_kwh=round(import_needed, 3),
             import_price=getattr(getattr(s, "price", None), "import_price", 0.0),
             estimated_cost=round(
                 ac_load * getattr(getattr(s, "price", None), "import_price", 0.0), 4

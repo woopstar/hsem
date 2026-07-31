@@ -15,6 +15,7 @@ from custom_components.hsem.planner.candidate_selector import (
 )
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import log_planner
+from custom_components.hsem.utils.misc import clamp_efficiency
 
 
 def _build_ev_configs_for_milp(
@@ -198,7 +199,7 @@ def _build_ev_configs_for_milp(
                 continue
             charge_past_target = False
 
-        eff = max(eff_pct, 1.0) / 100.0
+        eff = clamp_efficiency(eff_pct)
         slot_hours = inp.interval_minutes / 60.0
         max_dc = pwr * slot_hours * eff  # DC-side kWh per slot
 

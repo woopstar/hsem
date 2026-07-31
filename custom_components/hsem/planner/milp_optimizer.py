@@ -27,7 +27,11 @@ from custom_components.hsem.models.ev_config import EVConfig
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import clamp_efficiency
-from custom_components.hsem.utils.units import slot_duration_hours, timedelta_to_hours
+from custom_components.hsem.utils.units import (
+    fuse_max_energy_per_slot_kwh,
+    slot_duration_hours,
+    timedelta_to_hours,
+)
 
 if TYPE_CHECKING:
     from custom_components.hsem.models.planned_slot import PlannedSlot
@@ -451,18 +455,16 @@ def solve_milp(
     if fuse_active:
         gi_pen_off = n_vars
         n_vars += m  # gi_pen[0..m-1] per slot
-        # Calculate max grid import per slot in kWh
-        # Formula: amps * 230V * phases / 1000 (kW) * (interval_minutes / 60) (hours)
-        # We derive interval_minutes from the first slot's duration
+        # Calculate max grid import per slot in kWh (single source of truth
+        # shared with the post-hoc EV/battery throttle in engine_core).
+        # We derive interval_minutes from the first slot's duration.
         first_slot = slots[future_idx[0]]
         interval_minutes = timedelta_to_hours(first_slot.end - first_slot.start) * 60.0
         assert main_fuse_amps is not None  # guarded by fuse_active
-        max_grid_import_per_slot_kwh = (
-            main_fuse_amps
-            * 230.0
-            * float(main_fuse_phases)
-            / 1000.0
-            * (interval_minutes / 60.0)
+        max_grid_import_per_slot_kwh = fuse_max_energy_per_slot_kwh(
+            main_fuse_amps,
+            main_fuse_phases,
+            interval_minutes / 60.0,
         )
         log_planner(
             "debug",
