@@ -346,12 +346,6 @@ async def async_apply_battery_settings(
             # by polluted v5 upgrade history).  Falls back to historical
             # average.  Applies to both HSEM-planned and unplanned EV
             # charging — the cap limits to house-only load in both cases.
-            #
-            # Safety: if both sources produce an unrealistically high value
-            # (> 2000 W for normal house load), the EV power sensor likely
-            # isn't providing data or history is polluted.  Clamp to a safe
-            # fallback of 500 W — enough for baseline house load but not
-            # enough to discharge into an EV.
             slot_hours = slot_duration_hours(rec.start, rec.end)
             historical_w = (
                 int(rec.avg_house_consumption_kwh / slot_hours * 1000.0)
@@ -359,17 +353,21 @@ async def async_apply_battery_settings(
                 else 0
             )
             live_net_w = live.net_consumption_w
-            if live_net_w is not None and live_net_w > 0:
-                # Live reading available — use the more conservative
-                # of the two sources to protect against polluted history.
-                cap_w = int(min(live_net_w, max(historical_w, 1)))
+            if live_net_w is not None:
+                # Live reading available.  net_consumption_w can be
+                # slightly negative when the EV power sensor reports a
+                # different measurement than the house CT clamp
+                # (e.g. house=4000W, ev=4200W → net=-200W).
+                # Taking max(x, 0) gives the house-only portion.
+                # Take the minimum vs historical to stay conservative
+                # against polluted v5 averages.
+                live_abs = max(live_net_w, 0.0)
+                if live_abs > 0:
+                    cap_w = int(min(live_abs, max(historical_w, 1)))
+                else:
+                    cap_w = historical_w
             else:
                 cap_w = historical_w
-            # Absolute safety clamp: no normal house draws > 2000 W
-            # continuously.  If the cap exceeds this, the EV power
-            # sensor isn't providing data and history is polluted.
-            if cap_w > 2000:
-                cap_w = 500
             cap_reason = "EV active" if hsem_planned_ev else "EV active (unplanned)"
 
             if live.huawei_batteries_max_discharge_power_w != cap_w:
