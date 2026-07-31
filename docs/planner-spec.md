@@ -301,6 +301,32 @@ the finished plan with full information.
 - A house-load discharge slot (grid_export_kwh == 0) must have the SAME
   loss cost as before the fix (import-price valuation, regression guard).
 
+## Live data injection (current slot)
+
+Before scoring, the engine replaces the current (partially elapsed) slot's
+forecast PV and consumption with live measurements
+(`engine_population.py::_inject_live_data_into_current_slot`).  Live Watts
+are converted to a projected full-slot kWh by multiplying by the slot's full
+duration.
+
+When `house_power_includes_ev = True`, the live house reading may contain EV
+charging power that the battery must not serve (issue #592).  Two layers
+protect against this:
+
+1. **Known EV power subtraction** — when `ev_session_charge_kw` (and/or the
+   second charger's) is available, it is subtracted from the live reading
+   (floored at 0) before injection.
+2. **Spike cap** — if the remaining live reading still exceeds
+   `max(3 × forecast, 0.05 kWh)`, it is capped at the forecast (or at the
+   0.05 kWh floor when the forecast is ~0, where the ratio test would be
+   degenerate).  A spike of that magnitude is unambiguous unmetered load
+   (e.g. a boolean-only EV status sensor); normal house load does not
+   triple between slots.
+
+The sub-window averages (`avg_house_consumption_1d/3d/7d/14d_kwh`) of the
+current slot are updated to match the injected value so spike detection in
+`populate_consumption` stays consistent.
+
 ## SoC simulation
 
 SoC must be simulated forward through the full horizon.
@@ -407,6 +433,42 @@ never uses penalties unless forced by an out-of-bounds initial SoC.
 - Violations are logged at WARNING level.
 - The diagnostics dict (returned alongside the slot list) captures penalty
   values for the engine to surface.
+
+### Battery discharge upper bounds (hard)
+
+In addition to the soft SoC penalties, the MILP applies **hard per-slot upper
+bounds** on the discharge variable `ed[t]` (implemented as variable bounds in
+`_build_constraints`):
+
+1. **EV discharge guard (issue #592)** — when EV co-optimisation is **not**
+   active and a slot has `ev_accounted_load_kwh > 0` (EV load already included
+   in the house consumption sensor):
+
+   ```text
+   ed[t] <= max(0, base_load[t] - ev_accounted_load_kwh[t]) / discharge_eff
+   ```
+
+   The battery may only serve the non-EV portion of demand; the EV load is
+   served by grid import or PV.  When co-optimisation **is** active the guard
+   is skipped — `base_load` is rebuilt without EV load, so the battery can
+   never serve it.
+
+2. **No-export cap (issue #592)** — when `excess_export_enabled = False`
+   (`no_export=True`):
+
+   ```text
+   ed[t] <= base_load[t] / discharge_eff
+   ```
+
+   The battery can never discharge more than the slot's house load, so it
+   cannot export energy to the grid.  When `base_load[t] = 0` (PV-surplus
+   slot) the cap is 0 and the battery sits idle.  PV export is unaffected.
+   Note this also suppresses battery-driven grid arbitrage — intentional:
+   "excess export disabled" means the battery never feeds the grid.
+
+When both apply, the tighter cap wins.  Because the battery cannot export
+under `no_export`, the MILP labels discharge slots `BatteriesDischargeMode`
+(self-consumption) rather than `ForceBatteriesDischarge` in post-processing.
 
 ### EV co-optimisation (MILP)
 

@@ -315,17 +315,11 @@ async def async_apply_battery_settings(
     #
     # The inverter's CT clamp sees the full EV load as demand and will
     # offset it from the battery unless the discharge power is explicitly
-    # restricted.  The cap depends on whether HSEM actually planned the EV
-    # charging for this slot:
-    #
-    # - HSEM-planned (issue #592): cap to the historical average house
-    #   consumption so the battery still covers normal house load while
-    #   100 % of the EV load goes to the grid.
-    #
-    # - Unplanned / ghost charging: the EV is charging without HSEM's
-    #   permission (e.g. go-e's own PV-surplus latch while calc = 0).
-    #   Cap to 0 W so the battery does not feed the EV at all.
-    ev_active = live.ev.is_charging or live.ev_second.is_charging
+    # restricted.  The cap is the house-only consumption — the battery
+    # still covers normal house load while 100 % of the EV load goes to
+    # the grid.  This applies identically to HSEM-planned and unplanned
+    # ("ghost") EV charging (issue #592).
+    ev_active = live.any_ev_charging
     if ev_active and recommendation not in (
         Recommendations.ForceBatteriesDischarge.value,
         Recommendations.ForceExport.value,
@@ -359,16 +353,17 @@ async def async_apply_battery_settings(
             # net_consumption_w == house_w (no EV subtraction happened).
             # In that case fall back to the minimum sub-window average.
             ev_power_available = (
-                (live.ev.power_w is not None and live.ev.power_w > 1e-9)
-                or (live.ev_second.power_w is not None
-                    and live.ev_second.power_w > 1e-9)
-            )
+                live.ev.power_w is not None and live.ev.power_w > 1e-9
+            ) or (live.ev_second.power_w is not None and live.ev_second.power_w > 1e-9)
             if live_net_w is not None and ev_power_available:
                 live_abs = max(live_net_w, 0.0)
-                if live_abs > 0:
-                    cap_w = int(min(live_abs, max(historical_w, 1)))
+                if historical_w > 0:
+                    # Take the more conservative of live and historical so a
+                    # single polluted source cannot inflate the cap.
+                    cap_w = int(min(live_abs, historical_w))
                 else:
-                    cap_w = historical_w
+                    # No history yet (fresh install) — trust the live reading.
+                    cap_w = int(live_abs)
             else:
                 # No reliable live reading or no EV power sensor.
                 # Fall back to the most conservative (smallest) of the

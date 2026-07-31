@@ -145,7 +145,6 @@ def solve_milp(
             - Deciding between ``ForceBatteriesDischarge`` and
               ``BatteriesDischargeMode`` in post-processing.
             Defaults to 0.0.
-        evalue passed to ``_build_constraints.no_export``.
         ev_configs:
             Optional list of :class:`EVConfig` objects (one per EV).  When
             provided, the MILP co-optimises EV charging alongside the battery.

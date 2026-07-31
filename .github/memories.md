@@ -94,9 +94,10 @@ assert result == pytest.approx(expected, rel=1e-6)
 
 ## MILP Variable Vector
 
-The MILP in `milp_optimizer.py` uses **8*n** LP variables for battery-only (n = number of
+The MILP in `milp_optimizer.py` uses **9*n** LP variables for battery-only (n = number of
 future slots).  When EV co-optimisation is active (one or more `EVConfig` objects passed),
-the vector grows to **8n + 2n·E + E** where E is the number of active EVs.
+the vector grows by **n·E + E** where E is the number of active EVs.  When the main-fuse
+soft constraint is active, a further **n** `gi_pen[t]` variables are appended.
 
 ```
 Index range      Variable     Meaning
@@ -108,11 +109,14 @@ Index range      Variable     Meaning
 [5n .. 6n-1]     m[t]         max(ec[t], ed[t]) auxiliary variable for cycle cost
 [6n .. 7n-1]     s_max_pen[t] Penalty: kWh SoC exceeds usable_kwh
 [7n .. 8n-1]     s_min_pen[t] Penalty: kWh SoC drops below 0
+[8n .. 9n-1]     curt[t]      PV curtailment in slot t (kWh)
 --- EV co-optimisation (when ev_configs is provided) ---
-[8n .. 9n-1]     ev0_c[t]     EV0 DC-side charge per slot (kWh)
-[9n .. 10n-1]    ev1_c[t]     EV1 DC-side charge per slot (kWh) (if second EV active)
-[10n]            ev0_pen      EV0 deadline target slack (kWh shortfall)
-[10n+1]          ev1_pen      EV1 deadline target slack (if second EV active)
+[9n .. 10n-1]    ev0_c[t]     EV0 DC-side charge per slot (kWh)
+[10n .. 11n-1]   ev1_c[t]     EV1 DC-side charge per slot (kWh) (if second EV active)
+[11n]            ev0_pen      EV0 deadline target slack (kWh shortfall)
+[11n+1]          ev1_pen      EV1 deadline target slack (if second EV active)
+--- Main-fuse soft constraint (when main_fuse_amps > 0) ---
+[... .. +n-1]    gi_pen[t]    Grid-import excess above fuse limit per slot (kWh)
 ```
 
 Cycle cost is counted as `α * m[t]` — **not** `α * (ec[t] + ed[t])`.
@@ -124,8 +128,8 @@ The `m[t]` constraints are: `m[t] >= ec[t]` and `m[t] >= ed[t]`.
 
 - **Hard limit: 30 KB per file** in the planner and utils layers.
 - If a file exceeds 30 KB, split it before adding more features.
-- Current oversized planner files: `milp_optimizer.py` (75 KB), `engine_core.py` (50 KB),
-  `cost_function.py` (39 KB), `candidate_generator.py` (36 KB), `charge_scheduler.py` (35 KB).
+- Current oversized planner files: `ev_planner.py` (31.8 KB).
+- Check before every PR: `wc -c custom_components/hsem/planner/*.py`.
 
 ---
 

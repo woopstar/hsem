@@ -41,7 +41,7 @@ _CONNECTED_DOMAINS = ["sensor", "switch", "input_boolean", "button", "binary_sen
 _DISCHARGE_POWER_SELECTOR = selector(
     {
         "number": {
-            "min": 50,
+            "min": 0,
             "max": 5000,
             "step": 1,
             "unit_of_measurement": UnitOfPower.WATT,

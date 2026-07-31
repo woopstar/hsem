@@ -206,23 +206,23 @@ def _inject_live_data_into_current_slot(
                 # If the live reading (after subtracting known EV power) still
                 # exceeds the forecast by >3×, it likely contains unmeasured EV
                 # load.  Cap at the forecast to prevent the battery from
-                # serving unknown EV demand.
+                # serving unknown EV demand.  When the forecast is ~0 (e.g. a
+                # night slot), the ratio test is degenerate — use an absolute
+                # floor instead so a multi-kW EV spike is still capped.
                 forecast = slot.avg_house_consumption_kwh
-                if (
-                    inp.house_power_includes_ev
-                    and live_load_kwh > forecast * 3.0
-                    and forecast > 1e-9
-                ):
+                cap_kwh = max(forecast * 3.0, 0.05)
+                if inp.house_power_includes_ev and live_load_kwh > cap_kwh:
                     log_planner(
                         "debug",
                         "[core] _inject_live_data  slot=%s  "
-                        "live %.3f kWh > 3× forecast %.3f kWh — "
-                        "capping at forecast (probable unmeasured EV load)",
+                        "live %.3f kWh > cap %.3f kWh (3× forecast %.3f kWh) — "
+                        "capping (probable unmeasured EV load)",
                         slot.start.isoformat(),
                         live_load_kwh,
+                        cap_kwh,
                         forecast,
                     )
-                    live_load_kwh = forecast
+                    live_load_kwh = forecast if forecast > 1e-9 else cap_kwh
 
                 log_planner(
                     "debug",
