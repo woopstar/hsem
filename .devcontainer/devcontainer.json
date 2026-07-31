@@ -4,13 +4,19 @@
   "build": {
     "dockerfile": "Dockerfile"
   },
-  "postCreateCommand": "if [ -z \"$CI\" ]; then devcontainer-agent-bridge.sh /bin/sh -c 'echo SSH agent ready in container || true'; fi && setup-python-deps.sh",
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/node:1": {}
+  },
+  "postCreateCommand": "/usr/local/bin/setup-python-deps.sh; if [ -z \"$CI\" ]; then /usr/local/bin/devcontainer-agent-bridge.sh /bin/sh -c 'echo SSH agent ready in container || true'; fi",
   "runArgs": ["--name", "hsem-devcontainer"],
   "remoteUser": "root",
   "forwardPorts": [8123],
   "mounts": [
     "type=bind,source=${localEnv:HOME}/.ssh,target=/root/.ssh,readonly",
-    "type=bind,source=${localEnv:HOME}/.gnupg,target=/root/.gnupg"
+    "type=bind,source=${localEnv:HOME}/.gnupg,target=/root/.gnupg",
+    "type=bind,source=${localEnv:HOME}/.gitconfig,target=/root/.gitconfig"
   ],
   "containerEnv": {
     "WORKSPACE_DIR": "/workspaces/hsem",

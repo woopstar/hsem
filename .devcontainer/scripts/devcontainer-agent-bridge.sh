@@ -40,6 +40,7 @@ for i in $(seq 1 10); do
         break
     fi
     sleep 0.5
+    echo "Waiting for relays to be ready... ($i/10)"
 done
 
 echo "SSH agent bridge ready:  /tmp/ssh-agent.sock -> ${AGENT_HOST}:${SSH_PORT}"

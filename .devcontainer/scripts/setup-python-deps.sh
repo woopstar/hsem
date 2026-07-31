@@ -5,7 +5,9 @@ set -eu
 
 WORKSPACE_DIR="${WORKSPACE_DIR:-/workspaces/hsem}"
 
-pip install --no-cache-dir \
+pip3 install --upgrade pip
+
+pip3 install --no-cache-dir \
     --requirement "${WORKSPACE_DIR}/requirements.txt" \
     --requirement "${WORKSPACE_DIR}/requirements_test.txt" \
     --requirement "${WORKSPACE_DIR}/requirements_lint.txt" \
