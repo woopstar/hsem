@@ -4,6 +4,11 @@
   "build": {
     "dockerfile": "Dockerfile"
   },
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/node:1": {}
+  },
   "postCreateCommand": "/usr/local/bin/setup-python-deps.sh; if [ -z \"$CI\" ]; then /usr/local/bin/devcontainer-agent-bridge.sh /bin/sh -c 'echo SSH agent ready in container || true'; fi",
   "runArgs": ["--name", "hsem-devcontainer"],
   "remoteUser": "root",

@@ -16,12 +16,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     socat \
     bash \
-    nodejs \
-    npm \
     shellcheck \
     gcc \
     libc6-dev \
     swig \
+    curl \
     && pip install --no-cache-dir uv yubikey-manager \
     && apt-get purge -y libpcsclite-dev gcc libc6-dev swig \
     && apt-get autoremove -y \
