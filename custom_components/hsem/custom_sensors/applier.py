@@ -359,10 +359,8 @@ async def async_apply_battery_settings(
             # net_consumption_w == house_w (no EV subtraction happened).
             # In that case fall back to the minimum sub-window average.
             ev_power_available = (
-                (live.ev.power_w is not None and live.ev.power_w > 1e-9)
-                or (live.ev_second.power_w is not None
-                    and live.ev_second.power_w > 1e-9)
-            )
+                live.ev.power_w is not None and live.ev.power_w > 1e-9
+            ) or (live.ev_second.power_w is not None and live.ev_second.power_w > 1e-9)
             if live_net_w is not None and ev_power_available:
                 live_abs = max(live_net_w, 0.0)
                 if live_abs > 0:
