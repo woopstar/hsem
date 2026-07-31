@@ -94,9 +94,10 @@ assert result == pytest.approx(expected, rel=1e-6)
 
 ## MILP Variable Vector
 
-The MILP in `milp_optimizer.py` uses **8*n** LP variables for battery-only (n = number of
+The MILP in `milp_optimizer.py` uses **9*n** LP variables for battery-only (n = number of
 future slots).  When EV co-optimisation is active (one or more `EVConfig` objects passed),
-the vector grows to **8n + 2n·E + E** where E is the number of active EVs.
+the vector grows by **n·E + E** where E is the number of active EVs.  When the main-fuse
+soft constraint is active, a further **n** `gi_pen[t]` variables are appended.
 
 ```
 Index range      Variable     Meaning
@@ -108,11 +109,14 @@ Index range      Variable     Meaning
 [5n .. 6n-1]     m[t]         max(ec[t], ed[t]) auxiliary variable for cycle cost
 [6n .. 7n-1]     s_max_pen[t] Penalty: kWh SoC exceeds usable_kwh
 [7n .. 8n-1]     s_min_pen[t] Penalty: kWh SoC drops below 0
+[8n .. 9n-1]     curt[t]      PV curtailment in slot t (kWh)
 --- EV co-optimisation (when ev_configs is provided) ---
-[8n .. 9n-1]     ev0_c[t]     EV0 DC-side charge per slot (kWh)
-[9n .. 10n-1]    ev1_c[t]     EV1 DC-side charge per slot (kWh) (if second EV active)
-[10n]            ev0_pen      EV0 deadline target slack (kWh shortfall)
-[10n+1]          ev1_pen      EV1 deadline target slack (if second EV active)
+[9n .. 10n-1]    ev0_c[t]     EV0 DC-side charge per slot (kWh)
+[10n .. 11n-1]   ev1_c[t]     EV1 DC-side charge per slot (kWh) (if second EV active)
+[11n]            ev0_pen      EV0 deadline target slack (kWh shortfall)
+[11n+1]          ev1_pen      EV1 deadline target slack (if second EV active)
+--- Main-fuse soft constraint (when main_fuse_amps > 0) ---
+[... .. +n-1]    gi_pen[t]    Grid-import excess above fuse limit per slot (kWh)
 ```
 
 Cycle cost is counted as `α * m[t]` — **not** `α * (ec[t] + ed[t])`.
@@ -124,8 +128,8 @@ The `m[t]` constraints are: `m[t] >= ec[t]` and `m[t] >= ed[t]`.
 
 - **Hard limit: 30 KB per file** in the planner and utils layers.
 - If a file exceeds 30 KB, split it before adding more features.
-- Current oversized planner files: `milp_optimizer.py` (75 KB), `engine_core.py` (50 KB),
-  `cost_function.py` (39 KB), `candidate_generator.py` (36 KB), `charge_scheduler.py` (35 KB).
+- Current oversized planner files: `ev_planner.py` (31.8 KB).
+- Check before every PR: `wc -c custom_components/hsem/planner/*.py`.
 
 ---
 
@@ -541,6 +545,38 @@ incorrectly write the second EV's power into the primary field.
   (primary vs. `ev_second_*`).
 - MILP write-out: `if ev.is_second: write to ev_second_charger_calculated_power`
 - Session power: iterates `configs` and routes by `cfg.is_second`
+
+---
+
+## MILP Solar Export Priority (issue #694)
+
+The MILP objective function naturally prioritises exporting solar surplus
+during expensive hours over charging the battery, because:
+
+- Export revenue: ``-p_exp[t]`` — negative coefficient = profit, large
+  when prices are high.
+- Battery charge cost: ``charge_loss × p_imp_obj[t]`` — small positive
+  cost, proportional to the import price (conversion loss).
+
+The LP is a global optimiser — it sees all future slots and will defer
+battery charging to cheap slots when future solar is sufficient.
+
+**When the LP may charge during expensive hours:** only when future cheap
+slots lack enough solar surplus to fill the battery before it is needed
+(e.g., a discharge window starts before cheap solar arrives).  In that
+case the LP correctly prioritises meeting the discharge commitment over
+export revenue.
+
+**Regression tests** in ``tests/planner/test_milp_optimizer.py``:
+
+- ``test_milp_exports_solar_in_expensive_slots_charges_in_cheap`` —
+  basic 4-slot setup from the acceptance criteria.
+- ``test_milp_exports_solar_when_future_cheap_solar_sufficient`` —
+  battery starts partially full, replacement price active.
+- ``test_milp_charges_early_only_when_future_solar_insufficient`` —
+  verifies the LP only charges early when necessary.
+- ``test_milp_solar_export_with_house_load_and_replacement_price`` —
+  realistic scenario with house load and terminal-SoC incentive.
 
 ---
 
