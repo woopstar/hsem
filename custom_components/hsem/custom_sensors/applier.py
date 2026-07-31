@@ -353,12 +353,41 @@ async def async_apply_battery_settings(
                 else 0
             )
             live_net_w = live.net_consumption_w
-            if live_net_w is not None and live_net_w > 0:
-                # Live reading available — use the more conservative
-                # of the two sources to protect against polluted history.
-                cap_w = int(min(live_net_w, max(historical_w, 1)))
+            # Only trust net_consumption_w if the EV power sensor actually
+            # provided a value.  When ev.power_w is 0/None but is_charging
+            # is True (e.g. boolean-only sensor, or sensor unavailable),
+            # net_consumption_w == house_w (no EV subtraction happened).
+            # In that case fall back to the minimum sub-window average.
+            ev_power_available = (
+                (live.ev.power_w is not None and live.ev.power_w > 1e-9)
+                or (live.ev_second.power_w is not None
+                    and live.ev_second.power_w > 1e-9)
+            )
+            if live_net_w is not None and ev_power_available:
+                live_abs = max(live_net_w, 0.0)
+                if live_abs > 0:
+                    cap_w = int(min(live_abs, max(historical_w, 1)))
+                else:
+                    cap_w = historical_w
             else:
-                cap_w = historical_w
+                # No reliable live reading or no EV power sensor.
+                # Fall back to the most conservative (smallest) of the
+                # sub-window averages.  The 1d window recalibrates
+                # fastest after an upgrade or sensor configuration change.
+                sub_windows = [
+                    rec.avg_house_consumption_1d_kwh,
+                    rec.avg_house_consumption_3d_kwh,
+                    rec.avg_house_consumption_7d_kwh,
+                    rec.avg_house_consumption_14d_kwh,
+                    rec.avg_house_consumption_kwh,
+                ]
+                best_w = 0
+                for sw in sub_windows:
+                    if sw > 1e-9:
+                        w = int(sw / slot_hours * 1000.0) if slot_hours > 1e-9 else 0
+                        if best_w == 0 or (w > 0 and w < best_w):
+                            best_w = w
+                cap_w = best_w
             cap_reason = "EV active" if hsem_planned_ev else "EV active (unplanned)"
 
             if live.huawei_batteries_max_discharge_power_w != cap_w:
