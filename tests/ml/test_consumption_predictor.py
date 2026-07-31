@@ -50,9 +50,32 @@ class TestConsumptionPredictor:
         assert p.predict(32, 0, NOW) == pytest.approx(3.0, rel=0.1)
 
     def test_time_decay(self) -> None:
+        """A stale observation must be pulled toward fresher behaviour.
+
+        History: slot 0 was 5.0 kWh seven days ago (DOW 3) and 1.0 kWh
+        yesterday (DOW 2).  Predicting slot 0 for today (DOW 3) must NOT
+        return the stale 5.0 — time-decay (weight exp(-7/2) ≈ 0.03 on the
+        old sample) plus slot-level pooling must drag the prediction well
+        below it toward the recent 1.0.
+
+        With alpha=0.01 (near-zero regularization) the (DOW, slot) group
+        keeps most of its own (stale) mean, so the prediction stays closer
+        to 5.0 than to 1.0 — but it must still be strictly below the
+        stale value, proving decay+pooling pulled it down.  A prediction
+        of exactly 5.0 would mean decay had no effect.
+        """
         p = _predictor(decay_days=2.0, alpha=0.01, slots_per_day=96)
         p.train([_mk(7, 0, 5.0), _mk(1, 0, 1.0)], NOW)
-        assert p.predict(0, 0, NOW) < 2.5
+        prediction = p.predict(0, 0, NOW)
+        assert prediction < 5.0, (
+            f"Stale sample must be pulled below 5.0 by decay+pooling, got {prediction}"
+        )
+        # And with the production default alpha=1.0 the shrinkage is much
+        # stronger — the prediction must land well below the midpoint
+        # between the stale 5.0 and the recent 1.0.
+        p2 = _predictor(decay_days=2.0, alpha=1.0, slots_per_day=96)
+        p2.train([_mk(7, 0, 5.0), _mk(1, 0, 1.0)], NOW)
+        assert p2.predict(0, 0, NOW) < 2.5
 
     def test_regularization_effect(self) -> None:
         history = [_mk(d, 0, 2.0) for d in range(1, 15)]

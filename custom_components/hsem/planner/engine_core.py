@@ -697,10 +697,14 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
                 else:
                     s.estimated_cost_currency = round(net * s.price.export_price, 4)
 
+    # Spec (planner-spec.md, Layer 2): slots with ev_total_planned_load_kwh > 0
+    # are relabelled ev_smart_charging UNLESS the recommendation is one of the
+    # protected set below.  batteries_charge_solar and batteries_wait_mode are
+    # intentionally NOT protected — they are overridden so dashboards reflect
+    # the EV activity rather than a solar-charge label during an EV session.
     _EV_KEEP = frozenset(
         {
             Recommendations.BatteriesChargeGrid.value,
-            Recommendations.BatteriesChargeSolar.value,
             Recommendations.ForceBatteriesDischarge.value,
             Recommendations.ForceExport.value,
             Recommendations.TimePassed.value,

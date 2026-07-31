@@ -733,13 +733,26 @@ def rebuild_ev_plan_from_slots(
         dc_kwh = ac_load * eff
         total_charged_kwh += dc_kwh
 
+        # Solar/import split: the MILP decides EV charging alongside PV, so
+        # any PV surplus in this slot is consumed by the EV first (before
+        # the battery).  Attribute as much of the AC load as possible to
+        # the slot's PV surplus; the remainder is grid import.  Use the
+        # house-netted surplus (PV minus house consumption) so the split
+        # matches the energy balance used elsewhere.
+        pv_kwh = max(getattr(s, "solcast_pv_estimate_kwh", 0.0), 0.0)
+        house_kwh = max(getattr(s, "avg_house_consumption_kwh", 0.0), 0.0)
+        surplus_kwh = max(pv_kwh - house_kwh, 0.0)
+        solar_used_ac = min(ac_load, surplus_kwh)
+        solar_used_dc = solar_used_ac * eff
+        import_needed = max(dc_kwh - solar_used_dc, 0.0)
+
         ev_slot = EVChargingSlot(
             start=s.start,
             end=s.end,
             estimated_charged_kwh=round(dc_kwh, 3),
             ac_load_kwh=round(ac_load, 3),
-            solar_surplus_kwh=0.0,  # MILP doesn't track this split
-            import_needed_kwh=0.0,  # MILP doesn't track this split
+            solar_surplus_kwh=round(solar_used_dc, 3),
+            import_needed_kwh=round(import_needed, 3),
             import_price=getattr(getattr(s, "price", None), "import_price", 0.0),
             estimated_cost=round(
                 ac_load * getattr(getattr(s, "price", None), "import_price", 0.0), 4

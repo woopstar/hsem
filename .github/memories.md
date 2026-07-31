@@ -26,7 +26,7 @@ for the HSEM (Home Smart Energy Management) project. Read this before making any
 
 | File | Responsibility |
 |---|---|
-| `consumption_predictor.py` | Weighted ridge regression model with DOW + DOY + temperature features |
+| `consumption_predictor.py` | Two-stage ridge: per-(DOW, slot) weighted group means shrunk toward slot-level means, then DOY/temp fitted on the residual |
 | `history_reader.py` | Queries HA recorder for energy accumulator and instantaneous sensor history |
 | `populator.py` | Bridges ML predictions into `HourlyRecommendation` slots with safety buffer |
 
@@ -251,6 +251,36 @@ unmetered-EV spike cap is `max(3 × forecast, 0.05 kWh)`.  The absolute
 0.05 kWh floor is mandatory — without it, a ~0 forecast (night slots)
 disables the cap and the full EV spike is injected, re-opening the
 battery-into-EV hole.
+
+## EV Label Layer 2 — charge_solar is NOT protected (Issue #592 spec compliance)
+
+In `planner/engine_core.py::run_planner`, the `_EV_KEEP` frozenset must NOT
+include `BatteriesChargeSolar`.  Per `docs/planner-spec.md` Layer 2, both
+`batteries_charge_solar` and `batteries_wait_mode` are relabelled
+`ev_smart_charging` when `ev_total_planned_load_kwh > 0`.  PR #576 added
+`BatteriesChargeSolar` to the protected set, silently diverging from the
+spec — reverted.  Only `batteries_charge_grid`, `force_batteries_discharge`,
+`force_export`, `time_passed`, and `missing_input_entities` are protected.
+
+## Consumption Predictor — Two-Stage Fit (test-driven fix)
+
+`ml/consumption_predictor.py::_fit` uses a two-stage (backfitting) ridge.
+A joint ridge over 674 one-hot + continuous features with only a handful of
+samples is under-determined: the day-of-year sin/cos columns soak up the
+variance and the one-hot (DOW, slot) coefficients collapse to the floor,
+destroying the per-slot signal.  Stage 1 fits each (DOW, slot) coefficient
+as a time-decay weighted group mean shrunk toward the **slot-level** mean
+(same slot across all weekdays) by `alpha`.  Stage 2 fits DOY/temperature/lag
+on the residual.  Do not revert to a single joint ridge — it reintroduces
+the sparse-data collapse (see `tests/ml/test_consumption_predictor.py`).
+
+## EV Plan Rebuild — Solar/Import Split (MILP path)
+
+`planner/ev_planner.py::rebuild_ev_plan_from_slots` computes the
+`solar_surplus_kwh` / `import_needed_kwh` split from the slot's PV surplus
+(`max(pv − house, 0)`, capped at the AC load, converted to DC).  It must
+NOT be hardcoded to 0 — the MILP co-optimisation path decides EV charging
+alongside PV, so PV-surplus attribution is well-defined per slot.
 
 ---
 
