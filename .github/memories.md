@@ -225,6 +225,33 @@ curtail for unbounded profit even without `p_exp > p_imp`.
 - These must **never** be silently reverted in future refactors — they are
   solver-stability requirements, not cosmetic conveniences.
 
+## MILP EV Discharge Guard + No-Export Cap (Issue #592)
+
+In `planner/milp/_constraints.py`, two hard per-slot upper bounds on `ed[t]`:
+
+1. **EV discharge guard** — when EV co-optimisation is NOT active and
+   `ev_accounted_load_kwh > 0`: `ed[t] ≤ max(base_load − ev_accounted, 0) / η_dis`.
+   The formula looks like it double-counts PV (base_load is PV-netted,
+   ev_accounted is gross) but it is **exact**: with H = gross house load and
+   P = PV, `max(base_load − ev, 0) == max(H − ev − P, 0)` in all cases.
+   Do not "fix" it by re-adding PV — that would *under*-block and let the
+   battery feed the EV.
+2. **No-export cap** — when `no_export=True`: `ed[t] ≤ base_load / η_dis` on
+   every slot, so the battery can never export to the grid.
+
+Also in `_build_constraints`, the session-EV AC load is simply
+`session_charge_kw × slot_hours` — the DC/AC efficiency conversion cancels
+by definition.  Do not re-introduce a multiply-then-divide by
+`charger_efficiency`.
+
+## Live-Injection Spike Floor (Issue #592)
+
+In `planner/engine_population.py::_inject_live_data_into_current_slot`, the
+unmetered-EV spike cap is `max(3 × forecast, 0.05 kWh)`.  The absolute
+0.05 kWh floor is mandatory — without it, a ~0 forecast (night slots)
+disables the cap and the full EV spike is injected, re-opening the
+battery-into-EV hole.
+
 ---
 
 ## Candidate Deduplication

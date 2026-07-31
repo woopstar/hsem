@@ -114,6 +114,9 @@ homeassistant = ["homeassistant"]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
+# Standalone CLI helper scripts — console output via print() is their
+# intended interface (no HA logger available outside the integration).
+"scripts/*.py" = ["T201"]
 
 [tool.ruff.format]
 quote-style = "double"

@@ -1026,3 +1026,55 @@ def test_ev_discharge_guard_blocks_battery_discharging_into_ev():
         f"Got grid_import={s0.grid_import_kwh:.3f} kWh, "
         f"discharge={s0.batteries_discharged_kwh:.3f} kWh"
     )
+
+
+@_pytestmark_scipy
+def test_ev_discharge_guard_partial_pv_slot_is_exact_not_over_conservative():
+    """The guard must not double-count PV on partially covered EV slots.
+
+    Setup: house 5.0 kWh (incl. 3.0 kWh EV), PV 1.0 kWh.
+      base_load = max(5 - 1, 0) = 4.0
+      Non-EV unmet demand = max(H - ev - P, 0) = max(5 - 3 - 1, 0) = 1.0
+    The guard must allow ed·η ≤ 1.0 — no more (battery must not feed the
+    EV) and no less (PV double-counting would over-block the genuine
+    non-EV house load).  Verifies max(base_load − ev, 0) is exact.
+    """
+    slots = _build_slots(4, start_hour=14, import_price=0.30, consumption_kwh=0.5)
+    slots[0].avg_house_consumption_kwh = 5.0  # 2.0 house + 3.0 EV
+    slots[0].solcast_pv_estimate_kwh = 1.0
+    slots[0].ev_accounted_load_kwh = 3.0
+    slots[0].ev_planned_load_kwh = 0.0
+    slots[0].ev_total_planned_load_kwh = 3.0
+    slots[0].estimated_net_consumption_kwh = 4.0
+
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=10.0,
+        usable_kwh=10.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+        ev_configs=None,
+    )
+
+    assert result is not None, "MILP must return a solution"
+    out_slots, _diag = result
+    s0 = out_slots[0]
+
+    # base_load = max(5 - 1, 0) = 4.0;  cap = max(4 - 3, 0)/0.97 ≈ 1.031
+    max_allowed_dis = 1.0 / 0.97
+    assert s0.batteries_discharged_kwh <= max_allowed_dis + 0.01, (
+        f"Guard over-blocked or under-blocked: "
+        f"discharge={s0.batteries_discharged_kwh:.3f} kWh, "
+        f"expected ≤ {max_allowed_dis:.3f} kWh (non-EV unmet = 1.0 kWh AC)"
+    )
+
+    # The battery SHOULD discharge ~1.0 kWh AC for the non-EV load — the
+    # guard must not be more restrictive than that (no PV double-count).
+    # With expensive import (0.30) and free battery energy available, the
+    # optimal plan discharges up to the cap.
+    assert s0.batteries_discharged_kwh >= 0.9, (
+        f"Guard is over-conservative (PV double-count?): "
+        f"discharge={s0.batteries_discharged_kwh:.3f} kWh, "
+        f"expected ≈ 1.03 kWh DC for the 1.0 kWh AC non-EV unmet load"
+    )
