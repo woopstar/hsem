@@ -1,0 +1,11 @@
+{
+  "lsp": {
+    "basedpyright": {
+      "settings": {
+        "python": {
+          "pythonPath": "python3"
+        }
+      }
+    }
+  }
+}

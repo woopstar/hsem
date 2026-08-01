@@ -58,6 +58,13 @@ You need the following entities available in Home Assistant:
 | (Optional) Switch: smart charging on/off | `input_boolean.ev_smart_charging` |
 | (Optional) Sensor: actual EV charge power | `sensor.ev_charger_power` |
 
+> **Unit note (Watts expected):** HSEM expects EV charge power in **Watts**.
+> If your sensor reports kW (e.g. a template sensor showing `3.6` for a
+> 3.6 kW session), either change the template to Watts or set
+> `unit_of_measurement: kW` on the sensor — HSEM then converts it
+> automatically.  A kW value without the unit attribute is treated as Watts
+> and triggers a "suspiciously low EV power" warning in the log (issue #592).
+
 If your EV integration does not expose all of these, you can use `input_number`,
 `input_boolean`, and `input_datetime` helpers as manual overrides.
 

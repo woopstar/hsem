@@ -36,6 +36,7 @@ from custom_components.hsem.models.state_snapshot import StateSnapshot
 from custom_components.hsem.utils.conversion import (
     convert_to_boolean,
     convert_to_float,
+    normalize_ev_power_w,
 )
 from custom_components.hsem.utils.ha_helpers import (
     EntityNotFoundError,
@@ -144,8 +145,12 @@ async def async_collect_live_state(
             _read(cfg.ev.status_entity, "boolean", label="ev_charger_status")
         )
     if cfg.ev.power_entity:
-        ev.power_w = convert_to_float(
-            _read(cfg.ev.power_entity, "float", label="ev_charger_power")
+        ev.power_w = _read_ev_power_w(
+            sensor,
+            cfg.ev.power_entity,
+            _read,
+            label="ev_charger_power",
+            is_charging=ev.is_charging,
         )
     if cfg.ev.soc_entity:
         ev.soc_pct = convert_to_float(_read(cfg.ev.soc_entity, "float", label="ev_soc"))
@@ -172,8 +177,12 @@ async def async_collect_live_state(
             )
         )
     if cfg.ev_second.power_entity:
-        ev2.power_w = convert_to_float(
-            _read(cfg.ev_second.power_entity, "float", label="ev_second_charger_power")
+        ev2.power_w = _read_ev_power_w(
+            sensor,
+            cfg.ev_second.power_entity,
+            _read,
+            label="ev_second_charger_power",
+            is_charging=ev2.is_charging,
         )
     if cfg.ev_second.soc_entity:
         ev2.soc_pct = convert_to_float(
@@ -478,6 +487,39 @@ def _compute_net_consumption(state: LiveState, cfg: SensorConfig) -> None:
     else:
         state.net_consumption_with_ev_w = round(house_w - solar_w + ev_w, 3)
         state.net_consumption_w = round(house_w - solar_w, 3)
+
+
+def _read_ev_power_w(
+    sensor: Any,  # NOSONAR -- HA internal type; circular import risk
+    entity_id: str,
+    _read: Callable[..., Any],
+    *,
+    label: str,
+    is_charging: bool,
+) -> float | None:
+    """Read an EV charger power entity and normalise the value to Watts.
+
+    Thin wrapper around :func:`utils.conversion.normalize_ev_power_w` that
+    reads the entity state and its ``unit_of_measurement`` attribute.
+    """
+    raw = _read(entity_id, "float", label=label)
+    value = convert_to_float(raw)
+    if value is None:
+        return None
+
+    state_obj = sensor.hass.states.get(entity_id) if sensor.hass else None
+    unit = ""
+    if state_obj is not None:
+        unit = str(state_obj.attributes.get("unit_of_measurement") or "").strip()
+
+    return normalize_ev_power_w(
+        value,
+        unit,
+        entity_id=entity_id,
+        label=label,
+        is_charging=is_charging,
+        logger=_LOGGER,
+    )
 
 
 def _read_ev_planned_load_state(

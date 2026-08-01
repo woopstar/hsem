@@ -176,3 +176,89 @@ def convert_to_boolean(state: Any) -> bool:
             return False
 
     return False
+
+
+# Unit strings whose value must be multiplied by 1000 to obtain Watts.
+_EV_POWER_KW_UNITS: frozenset[str] = frozenset({"kw"})
+# EV charging power above this threshold (W) is implausible for AC charging
+# and almost always indicates a unit mismatch (e.g. value read as W while
+# the sensor actually reports MW, or a template emitting kW×1000).
+_EV_POWER_IMPLAUSIBLE_W: float = 100_000.0
+# When an EV is actively charging but the power reading is below this
+# threshold (W), the reading is suspiciously low — typically a template
+# sensor reporting kW (e.g. 3.6) while HSEM expects Watts (issue #592).
+_EV_POWER_SUSPICIOUS_LOW_W: float = 50.0
+
+
+def normalize_ev_power_w(
+    value: float | None,
+    unit_of_measurement: str,
+    *,
+    entity_id: str,
+    label: str,
+    is_charging: bool,
+    logger: Any,
+) -> float | None:
+    """Normalise an EV charger power reading to Watts with mismatch detection.
+
+    HSEM's planner and hardware applier expect EV charge power in **Watts**.
+    A common misconfiguration is a template sensor that emits kW (e.g.
+    ``3.6`` instead of ``3600``) — with no unit normalisation this made the
+    EV discharge guard treat a 3.6 kW session as 3.6 W and fall back to
+    polluted history (issue #592).
+
+    Normalisation rules:
+
+    - ``unit_of_measurement == 'kW'`` → value × 1000.
+    - value > 100 kW while charging → implausible, treated as unreadable.
+    - 0 < value < 50 W while charging (no kW unit) → suspiciously low; the
+      value is kept but a warning is logged (a 25 W trickle is physically
+      possible, but the warning makes the misconfiguration visible).
+
+    Args:
+        value: The raw numeric reading, or ``None`` when unavailable.
+        unit_of_measurement: The entity's unit attribute (may be empty).
+        entity_id: Entity the reading came from (for log messages).
+        label: Human-readable label used in log messages.
+        is_charging: Whether the charger currently reports an active session.
+        logger: Logger instance used for warnings.
+
+    Returns:
+        Power in Watts, or ``None`` when the reading is unavailable or
+        implausible.
+    """
+    if value is None:
+        return None
+
+    unit = unit_of_measurement.strip().lower()
+    if unit in _EV_POWER_KW_UNITS:
+        value *= 1000.0
+
+    if is_charging and value > _EV_POWER_IMPLAUSIBLE_W:
+        logger.warning(
+            "EV power reading %.1f W from %s (label=%s) is implausibly high "
+            "while charging — ignoring it. Check the sensor's unit "
+            "(HSEM expects Watts, or kW with unit_of_measurement='kW').",
+            value,
+            entity_id,
+            label,
+        )
+        return None
+
+    if (
+        is_charging
+        and 0.0 < value < _EV_POWER_SUSPICIOUS_LOW_W
+        and unit not in _EV_POWER_KW_UNITS
+    ):
+        logger.warning(
+            "EV power reading %.3f W from %s (label=%s) is suspiciously low "
+            "while charging. HSEM expects Watts — if the sensor reports kW, "
+            "either change the template to Watts or set "
+            "unit_of_measurement='kW' on the sensor so HSEM can convert it "
+            "(issue #592).",
+            value,
+            entity_id,
+            label,
+        )
+
+    return value

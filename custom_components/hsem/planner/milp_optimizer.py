@@ -524,6 +524,8 @@ def solve_milp(
         time_discount_rate,
         replacement_price_per_kwh,
         fuse_active,
+        usable_kwh=usable_kwh,
+        max_charge_per_slot=max_charge_per_slot,
     )
 
     constraints = _build_constraints(

@@ -324,8 +324,13 @@ protect against this:
    triple between slots.
 
 The sub-window averages (`avg_house_consumption_1d/3d/7d/14d_kwh`) of the
-current slot are updated to match the injected value so spike detection in
-`populate_consumption` stays consistent.
+current slot are **deliberately left unchanged** (issue #592).  The EV
+discharge-cap fallback in `applier.async_apply_battery_settings` picks the
+*minimum* of those windows to recover a clean house baseline when the live
+reading is unreliable; overwriting them with the live-injected value (which
+can still include unmeasured EV load when no EV power sensor is configured)
+would destroy that fallback and let polluted history inflate the hardware
+discharge cap.
 
 ## SoC simulation
 
@@ -690,6 +695,30 @@ to the full premium and the LP charges to store energy for future
 discharge windows.  The discharge penalty is deliberately **not** capped,
 preserving the issue #638 protection against unnecessary discharging.
 
+**Deferred-export correction (issue #592):** the #694 cap compares charging
+against exporting in the **same slot**.  When a *future* slot carries PV
+surplus that exceeds the battery's absorption capacity
+(`min(usable_kwh, max_charge_per_slot)`), that surplus is exported
+regardless of today's charge decision — so the economically correct refill
+price is the future slot's export price, not this slot's.  Letting
+`p_exp_deferred[t]` be the minimum export price across all later slots
+whose surplus exceeds that absorption capacity, the premium becomes:
+
+```
+charge_premium[t] = max(0, repl − p_imp[t] − p_exp[t] / η_chg
+                             + min(p_exp_deferred[t], p_exp[t]) / η_chg)
+```
+
+When `p_exp_deferred[t] ≥ p_exp[t]` (or no qualifying future slot exists),
+the correction is zero and the formula degrades to the #694 cap.  When a
+cheaper future slot has unabsorbable surplus, the credit is restored so
+the LP charges now at the high export price and lets the inevitable
+future surplus refill the battery at the low price.  Both the MILP
+(`milp/_objective.py`) and the selector (`cost_function.py`) compute the
+premium via the shared helper `cost_helpers.compute_charge_premium()` with
+the per-slot deferred price from `cost_helpers.deferred_export_price_by_slot()`
+so the LP's decisions and the selector's score never diverge.
+
 - **Undiscounted** — terminal SoC is a single point-in-time valuation at
   horizon end, matching `cost_function.py`'s `terminal_soc_value` treatment.
 - The differential uses the sanitised import price (`max(p_imp, 0)`) so
@@ -953,7 +982,9 @@ matches what the LP actually optimised for:
 imp_price_obj[t]     = max(slot.price.import_price, 0.0)
 terminal_premium[t]  = max(0, replacement_price_per_kwh - imp_price_obj[t])
 charge_premium[t]    = max(0, replacement_price_per_kwh - imp_price_obj[t]
-                             - slot.price.export_price / charge_eff)
+                             - slot.price.export_price / charge_eff
+                             + min(p_exp_deferred[t], slot.price.export_price)
+                               / charge_eff)
 
 terminal_soc_value = sum over all slots of:
     batteries_discharged_kwh[t] * terminal_premium[t]
@@ -963,8 +994,12 @@ terminal_soc_value = sum over all slots of:
 The formula is **asymmetric** (issue #694): the charge credit is reduced
 by the export opportunity cost (`p_exp / η_chg`) so that charging never
 beats exporting in the same slot, while the discharge penalty uses the
-full `terminal_premium[t]`.  This mirrors the MILP's `c_obj` terminal-SoC
-term exactly.
+full `terminal_premium[t]`.  The **deferred-export correction** (issue
+#592) adds back the spread when a future slot has PV surplus beyond the
+battery's absorption capacity — see the MILP objective section above.
+Both sides use the shared helper
+`cost_helpers.compute_charge_premium()` so the selector's score always
+matches what the LP optimised for.
 
 Sign convention (per slot):
 
