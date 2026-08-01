@@ -19,10 +19,12 @@ GPG_PORT="${GPG_AGENT_PORT:-9998}"
 SCDAEMON_PORT="${SCDAEMON_PORT:-9997}"
 AGENT_HOST="${SSH_AGENT_HOST:-host.docker.internal}"
 
-# Kill any stale relays
+# Kill any stale relays and remove leftover socket files so the
+# UNIX-LISTEN binds below don't fail on "address already in use".
 pkill -f "socat.*${SSH_PORT}" 2>/dev/null || true
 pkill -f "socat.*${GPG_PORT}" 2>/dev/null || true
 pkill -f "socat.*${SCDAEMON_PORT}" 2>/dev/null || true
+rm -f /tmp/ssh-agent.sock /tmp/S.gpg-agent /tmp/S.scdaemon
 
 # Create TCP→Unix relays in /tmp
 socat UNIX-LISTEN:/tmp/ssh-agent.sock,fork,mode=0600 \
