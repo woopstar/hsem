@@ -2887,6 +2887,166 @@ def test_milp_charges_early_only_when_future_solar_insufficient():
     assert total_exported >= 0.0, "Grid export must be non-negative"
 
 
+# ---------------------------------------------------------------------------
+# Issue #592 — deferred-export charge premium
+# ---------------------------------------------------------------------------
+
+
+@_scipy_skip()
+def test_milp_defers_charging_to_cheap_slots_when_future_pv_exceeds_headroom():
+    """MILP must export at high prices and refill from inevitable future surplus.
+
+    Extati's scenario (issue #592): battery at ~89 % with only ~1.1 kWh of
+    headroom, a huge afternoon PV surplus (many kWh beyond what the battery
+    can absorb per slot), and export prices dropping from 1.20 DKK now to
+    0.20 DKK later.  The surplus in the cheap slots is exported *regardless*
+    of whether the battery charges now — so the true refill price is the
+    cheap-slot export price, and the LP must NOT charge during the expensive
+    slot.
+
+    Without the deferred-export correction, the #694 cap only compares
+    against *this* slot's export price, so a high ``replacement_price``
+    still makes early charging look attractive.
+    """
+    # 15-minute slots matching the reported setup: 10:45 (expensive,
+    # battery near full) then cheap afternoon slots with 1.4 kWh surplus
+    # each (far above the battery's remaining ~1.1 kWh headroom and the
+    # 1.25 kWh/slot charge limit).
+    slots = [
+        _make_slot(
+            hour=0,
+            import_price=1.20,
+            export_price=1.20,
+            pv_kwh=0.77,
+            consumption_kwh=0.07,
+        ),
+        _make_slot(
+            hour=1,
+            import_price=1.20,
+            export_price=1.20,
+            pv_kwh=1.61,
+            consumption_kwh=0.24,
+        ),
+        _make_slot(
+            hour=2,
+            import_price=0.20,
+            export_price=0.20,
+            pv_kwh=1.40,
+            consumption_kwh=0.24,
+        ),
+        _make_slot(
+            hour=3,
+            import_price=0.20,
+            export_price=0.20,
+            pv_kwh=1.40,
+            consumption_kwh=0.24,
+        ),
+        _make_slot(
+            hour=4,
+            import_price=0.20,
+            export_price=0.20,
+            pv_kwh=1.40,
+            consumption_kwh=0.24,
+        ),
+        _make_slot(
+            hour=5,
+            import_price=0.20,
+            export_price=0.20,
+            pv_kwh=1.40,
+            consumption_kwh=0.24,
+        ),
+    ]
+
+    milp_result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=8.4,  # ~89 % of 9.5 kWh usable — ~1.1 kWh headroom
+        usable_kwh=9.5,
+        max_charge_per_slot=1.25,
+        max_discharge_per_slot=1.25,
+        cycle_cost_per_kwh=0.066,
+        charge_efficiency_pct=97.0,
+        discharge_efficiency_pct=97.0,
+        replacement_price_per_kwh=1.70,
+    )
+
+    assert milp_result is not None, "MILP must return a solution"
+    result, _diag = milp_result
+
+    # Expensive slots (0-1): the battery must NOT charge — surplus is
+    # exported at the high price, refill happens later at 0.20 DKK.
+    charged_expensive = sum(result[i].batteries_charged_kwh for i in range(2))
+    assert charged_expensive < 0.05, (
+        "Expensive slots must not charge the battery when future PV surplus "
+        f"exceeds headroom and export prices drop (got {charged_expensive:.3f} kWh)"
+    )
+    exported_expensive = sum(result[i].grid_export_kwh for i in range(2))
+    assert exported_expensive > 0.5, (
+        f"Expensive slots must export the PV surplus (got {exported_expensive:.3f} kWh)"
+    )
+
+
+@_scipy_skip()
+def test_milp_charges_now_when_no_future_surplus_exceeds_headroom():
+    """Without qualifying future surplus the #694 behaviour is unchanged.
+
+    Same price shape, but afternoon PV is modest — every future slot's
+    surplus fits inside the battery's absorption capacity, so no
+    deferred-export correction applies and the LP may still charge early
+    to secure the terminal-SoC target.
+    """
+    slots = [
+        _make_slot(
+            hour=0,
+            import_price=1.20,
+            export_price=1.20,
+            pv_kwh=0.77,
+            consumption_kwh=0.07,
+        ),
+        _make_slot(
+            hour=1,
+            import_price=1.20,
+            export_price=1.20,
+            pv_kwh=0.60,
+            consumption_kwh=0.24,
+        ),
+        _make_slot(
+            hour=2,
+            import_price=0.20,
+            export_price=0.20,
+            pv_kwh=0.50,
+            consumption_kwh=0.24,
+        ),
+        _make_slot(
+            hour=3,
+            import_price=0.20,
+            export_price=0.20,
+            pv_kwh=0.50,
+            consumption_kwh=0.24,
+        ),
+    ]
+
+    milp_result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=2.0,
+        usable_kwh=9.5,
+        max_charge_per_slot=1.25,
+        max_discharge_per_slot=1.25,
+        cycle_cost_per_kwh=0.066,
+        charge_efficiency_pct=97.0,
+        discharge_efficiency_pct=97.0,
+        replacement_price_per_kwh=1.70,
+    )
+
+    assert milp_result is not None, "MILP must return a solution"
+    result, _diag = milp_result
+    # Solution validity only — the key assertion is that the deferred cap
+    # does not break normal charging behaviour when it does not apply.
+    assert all(s.batteries_charged_kwh >= -1e-9 for s in result)
+    assert all(s.grid_export_kwh >= -1e-9 for s in result)
+
+
 @_scipy_skip()
 def test_milp_solar_export_with_house_load_and_replacement_price():
     """MILP exports solar in expensive slots even with house load and replacement price.

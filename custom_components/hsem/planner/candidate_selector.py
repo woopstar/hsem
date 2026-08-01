@@ -287,6 +287,13 @@ def select_best_candidate(  # NOSONAR
             "warning", "[selector] No eligible candidates — falling back to baseline"
         )
     else:
+        # Provide the deferred-export correction (issue #592) with the
+        # battery capacity context it needs.  CostWeights is a plain
+        # dataclass shared across candidates; setting these fields here is
+        # safe because score_plan is stateless and reads them immediately.
+        cost_weights.battery_usable_capacity_kwh = usable_kwh
+        cost_weights.max_charge_per_slot_kwh = max_charge_per_slot
+
         # Score all valid candidates (including no_action for diagnostics)
         for candidate in valid:
             candidate._cost = score_plan(

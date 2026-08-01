@@ -659,6 +659,68 @@ export revenue.
 
 ---
 
+## EV Power Entity Unit Normalisation (issue #592)
+
+HSEM expects every EV charger power entity in **Watts**.  Users frequently
+point HSEM at template sensors that emit kW (e.g. ``3.6`` instead of
+``3600``), which silently disabled the EV discharge guard (the 3.6 kW
+session looked like 3.6 W).
+
+``state_collector._read_ev_power_w()`` is the single read path for both
+chargers' power entities:
+
+- ``unit_of_measurement='kW'`` → value × 1000.
+- value > 100 kW while charging → implausible, treated as unreadable.
+- 0 < value < 50 W while charging (no kW unit) → suspiciously low; the
+  value is kept but a warning is logged telling the user to fix the
+  template or set ``unit_of_measurement='kW'``.
+
+Never read ``cfg.ev.power_entity`` / ``cfg.ev_second.power_entity`` through
+the generic ``_read(..., "float")`` path — always use ``_read_ev_power_w``.
+
+---
+
+## Live Injection Must Preserve Sub-Window Averages (issue #592)
+
+``engine_population._inject_live_data_into_current_slot`` overwrites the
+current slot's ``avg_house_consumption_kwh`` with the live reading, but
+must **not** touch ``avg_house_consumption_1d/3d/7d/14d_kwh``.  The EV
+discharge-cap fallback in ``applier.async_apply_battery_settings`` picks
+the *minimum* of those windows to recover a clean house baseline; the
+live-injected value can still be inflated by unmeasured EV load, so
+overwriting the sub-windows destroys the fallback and lets polluted v5
+history inflate the hardware discharge cap.
+
+---
+
+## Deferred-Export Charge Premium (issue #592)
+
+The #694 charge-credit cap (``repl − p_imp − p_exp/η_chg``) only compares
+charging against exporting in the SAME slot.  When a future slot has PV
+surplus exceeding ``min(usable_kwh, max_charge_per_slot)``, that surplus is
+exported regardless — so the true refill price is the future (cheaper)
+export price, and early charging at a high export price is correct.
+
+Canonical implementation — never re-implement the formula inline:
+
+- ``cost_helpers.compute_charge_premium(...)`` — the capped premium.
+- ``cost_helpers.deferred_export_price_by_slot(...)`` — per-slot deferred
+  export price (min export price across later unabsorbable-surplus slots).
+
+Both the MILP (``milp/_objective.py``) and the selector
+(``cost_function.py``) MUST use these helpers so LP decisions and
+selector scores never diverge.  The correction activates only when the
+caller supplies ``usable_kwh`` and ``max_charge_per_slot`` (MILP: new
+``_build_objective`` kwargs; selector: ``CostWeights`` fields
+``battery_usable_capacity_kwh`` / ``max_charge_per_slot_kwh``, populated
+in ``engine_core.run_planner`` and ``candidate_selector``).
+
+Regression tests: ``test_milp_defers_charging_to_cheap_slots_when_future_pv_exceeds_headroom``
+and ``test_milp_charges_now_when_no_future_surplus_exceeds_headroom`` in
+``tests/planner/test_milp_optimizer.py``.
+
+---
+
 ## File Organization — By Responsibility, Not By Theme
 
 AI agents naturally bucket related things together (e.g. "all planner inputs in one file").

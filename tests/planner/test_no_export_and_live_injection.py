@@ -200,3 +200,28 @@ def test_live_injection_normal_load_passes_through():
     inp = _Inp(live_house_w=600.0)  # 0.6 kWh — 1.5x forecast, fine
     _inject_live_data_into_current_slot([slot], inp, _NOW)  # type: ignore[arg-type]
     assert slot.avg_house_consumption_kwh == pytest.approx(0.6)
+
+
+def test_live_injection_preserves_sub_window_averages():
+    """Sub-window historical averages must survive live injection (issue #592).
+
+    The EV discharge-cap fallback in ``applier.async_apply_battery_settings``
+    picks the *minimum* of the 1d/3d/7d/14d windows to recover a clean house
+    baseline when the live reading is unreliable.  Overwriting them with the
+    live-injected value (which can still include unmeasured EV load) would
+    destroy that fallback.
+    """
+    slot = _current_slot(forecast_kwh=0.4)
+    slot.avg_house_consumption_1d_kwh = 0.1
+    slot.avg_house_consumption_3d_kwh = 0.5
+    slot.avg_house_consumption_7d_kwh = 0.4
+    slot.avg_house_consumption_14d_kwh = 0.3
+    inp = _Inp(live_house_w=600.0)
+    _inject_live_data_into_current_slot([slot], inp, _NOW)  # type: ignore[arg-type]
+    # Main average reflects the live reading…
+    assert slot.avg_house_consumption_kwh == pytest.approx(0.6)
+    # …but the historical sub-windows are untouched.
+    assert slot.avg_house_consumption_1d_kwh == pytest.approx(0.1)
+    assert slot.avg_house_consumption_3d_kwh == pytest.approx(0.5)
+    assert slot.avg_house_consumption_7d_kwh == pytest.approx(0.4)
+    assert slot.avg_house_consumption_14d_kwh == pytest.approx(0.3)

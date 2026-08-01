@@ -126,7 +126,7 @@ Primary EV charger configuration.
 | Field | Key | Default | Description |
 |---|---|---|---|
 | EV charger status | `hsem_ev_charger_status` | — | Charger status sensor entity |
-| EV charger power | `hsem_ev_charger_power` | — | Charger power sensor entity |
+| EV charger power | `hsem_ev_charger_power` | — | Charger power sensor entity. **Watts expected** — a sensor reporting kW must have `unit_of_measurement: kW` so HSEM can convert it automatically |
 | EV SoC sensor | `hsem_ev_soc` | — | EV battery SoC sensor |
 | EV SoC target | `hsem_ev_soc_target` | 80 % | EV target SoC |
 | EV connected sensor | `hsem_ev_connected` | — | Binary sensor for EV plugged in |

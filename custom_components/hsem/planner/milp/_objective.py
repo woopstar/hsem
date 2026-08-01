@@ -10,6 +10,10 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from custom_components.hsem.planner.cost_helpers import (
+    compute_charge_premium,
+    deferred_export_price_by_slot,
+)
 from custom_components.hsem.utils.units import hours_ahead
 
 if TYPE_CHECKING:
@@ -44,6 +48,8 @@ def _build_objective(
     time_discount_rate: float,
     replacement_price_per_kwh: float | None,
     fuse_active: bool,
+    usable_kwh: float = 0.0,
+    max_charge_per_slot: float = 0.0,
 ) -> np.ndarray:  # type: ignore[name-defined]
     """Build the linear objective vector for the MILP.
 
@@ -53,6 +59,25 @@ def _build_objective(
     import numpy as np
 
     c_obj = np.zeros(n_vars)
+
+    # Deferred-export correction (issue #592): for each LP slot, the
+    # minimum export price among later slots whose PV surplus exceeds the
+    # battery's per-slot absorption capacity.  Indexed parallel to
+    # ``future_idx`` (LP-local index t → deferred price or None).
+    _deferred_by_lp_idx: list[float | None] | None = None
+    if (
+        usable_kwh > 1e-9
+        and max_charge_per_slot > 1e-9
+        and replacement_price_per_kwh is not None
+        and abs(replacement_price_per_kwh) > 1e-9
+    ):
+        _by_slot_idx = deferred_export_price_by_slot(
+            slots,
+            usable_kwh=usable_kwh,
+            max_charge_per_slot=max_charge_per_slot,
+            now=now,
+        )
+        _deferred_by_lp_idx = [_by_slot_idx[i] for i in future_idx]
 
     p_imp_max = float(np.max(p_imp)) if m > 0 else 0.1
     use_discount = time_discount_rate < 1.0 - 1e-9
@@ -133,6 +158,15 @@ def _build_objective(
         # when p_exp[t] is low (cheap slots) the cap is small, but the LP
         # still charges in those slots because the global optimum values
         # stored energy for future discharge windows.
+        #
+        # Deferred-export correction (issue #592): the #694 cap compares
+        # charging against exporting in the SAME slot.  When a future slot
+        # has PV surplus beyond what the battery can absorb, that surplus
+        # is exported regardless — so the true opportunity cost of charging
+        # now is the spread between this slot's (high) export price and the
+        # future slot's (low) export price.  ``compute_charge_premium``
+        # restores that spread so the LP charges now at high prices and
+        # lets the inevitable future surplus refill at low prices.
         if (
             replacement_price_per_kwh is not None
             and abs(replacement_price_per_kwh) > 1e-9
@@ -154,13 +188,15 @@ def _build_objective(
             # full terminal_premium to prevent unnecessary discharging
             # (issue #638).
             _charge_eff = 1.0 - charge_loss
-            if _charge_eff > 1e-9:
-                _charge_premium = max(
-                    0.0,
-                    replacement_price_per_kwh - p_imp_obj[t] - p_exp[t] / _charge_eff,
-                )
-            else:
-                _charge_premium = terminal_premium
+            _charge_premium = compute_charge_premium(
+                replacement_price_per_kwh=replacement_price_per_kwh,
+                imp_price_obj=p_imp_obj[t],
+                exp_price=p_exp[t],
+                charge_eff=_charge_eff,
+                deferred_export_price=(
+                    _deferred_by_lp_idx[t] if _deferred_by_lp_idx else None
+                ),
+            )
             c_obj[ec_off + t] -= _charge_premium  # capped credit for charging
             c_obj[ed_off + t] += terminal_premium  # full penalty for discharging
 

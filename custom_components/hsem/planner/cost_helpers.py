@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import math
+from collections.abc import Sequence
+from datetime import datetime
+
 from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.planner.cost_types import CostWeights
 from custom_components.hsem.utils.logger import log_planner
@@ -119,3 +123,118 @@ def _resolve_cycle_cost(weights: CostWeights) -> float:
 
     log_planner("debug", "[cost] _resolve_cycle_cost  return 0 (insufficient data)")
     return 0.0
+
+
+# ---------------------------------------------------------------------------
+# Terminal-SoC charge-premium helper (issues #694, #592)
+# ---------------------------------------------------------------------------
+
+
+def compute_charge_premium(
+    *,
+    replacement_price_per_kwh: float,
+    imp_price_obj: float,
+    exp_price: float,
+    charge_eff: float,
+    deferred_export_price: float | None = None,
+) -> float:
+    """Return the capped terminal-SoC credit for charging in a slot.
+
+    The charge credit must never make battery charging more attractive than
+    exporting the same PV surplus — either **now** (issue #694) or **later,
+    when the battery can still be refilled from surplus** (issue #592).
+
+    Base cap (issue #694)::
+
+        charge_premium = max(0, repl − p_imp − p_exp / η_chg)
+
+    Deferred-export cap (issue #592): when the battery still has headroom
+    and a *future* slot has PV surplus that exceeds what the battery can
+    absorb (i.e. surplus that will be exported regardless), the true
+    opportunity cost of charging now is not this slot's export price but
+    the difference between selling now and selling later.  Charging now at
+    a high export price and refilling later at a low export price forfeits
+    ``p_exp_now − p_exp_future`` per kWh.  Passing the minimum such future
+    export price as *deferred_export_price* tightens the cap::
+
+        charge_premium = max(0, repl − p_imp − p_exp / η_chg
+                                      + min(p_exp_future, p_exp) / η_chg)
+
+    When ``p_exp_future >= p_exp`` the correction is zero (no deferral
+    benefit) — the formula degrades gracefully to the #694 cap.
+
+    Args:
+        replacement_price_per_kwh: Value of one stored kWh at horizon end.
+        imp_price_obj: Sanitised (non-negative) import price for the slot.
+        exp_price: Export price for the slot (already clamped by the caller).
+        charge_eff: Charge efficiency fraction (0–1).
+        deferred_export_price: Minimum export price across *future* slots
+            whose PV surplus exceeds the battery's remaining charge
+            headroom.  ``None`` disables the deferred-export correction.
+
+    Returns:
+        The capped charge credit (≥ 0) to subtract from the objective.
+    """
+    terminal_premium = max(0.0, replacement_price_per_kwh - imp_price_obj)
+    if charge_eff <= 1e-9:
+        return terminal_premium
+    premium = replacement_price_per_kwh - imp_price_obj - exp_price / charge_eff
+    if deferred_export_price is not None:
+        premium += min(deferred_export_price, exp_price) / charge_eff
+    return max(0.0, premium)
+
+
+def deferred_export_price_by_slot(
+    slots: Sequence[PlannedSlot],
+    *,
+    usable_kwh: float,
+    max_charge_per_slot: float,
+    now: datetime | None = None,
+) -> list[float | None]:
+    """Compute the deferred-export price for every slot index.
+
+    For each slot *t*, this is the minimum export price across **later**
+    slots that carry PV surplus the battery cannot absorb (because the
+    remaining headroom at that point is smaller than the surplus).  Those
+    slots will export regardless of today's charge decision, so their
+    export price is the economically correct "refill price" for the
+    deferred-export cap (issue #592).
+
+    Slots without any qualifying later slot get ``None`` (no deferral
+    opportunity — the base #694 cap applies unchanged).
+
+    Args:
+        slots: Ordered slot list (ascending start time).
+        usable_kwh: Battery usable capacity (kWh) — the maximum headroom.
+        max_charge_per_slot: Per-slot charge power limit (kWh/slot).
+        now: Optional clock used to skip past slots.
+
+    Returns:
+        A list parallel to *slots* with ``float | None`` entries.
+    """
+    n = len(slots)
+    result: list[float | None] = [None] * n
+    # PV surplus beyond house load per slot (what could enter the battery).
+    surplus = [
+        max(
+            s.solcast_pv_estimate_kwh - s.avg_house_consumption_kwh,
+            0.0,
+        )
+        for s in slots
+    ]
+    # Walk backwards tracking the minimum export price among slots whose
+    # surplus exceeds the battery's ability to absorb it in that slot.
+    # When surplus exceeds what the battery can take, the excess is
+    # exported regardless of any charge decision, so that slot's export
+    # price is the true refill price for a deferred charge (issue #592).
+    absorbable = min(usable_kwh, max_charge_per_slot)
+    best: float | None = None
+    for i in range(n - 1, -1, -1):
+        result[i] = best
+        if now is not None and slots[i].end <= now:
+            continue
+        if surplus[i] > absorbable + 1e-9:
+            p = slots[i].price.export_price
+            if not math.isnan(p) and (best is None or p < best):
+                best = p
+    return result

@@ -86,6 +86,8 @@ from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.planner.cost_helpers import (
     _is_override_slot,
     _resolve_cycle_cost,
+    compute_charge_premium,
+    deferred_export_price_by_slot,
 )
 from custom_components.hsem.planner.cost_types import (  # noqa: F401
     CostWeights,
@@ -234,6 +236,23 @@ def score_plan(
 
     cycle_cost_kwh = _resolve_cycle_cost(weights)
 
+    # Deferred-export correction (issue #592): mirror the MILP's objective
+    # so the selector's terminal-SoC charge credit matches what the LP
+    # actually optimised for.  Computed once for the whole slot list.
+    _deferred_prices: list[float | None] | None = None
+    if (
+        replacement_price_per_kwh is not None
+        and abs(replacement_price_per_kwh) > 1e-9
+        and weights.battery_usable_capacity_kwh > 1e-9
+        and weights.max_charge_per_slot_kwh > 1e-9
+    ):
+        _deferred_prices = deferred_export_price_by_slot(
+            slots,
+            usable_kwh=weights.battery_usable_capacity_kwh,
+            max_charge_per_slot=weights.max_charge_per_slot_kwh,
+            now=now,
+        )
+
     # Resolve the effective roundtrip loss fraction.
     # When separate charge/discharge efficiencies are provided (both non-default),
     # we compute the roundtrip loss from them:
@@ -264,7 +283,7 @@ def score_plan(
 
     _time_passed_value = Recommendations.TimePassed.value
 
-    for slot in slots:
+    for slot_idx, slot in enumerate(slots):
         # Skip past slots entirely.  The SoC simulation zeros
         # estimated_battery_soc_pct on past slots as a sentinel, which would
         # falsely trigger the SoC-low penalty on every past slot.
@@ -465,21 +484,20 @@ def score_plan(
             terminal_premium = max(0.0, replacement_price_per_kwh - imp_price_obj)
             # Cap the CHARGE credit only: the terminal premium for
             # charging is reduced by the opportunity cost of not
-            # exporting the same PV surplus (issue #694).
-            #
-            #   charge_premium = repl - p_imp - p_exp / η_chg
-            #
-            # Mirrors the identical formula in milp_optimizer.py's
-            # _build_objective().  The discharge penalty is NOT capped.
-            if charge_eff > 1e-9:
-                _charge_premium = max(
-                    0.0,
-                    replacement_price_per_kwh
-                    - imp_price_obj
-                    - slot.price.export_price / charge_eff,
-                )
-            else:
-                _charge_premium = terminal_premium
+            # exporting the same PV surplus (issue #694), and corrected by
+            # the deferred-export spread when a future slot's PV surplus
+            # exceeds the battery's absorption capacity (issue #592).
+            # Mirrors milp/_objective.py exactly.  The discharge penalty
+            # is NOT capped.
+            _charge_premium = compute_charge_premium(
+                replacement_price_per_kwh=replacement_price_per_kwh,
+                imp_price_obj=imp_price_obj,
+                exp_price=slot.price.export_price,
+                charge_eff=charge_eff,
+                deferred_export_price=(
+                    _deferred_prices[slot_idx] if _deferred_prices else None
+                ),
+            )
             # Charge earns the capped credit; discharge incurs the full penalty
             terminal_soc_value += (
                 -slot.batteries_charged_kwh * _charge_premium

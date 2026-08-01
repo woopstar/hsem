@@ -117,6 +117,13 @@ class CostWeights:
     # in milp_optimizer.py so that cost_function scores match MILP assumptions.
     export_min_price: float = 0.0
 
+    # Battery capacity parameters used by the deferred-export correction in
+    # the terminal-SoC charge premium (issue #592).  Both must be positive
+    # for the correction to activate; defaults keep it disabled so existing
+    # callers are unaffected.
+    battery_usable_capacity_kwh: float = 0.0
+    max_charge_per_slot_kwh: float = 0.0
+
     # Time discount for selector score (1.0 = no discount)
     time_discount_rate: float = 0.995
 

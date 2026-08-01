@@ -899,6 +899,19 @@ terminal_soc_adjustment = terminal_soc_delta_kwh × replacement_energy_price
 Emptying the battery is **not free** — the cost function charges for the energy
 that would need to be replaced to restore the battery to a useful state.
 
+**Charge-credit caps (issues #694, #592).** The terminal-SoC credit for
+*charging* is capped so it never beats exporting the same PV surplus:
+
+- **Same-slot cap (#694):** the credit is reduced by this slot's export
+  opportunity cost (`p_exp / η_chg`).
+- **Deferred-export correction (#592):** when a *future* slot has PV surplus
+  beyond what the battery can absorb (`min(usable_kwh, max_charge_per_slot)`),
+  that surplus is exported regardless — so the credit is partially restored by
+  the spread between this slot's (high) export price and the future slot's
+  (low) export price.  The planner therefore exports solar at peak prices and
+  lets the inevitable cheap-afternoon surplus refill the battery, instead of
+  charging immediately during expensive hours.
+
 ---
 
 ## Candidate generation and selection

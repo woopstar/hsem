@@ -320,3 +320,96 @@ class TestBuildBatterySchedules:
         cfg = build_sensor_config(_make_config_entry())
         for s in build_battery_schedules(cfg):
             assert s.avg_import_price == pytest.approx(0.0)
+
+
+# ---------------------------------------------------------------------------
+# _read_ev_power_w — EV power unit normalisation (issue #592)
+# ---------------------------------------------------------------------------
+
+
+class TestReadEvPowerW:
+    """EV charger power must be normalised to Watts with mismatch detection."""
+
+    @staticmethod
+    def _sensor(unit: str | None = "W") -> MagicMock:
+        sensor = MagicMock()
+        state = MagicMock()
+        state.attributes = {"unit_of_measurement": unit} if unit is not None else {}
+        sensor.hass.states.get.return_value = state
+        return sensor
+
+    def test_watts_passthrough(self):
+        from custom_components.hsem.custom_sensors.state_collector import (
+            _read_ev_power_w,
+        )
+
+        result = _read_ev_power_w(
+            self._sensor("W"),
+            "sensor.ev",
+            lambda *a, **k: 3600.0,
+            label="ev",
+            is_charging=True,
+        )
+        assert result == pytest.approx(3600.0)
+
+    def test_kw_unit_converted_to_watts(self):
+        """A template sensor reporting kW with unit_of_measurement='kW'
+        must be scaled to Watts (issue #592)."""
+        from custom_components.hsem.custom_sensors.state_collector import (
+            _read_ev_power_w,
+        )
+
+        result = _read_ev_power_w(
+            self._sensor("kW"),
+            "sensor.ev",
+            lambda *a, **k: 3.6,
+            label="ev",
+            is_charging=True,
+        )
+        assert result == pytest.approx(3600.0)
+
+    def test_low_reading_while_charging_logs_warning_but_returns_value(self):
+        """Without a unit attribute, a suspiciously low reading while charging
+        is returned but flagged with a warning (issue #592)."""
+        from custom_components.hsem.custom_sensors.state_collector import (
+            _read_ev_power_w,
+        )
+
+        result = _read_ev_power_w(
+            self._sensor(None),
+            "sensor.ev",
+            lambda *a, **k: 3.6,
+            label="ev",
+            is_charging=True,
+        )
+        assert result == pytest.approx(3.6)
+
+    def test_implausible_reading_rejected(self):
+        """A >100 kW reading while charging is physically implausible for
+        AC charging and must be treated as unreadable."""
+        from custom_components.hsem.custom_sensors.state_collector import (
+            _read_ev_power_w,
+        )
+
+        result = _read_ev_power_w(
+            self._sensor("W"),
+            "sensor.ev",
+            lambda *a, **k: 250_000.0,
+            label="ev",
+            is_charging=True,
+        )
+        assert result is None
+
+    def test_none_reading_propagates(self):
+        from custom_components.hsem.custom_sensors.state_collector import (
+            _read_ev_power_w,
+        )
+
+        result = _read_ev_power_w(
+            self._sensor("W"),
+            "sensor.ev",
+            lambda *a, **k: None,
+            label="ev",
+            is_charging=True,
+        )
+        assert result is None

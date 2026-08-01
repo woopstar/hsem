@@ -234,11 +234,12 @@ def _inject_live_data_into_current_slot(
                 )
                 slot.avg_house_consumption_kwh = round(live_load_kwh, 3)
 
-            # Also update the sub-window averages so they stay consistent
-            # with the main average (used by spike detection in
-            # populate_consumption).
-            slot.avg_house_consumption_1d_kwh = slot.avg_house_consumption_kwh
-            slot.avg_house_consumption_3d_kwh = slot.avg_house_consumption_kwh
-            slot.avg_house_consumption_7d_kwh = slot.avg_house_consumption_kwh
-            slot.avg_house_consumption_14d_kwh = slot.avg_house_consumption_kwh
+            # Keep the historical sub-window averages intact.  The EV
+            # discharge-cap fallback in ``applier.async_apply_battery_settings``
+            # relies on the *minimum* of the 1d/3d/7d/14d windows to recover a
+            # clean house baseline when the live reading is unreliable
+            # (issue #592).  Overwriting them with the live-injected value
+            # would destroy that fallback — the live value can still be
+            # inflated by unmeasured EV load when no EV power sensor is
+            # configured, so the historical windows are the only clean source.
             break
