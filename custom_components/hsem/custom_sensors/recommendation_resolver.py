@@ -17,6 +17,13 @@ from custom_components.hsem.utils.logger import HSEM_LOGGER
 from custom_components.hsem.utils.recommendations import Recommendations
 
 
+def _fmt_live_w(power_w: float | None) -> str:
+    """Format a live power reading for log lines (``None`` → ``n/a``)."""
+    if power_w is None:
+        return "n/a"
+    return f"{int(power_w)}W"
+
+
 def resolve_current_recommendation(
     rec: HourlyRecommendation,
     live: LiveState,
@@ -87,11 +94,14 @@ def resolve_current_recommendation(
         rec.recommendation = Recommendations.EVSmartCharging.value
         HSEM_LOGGER.debug(
             "[resolver] EV actively charging + planner_allocated_ev=True "
-            "(ev_power=%dW ev2_power=%dW ev_total_load=%.3fkWh) "
+            "(planned_ev_power=%dW planned_ev2_power=%dW ev_total_load=%.3fkWh "
+            "live_ev_power=%s live_ev2_power=%s) "
             "→ overriding %s to ev_smart_charging",
             rec.ev_charger_calculated_power,
             rec.ev_second_charger_calculated_power,
             rec.ev_total_planned_load_kwh,
+            _fmt_live_w(live.ev.power_w),
+            _fmt_live_w(live.ev_second.power_w),
             original_recommendation,
         )
         return
@@ -99,11 +109,14 @@ def resolve_current_recommendation(
     if ev_actively_charging and not planner_allocated_ev:
         HSEM_LOGGER.debug(
             "[resolver] EV actively charging but planner_allocated_ev=False "
-            "(ev_power=%dW ev2_power=%dW ev_total_load=%.3fkWh) "
+            "(planned_ev_power=%dW planned_ev2_power=%dW ev_total_load=%.3fkWh "
+            "live_ev_power=%s live_ev2_power=%s) "
             "→ keeping original recommendation %s",
             rec.ev_charger_calculated_power,
             rec.ev_second_charger_calculated_power,
             rec.ev_total_planned_load_kwh,
+            _fmt_live_w(live.ev.power_w),
+            _fmt_live_w(live.ev_second.power_w),
             original_recommendation,
         )
 

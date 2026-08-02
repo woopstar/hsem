@@ -721,6 +721,26 @@ and ``test_milp_charges_now_when_no_future_surplus_exceeds_headroom`` in
 
 ---
 
+## EV Discharge Cap Must Not Feed Back Into the Planner (issue #592, beta7)
+
+The applier's EV discharge cap writes a small value (e.g. 321 W) to the
+``maximum_discharging_power`` number entity.  Reading that entity back as
+``battery_max_discharge_power_w`` in ``coordinator_builder.build_planner_input``
+created a feedback loop: the entire planning horizon was limited to the EV
+cap (``discharge=0.073 kWh`` per 15-min slot) and the battery could never
+cover evening house load.
+
+Canonical rule: **planner inputs must reflect physical capability, not
+commanded entity state.**  Use
+``coordinator_builder._resolve_max_discharge_power_w(live)`` — during an
+active EV session it derives the max from the rated capacity via
+``get_max_discharge_power()``; otherwise it uses the live read-back (rated
+maximum or genuine user override).
+
+Regression tests: ``tests/test_coordinator_builder.py``.
+
+---
+
 ## File Organization — By Responsibility, Not By Theme
 
 AI agents naturally bucket related things together (e.g. "all planner inputs in one file").
