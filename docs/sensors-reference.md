@@ -16,7 +16,6 @@ HSEM exposes these entity types:
 | **Switch** | ~15 | Toggle entities for schedules, EV settings, features, and ML options |
 | **Time** | 8 | Start/end time inputs for battery schedules and EV deadlines |
 | **Number** | ~12 | Charge/discharge efficiency, EV target SoC, temperature charge rates |
-| **Binary sensor** | 1 | PV curtailment detection |
 
 ---
 
@@ -485,18 +484,18 @@ Missed: {{ state_attr('sensor.hsem_savings_tracker', 'missed_savings') }}
 
 Detects when the inverter is actively curtailing PV production.
 
-**Entity:** `binary_sensor.hsem_pv_curtailment`
+**Entity:** `sensor.hsem_pv_curtailment_sensor`
 
 | Property | Value |
 |---|---|
-| **Type** | `binary_sensor` |
+| **Type** | `sensor` |
 | **State** | `curtailed` (PV being limited) or `normal` (no curtailment) |
-| **Device class** | `problem` |
+| **Entity category** | `diagnostic` |
 
 **Template example:**
 
 ```jinja2
-{% if is_state('binary_sensor.hsem_pv_curtailment', 'curtailed') %}
+{% if is_state('sensor.hsem_pv_curtailment_sensor', 'curtailed') %}
   PV is being curtailed
 {% endif %}
 ```
@@ -522,8 +521,9 @@ Detects when the inverter is actively curtailing PV production.
 | `sensor.hsem_last_updated_sensor` | Last Updated | Last coordinator cycle timestamp | ISO-8601 timestamp |
 | `sensor.hsem_next_update_sensor` | Next Update | Next scheduled coordinator cycle | ISO-8601 timestamp |
 | `sensor.hsem_missing_entities_sensor` | Missing Input Entities | Count of missing input entities | Integer |
-| `sensor.hsem_plan_explanation` | Plan Explanation | Planner strategy and cost breakdown | Winning candidate name |
+| `sensor.hsem_plan_explanation_sensor` | Plan Explanation | Planner strategy and cost breakdown | Winning candidate name |
 | `sensor.hsem_prediction_accuracy` | Prediction Accuracy | Multi-horizon forecast accuracy | `soc_mae_7d` |
+| `sensor.hsem_forecast_accuracy_sensor` | Forecast Accuracy | PV and load forecast MAE | kWh |
 | `sensor.hsem_recommendation_interval_sensor` | Recommendation Interval | Slot width and horizon info | Minutes |
 | `sensor.hsem_update_interval_sensor` | Update Interval | Current polling interval | Minutes |
 | `sensor.hsem_working_mode` | Working Mode | Active battery recommendation | Working mode state |
@@ -536,7 +536,7 @@ Detects when the inverter is actively curtailing PV production.
 | `sensor.hsem_ocpp_charger_info` | OCPP Charger Info | Vendor, model, firmware, serial | String |
 | `sensor.hsem_ocpp_charger_sessions` | OCPP Charger Sessions | Completed session log | Integer |
 | `sensor.hsem_savings_tracker` | Savings Tracker | Actual vs missed savings (90-day) | Monetary |
-| `binary_sensor.hsem_pv_curtailment` | PV Curtailment | PV curtailment detection | `curtailed` / `normal` |
+| `sensor.hsem_pv_curtailment_sensor` | PV Curtailment | PV curtailment detection | `curtailed` / `normal` |
 
 ---
 
@@ -650,9 +650,13 @@ OCPP configuration is exposed through the config flow with these keys:
 
 ### `hsem.create_dashboard`
 
-Creates a pre-configured HSEM dashboard in Home Assistant with cards for
-working mode, battery SoC, financial sensors, EV status, and plan explanation.
-Available in **Developer Tools → Services**.
+Logs the path to the bundled HSEM dashboard YAML and provides import
+instructions. The dashboard includes cards for working mode, battery SoC,
+financial sensors, EV status, and plan explanation. Import the YAML manually
+via **Developer Tools → Services** or **Settings → Dashboards**.
+
+> The service does **not** create or modify Home Assistant dashboards
+> automatically; it only surfaces the bundled YAML path for manual import.
 
 ---
 

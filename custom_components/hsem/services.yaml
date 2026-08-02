@@ -8,8 +8,6 @@ force_recalculation:
     All entity states are re-read and the planner is re-run. Useful for
     testing or when you need the most up-to-date recommendation without
     waiting for the next scheduled update.
-  target:
-    entity: {}
   fields: {}
 
 set_temporary_override:
@@ -19,8 +17,6 @@ set_temporary_override:
     mode. While the override is active the planner output is bypassed and the
     chosen mode is sent directly to the inverter. Set the working mode to
     "auto" via the clear_override service to resume normal planner control.
-  target:
-    entity: {}
   fields:
     working_mode:
       required: true
@@ -54,8 +50,6 @@ clear_override:
   description: >-
     Clear any active temporary working-mode override and return to automatic
     planner control. Has no effect when no override is currently active.
-  target:
-    entity: {}
   fields: {}
 
 export_diagnostics:
@@ -65,23 +59,14 @@ export_diagnostics:
     response contains the most recent planner input, planner output, hardware
     write status, and integration version — with all entity IDs redacted for
     safe sharing. Useful for debugging and issue reports.
-  target:
-    entity:
-      integration: hsem
   fields: {}
 
 create_dashboard:
   name: Create dashboard
   description: >-
-    Create or update the HSEM Lovelace dashboard at /hsem-dashboard.
-    The dashboard includes status cards, price charts, battery SoC,
-    EV status, savings, and accuracy views. Set force: true to
-    overwrite an existing dashboard.
-  target:
-    entity: {}
-  fields:
-    force:
-      required: false
-      selector:
-        boolean: {}
-      description: "Overwrite the dashboard if it already exists."
+    Log the path to the bundled HSEM Lovelace dashboard YAML and provide
+    import instructions. The dashboard includes status cards, price charts,
+    battery SoC, EV status, savings, and accuracy views. Import the YAML
+    manually via Settings → Dashboards → Add Dashboard → New dashboard from
+    scratch → Raw configuration editor.
+  fields: {}

@@ -1,7 +1,12 @@
 # HSEM Services Reference
 
-HSEM exposes four Home Assistant services that allow automation, script, and
+HSEM exposes five Home Assistant services that allow automation, script, and
 manual control over the planner and hardware writes.
+
+These services are **integration-level actions**: they operate on the single
+configured HSEM instance and do not require a `target` (entity, device, or
+area). The UI and YAML calls should only provide the `data` fields shown
+below.
 
 ---
 
@@ -32,8 +37,6 @@ All entity states are re-read and the planner is re-run.
 **Example:**
 ```yaml
 service: hsem.force_recalculation
-target:
-  entity_id: sensor.hsem_working_mode
 ```
 
 ---
@@ -114,35 +117,29 @@ service: hsem.clear_override
 
 ## 4. `hsem.create_dashboard`
 
-Creates or updates the bundled HSEM Lovelace dashboard in Home Assistant.
-The dashboard YAML is bundled with the integration at
-`custom_components/hsem/dashboards/dashboard_en.yaml` and includes 6 views:
-price charts, energy flow, savings, accuracy, EV status, and battery health.
+Logs the path to the bundled HSEM Lovelace dashboard YAML and provides import
+instructions. The dashboard YAML is bundled with the integration at
+`custom_components/hsem/dashboards/dashboard_en.yaml` and uses a single
+sections-based view with cards for status, recommendation timeline, battery
+SoC, price charts, and planner output.
 
-**Schema:**
-
-| Field | Required | Type | Default | Description |
-|---|---|---|---|---|
-| `force` | No | Boolean | `false` | When `true`, overwrites an existing HSEM dashboard. When `false` (default), skips if a dashboard named "HSEM" already exists. |
+**Schema:** No fields.
 
 **Use cases:**
-- First-time dashboard installation after HSEM setup
-- Updating the bundled dashboard to a newer version after an HSEM upgrade
+- Find the bundled dashboard path when setting up HSEM for the first time
+- Check that the bundled dashboard YAML is present after an HSEM upgrade
 
 **Implementation notes:**
-- The service logs the path to the bundled dashboard YAML with import instructions.
-- Does not use HA internal storage or Lovelace APIs — relies on the user
-  importing the dashboard via the raw configuration editor or YAML mode.
+- The service does **not** create or modify any Home Assistant dashboard
+  automatically.
+- Import the YAML manually via **Settings → Dashboards → Add Dashboard →
+  New dashboard from scratch → Raw configuration editor**.
+- Replace `sensor.batteries_state_of_capacity` and `sensor.power_import` with
+  your own battery SoC and grid import power entities.
 
-**Examples:**
+**Example:**
 ```yaml
-# Create dashboard, skip if already exists
 service: hsem.create_dashboard
-
-# Force-overwrite an existing dashboard
-service: hsem.create_dashboard
-data:
-  force: true
 ```
 
 ---
