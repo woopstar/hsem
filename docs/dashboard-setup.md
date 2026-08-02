@@ -29,8 +29,299 @@ Step-by-step guide for setting up the HSEM ApexCharts dashboard in Home Assistan
 ```yaml
 views:
   - title: HSEM
+    type: sections
+    max_columns: 2
+    cards: []
     badges: []
     sections:
+      - type: grid
+        cards:
+          - type: heading
+            heading: HSEM Status & Control
+            heading_style: title
+            grid_options:
+              columns: full
+              rows: 2
+          - type: tile
+            entity: sensor.hsem_workingmode_sensor
+            name: Working Mode
+            icon: mdi:robot
+            color: state
+            grid_options:
+              columns: 2
+          - type: tile
+            entity: sensor.hsem_degraded_mode_sensor
+            name: System Health
+            icon: mdi:heart-pulse
+            color: state
+            grid_options:
+              columns: 2
+          - type: tile
+            entity: switch.hsem_read_only
+            name: Read-Only
+            icon: mdi:lock
+            color: state
+            features:
+              - type: toggle
+            grid_options:
+              columns: 2
+          - type: tile
+            entity: sensor.hsem_plan_explanation_sensor
+            name: Plan Strategy
+            icon: mdi:strategy
+            color: state
+            grid_options:
+              columns: 2
+          - type: tile
+            entity: select.hsem_force_working_mode
+            name: Force Mode
+            icon: mdi:hand-back-right
+            color: state
+            features:
+              - type: select-options
+            grid_options:
+              columns: 2
+          - type: tile
+            entity: sensor.hsem_next_update_sensor
+            name: Next Update
+            icon: mdi:update
+            color: state
+            grid_options:
+              columns: 2
+          - type: tile
+            entity: sensor.hsem_applier_status_sensor
+            name: Inverter Apply
+            icon: mdi:transmission-tower
+            color: state
+            grid_options:
+              columns: 2
+          - type: tile
+            entity: sensor.hsem_hardware_writes_sensor
+            name: Hardware Writes
+            icon: mdi:pencil-off
+            color: state
+            grid_options:
+              columns: 2
+          - type: tile
+            entity: sensor.hsem_pv_curtailment_sensor
+            name: PV Curtailment
+            icon: mdi:solar-power
+            color: state
+            grid_options:
+              columns: 2
+      - type: grid
+        cards:
+          - type: heading
+            heading: Financial Insights
+            heading_style: title
+            grid_options:
+              columns: full
+              rows: 2
+          - type: tile
+            entity: sensor.hsem_export_income
+            name: Export Income
+            icon: mdi:cash-plus
+            color: state
+            grid_options:
+              columns: 2
+          - type: tile
+            entity: sensor.hsem_import_cost
+            name: Import Cost
+            icon: mdi:cash-minus
+            color: state
+            grid_options:
+              columns: 2
+          - type: tile
+            entity: sensor.hsem_net_grid_balance
+            name: Net Grid Balance
+            icon: mdi:scale-balance
+            color: state
+            grid_options:
+              columns: 2
+          - type: tile
+            entity: sensor.hsem_savings_tracker
+            name: Savings Tracker
+            icon: mdi:piggy-bank
+            color: state
+            grid_options:
+              columns: 2
+      - type: grid
+        cards:
+          - type: heading
+            heading: Forecast Quality
+            heading_style: title
+            grid_options:
+              columns: full
+              rows: 2
+          - type: tile
+            entity: sensor.hsem_forecast_accuracy_sensor
+            name: Forecast Accuracy
+            icon: mdi:chart-line
+            color: state
+            grid_options:
+              columns: 2
+          - type: tile
+            entity: sensor.hsem_prediction_accuracy_sensor
+            name: Prediction Accuracy
+            icon: mdi:target
+            color: state
+            grid_options:
+              columns: 2
+          - type: tile
+            entity: sensor.hsem_solar_confidence_sensor
+            name: Solar Confidence
+            icon: mdi:solar-power
+            color: state
+            grid_options:
+              columns: 2
+      - type: grid
+        cards:
+          - type: heading
+            heading: EV Charging
+            heading_style: title
+            grid_options:
+              columns: full
+              rows: 2
+          - type: conditional
+            conditions:
+              - entity: sensor.hsem_ev_optimal_charging_plan
+                state_not: unavailable
+            grid_options:
+              columns: 2
+            card:
+              type: tile
+              entity: sensor.hsem_ev_optimal_charging_plan
+              name: EV Plan
+              icon: mdi:ev-station
+              color: state
+          - type: conditional
+            conditions:
+              - entity: sensor.hsem_ev_charging_sensor
+                state_not: unavailable
+            grid_options:
+              columns: 2
+            card:
+              type: tile
+              entity: sensor.hsem_ev_charging_sensor
+              name: EV Charging Active
+              icon: mdi:lightning-bolt
+              color: state
+          - type: conditional
+            conditions:
+              - entity: switch.hsem_ev_smart_charging
+                state_not: unavailable
+            grid_options:
+              columns: 2
+            card:
+              type: tile
+              entity: switch.hsem_ev_smart_charging
+              name: EV Smart Charging
+              icon: mdi:brain
+              color: state
+              features:
+                - type: toggle
+          - type: conditional
+            conditions:
+              - entity: switch.hsem_ev_force_charge_now
+                state_not: unavailable
+            grid_options:
+              columns: 2
+            card:
+              type: tile
+              entity: switch.hsem_ev_force_charge_now
+              name: EV Force Charge
+              icon: mdi:lightning-bolt-outline
+              color: state
+              features:
+                - type: toggle
+          - type: conditional
+            conditions:
+              - entity: number.hsem_ev_target_soc
+                state_not: unavailable
+            grid_options:
+              columns: 2
+            card:
+              type: tile
+              entity: number.hsem_ev_target_soc
+              name: EV Target SoC
+              icon: mdi:battery-charging
+              color: state
+          - type: conditional
+            conditions:
+              - entity: time.hsem_ev_deadline_time
+                state_not: unavailable
+            grid_options:
+              columns: 2
+            card:
+              type: tile
+              entity: time.hsem_ev_deadline_time
+              name: EV Deadline
+              icon: mdi:clock-end
+              color: state
+          - type: conditional
+            conditions:
+              - entity: sensor.hsem_ev_second_optimal_charging_plan
+                state_not: unavailable
+            grid_options:
+              columns: 2
+            card:
+              type: tile
+              entity: sensor.hsem_ev_second_optimal_charging_plan
+              name: EV 2 Plan
+              icon: mdi:ev-station
+              color: state
+          - type: conditional
+            conditions:
+              - entity: switch.hsem_ev_second_smart_charging
+                state_not: unavailable
+            grid_options:
+              columns: 2
+            card:
+              type: tile
+              entity: switch.hsem_ev_second_smart_charging
+              name: EV 2 Smart Charging
+              icon: mdi:brain
+              color: state
+              features:
+                - type: toggle
+          - type: conditional
+            conditions:
+              - entity: switch.hsem_ev_second_force_charge_now
+                state_not: unavailable
+            grid_options:
+              columns: 2
+            card:
+              type: tile
+              entity: switch.hsem_ev_second_force_charge_now
+              name: EV 2 Force Charge
+              icon: mdi:lightning-bolt-outline
+              color: state
+              features:
+                - type: toggle
+          - type: conditional
+            conditions:
+              - entity: number.hsem_ev_second_target_soc
+                state_not: unavailable
+            grid_options:
+              columns: 2
+            card:
+              type: tile
+              entity: number.hsem_ev_second_target_soc
+              name: EV 2 Target SoC
+              icon: mdi:battery-charging
+              color: state
+          - type: conditional
+            conditions:
+              - entity: time.hsem_ev_second_deadline_time
+                state_not: unavailable
+            grid_options:
+              columns: 2
+            card:
+              type: tile
+              entity: time.hsem_ev_second_deadline_time
+              name: EV 2 Deadline
+              icon: mdi:clock-end
+              color: state
       - type: grid
         cards:
           - type: heading
@@ -887,26 +1178,86 @@ views:
                     const e = new Date(end).getTime();
                     out.push([s, import_price], [e, import_price]);
                   }); return out;
-    type: sections
-    max_columns: 2
-    cards: []
+
 ```
 
 ---
 
 ## Dashboard layout
 
-The dashboard uses a three-section layout within one view:
+The dashboard uses a seven-section layout within one view:
 
 | Section | Column span | Cards | Description |
 |---|---|---|---|
-| **Main** | 2 columns | 7 | Recommendation timeline, battery status, charged kWh, consumption breakdown |
-| **Middle** | 1 column | 4 | Net consumption, estimated cost, consumption, export price |
-| **Right** | 1 column | 4 | Battery capacity, simulated SoC, PV forecast, import price |
+| **Status & Control** | 1 column | 10 | Working mode, system health, read-only toggle, plan strategy, force mode, next update, inverter apply, hardware writes, PV curtailment |
+| **Financial Insights** | 1 column | 5 | Export income, import cost, net grid balance, savings tracker |
+| **Forecast Quality** | 1 column | 4 | Forecast accuracy, prediction accuracy, solar confidence |
+| **EV Charging** | 1 column | 12 | EV plan, active status, smart charging, force charge, target SoC, deadline (primary + secondary, conditional) |
+| **Working Mode Recommendation** | 2 columns | 7 | Recommendation timeline, battery status, charged kWh, consumption breakdown |
+| **Planner Output (left)** | 1 column | 4 | Net consumption, estimated cost, consumption, export price |
+| **Planner Output (right)** | 1 column | 4 | Battery capacity, simulated SoC, PV forecast, import price |
 
 ---
 
 ## Cards reference
+
+### Status & Control tiles
+
+The top section uses built-in `tile` cards to surface the most important HSEM
+state at a glance and to provide quick controls:
+
+| Card | Entity | Purpose |
+|---|---|---|
+| Working Mode | `sensor.hsem_workingmode_sensor` | Current planner recommendation |
+| System Health | `sensor.hsem_degraded_mode_sensor` | `ok` / `degraded` / `error` state |
+| Read-Only | `switch.hsem_read_only` | Toggle hardware write protection |
+| Plan Strategy | `sensor.hsem_plan_explanation_sensor` | Why the planner chose the current plan |
+| Force Mode | `select.hsem_force_working_mode` | Override the planner working mode |
+| Next Update | `sensor.hsem_next_update_sensor` | Countdown to the next planner cycle |
+| Inverter Apply | `sensor.hsem_applier_status_sensor` | Last hardware write result |
+| Hardware Writes | `sensor.hsem_hardware_writes_sensor` | Whether writes are currently blocked |
+| PV Curtailment | `sensor.hsem_pv_curtailment_sensor` | `curtailed` when PV is being throttled |
+
+### Financial Insights tiles
+
+Quick visibility into the financial impact of the planner:
+
+| Card | Entity | Purpose |
+|---|---|---|
+| Export Income | `sensor.hsem_export_income` | Cumulative revenue from grid exports |
+| Import Cost | `sensor.hsem_import_cost` | Cumulative cost of grid imports |
+| Net Grid Balance | `sensor.hsem_net_grid_balance` | Export income minus import cost |
+| Savings Tracker | `sensor.hsem_savings_tracker` | Actual savings vs missed savings |
+
+### Forecast Quality tiles
+
+Visibility into how well the planner's forecasts match reality:
+
+| Card | Entity | Purpose |
+|---|---|---|
+| Forecast Accuracy | `sensor.hsem_forecast_accuracy_sensor` | PV and load forecast MAE |
+| Prediction Accuracy | `sensor.hsem_prediction_accuracy_sensor` | SoC prediction MAE over 7/30 days |
+| Solar Confidence | `sensor.hsem_solar_confidence_sensor` | Learned per-hour solar correction factors |
+
+### EV Charging tiles
+
+All EV cards are wrapped in `conditional` cards so they only appear when the
+corresponding EV entity is available. The section covers the primary EV and a
+secondary EV when configured:
+
+| Card | Entity | Purpose |
+|---|---|---|
+| EV Plan | `sensor.hsem_ev_optimal_charging_plan` | Current EV charging plan state |
+| EV Charging Active | `sensor.hsem_ev_charging_sensor` | Whether an EV is currently charging |
+| EV Smart Charging | `switch.hsem_ev_smart_charging` | Enable/disable smart EV charging |
+| EV Force Charge | `switch.hsem_ev_force_charge_now` | Override and start charging now |
+| EV Target SoC | `number.hsem_ev_target_soc` | Target state of charge for smart charging |
+| EV Deadline | `time.hsem_ev_deadline_time` | Deadline by which the EV must reach target SoC |
+| EV 2 Plan | `sensor.hsem_ev_second_optimal_charging_plan` | Second EV charging plan state |
+| EV 2 Smart Charging | `switch.hsem_ev_second_smart_charging` | Enable/disable smart charging for second EV |
+| EV 2 Force Charge | `switch.hsem_ev_second_force_charge_now` | Override and start second EV charging now |
+| EV 2 Target SoC | `number.hsem_ev_second_target_soc` | Target SoC for second EV |
+| EV 2 Deadline | `time.hsem_ev_second_deadline_time` | Deadline for second EV |
 
 ### Recommendation timeline chart
 

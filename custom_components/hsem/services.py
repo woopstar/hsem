@@ -1,15 +1,15 @@
 """Service handlers for the HSEM integration.
 
-This module implements the four HSEM services:
+This module implements the five HSEM services:
 
 - ``force_recalculation`` — Re-run the full planning pipeline immediately.
 - ``set_temporary_override`` — Force a specific working mode on the select entity.
 - ``clear_override`` — Reset the force-mode select to ``"auto"``.
 - ``export_diagnostics`` — Return a structured diagnostics dump as service response.
+- ``create_dashboard`` — Log the path to the bundled dashboard YAML.
 
-All services expect the caller to provide the config-entry device ID (or the
-coordinator is looked up from the only configured HSEM entry).  Service schemas
-are defined in ``services.yaml``.
+All services are integration-level actions; the coordinator is looked up from
+the only configured HSEM entry.  Service schemas are defined in ``services.yaml``.
 """
 
 from __future__ import annotations
@@ -75,7 +75,7 @@ SCHEMA_CLEAR_OVERRIDE = vol.Schema({})
 
 SCHEMA_EXPORT_DIAGNOSTICS = vol.Schema({})
 
-SCHEMA_CREATE_DASHBOARD = vol.Schema({vol.Optional("force", default=False): bool})
+SCHEMA_CREATE_DASHBOARD = vol.Schema({})
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -303,7 +303,7 @@ async def async_handle_export_diagnostics(  # NOSONAR
 
 async def async_handle_create_dashboard(
     hass: HomeAssistant,
-    call: ServiceCall,
+    call: ServiceCall,  # noqa: ARG001
 ) -> None:
     """Log the path to the bundled HSEM dashboard YAML for manual import.
 
