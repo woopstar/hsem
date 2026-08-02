@@ -32,7 +32,10 @@ from custom_components.hsem.utils.capacity_learner import CapacityLearner
 from custom_components.hsem.utils.charge_rate_learner import CHARGE_RATE_LEARNER
 from custom_components.hsem.utils.conversion import convert_to_float, convert_to_int
 from custom_components.hsem.utils.datetime_utils import now as hsem_now
-from custom_components.hsem.utils.misc import calculate_recommended_threshold
+from custom_components.hsem.utils.misc import (
+    calculate_recommended_threshold,
+    get_max_discharge_power,
+)
 
 
 def _clamp_charge_rate(configured_w: float) -> float:
@@ -48,6 +51,43 @@ def _clamp_charge_rate(configured_w: float) -> float:
         cell_temp_c=None, fallback_w=configured_w
     )
     return min(configured_w, learned)
+
+
+def _resolve_max_discharge_power_w(live: LiveState) -> float | None:
+    """Return the battery's physical max discharge power for the planner.
+
+    The planner input must reflect the battery's *capability*, not the
+    currently commanded value of the ``maximum_discharging_power`` number
+    entity.  The applier writes that entity in two situations:
+
+    - the rated-capacity maximum (normal operation), and
+    - the EV discharge cap (issue #592) — a much smaller value (e.g. ~321 W)
+      that protects the battery from feeding an actively charging EV.
+
+    Reading the entity back while the EV cap is active feeds the capped
+    value into the planner as the horizon-wide discharge limit — the
+    classic feedback loop observed in the beta7 logs where every slot was
+    limited to ``discharge=0.073 kWh`` (321 W × 15 min) and the battery
+    could never cover evening house load.
+
+    When an EV is actively charging, the physical capability is derived
+    from the rated capacity instead (same formula the applier uses for the
+    uncapped write).  When no EV is charging, the live read-back is used
+    unchanged — at that point it always reflects the rated maximum (or a
+    genuine user override, which should be respected).
+
+    Args:
+        live: Live state snapshot.
+
+    Returns:
+        Max discharge power in Watts, or ``None`` when unavailable.
+    """
+    live_w = convert_to_float(live.huawei_batteries_max_discharge_power_w)
+    if live.any_ev_charging:
+        rated_wh = convert_to_int(live.huawei_batteries_rated_capacity_wh)
+        if rated_wh is not None and rated_wh > 0:
+            return float(get_max_discharge_power(rated_wh))
+    return live_w or None
 
 
 # ---------------------------------------------------------------------------
@@ -201,10 +241,7 @@ def build_planner_input(
         battery_max_charge_power_w=_clamp_charge_rate(
             convert_to_float(live.huawei_batteries_max_charge_power_w) or 5000.0
         ),
-        battery_max_discharge_power_w=convert_to_float(
-            live.huawei_batteries_max_discharge_power_w
-        )
-        or None,
+        battery_max_discharge_power_w=_resolve_max_discharge_power_w(live),
         battery_charge_efficiency_pct=convert_to_float(cfg.batteries_charge_efficiency)
         or 95.0,
         battery_discharge_efficiency_pct=convert_to_float(

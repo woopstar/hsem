@@ -74,6 +74,13 @@ from custom_components.hsem.utils.units import slot_duration_hours
 from custom_components.hsem.utils.workingmodes import WorkingModes
 
 
+def _fmt_live_power_w(power_w: float | None) -> str:
+    """Format a live power reading for log lines (``None`` → ``n/a``)."""
+    if power_w is None:
+        return "n/a"
+    return f"{int(power_w)}W"
+
+
 def _should_force_export_for_ev(
     ev: Any,
     ev_cfg: Any,
@@ -396,13 +403,16 @@ async def async_apply_battery_settings(
                 summary.results.append(ev_discharge_result)
                 _LOGGER.debug(
                     "%s — capped max discharge power to %d W "
-                    "(ev_power=%dW ev2_power=%dW ev_total_load=%.3fkWh "
+                    "(planned_ev_power=%dW planned_ev2_power=%dW "
+                    "ev_total_load=%.3fkWh live_ev_power=%s live_ev2_power=%s "
                     "house_avg=%.3f kWh/slot)",
                     cap_reason,
                     cap_w,
                     rec.ev_charger_calculated_power,
                     rec.ev_second_charger_calculated_power,
                     rec.ev_total_planned_load_kwh,
+                    _fmt_live_power_w(live.ev.power_w),
+                    _fmt_live_power_w(live.ev_second.power_w),
                     rec.avg_house_consumption_kwh,
                 )
                 if ev_discharge_result.status == ApplyStatus.FAILED:
