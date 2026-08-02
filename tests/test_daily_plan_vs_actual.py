@@ -18,8 +18,6 @@ from custom_components.hsem.models.daily_plan_vs_actual_tracker import (
 from custom_components.hsem.models.daily_record import DailyRecord
 from custom_components.hsem.models.day_rollover_result import DayRolloverResult
 
-pytestmark = pytest.mark.asyncio
-
 
 class TestDailyMetrics:
     """Tests for :class:`DailyMetrics`."""
@@ -241,12 +239,14 @@ class TestDailyPlanVsActualTracker:
         # Delta = |45 - 50| = 5 pct-points → 0.5 kWh
         assert tracker.actual.battery_cycled_kwh == pytest.approx(0.5)
 
+    @pytest.mark.asyncio
     async def test_check_day_rollover_no_change(self) -> None:
         """No rollover when day hasn't changed."""
         tracker = DailyPlanVsActualTracker(today="2026-06-01")
         result = await tracker.check_day_rollover(datetime(2026, 6, 1, 12, 0, 0))
         assert result is None
 
+    @pytest.mark.asyncio
     async def test_check_day_rollover_changes(self) -> None:
         """Day rollover returns a result and resets counters."""
         tracker = DailyPlanVsActualTracker(today="2026-06-01")
@@ -305,6 +305,7 @@ class TestDailyPlanVsActualTracker:
         record = tracker.get_yesterday_record()
         assert record is None
 
+    @pytest.mark.asyncio
     async def test_history_pruning(self) -> None:
         """History is pruned to max_history_days."""
         tracker = DailyPlanVsActualTracker(max_history_days=3)
@@ -331,6 +332,7 @@ class TestDailyPlanVsActualTracker:
         assert attrs["history_days"] == 90
         assert attrs["history_total_days"] == 0
 
+    @pytest.mark.asyncio
     async def test_json_persistence_roundtrip(self) -> None:
         """Save and load history through a temp JSON file."""
         with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp:
@@ -374,6 +376,7 @@ class TestDailyPlanVsActualTracker:
         finally:
             os.unlink(tmp_path)
 
+    @pytest.mark.asyncio
     async def test_corrupted_file_handling(self) -> None:
         """Tracker loads gracefully from a corrupted file."""
         with tempfile.NamedTemporaryFile(suffix=".json", delete=False, mode="w") as tmp:
@@ -390,6 +393,7 @@ class TestDailyPlanVsActualTracker:
         finally:
             os.unlink(tmp_path)
 
+    @pytest.mark.asyncio
     async def test_load_missing_file(self) -> None:
         """Tracker handles missing history file gracefully."""
         import tempfile as tf
