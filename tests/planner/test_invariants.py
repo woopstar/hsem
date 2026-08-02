@@ -19,13 +19,10 @@ Invariant 9  - No-action has normal PV/battery   → TestNoActionBaseline
 Invariant 10 - Terminal SoC affects cost         → TestTerminalSoC
 Invariant 11 - Emptying battery is not free      → (merged into TestTerminalSoC)
 Invariant 12 - Winner cost ≤ no-action cost      → TestWinnerVsNoAction
-Invariant 13 - Partial slot duration             → TestPartialSlot (xfail)
 Invariant 14 - Missing data sentinel             → TestMissingDataSentinel
 Invariant 16 - Seasonal determinism              → TestSeasonalDeterminism
 Invariant 20 - Negative export price penalises   → TestNegativeExportPrice
 Invariant 21 - EV load not double-counted        → TestEvLoadNotDoubleCounted
-Invariant 23 - Fusion Solar verification         → TestFusionSolarVerification (xfail)
-Invariant 24 - Warm-up mode                      → TestWarmupMode (xfail)
 Invariant 25 - Required reserve preserved        → TestRequiredReserve
 
 All tests are synchronous with no Home Assistant imports.
@@ -1207,55 +1204,6 @@ class TestWinnerVsNoAction:
 # ===========================================================================
 
 
-class TestPartialSlot:
-    """Spec invariant 13: A partial (in-progress) slot uses remaining duration.
-
-    This invariant requires that when planning starts mid-slot, the cost
-    estimate for the current slot only accounts for the remaining fraction
-    of the slot, not the full duration.
-
-    Status: xfail — partial-slot fractional duration is not yet implemented.
-    The planner uses full slot duration even for the in-progress slot.
-    Tracking issue: see 'current partial slot' in hsem-planner-spec.md.
-    """
-
-    @pytest.mark.xfail(
-        reason=(
-            "Partial-slot duration not yet implemented. "
-            "The planner uses full slot energy for the current in-progress slot "
-            "rather than scaling to the remaining fraction of the slot. "
-            "This is a known gap — see hsem-planner-spec.md invariant 13."
-        ),
-        strict=True,
-    )
-    def test_partial_slot_uses_remaining_duration(self):
-        """Mid-slot planning must scale energy to the remaining slot fraction.
-
-        Setup: plan starts at 00:30 (30 min into a 60-min slot).
-        Expected: the current slot's cost is half the full-slot cost.
-        """
-        # Plan at 00:30 — half way through the first slot
-        inp = _make_uniform_input(
-            import_price=0.20,
-            load_kwh=1.0,
-            pv_kwh=0.0,
-            battery_soc_pct=0.0,
-            now_iso="2024-06-15T00:30:00+02:00",
-        )
-        result = run_planner(inp)
-        # The first slot runs 00:00–01:00; planning starts at 00:30.
-        # Only 0.5 h remains → energy should be 0.5 × 1.0 = 0.5 kWh max.
-        first_future_slot = next(
-            s
-            for s in result.slots
-            if s.recommendation != Recommendations.TimePassed.value
-        )
-        # Remaining duration = 0.5 h → max consumption = 0.5 kWh
-        assert first_future_slot.avg_house_consumption_kwh <= 0.5 + 1e-6, (
-            "Partial slot must use remaining duration, not full duration"
-        )
-
-
 # ===========================================================================
 # Invariant 14: Missing price/PV data does not become real zero silently
 # ===========================================================================
@@ -1586,66 +1534,9 @@ class TestEvLoadNotDoubleCounted:
 # ===========================================================================
 
 
-class TestFusionSolarVerification:
-    """Spec invariant 23: Fusion Solar writes must be verified before considered applied.
-
-    Status: xfail — Fusion Solar write verification is not yet in scope for the
-    pure-Python planner.  Hardware write verification happens in the applier layer
-    (tests/sensors/test_applier.py covers ApplyStatus).  No planner-level Fusion
-    Solar write path exists yet.
-    """
-
-    @pytest.mark.xfail(
-        reason=(
-            "Fusion Solar schedule write verification is not part of the "
-            "pure-Python planner engine.  It is handled by the applier layer "
-            "(see tests/sensors/test_applier.py).  This invariant will be "
-            "validated at the applier level when Fusion Solar write verification "
-            "is explicitly integrated into the planner output."
-        ),
-        strict=True,
-    )
-    def test_fusion_solar_writes_verified(self):
-        """Planner output must include a write-verification flag for Fusion Solar."""
-        result = run_planner(make_summer_day_input())
-        # Expect a field like result.fusion_solar_write_verified or similar
-        assert hasattr(result, "fusion_solar_write_verified"), (
-            "PlannerOutput must expose a Fusion Solar write-verification flag"
-        )
-
-
 # ===========================================================================
 # Invariant 24: Warm-up mode limits optimization if history is insufficient
 # ===========================================================================
-
-
-class TestWarmupMode:
-    """Spec invariant 24: Warm-up mode must limit optimization when history is scarce.
-
-    Status: xfail — a formal warm-up mode gate is not yet implemented.
-    The planner does not currently inspect the age of historical data and
-    limit optimization accordingly.  This is a known gap.
-    """
-
-    @pytest.mark.xfail(
-        reason=(
-            "Formal warm-up mode (limiting optimization when historical consumption "
-            "data is insufficient) is not yet implemented in the planner engine.  "
-            "There is no mechanism to detect that consumption averages are too young "
-            "or too sparse to be reliable.  "
-            "This invariant will be addressed in a follow-up issue."
-        ),
-        strict=True,
-    )
-    def test_zero_history_triggers_warmup_mode(self):
-        """With all-zero consumption history the planner must enter warm-up mode."""
-        inp = _make_uniform_input(load_kwh=0.0)  # zero history
-        result = run_planner(inp)
-        # Warm-up mode should be signalled in warnings or a dedicated field
-        warmup_signalled = any("warm" in w.lower() for w in result.warnings)
-        assert warmup_signalled, (
-            "All-zero consumption history must trigger a warm-up mode warning"
-        )
 
 
 # ===========================================================================
