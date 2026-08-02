@@ -75,7 +75,7 @@ class TestAvgSensorListenerCleanup:
         timer_unsub = MagicMock()
         state_unsub = MagicMock()
 
-        async def _fake_handle_update(_event=None):
+        async def _fake_handle_update(event=None):
             """No-op stub replacing the real async handler during listener cleanup tests."""
 
         sensor._async_handle_update = _fake_handle_update

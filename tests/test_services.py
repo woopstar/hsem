@@ -403,8 +403,9 @@ class TestSchemaSetTemporaryOverrideDuration:
             result = SCHEMA_SET_TEMPORARY_OVERRIDE(
                 {"working_mode": "batteries_charge_grid", "duration_minutes": minutes}
             )
-            assert result["working_mode"] == "batteries_charge_grid"  # pyright: ignore[reportIndexIssue]
-            assert result["duration_minutes"] == minutes  # pyright: ignore[reportIndexIssue]
+            assert isinstance(result, dict)
+            assert result["working_mode"] == "batteries_charge_grid"
+            assert result["duration_minutes"] == minutes
 
     def test_duration_minutes_below_min_rejected(self):
         """Schema must reject duration_minutes less than 1."""
@@ -432,16 +433,18 @@ class TestSchemaSetTemporaryOverrideDuration:
         result = SCHEMA_SET_TEMPORARY_OVERRIDE(
             {"working_mode": "batteries_discharge_mode"}
         )
+        assert isinstance(result, dict)
         assert "duration_minutes" not in result
-        assert result["working_mode"] == "batteries_discharge_mode"  # pyright: ignore[reportIndexIssue]
+        assert result["working_mode"] == "batteries_discharge_mode"
 
     def test_duration_minutes_string_parsed_as_int(self):
         """Schema must coerce a numeric string to int."""
         result = SCHEMA_SET_TEMPORARY_OVERRIDE(
             {"working_mode": "batteries_charge_grid", "duration_minutes": "45"}
         )
-        assert result["duration_minutes"] == 45  # pyright: ignore[reportIndexIssue]
-        assert isinstance(result["duration_minutes"], int)  # pyright: ignore[reportIndexIssue]
+        assert isinstance(result, dict)
+        assert result["duration_minutes"] == 45
+        assert isinstance(result["duration_minutes"], int)
 
 
 class TestClearOverride:

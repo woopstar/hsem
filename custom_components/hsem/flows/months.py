@@ -48,7 +48,7 @@ async def get_months_schema(
 
 
 async def validate_months_input(  # NOSONAR
-    _hass: HomeAssistant, user_input: dict
+    _hass: HomeAssistant | None, user_input: dict
 ) -> dict[str, str]:
     """Validate user input for the 'months' step."""
     return validate_months(user_input)

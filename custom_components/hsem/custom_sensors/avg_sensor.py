@@ -47,7 +47,7 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
         hour_start: int,
         hour_end: int,
         avg: int,
-        tracked_entity: str,
+        tracked_entity: str | None,
         name: str,
         unique_id: str,
         entity_id: str,

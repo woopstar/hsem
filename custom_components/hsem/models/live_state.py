@@ -127,7 +127,7 @@ class LiveState:
     ev_second: EVLiveState = field(default_factory=EVLiveState)
 
     # Power readings
-    house_consumption_power_w: float = 0.0
+    house_consumption_power_w: float | None = None
     solar_production_power_w: float = 0.0
     net_consumption_w: float = 0.0
     net_consumption_with_ev_w: float = 0.0

@@ -344,6 +344,7 @@ class TestCompleteFutureData:
         import math
 
         result = run_planner(_make_input(horizon_hours=72, prices=[], solcast=[]))
+        assert result.plan_cost is not None
         assert not math.isnan(result.plan_cost.total)
 
     def test_48h_all_slots_have_recommendation_with_partial_data(self):

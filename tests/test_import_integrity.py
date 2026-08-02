@@ -11,13 +11,14 @@ catch that class of mistake at CI time before it reaches production.
 
 import importlib
 import inspect
+from types import ModuleType
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
-def _public_names(module: object) -> set[str]:
+def _public_names(module: ModuleType) -> set[str]:
     """Return the set of public names exported by *module*."""
     if hasattr(module, "__all__"):
         return set(module.__all__)

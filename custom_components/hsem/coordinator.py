@@ -550,19 +550,20 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 entity.async_write_ha_state()
 
             # Update the weekday/weekend consumption profile (issue #612).
-            if live.house_consumption_power_w > 0:
+            house_w = live.house_consumption_power_w
+            if house_w is not None and house_w > 0:
                 weekday_profile.update(
                     dow=now.weekday(),
                     slot=now.hour,
-                    value_kwh=live.house_consumption_power_w / 1000.0,
+                    value_kwh=house_w / 1000.0,
                 )
 
             # Update the weekday/weekend consumption profile (issue #612).
-            if live.house_consumption_power_w > 0:
+            if house_w is not None and house_w > 0:
                 weekday_profile.update(
                     dow=now.weekday(),
                     slot=now.hour,
-                    value_kwh=live.house_consumption_power_w / 1000.0,
+                    value_kwh=house_w / 1000.0,
                 )
 
             # Apply EMA smoothing to live net consumption to damp transients
@@ -1616,12 +1617,12 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         )
 
         # Accumulate PV energy.
-        pv_power_w = live.solar_production_power_w
+        pv_power_w = live.solar_production_power_w or 0.0
         pv_energy = compute_accumulated_energy(pv_power_w, elapsed)
         tracker_rec.accumulate_pv(pv_energy)
 
         # Accumulate load energy.
-        load_power_w = live.house_consumption_power_w
+        load_power_w = live.house_consumption_power_w or 0.0
         load_energy = compute_accumulated_energy(load_power_w, elapsed)
         tracker_rec.accumulate_load(load_energy)
 

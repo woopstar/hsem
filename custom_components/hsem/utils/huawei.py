@@ -203,7 +203,7 @@ async def async_set_tou_periods(
 
 
 async def async_set_forcible_discharge(
-    self: Any, device_id: str, target_soc: int, power: int
+    self: Any, device_id: str, target_soc: int | float, power: int
 ) -> None:
     """Set forcible discharge for the battery at specified power and target SOC.
 
