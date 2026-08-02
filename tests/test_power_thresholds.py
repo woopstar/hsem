@@ -333,25 +333,6 @@ class TestPlannerThresholdEndToEnd:
     """Full planner runs to confirm thresholds are respected when coordinated
     with schedule-based charge/discharge decisions."""
 
-    @pytest.mark.skip(reason="MILP-only mode: schedule-based behavior not applicable")
-    def test_summer_solar_slots_are_charge_solar(self):
-        """On a summer day with strong solar production, peak solar hours
-        must be classified as BatteriesChargeSolar (not grid or discharge)."""
-        # Solar dominates 10:00–14:00 with > 3 kWh production
-        # while house consumes only ~0.5 kWh → large negative net consumption
-        solar = [0.0] * 10 + [3.5, 4.0, 4.5, 4.0, 3.5] + [1.0, 0.5, 0.1] + [0.0] * 6
-        consumption = [0.5] * 24
-        inp = _make_minimal_input(solar, consumption)
-        output = run_planner(inp)
-
-        solar_charged_hours = {
-            s.start.hour for s in output.slots if s.recommendation == _CHARGE_SOLAR
-        }
-        # At least hours 10-14 should be solar-charged (surplus >> 0.2 threshold)
-        assert solar_charged_hours.issuperset({10, 11, 12, 13, 14}), (
-            f"Expected solar hours 10-14 to be charged, got: {solar_charged_hours}"
-        )
-
     def test_no_false_solar_charge_on_consumption_hours(self):
         """Hours where consumption clearly exceeds solar must NOT be
         classified as BatteriesChargeSolar (summer, no schedule)."""

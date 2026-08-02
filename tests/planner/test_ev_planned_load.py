@@ -1372,52 +1372,6 @@ class TestEvAcLoadAndSoCPath:
     # grid_import_kwh with charger efficiency < 100 %
     # ------------------------------------------------------------------
 
-    @pytest.mark.skip(reason="MILP-only mode: schedule-based behavior not applicable")
-    def test_ev_ac_load_larger_than_battery_side_at_sub_100pct_efficiency(self):
-        """With 90 % charger efficiency, AC draw > battery-side energy.
-
-        Hand calculation:
-          EV needs 9 kWh battery-side  (e.g. 10 → 19 % of 100 kWh battery)
-          charger: 11 kW AC, 90 % eff  →  max_battery = 11 × 0.90 = 9.9 kWh/h
-          allocated (battery-side) = min(9.9, 9.0) = 9.0 kWh
-          ac_load_kwh = 9.0 / 0.90 = 10.0 kWh
-
-          house_load = 0.5 kWh, pv = 0.0, battery at floor
-          With the #446 fix (continue instead of break), the planner
-          correctly pre-charges the battery for discharge slots:
-            battery_charged = 5.0 kWh
-            grid_import     = 0.5 + 10.0 + 5.0 = 15.5 kWh
-        """
-        inp = self._make_no_battery_input(
-            ev_soc=10.0,
-            ev_target_soc=19.0,  # needs 9 kWh battery-side
-            ev_capacity_kwh=100.0,
-            charger_kw=11.0,
-            charger_eff_pct=90.0,
-            house_consumption_kwh=0.5,
-            pv_estimate_kwh=0.0,
-            import_price=0.5,
-            deadline_hours=3.0,
-        )
-        out = run_planner(inp)
-
-        ev_slots = [s for s in out.slots if abs(s.ev_planned_load_kwh) > 1e-9]
-        assert ev_slots, "At least one slot should have EV planned load"
-
-        s = ev_slots[0]
-        # EV plan: battery-side = 9.0, ac_load = 9.0/0.9 = 10.0
-        assert out.ev_charging_plan is not None
-        plan_slot = out.ev_charging_plan.charging_slots[0]
-        assert plan_slot.estimated_charged_kwh == pytest.approx(9.0, abs=0.01)
-        assert plan_slot.ac_load_kwh == pytest.approx(10.0, abs=0.01)
-
-        # PlannedSlot: ev_planned_load_kwh = ac_load_kwh = 10.0
-        assert s.ev_planned_load_kwh == pytest.approx(10.0, abs=0.01), (
-            f"ev_planned_load_kwh should be AC-side 10.0, got {s.ev_planned_load_kwh}"
-        )
-        assert s.estimated_net_consumption_kwh == pytest.approx(10.5, abs=0.05)
-        assert s.grid_import_kwh == pytest.approx(15.5, abs=0.1)
-
     # ------------------------------------------------------------------
     # plan_cost includes EV grid import cost
     # ------------------------------------------------------------------
@@ -2695,59 +2649,6 @@ class TestEvLoadDoesNotInflateChargeNeeded:
             ev_planned_load_charger_efficiency_pct=100.0,
             ev_planned_load_deadline=ev_deadline,
             ev_planned_load_base_load_includes_ev=base_includes_ev,
-        )
-
-    @pytest.mark.skip(reason="MILP-only mode: schedule-based behavior not applicable")
-    def test_grid_charge_slots_exist_without_ev(self):
-        """Baseline: without EV, cheap hours 0-5 are assigned batteries_charge_grid."""
-        inp = self._make_ev_discharge_input(ev_enabled=False)
-        out = run_planner(inp)
-
-        charge_grid_slots = [
-            s for s in out.slots if s.recommendation == "batteries_charge_grid"
-        ]
-        assert charge_grid_slots, (
-            "Baseline without EV: expected batteries_charge_grid slots in cheap hours. "
-            "Check schedule config and price spread."
-        )
-        cheap_charge_hours = {s.start.hour for s in charge_grid_slots}
-        assert cheap_charge_hours & set(range(6)), (
-            f"Expected charge slots in hours 0-5 (cheap), got: {cheap_charge_hours}"
-        )
-
-    @pytest.mark.skip(reason="MILP-only mode: schedule-based behavior not applicable")
-    def test_grid_charge_slots_still_exist_with_ev_base_excludes(self):
-        """With EV + base_load_includes_ev=False, grid-charge slots must survive.
-
-        This is the regression test: ev_planned_load_kwh was inflating occ_needed,
-        which raised the average charge price and caused the price-spread guard
-        to reject the cheap-hour grid-charge slots.
-        """
-        inp = self._make_ev_discharge_input(base_includes_ev=False)
-        out = run_planner(inp)
-
-        charge_grid_slots = [
-            s for s in out.slots if s.recommendation == "batteries_charge_grid"
-        ]
-        assert charge_grid_slots, (
-            "With EV (base_load_includes_ev=False): batteries_charge_grid slots "
-            "are missing. EV ev_planned_load_kwh is inflating occ_needed in the "
-            "discharge window, causing the price-spread guard to reject cheap-hour "
-            "charge slots."
-        )
-
-    @pytest.mark.skip(reason="MILP-only mode: schedule-based behavior not applicable")
-    def test_grid_charge_slots_still_exist_with_ev_base_includes(self):
-        """With EV + base_load_includes_ev=True, grid-charge slots must survive."""
-        inp = self._make_ev_discharge_input(base_includes_ev=True)
-        out = run_planner(inp)
-
-        charge_grid_slots = [
-            s for s in out.slots if s.recommendation == "batteries_charge_grid"
-        ]
-        assert charge_grid_slots, (
-            "With EV (base_load_includes_ev=True): batteries_charge_grid slots "
-            "are missing even though EV load is already in house consumption."
         )
 
     def test_ev_load_does_not_change_discharge_window_needed_capacity(self):

@@ -142,46 +142,6 @@ class TestPlannerInputDefault:
 # ===========================================================================
 
 
-class TestProfitableCharging:
-    """Planner SHOULD charge from grid when spread > min_diff + cycle_cost."""
-
-    @pytest.mark.skip(reason="MILP-only mode: schedule-based behavior not applicable")
-    def test_large_spread_charges_grid_zero_cycle_cost(self):
-        """Large price spread with no cycle cost → grid charge expected.
-
-        Spread = 0.30 − 0.05 = 0.25; min_diff = 0.05; cycle_cost = 0.0
-        → 0.25 ≥ 0.05  → should charge.
-        """
-        inp = _make_two_slot_input(
-            cheap_import=0.05,
-            expensive_import=0.30,
-            cycle_cost_per_kwh=0.0,
-        )
-        result = run_planner(inp)
-        charge_slots = [s for s in result.slots if s.recommendation == _CHARGE_GRID]
-        assert len(charge_slots) >= 1, (
-            "Expected at least one grid-charge slot when spread justifies cycling"
-        )
-
-    @pytest.mark.skip(reason="MILP-only mode: schedule-based behavior not applicable")
-    def test_spread_exceeds_combined_threshold_charges_grid(self):
-        """Spread of 0.25 > min_diff (0.05) + cycle_cost (0.10) = 0.15 → charge.
-
-        Spread = 0.30 − 0.05 = 0.25; threshold = 0.05 + 0.10 = 0.15
-        → 0.25 ≥ 0.15 → should charge.
-        """
-        inp = _make_two_slot_input(
-            cheap_import=0.05,
-            expensive_import=0.30,
-            cycle_cost_per_kwh=0.10,
-        )
-        result = run_planner(inp)
-        charge_slots = [s for s in result.slots if s.recommendation == _CHARGE_GRID]
-        assert len(charge_slots) >= 1, (
-            "Expected grid charge when spread 0.25 exceeds combined threshold 0.15"
-        )
-
-
 # ===========================================================================
 # 3. Unprofitable charging — spread below loss + cycle cost
 # ===========================================================================
@@ -236,25 +196,6 @@ class TestUnprofitableCharging:
             "Large cycle cost (0.50) must block charging when spread is only 0.20"
         )
 
-    @pytest.mark.skip(reason="MILP-only mode: schedule-based behavior not applicable")
-    def test_zero_cycle_cost_unchanged_behaviour(self):
-        """cycle_cost_per_kwh=0 must not change existing planner behaviour.
-
-        Baseline: spread of 0.15 > min_diff 0.05 → should charge with cycle_cost=0.
-        Same input with cycle_cost=0 must also charge (backwards compat).
-        """
-        inp = _make_two_slot_input(
-            cheap_import=0.05,
-            expensive_import=0.20,
-            cycle_cost_per_kwh=0.0,
-        )
-        result = run_planner(inp)
-        charge_slots = [s for s in result.slots if s.recommendation == _CHARGE_GRID]
-        # With spread 0.15 > min_diff 0.05 we expect charging
-        assert len(charge_slots) >= 1, (
-            "zero cycle_cost must not suppress charging when spread > min_diff"
-        )
-
 
 # ===========================================================================
 # 4. Opportunistic charge threshold
@@ -306,19 +247,6 @@ class TestOpportunisticChargeThreshold:
             weight_3d=30,
             weight_7d=30,
             weight_14d=15,
-        )
-
-    @pytest.mark.skip(reason="MILP-only mode: schedule-based behavior not applicable")
-    def test_negative_price_always_triggers_opportunistic_charge(self):
-        """Negative import price triggers opportunistic charge regardless of cycle cost."""
-        inp = self._make_flat_day_input(
-            import_price=-0.05,
-            cycle_cost_per_kwh=1.0,  # very high — should not block negative-price charge
-        )
-        result = run_planner(inp)
-        charge_slots = [s for s in result.slots if s.recommendation == _CHARGE_GRID]
-        assert len(charge_slots) >= 1, (
-            "Negative import price must trigger opportunistic charge regardless of cycle cost"
         )
 
     def test_high_cycle_cost_blocks_below_depreciation_opportunistic_charge(self):

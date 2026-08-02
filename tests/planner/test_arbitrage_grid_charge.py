@@ -24,8 +24,6 @@ from __future__ import annotations
 from datetime import time
 from typing import Any
 
-import pytest
-
 from custom_components.hsem.models.battery_schedule_input import BatteryScheduleInput
 from custom_components.hsem.models.hourly_consumption_average import (
     HourlyConsumptionAverage,
@@ -159,31 +157,12 @@ def _usable_kwh(rated_kwh: float, end_of_discharge_pct: float = 10.0) -> float:
 class TestArbitrageHeadlineScenario:
     """Cheap noon (0.66) + expensive evening (1.68), no discharge schedule."""
 
-    @pytest.mark.skip(
-        reason="MILP-only mode: schedule-based arbitrage not applied on winner"
-    )
-    def test_noon_assigned_batteries_charge_grid(self):
-        result = run_planner(_make_arbitrage_input())
-        slot = _slot_at_hour(result.slots, 12)
-        assert slot.recommendation == _CHARGE_GRID
-        assert slot.batteries_charged_kwh > 0
-
     def test_evening_not_charge_grid(self):
         """Expensive evening slots must remain consumption, not be re-charged."""
         result = run_planner(_make_arbitrage_input())
         for h in (18, 19):
             slot = _slot_at_hour(result.slots, h)
             assert slot.recommendation != _CHARGE_GRID
-
-    @pytest.mark.skip(
-        reason="MILP-only mode: schedule-based arbitrage not applied on winner"
-    )
-    def test_charge_only_when_battery_has_room(self):
-        result = run_planner(_make_arbitrage_input(battery_soc_pct=20.0))
-        grid_charge_slots = [
-            s for s in result.slots if s.recommendation == _CHARGE_GRID
-        ]
-        assert grid_charge_slots, "expected at least one grid-charge slot"
 
 
 # ===========================================================================
@@ -457,17 +436,3 @@ class TestArbitrageDegenerateVertexRegression:
 # ===========================================================================
 # Interaction with seasonal fallback
 # ===========================================================================
-
-
-class TestArbitrageVsSeasonalFallback:
-    @pytest.mark.skip(
-        reason="MILP-only mode: schedule-based arbitrage not applied on winner"
-    )
-    def test_fallback_does_not_prevent_arbitrage(self):
-        """Confirm the arbitrage pass runs *before* the seasonal fallback so
-        that cheap slots become BatteriesChargeGrid rather than being swept up
-        as BatteriesDischargeMode by the summer fallback rule."""
-        result = run_planner(_make_arbitrage_input())
-        noon = _slot_at_hour(result.slots, 12)
-        assert noon.recommendation == _CHARGE_GRID
-        assert noon.recommendation != _DISCHARGE

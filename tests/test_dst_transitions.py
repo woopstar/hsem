@@ -403,34 +403,3 @@ class TestPlannerRunsDstDays:
         for slot in result.slots:
             assert slot.start.tzinfo is not None, f"slot.start is naive: {slot.start}"
             assert slot.end.tzinfo is not None, f"slot.end is naive: {slot.end}"
-
-    @pytest.mark.skip(reason="MILP-only mode: schedule-based behavior not applicable")
-    def test_spring_forward_discharge_window_evening_is_planned(self):
-        """Discharge window 17:00–21:00 must be planned correctly on spring-forward day.
-
-        Spring-forward is at 02:00, so the evening window is unaffected and must
-        contain ``BatteriesDischargeMode`` recommendations.
-        """
-        from custom_components.hsem.planner import run_planner
-        from custom_components.hsem.utils.recommendations import Recommendations
-
-        result = run_planner(self._base_input("2024-03-31T00:00:00+01:00"))
-        discharge_slots = result.slots_with_recommendation(
-            Recommendations.BatteriesDischargeMode.value
-        )
-        assert discharge_slots, "Expected discharge slots on spring-forward day"
-
-    @pytest.mark.skip(reason="MILP-only mode: schedule-based behavior not applicable")
-    def test_autumn_fallback_discharge_window_evening_is_planned(self):
-        """Discharge window 17:00–21:00 must be planned correctly on autumn-fallback day.
-
-        Autumn fallback is at 03:00, so the evening window is unaffected.
-        """
-        from custom_components.hsem.planner import run_planner
-        from custom_components.hsem.utils.recommendations import Recommendations
-
-        result = run_planner(self._base_input("2024-10-27T00:00:00+02:00"))
-        discharge_slots = result.slots_with_recommendation(
-            Recommendations.BatteriesDischargeMode.value
-        )
-        assert discharge_slots, "Expected discharge slots on autumn-fallback day"
