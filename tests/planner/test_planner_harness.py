@@ -569,7 +569,7 @@ class TestEdgeCases:
         )
         assert not solar_slots, "No solar charge slots expected when PV=0"
 
-    def test_empty_schedules_no_discharge_mode_in_winter(self):
+    def test_empty_schedules_no_discharge_mode_in_winter(self) -> None:
         """BatteriesWaitMode slots expected with no schedules in winter.
 
         In winter the seasonal strategy sets unassigned slots to BatteriesWaitMode.

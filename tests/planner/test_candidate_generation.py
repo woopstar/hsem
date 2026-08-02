@@ -246,7 +246,7 @@ class TestSlotMutationHelpers:
 class TestApplySocPlanThreshold:
     """_apply_soc_plan must use the same threshold as calculate_recommended_threshold."""
 
-    def test_threshold_matches_canonical_calculation(self):
+    def test_threshold_matches_canonical_calculation(self) -> None:
         """The threshold computed inside _apply_soc_plan must equal
         calculate_recommended_threshold for the same inputs."""
         # Arrange: build a minimal 24h slot list with discharge windows
@@ -318,7 +318,7 @@ class TestApplySocPlanThreshold:
         )
         assert result == pytest.approx(0.0)
 
-    def test_soc_plan_skips_grid_charge_when_spread_below_threshold(self):
+    def test_soc_plan_skips_grid_charge_when_spread_below_threshold(self) -> None:
         """When the price spread is below the proper threshold, _apply_soc_plan
         should not add grid charging (cheapest slots remain None)."""
         slots: list[PlannedSlot] = []
@@ -390,7 +390,7 @@ class TestApplySocPlanDischargeDedup:
         # No-op: the slots are already set up for discharge-fraction mode
         # by the caller (small discharge demand, large current_kwh).
 
-    def test_low_soc_discharge_targets_collapse_and_dedup(self):
+    def test_low_soc_discharge_targets_collapse_and_dedup(self) -> None:
         """With current_kwh=1.01, fraction 0.25 produces 0.5 (floor clamp)
         and fraction 0.50 produces 0.505 — within 0.05 kWh, so they are
         deduplicated.  Only 4 unique targets should remain."""
@@ -447,7 +447,7 @@ class TestApplySocPlanDischargeDedup:
         # Verify first target is the floor value (0.5)
         assert seen_targets[0] == pytest.approx(0.5, abs=0.01)
 
-    def test_high_soc_all_fractions_distinct(self):
+    def test_high_soc_all_fractions_distinct(self) -> None:
         """With current_kwh=10.0, all 5 fractions produce distinct targets
         (no floor collision).  usable_kwh is set high enough that the 1.25
         fraction does not cap."""
@@ -497,7 +497,7 @@ class TestApplySocPlanDischargeDedup:
             f"Expected 5 unique targets but got {len(seen_targets)}: {seen_targets}"
         )
 
-    def test_high_soc_all_fractions_distinct_normal_mode(self):
+    def test_high_soc_all_fractions_distinct_normal_mode(self) -> None:
         """With current_kwh=0.0 and large discharge demand, the function
         enters normal charge-fraction mode and all 5 fractions produce
         distinct charge_target values.  usable_kwh is set large enough

@@ -389,7 +389,7 @@ class TestPlannerThresholdEndToEnd:
             "(v5.1.0 backward compatibility)"
         )
 
-    def test_planner_uses_named_constants_not_literals(self):
+    def test_planner_uses_named_constants_not_literals(self) -> None:
         """charge_scheduler.py and discharge_scheduler.py must not contain
         unexplained 0.1 or 0.2 kW literals — they must reference the named
         constants instead."""

@@ -49,7 +49,7 @@ def _make_slot(
 class TestAggressiveLatestCheapSlots:
     """_apply_aggressive_strategy must assign charge latest-first among selected."""
 
-    def test_aggressive_assigns_latest_first_among_cheapest(self):
+    def test_aggressive_assigns_latest_first_among_cheapest(self) -> None:
         """12 half-hour slots. Three cheap slots (0.50) at indices 2, 5, 8.
         Discharge pre-assigned at indices 10, 11 (1.50). All others at 1.00.
         Battery needs 2 charge slots (usable=10, max_charge=5). Phase 1
@@ -114,7 +114,7 @@ class TestAggressiveLatestCheapSlots:
         # Instead, verify that both cheap slots are assigned.
         assert len(charge_in_order) == 2
 
-    def test_all_cheap_slots_used_when_limited(self):
+    def test_all_cheap_slots_used_when_limited(self) -> None:
         """When only 2 cheap slots exist, both are charged."""
         slots: list[PlannedSlot] = []
         cheap_indices = {2, 3}
@@ -157,7 +157,7 @@ class TestAggressiveLatestCheapSlots:
             3,
         ], f"Expected cheap slots at indices 2, 3 to be charged, got {charge_indices}"
 
-    def test_no_charge_slots_when_discharge_starts_at_zero(self):
+    def test_no_charge_slots_when_discharge_starts_at_zero(self) -> None:
         """When the aggressive strategy adds a discharge at the very first
         slot, Bug D removes all charge slots since they start at or after
         the first discharge. This tests that Bug D fix is preserved."""
