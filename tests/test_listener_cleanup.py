@@ -14,6 +14,7 @@ Acceptance criteria
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -75,7 +76,7 @@ class TestAvgSensorListenerCleanup:
         timer_unsub = MagicMock()
         state_unsub = MagicMock()
 
-        async def _fake_handle_update(_event=None):
+        async def _fake_handle_update(event=None):
             """No-op stub replacing the real async handler during listener cleanup tests."""
 
         sensor._async_handle_update = _fake_handle_update
@@ -135,7 +136,7 @@ class TestAvgSensorListenerCleanup:
         assert sensor._unsub_callbacks == []
 
     @pytest.mark.asyncio
-    async def test_no_duplicate_state_listener_after_reload(self):
+    async def test_no_duplicate_state_listener_after_reload(self) -> None:
         """Calling _async_track_entities twice must not register the entity twice.
 
         The idempotency guard (_tracked_entities set) must prevent duplicate
@@ -158,7 +159,7 @@ class TestAvgSensorListenerCleanup:
 
         register_calls: list[int] = []
 
-        def _track_state(*args, **kwargs):
+        def _track_state(*args: Any, **kwargs: Any) -> MagicMock:
             register_calls.append(1)
             return MagicMock()
 

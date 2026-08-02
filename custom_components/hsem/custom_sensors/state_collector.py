@@ -15,7 +15,9 @@ so that downstream population functions never need additional
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
+from datetime import datetime, time, timedelta
 from typing import Any
 
 from homeassistant.exceptions import HomeAssistantError
@@ -603,7 +605,11 @@ def _read_ev_planned_load_state(
     )
 
 
-def _resolve_ev_deadline_from_params(sensor, deadline_entity, deadline_fixed):
+def _resolve_ev_deadline_from_params(
+    sensor: Any,
+    deadline_entity: str | None,
+    deadline_fixed: str | None,
+) -> datetime | None:
     """Resolve EV charging deadline from entity or fixed config string.
 
     Args:
@@ -614,9 +620,6 @@ def _resolve_ev_deadline_from_params(sensor, deadline_entity, deadline_fixed):
     Returns:
         A timezone-aware ``datetime`` for the deadline, or ``None``.
     """
-    import re
-    from datetime import datetime as _dt, time as _time, timedelta
-
     time_str: str | None = None
 
     if deadline_entity:
@@ -647,7 +650,7 @@ def _resolve_ev_deadline_from_params(sensor, deadline_entity, deadline_fixed):
 
     now_local = hsem_now()
     today = now_local.date()
-    deadline_naive = _dt.combine(today, _time(hour, minute))
+    deadline_naive = datetime.combine(today, time(hour, minute))
     deadline = deadline_naive.replace(tzinfo=now_local.tzinfo)
 
     if deadline <= now_local:

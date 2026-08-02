@@ -22,8 +22,6 @@ from __future__ import annotations
 
 from datetime import time
 
-import pytest
-
 from custom_components.hsem.models.battery_schedule_input import BatteryScheduleInput
 from custom_components.hsem.models.hourly_consumption_average import (
     HourlyConsumptionAverage,
@@ -265,20 +263,3 @@ class TestSolarChargePerSlotSemantics:
                     f"Slot {slot.start.isoformat()}: batteries_charged={slot.batteries_charged_kwh} "
                     f"> slot surplus={surplus} (cumulative bug?)"
                 )
-
-    @pytest.mark.skip(reason="MILP-only mode: schedule-based behavior not applicable")
-    def test_fully_charged_battery_no_solar_charge(self):
-        """A 100 % SoC battery must not actually charge (SoC clamps to 0).
-
-        Solar charging slots may still be planned (per-day budget) but the
-        SoC simulation clamps them to zero and clears the recommendation
-        when the battery has no headroom.
-        """
-        inp = _make_solar_only_input(
-            battery_soc_pct=100.0,
-            solar_per_hour=5.0,
-        )
-        result = run_planner(inp)
-
-        total = result.total_charged_energy_kwh()
-        assert total <= 1e-3, f"Expected ~0 kWh charged for a full battery, got {total}"

@@ -21,6 +21,7 @@ so that they can be unit-tested without a running HA instance.
 from __future__ import annotations
 
 import asyncio
+import inspect
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -178,7 +179,7 @@ async def async_write_and_verify(
     # Pre-flight: read current value
     # ------------------------------------------------------------------
     try:
-        current = await reader() if asyncio.iscoroutinefunction(reader) else reader()
+        current = await reader() if inspect.iscoroutinefunction(reader) else reader()
     except Exception as exc:  # noqa: BLE001
         _LOGGER.warning("Could not read current value of %s: %s", entity_id, exc)
         current = None
@@ -218,7 +219,7 @@ async def async_write_and_verify(
 
         try:
             readback = (
-                await reader() if asyncio.iscoroutinefunction(reader) else reader()
+                await reader() if inspect.iscoroutinefunction(reader) else reader()
             )
         except Exception as exc:  # noqa: BLE001
             last_error = f"Read-back error on attempt {attempt}: {exc}"

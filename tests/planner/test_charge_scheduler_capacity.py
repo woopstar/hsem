@@ -50,7 +50,7 @@ class TestGridChargePerOccurrenceBudgets:
     window occurrence gets its own independent charge allocation capped at
     min(needed, usable_kwh)."""
 
-    def test_per_occurrence_budgets_are_independent(self):
+    def test_per_occurrence_budgets_are_independent(self) -> None:
         """Two discharge-window occurrences each needing 8 kWh with
         usable_kwh=10.  Each occurrence gets min(needed, usable_kwh) = 8 kWh
         as its own budget.  Total planned charge can be up to 16 kWh
@@ -125,7 +125,7 @@ class TestGridChargePerOccurrenceBudgets:
             f"per-occurrence budget x 2 ({max_total:.3f})"
         )
 
-    def test_single_occurrence_budget_capped_at_usable_kwh(self):
+    def test_single_occurrence_budget_capped_at_usable_kwh(self) -> None:
         """A single occurrence needing more than usable_kwh is capped."""
         slots: list[PlannedSlot] = []
 
@@ -180,7 +180,7 @@ class TestOpportunisticChargeCapacityCap:
 
     def test_opportunistic_does_not_exceed_capacity_after_schedule_charge(
         self,
-    ):
+    ) -> None:
         """Battery is already filled to capacity by apply_charge_schedules.
         apply_opportunistic_charge must not add additional charge slots."""
         slots: list[PlannedSlot] = []

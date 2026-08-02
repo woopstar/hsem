@@ -387,10 +387,11 @@ class HSEMWorkingModeSensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
         except Exception:
             _LOGGER.error("Hardware-write task failed during coordinator update")
 
-    async def _async_apply_hardware_writes(self, data: CoordinatorData) -> None:
+    async def _async_apply_hardware_writes(self, data: CoordinatorData | None) -> None:
         """Perform inverter and battery hardware writes for the current slot.
 
         Writes are skipped when:
+        - ``data`` is ``None``,
         - ``cfg.read_only`` is ``True``, or
         - the degraded mode is ``Error`` (critical entities missing).
 
@@ -398,8 +399,12 @@ class HSEMWorkingModeSensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
         before issuing the hardware commands.
 
         Args:
-            data: The latest :class:`CoordinatorData` snapshot from the coordinator.
+            data: The latest :class:`CoordinatorData` snapshot from the coordinator,
+                or ``None`` when the coordinator has no data yet.
         """
+        if data is None:
+            return
+
         cfg = data.cfg
         live = data.live
 

@@ -24,6 +24,7 @@ from homeassistant.components.sensor.const import SensorDeviceClass, SensorState
 from homeassistant.components.utility_meter.const import (
     DATA_TARIFF_SENSORS,
     DATA_UTILITY,
+    MeterInformation,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfPower, UnitOfTime
@@ -503,10 +504,14 @@ class HSEMHouseConsumptionPowerSensor(RestoreEntity, SensorEntity, HSEMEntity):
         source_entity = get_integral_sensor_entity_id(self._hour_start, self._hour_end)
 
         # Ensure DATA_UTILITY structure exists in hass.data
-        if DATA_UTILITY not in self.hass.data:
-            self.hass.data[DATA_UTILITY] = {}
-        if source_entity not in self.hass.data[DATA_UTILITY]:
-            self.hass.data[DATA_UTILITY][source_entity] = {DATA_TARIFF_SENSORS: []}
+        utility_data: dict[str, MeterInformation] | None = self.hass.data.get(
+            DATA_UTILITY
+        )
+        if utility_data is None:
+            utility_data = {}
+            self.hass.data[DATA_UTILITY] = utility_data
+        if source_entity not in utility_data:
+            utility_data[source_entity] = {DATA_TARIFF_SENSORS: []}
 
         utility_meter_name = get_utility_meter_sensor_name(
             self._hour_start, self._hour_end
@@ -546,9 +551,7 @@ class HSEMHouseConsumptionPowerSensor(RestoreEntity, SensorEntity, HSEMEntity):
 
         # Register with the HA utility-meter book-keeping so the daily-reset
         # event reaches this sensor.
-        self.hass.data[DATA_UTILITY][source_entity][DATA_TARIFF_SENSORS].append(
-            utility_meter_sensor
-        )
+        utility_data[source_entity][DATA_TARIFF_SENSORS].append(utility_meter_sensor)
 
     async def _async_add_energy_average_sensors(self, avg: int) -> None:
         """Add a template sensor for the energy average over a given number of days.

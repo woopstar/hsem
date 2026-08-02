@@ -23,7 +23,6 @@ from custom_components.hsem.planner import run_planner
 from custom_components.hsem.utils.recommendations import Recommendations
 from tests.planner.fixtures import (
     make_flat_price_input,
-    make_negative_price_input,
     make_summer_day_input,
     make_winter_day_input,
 )
@@ -311,71 +310,6 @@ class TestChargeScheduling:
             f"(floor={end_of_discharge_floor}%)"
         )
 
-    @pytest.mark.skip(reason="MILP-only mode: schedule-based behavior not applicable")
-    def test_charge_slots_precede_schedule_discharge_window(self):
-        """In the baseline candidate, charge slots start before the discharge windows.
-
-        Candidate selection may choose a cheaper plan (e.g. solar-only) when
-        battery depreciation makes pre-charging unprofitable.  We therefore
-        verify the scheduling constraint on the *baseline* candidate, which
-        always reflects the current HSEM charge-before-discharge behaviour.
-
-        Note: the summer optimization strategy may also assign BatteriesDischargeMode
-        to overnight hours with net consumption > 0.1 kWh (no solar, no schedule).
-        We therefore compare charge slots only against *schedule-window* discharge
-        slots rather than all discharge slots.
-        """
-        from custom_components.hsem.planner.candidate_generator import (
-            CANDIDATE_BASELINE,
-        )
-
-        inp = make_summer_day_input(battery_soc_pct=0.0)
-        result = run_planner(inp)
-
-        # Locate the baseline candidate
-        baseline = next(
-            (c for c in result.candidates if c.name == CANDIDATE_BASELINE), None
-        )
-        assert baseline is not None, "Baseline candidate must always be present"
-
-        charge_starts = [
-            s.start for s in baseline.slots if s.recommendation in _CHARGE_VALUES
-        ]
-        # Only compare against the defined schedule windows
-        schedule_discharge_starts = [
-            s.start
-            for s in baseline.slots
-            if s.recommendation in _DISCHARGE_VALUES
-            and (7 <= s.start.hour < 9 or 17 <= s.start.hour < 21)
-        ]
-        if charge_starts and schedule_discharge_starts:
-            assert min(charge_starts) < min(schedule_discharge_starts), (
-                "All charge slots come after the first schedule discharge window"
-            )
-
-    @pytest.mark.skip(reason="MILP-only mode: schedule-based behavior not applicable")
-    def test_negative_price_slots_include_grid_charge(self):
-        """At least one slot with negative import price must be BatteriesChargeGrid.
-
-        The planner evaluates negative-price charge *before* the discharge-schedule
-        windows.  However the optimization strategy (ForceExport, seasonal discharge)
-        may overwrite slots that are also negative-price if the export price exceeds
-        the import price.  We therefore assert that *at least one* of the three
-        negative-price hours gets the grid-charge recommendation rather than
-        requiring all of them to be charged.
-        """
-        inp = make_negative_price_input(negative_hours=[1, 2, 3])
-        result = run_planner(inp)
-        neg_price_charge_slots = [
-            s
-            for s in result.slots
-            if s.price.import_price < 0
-            and s.recommendation == Recommendations.BatteriesChargeGrid.value
-        ]
-        assert neg_price_charge_slots, (
-            "Expected at least one BatteriesChargeGrid slot for negative-price hours 1-3"
-        )
-
     def test_solar_surplus_can_trigger_solar_charge(self):
         """Summer mid-day hours with large PV surplus should produce solar charge slots."""
         # Use a full battery so discharge schedules consume energy and solar can refill it
@@ -569,7 +503,7 @@ class TestEdgeCases:
         )
         assert not solar_slots, "No solar charge slots expected when PV=0"
 
-    def test_empty_schedules_no_discharge_mode_in_winter(self):
+    def test_empty_schedules_no_discharge_mode_in_winter(self) -> None:
         """BatteriesWaitMode slots expected with no schedules in winter.
 
         In winter the seasonal strategy sets unassigned slots to BatteriesWaitMode.

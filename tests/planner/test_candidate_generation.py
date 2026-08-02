@@ -26,13 +26,8 @@ from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.planner import run_planner
 from custom_components.hsem.planner.candidate_generator import (
-    CANDIDATE_AGGRESSIVE,
-    CANDIDATE_BASELINE,
-    CANDIDATE_DISCHARGE_ONLY,
-    CANDIDATE_GRID_CHARGE,
     CANDIDATE_NO_ACTION,
     CANDIDATE_PASSIVE,
-    CANDIDATE_SOLAR_ONLY,
     CandidatePlan,
     generate_candidates,
 )
@@ -63,7 +58,6 @@ from custom_components.hsem.utils.recommendations import Recommendations
 from tests.planner.fixtures import (
     make_flat_price_input,
     make_summer_day_input,
-    make_winter_day_input,
 )
 
 _TZ = ZoneInfo("Europe/Copenhagen")
@@ -246,7 +240,7 @@ class TestSlotMutationHelpers:
 class TestApplySocPlanThreshold:
     """_apply_soc_plan must use the same threshold as calculate_recommended_threshold."""
 
-    def test_threshold_matches_canonical_calculation(self):
+    def test_threshold_matches_canonical_calculation(self) -> None:
         """The threshold computed inside _apply_soc_plan must equal
         calculate_recommended_threshold for the same inputs."""
         # Arrange: build a minimal 24h slot list with discharge windows
@@ -318,7 +312,7 @@ class TestApplySocPlanThreshold:
         )
         assert result == pytest.approx(0.0)
 
-    def test_soc_plan_skips_grid_charge_when_spread_below_threshold(self):
+    def test_soc_plan_skips_grid_charge_when_spread_below_threshold(self) -> None:
         """When the price spread is below the proper threshold, _apply_soc_plan
         should not add grid charging (cheapest slots remain None)."""
         slots: list[PlannedSlot] = []
@@ -390,7 +384,7 @@ class TestApplySocPlanDischargeDedup:
         # No-op: the slots are already set up for discharge-fraction mode
         # by the caller (small discharge demand, large current_kwh).
 
-    def test_low_soc_discharge_targets_collapse_and_dedup(self):
+    def test_low_soc_discharge_targets_collapse_and_dedup(self) -> None:
         """With current_kwh=1.01, fraction 0.25 produces 0.5 (floor clamp)
         and fraction 0.50 produces 0.505 — within 0.05 kWh, so they are
         deduplicated.  Only 4 unique targets should remain."""
@@ -447,7 +441,7 @@ class TestApplySocPlanDischargeDedup:
         # Verify first target is the floor value (0.5)
         assert seen_targets[0] == pytest.approx(0.5, abs=0.01)
 
-    def test_high_soc_all_fractions_distinct(self):
+    def test_high_soc_all_fractions_distinct(self) -> None:
         """With current_kwh=10.0, all 5 fractions produce distinct targets
         (no floor collision).  usable_kwh is set high enough that the 1.25
         fraction does not cap."""
@@ -497,7 +491,7 @@ class TestApplySocPlanDischargeDedup:
             f"Expected 5 unique targets but got {len(seen_targets)}: {seen_targets}"
         )
 
-    def test_high_soc_all_fractions_distinct_normal_mode(self):
+    def test_high_soc_all_fractions_distinct_normal_mode(self) -> None:
         """With current_kwh=0.0 and large discharge demand, the function
         enters normal charge-fraction mode and all 5 fractions produce
         distinct charge_target values.  usable_kwh is set large enough
@@ -566,48 +560,6 @@ class TestGenerateCandidates:
     def _inp(self) -> PlannerInput:
         return make_summer_day_input()
 
-    @pytest.mark.skip(
-        reason="MILP-only mode: only 3 candidates (no_action, passive, milp)"
-    )
-    def test_all_candidate_names_present(self):
-        """generate_candidates must return all seven named candidates."""
-        inp = self._inp()
-        now = datetime.fromisoformat(inp.now_iso)
-        slots = self._make_baseline()
-        candidates = generate_candidates(slots, inp, now, max_charge_per_slot=1.25)
-        names = {c.name for c in candidates}
-        assert CANDIDATE_BASELINE in names
-        assert CANDIDATE_NO_ACTION in names
-        assert CANDIDATE_PASSIVE in names
-        assert CANDIDATE_GRID_CHARGE in names
-        assert CANDIDATE_SOLAR_ONLY in names
-        assert CANDIDATE_DISCHARGE_ONLY in names
-        assert CANDIDATE_AGGRESSIVE in names
-
-    @pytest.mark.skip(reason="MILP-only mode: baseline candidate not generated")
-    def test_baseline_is_first(self):
-        """The baseline candidate must always be the first in the list."""
-        inp = self._inp()
-        now = datetime.fromisoformat(inp.now_iso)
-        slots = self._make_baseline()
-        candidates = generate_candidates(slots, inp, now, max_charge_per_slot=1.25)
-        assert candidates[0].name == CANDIDATE_BASELINE
-
-    @pytest.mark.skip(
-        reason="MILP-only mode: baseline/aggressive candidates not generated"
-    )
-    def test_candidates_are_independent(self):
-        """Mutating one candidate's slots must not affect another."""
-        inp = self._inp()
-        now = datetime.fromisoformat(inp.now_iso)
-        slots = self._make_baseline()
-        candidates = generate_candidates(slots, inp, now, max_charge_per_slot=1.25)
-        baseline = next(c for c in candidates if c.name == CANDIDATE_BASELINE)
-        no_action = next(c for c in candidates if c.name == CANDIDATE_NO_ACTION)
-        # Mutate baseline; no_action must be unaffected
-        baseline.slots[0].recommendation = "force_batteries_discharge"
-        assert no_action.slots[0].recommendation is None
-
     def test_no_action_has_no_charge_or_discharge(self):
         """no_action candidate must have all recommendations cleared."""
         inp = self._inp()
@@ -627,45 +579,6 @@ class TestGenerateCandidates:
             Recommendations.ForceBatteriesDischarge.value,
         }
         assert not active_recs.intersection(charge_discharge)
-
-    @pytest.mark.skip(reason="MILP-only mode: discharge_only candidate not generated")
-    def test_discharge_only_has_no_charge(self):
-        """discharge_only candidate must contain no charge recommendations."""
-        inp = self._inp()
-        now = datetime.fromisoformat(inp.now_iso)
-        slots = self._make_baseline()
-        candidates = generate_candidates(slots, inp, now, max_charge_per_slot=1.25)
-        discharge_only = next(
-            c for c in candidates if c.name == CANDIDATE_DISCHARGE_ONLY
-        )
-        charge_recs = {
-            Recommendations.BatteriesChargeGrid.value,
-            Recommendations.BatteriesChargeSolar.value,
-        }
-        assert not any(s.recommendation in charge_recs for s in discharge_only.slots)
-
-    @pytest.mark.skip(reason="MILP-only mode: aggressive candidate not generated")
-    def test_aggressive_only_modifies_future_slots(self):
-        """Aggressive strategy must not touch past slots."""
-        inp = make_summer_day_input(now_iso="2024-06-15T12:00:00+02:00")
-        now = datetime.fromisoformat(inp.now_iso)
-        slots = _populated_slots_for_input(inp)
-        # Mark first 12 slots as past
-        for s in slots[:12]:
-            s.recommendation = Recommendations.TimePassed.value
-        candidates = generate_candidates(slots, inp, now, max_charge_per_slot=1.25)
-        aggressive = next(c for c in candidates if c.name == CANDIDATE_AGGRESSIVE)
-        for s in aggressive.slots:
-            if s.end.astimezone(_TZ) <= now:
-                # Past slots should not be forced to charge/discharge
-                assert s.recommendation in {
-                    None,
-                    Recommendations.TimePassed.value,
-                    Recommendations.BatteriesChargeGrid.value,
-                    Recommendations.BatteriesChargeSolar.value,
-                    Recommendations.BatteriesDischargeMode.value,
-                    Recommendations.ForceBatteriesDischarge.value,
-                }
 
 
 # ===========================================================================
@@ -884,49 +797,11 @@ class TestPlannerOutputCandidates:
         output = run_planner(make_summer_day_input())
         assert len(output.candidates) >= 1
 
-    @pytest.mark.skip(reason="MILP-only mode: baseline candidate not generated")
-    def test_candidates_contains_baseline(self):
-        """The candidates list must include a baseline entry."""
-        output = run_planner(make_summer_day_input())
-        names = [c.name for c in output.candidates]
-        assert CANDIDATE_BASELINE in names
-
-    @pytest.mark.skip(
-        reason="MILP-only mode: only 3 candidates (no_action, passive, milp)"
-    )
-    def test_all_seven_candidates_present(self):
-        """The seven core named candidates must appear in a standard summer run.
-
-        When scipy is available, ``milp`` and ``soc_plan`` candidates are also
-        added.  This test only asserts the seven mandatory candidates are
-        present; the MILP candidate is validated separately in test_milp_optimizer.py.
-        """
-        output = run_planner(make_summer_day_input())
-        names = {c.name for c in output.candidates}
-        expected_core = {
-            CANDIDATE_BASELINE,
-            CANDIDATE_NO_ACTION,
-            CANDIDATE_PASSIVE,
-            CANDIDATE_GRID_CHARGE,
-            CANDIDATE_SOLAR_ONLY,
-            CANDIDATE_DISCHARGE_ONLY,
-            CANDIDATE_AGGRESSIVE,
-        }
-        assert expected_core <= names, (
-            f"Missing core candidates: {expected_core - names}"
-        )
-
     def test_rejected_plans_include_candidate_alternatives(self):
         """explanation.rejected_plans must include non-winning candidates."""
         output = run_planner(make_summer_day_input())
         # There are always multiple candidates so at least one must be rejected
         assert len(output.explanation.rejected_plans) >= 1
-
-    @pytest.mark.skip(reason="MILP-only mode: baseline candidate not generated")
-    def test_winter_run_has_candidates(self):
-        """Candidate generation must work for a winter planning run too."""
-        output = run_planner(make_winter_day_input())
-        assert len(output.candidates) >= 1
 
     def test_flat_price_run_has_candidates(self):
         """Candidate generation must work when prices are flat."""

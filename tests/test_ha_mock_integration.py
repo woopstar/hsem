@@ -692,7 +692,7 @@ class TestMockServiceCalls:
         with (
             patch(
                 "custom_components.hsem.utils.logger.HSEM_LOGGER.debug",
-                new_callable=AsyncMock,
+                new_callable=MagicMock,
             ),
             patch(
                 "custom_components.hsem.custom_sensors.applier.async_set_select_option",

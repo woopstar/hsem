@@ -24,8 +24,6 @@ from __future__ import annotations
 
 from datetime import time
 
-import pytest
-
 from custom_components.hsem.models.battery_schedule_input import BatteryScheduleInput
 from custom_components.hsem.models.hourly_consumption_average import (
     HourlyConsumptionAverage,
@@ -325,99 +323,3 @@ class TestDay2SolarCharging:
 # ===========================================================================
 # Pre-charge for day-2 discharge windows
 # ===========================================================================
-
-
-class TestDay2PreCharge:
-    """Cheap night slots before a day-2 discharge window must be charge candidates."""
-
-    @pytest.mark.skip(
-        reason="MILP-only mode: schedule-based pre-charge not applied on winner"
-    )
-    def test_cheap_night_before_day2_discharge_can_be_grid_charge(self):
-        """With clear price spread, the planner should charge before day-2 peak."""
-        # Use a big price spread: night cheap, evening expensive
-        night_cheap_prices = [
-            PricePoint(hour=h, import_price=0.05, export_price=0.03)
-            for h in range(6)  # 00-06 very cheap
-        ]
-        mid_prices = [
-            PricePoint(hour=h, import_price=0.15, export_price=0.13)
-            for h in range(6, 17)
-        ]
-        evening_prices = [
-            PricePoint(hour=h, import_price=0.50, export_price=0.48)
-            for h in range(17, 21)  # 17-21 expensive discharge window
-        ]
-        late_prices = [
-            PricePoint(hour=h, import_price=0.12, export_price=0.10)
-            for h in range(21, 24)
-        ]
-        all_prices = night_cheap_prices + mid_prices + evening_prices + late_prices
-
-        consumption = [
-            HourlyConsumptionAverage(
-                hour=h, avg_1d=0.5, avg_3d=0.5, avg_7d=0.5, avg_14d=0.5
-            )
-            for h in range(24)
-        ]
-        solar = [SolcastSlot(hour=h, pv_estimate=0.0) for h in range(24)]
-
-        schedules = [
-            BatteryScheduleInput(
-                enabled=True,
-                start=time(17, 0),
-                end=time(21, 0),
-            )
-        ]
-
-        inp = PlannerInput(
-            now_iso="2024-06-15T00:00:00+02:00",
-            interval_minutes=60,
-            interval_length_hours=48,
-            battery_soc_pct=10.0,  # nearly empty — will want to charge
-            battery_rated_capacity_kwh=10.0,
-            battery_end_of_discharge_soc_pct=10.0,
-            battery_max_charge_power_w=5000.0,
-            battery_purchase_price=0.0,
-            battery_expected_cycles=6000,
-            weight_1d=25,
-            weight_3d=30,
-            weight_7d=30,
-            weight_14d=15,
-            consumption_averages=consumption,
-            price_points=all_prices,
-            solcast_slots=solar,
-            battery_schedules=schedules,
-            excess_export_enabled=False,
-            excess_export_discharge_buffer_pct=10.0,
-            excess_export_price_threshold=0.10,
-            months_winter=[1, 2, 3, 4, 10, 11, 12],
-            house_power_includes_ev=True,
-            is_read_only=True,
-        )
-
-        result = run_planner(inp)
-
-        day1 = result.slots[0].start.date()
-        day2 = day1.replace(day=day1.day + 1)
-
-        # Should have charge slots to cover BOTH day-1 and day-2 evening peaks
-        charge_slots = [s for s in result.slots if s.recommendation in _CHARGE_VALUES]
-        assert len(charge_slots) > 0, (
-            "Expected at least one charge slot for 48h plan with 17:00-21:00 discharge. "
-            f"All recommendations: {[(s.start.hour, s.start.date(), s.recommendation) for s in result.slots if s.start in charge_slots]}"
-        )
-
-        # Day-2 discharge window at 17:00-21:00 must be present
-        day2_discharge = [
-            s
-            for s in result.slots
-            if s.start.date() == day2
-            and s.recommendation in _DISCHARGE_VALUES
-            and 17 <= s.start.hour < 21
-        ]
-        assert len(day2_discharge) >= 1, (
-            f"Day-2 17:00-21:00 discharge window not found. "
-            f"Day-2 recommendations: "
-            f"{[(s.start.hour, s.recommendation) for s in result.slots if s.start.date() == day2]}"
-        )

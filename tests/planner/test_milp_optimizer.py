@@ -507,7 +507,7 @@ def test_milp_terminal_soc_matches_score_plan_with_varying_prices():
 
 
 @_scipy_skip()
-def test_milp_solves_96_slot_horizon_under_100ms():
+def test_milp_solves_96_slot_horizon_under_100ms() -> None:
     """MILP must solve a 96-slot (48 h × 30-min) horizon in under 100 ms."""
     # Build a 48-hour, 30-min slot list (96 slots)
     import copy
@@ -943,7 +943,7 @@ def test_cycle_cost_obj_coefficients_sum_to_one_cycle_cost():
 
 
 @_scipy_skip()
-def test_milp_holds_energy_for_expensive_slot_via_terminal_soc():
+def test_milp_holds_energy_for_expensive_slot_via_terminal_soc() -> None:
     """Bug B: With replacement_price set to expensive slot price, the MILP
     must discharge in the expensive slot, not the cheap one.
 
@@ -1778,7 +1778,7 @@ def test_milp_negative_import_positive_export_returns_solution():
 
 
 @_scipy_skip()
-def test_milp_bad_slot_at_start_of_288_slot_horizon():
+def test_milp_bad_slot_at_start_of_288_slot_horizon() -> None:
     """A bad slot (export > import) at index 0 in a 288-slot horizon must not fail."""
     import copy
 
@@ -1809,7 +1809,7 @@ def test_milp_bad_slot_at_start_of_288_slot_horizon():
 
 
 @_scipy_skip()
-def test_milp_bad_slot_at_midpoint_of_288_slot_horizon():
+def test_milp_bad_slot_at_midpoint_of_288_slot_horizon() -> None:
     """A bad slot (export > import) at the midpoint in a 288-slot horizon must not fail."""
     import copy
 
@@ -1839,7 +1839,7 @@ def test_milp_bad_slot_at_midpoint_of_288_slot_horizon():
 
 
 @_scipy_skip()
-def test_milp_bad_slot_at_end_of_288_slot_horizon():
+def test_milp_bad_slot_at_end_of_288_slot_horizon() -> None:
     """A bad slot (export > import) at the last slot in a 288-slot horizon must not fail."""
     import copy
 

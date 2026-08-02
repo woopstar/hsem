@@ -37,8 +37,6 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-import pytest
-
 from custom_components.hsem.custom_sensors.recommendation_resolver import (
     resolve_current_recommendation,
 )
@@ -53,7 +51,6 @@ from custom_components.hsem.models.price_point import PricePoint
 from custom_components.hsem.models.solcast_slot import SolcastSlot
 from custom_components.hsem.planner import run_planner
 from custom_components.hsem.planner.candidate_generator import (
-    CANDIDATE_BASELINE,
     CANDIDATE_NO_ACTION,
     _copy_slots,
     generate_candidates,
@@ -294,23 +291,6 @@ class TestEvPlannedLoadSurvivestCandidateGeneration:
             slot = _make_slot(hour=h, ev_kwh=ev, recommendation=None)
             slots.append(slot)
         return slots
-
-    @pytest.mark.skip(reason="MILP-only mode: schedule-based behavior not applicable")
-    def test_ev_load_on_baseline_candidate(self):
-        """Baseline candidate slots carry the same EV load as the input."""
-        baseline_slots = self._make_ev_slots()
-        inp = make_summer_day_input()
-        now = datetime.fromisoformat(inp.now_iso)
-        candidates = generate_candidates(
-            baseline_slots, inp, now, max_charge_per_slot=1.0
-        )
-        baseline = next(c for c in candidates if c.name == CANDIDATE_BASELINE)
-        for h, slot in enumerate(baseline.slots):
-            expected = 3.0 if 14 <= h < 18 else 0.0
-            assert abs(slot.ev_planned_load_kwh - expected) < 1e-9, (
-                f"Baseline slot h={h}: expected ev_load={expected}, "
-                f"got {slot.ev_planned_load_kwh}"
-            )
 
     def test_ev_load_on_no_action_candidate(self):
         """no_action candidate still carries EV load (only battery sched cleared)."""
