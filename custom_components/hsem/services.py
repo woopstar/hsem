@@ -110,20 +110,17 @@ def _get_coordinator(hass: HomeAssistant) -> HSEMDataUpdateCoordinator | None:
 # ---------------------------------------------------------------------------
 
 
-async def async_handle_force_recalculation(
-    hass: HomeAssistant,
-    call: ServiceCall,  # noqa: ARG001
-) -> None:
+async def async_handle_force_recalculation(call: ServiceCall) -> None:
     """Trigger an immediate full planner recalculation.
 
     Args:
-        hass: The Home Assistant instance.
-        call: The service call (unused, schema is empty).
+        call: The service call (schema is empty). ``call.hass`` provides the
+            Home Assistant instance.
 
     Raises:
         ServiceValidationError: When the coordinator is not found.
     """
-    coordinator = _get_coordinator(hass)
+    coordinator = _get_coordinator(call.hass)
     if coordinator is None:
         raise ServiceValidationError(
             "HSEM coordinator not found — integration may not be configured."
@@ -133,10 +130,7 @@ async def async_handle_force_recalculation(
     _LOGGER.info("HSEM service: force_recalculation completed")
 
 
-async def async_handle_set_temporary_override(
-    hass: HomeAssistant,
-    call: ServiceCall,
-) -> None:
+async def async_handle_set_temporary_override(call: ServiceCall) -> None:
     """Force a specific working mode via the force-mode select entity.
 
     The service writes ``call.data["working_mode"]`` to the
@@ -145,9 +139,9 @@ async def async_handle_set_temporary_override(
     directly to the inverter.
 
     Args:
-        hass: The Home Assistant instance.
         call: The service call with ``working_mode`` key in ``data``
-            and optional ``duration_minutes`` key.
+            and optional ``duration_minutes`` key. ``call.hass`` provides the
+            Home Assistant instance.
 
     Raises:
         ServiceValidationError: When the select entity cannot be found or the
@@ -158,7 +152,7 @@ async def async_handle_set_temporary_override(
     entity_id = get_force_working_mode_selector_entity_id()
 
     # Verify the entity exists before making the service call.
-    if hass.states.get(entity_id) is None:
+    if call.hass.states.get(entity_id) is None:
         raise ServiceValidationError(
             f"HSEM force working mode entity '{entity_id}' not found. "
             "Ensure the HSEM integration is fully configured."
@@ -170,7 +164,7 @@ async def async_handle_set_temporary_override(
         working_mode,
     )
 
-    await hass.services.async_call(
+    await call.hass.services.async_call(
         "select",
         "select_option",
         {"entity_id": entity_id, "option": working_mode},
@@ -178,7 +172,7 @@ async def async_handle_set_temporary_override(
     )
 
     # Store the override expiry on the coordinator if a duration was provided.
-    coordinator = _get_coordinator(hass)
+    coordinator = _get_coordinator(call.hass)
     if coordinator is not None:
         if duration_minutes is not None:
             from datetime import timedelta
@@ -203,22 +197,19 @@ async def async_handle_set_temporary_override(
     )
 
 
-async def async_handle_clear_override(
-    hass: HomeAssistant,
-    call: ServiceCall,  # noqa: ARG001
-) -> None:
+async def async_handle_clear_override(call: ServiceCall) -> None:
     """Clear any active working-mode override by setting the select to ``"auto"``.
 
     Args:
-        hass: The Home Assistant instance.
-        call: The service call (unused, schema is empty).
+        call: The service call (schema is empty). ``call.hass`` provides the
+            Home Assistant instance.
 
     Raises:
         ServiceValidationError: When the select entity cannot be found.
     """
     entity_id = get_force_working_mode_selector_entity_id()
 
-    if hass.states.get(entity_id) is None:
+    if call.hass.states.get(entity_id) is None:
         raise ServiceValidationError(
             f"HSEM force working mode entity '{entity_id}' not found. "
             "Ensure the HSEM integration is fully configured."
@@ -229,7 +220,7 @@ async def async_handle_clear_override(
         entity_id,
     )
 
-    await hass.services.async_call(
+    await call.hass.services.async_call(
         "select",
         "select_option",
         {"entity_id": entity_id, "option": "auto"},
@@ -237,7 +228,7 @@ async def async_handle_clear_override(
     )
 
     # Clear any stored override expiry so the override does not linger.
-    coordinator = _get_coordinator(hass)
+    coordinator = _get_coordinator(call.hass)
     if coordinator is not None:
         coordinator._override_expiry = None  # noqa: SLF001
         await coordinator._async_handle_update(None)  # noqa: SLF001
@@ -245,10 +236,9 @@ async def async_handle_clear_override(
     _LOGGER.info("HSEM service: clear_override completed")
 
 
-async def async_handle_export_diagnostics(  # NOSONAR
-    hass: HomeAssistant,
-    call: ServiceCall,  # noqa: ARG001
-) -> dict[str, Any]:
+async def async_handle_export_diagnostics(
+    call: ServiceCall,
+) -> dict[str, Any]:  # NOSONAR
     """Export a structured diagnostics dump for the HSEM integration.
 
     The returned dictionary contains the most recent planner input, planner
@@ -257,8 +247,8 @@ async def async_handle_export_diagnostics(  # NOSONAR
     to GitHub issues.
 
     Args:
-        hass: The Home Assistant instance.
-        call: The service call (unused, schema is empty).
+        call: The service call (schema is empty). ``call.hass`` provides the
+            Home Assistant instance.
 
     Returns:
         A JSON-serialisable diagnostics dump dictionary.
@@ -267,7 +257,7 @@ async def async_handle_export_diagnostics(  # NOSONAR
         ServiceValidationError: When the coordinator is not found.
         HomeAssistantError: When no planner cycle has completed yet.
     """
-    coordinator = _get_coordinator(hass)
+    coordinator = _get_coordinator(call.hass)
     if coordinator is None:
         raise ServiceValidationError(
             "HSEM coordinator not found — integration may not be configured."
@@ -301,10 +291,7 @@ async def async_handle_export_diagnostics(  # NOSONAR
     return dump
 
 
-async def async_handle_create_dashboard(
-    hass: HomeAssistant,
-    call: ServiceCall,  # noqa: ARG001
-) -> None:
+async def async_handle_create_dashboard(call: ServiceCall) -> None:
     """Log the path to the bundled HSEM dashboard YAML for manual import.
 
     The dashboard YAML is bundled at
@@ -313,8 +300,8 @@ async def async_handle_create_dashboard(
     New dashboard from scratch → Raw configuration editor.
 
     Args:
-        hass: The Home Assistant instance.
-        call: The service call (unused).
+        call: The service call (schema is empty). ``call.hass`` provides the
+            Home Assistant instance.
     """
     from pathlib import Path
 
