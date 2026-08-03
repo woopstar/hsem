@@ -7,25 +7,24 @@ argument (the Home Assistant instance is available via ``call.hass``).
 
 from __future__ import annotations
 
+import json
 from collections.abc import Generator
+from datetime import UTC
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import voluptuous as vol
-from homeassistant.config_entries import ConfigEntryState
+
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 
 from custom_components.hsem import services as services_module
 from custom_components.hsem.const import DOMAIN
+from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.services import (
-    SERVICE_CLEAR_OVERRIDE,
-    SERVICE_CREATE_DASHBOARD,
-    SERVICE_EXPORT_DIAGNOSTICS,
-    SERVICE_FORCE_RECALCULATION,
+    SCHEMA_CREATE_DASHBOARD,
     SERVICE_HANDLER_MAP,
-    SERVICE_SET_TEMPORARY_OVERRIDE,
     async_register_services,
     async_unregister_services,
 )
@@ -115,9 +114,11 @@ async def test_force_recalculation_no_coordinator_raises(
     """force_recalculation raises ServiceValidationError without a coordinator."""
     call = _make_service_call(mock_hass)
 
-    with patch.object(services_module, "_get_coordinator", return_value=None):
-        with pytest.raises(ServiceValidationError):
-            await services_module.async_handle_force_recalculation(call)
+    with (
+        patch.object(services_module, "_get_coordinator", return_value=None),
+        pytest.raises(ServiceValidationError),
+    ):
+        await services_module.async_handle_force_recalculation(call)
 
 
 @pytest.mark.asyncio
@@ -231,9 +232,11 @@ async def test_export_diagnostics_no_coordinator_raises(
     """export_diagnostics raises when no coordinator is loaded."""
     call = _make_service_call(mock_hass)
 
-    with patch.object(services_module, "_get_coordinator", return_value=None):
-        with pytest.raises(ServiceValidationError):
-            await services_module.async_handle_export_diagnostics(call)
+    with (
+        patch.object(services_module, "_get_coordinator", return_value=None),
+        pytest.raises(ServiceValidationError),
+    ):
+        await services_module.async_handle_export_diagnostics(call)
 
 
 @pytest.mark.asyncio
@@ -246,11 +249,13 @@ async def test_export_diagnostics_no_planner_output_raises(
     mock_coordinator._last_planner_output = None
     call = _make_service_call(mock_hass)
 
-    with patch.object(
-        services_module, "_get_coordinator", return_value=mock_coordinator
+    with (
+        patch.object(
+            services_module, "_get_coordinator", return_value=mock_coordinator
+        ),
+        pytest.raises(HomeAssistantError),
     ):
-        with pytest.raises(HomeAssistantError):
-            await services_module.async_handle_export_diagnostics(call)
+        await services_module.async_handle_export_diagnostics(call)
 
 
 @pytest.mark.asyncio
@@ -273,48 +278,100 @@ async def test_export_diagnostics_returns_dump(
 
 
 @pytest.mark.asyncio
-async def test_create_dashboard_missing_file_logs_error(
+@pytest.mark.usefixtures("get_coordinator_patcher")
+async def test_export_diagnostics_dump_is_json_serializable(
     mock_hass: MagicMock,
-    tmp_path: Path,
+    mock_coordinator: MagicMock,
 ) -> None:
-    """create_dashboard logs an error when the bundled YAML is missing."""
-    call = _make_service_call(mock_hass)
+    """export_diagnostics must return a response that Home Assistant can serialize."""
+    from datetime import datetime
 
-    with (
-        patch.object(
-            services_module,
-            "__file__",
-            str(tmp_path / "services.py"),
-        ),
-        patch.object(services_module, "_LOGGER") as mock_logger,
-    ):
-        await services_module.async_handle_create_dashboard(call)
+    from custom_components.hsem.models.planner_output import PlannerOutput
 
-    mock_logger.error.assert_called_once()
+    planner_input = PlannerInput(
+        ev_planned_load_deadline=datetime(2026, 8, 3, 12, 0, tzinfo=UTC),
+        ev_second_planned_load_deadline=datetime(2026, 8, 3, 18, 0, tzinfo=UTC),
+    )
+    planner_input.solar_corrector = object()  # type: ignore[attr-defined]
+    mock_coordinator._last_planner_input = planner_input
+    mock_coordinator._last_planner_output = PlannerOutput()
+
+    result = await services_module.async_handle_export_diagnostics(
+        _make_service_call(mock_hass)
+    )
+
+    # This is the same serialization path Home Assistant uses for service
+    # responses. It must not raise on datetime fields or runtime objects.
+    json.dumps(result, default=str)
+    assert "planner_input" in result
+    assert result["planner_input"]["solar_corrector"] is None
+    assert (
+        result["planner_input"]["ev_planned_load_deadline"]
+        == "2026-08-03T12:00:00+00:00"
+    )
+    assert (
+        result["planner_input"]["ev_second_planned_load_deadline"]
+        == "2026-08-03T18:00:00+00:00"
+    )
+
+
+def test_create_dashboard_schema_accepts_empty_data() -> None:
+    """create_dashboard schema accepts an empty dict."""
+    assert SCHEMA_CREATE_DASHBOARD({}) == {}
+
+
+def test_create_dashboard_schema_accepts_dashboard_path() -> None:
+    """create_dashboard schema accepts an optional dashboard_path."""
+    result = SCHEMA_CREATE_DASHBOARD({"dashboard_path": "/config/my_hsem.yaml"})
+    assert result["dashboard_path"] == "/config/my_hsem.yaml"  # type: ignore[index]
 
 
 @pytest.mark.asyncio
-async def test_create_dashboard_logs_path(
+async def test_create_dashboard_calls_helper_and_returns_result(
     mock_hass: MagicMock,
-    tmp_path: Path,
 ) -> None:
-    """create_dashboard logs the bundled YAML path when it exists."""
-    dashboards_dir = tmp_path / "dashboards"
-    dashboards_dir.mkdir()
-    (dashboards_dir / "dashboard_en.yaml").write_text("title: Test")
+    """create_dashboard delegates to the provisioning helper and returns its result."""
     call = _make_service_call(mock_hass)
 
-    with (
-        patch.object(
-            services_module,
-            "__file__",
-            str(tmp_path / "services.py"),
+    with patch.object(
+        services_module,
+        "async_ensure_hsem_dashboard",
+        new=AsyncMock(
+            return_value={
+                "dashboard_path": "/config/hsem_dashboard.yaml",
+                "dashboard_url": "/hsem-dashboard",
+            }
         ),
-        patch.object(services_module, "_LOGGER") as mock_logger,
-    ):
-        await services_module.async_handle_create_dashboard(call)
+    ) as mock_helper:
+        result = await services_module.async_handle_create_dashboard(call)
 
-    mock_logger.info.assert_called_once()
-    assert str(dashboards_dir / "dashboard_en.yaml") in " ".join(
-        str(arg) for arg in mock_logger.info.call_args[0]
+    mock_helper.assert_awaited_once_with(mock_hass, dashboard_path=None)
+    assert result == {
+        "dashboard_path": "/config/hsem_dashboard.yaml",
+        "dashboard_url": "/hsem-dashboard",
+    }
+
+
+@pytest.mark.asyncio
+async def test_create_dashboard_passes_custom_path_to_helper(
+    mock_hass: MagicMock,
+) -> None:
+    """create_dashboard forwards a custom dashboard_path to the helper."""
+    call = _make_service_call(mock_hass, {"dashboard_path": "/config/custom.yaml"})
+
+    with patch.object(
+        services_module,
+        "async_ensure_hsem_dashboard",
+        new=AsyncMock(
+            return_value={
+                "dashboard_path": "/config/custom.yaml",
+                "dashboard_url": "/hsem-dashboard",
+            }
+        ),
+    ) as mock_helper:
+        result = await services_module.async_handle_create_dashboard(call)
+
+    mock_helper.assert_awaited_once_with(
+        mock_hass, dashboard_path=Path("/config/custom.yaml")
     )
+    assert result["dashboard_path"] == "/config/custom.yaml"

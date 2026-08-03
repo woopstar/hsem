@@ -17,7 +17,7 @@ below.
 | `hsem.force_recalculation` | Trigger an immediate full planner re-run | None |
 | `hsem.set_temporary_override` | Force a specific battery working mode | None |
 | `hsem.clear_override` | Return to automatic planner control | None |
-| `hsem.create_dashboard` | Create or update the bundled Lovelace dashboard | None |
+| `hsem.create_dashboard` | Create or update the bundled Lovelace dashboard | Dict |
 | `hsem.export_diagnostics` | Export structured diagnostic data | Dict |
 
 ---
@@ -117,29 +117,47 @@ service: hsem.clear_override
 
 ## 4. `hsem.create_dashboard`
 
-Logs the path to the bundled HSEM Lovelace dashboard YAML and provides import
-instructions. The dashboard YAML is bundled with the integration at
-`custom_components/hsem/dashboards/dashboard_en.yaml` and uses a single
-sections-based view with cards for status, recommendation timeline, battery
-SoC, price charts, and planner output.
+Creates or updates the bundled HSEM Lovelace dashboard. The dashboard YAML is
+copied from `custom_components/hsem/dashboards/dashboard_en.yaml` to
+`<config>/hsem_dashboard.yaml` and a storage-mode Lovelace dashboard is
+registered in Home Assistant so it appears in the sidebar.
 
-**Schema:** No fields.
+**Schema:**
+
+| Field | Required | Type | Description |
+|---|---|---|---|
+| `dashboard_path` | No | String | Absolute file path for the dashboard YAML. Defaults to `<config>/hsem_dashboard.yaml`. |
+
+**Response:**
+
+| Key | Type | Description |
+|---|---|---|
+| `dashboard_path` | `str` | Absolute path to the written dashboard YAML file |
+| `dashboard_url` | `str \| None` | Dashboard URL path (e.g. `/hsem-dashboard`), or `None` if the dashboard was previously deleted by the user |
 
 **Use cases:**
-- Find the bundled dashboard path when setting up HSEM for the first time
-- Check that the bundled dashboard YAML is present after an HSEM upgrade
+- Set up the HSEM dashboard during initial configuration
+- Re-create the dashboard after deleting it by accident
+- Write the dashboard YAML to a custom location
 
 **Implementation notes:**
-- The service does **not** create or modify any Home Assistant dashboard
-  automatically.
-- Import the YAML manually via **Settings → Dashboards → Add Dashboard →
-  New dashboard from scratch → Raw configuration editor**.
-- Replace `sensor.batteries_state_of_capacity` and `sensor.power_import` with
-  your own battery SoC and grid import power entities.
+- The bundled YAML is written to disk every time the service is called, but the
+  Lovelace dashboard entry is only created once.
+- If the user deletes the dashboard via the HA UI, the service remembers that
+  choice and will not recreate it automatically.
+- You can still edit the generated YAML manually after creation.
 
-**Example:**
+**Examples:**
 ```yaml
 service: hsem.create_dashboard
+response_variable: dashboard_result
+```
+
+```yaml
+service: hsem.create_dashboard
+data:
+  dashboard_path: /config/ui_lovelace_minimalist/hsem.yaml
+response_variable: dashboard_result
 ```
 
 ---

@@ -14,6 +14,34 @@ Step-by-step guide for setting up the HSEM ApexCharts dashboard in Home Assistan
 
 ## Setup instructions
 
+### Option A — Use the `hsem.create_dashboard` service (recommended)
+
+1. In Home Assistant, go to **Developer Tools** → **Services**.
+2. Run `hsem.create_dashboard`.
+3. The service creates `<config>/hsem_dashboard.yaml` and registers a new
+   sidebar dashboard called **HSEM**.
+4. Open the new dashboard and replace `sensor.batteries_state_of_capacity` and
+   `sensor.power_import` with your own battery SoC and grid import power entities.
+5. Save and refresh your dashboard.
+
+You can also call the service from a script or automation:
+
+```yaml
+service: hsem.create_dashboard
+response_variable: dashboard_result
+```
+
+Or write the YAML to a custom path:
+
+```yaml
+service: hsem.create_dashboard
+data:
+  dashboard_path: /config/ui_lovelace_minimalist/hsem.yaml
+response_variable: dashboard_result
+```
+
+### Option B — Manual import
+
 1. In Home Assistant, go to **Settings** → **Dashboards**.
 2. Click the three-dot menu in the top-right corner and select **Raw configuration editor**.
 3. Paste the YAML below into your dashboard.

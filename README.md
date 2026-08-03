@@ -59,7 +59,7 @@
 - **Quick setup wizard** — auto-detects Huawei Solar, Solcast, and price entities
 - **Bundled Lovelace dashboard** — single-section dashboard with price charts, energy flow, savings, and accuracy
 - **Live-configurable** — all thresholds and settings editable from the dashboard without restart
-- **`hsem.create_dashboard` service** — logs the bundled dashboard YAML path for manual import from Developer Tools
+- **`hsem.create_dashboard` service** — creates or updates the bundled Lovelace dashboard automatically
 - **Bilingual** — English and Danish translations
 
 ---
