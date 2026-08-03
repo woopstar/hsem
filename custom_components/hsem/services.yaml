@@ -78,3 +78,10 @@ create_dashboard:
       description: >-
         Optional absolute file path where the dashboard YAML should be written.
         When omitted, the file is written to <config>/hsem_dashboard.yaml.
+    force:
+      required: false
+      selector:
+        boolean:
+      description: >-
+        When true, recreate the dashboard even if it was previously deleted
+        by the user. Defaults to false.

@@ -345,7 +345,7 @@ async def test_create_dashboard_calls_helper_and_returns_result(
     ) as mock_helper:
         result = await services_module.async_handle_create_dashboard(call)
 
-    mock_helper.assert_awaited_once_with(mock_hass, dashboard_path=None)
+    mock_helper.assert_awaited_once_with(mock_hass, dashboard_path=None, force=False)
     assert result == {
         "dashboard_path": "/config/hsem_dashboard.yaml",
         "dashboard_url": "/hsem-dashboard",
@@ -372,6 +372,28 @@ async def test_create_dashboard_passes_custom_path_to_helper(
         result = await services_module.async_handle_create_dashboard(call)
 
     mock_helper.assert_awaited_once_with(
-        mock_hass, dashboard_path=Path("/config/custom.yaml")
+        mock_hass, dashboard_path=Path("/config/custom.yaml"), force=False
     )
     assert result["dashboard_path"] == "/config/custom.yaml"
+
+
+@pytest.mark.asyncio
+async def test_create_dashboard_passes_force_to_helper(
+    mock_hass: MagicMock,
+) -> None:
+    """create_dashboard forwards force=true to the helper."""
+    call = _make_service_call(mock_hass, {"force": True})
+
+    with patch.object(
+        services_module,
+        "async_ensure_hsem_dashboard",
+        new=AsyncMock(
+            return_value={
+                "dashboard_path": "/config/hsem_dashboard.yaml",
+                "dashboard_url": "/hsem-dashboard",
+            }
+        ),
+    ) as mock_helper:
+        await services_module.async_handle_create_dashboard(call)
+
+    mock_helper.assert_awaited_once_with(mock_hass, dashboard_path=None, force=True)

@@ -79,6 +79,7 @@ SCHEMA_EXPORT_DIAGNOSTICS = vol.Schema({})
 SCHEMA_CREATE_DASHBOARD = vol.Schema(
     {
         vol.Optional("dashboard_path"): vol.All(vol.Coerce(str), vol.Length(min=1)),
+        vol.Optional("force"): vol.Coerce(bool),
     }
 )
 
@@ -320,10 +321,12 @@ async def async_handle_create_dashboard(
 
     dashboard_path_arg: str | None = call.data.get("dashboard_path")
     dashboard_path = Path(dashboard_path_arg) if dashboard_path_arg else None
+    force: bool = call.data.get("force", False)
 
     result = await async_ensure_hsem_dashboard(
         call.hass,
         dashboard_path=dashboard_path,
+        force=force,
     )
     _LOGGER.info(
         "HSEM service: create_dashboard completed — path=%s url=%s",

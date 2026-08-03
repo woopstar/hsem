@@ -111,6 +111,9 @@ def _find_existing_dashboard(
 ) -> dict[str, Any] | None:
     """Return an existing HSEM dashboard from the collection, if any.
 
+    Only the URL path is matched — title matching is intentionally avoided
+    because users may have other dashboards titled "HSEM".
+
     Args:
         items: Dashboard collection items.
 
@@ -120,12 +123,7 @@ def _find_existing_dashboard(
     # Use string keys directly; importing the lovelace constants at module
     # level pulls in too many HA components and breaks unit tests.
     return next(
-        (
-            item
-            for item in items
-            if item.get("url_path") == DASHBOARD_URL_PATH
-            or item.get("title") == DASHBOARD_TITLE
-        ),
+        (item for item in items if item.get("url_path") == DASHBOARD_URL_PATH),
         None,
     )
 
@@ -148,17 +146,22 @@ async def _trigger_dashboard_reload(hass: HomeAssistant) -> None:
 async def async_ensure_hsem_dashboard(
     hass: HomeAssistant,
     dashboard_path: Path | None = None,
+    *,
+    force: bool = False,
 ) -> dict[str, Any]:
     """Ensure the HSEM Lovelace dashboard exists and points to the YAML file.
 
     The bundled dashboard YAML is copied to *dashboard_path* (default
     ``<config>/hsem_dashboard.yaml``). A storage-mode Lovelace dashboard is
     registered if it does not already exist. If the user previously deleted
-    the dashboard via the UI, it is not recreated automatically.
+    the dashboard via the UI, it is not recreated automatically unless
+    *force* is ``True``.
 
     Args:
         hass: The Home Assistant instance.
         dashboard_path: Optional override for the destination YAML path.
+        force: When ``True``, recreate the dashboard even if the user
+            previously deleted it.
 
     Returns:
         A dict with ``dashboard_path`` and ``dashboard_url`` keys.
@@ -192,7 +195,12 @@ async def async_ensure_hsem_dashboard(
 
     # Create our own collection instance that reads from the same storage
     collection = await _get_or_create_collection(hass)
-    existing = _find_existing_dashboard(collection.async_items())
+    items = collection.async_items()
+    _LOGGER.info(
+        "HSEM dashboard: existing dashboards in collection: %s",
+        [(i.get("id"), i.get("url_path"), i.get("title")) for i in items],
+    )
+    existing = _find_existing_dashboard(items)
 
     if existing is not None:
         _LOGGER.info("HSEM dashboard already exists at URL /%s", DASHBOARD_URL_PATH)
@@ -204,10 +212,11 @@ async def async_ensure_hsem_dashboard(
         }
 
     # A retained marker with no matching dashboard means the user deleted it
-    # deliberately. Do not recreate it.
-    if marker and marker.get("provisioned"):
+    # deliberately. Do not recreate it unless forced.
+    if marker and marker.get("provisioned") and not force:
         _LOGGER.info(
-            "HSEM dashboard was previously deleted by the user; not recreating"
+            "HSEM dashboard was previously deleted by the user; not recreating "
+            "(pass force=true to override)"
         )
         return {
             "dashboard_path": str(destination),
