@@ -29,6 +29,7 @@ def mock_hass(tmp_path: Path) -> MagicMock:
     hass.config.path.return_value = str(tmp_path)
     hass.async_add_executor_job = AsyncMock(side_effect=lambda fn, *args: fn(*args))
     hass.data = {}
+    hass.bus = MagicMock()
     return hass
 
 
@@ -70,7 +71,7 @@ async def test_create_dashboard_writes_yaml_and_registers_dashboard(
 
     with (
         patch(
-            "custom_components.hsem.utils.dashboard._active_dashboards_collection",
+            "custom_components.hsem.utils.dashboard._get_or_create_collection",
             return_value=collection,
         ),
         patch(
@@ -106,9 +107,13 @@ async def test_create_dashboard_idempotent_when_dashboard_exists(
     ]
     collection.async_create_item = AsyncMock()
 
+    lovelace_data = MagicMock()
+    lovelace_data.dashboards = {}
+    mock_hass.data[LOVELACE_DATA] = lovelace_data
+
     with (
         patch(
-            "custom_components.hsem.utils.dashboard._active_dashboards_collection",
+            "custom_components.hsem.utils.dashboard._get_or_create_collection",
             return_value=collection,
         ),
         patch(
@@ -135,9 +140,13 @@ async def test_create_dashboard_respects_deleted_marker(
     collection.async_items.return_value = []
     collection.async_create_item = AsyncMock()
 
+    lovelace_data = MagicMock()
+    lovelace_data.dashboards = {}
+    mock_hass.data[LOVELACE_DATA] = lovelace_data
+
     with (
         patch(
-            "custom_components.hsem.utils.dashboard._active_dashboards_collection",
+            "custom_components.hsem.utils.dashboard._get_or_create_collection",
             return_value=collection,
         ),
         patch(
@@ -161,13 +170,15 @@ async def test_create_dashboard_raises_when_collection_unavailable(
     tmp_path: Path,
     _bundled_yaml: Path,
 ) -> None:
-    """A clear error is raised when the Lovelace collection is not loaded."""
+    """A clear error is raised when the Lovelace integration is not loaded."""
+    mock_hass.data[LOVELACE_DATA] = None
+
     with (
         patch(
-            "custom_components.hsem.utils.dashboard._active_dashboards_collection",
-            return_value=None,
+            "custom_components.hsem.utils.dashboard._get_or_create_collection",
+            side_effect=Exception("Collection unavailable"),
         ),
-        pytest.raises(HomeAssistantError, match="Lovelace dashboard collection"),
+        pytest.raises(HomeAssistantError, match="Lovelace integration is not loaded"),
     ):
         await async_ensure_hsem_dashboard(mock_hass)
 
@@ -193,7 +204,7 @@ async def test_create_dashboard_uses_custom_path(
 
     with (
         patch(
-            "custom_components.hsem.utils.dashboard._active_dashboards_collection",
+            "custom_components.hsem.utils.dashboard._get_or_create_collection",
             return_value=collection,
         ),
         patch(

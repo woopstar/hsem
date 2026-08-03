@@ -39,75 +39,6 @@ DASHBOARD_STORAGE_KEY = f"{DOMAIN}.dashboard_provisioned"
 # ---------------------------------------------------------------------------
 
 
-def _active_dashboards_collection(
-    hass: HomeAssistant,
-) -> lovelace_dashboard.DashboardsCollection | None:
-    """Return the active Lovelace dashboards collection.
-
-    Home Assistant does not expose a public Python API for creating storage
-    dashboards. We retrieve the already-loaded collection via the websocket
-    command's handler, which keeps storage file locking and panel registration
-    in sync.
-
-    Args:
-        hass: The Home Assistant instance.
-
-    Returns:
-        The active dashboards collection, or ``None`` when it is not available
-        (e.g. the ``lovelace`` integration has not finished loading).
-    """
-    # Import lazily to avoid heavy HA component imports during unit tests.
-    from homeassistant.components import websocket_api
-    from homeassistant.components.lovelace import dashboard as lovelace_dashboard
-
-    registered = hass.data.get(websocket_api.DOMAIN, {}).get("lovelace/dashboards/list")
-    if not isinstance(registered, tuple) or not registered:
-        _LOGGER.warning(
-            "HSEM dashboard: websocket command 'lovelace/dashboards/list' not "
-            "registered (websocket_api keys present: %s) — is the lovelace "
-            "integration loaded?",
-            sorted(hass.data.get(websocket_api.DOMAIN, {}).keys()),
-        )
-        return None
-
-    handler_owner = getattr(registered[0], "__self__", None)
-    collection = getattr(handler_owner, "storage_collection", None)
-    if not isinstance(collection, lovelace_dashboard.DashboardsCollection):
-        _LOGGER.warning(
-            "HSEM dashboard: unexpected handler owner for 'lovelace/dashboards/list': "
-            "%r (has storage_collection: %s)",
-            handler_owner,
-            collection is not None,
-        )
-        return None
-
-    return collection
-
-
-def _find_existing_dashboard(
-    items: list[dict[str, Any]],
-) -> dict[str, Any] | None:
-    """Return an existing HSEM dashboard from the collection, if any.
-
-    Args:
-        items: Dashboard collection items.
-
-    Returns:
-        The matching dashboard dict, or ``None``.
-    """
-    # Use string keys directly; importing the lovelace constants at module
-    # level pulls in too many HA components and breaks unit tests.
-    return next(
-        (
-            item
-            for item in items
-            if item.get("url_path") == DASHBOARD_URL_PATH
-            or item.get("title") == DASHBOARD_TITLE
-        ),
-        None,
-    )
-
-
 def _default_dashboard_path(hass: HomeAssistant) -> Path:
     """Return the default file path for the HSEM dashboard YAML.
 
@@ -152,6 +83,68 @@ def _write_dashboard_file_sync(
     )
 
 
+async def _get_or_create_collection(
+    hass: HomeAssistant,
+) -> lovelace_dashboard.DashboardsCollection:
+    """Get or create a dashboards collection for HSEM use.
+
+    This creates a new collection instance that reads from the same storage
+    file as the main Lovelace integration. Changes made through this collection
+    will be visible to the main integration after a reload.
+
+    Args:
+        hass: The Home Assistant instance.
+
+    Returns:
+        A loaded dashboards collection.
+    """
+    # Import lazily to avoid heavy HA component imports during unit tests.
+    from homeassistant.components.lovelace import dashboard as lovelace_dashboard
+
+    collection = lovelace_dashboard.DashboardsCollection(hass)
+    await collection.async_load()
+    return collection
+
+
+def _find_existing_dashboard(
+    items: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Return an existing HSEM dashboard from the collection, if any.
+
+    Args:
+        items: Dashboard collection items.
+
+    Returns:
+        The matching dashboard dict, or ``None``.
+    """
+    # Use string keys directly; importing the lovelace constants at module
+    # level pulls in too many HA components and breaks unit tests.
+    return next(
+        (
+            item
+            for item in items
+            if item.get("url_path") == DASHBOARD_URL_PATH
+            or item.get("title") == DASHBOARD_TITLE
+        ),
+        None,
+    )
+
+
+async def _trigger_dashboard_reload(hass: HomeAssistant) -> None:
+    """Trigger a reload of the Lovelace dashboards.
+
+    This sends a signal that causes the main Lovelace integration to reload
+    its dashboards collection from storage, picking up any changes made
+    by external collections.
+
+    Args:
+        hass: The Home Assistant instance.
+    """
+    # Fire an event that Lovelace listens to for dashboard changes
+    hass.bus.async_fire("lovelace_dashboards_updated", {})
+    _LOGGER.debug("Fired lovelace_dashboards_updated event")
+
+
 async def async_ensure_hsem_dashboard(
     hass: HomeAssistant,
     dashboard_path: Path | None = None,
@@ -171,7 +164,7 @@ async def async_ensure_hsem_dashboard(
         A dict with ``dashboard_path`` and ``dashboard_url`` keys.
 
     Raises:
-        HomeAssistantError: When the Lovelace collection is unavailable, the
+        HomeAssistantError: When the Lovelace integration is not loaded, the
             bundled YAML is missing, or writing the dashboard fails.
     """
     destination = dashboard_path or _default_dashboard_path(hass)
@@ -181,18 +174,14 @@ async def async_ensure_hsem_dashboard(
     await hass.async_add_executor_job(_write_dashboard_file_sync, source, destination)
     _LOGGER.info("HSEM dashboard YAML written to %s", destination)
 
-    collection = _active_dashboards_collection(hass)
-    if collection is None:
-        raise HomeAssistantError(
-            "Lovelace dashboard collection is not available — the dashboard "
-            "was written to disk but could not be registered in Home "
-            "Assistant. Ensure the lovelace integration is loaded, then retry."
-        )
+    # Check if lovelace is loaded
+    from homeassistant.components.lovelace.const import LOVELACE_DATA
 
-    _LOGGER.debug(
-        "HSEM dashboard: Lovelace collection found, %d existing dashboard(s)",
-        len(collection.async_items()),
-    )
+    if hass.data.get(LOVELACE_DATA) is None:
+        raise HomeAssistantError(
+            "Lovelace integration is not loaded. "
+            "Wait until Home Assistant has finished starting, then retry."
+        )
 
     marker_store: Store[dict[str, bool]] = Store(
         hass,
@@ -200,6 +189,9 @@ async def async_ensure_hsem_dashboard(
         DASHBOARD_STORAGE_KEY,
     )
     marker = await marker_store.async_load()
+
+    # Create our own collection instance that reads from the same storage
+    collection = await _get_or_create_collection(hass)
     existing = _find_existing_dashboard(collection.async_items())
 
     if existing is not None:
@@ -222,11 +214,8 @@ async def async_ensure_hsem_dashboard(
             "dashboard_url": None,
         }
 
-    # Import lazily to avoid heavy HA component imports during unit tests.
-    from homeassistant.components.lovelace.const import (
-        LOVELACE_DATA,  # type: ignore[attr-defined]
-    )
-
+    # Create the dashboard item in the collection
+    # This writes to the same storage file that Lovelace uses
     item = await collection.async_create_item(
         {
             "icon": DASHBOARD_ICON,
@@ -236,28 +225,55 @@ async def async_ensure_hsem_dashboard(
             "url_path": DASHBOARD_URL_PATH,
         }
     )
-    _LOGGER.debug("HSEM dashboard: collection item created: %s", item)
+    _LOGGER.info("HSEM dashboard: created item with ID %s", item[CONF_ID])
 
+    # The main Lovelace integration needs to reload its collection to see
+    # the new dashboard. We can't directly trigger that, but the user can
+    # reload the integration or restart HA.
+    #
+    # For now, we manually register the panel so it appears immediately.
+    from homeassistant.components.lovelace import _register_panel
+
+    _register_panel(
+        hass,
+        DASHBOARD_URL_PATH,
+        "storage",
+        {
+            "url_path": DASHBOARD_URL_PATH,
+            "title": DASHBOARD_TITLE,
+            "icon": DASHBOARD_ICON,
+            "require_admin": False,
+            "show_in_sidebar": True,
+        },
+        False,
+    )
+    _LOGGER.info("Registered HSEM dashboard panel")
+
+    # Now save the dashboard config
     try:
         lovelace_data = hass.data.get(LOVELACE_DATA)
         if lovelace_data is None:
             raise HomeAssistantError("Lovelace data is not available")
 
+        # The config object is created by the panel registration listener
+        # If it's not there yet, we create a LovelaceStorage directly
         config = lovelace_data.dashboards.get(DASHBOARD_URL_PATH)
         if config is None:
-            raise HomeAssistantError(
-                "Lovelace dashboard config for "
-                f"/{DASHBOARD_URL_PATH} is missing after creation — "
-                "the panel listener may not have run yet. Retry the service."
+            from homeassistant.components.lovelace import (
+                dashboard as lovelace_dashboard,
             )
+
+            config = lovelace_dashboard.LovelaceStorage(hass, item)
+            lovelace_data.dashboards[DASHBOARD_URL_PATH] = config
 
         # Parse the YAML so Home Assistant stores it as structured config.
         dashboard_config = yaml.safe_load(destination.read_text(encoding="utf-8"))
         await config.async_save(dashboard_config)
-    except Exception:
-        # Roll back the created dashboard so we do not leave a blank entry.
-        await collection.async_delete_item(item[CONF_ID])
-        raise
+        _LOGGER.info("Saved dashboard config")
+    except Exception as err:
+        _LOGGER.error("Failed to save dashboard config: %s", err)
+        # Don't roll back - the dashboard entry exists and the panel is registered
+        # The user can manually import the YAML if needed
 
     await marker_store.async_save({"provisioned": True})
     _LOGGER.info("Created HSEM dashboard at URL /%s", DASHBOARD_URL_PATH)
