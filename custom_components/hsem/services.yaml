@@ -58,15 +58,23 @@ export_diagnostics:
     Export a structured diagnostics dump for the HSEM integration. The
     response contains the most recent planner input, planner output, hardware
     write status, and integration version — with all entity IDs redacted for
-    safe sharing. Useful for debugging and issue reports.
+    safe sharing. Useful for debugging and issue reports. Response keys:
+    hsem_version, dump_timestamp, planner_input, planner_output, apply_result.
   fields: {}
 
 create_dashboard:
   name: Create dashboard
   description: >-
-    Log the path to the bundled HSEM Lovelace dashboard YAML and provide
-    import instructions. The dashboard includes status cards, price charts,
-    battery SoC, EV status, savings, and accuracy views. Import the YAML
-    manually via Settings → Dashboards → Add Dashboard → New dashboard from
-    scratch → Raw configuration editor.
-  fields: {}
+    Create or update the bundled HSEM Lovelace dashboard. The dashboard YAML
+    is copied to <config>/hsem_dashboard.yaml (or the optional
+    dashboard_path override) and a storage-mode Lovelace dashboard is
+    registered in Home Assistant so it appears in the sidebar. Response keys:
+    dashboard_path, dashboard_url.
+  fields:
+    dashboard_path:
+      required: false
+      selector:
+        text:
+      description: >-
+        Optional absolute file path where the dashboard YAML should be written.
+        When omitted, the file is written to <config>/hsem_dashboard.yaml.

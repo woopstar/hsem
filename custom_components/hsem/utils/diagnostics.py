@@ -35,8 +35,8 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import asdict
-from datetime import datetime, time
-from typing import Any
+from datetime import date, datetime, time
+from typing import Any, cast
 
 import homeassistant.util.dt as dt_util
 from homeassistant.const import STATE_UNKNOWN
@@ -141,12 +141,38 @@ def redact_dict(data: dict[str, Any]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+def _serialise_value(value: Any) -> Any:
+    """Recursively make a value JSON-safe.
+
+    Handles ``datetime`` / ``date`` objects and plain containers.  Non-serialisable
+    objects are replaced with their repr string so the dump never crashes a
+    service response.
+
+    Args:
+        value: Any value from a dataclass ``asdict()`` result.
+
+    Returns:
+        A JSON-safe representation of *value*.
+    """
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {k: _serialise_value(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_serialise_value(item) for item in value]
+    if isinstance(value, tuple):
+        return [_serialise_value(item) for item in value]
+    return value
+
+
 def _planner_input_to_dict(inp: PlannerInput) -> dict[str, Any]:
     """Convert a :class:`PlannerInput` to a JSON-safe dictionary.
 
     :class:`datetime.time` values inside ``battery_schedules`` are serialised
-    to ``"HH:MM:SS"`` strings.  All other fields are plain Python primitives
-    already.
+    to ``"HH:MM:SS"`` strings.  All other datetime/date fields are serialised
+    to ISO-8601 strings.  The ``solar_corrector`` object is replaced with a
+    placeholder because it is not serialisable and is not needed to reproduce
+    planner logic offline.
 
     Args:
         inp: The planner input to serialise.
@@ -155,6 +181,10 @@ def _planner_input_to_dict(inp: PlannerInput) -> dict[str, Any]:
         A JSON-serialisable dictionary.
     """
     raw = asdict(inp)
+
+    # The solar corrector is a runtime object; it is not serialisable and is
+    # not needed to reproduce planner logic offline, so replace it with None.
+    raw["solar_corrector"] = None
 
     # Patch datetime.time objects that asdict() cannot serialise to JSON.
     for sched in raw.get("battery_schedules", []):
@@ -173,7 +203,7 @@ def _planner_input_to_dict(inp: PlannerInput) -> dict[str, Any]:
     if "extra" in raw:
         raw["extra"] = redact_dict(raw["extra"])
 
-    return raw
+    return cast(dict[str, Any], _serialise_value(raw))
 
 
 def _planner_input_from_dict(data: dict[str, Any]) -> PlannerInput:

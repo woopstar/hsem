@@ -3,6 +3,7 @@
     "name": "Huawei Solar Energy Management",
     "after_dependencies": [
         "huawei_solar",
+        "lovelace",
         "recorder",
         "solcast_solar",
         "statistics",

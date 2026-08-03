@@ -25,6 +25,7 @@ from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 
 from custom_components.hsem.const import DOMAIN
 from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
+from custom_components.hsem.utils.dashboard import async_ensure_hsem_dashboard
 from custom_components.hsem.utils.diagnostics import build_diagnostics_dump
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 from custom_components.hsem.utils.sensornames.diagnostics import (
@@ -75,7 +76,11 @@ SCHEMA_CLEAR_OVERRIDE = vol.Schema({})
 
 SCHEMA_EXPORT_DIAGNOSTICS = vol.Schema({})
 
-SCHEMA_CREATE_DASHBOARD = vol.Schema({})
+SCHEMA_CREATE_DASHBOARD = vol.Schema(
+    {
+        vol.Optional("dashboard_path"): vol.All(vol.Coerce(str), vol.Length(min=1)),
+    }
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -291,32 +296,41 @@ async def async_handle_export_diagnostics(
     return dump
 
 
-async def async_handle_create_dashboard(call: ServiceCall) -> None:
-    """Log the path to the bundled HSEM dashboard YAML for manual import.
+async def async_handle_create_dashboard(
+    call: ServiceCall,
+) -> dict[str, Any]:  # NOSONAR
+    """Create or update the bundled HSEM Lovelace dashboard.
 
-    The dashboard YAML is bundled at
-    ``custom_components/hsem/dashboards/dashboard_en.yaml``.
-    Import it via Settings → Dashboards → Add Dashboard →
-    New dashboard from scratch → Raw configuration editor.
+    The bundled dashboard YAML is copied to the default path
+    ``<config>/hsem_dashboard.yaml`` (or the ``dashboard_path`` override) and
+    a storage-mode Lovelace dashboard is registered in Home Assistant so the
+    dashboard appears in the sidebar.
 
     Args:
-        call: The service call (schema is empty). ``call.hass`` provides the
-            Home Assistant instance.
+        call: The service call with optional ``dashboard_path`` key in
+            ``data``. ``call.hass`` provides the Home Assistant instance.
+
+    Returns:
+        A dict with ``dashboard_path`` and ``dashboard_url`` keys.
+
+    Raises:
+        HomeAssistantError: When the dashboard cannot be created.
     """
     from pathlib import Path
 
-    dash_path = Path(__file__).parent / "dashboards" / "dashboard_en.yaml"
-    if not dash_path.exists():
-        _LOGGER.error("HSEM dashboard YAML not found at %s", dash_path)
-        return
+    dashboard_path_arg: str | None = call.data.get("dashboard_path")
+    dashboard_path = Path(dashboard_path_arg) if dashboard_path_arg else None
 
-    _LOGGER.info(
-        "HSEM dashboard YAML available at %s. "
-        "Import it via Settings → Dashboards → Add Dashboard → "
-        "New dashboard from scratch → Raw configuration editor. "
-        "Paste the YAML content and save.",
-        dash_path,
+    result = await async_ensure_hsem_dashboard(
+        call.hass,
+        dashboard_path=dashboard_path,
     )
+    _LOGGER.info(
+        "HSEM service: create_dashboard completed — path=%s url=%s",
+        result["dashboard_path"],
+        result["dashboard_url"],
+    )
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -332,7 +346,7 @@ SERVICE_HANDLER_MAP: dict[str, tuple[vol.Schema, Any, SupportsResponse]] = {
     SERVICE_CREATE_DASHBOARD: (
         SCHEMA_CREATE_DASHBOARD,
         async_handle_create_dashboard,
-        SupportsResponse.NONE,
+        SupportsResponse.ONLY,
     ),
     SERVICE_EXPORT_DIAGNOSTICS: (
         SCHEMA_EXPORT_DIAGNOSTICS,
