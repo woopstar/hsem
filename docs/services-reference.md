@@ -127,6 +127,7 @@ registered in Home Assistant so it appears in the sidebar.
 | Field | Required | Type | Description |
 |---|---|---|---|
 | `dashboard_path` | No | String | Absolute file path for the dashboard YAML. Defaults to `<config>/hsem_dashboard.yaml`. |
+| `force` | No | Boolean | When `true`, recreate the dashboard even if it was previously deleted by the user. Defaults to `false`. |
 
 **Response:**
 
@@ -144,7 +145,8 @@ registered in Home Assistant so it appears in the sidebar.
 - The bundled YAML is written to disk every time the service is called, but the
   Lovelace dashboard entry is only created once.
 - If the user deletes the dashboard via the HA UI, the service remembers that
-  choice and will not recreate it automatically.
+  choice and will not recreate it automatically — pass `force: true` to
+  override.
 - You can still edit the generated YAML manually after creation.
 
 **Examples:**
@@ -157,6 +159,14 @@ response_variable: dashboard_result
 service: hsem.create_dashboard
 data:
   dashboard_path: /config/ui_lovelace_minimalist/hsem.yaml
+response_variable: dashboard_result
+```
+
+```yaml
+# Recreate the dashboard even if it was previously deleted
+service: hsem.create_dashboard
+data:
+  force: true
 response_variable: dashboard_result
 ```
 
