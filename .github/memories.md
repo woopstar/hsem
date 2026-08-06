@@ -732,12 +732,29 @@ cover evening house load.
 
 Canonical rule: **planner inputs must reflect physical capability, not
 commanded entity state.**  Use
-``coordinator_builder._resolve_max_discharge_power_w(live)`` — during an
-active EV session it derives the max from the rated capacity via
-``get_max_discharge_power()``; otherwise it uses the live read-back (rated
-maximum or genuine user override).
+``coordinator_builder._resolve_max_discharge_power_w(live)`` — it always
+derives the max from the rated capacity via
+``get_max_discharge_power()``; the live entity read-back is only a
+degraded fallback when the rated capacity is unknown.  (Beta8 gated the
+substitution on ``any_ev_charging``, but a single EV-status flicker let
+the still-capped entity poison an off-schedule run — the substitution is
+now unconditional.)
 
-Regression tests: ``tests/test_coordinator_builder.py``.
+## EV Discharge Cap Must Never Ratchet Down (issue #592, beta8)
+
+``applier.compute_ev_discharge_cap_w()`` is the single place that computes
+the cap.  The live reading (``house_w − ev_w``) drifts below the true
+house baseline whenever the CT clamp and the EV power sensor disagree —
+and the battery's own discharge shrinks the CT reading further, so
+``min(live, history)`` ratcheted the cap 363→40 W over one night.  Rules:
+
+- live below baseline → hold the historical baseline (never ratchet down)
+- live above baseline → raise, bounded at 3× baseline (EV under-read guard)
+- no EV power sensor → minimum positive sub-window average
+- no history → trust live
+
+Regression tests: ``tests/test_coordinator_builder.py``,
+``tests/sensors/test_applier.py::TestComputeEvDischargeCapW``.
 
 ---
 

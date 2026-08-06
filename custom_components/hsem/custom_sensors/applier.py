@@ -81,6 +81,61 @@ def _fmt_live_power_w(power_w: float | None) -> str:
     return f"{int(power_w)}W"
 
 
+def compute_ev_discharge_cap_w(
+    *,
+    live_net_w: float | None,
+    ev_power_available: bool,
+    historical_w: int,
+    sub_window_ws: list[int],
+) -> int:
+    """Compute the EV discharge cap in Watts (pure function, unit-testable).
+
+    The cap limits battery discharge to the house-only load while an EV is
+    charging, so 100 % of the EV load goes to the grid.
+
+    Selection rules:
+
+    - **Live reading available** (EV power sensor present): the historical
+      baseline is the stable reference.  The live reading
+      (``house_w − ev_w``) drifts below the true house baseline whenever
+      the CT clamp and the EV power sensor disagree slightly — and because
+      the battery's own discharge reduces the CT reading, the error
+      compounds cycle over cycle.  Taking ``min(live, history)`` ratchets
+      the cap toward zero (observed in beta8: 363→289→241→…→40 W over one
+      night while the true house load stayed ~400 W).  The cap therefore
+      never drops below the historical baseline; the live reading may only
+      RAISE it (bounded at 3× baseline) when genuine extra house demand
+      appears (e.g. cooking while the EV charges).
+    - **No live reading** (boolean-only EV sensor): fall back to the
+      smallest positive sub-window average — the 1d window recalibrates
+      fastest after an upgrade or sensor configuration change.
+    - **No history at all** (fresh install): trust the live reading.
+
+    Args:
+        live_net_w: ``net_consumption_w`` from the live state (EV power
+            already subtracted), or ``None``.
+        ev_power_available: Whether at least one EV power sensor reported
+            a positive reading this cycle.
+        historical_w: House baseline in Watts from the current slot's
+            weighted average (0 when unavailable).
+        sub_window_ws: Sub-window averages (1d/3d/7d/14d/weighted)
+            converted to Watts.
+
+    Returns:
+        The discharge cap in Watts (≥ 0).
+    """
+    if live_net_w is not None and ev_power_available:
+        live_abs = max(live_net_w, 0.0)
+        if historical_w > 0:
+            return int(max(historical_w, min(live_abs, historical_w * 3)))
+        return int(live_abs)
+    best_w = 0
+    for w in sub_window_ws:
+        if w > 0 and (best_w == 0 or w < best_w):
+            best_w = w
+    return best_w
+
+
 def _should_force_export_for_ev(
     ev: Any,
     ev_cfg: Any,
@@ -358,38 +413,26 @@ async def async_apply_battery_settings(
             # provided a value.  When ev.power_w is 0/None but is_charging
             # is True (e.g. boolean-only sensor, or sensor unavailable),
             # net_consumption_w == house_w (no EV subtraction happened).
-            # In that case fall back to the minimum sub-window average.
             ev_power_available = (
                 live.ev.power_w is not None and live.ev.power_w > 1e-9
             ) or (live.ev_second.power_w is not None and live.ev_second.power_w > 1e-9)
-            if live_net_w is not None and ev_power_available:
-                live_abs = max(live_net_w, 0.0)
-                if historical_w > 0:
-                    # Take the more conservative of live and historical so a
-                    # single polluted source cannot inflate the cap.
-                    cap_w = int(min(live_abs, historical_w))
-                else:
-                    # No history yet (fresh install) — trust the live reading.
-                    cap_w = int(live_abs)
-            else:
-                # No reliable live reading or no EV power sensor.
-                # Fall back to the most conservative (smallest) of the
-                # sub-window averages.  The 1d window recalibrates
-                # fastest after an upgrade or sensor configuration change.
-                sub_windows = [
+            sub_window_ws = [
+                int(sw / slot_hours * 1000.0)
+                for sw in (
                     rec.avg_house_consumption_1d_kwh,
                     rec.avg_house_consumption_3d_kwh,
                     rec.avg_house_consumption_7d_kwh,
                     rec.avg_house_consumption_14d_kwh,
                     rec.avg_house_consumption_kwh,
-                ]
-                best_w = 0
-                for sw in sub_windows:
-                    if sw > 1e-9:
-                        w = int(sw / slot_hours * 1000.0) if slot_hours > 1e-9 else 0
-                        if best_w == 0 or (w > 0 and w < best_w):
-                            best_w = w
-                cap_w = best_w
+                )
+                if sw > 1e-9 and slot_hours > 1e-9
+            ]
+            cap_w = compute_ev_discharge_cap_w(
+                live_net_w=live_net_w,
+                ev_power_available=ev_power_available,
+                historical_w=historical_w,
+                sub_window_ws=sub_window_ws,
+            )
             cap_reason = "EV active" if hsem_planned_ev else "EV active (unplanned)"
 
             if live.huawei_batteries_max_discharge_power_w != cap_w:

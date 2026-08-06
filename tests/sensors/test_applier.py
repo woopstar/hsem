@@ -69,3 +69,91 @@ class TestParsePowerControlPct:
     def test_fractional_localized(self):
         """Localized percentage with decimal rounds correctly."""
         assert _parse_power_control_pct("Begrenzt auf 79.6 %") == 80
+
+
+# ---------------------------------------------------------------------------
+# compute_ev_discharge_cap_w — EV discharge cap selection (issue #592, beta8)
+# ---------------------------------------------------------------------------
+
+
+class TestComputeEvDischargeCapW:
+    """The cap must hold the historical baseline and never ratchet down."""
+
+    @staticmethod
+    def _cap(**kwargs):
+        from custom_components.hsem.custom_sensors.applier import (
+            compute_ev_discharge_cap_w,
+        )
+
+        return compute_ev_discharge_cap_w(**kwargs)
+
+    def test_live_below_history_holds_baseline(self):
+        """Sensor drift pulling live below the baseline must NOT lower the
+        cap (beta8 ratchet: 363→289→…→40 W over one night)."""
+        cap = self._cap(
+            live_net_w=200.0,  # drifted below the true 400 W baseline
+            ev_power_available=True,
+            historical_w=400,
+            sub_window_ws=[400],
+        )
+        assert cap == 400
+
+    def test_live_above_history_raises_cap_bounded(self):
+        """Genuine extra house demand (cooking) raises the cap, bounded at
+        3× the baseline to limit EV-sensor under-read leakage."""
+        cap = self._cap(
+            live_net_w=900.0,
+            ev_power_available=True,
+            historical_w=400,
+            sub_window_ws=[400],
+        )
+        assert cap == 900
+
+    def test_live_spike_capped_at_3x_baseline(self):
+        """A huge live spike (EV sensor severely under-reading) is bounded."""
+        cap = self._cap(
+            live_net_w=5000.0,
+            ev_power_available=True,
+            historical_w=400,
+            sub_window_ws=[400],
+        )
+        assert cap == 1200
+
+    def test_no_history_trusts_live(self):
+        cap = self._cap(
+            live_net_w=350.0,
+            ev_power_available=True,
+            historical_w=0,
+            sub_window_ws=[],
+        )
+        assert cap == 350
+
+    def test_no_ev_power_sensor_uses_min_sub_window(self):
+        """Boolean-only EV sensor: fall back to the smallest sub-window."""
+        cap = self._cap(
+            live_net_w=None,
+            ev_power_available=False,
+            historical_w=400,
+            sub_window_ws=[280, 520, 480, 400],
+        )
+        assert cap == 280
+
+    def test_negative_live_treated_as_zero(self):
+        """CT clamp < EV sensor (slight over-read) → live is negative;
+        cap still holds the historical baseline."""
+        cap = self._cap(
+            live_net_w=-150.0,
+            ev_power_available=True,
+            historical_w=400,
+            sub_window_ws=[400],
+        )
+        assert cap == 400
+
+    def test_everything_missing_returns_zero(self):
+        cap = self._cap(
+            live_net_w=None,
+            ev_power_available=False,
+            historical_w=0,
+            sub_window_ws=[],
+        )
+        assert cap == 0
