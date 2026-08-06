@@ -6,6 +6,7 @@ per-hour energy meters appear on the HSEM device page.
 
 from __future__ import annotations
 
+import inspect
 from typing import Any, override
 
 from homeassistant.components.sensor.const import SensorDeviceClass, SensorStateClass
@@ -43,6 +44,14 @@ class HSEMUtilityMeterSensor(UtilityMeterSensor, HSEMEntity):
             config_entry: The HSEM config entry (required).
             **kwargs: Keyword arguments forwarded to :class:`UtilityMeterSensor`.
         """
+        # Home Assistant core removed the `hass` parameter from
+        # UtilityMeterSensor.__init__ in 2026.8 (home-assistant/core#177603)
+        # without listing it as a breaking change, since the class is
+        # considered internal API. Only pass `hass` through when the
+        # installed HA version still accepts it, so this works on both
+        # sides of that change.
+        if "hass" not in inspect.signature(UtilityMeterSensor.__init__).parameters:
+            kwargs.pop("hass", None)
         UtilityMeterSensor.__init__(self, *args, **kwargs)
         assert config_entry is not None, (
             "config_entry is required for HSEMUtilityMeterSensor"
