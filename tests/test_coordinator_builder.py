@@ -29,11 +29,12 @@ class TestResolveMaxDischargePowerW:
         live.huawei_batteries_rated_capacity_wh = rated_wh
         return live
 
-    def test_no_ev_charging_uses_live_value(self) -> None:
-        """Without an active EV session the live read-back reflects the
-        rated maximum (or a genuine user override) and is used unchanged."""
+    def test_no_ev_charging_uses_rated_capability(self) -> None:
+        """The planner always gets the physical capability derived from the
+        rated capacity — the live entity is a commanded value, never a
+        capability (issue #592)."""
         live = self._live(ev_charging=False, max_discharge_w=321.0)
-        assert _resolve_max_discharge_power_w(live) == pytest.approx(321.0)
+        assert _resolve_max_discharge_power_w(live) == pytest.approx(5000.0)
 
     def test_ev_charging_uses_rated_capability(self) -> None:
         """During an EV session the applier caps the entity (e.g. 321 W).
@@ -43,11 +44,17 @@ class TestResolveMaxDischargePowerW:
         live = self._live(ev_charging=True, max_discharge_w=321.0)
         assert _resolve_max_discharge_power_w(live) == pytest.approx(5000.0)
 
-    def test_ev_charging_without_rated_capacity_falls_back_to_live(self) -> None:
+    def test_ev_status_flicker_does_not_leak_cap(self) -> None:
+        """A single-cycle EV boolean flicker must not let the still-capped
+        entity poison an off-schedule planner run (beta8 regression)."""
+        live = self._live(ev_charging=False, max_discharge_w=40.0)
+        assert _resolve_max_discharge_power_w(live) == pytest.approx(5000.0)
+
+    def test_missing_rated_capacity_falls_back_to_live(self) -> None:
         """Missing rated capacity → keep the live value (degraded but safe)."""
         live = self._live(ev_charging=True, max_discharge_w=321.0, rated_wh=0)
         assert _resolve_max_discharge_power_w(live) == pytest.approx(321.0)
 
-    def test_no_ev_charging_missing_live_value_returns_none(self) -> None:
-        live = self._live(ev_charging=False, max_discharge_w=0.0)
+    def test_missing_rated_capacity_and_live_value_returns_none(self) -> None:
+        live = self._live(ev_charging=False, max_discharge_w=0.0, rated_wh=0)
         assert _resolve_max_discharge_power_w(live) is None

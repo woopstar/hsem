@@ -68,26 +68,31 @@ def _resolve_max_discharge_power_w(live: LiveState) -> float | None:
     value into the planner as the horizon-wide discharge limit — the
     classic feedback loop observed in the beta7 logs where every slot was
     limited to ``discharge=0.073 kWh`` (321 W × 15 min) and the battery
-    could never cover evening house load.
+    could never cover evening house load.  Beta8 narrowed the substitution
+    to ``any_ev_charging`` cycles only, but a single EV-status flicker let
+    the capped value slip through on an off-schedule run.
 
-    When an EV is actively charging, the physical capability is derived
-    from the rated capacity instead (same formula the applier uses for the
-    uncapped write).  When no EV is charging, the live read-back is used
-    unchanged — at that point it always reflects the rated maximum (or a
-    genuine user override, which should be respected).
+    The physical capability is therefore **always** derived from the rated
+    capacity (same formula the applier uses for the uncapped write) — never
+    from the live entity read-back.  The read-back is a *commanded* value,
+    not a capability: besides the EV cap, a brief EV-status flicker (boolean
+    sensor bouncing off for one cycle) would otherwise let a still-capped
+    entity poison an off-schedule planner run (observed in beta8: one
+    irregular cycle planned the whole horizon at ``max_discharge/slot
+    =0.010`` after the EV boolean dropped out for a single poll).
 
     Args:
         live: Live state snapshot.
 
     Returns:
-        Max discharge power in Watts, or ``None`` when unavailable.
+        Max discharge power in Watts, or ``None`` when the rated capacity
+        is unavailable.
     """
-    live_w = convert_to_float(live.huawei_batteries_max_discharge_power_w)
-    if live.any_ev_charging:
-        rated_wh = convert_to_int(live.huawei_batteries_rated_capacity_wh)
-        if rated_wh is not None and rated_wh > 0:
-            return float(get_max_discharge_power(rated_wh))
-    return live_w or None
+    rated_wh = convert_to_int(live.huawei_batteries_rated_capacity_wh)
+    if rated_wh is not None and rated_wh > 0:
+        return float(get_max_discharge_power(rated_wh))
+    # Degraded fallback: no rated capacity known — use the live read-back.
+    return convert_to_float(live.huawei_batteries_max_discharge_power_w) or None
 
 
 # ---------------------------------------------------------------------------
