@@ -7,14 +7,17 @@ or from a pre-collected :class:`StateSnapshot` (snapshot).
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.models.state_snapshot import StateSnapshot
 from custom_components.hsem.utils.conversion import convert_to_float
-from custom_components.hsem.utils.datetime_utils import normalize_datetime
+from custom_components.hsem.utils.datetime_utils import (
+    normalize_datetime,
+    normalize_slot_start,
+)
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 
 from . import _resolve_cached  # noqa: F401
@@ -68,6 +71,10 @@ async def async_populate_price_and_solcast(
     # Solcast forecasts are always given as hourly totals (Wh/h), so the share
     # factor is always relative to 60 minutes regardless of price configuration.
     solcast_share = 60.0 / cfg.recommendation_interval_minutes
+    # Source-side window used to floor data-point timestamps before matching:
+    # price sources publish at the configured price cadence, Solcast hourly.
+    price_source_minutes = cfg.electricity_price_update_interval
+    solcast_source_minutes = 60
 
     # Import price — read from primary sensor (may embed forecast attributes)
     await _async_update_hourly_field(
@@ -77,6 +84,7 @@ async def async_populate_price_and_solcast(
         "import_price",
         price_share,
         cfg.solcast_pv_forecast_forecast_likelihood,
+        price_source_minutes,
     )
     # Import price — fallback to dedicated forecast sensor if configured
     if cfg.import_electricity_price_forecast_sensor:
@@ -87,6 +95,7 @@ async def async_populate_price_and_solcast(
             "import_price",
             price_share,
             cfg.solcast_pv_forecast_forecast_likelihood,
+            price_source_minutes,
         )
     # Export price — read from primary sensor
     await _async_update_hourly_field(
@@ -96,8 +105,9 @@ async def async_populate_price_and_solcast(
         "export_price",
         price_share,
         cfg.solcast_pv_forecast_forecast_likelihood,
+        price_source_minutes,
     )
-    # Export price — fallback to dedicated forecast sensor if configured
+    # Export price — fallback to dedicated forecast sensor
     if cfg.export_electricity_price_forecast_sensor:
         await _async_update_hourly_field(
             sensor,
@@ -106,6 +116,7 @@ async def async_populate_price_and_solcast(
             "export_price",
             price_share,
             cfg.solcast_pv_forecast_forecast_likelihood,
+            price_source_minutes,
         )
     # Solcast today
     await _async_update_hourly_field(
@@ -115,6 +126,7 @@ async def async_populate_price_and_solcast(
         "solcast_pv_estimate_kwh",
         solcast_share,
         cfg.solcast_pv_forecast_forecast_likelihood,
+        solcast_source_minutes,
     )
     # Solcast tomorrow
     await _async_update_hourly_field(
@@ -124,6 +136,7 @@ async def async_populate_price_and_solcast(
         "solcast_pv_estimate_kwh",
         solcast_share,
         cfg.solcast_pv_forecast_forecast_likelihood,
+        solcast_source_minutes,
     )
 
 
@@ -139,6 +152,7 @@ async def _async_update_hourly_field(
     field_name: str,
     share: float,
     solcast_likelihood_key: str,
+    source_interval_minutes: int,
 ) -> None:
     """Match sensor attribute data to recommendation slots and write one field.
 
@@ -152,6 +166,8 @@ async def _async_update_hourly_field(
     """
     if sensor_id is None:
         return
+
+    source_window = timedelta(minutes=source_interval_minutes)
 
     sensor_state = sensor.hass.states.get(sensor_id)
     if not sensor_state:
@@ -198,8 +214,13 @@ async def _async_update_hourly_field(
                     dt_key = datetime.fromisoformat(str(raw_time))
 
                 try:
-                    # Normalize to HA-local timezone, strip sub-minute precision
-                    dt_key = normalize_datetime(dt_key).replace(minute=0, second=0)
+                    # Floor the data point to the start of its enclosing source
+                    # interval (e.g. 15 min for quarter-hourly prices, 60 min for
+                    # hourly Solcast forecasts).  Flooring to the *hour* here
+                    # would collapse sub-hourly price points onto the same key
+                    # and overwrite all quarter-hour slots of the hour with the
+                    # last hourly value (issue #720).
+                    dt_key = normalize_slot_start(dt_key, source_interval_minutes)
                 except ValueError, OSError:  # noqa: TRY302
                     # Skip data points with unparseable or non-local timestamps
                     continue
@@ -226,8 +247,15 @@ async def _async_update_hourly_field(
                 value = value / share
 
                 for obj in recommendations:
-                    obj_hour = normalize_datetime(obj.start).replace(minute=0, second=0)
-                    if obj.start.date() == dt_key.date() and obj_hour == dt_key:
+                    # A data point covers every slot whose start falls inside
+                    # the source window that begins at dt_key:
+                    #   - 15-min prices + 15-min slots → one point per slot
+                    #   - hourly prices + 15-min slots → one point fans out
+                    #     to all four quarter-hour slots of the hour
+                    # Flooring dt_key to the *hour* (old behavior) collapsed
+                    # all four quarter-hour prices onto one key (issue #720).
+                    obj_start = normalize_datetime(obj.start)
+                    if dt_key <= obj_start < dt_key + source_window:
                         setattr(obj, field_name, round(value, 5))
 
 
@@ -255,6 +283,8 @@ def populate_price_and_solcast_from_snapshot(
         cfg.electricity_price_update_interval / cfg.recommendation_interval_minutes
     )
     solcast_share = 60.0 / cfg.recommendation_interval_minutes
+    price_source_minutes = cfg.electricity_price_update_interval
+    solcast_source_minutes = 60
 
     _update_hourly_field_from_attrs(
         recommendations,
@@ -262,6 +292,7 @@ def populate_price_and_solcast_from_snapshot(
         "import_price",
         price_share,
         cfg.solcast_pv_forecast_forecast_likelihood,
+        price_source_minutes,
     )
     if cfg.import_electricity_price_forecast_sensor:
         _update_hourly_field_from_attrs(
@@ -272,6 +303,7 @@ def populate_price_and_solcast_from_snapshot(
             "import_price",
             price_share,
             cfg.solcast_pv_forecast_forecast_likelihood,
+            price_source_minutes,
         )
     _update_hourly_field_from_attrs(
         recommendations,
@@ -279,6 +311,7 @@ def populate_price_and_solcast_from_snapshot(
         "export_price",
         price_share,
         cfg.solcast_pv_forecast_forecast_likelihood,
+        price_source_minutes,
     )
     if cfg.export_electricity_price_forecast_sensor:
         _update_hourly_field_from_attrs(
@@ -289,6 +322,7 @@ def populate_price_and_solcast_from_snapshot(
             "export_price",
             price_share,
             cfg.solcast_pv_forecast_forecast_likelihood,
+            price_source_minutes,
         )
     _update_hourly_field_from_attrs(
         recommendations,
@@ -296,6 +330,7 @@ def populate_price_and_solcast_from_snapshot(
         "solcast_pv_estimate_kwh",
         solcast_share,
         cfg.solcast_pv_forecast_forecast_likelihood,
+        solcast_source_minutes,
     )
     _update_hourly_field_from_attrs(
         recommendations,
@@ -303,6 +338,7 @@ def populate_price_and_solcast_from_snapshot(
         "solcast_pv_estimate_kwh",
         solcast_share,
         cfg.solcast_pv_forecast_forecast_likelihood,
+        solcast_source_minutes,
     )
 
 
@@ -312,6 +348,7 @@ def _update_hourly_field_from_attrs(
     field_name: str,
     share: float,
     solcast_likelihood_key: str,
+    source_interval_minutes: int,
 ) -> None:
     """Match pre-read sensor attribute data to recommendation slots.
 
@@ -328,6 +365,8 @@ def _update_hourly_field_from_attrs(
     """
     if attributes is None:
         return
+
+    source_window = timedelta(minutes=source_interval_minutes)
 
     data_sources: dict[str, list[dict[str, str]]] = {
         "forecast": [{"k": "hour", "v": "price"}],
@@ -369,7 +408,8 @@ def _update_hourly_field_from_attrs(
                         continue
 
                 try:
-                    dt_key = normalize_datetime(dt_key).replace(minute=0, second=0)
+                    # Same source-interval flooring as the async path (issue #720).
+                    dt_key = normalize_slot_start(dt_key, source_interval_minutes)
                 except ValueError, OSError:
                     continue
 
@@ -380,6 +420,6 @@ def _update_hourly_field_from_attrs(
                 value = value / share
 
                 for obj in recommendations:
-                    obj_hour = normalize_datetime(obj.start).replace(minute=0, second=0)
-                    if obj.start.date() == dt_key.date() and obj_hour == dt_key:
+                    obj_start = normalize_datetime(obj.start)
+                    if dt_key <= obj_start < dt_key + source_window:
                         setattr(obj, field_name, round(value, 5))

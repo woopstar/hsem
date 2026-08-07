@@ -1100,6 +1100,12 @@ Common configurations:
    per-slot `HourlyRecommendation` object.
    This gives each slot its proportional share of the price-rate value so
    slot boundaries align correctly.
+   Data-point timestamps are floored to the start of their enclosing *source*
+   interval (the EDS update interval for prices, 60 min for Solcast), never
+   to the hour: a 15-min price point covers only the slots whose start lies
+   inside that 15-min window, so quarter-hourly prices land on distinct
+   slots (issue #720).  With hourly price data and 15-min slots the single
+   hourly point fans out to all four quarter-hour slots of the hour.
 
 2. **Planner input** (`coordinator._build_planner_input`):
    When assembling `PricePoint` objects for the planner engine, each stored
@@ -1125,6 +1131,9 @@ planner always receives the original price rate regardless of configuration.
 - Changing `energi_data_service_update_interval` from 60 to 15 with the same
   price input must not change the price seen by the planner engine.
 - Negative prices must survive the full pipeline unchanged.
+- With 15-min price data and 15-min slots, each quarter-hour price must land
+  on exactly its own slot — four distinct prices within an hour must produce
+  four distinct slot prices (issue #720).
 
 ## Candidate plans
 

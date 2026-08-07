@@ -770,6 +770,29 @@ Regression tests: ``tests/test_coordinator_builder.py``,
 
 ---
 
+## Price/Solcast Slot Matching — Floor to Source Interval, Not Hour (issue #720)
+
+``hourly_data_populator/prices_solcast.py`` matches sensor data points to
+recommendation slots by timestamp.  The original code truncated both sides
+with ``.replace(minute=0, second=0)``, which collapsed all four 15-min
+price points of an hour onto one key — the last write won, and all
+quarter-hour slots showed the same (hourly) price even when EDS published
+96 distinct prices per day.
+
+Canonical rule: **floor data points to the start of their enclosing
+*source* window** (``electricity_price_update_interval`` for prices, 60 min
+for Solcast) via ``normalize_slot_start(dt, source_interval_minutes)``,
+then match a slot when its start lies inside that source window
+(``dt_key <= obj_start < dt_key + source_window``).  This preserves both
+fan-out directions:
+
+- 15-min prices + 15-min slots → each point lands on exactly one slot
+- 60-min prices + 15-min slots → the hourly point covers all four slots
+
+Regression tests: ``tests/test_15min_price_matching.py``.
+
+---
+
 ## File Organization — By Responsibility, Not By Theme
 
 AI agents naturally bucket related things together (e.g. "all planner inputs in one file").
