@@ -1267,6 +1267,30 @@ The applier must not write to hardware when:
 - required data is missing
 - config entry is unloading
 
+### EV discharge cap semantics (issue #592)
+
+When an EV is actively charging and the current recommendation is not a
+forced-discharge/export mode, the applier caps the inverter's
+`maximum_discharging_power` so the battery covers only house load while
+100 % of the EV load goes to the grid.  The cap is computed by
+`applier.compute_ev_discharge_cap_w()`:
+
+- **History available** → the cap IS the historical house baseline (the
+  current slot's weighted average).  The live `net_consumption_w` reading
+  is deliberately ignored: downward it ratchets the cap toward zero when
+  the CT clamp and the EV sensor disagree (the battery's own capped
+  discharge shrinks the CT reading further — a self-poisoning input);
+  upward it swings with ordinary house noise and drains the battery into
+  what is supposed to be a grid-served EV session.
+- **No EV power sensor** → the minimum positive sub-window average
+  (1d/3d/7d/14d/weighted).
+- **No history** (fresh install) → the live reading.
+
+**SoC guard:** when the battery's remaining usable energy is at or below
+the planner's required reserve (`current_required_battery_kwh` — energy
+needed until the next solar surplus), the cap is forced to 0 W so the
+battery is preserved for its scheduled plans.
+
 ## Invariants for tests
 
 Add tests for these invariants:

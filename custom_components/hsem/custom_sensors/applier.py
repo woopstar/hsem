@@ -96,16 +96,16 @@ def compute_ev_discharge_cap_w(
     Selection rules:
 
     - **Live reading available** (EV power sensor present): the historical
-      baseline is the stable reference.  The live reading
-      (``house_w − ev_w``) drifts below the true house baseline whenever
-      the CT clamp and the EV power sensor disagree slightly — and because
-      the battery's own discharge reduces the CT reading, the error
-      compounds cycle over cycle.  Taking ``min(live, history)`` ratchets
-      the cap toward zero (observed in beta8: 363→289→241→…→40 W over one
-      night while the true house load stayed ~400 W).  The cap therefore
-      never drops below the historical baseline; the live reading may only
-      RAISE it (bounded at 3× baseline) when genuine extra house demand
-      appears (e.g. cooking while the EV charges).
+      baseline is the stable reference — the cap **is** the baseline.  The
+      live reading (``house_w − ev_w``) must not move the cap in either
+      direction: downward it ratchets toward zero when the CT clamp and the
+      EV sensor disagree (beta8: 363→40 W staircase), and upward it swings
+      with ordinary house noise (cooking, heat pump cycles), slowly
+      draining the battery into what is supposed to be a grid-served EV
+      session (v6.2.0-beta1: 652→1968→928 W swings emptied the battery
+      before the 06:00 scheduled plan).  A short house spike covered from
+      the grid costs a few øre; an empty battery at 06:00 costs the whole
+      morning peak.
     - **No live reading** (boolean-only EV sensor): fall back to the
       smallest positive sub-window average — the 1d window recalibrates
       fastest after an upgrade or sensor configuration change.
@@ -125,10 +125,9 @@ def compute_ev_discharge_cap_w(
         The discharge cap in Watts (≥ 0).
     """
     if live_net_w is not None and ev_power_available:
-        live_abs = max(live_net_w, 0.0)
         if historical_w > 0:
-            return int(max(historical_w, min(live_abs, historical_w * 3)))
-        return int(live_abs)
+            return historical_w
+        return int(max(live_net_w, 0.0))
     best_w = 0
     for w in sub_window_ws:
         if w > 0 and (best_w == 0 or w < best_w):
@@ -434,6 +433,29 @@ async def async_apply_battery_settings(
                 sub_window_ws=sub_window_ws,
             )
             cap_reason = "EV active" if hsem_planned_ev else "EV active (unplanned)"
+
+            # SoC guard (issue #592, v6.2.0-beta1): never let the EV cap
+            # drain the battery below the energy the planner has reserved
+            # for upcoming scheduled discharge windows.  When the remaining
+            # usable energy is at or below the required reserve, force the
+            # cap to 0 — the battery is preserved for its schedule and the
+            # house load (like the EV) is served from the grid until the
+            # battery recovers above the reserve.
+            if (
+                cap_w > 0
+                and current_required_battery_kwh > 1e-9
+                and live.battery_current_capacity_kwh > 1e-9
+                and live.battery_current_capacity_kwh <= current_required_battery_kwh
+            ):
+                _LOGGER.debug(
+                    "%s — battery reserve reached (%.2f kWh left, %.2f kWh "
+                    "reserved for scheduled plans) — forcing EV discharge "
+                    "cap to 0 W to protect the schedule",
+                    cap_reason,
+                    live.battery_current_capacity_kwh,
+                    current_required_battery_kwh,
+                )
+                cap_w = 0
 
             if live.huawei_batteries_max_discharge_power_w != cap_w:
                 _de3: str = discharge_entity  # narrowed for closure

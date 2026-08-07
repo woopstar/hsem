@@ -77,7 +77,8 @@ class TestParsePowerControlPct:
 
 
 class TestComputeEvDischargeCapW:
-    """The cap must hold the historical baseline and never ratchet down."""
+    """With history present, the cap IS the historical baseline — the live
+    reading must not move it in either direction (issue #592)."""
 
     @staticmethod
     def _cap(**kwargs):
@@ -98,26 +99,27 @@ class TestComputeEvDischargeCapW:
         )
         assert cap == 400
 
-    def test_live_above_history_raises_cap_bounded(self):
-        """Genuine extra house demand (cooking) raises the cap, bounded at
-        3× the baseline to limit EV-sensor under-read leakage."""
+    def test_live_above_history_does_not_raise_cap(self):
+        """House noise (cooking, heat pump) must NOT raise the cap —
+        swinging with live demand for hours drains the battery into a
+        grid-served EV session (v6.2.0-beta1: 652→1968→928 W swings)."""
         cap = self._cap(
             live_net_w=900.0,
             ev_power_available=True,
             historical_w=400,
             sub_window_ws=[400],
         )
-        assert cap == 900
+        assert cap == 400
 
-    def test_live_spike_capped_at_3x_baseline(self):
-        """A huge live spike (EV sensor severely under-reading) is bounded."""
+    def test_live_spike_does_not_raise_cap(self):
+        """Even a huge live spike leaves the cap at the baseline."""
         cap = self._cap(
             live_net_w=5000.0,
             ev_power_available=True,
             historical_w=400,
             sub_window_ws=[400],
         )
-        assert cap == 1200
+        assert cap == 400
 
     def test_no_history_trusts_live(self):
         cap = self._cap(
