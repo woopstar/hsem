@@ -740,18 +740,30 @@ substitution on ``any_ev_charging``, but a single EV-status flicker let
 the still-capped entity poison an off-schedule run — the substitution is
 now unconditional.)
 
-## EV Discharge Cap Must Never Ratchet Down (issue #592, beta8)
+## EV Discharge Cap Is the Historical Baseline — Live Never Moves It (issue #592)
 
 ``applier.compute_ev_discharge_cap_w()`` is the single place that computes
-the cap.  The live reading (``house_w − ev_w``) drifts below the true
-house baseline whenever the CT clamp and the EV power sensor disagree —
-and the battery's own discharge shrinks the CT reading further, so
-``min(live, history)`` ratcheted the cap 363→40 W over one night.  Rules:
+the cap.  Two opposite failures proved the live reading must not move the
+cap at all when history exists:
 
-- live below baseline → hold the historical baseline (never ratchet down)
-- live above baseline → raise, bounded at 3× baseline (EV under-read guard)
+- **beta8 ratchet:** ``min(live, history)`` let CT-clamp/EV-sensor drift
+  pull the cap 363→40 W over one night (the battery's own capped
+  discharge shrinks the CT reading further — a self-poisoning input).
+- **v6.2.0-beta1 swings:** ``max(history, min(live, 3×history))`` let
+  ordinary house noise (cooking, heat pump) swing the cap 652→1968→928 W
+  for 5+ hours, draining the battery before the 06:00 scheduled plan.
+
+Rules:
+
+- history available → cap = historical baseline, live is ignored
 - no EV power sensor → minimum positive sub-window average
 - no history → trust live
+
+**SoC guard (v6.2.0-beta1):** after computing the cap, if
+``battery_current_capacity_kwh <= current_required_battery_kwh`` (the
+planner's reserve until the next solar surplus), the cap is forced to
+0 W — the battery is preserved for its schedule and the house load is
+served from the grid until the battery recovers.
 
 Regression tests: ``tests/test_coordinator_builder.py``,
 ``tests/sensors/test_applier.py::TestComputeEvDischargeCapW``.
