@@ -178,6 +178,26 @@ def build_planner_input(
         # distinction between today's hour-3 and tomorrow's hour-3 for
         # multi-day planning horizons (e.g. 48 h or 72 h).
         day_offset = (rec.start.date() - planning_midnight.date()).days
+
+        # Prices are per-slot: 15-min price data must survive to the planner
+        # as distinct quarter-hourly points (issue #720).  Consumption
+        # averages and Solcast PV are genuinely hour-granular and stay
+        # deduplicated below.
+        slot_in_day = (rec.start.hour * 60 + rec.start.minute) // int(
+            cfg.recommendation_interval_minutes
+        )
+        # Multiply by price_share to reverse the per-slot divide applied during
+        # population; the planner receives the original currency/kWh rate.
+        price_points.append(
+            PricePoint(
+                hour=h,
+                import_price=round(rec.import_price * price_share, 5),
+                export_price=round(rec.export_price * price_share, 5),
+                day_offset=day_offset,
+                slot_in_day=slot_in_day,
+            )
+        )
+
         day_hour_key = (day_offset, h)
         if day_hour_key in seen_day_hours:
             continue
@@ -190,16 +210,6 @@ def build_planner_input(
                 avg_3d=round(rec.avg_house_consumption_3d_kwh * slots_per_hour, 3),
                 avg_7d=round(rec.avg_house_consumption_7d_kwh * slots_per_hour, 3),
                 avg_14d=round(rec.avg_house_consumption_14d_kwh * slots_per_hour, 3),
-                day_offset=day_offset,
-            )
-        )
-        # Multiply by price_share to reverse the per-slot divide applied during
-        # population; the planner receives the original currency/kWh rate.
-        price_points.append(
-            PricePoint(
-                hour=h,
-                import_price=round(rec.import_price * price_share, 5),
-                export_price=round(rec.export_price * price_share, 5),
                 day_offset=day_offset,
             )
         )

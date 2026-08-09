@@ -822,6 +822,19 @@ fan-out directions:
 
 Regression tests: ``tests/test_15min_price_matching.py``.
 
+**Stage 2 — planner input collapse (same issue):** even with population
+fixed, ``coordinator_builder.build_planner_input`` deduplicated on
+``(day_offset, hour)`` and appended price points *inside* that guard, so
+only the first quarter of each hour survived (192 slots → 48 hourly
+points), and ``populate_prices`` fanned the survivor back across the hour
+via ``align_hourly_prices``.  Fix: ``PricePoint`` carries an optional
+``slot_in_day``; price points are emitted per slot (consumption averages
+and Solcast PV stay hour-deduplicated); ``populate_prices`` keys by
+``(day_offset, slot_in_day)`` with an hourly fallback when present.
+Hour-granular callers (``slot_in_day=None``) are unaffected.
+
+Regression tests: ``tests/test_quarter_hourly_planner_input.py``.
+
 ---
 
 ## Avg Sensor Must Not Store Partial-Day Samples (issue #720 follow-up)
