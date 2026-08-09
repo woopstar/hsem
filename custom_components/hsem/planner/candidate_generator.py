@@ -313,6 +313,7 @@ def generate_candidates(
             no_export=not inp.excess_export_enabled,
             main_fuse_amps=inp.main_fuse_amps,
             main_fuse_phases=inp.main_fuse_phases,
+            max_grid_export_power_kw=inp.max_grid_export_power_kw,
         )
         log_planner(
             "debug",

@@ -7,7 +7,7 @@ consumption power and solar production power.
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfElectricCurrent
+from homeassistant.const import UnitOfElectricCurrent, UnitOfPower
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.selector import selector
 
@@ -53,6 +53,20 @@ async def get_power_step_schema(
                         "max": 3,
                         "step": 2,
                         "mode": "box",
+                    }
+                }
+            ),
+            vol.Optional(
+                "hsem_max_grid_export_power_kw",
+                default=get_config_value(config_entry, "hsem_max_grid_export_power_kw"),
+            ): selector(
+                {
+                    "number": {
+                        "min": 0,
+                        "max": 100,
+                        "step": 0.1,
+                        "mode": "box",
+                        "unit_of_measurement": UnitOfPower.KILO_WATT,
                     }
                 }
             ),

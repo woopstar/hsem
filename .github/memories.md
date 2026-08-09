@@ -141,6 +141,10 @@ Index range      Variable     Meaning
 [... .. +n-1]    gi_pen[t]    Grid-import excess above fuse limit per slot (kWh)
 ```
 
+Grid export power cap (issue #726): when `max_grid_export_power_kw > 0` the
+`ge[t]` upper bound is `max_grid_export_power_kw * slot_hours` (hard bound, no
+extra variables); otherwise `ge[t]` is unbounded above.
+
 Cycle cost is counted as `α * m[t]` — **not** `α * (ec[t] + ed[t])`.
 The `m[t]` constraints are: `m[t] >= ec[t]` and `m[t] >= ed[t]`.
 

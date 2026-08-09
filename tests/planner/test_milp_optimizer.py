@@ -3120,3 +3120,198 @@ def test_milp_solar_export_with_house_load_and_replacement_price():
     assert total_charged > 1.0, (
         f"Cheap slots (2-3): expected battery charging > 1 kWh, got {total_charged:.3f}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Grid export power cap tests (issue #726)
+# ---------------------------------------------------------------------------
+
+
+def _make_export_slots(
+    hours: int = 8,
+    import_price: float = 1.0,
+    export_price: float = 0.8,
+) -> list[PlannedSlot]:
+    """Slots with PV surplus every hour so the LP wants to export."""
+    slots = []
+    for h in range(hours):
+        slots.append(
+            _make_slot(
+                hour=h,
+                import_price=import_price,
+                export_price=export_price,
+                consumption_kwh=0.3,
+                pv_kwh=3.0,  # 2.7 kWh surplus per slot
+            )
+        )
+    return slots
+
+
+@_scipy_skip()
+def test_export_cap_none_preserves_behaviour():
+    """max_grid_export_power_kw=None must be identical to omitting the param."""
+    slots = _make_export_slots()
+
+    result_none = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=9.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+        max_grid_export_power_kw=None,
+    )
+    result_default = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=9.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+    )
+
+    assert result_none is not None
+    assert result_default is not None
+    slots_none, _ = result_none
+    slots_default, _ = result_default
+    for i in range(len(slots_none)):
+        assert slots_none[i].grid_export_kwh == pytest.approx(
+            slots_default[i].grid_export_kwh
+        ), f"Slot {i}: export differs when max_grid_export_power_kw=None"
+
+
+@_scipy_skip()
+def test_export_cap_zero_preserves_behaviour():
+    """max_grid_export_power_kw=0 disables the bound (identical to None)."""
+    slots = _make_export_slots()
+
+    result_zero = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=9.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+        max_grid_export_power_kw=0.0,
+    )
+    result_default = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=9.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+    )
+
+    assert result_zero is not None
+    assert result_default is not None
+    slots_zero, _ = result_zero
+    slots_default, _ = result_default
+    for i in range(len(slots_zero)):
+        assert slots_zero[i].grid_export_kwh == pytest.approx(
+            slots_default[i].grid_export_kwh
+        ), f"Slot {i}: export differs when max_grid_export_power_kw=0"
+
+
+@_scipy_skip()
+def test_export_cap_limits_per_slot_export():
+    """Every slot's grid_export_kwh must respect the hard cap.
+
+    5 kW cap × 1 h slots = 5.0 kWh/slot.  PV surplus alone is 2.7 kWh/slot,
+    so without a battery the cap is never hit; with a fully charged battery
+    and forced-discharge-level export prices the LP would otherwise export
+    surplus + battery discharge well above 5 kWh.
+    """
+    slots = _make_export_slots()
+
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=9.0,  # full battery available for export
+        usable_kwh=9.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+        max_grid_export_power_kw=5.0,
+    )
+
+    assert result is not None
+    milp_slots, _ = result
+    for i, s in enumerate(milp_slots):
+        assert s.grid_export_kwh <= 5.0 + 1e-6, (
+            f"Slot {i}: export {s.grid_export_kwh:.3f} kWh exceeds 5 kWh cap"
+        )
+
+
+@_scipy_skip()
+def test_export_cap_no_cap_exports_more():
+    """Without the cap the plan exports more than the capped plan can."""
+    slots = _make_export_slots()
+
+    result_uncapped = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=9.0,
+        usable_kwh=9.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+    )
+    result_capped = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=9.0,
+        usable_kwh=9.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+        max_grid_export_power_kw=1.0,  # 1 kW → 1 kWh/slot (very restrictive)
+    )
+
+    assert result_uncapped is not None
+    assert result_capped is not None
+    slots_uncapped, _ = result_uncapped
+    slots_capped, _ = result_capped
+
+    total_uncapped = sum(s.grid_export_kwh for s in slots_uncapped)
+    total_capped = sum(s.grid_export_kwh for s in slots_capped)
+    assert total_capped < total_uncapped, (
+        f"Capped plan should export less ({total_capped:.3f} vs {total_uncapped:.3f})"
+    )
+    for i, s in enumerate(slots_capped):
+        assert s.grid_export_kwh <= 1.0 + 1e-6, (
+            f"Slot {i}: export {s.grid_export_kwh:.3f} kWh exceeds 1 kWh cap"
+        )
+
+
+@_scipy_skip()
+def test_export_cap_battery_export_displaces_pv_at_cap():
+    """At the cap, battery discharge for export competes with PV export.
+
+    With a cap exactly equal to the PV surplus (2.7 kWh/slot), any battery
+    discharge destined for export can only displace PV export (which is then
+    curtailed).  The LP should therefore NOT discharge the battery purely
+    for export in these slots — total export stays at the cap and the
+    battery retains its energy for the house-load slots.
+    """
+    slots = _make_export_slots(hours=4)
+
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=9.0,
+        usable_kwh=9.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+        max_grid_export_power_kw=2.7,  # exactly the PV surplus per slot
+    )
+
+    assert result is not None
+    milp_slots, _ = result
+    for i, s in enumerate(milp_slots):
+        assert s.grid_export_kwh <= 2.7 + 1e-6, (
+            f"Slot {i}: export {s.grid_export_kwh:.3f} kWh exceeds cap"
+        )
+        # Battery must not discharge to displace PV that is then curtailed —
+        # discharge beyond house load (0.3 kWh / η) gains nothing at the cap.
+        assert s.batteries_discharged_kwh <= 0.3 / 0.97 + 1e-3, (
+            f"Slot {i}: battery discharged {s.batteries_discharged_kwh:.3f} kWh "
+            "into a saturated export cap"
+        )

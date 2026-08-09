@@ -804,6 +804,37 @@ added — behaviour is identical to the pre-#567 code.
 - When battery + EV + house load would exceed the fuse, the MILP
   throttles charging to stay within the limit.
 
+### Grid export power limit (DNO/inverter export cap — issue #726)
+
+When `max_grid_export_power_kw` is provided and > 0, the MILP adds a
+**hard** per-slot bound on grid export:
+
+```
+ge[t] <= max_grid_export_power_kw * slot_hours
+```
+
+- Implemented as a variable bound on `ge[t]`, not a penalty — the cap is
+  physically enforced by the inverter/DNO, so exceeding it is never
+  required for feasibility.
+- Battery export and PV export compete for the same cap through the
+  energy-balance equality, so the optimal plan front-loads battery export
+  into low-PV slots and tapers it as PV ramps.
+- PV that cannot be exported at the cap is absorbed by the free `curt[t]`
+  curtailment variable.
+
+**When disabled** (`max_grid_export_power_kw` is `None` or 0): `ge[t]`
+remains unbounded above — behaviour is identical to the pre-#726 code.
+
+#### Invariants
+
+- When `max_grid_export_power_kw` is `None` or 0, the MILP produces
+  identical results to the pre-#726 code (backward compatible).
+- Every slot's `grid_export_kwh` is ≤ `max_grid_export_power_kw ×
+  slot_hours` (within solver tolerance) when the cap is active.
+- The battery never discharges purely to displace PV export at a saturated
+  cap (export-destined discharge gains nothing once `ge[t]` is at its
+  bound).
+
 ## Cost function
 
 The cost function returns **two distinct aggregates** for every plan

@@ -183,6 +183,10 @@ def build_sensor_config(
         get_config_value(config_entry, "hsem_main_fuse_phases")
     )
     cfg.main_fuse_phases = _main_fuse_phases if _main_fuse_phases is not None else 3
+    _max_export_kw = convert_to_float(
+        get_config_value(config_entry, "hsem_max_grid_export_power_kw")
+    )
+    cfg.max_grid_export_power_kw = _max_export_kw if _max_export_kw is not None else 0.0
 
     # Solcast
     cfg.solcast_pv_forecast_forecast_today = get_config_value(

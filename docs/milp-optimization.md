@@ -48,7 +48,7 @@ For each slot `t ∈ 0…n-1` the LP variable vector `x` contains eight decision
 | `0` | `ec[t]` | `ec_off` | Energy charged and stored in battery this slot (kWh) | `[0, max_charge_per_slot]` |
 | `n` | `ed[t]` | `ed_off` | Energy discharged from battery this slot (kWh) | `[0, max_discharge_per_slot]` |
 | `2n` | `gi[t]` | `gi_off` | Grid import this slot (kWh) | `[0, ∞)` |
-| `3n` | `ge[t]` | `ge_off` | Grid export this slot (kWh) | `[0, ∞)` |
+| `3n` | `ge[t]` | `ge_off` | Grid export this slot (kWh) | `[0, ∞)` — hard-capped to `max_grid_export_power_kw × slot_hours` when the export cap is configured (issue #726) |
 | `4n` | `pv[t]` | `pv_off` | PV surplus available in slot t (kWh) | `[pv_avail[t], pv_avail[t]]` (fixed) |
 | `5n` | `m[t]` | `m_off` | Auxiliary variable ≥ max(ec[t], ed[t]) for cycle cost (kWh) | `[0, ∞)` |
 | `6n` | `s_max_pen[t]` | `s_max_off` | SoC upper penalty — kWh by which state of charge exceeds `usable_kwh` | `[0, ∞)` |
@@ -266,6 +266,16 @@ gi[t] - \mathrm{gi\_pen}[t] \leq \frac{\mathrm{amps} \times 230 \times \mathrm{p
 $$
 
 The penalty variable `gi_pen[t]` absorbs any excess at high cost (`p_fuse`), preventing infeasibility when house base load alone exceeds the fuse rating. When `main_fuse_amps` is `None` or 0, this constraint is not added.
+
+**Grid export power cap (hard, issue #726):**
+
+For each slot $t$, when `max_grid_export_power_kw > 0`:
+
+$$
+ge[t] \leq \mathrm{max\_grid\_export\_power\_kw} \times \mathrm{slot\_hours}
+$$
+
+This is a **hard bound** on the `ge[t]` variable — unlike the fuse it needs no penalty variable because the cap is physically enforced by the inverter/DNO, so exceeding it is never required for feasibility.  Battery export and PV export compete for the same cap through the energy-balance equality, so the LP naturally front-loads battery export into low-PV slots and tapers it as PV ramps; PV that cannot be exported at the cap is handled by the free `curt[t]` variable.  When `max_grid_export_power_kw` is `None` or 0, `ge[t]` remains unbounded above (identical to previous behaviour).
 
 Where $D_v$ is the deadline slot index for EV v.
 

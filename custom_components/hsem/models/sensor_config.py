@@ -171,6 +171,10 @@ class SensorConfig:
     #: set this to 1 — using 3 on a single-phase install makes the fuse
     #: protection constraint silenty 3× too permissive.
     main_fuse_phases: int = 3
+    #: Maximum grid export power in kW (0 = disabled).  DNO/inverter export
+    #: cap for export-limited connections (issue #726).  The MILP optimizer
+    #: uses this as a hard bound on per-slot grid export energy.
+    max_grid_export_power_kw: float = 0.0
 
     # Solcast
     solcast_pv_forecast_forecast_today: str | None = None

@@ -162,6 +162,12 @@ class PlannerInput:
     #: makes the fuse constraint 3× too permissive.
     main_fuse_phases: int = 3
 
+    # --- grid export power cap (issue #726) ---
+    #: Maximum grid export power in kW (0 or None = disabled).  DNO/inverter
+    #: export cap for export-limited connections.  The MILP optimizer uses
+    #: this as a hard bound on per-slot grid export energy.
+    max_grid_export_power_kw: float | None = None
+
     # --- seasonal / mode config ---
     months_winter: list[int] = field(default_factory=lambda: [1, 2, 3, 4, 10, 11, 12])
     house_power_includes_ev: bool = True
