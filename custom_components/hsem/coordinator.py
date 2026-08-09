@@ -128,9 +128,109 @@ class _SimpleSlot:
 
     start: datetime
     end: datetime
-    estimated_net_consumption_kwh: float = 0.0
-    batteries_charged_kwh: float = 0.0
-    recommendation: str | None = None
+    estimated_net_consumption_kwh: float
+    batteries_charged_kwh: float
+    recommendation: str | None
+
+
+# ---------------------------------------------------------------------------
+# Force-charge-now override helper
+# ---------------------------------------------------------------------------
+
+
+def _apply_force_charge_now(
+    *,
+    config_entry: ConfigEntry,
+    hourly_recommendations: list[HourlyRecommendation],
+    ev_plan: EVChargingPlan | None,
+    ev_second_plan: EVChargingPlan | None,
+    now: datetime,
+) -> None:
+    """Apply the force-charge-now override to the current slot.
+
+    When the user toggles ``hsem_ev_force_charge_now`` (or the second-EV
+    equivalent), the current slot's recommendation is overridden to
+    ``ev_smart_charging`` and the calculated charger power is set to the
+    charger's maximum AC power.
+
+    Crucially, force-charge works **even when smart charging is disabled**.
+    The EV planner returns ``smart_charging_disabled`` with zero allocated
+    power in that case, so this function also flips the plan state to
+    ``charging`` so the plan sensor reflects the forced charge.
+
+    Args:
+        config_entry: The HSEM config entry (to read the force-charge switches).
+        hourly_recommendations: The list of hourly recommendations to modify.
+        ev_plan: The primary EV charging plan (may be ``None``).
+        ev_second_plan: The second EV charging plan (may be ``None``).
+        now: Current time (timezone-aware), used to locate the current slot.
+    """
+    force_primary = bool(get_config_value(config_entry, "hsem_ev_force_charge_now"))
+    force_second = bool(
+        get_config_value(config_entry, "hsem_ev_second_force_charge_now")
+    )
+    if not force_primary and not force_second:
+        return
+
+    now_slot = next(
+        (
+            r
+            for r in hourly_recommendations
+            if as_tz(r.start, now.tzinfo) <= now < as_tz(r.end, now.tzinfo)
+        ),
+        None,
+    )
+    if now_slot is None:
+        return
+
+    if force_primary:
+        now_slot.recommendation = Recommendations.EVSmartCharging.value
+        pwr_kw = float(
+            get_config_value(
+                config_entry,
+                "hsem_ev_planned_load_charger_power_kw",
+            )
+            or 0.0
+        )
+        now_slot.ev_charger_calculated_power = (
+            round(pwr_kw * 1000) if pwr_kw > 0 else 0.0
+        )
+        # Flip plan state so the sensor shows "charging" instead of
+        # "smart_charging_disabled" when the user forces a charge.
+        if ev_plan is not None and ev_plan.state == "smart_charging_disabled":
+            ev_plan.state = "charging"
+        async_log(
+            "debug",
+            "[coordinator] Force-Charge-Now: primary EV "
+            "→ overriding current slot to ev_smart_charging at %dW",
+            now_slot.ev_charger_calculated_power,
+        )
+
+    if force_second:
+        now_slot.recommendation = Recommendations.EVSmartCharging.value
+        pwr_kw = float(
+            get_config_value(
+                config_entry,
+                "hsem_ev_second_planned_load_charger_power_kw",
+            )
+            or 0.0
+        )
+        now_slot.ev_second_charger_calculated_power = (
+            round(pwr_kw * 1000) if pwr_kw > 0 else 0.0
+        )
+        # Flip plan state so the sensor shows "charging" instead of
+        # "smart_charging_disabled" when the user forces a charge.
+        if (
+            ev_second_plan is not None
+            and ev_second_plan.state == "smart_charging_disabled"
+        ):
+            ev_second_plan.state = "charging"
+        async_log(
+            "debug",
+            "[coordinator] Force-Charge-Now: second EV "
+            "→ overriding current slot to ev_smart_charging at %dW",
+            now_slot.ev_second_charger_calculated_power,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -999,69 +1099,17 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 # 8c. Force-charge-now override: when the user toggles the
                 # "EV Force Charge Now" switch, override the current slot's
                 # recommendation and calculated power to charge at max speed.
-                force_primary = bool(
-                    get_config_value(self._config_entry, "hsem_ev_force_charge_now")
+                # Force-charge works even when smart charging is disabled —
+                # the plan state is flipped to "charging" so the plan sensor
+                # reflects the forced charge instead of
+                # "smart_charging_disabled".
+                _apply_force_charge_now(
+                    config_entry=self._config_entry,
+                    hourly_recommendations=self._hourly_recommendations,
+                    ev_plan=self._ev_charging_plan,
+                    ev_second_plan=self._ev_second_charging_plan,
+                    now=now,
                 )
-                force_second = bool(
-                    get_config_value(
-                        self._config_entry, "hsem_ev_second_force_charge_now"
-                    )
-                )
-                if force_primary or force_second:
-                    now_slot = next(
-                        (
-                            r
-                            for r in self._hourly_recommendations
-                            if as_tz(r.start, now.tzinfo)
-                            <= now
-                            < as_tz(r.end, now.tzinfo)
-                        ),
-                        None,
-                    )
-                    if now_slot is not None:
-                        # Max AC power = charger_power_kw * 1000
-                        if force_primary:
-                            now_slot.recommendation = (
-                                Recommendations.EVSmartCharging.value
-                            )
-                            pwr_kw = float(
-                                get_config_value(
-                                    self._config_entry,
-                                    "hsem_ev_planned_load_charger_power_kw",
-                                )
-                                or 0.0
-                            )
-                            now_slot.ev_charger_calculated_power = (
-                                round(pwr_kw * 1000) if pwr_kw > 0 else 0.0
-                            )
-                            async_log(
-                                "debug",
-                                "[coordinator] Force-Charge-Now: primary EV "
-                                "→ overriding current slot to ev_smart_charging "
-                                "at %dW",
-                                now_slot.ev_charger_calculated_power,
-                            )
-                        if force_second:
-                            now_slot.recommendation = (
-                                Recommendations.EVSmartCharging.value
-                            )
-                            pwr_kw = float(
-                                get_config_value(
-                                    self._config_entry,
-                                    "hsem_ev_second_planned_load_charger_power_kw",
-                                )
-                                or 0.0
-                            )
-                            now_slot.ev_second_charger_calculated_power = (
-                                round(pwr_kw * 1000) if pwr_kw > 0 else 0.0
-                            )
-                            async_log(
-                                "debug",
-                                "[coordinator] Force-Charge-Now: second EV "
-                                "→ overriding current slot to ev_smart_charging "
-                                "at %dW",
-                                now_slot.ev_second_charger_calculated_power,
-                            )
 
                 # 9. Find the current time-slot recommendation.
                 self._hourly_recommendations.sort(key=lambda x: x.start)
@@ -1140,6 +1188,22 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                     slot_minutes = cfg.recommendation_interval_minutes
                     if slot_minutes > 0 and target_kw > 0:
                         target_kw = (target_kw / slot_minutes) * 60.0
+                    # Force-charge-now overrides the planner target when the
+                    # plan is disabled (smart charging off) — the OCPP charger
+                    # must still receive the max-power command.
+                    force_primary = bool(
+                        get_config_value(self._config_entry, "hsem_ev_force_charge_now")
+                    )
+                    if force_primary:
+                        pwr_kw = float(
+                            get_config_value(
+                                self._config_entry,
+                                "hsem_ev_planned_load_charger_power_kw",
+                            )
+                            or 0.0
+                        )
+                        if pwr_kw > 0:
+                            target_kw = pwr_kw
                     await ocpp_server.update_charge_target(cpid, target_kw, now=now)
                 else:
                     await ocpp_server.update_charge_target(cpid, 0.0, now=now)

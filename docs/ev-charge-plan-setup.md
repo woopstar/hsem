@@ -236,6 +236,23 @@ can be profitable or free.
 - No additional entities are required — it uses the import price sensor
   already configured for the planner.
 
+### Force Charge Now
+
+Toggling `switch.hsem_ev_force_charge_now` (or
+`switch.hsem_ev_second_force_charge_now` for the second EV) immediately
+overrides the current slot to charge the EV at its maximum configured AC
+power (`hsem_ev_planned_load_charger_power_kw`).
+
+**Force charge works even when smart charging is disabled.** When
+`switch.hsem_ev_smart_charging` is off the EV planner normally returns
+`smart_charging_disabled` with no slot allocation — but the force-charge
+switch bypasses this and issues the charge command anyway.  The plan sensor
+(`sensor.hsem_ev_optimal_charging_plan`) flips to `charging` so dashboards
+reflect the forced session.
+
+Use this for ad-hoc "charge now" scenarios (e.g. unexpected trip) without
+enabling the full smart-charging schedule.
+
 ### Session-aware EV demand
 
 When the EV is actively plugged in and drawing power, the MILP planner treats
