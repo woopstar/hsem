@@ -14,13 +14,21 @@
   "runArgs": ["--name", "hsem-devcontainer"],
   "remoteUser": "root",
   "forwardPorts": [8123],
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/hsem,type=bind,consistency=cached",
+  "workspaceFolder": "/workspaces/hsem",
   "mounts": [
     "type=bind,source=${localEnv:HOME}/.ssh,target=/root/.ssh,readonly",
     "type=bind,source=${localEnv:HOME}/.gnupg,target=/root/.gnupg",
-    "type=bind,source=${localEnv:HOME}/.gitconfig,target=/root/.gitconfig"
+    "type=bind,source=${localEnv:HOME}/.gitconfig,target=/root/.gitconfig",
+    "source=hsem-cache,target=/workspaces/hsem/.cache,type=volume"
   ],
   "containerEnv": {
     "WORKSPACE_DIR": "/workspaces/hsem",
+    "PYTHONPYCACHEPREFIX": "/workspaces/hsem/.cache/pycache",
+    "MYPY_CACHE_DIR": "/workspaces/hsem/.cache/mypy",
+    "PYTEST_CACHE_DIR": "/workspaces/hsem/.cache/pytest",
+    "RUFF_CACHE_DIR": "/workspaces/hsem/.cache/ruff",
+    "UV_CACHE_DIR": "/workspaces/hsem/.cache/uv",
     "SSH_AUTH_SOCK": "/tmp/ssh-agent.sock",
     "SSH_AGENT_PORT": "9999",
     "GPG_AGENT_PORT": "9998",
