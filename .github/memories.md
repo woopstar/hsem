@@ -770,6 +770,29 @@ Regression tests: ``tests/test_coordinator_builder.py``,
 
 ---
 
+## Consumption Blend Peer-Median Clamp (issue #592, beta2)
+
+The 1d/3d/7d/14d consumption blend has THREE layers, applied in order in
+``slot_population.weighted_avg_consumption``:
+
+1. ``clamp_window_to_peer_median`` — each window clamped to at most
+   ``max(3 × median of the other three, 0.15 kWh/h)``.  Upward-only: a
+   genuine consumption drop flows through immediately.  Catches the
+   stale-14d pollution pattern (three windows clean after a behavioural
+   change, one long window still holding pre-change nights) that the IQR
+   mask misses — with 4 points the median lands between the clusters and
+   flags BOTH ends, zeroing the clean windows too.
+2. ``detect_outliers_iqr`` weight redistribution (issue #301).
+3. 7d/14d mutual caps + reliability scaling.
+
+Never clamp the downward side — a real drop in house consumption must not
+be inflated back up.
+
+Regression tests: ``tests/sensors/test_hourly_data_populator.py::TestPeerMedianClamp``.
+
+---
+
+## File Organization — By Responsibility, Not By Theme
 ## Price/Solcast Slot Matching — Floor to Source Interval, Not Hour (issue #720)
 
 ``hourly_data_populator/prices_solcast.py`` matches sensor data points to
