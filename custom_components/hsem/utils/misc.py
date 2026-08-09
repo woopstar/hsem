@@ -102,25 +102,45 @@ def clamp_efficiency(pct: float) -> float:
 def get_max_discharge_power(usable_capacity: int) -> int:
     """Return the maximum discharge power in watts for a Huawei battery.
 
-    Supports both old (S0: 5/10/15 kWh) and new (S1: 7/14/21 kWh) series.
+    Supports both old (S0: 5 kWh modules) and new (S1: 7 kWh modules)
+    series, including two-stack combinations.
+
+    The S0 entries follow a 2.5 kW-per-module rule with a 5 kW per-stack
+    ceiling.  Two-stack totals are the sum of the per-stack limits, so
+    30000 Wh (2× 15 kWh) maps to 10 kW.  20000 Wh is ambiguous (15+5 vs
+    10+10) and uses the safe 15+5 value of 7500 W.
 
     Args:
         usable_capacity: The usable battery capacity in watt-hours.
 
     Returns:
         The maximum discharge power in watts.  Defaults to 2500 W for
-        unknown capacities.
+        unknown capacities and logs a warning, since a silent fallback
+        previously caused under-powered plans for unlisted capacities.
     """
     mapping = {
-        # Old batteries (S0)
+        # Old batteries (S0) — single stack
         5000: 2500,
         10000: 5000,
         15000: 5000,
+        # Old batteries (S0) — two stacks
+        20000: 7500,
+        25000: 10000,
+        30000: 10000,
         # New batteries (S1)
         7000: 3500,
         14000: 7000,
         21000: 10500,
     }
+    if usable_capacity not in mapping:
+        log_planner(
+            "warning",
+            "[battery] get_max_discharge_power  capacity=%d Wh not in "
+            "known table — falling back to %d W. Check that this matches "
+            "the physical discharge capability.",
+            usable_capacity,
+            2500,
+        )
     return mapping.get(usable_capacity, 2500)
 
 
