@@ -114,6 +114,36 @@ class TestTaskCancellationOnUnload:
     """Task is cancelled cleanly when the entity is unloaded."""
 
     @pytest.mark.asyncio
+    async def test_done_callback_ignores_cancelled_task(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A cancelled task must not be logged as an unhandled exception.
+
+        Regression for issue #736: ``task.exception()`` raises
+        ``asyncio.CancelledError`` when the task was cancelled.  The done
+        callback must detect this and return silently.
+        """
+        sensor = _make_sensor()
+        event = asyncio.Event()
+
+        async def _hanging_coro():
+            await event.wait()
+
+        task = asyncio.get_event_loop().create_task(_hanging_coro())
+        task.add_done_callback(sensor._on_update_task_done)
+
+        # Let the task start and block.
+        await asyncio.sleep(0)
+
+        task.cancel()
+
+        # Must not raise through the done callback.
+        await asyncio.gather(task, return_exceptions=True)
+
+        assert task.cancelled()
+        assert "Unhandled exception" not in caplog.text
+
+    @pytest.mark.asyncio
     async def test_unload_cancels_pending_task(self) -> None:
         """A pending task must be cancelled on ``async_will_remove_from_hass``."""
         sensor = _make_sensor()
