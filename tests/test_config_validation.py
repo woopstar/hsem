@@ -311,10 +311,11 @@ class TestValidateMonths:
         errors = validate_months({"hsem_months_winter": []})
         assert errors["hsem_months_winter"] == "required"
 
-    def test_all_months_in_winter_leaves_no_summer(self):
+    def test_all_months_in_winter_is_allowed(self):
+        """All 12 months as winter (TOU year-round, issue #725) must pass."""
         all_months = [str(i) for i in range(1, 13)]
         errors = validate_months({"hsem_months_winter": all_months})
-        assert errors["hsem_months_winter"] == "months_summer_empty"
+        assert errors == {}
 
     def test_invalid_month_value(self):
         errors = validate_months({"hsem_months_winter": ["0", "13"]})
@@ -738,7 +739,8 @@ class TestFlowValidatorsUseConfigValidator:
         errors = await validate_months_input(
             None, {"hsem_months_winter": [str(i) for i in range(1, 13)]}
         )
-        assert errors["hsem_months_winter"] == "months_summer_empty"
+        # All months as winter is allowed (TOU year-round, issue #725).
+        assert errors == {}
 
     @pytest.mark.asyncio
     async def test_validate_schedule_1_disabled_passes(self):

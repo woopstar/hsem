@@ -195,7 +195,12 @@ def validate_months(
 
     * The winter field is present.
     * All supplied month values are valid integers in [1, 12].
-    * At least one month is assigned to each season (winter and summer).
+    * At least one month is assigned to winter.
+
+    An empty summer set (all 12 months classified as winter) is explicitly
+    allowed — TOU year-round installs (issue #725) run Winter/Spring mode in
+    every month so an external automation layer keeps predictable working-mode
+    control.
 
     Args:
         user_input: Dict containing the month config fields.
@@ -221,11 +226,7 @@ def validate_months(
         errors[winter_field] = "months_winter_empty"
         return errors
 
-    all_months = set(range(1, 13))
-    summer_months = all_months - set(winter_months)
-    if not summer_months:
-        errors[winter_field] = "months_summer_empty"
-
+    # Note: an empty summer set (all months winter) is valid — see docstring.
     return errors
 
 

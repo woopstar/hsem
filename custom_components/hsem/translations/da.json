@@ -17,7 +17,6 @@
       "invalid_price_value": "Ugyldig prisværdi - indtast et tal.",
       "invalid_sensor": "Ugyldig input-sensor. Vælg en gyldig sensor.",
       "invalid_time_format": "Ugyldigt tidsformat - forventet HH:MM:SS.",
-      "months_summer_empty": "Mindst én måned skal forblive som sommer. Tildel færre måneder til vinter.",
       "months_winter_empty": "Vintersæsonen skal have mindst én måned.",
       "only_one_entry_allowed": "Kun én konfiguration af HSEM er tilladt.",
       "power_out_of_range": "Effektværdien er uden for det tilladte område.",
@@ -485,7 +484,6 @@
       "invalid_price_value": "Ugyldig prisværdi - indtast et tal.",
       "invalid_sensor": "Ugyldig input-sensor. Vælg en gyldig sensor.",
       "invalid_time_format": "Ugyldigt tidsformat - forventet HH:MM:SS.",
-      "months_summer_empty": "Mindst én måned skal forblive som sommer. Tildel færre måneder til vinter.",
       "months_winter_empty": "Vintersæsonen skal have mindst én måned.",
       "only_one_entry_allowed": "Kun én konfiguration af HSEM er tilladt.",
       "power_out_of_range": "Effektværdien er uden for det tilladte område.",
@@ -718,7 +716,7 @@
           "hsem_months_winter": "Months considered as Winter/Spring"
         },
         "data_description": {
-          "hsem_months_winter": "Select the months that should be considered as Winter/Spring for the seasonal working mode adjustments. You can select multiple months."
+          "hsem_months_winter": "Select the months that should be considered as Winter/Spring for the seasonal working mode adjustments. You can select multiple months. Selecting all 12 months is allowed — this keeps Winter/Spring (TOU) mode active year-round."
         },
         "description": "Configure the months that are considered as Winter/Spring. During these months, the system will prioritize charging the batteries from grid energy to ensure sufficient battery levels during periods of lower solar production. Remaining months will be considered as Summer/Autum months.",
         "title": "Winter/Spring Months"

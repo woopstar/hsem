@@ -139,12 +139,10 @@ class TestValidateMonthsInput:
         assert errors["hsem_months_winter"] == "required"
 
     async def test_validate_all_months_winter(self):
-        """Test validation fails when all months are winter (no summer)."""
+        """All months as winter (TOU year-round, issue #725) must pass."""
         user_input = {"hsem_months_winter": [str(i) for i in range(1, 13)]}
         errors = await validate_months_input(None, user_input)
-        assert "hsem_months_winter" in errors
-        # Centralized validator returns a translation key, not a human-readable string.
-        assert errors["hsem_months_winter"] == "months_summer_empty"
+        assert not errors
 
     async def test_validate_integer_months(self):
         """Test validation works with integer month values."""
