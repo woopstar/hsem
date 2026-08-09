@@ -740,6 +740,10 @@ substitution on ``any_ev_charging``, but a single EV-status flicker let
 the still-capped entity poison an off-schedule run — the substitution is
 now unconditional.)
 
+``get_max_discharge_power()`` covers single- and two-stack S0/S1
+capacities explicitly (5000–30000 Wh); unknown capacities log a warning
+and fall back to 2500 W rather than failing silently (issue #723).
+
 ## EV Discharge Cap Is the Historical Baseline — Live Never Moves It (issue #592)
 
 ``applier.compute_ev_discharge_cap_w()`` is the single place that computes
