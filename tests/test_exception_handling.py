@@ -678,9 +678,46 @@ class TestAvgSensorReadFailure:
         sensor._tracked_entity = "sensor.daily_kwh"
         sensor._measurements = {}
         sensor._average = 14
+        sensor._hour_start = 14
+        sensor._hour_end = 15
         sensor._async_cleanup_old_measurements = AsyncMock()
 
+        # 14:30 is inside the 14→15 block — not yet complete, nothing stored.
         fake_now = datetime(2024, 6, 15, 14, 30, tzinfo=UTC)
+
+        with (
+            patch(
+                "custom_components.hsem.custom_sensors.avg_sensor.dt_util.now",
+                return_value=fake_now,
+            ),
+            patch(
+                "custom_components.hsem.custom_sensors.avg_sensor"
+                ".ha_get_entity_state_and_convert",
+                return_value=7.43,
+            ),
+        ):
+            await HSEMAvgSensor._async_store_utility_meter_value(sensor)
+
+        assert sensor._measurements == {}
+
+    @pytest.mark.asyncio
+    async def test_successful_read_stores_measurement_after_block_complete(self):
+        """Once the hour block is complete the measurement is stored."""
+        from datetime import datetime
+
+        from custom_components.hsem.custom_sensors.avg_sensor import HSEMAvgSensor
+
+        sensor = MagicMock(spec=HSEMAvgSensor)
+        sensor.hass = MagicMock()
+        sensor._tracked_entity = "sensor.daily_kwh"
+        sensor._measurements = {}
+        sensor._average = 14
+        sensor._hour_start = 14
+        sensor._hour_end = 15
+        sensor._async_cleanup_old_measurements = AsyncMock()
+
+        # 15:05 is past the 14→15 block — the day's sample is final.
+        fake_now = datetime(2024, 6, 15, 15, 5, tzinfo=UTC)
 
         with (
             patch(
