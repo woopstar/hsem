@@ -283,6 +283,11 @@ def build_planner_input(
         export_min_price=convert_to_float(cfg.export_electricity_min_price) or 0.0,
         main_fuse_amps=(float(cfg.main_fuse_amps) if cfg.main_fuse_amps > 0 else None),
         main_fuse_phases=cfg.main_fuse_phases,
+        max_grid_export_power_kw=(
+            float(cfg.max_grid_export_power_kw)
+            if cfg.max_grid_export_power_kw > 0
+            else None
+        ),
         months_winter=list(cfg.months_winter or []),
         house_power_includes_ev=bool(cfg.house_power_includes_ev_charger_power),
         live_solar_production_w=convert_to_float(live.solar_production_power_w) or 0.0,

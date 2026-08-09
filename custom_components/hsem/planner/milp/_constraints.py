@@ -46,6 +46,8 @@ def _build_constraints(
     session_slots: int,
     slot_hours: float,
     _has_session_demand: bool,
+    max_grid_export_per_slot_kwh: float = 0.0,
+    export_limit_active: bool = False,
 ) -> dict:
     """Build all LP constraint matrices and variable bounds.
 
@@ -381,7 +383,10 @@ def _build_constraints(
         [(0.0, max_charge_per_slot)] * m  # ec[t]
         + [(0.0, float(ed_ub_per_slot[t])) for t in range(m)]  # ed[t]
         + [unbounded] * m  # gi[t] (unbounded above)
-        + [unbounded] * m  # ge[t] (unbounded above)
+        + [
+            ((0.0, max_grid_export_per_slot_kwh) if export_limit_active else unbounded)
+            for _t in range(m)
+        ]  # ge[t] (hard export cap when active, else unbounded above)
         + [
             (pv_avail[t], pv_avail[t]) for t in range(m)
         ]  # pv[t] fixed to actual surplus

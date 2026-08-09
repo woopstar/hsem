@@ -291,6 +291,31 @@ def fuse_max_energy_per_slot_kwh(
     return amps * GRID_PHASE_VOLTAGE * float(phases) / 1000.0 * slot_hours
 
 
+def export_max_energy_per_slot_kwh(
+    power_kw: float,
+    slot_hours: float,
+) -> float:
+    """Return the maximum grid-export energy (kWh) an export cap allows per slot.
+
+    ``energy = power_kw (kW) × slot_hours (h)``
+
+    Single source of truth for the DNO/inverter grid-export power cap
+    (issue #726).  Used by the MILP grid-export bound so the optimiser
+    never plans export above the physically enforceable site limit.
+
+    Args:
+        power_kw: Maximum grid export power in kW (0 = disabled).
+        slot_hours: Slot duration in hours (h).
+
+    Returns:
+        Maximum export energy per slot in kWh.  ``0.0`` when the cap is
+        disabled (``power_kw <= 0``).
+    """
+    if power_kw <= 0 or slot_hours <= 0:
+        return 0.0
+    return power_kw * slot_hours
+
+
 # ---------------------------------------------------------------------------
 # EV charger DC ↔ AC conversion helpers
 # ---------------------------------------------------------------------------

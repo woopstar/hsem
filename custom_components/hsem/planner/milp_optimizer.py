@@ -67,6 +67,7 @@ def solve_milp(
     no_export: bool = False,
     main_fuse_amps: float | None = None,
     main_fuse_phases: int = 3,
+    max_grid_export_power_kw: float | None = None,
 ) -> tuple[list[PlannedSlot], dict] | None:
     """Solve the LP and return a deep-copy slot list with MILP recommendations.
 
@@ -172,6 +173,11 @@ def solve_milp(
             Electrical phase count (1 or 3).  Used as the multiplier in the
             max-grid-import formula above.  Defaults to 3 (three-phase).
             Single-phase installations MUST use 1.
+        max_grid_export_power_kw:
+            DNO/inverter grid export cap in kW (issue #726).  When > 0, the
+            per-slot ``ge[t]`` is hard-bounded to
+            ``max_grid_export_power_kw * slot_hours`` kWh so the plan never
+            exceeds the site limit.  ``None`` or 0 disables the bound.
 
     Returns:
         A tuple ``(slots, diagnostics)`` where:
@@ -479,6 +485,12 @@ def solve_milp(
         gi_pen_off = 0  # unused when fuse is inactive
         max_grid_import_per_slot_kwh = 0.0
 
+    # Grid export power cap (issue #726): hard per-slot bound on ge[t].
+    from custom_components.hsem.planner.milp._export_cap import _resolve_export_cap
+
+    export_limit_active, max_grid_export_per_slot_kwh = _resolve_export_cap(
+        max_grid_export_power_kw, slots, future_idx
+    )
     # Resolve charge/discharge efficiencies for the energy balance equation.
     # The MILP must account for real-world conversion losses so its solution
     # matches the cost function's total_cost (which includes conversion loss
@@ -561,6 +573,8 @@ def solve_milp(
         SESSION_SLOTS,
         slot_hours,
         _has_session_demand,
+        max_grid_export_per_slot_kwh=max_grid_export_per_slot_kwh,
+        export_limit_active=export_limit_active,
     )
 
     A_eq = constraints["A_eq"]

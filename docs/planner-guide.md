@@ -298,6 +298,20 @@ This assumes balanced three-phase load at 230 V phase-to-neutral.  When the
 constraint is active, the MILP will throttle battery and EV charging to stay
 within the fuse limit whenever possible.
 
+### Grid export power cap (issue #726)
+
+| Field | Default | Description |
+|---|---|---|
+| `max_grid_export_power_kw` | `0` (disabled) | Maximum grid export power in kW — the DNO/inverter export cap for export-limited connections. When set, the MILP hard-bounds per-slot grid export to `max_grid_export_power_kw × slot_hours`. Set to 0 to disable. |
+
+Unlike the fuse, the export cap is a **hard** bound (`ge[t] ≤ cap × slot_hours`)
+because it is physically enforced by the inverter/DNO — exceeding it is never
+required for feasibility.  Battery export and PV export compete for the same cap
+through the energy-balance equation, so the optimal plan front-loads battery
+export into low-PV slots and tapers it as PV ramps; PV that cannot be exported
+at the cap is curtailed.  Without the cap the planner overstates export revenue
+and can schedule forced battery discharge that displaces PV export.
+
 ### EV planned load — primary EV
 
 All fields are prefixed `ev_planned_load_`.
