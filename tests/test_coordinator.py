@@ -28,6 +28,7 @@ and fast we use one of two approaches depending on what is being verified:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import inspect
 from typing import Any
 from unittest.mock import MagicMock
@@ -68,6 +69,7 @@ def _make_bare_coordinator() -> HSEMDataUpdateCoordinator:
     cfg.recommendation_interval_minutes = 60
     cfg.recommendation_interval_length = 24
     coord._cfg = cfg
+    coord._options_update_task = None
     return coord
 
 
@@ -226,6 +228,118 @@ class TestCoordinatorTeardown:
         coordinator = _make_bare_coordinator()
         # Both handles are None — no error expected
         await coordinator.async_teardown()
+
+
+# ---------------------------------------------------------------------------
+# Options-update background task
+# ---------------------------------------------------------------------------
+
+
+class TestOptionsUpdateBackgroundTask:
+    """async_options_updated must schedule the pipeline as a background task.
+
+    Regression: the config-entry update listener (fired by
+    ``async_update_entry`` from switch/number/time entities) used to await
+    the full MILP/ML pipeline inline.  The toggle itself was fast (HA fires
+    listeners as tasks), but the *effect* of a toggle was delayed because
+    each options change ran a full synchronous pipeline cycle.  The fix
+    schedules the cycle via ``hass.async_create_task`` with
+    cancel-and-reschedule semantics so repeated toggles collapse into one
+    run and the listener returns immediately.
+    """
+
+    @pytest.mark.asyncio
+    async def test_options_updated_schedules_background_task(self) -> None:
+        """async_options_updated returns immediately after scheduling a task."""
+        coordinator = _make_bare_coordinator()
+        coordinator.hass = MagicMock()
+
+        scheduled: list[asyncio.Task] = []
+
+        def _create_task(coro: Any, *, name: str) -> asyncio.Task:
+            task = asyncio.get_running_loop().create_task(coro, name=name)
+            scheduled.append(task)
+            return task
+
+        coordinator.hass.async_create_task = MagicMock(side_effect=_create_task)
+
+        # Make the pipeline cycle a no-op so the task completes quickly.
+        async def _noop_cycle(*args: Any, **kwargs: Any) -> None:
+            await asyncio.sleep(0)
+
+        coordinator._async_handle_update = _noop_cycle  # type: ignore[method-assign]  # test monkey-patch
+
+        await coordinator.async_options_updated()
+
+        # The method must have scheduled exactly one background task.
+        coordinator.hass.async_create_task.assert_called_once()  # type: ignore[union-attr]  # mock assertion
+        assert len(scheduled) == 1
+        assert scheduled[0].get_name() == "hsem_options_update"
+
+        # Let the background task finish.
+        await scheduled[0]
+
+    @pytest.mark.asyncio
+    async def test_repeated_toggle_cancels_pending_task(self) -> None:
+        """A second options update cancels the still-pending first task."""
+        coordinator = _make_bare_coordinator()
+        coordinator.hass = MagicMock()
+
+        scheduled: list[asyncio.Task] = []
+
+        def _create_task(coro: Any, *, name: str) -> asyncio.Task:
+            task = asyncio.get_running_loop().create_task(coro, name=name)
+            scheduled.append(task)
+            return task
+
+        coordinator.hass.async_create_task = MagicMock(side_effect=_create_task)
+
+        # A cycle that blocks until cancelled.
+        started = asyncio.Event()
+
+        async def _blocking_cycle(*args: Any, **kwargs: Any) -> None:
+            started.set()
+            await asyncio.sleep(60)
+
+        coordinator._async_handle_update = _blocking_cycle  # type: ignore[method-assign]  # test monkey-patch
+
+        await coordinator.async_options_updated()
+        assert len(scheduled) == 1
+        await started.wait()  # ensure the first task is actually running
+
+        await coordinator.async_options_updated()
+        assert len(scheduled) == 2
+        assert scheduled[0].cancelled() or scheduled[0].cancelling()
+
+        # Clean up: let the second task be cancelled too so we don't leak.
+        scheduled[1].cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await scheduled[1]
+
+    @pytest.mark.asyncio
+    async def test_teardown_cancels_pending_options_task(self) -> None:
+        """async_teardown must cancel a still-running options-update task."""
+        coordinator = _make_bare_coordinator()
+        coordinator.hass = MagicMock()
+
+        async def _blocking_cycle(*args: Any, **kwargs: Any) -> None:
+            await asyncio.sleep(60)
+
+        coordinator._async_handle_update = _blocking_cycle  # type: ignore[method-assign]  # test monkey-patch
+        coordinator.hass.async_create_task = MagicMock(  # type: ignore[method-assign]  # test monkey-patch
+            side_effect=lambda coro, *, name: asyncio.get_running_loop().create_task(
+                coro, name=name
+            )
+        )
+
+        await coordinator.async_options_updated()
+        task = coordinator._options_update_task
+        assert task is not None and not task.done()
+
+        await coordinator.async_teardown()
+
+        assert task.cancelling() or task.cancelled() or task.done()
+        assert coordinator._options_update_task is None
 
 
 # ---------------------------------------------------------------------------
