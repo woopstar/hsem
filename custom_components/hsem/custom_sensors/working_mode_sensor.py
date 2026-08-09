@@ -340,7 +340,13 @@ class HSEMWorkingModeSensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
         Registered as a ``done_callback`` on ``_update_task`` so that
         uncaught exceptions inside ``_async_on_coordinator_update()`` are
         recorded without breaking the task lifecycle.
+
+        Cancelled tasks are ignored because cancellation is expected when a
+        newer coordinator push arrives or the entity is unloaded.
         """
+        if task.cancelled():
+            return
+
         exc = task.exception()
         if exc is not None:
             _LOGGER.error("Unhandled exception in working-mode update task: %s", exc)
