@@ -17,7 +17,6 @@
       "invalid_price_value": "Invalid price value — please enter a number.",
       "invalid_sensor": "Invalid input sensor. Please choose a valid sensor.",
       "invalid_time_format": "Invalid time format — expected HH:MM:SS.",
-      "months_summer_empty": "At least one month must remain in summer. Assign fewer months to winter.",
       "months_winter_empty": "Winter season must have at least one month.",
       "only_one_entry_allowed": "Only one configuration of HSEM is allowed.",
       "power_out_of_range": "Power value is outside the allowed range.",
@@ -338,7 +337,7 @@
           "hsem_months_winter": "Months considered as Winter/Spring"
         },
         "data_description": {
-          "hsem_months_winter": "Select the months that should be considered as Winter/Spring for the seasonal working mode adjustments. You can select multiple months."
+          "hsem_months_winter": "Select the months that should be considered as Winter/Spring for the seasonal working mode adjustments. You can select multiple months. Selecting all 12 months is allowed — this keeps Winter/Spring (TOU) mode active year-round. Selecting all 12 months is allowed — this keeps Winter/Spring (TOU) mode active year-round."
         },
         "description": "Configure the months that are considered as Winter/Spring. During these months, the system will prioritize charging the batteries from grid energy to ensure sufficient battery levels during periods of lower solar production. Remaining months will be considered as Summer/Autum months.",
         "title": "Winter/Spring Months"
@@ -491,7 +490,6 @@
       "invalid_price_value": "Invalid price value — please enter a number.",
       "invalid_sensor": "Invalid input sensor. Please choose a valid sensor.",
       "invalid_time_format": "Invalid time format — expected HH:MM:SS.",
-      "months_summer_empty": "At least one month must remain in summer. Assign fewer months to winter.",
       "months_winter_empty": "Winter season must have at least one month.",
       "only_one_entry_allowed": "Only one configuration of HSEM is allowed.",
       "power_out_of_range": "Power value is outside the allowed range.",
@@ -812,7 +810,7 @@
           "hsem_months_winter": "Months considered as Winter/Spring"
         },
         "data_description": {
-          "hsem_months_winter": "Select the months that should be considered as Winter/Spring for the seasonal working mode adjustments. You can select multiple months."
+          "hsem_months_winter": "Select the months that should be considered as Winter/Spring for the seasonal working mode adjustments. You can select multiple months. Selecting all 12 months is allowed — this keeps Winter/Spring (TOU) mode active year-round. Selecting all 12 months is allowed — this keeps Winter/Spring (TOU) mode active year-round."
         },
         "description": "Configure the months that are considered as Winter/Spring. During these months, the system will prioritize charging the batteries from grid energy to ensure sufficient battery levels during periods of lower solar production. Remaining months will be considered as Summer/Autum months.",
         "title": "Winter/Spring Months"
