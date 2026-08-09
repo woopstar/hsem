@@ -476,6 +476,12 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         # gate can skip re-fitting when no new history has arrived.
         self._ml_predictor: ConsumptionPredictor | None = None
 
+        # Background task handle for option-change-triggered pipeline runs.
+        # Tracked so repeated toggles cancel the pending run and so teardown
+        # can cancel a still-running task (issue: switch toggles felt frozen
+        # because the update listener awaited the full MILP/ML pipeline).
+        self._options_update_task: asyncio.Task | None = None
+
     # ------------------------------------------------------------------
     # HA lifecycle
     # ------------------------------------------------------------------
@@ -554,9 +560,48 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             await ocpp.stop()
             self._ocpp_server = None
 
+        # Cancel any pending options-update background task.
+        task = getattr(self, "_options_update_task", None)
+        if task is not None and not task.done():
+            task.cancel()
+            self._options_update_task = None
+
     async def async_options_updated(self) -> None:
-        """Re-run the pipeline when the user saves new options."""
-        await self._async_handle_update(None)
+        """Schedule a pipeline re-run after an options change.
+
+        Runs the update cycle as a **background task** so the caller (the
+        config-entry update listener, triggered synchronously by
+        ``async_update_entry`` from switch/number/time entities) returns
+        immediately.  Without this, toggling a switch would block the HA
+        service call until the entire read → plan (MILP/ML) → apply
+        pipeline finished — making the UI feel frozen.
+
+        Repeated toggles cancel any still-pending run and reschedule, so
+        the pipeline always reflects the latest option state.  The
+        ``_update_lock`` in ``_async_handle_update`` additionally dedupes
+        against any concurrently running scheduled cycle.
+        """
+        if (
+            self._options_update_task is not None
+            and not self._options_update_task.done()
+        ):
+            self._options_update_task.cancel()
+        self._options_update_task = self.hass.async_create_task(
+            self._async_options_update_background(),
+            name="hsem_options_update",
+        )
+
+    async def _async_options_update_background(self) -> None:
+        """Background wrapper: run the update cycle, swallowing cancellation."""
+        try:
+            await self._async_handle_update(None)
+        except asyncio.CancelledError:
+            # Superseded by a newer options update — not an error.
+            async_log(
+                "debug",
+                "[coordinator] options-update task cancelled — superseded by a "
+                "newer options change.",
+            )
 
     # ------------------------------------------------------------------
     # Internal update pipeline
