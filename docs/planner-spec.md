@@ -1724,6 +1724,19 @@ The EV planner (`planner/ev_planner.py`) MUST satisfy these invariants:
     The fields are purely planner outputs — the applier must read them to
     throttle the go-e charger; the planner does not control hardware directly.
 
+13. **Slot-stable EV charger power (issue #738)**: Once the current slot has
+    started, its per-EV `ev_charger_calculated_power` values must remain
+    constant for the remainder of the slot. Replanning inside the same slot
+    (triggered, for example, by the EV charging state toggling) must not
+    recompute the current slot's charger power from freshly injected live
+    PV/consumption data, because that makes the charger command oscillate.
+
+    The coordinator freezes the values computed at slot start and restores
+    them to the current slot on every subsequent replan. Explicit runtime
+    overrides — force-charge-now and auto-full-EV on negative price — are
+    still allowed to replace the frozen value for as long as they are active;
+    when the override ends, the frozen slot-start value is restored.
+
 ### Invariants for tests
 
 - When `ev_planned_load_enabled = False`, all `ev_planned_load_kwh == 0.0`.

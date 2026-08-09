@@ -879,3 +879,28 @@ Do **not** create files like `planner_inputs.py` (6 unrelated dataclasses) or
 **Why**: Smaller, focused files give AI agents exactly the context they need.
 Thematic bucketing loads irrelevant code into every prompt, reducing precision
 and causing edit collisions between unrelated classes.
+
+## EV Charger Power Must Be Slot-Stable (issue #738)
+
+`ev_charger_calculated_power` and `ev_second_charger_calculated_power` are HSEM's
+*command* to the EV charger. They must remain **constant for the entire current
+15-minute slot** once computed at slot start.
+
+The EV planner recomputes these fields whenever the planner reruns, and the
+recomputation uses live-injected PV and house-consumption data for the current
+slot. Without freezing, a Go-E or similar charger that uses the field as a
+power setpoint sees the target jump whenever:
+
+- a cloud changes the live PV reading,
+- the charger itself toggles on/off (changing `is_charging`), or
+- any other replan trigger fires inside the slot.
+
+The coordinator freezes the slot-start values in
+`_freeze_ev_charger_power_for_current_slot` and restores them to the current
+slot on every replan. Explicit overrides (force-charge-now, auto-full-EV on
+negative price) are applied **after** the freeze, so they can still change the
+current slot while active; when they end, the frozen value is restored.
+
+This is a runtime stability rule, not a planner algorithm change. The planner
+still sees live data for battery/SoC decisions; only the per-EV charger power
+command is held constant.

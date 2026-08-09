@@ -53,6 +53,10 @@ def _make_bare_coordinator():
     coord._plan_explanation = MagicMock()
     coord._data_quality = MagicMock()
     coord.logger = logging.getLogger("test")
+    # Issue #738: per-slot EV charger power freeze state.
+    coord._current_slot_start = None
+    coord._current_slot_ev_power_w = 0.0
+    coord._current_slot_ev_second_power_w = 0.0
     return coord
 
 
@@ -883,3 +887,114 @@ class TestSlotKeyEdgeCases:
 
         for _ in range(5):
             assert slot_key(t, 60) == expected
+
+
+# ===========================================================================
+# Test 9: EV charger power is frozen for the current slot (issue #738)
+# ===========================================================================
+
+
+class TestEvChargerPowerSlotFreeze:
+    """Per-EV charger power must remain stable across replans inside one slot."""
+
+    def _make_output(
+        self, start: datetime, end: datetime, primary: float, second: float
+    ) -> PlannerOutput:
+        """Build a PlannerOutput with a single slot carrying the given power fields."""
+        slot = _make_planned_slot(
+            start,
+            end,
+            ev_charger_calculated_power=primary,
+            ev_second_charger_calculated_power=second,
+        )
+        return PlannerOutput(slots=[slot])
+
+    def test_first_call_captures_baseline(self):
+        """On the first call for a slot the coordinator stores the planned power."""
+        midnight = datetime(2026, 5, 14, 0, 0, 0, tzinfo=_FIXED_LOCAL_TZ)
+        t_start = midnight + timedelta(hours=10)
+        t_end = t_start + timedelta(hours=1)
+        now = t_start + timedelta(minutes=3)
+
+        coord = _make_bare_coordinator()
+        output = self._make_output(t_start, t_end, primary=3500.0, second=0.0)
+
+        coord._freeze_ev_charger_power_for_current_slot(output, now)
+
+        assert coord._current_slot_start == t_start
+        assert coord._current_slot_ev_power_w == pytest.approx(3500.0, abs=1e-9)
+        assert coord._current_slot_ev_second_power_w == pytest.approx(0.0, abs=1e-9)
+        assert output.slots[0].ev_charger_calculated_power == pytest.approx(
+            3500.0, abs=1e-9
+        )
+
+    def test_replan_inside_same_slot_restores_frozen_power(self):
+        """A replan inside the same slot must not change the power command."""
+        midnight = datetime(2026, 5, 14, 0, 0, 0, tzinfo=_FIXED_LOCAL_TZ)
+        t_start = midnight + timedelta(hours=10)
+        t_end = t_start + timedelta(hours=1)
+        now1 = t_start + timedelta(minutes=3)
+        now2 = t_start + timedelta(minutes=8)
+
+        coord = _make_bare_coordinator()
+        output1 = self._make_output(t_start, t_end, primary=3500.0, second=2200.0)
+        coord._freeze_ev_charger_power_for_current_slot(output1, now1)
+
+        # Simulate a replan that would have recomputed higher power because
+        # less time remains in the slot.
+        output2 = self._make_output(t_start, t_end, primary=7000.0, second=4400.0)
+        coord._freeze_ev_charger_power_for_current_slot(output2, now2)
+
+        assert output2.slots[0].ev_charger_calculated_power == pytest.approx(
+            3500.0, abs=1e-9
+        )
+        assert output2.slots[0].ev_second_charger_calculated_power == pytest.approx(
+            2200.0, abs=1e-9
+        )
+        assert coord._current_slot_ev_power_w == pytest.approx(3500.0, abs=1e-9)
+        assert coord._current_slot_ev_second_power_w == pytest.approx(2200.0, abs=1e-9)
+
+    def test_slot_boundary_resets_frozen_baseline(self):
+        """When the next slot starts the freeze captures the new planned power."""
+        midnight = datetime(2026, 5, 14, 0, 0, 0, tzinfo=_FIXED_LOCAL_TZ)
+        slot1_start = midnight + timedelta(hours=10)
+        slot1_end = slot1_start + timedelta(hours=1)
+        slot2_start = slot1_end
+        slot2_end = slot2_start + timedelta(hours=1)
+
+        coord = _make_bare_coordinator()
+        output1 = self._make_output(slot1_start, slot1_end, primary=3500.0, second=0.0)
+        coord._freeze_ev_charger_power_for_current_slot(
+            output1, slot1_start + timedelta(minutes=3)
+        )
+
+        output2 = self._make_output(slot2_start, slot2_end, primary=11000.0, second=0.0)
+        coord._freeze_ev_charger_power_for_current_slot(
+            output2, slot2_start + timedelta(minutes=2)
+        )
+
+        assert coord._current_slot_start == slot2_start
+        assert coord._current_slot_ev_power_w == pytest.approx(11000.0, abs=1e-9)
+        assert output2.slots[0].ev_charger_calculated_power == pytest.approx(
+            11000.0, abs=1e-9
+        )
+
+    def test_no_current_slot_does_not_change_state(self):
+        """If ``now`` is outside all slots the freeze state is untouched."""
+        midnight = datetime(2026, 5, 14, 0, 0, 0, tzinfo=_FIXED_LOCAL_TZ)
+        t_start = midnight + timedelta(hours=10)
+        t_end = t_start + timedelta(hours=1)
+        now = t_start + timedelta(hours=3)  # well outside the slot
+
+        coord = _make_bare_coordinator()
+        coord._current_slot_start = t_start
+        coord._current_slot_ev_power_w = 3500.0
+        output = self._make_output(t_start, t_end, primary=9999.0, second=0.0)
+
+        coord._freeze_ev_charger_power_for_current_slot(output, now)
+
+        assert coord._current_slot_start == t_start
+        assert coord._current_slot_ev_power_w == pytest.approx(3500.0, abs=1e-9)
+        assert output.slots[0].ev_charger_calculated_power == pytest.approx(
+            9999.0, abs=1e-9
+        )

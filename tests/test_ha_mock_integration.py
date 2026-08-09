@@ -226,6 +226,10 @@ def make_bare_coordinator(
     coord._live = None
     coord._snapshot = None
     coord._net_consumption_ema = None
+    # Issue #738: per-slot EV charger power freeze state.
+    coord._current_slot_start = None
+    coord._current_slot_ev_power_w = 0.0
+    coord._current_slot_ev_second_power_w = 0.0
 
     from custom_components.hsem.models.data_quality import DataQuality
     from custom_components.hsem.models.plan_explanation import PlanExplanation
