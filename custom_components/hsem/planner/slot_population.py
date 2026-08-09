@@ -537,6 +537,58 @@ def usable_capacity(
 # ---------------------------------------------------------------------------
 
 
+# A single window may pull the blend at most this far above/below the
+# median of the other three windows (issue #592).  Prevents one stale or
+# polluted window (e.g. a 14d average still holding pre-fix EV-charging
+# nights) from dominating when the other three windows agree.
+WINDOW_PEER_CLAMP_FACTOR: float = 3.0
+# Absolute floor for the peer band so a near-zero house baseline (night
+# slots) still allows the clamp to bite — a pure ratio band is degenerate
+# when the peers sit at ~0.03 kWh.
+WINDOW_PEER_CLAMP_FLOOR_KWH: float = 0.15
+
+
+def clamp_window_to_peer_median(
+    values: list[float],
+    *,
+    factor: float = WINDOW_PEER_CLAMP_FACTOR,
+    floor: float = WINDOW_PEER_CLAMP_FLOOR_KWH,
+) -> list[float]:
+    """Clamp each window into a sanity band around the median of its peers.
+
+    For each value, the allowed band is ``[0, max(median_others × factor,
+    floor)]`` — an absolute *floor* keeps the band meaningful when the
+    peers are near zero (e.g. night slots at ~0.03 kWh).
+
+    Only the upward side is clamped: a window reading *below* its peers is
+    never inflated — a genuine drop in consumption must flow through
+    immediately, while a stale/polluted window can only ever overstate.
+    This catches the classic pollution pattern — three windows agreeing
+    low, one stale window 10–100× higher — without punishing legitimate
+    gradual trends (where all four windows move together).
+
+    Args:
+        values: The 4 window values (1d, 3d, 7d, 14d), kWh/hour.
+        factor: Ratio band half-width.  Default 3.0.
+        floor: Absolute minimum band width (kWh/hour).  Default 0.15.
+
+    Returns:
+        New list with each value clamped into its peer band.
+    """
+    n = len(values)
+    if n < 2:
+        return list(values)
+    out: list[float] = []
+    for i, v in enumerate(values):
+        others = [values[j] for j in range(n) if j != i]
+        srt = sorted(others)
+        m = len(srt)
+        median = srt[m // 2] if m % 2 == 1 else (srt[m // 2 - 1] + srt[m // 2]) / 2.0
+        hi = max(median * factor, floor)
+        out.append(min(v, hi))
+    return out
+
+
 def detect_outliers_iqr(
     values: list[float],
     multiplier: float = IQR_OUTLIER_MULTIPLIER,
@@ -630,6 +682,14 @@ def weighted_avg_consumption(
     # extreme spikes are detected even when capping would hide them.
     raw = [value_1d, value_3d, value_7d, value_14d]
     outlier_mask = detect_outliers_iqr(raw)
+
+    # Peer-median clamp (issue #592): no single window may exceed
+    # max(3× peer median, 0.15 kWh).  This catches the stale-14d pollution
+    # pattern (three windows agreeing low after a behavioural change, one
+    # long window still holding pre-change nights) that the IQR mask
+    # misses — with 4 points the median lands between the clusters and
+    # flags BOTH ends, zeroing the clean recent windows too.
+    value_1d, value_3d, value_7d, value_14d = clamp_window_to_peer_median(raw)
 
     # Mild capping between 7d and 14d
     value_7d_eff = max(CAP7_DOWN * value_14d, min(value_7d, CAP7_UP * value_14d))

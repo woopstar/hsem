@@ -185,6 +185,16 @@ Before this weighted average, the weights undergo three transformations:
 2. **Spike detection and redistribution** — suppress sudden jumps
 3. **Reliability weighting** — down-weight windows that disagree
 
+And the raw window values first pass through one clamp:
+
+0. **Peer-median clamp** (issue #592) — no window may exceed
+   `max(3 × median of the other three windows, 0.15 kWh/h)`.  This catches
+   the pattern the IQR mask structurally misses: with only four points,
+   three windows agreeing low and one stale window 10–100× higher puts the
+   median *between* the clusters, flagging both ends and zeroing the clean
+   recent windows too.  Only the upward side is clamped — a genuine
+   consumption drop flows through immediately.
+
 ---
 
 ## IQR outlier detection (issue #301)

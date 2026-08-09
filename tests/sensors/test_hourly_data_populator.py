@@ -400,3 +400,54 @@ class TestSnapshotPopulation:
             assert r1.solcast_pv_estimate_kwh == pytest.approx(
                 r2.solcast_pv_estimate_kwh
             ), f"Hour {i}: solcast_pv_estimate_kwh differs between runs"
+
+
+class TestPeerMedianClamp:
+    """Peer-median clamp: no single window may dominate when the other
+    three agree (issue #592 — stale 14d pollution after a behavioural
+    change)."""
+
+    def test_stale_14d_clamped_toward_clean_peers(self):
+        """Extati's 02:00-03:00 slot: 1d/3d/7d clean (~0.02), 14d polluted
+        at 2.14.  The clamped blend must land near the clean windows, not
+        the raw blend of 1.72."""
+        result, _ = _compute_weighted_average(0.01, 0.02, 0.03, 2.14, 25, 30, 30, 15)
+        assert result == pytest.approx(0.12, abs=0.05)
+
+    def test_stale_14d_moderate_pollution(self):
+        """01:00-02:00 slot: 14d at 1.75 vs clean ~0.1 peers."""
+        result, _ = _compute_weighted_average(0.07, 0.07, 0.15, 1.75, 25, 30, 30, 15)
+        assert result < 0.30  # raw blend was 1.49
+
+    def test_clean_windows_untouched(self):
+        """All four windows in agreement → no clamping, blend unchanged."""
+        result, mask = _compute_weighted_average(0.37, 0.38, 0.39, 0.45, 25, 30, 30, 15)
+        assert result == pytest.approx(0.386, abs=0.02)
+        assert mask == [False, False, False, False]
+
+    def test_gradual_trend_not_clamped_to_zero(self):
+        """A genuine rising trend (heat pump season) where all windows
+        move together must pass through — the clamp only bites on
+        disagreement."""
+        result, _ = _compute_weighted_average(2.0, 1.9, 1.8, 1.7, 25, 30, 30, 15)
+        assert 1.7 <= result <= 2.0
+
+    def test_low_window_never_inflated_upward(self):
+        """A window reading BELOW its peers is kept as-is — only the
+        upward side is clamped (a genuine consumption drop must flow
+        through immediately)."""
+        from custom_components.hsem.planner.slot_population import (
+            clamp_window_to_peer_median,
+        )
+
+        out = clamp_window_to_peer_median([0.01, 0.9, 1.0, 1.1])
+        assert out[0] == pytest.approx(0.01)  # low 1d preserved
+
+    def test_near_zero_peers_use_absolute_floor(self):
+        """With peers at ~0, the band floor (0.15 kWh) still allows clamping."""
+        from custom_components.hsem.planner.slot_population import (
+            clamp_window_to_peer_median,
+        )
+
+        out = clamp_window_to_peer_median([0.01, 0.01, 0.01, 2.0])
+        assert out[3] == pytest.approx(0.15)  # clamped to the floor

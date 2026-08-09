@@ -1429,8 +1429,13 @@ for regular households but may under- or over-predict when:
 - Spike days (e.g. a party) pull the average up permanently.
 
 The IQR median-ratio outlier detection algorithm flags anomalous windows, and
-the ML mode (ridge regression with day-of-week, seasonality, and outdoor
-temperature) addresses several of these limitations.  See
+a **peer-median clamp** (issue #592) bounds each window to at most
+`max(3× the median of the other three windows, 0.15 kWh/h)` — so a single
+stale window (e.g. a 14d average still holding pre-change EV-charging
+nights) cannot dominate the blend when the other three windows agree.
+Only the upward side is clamped: a genuine consumption drop flows through
+immediately.  The ML mode (ridge regression with day-of-week, seasonality,
+and outdoor temperature) addresses several of these limitations.  See
 `docs/consumption-prediction.md`.
 
 ### Prices are assumed known for the full horizon
