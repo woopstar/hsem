@@ -228,9 +228,23 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
         self.async_write_ha_state()
 
     async def _async_store_utility_meter_value(self) -> None:
-        """Store the utility meter's value for the current day after the hour is over."""
+        """Store the utility meter's value for the current day after the hour is over.
+
+        The tracked utility meter resets daily at ``hour_start`` and
+        accumulates energy only during the ``hour_start`` → ``hour_end``
+        block (the power sensor reports ``unknown`` outside that window, so
+        the integral pauses).  Sampling the meter before ``hour_end``
+        records a **partial** day as if it were complete, which inflates
+        the rolling average once enough partial days accumulate (issue #720
+        follow-up: a 14 kWh reading taken at 05:45 was averaged as a full
+        day, producing ~4.7 kWh/h forecasts for a ~260 W house).
+
+        The sample is therefore only persisted once the day's hour block is
+        complete, i.e. when ``now.hour >= hour_end``.  For overnight blocks
+        (``hour_end < hour_start``, e.g. 23→00) the block closes at
+        midnight, so any time after the block started counts as complete.
+        """
         now = dt_util.now()
-        current_date = now.date()
 
         try:
             utility_meter_value = ha_get_entity_state_and_convert(
@@ -250,9 +264,30 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
             self._measurements = {}
 
         if utility_meter_value is not None:
-            self._measurements[current_date.isoformat()] = round(
-                float(utility_meter_value), 2
-            )
+            # The block runs hour_start → hour_end (hour_end = hour_start+1,
+            # wrapping to 0 for the 23→00 block).  It is complete once the
+            # current hour reaches hour_end.  For the overnight 23→00 block
+            # (hour_end == 0) the block closes at midnight, so any hour
+            # except 23 itself counts as complete.
+            if self._hour_end > self._hour_start:
+                block_complete = now.hour >= self._hour_end
+                measurement_date = now.date()
+            else:
+                # Overnight block (23→00): complete after midnight, i.e.
+                # whenever the current hour is not the block's start hour.
+                block_complete = now.hour != self._hour_start
+                # After midnight the meter still holds energy produced on the
+                # previous date — attribute the measurement to that date.
+                measurement_date = (
+                    now.date()
+                    if now.hour >= self._hour_start
+                    else (now - timedelta(days=1)).date()
+                )
+
+            if block_complete:
+                self._measurements[measurement_date.isoformat()] = round(
+                    float(utility_meter_value), 2
+                )
 
         if self._measurements is not None and len(self._measurements) > self._average:
             await self._async_cleanup_old_measurements()

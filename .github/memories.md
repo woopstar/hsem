@@ -816,6 +816,27 @@ Regression tests: ``tests/test_15min_price_matching.py``.
 
 ---
 
+## Avg Sensor Must Not Store Partial-Day Samples (issue #720 follow-up)
+
+``HSEMAvgSensor._async_store_utility_meter_value`` samples the daily
+utility meter every 5 minutes.  The meter resets at ``hour_start`` and
+accumulates energy only during the ``hour_start`` → ``hour_end`` block
+(the power sensor reports ``unknown`` outside that window).  The original
+code stored every sample under the current date, so a mid-day reading
+recorded a **partial** day as if it were complete.  For a new energy
+sensor with limited history, partial days fill the rolling window and
+inflate the forecast (reporter: 14.267 kWh sampled at 05:45 → ~4.7 kWh/h
+forecast for a ~260 W house).
+
+Canonical rule: **only persist the day's sample once the hour block is
+complete** — ``now.hour >= hour_end`` for normal blocks; for the
+overnight 23→00 block (``hour_end == 0``) any hour except 23 counts, and
+post-midnight samples are attributed to the previous date.
+
+Regression tests: ``tests/test_avg_sensor_partial_day.py``.
+
+---
+
 ## File Organization — By Responsibility, Not By Theme
 
 AI agents naturally bucket related things together (e.g. "all planner inputs in one file").
