@@ -480,11 +480,27 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
             if not errors:
                 self._user_input.update(user_input)
 
+                # Preserve entity-managed options that the options-flow schemas
+                # do not collect — switches (force-charge-now, smart charging,
+                # read-only, verbose logging, battery schedules, …), numbers
+                # (target SoC, charge-rate overrides), times (deadlines), and
+                # selector values (solcast likelihood).  Without this merge,
+                # ``async_create_entry`` would rewrite the options dict with
+                # only the schema fields, silently resetting every switch to
+                # its default (issue: force-charge switch turns itself off
+                # after saving the options flow).
+                preserved = {
+                    k: v
+                    for k, v in self._config_entry.options.items()
+                    if k not in self._user_input
+                }
+                merged = {**preserved, **self._user_input}
+
                 self.update_config_entry_data()
 
                 return self.async_create_entry(
-                    title=self._user_input.get("device_name", NAME),
-                    data=self._user_input,
+                    title=merged.get("device_name", NAME),
+                    data=merged,
                 )
 
         data_schema = await get_energy_and_ml_step_schema(self._config_entry)

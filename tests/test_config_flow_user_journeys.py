@@ -233,6 +233,106 @@ class TestReconfigureOptionsFlow:
         assert flow._user_input["device_name"] == "Fresh Config"
 
 
+class TestOptionsFlowPreservesEntityManagedOptions:
+    """Regression: saving the options flow must not reset entity-managed options.
+
+    Switches (force-charge-now, smart charging, read-only, …), numbers
+    (target SoC), times (deadline), and learned charge rates are persisted
+    by their entities directly into ``config_entry.options`` and are NOT
+    collected by any options-flow schema.  When the options flow finishes
+    with ``async_create_entry(data=self._user_input)``, HA replaces the
+    entire options dict — dropping those keys and resetting the switches
+    to their defaults (False).  The fix merges existing options that the
+    flow did not touch into the final data payload.
+    """
+
+    @pytest.mark.asyncio
+    async def test_force_charge_switch_survives_options_save(self) -> None:
+        """hsem_ev_force_charge_now=True must survive an options-flow save."""
+        from custom_components.hsem.options_flow import HSEMOptionsFlow
+
+        config_entry = MagicMock()
+        config_entry.options = {
+            "device_name": "My HSEM",
+            "hsem_ev_force_charge_now": True,
+            "hsem_ev_smart_charging": True,
+            "hsem_ev_second_force_charge_now": True,
+            "hsem_ev_second_smart_charging": False,
+            "hsem_ev_target_soc": 90,
+            "hsem_ev_deadline_time": "06:30:00",
+            "hsem_read_only": True,
+        }
+        config_entry.data = {}
+
+        flow = HSEMOptionsFlow.__new__(HSEMOptionsFlow)
+        flow._config_entry = config_entry
+        flow._user_input = {"device_name": "My HSEM"}
+        flow.hass = MagicMock()
+        flow.async_create_entry = MagicMock(  # type: ignore[method-assign]  # test monkey-patch
+            side_effect=lambda **kwargs: {
+                "type": "create_entry",
+                "title": kwargs.get("title"),
+                "data": kwargs.get("data"),
+            }
+        )
+
+        with patch(
+            "custom_components.hsem.options_flow.validate_energy_and_ml_input",
+            new=AsyncMock(return_value={}),
+        ):
+            result = await flow.async_step_energy_and_ml(
+                user_input={"hsem_ml_consumption_enabled": False}
+            )
+
+        assert result["type"] == "create_entry"
+        saved = result["data"]
+        # Entity-managed options must be preserved.
+        assert saved["hsem_ev_force_charge_now"] is True
+        assert saved["hsem_ev_smart_charging"] is True
+        assert saved["hsem_ev_second_force_charge_now"] is True
+        assert saved["hsem_ev_second_smart_charging"] is False
+        assert saved["hsem_ev_target_soc"] == 90
+        assert saved["hsem_ev_deadline_time"] == "06:30:00"
+        assert saved["hsem_read_only"] is True
+        # New values from the flow must also be present.
+        assert saved["hsem_ml_consumption_enabled"] is False
+
+    @pytest.mark.asyncio
+    async def test_flow_schema_values_override_preserved_options(self) -> None:
+        """When the flow collects a value that also exists in options, the
+        flow's new value must win (normal reconfigure behavior)."""
+        from custom_components.hsem.options_flow import HSEMOptionsFlow
+
+        config_entry = MagicMock()
+        config_entry.options = {
+            "device_name": "Old Name",
+            "hsem_ev_force_charge_now": True,
+        }
+        config_entry.data = {}
+
+        flow = HSEMOptionsFlow.__new__(HSEMOptionsFlow)
+        flow._config_entry = config_entry
+        flow._user_input = {"device_name": "New Name"}
+        flow.hass = MagicMock()
+        flow.async_create_entry = MagicMock(  # type: ignore[method-assign]  # test monkey-patch
+            side_effect=lambda **kwargs: {
+                "type": "create_entry",
+                "title": kwargs.get("title"),
+                "data": kwargs.get("data"),
+            }
+        )
+
+        with patch(
+            "custom_components.hsem.options_flow.validate_energy_and_ml_input",
+            new=AsyncMock(return_value={}),
+        ):
+            result = await flow.async_step_energy_and_ml(user_input={})
+
+        saved = result["data"]
+        assert saved["device_name"] == "New Name"  # flow value wins
+        assert saved["hsem_ev_force_charge_now"] is True  # preserved
+
+
 # ---------------------------------------------------------------------------
 # Error recovery — config flow resilience (Bronze rule: config-flow-test-coverage)
 # ---------------------------------------------------------------------------
