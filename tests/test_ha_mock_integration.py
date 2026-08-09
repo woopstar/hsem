@@ -886,6 +886,189 @@ class TestDryRunCycle:
 
         assert captured[0].state is not None
 
+    def test_force_charge_overrides_smart_charging_disabled(self) -> None:
+        """Force-charge-now must work even when smart charging is disabled.
+
+        Regression: when ``hsem_ev_smart_charging`` is off the EV planner
+        returns ``smart_charging_disabled`` with zero allocated power.  The
+        force-charge-now override must still:
+
+        - set the current-slot recommendation to ``ev_smart_charging``,
+        - write the max charger power to ``ev_charger_calculated_power``,
+        - flip the plan state from ``smart_charging_disabled`` to
+          ``charging`` so the plan sensor reflects the forced charge.
+        """
+        from datetime import UTC, datetime, timedelta
+
+        from custom_components.hsem.coordinator import _apply_force_charge_now
+        from custom_components.hsem.models.hourly_recommendation import (
+            HourlyRecommendation,
+        )
+        from custom_components.hsem.planner.ev_planner import EVChargingPlan
+        from custom_components.hsem.utils.recommendations import Recommendations
+
+        now = datetime.now(UTC)
+        slot_start = now - timedelta(minutes=5)
+        slot_end = now + timedelta(minutes=10)
+
+        config_entry = make_fake_config_entry(
+            {
+                "hsem_ev_smart_charging": False,
+                "hsem_ev_force_charge_now": True,
+                "hsem_ev_planned_load_charger_power_kw": 11.0,
+            }
+        )
+
+        # Planner returned smart_charging_disabled with no EV allocation.
+        plan = EVChargingPlan(state="smart_charging_disabled")
+        rec = HourlyRecommendation(
+            start=slot_start,
+            end=slot_end,
+            avg_house_consumption_kwh=0.0,
+            avg_house_consumption_1d_kwh=0.0,
+            avg_house_consumption_3d_kwh=0.0,
+            avg_house_consumption_7d_kwh=0.0,
+            avg_house_consumption_14d_kwh=0.0,
+            batteries_charged_kwh=0.0,
+            batteries_discharged_kwh=0.0,
+            estimated_battery_capacity_kwh=0.0,
+            estimated_battery_soc_pct=0.0,
+            estimated_cost_currency=0.0,
+            estimated_net_consumption_kwh=0.0,
+            export_price=0.0,
+            grid_export_kwh=0.0,
+            grid_import_kwh=0.0,
+            import_price=0.0,
+            recommendation=Recommendations.BatteriesWaitMode.value,
+            solcast_pv_estimate_kwh=0.0,
+        )
+
+        _apply_force_charge_now(
+            config_entry=config_entry,
+            hourly_recommendations=[rec],
+            ev_plan=plan,
+            ev_second_plan=None,
+            now=now,
+        )
+
+        assert rec.recommendation == Recommendations.EVSmartCharging.value
+        assert rec.ev_charger_calculated_power == 11000.0
+        assert plan.state == "charging"
+
+    def test_force_charge_second_ev_overrides_smart_charging_disabled(
+        self,
+    ) -> None:
+        """Force-charge-now for the second EV must work when its smart charging is off."""
+        from datetime import UTC, datetime, timedelta
+
+        from custom_components.hsem.coordinator import _apply_force_charge_now
+        from custom_components.hsem.models.hourly_recommendation import (
+            HourlyRecommendation,
+        )
+        from custom_components.hsem.planner.ev_planner import EVChargingPlan
+        from custom_components.hsem.utils.recommendations import Recommendations
+
+        now = datetime.now(UTC)
+        slot_start = now - timedelta(minutes=5)
+        slot_end = now + timedelta(minutes=10)
+
+        config_entry = make_fake_config_entry(
+            {
+                "hsem_ev_second_smart_charging": False,
+                "hsem_ev_second_force_charge_now": True,
+                "hsem_ev_second_planned_load_charger_power_kw": 7.4,
+            }
+        )
+
+        plan2 = EVChargingPlan(state="smart_charging_disabled")
+        rec = HourlyRecommendation(
+            start=slot_start,
+            end=slot_end,
+            avg_house_consumption_kwh=0.0,
+            avg_house_consumption_1d_kwh=0.0,
+            avg_house_consumption_3d_kwh=0.0,
+            avg_house_consumption_7d_kwh=0.0,
+            avg_house_consumption_14d_kwh=0.0,
+            batteries_charged_kwh=0.0,
+            batteries_discharged_kwh=0.0,
+            estimated_battery_capacity_kwh=0.0,
+            estimated_battery_soc_pct=0.0,
+            estimated_cost_currency=0.0,
+            estimated_net_consumption_kwh=0.0,
+            export_price=0.0,
+            grid_export_kwh=0.0,
+            grid_import_kwh=0.0,
+            import_price=0.0,
+            recommendation=Recommendations.BatteriesWaitMode.value,
+            solcast_pv_estimate_kwh=0.0,
+        )
+
+        _apply_force_charge_now(
+            config_entry=config_entry,
+            hourly_recommendations=[rec],
+            ev_plan=None,
+            ev_second_plan=plan2,
+            now=now,
+        )
+
+        assert rec.recommendation == Recommendations.EVSmartCharging.value
+        assert rec.ev_second_charger_calculated_power == 7400.0
+        assert plan2.state == "charging"
+
+    def test_force_charge_off_leaves_plan_state_unchanged(self) -> None:
+        """With force-charge off and smart charging off, plan state is untouched."""
+        from datetime import UTC, datetime, timedelta
+
+        from custom_components.hsem.coordinator import _apply_force_charge_now
+        from custom_components.hsem.models.hourly_recommendation import (
+            HourlyRecommendation,
+        )
+        from custom_components.hsem.planner.ev_planner import EVChargingPlan
+        from custom_components.hsem.utils.recommendations import Recommendations
+
+        now = datetime.now(UTC)
+        config_entry = make_fake_config_entry(
+            {
+                "hsem_ev_smart_charging": False,
+                "hsem_ev_force_charge_now": False,
+            }
+        )
+
+        plan = EVChargingPlan(state="smart_charging_disabled")
+        rec = HourlyRecommendation(
+            start=now - timedelta(minutes=5),
+            end=now + timedelta(minutes=10),
+            avg_house_consumption_kwh=0.0,
+            avg_house_consumption_1d_kwh=0.0,
+            avg_house_consumption_3d_kwh=0.0,
+            avg_house_consumption_7d_kwh=0.0,
+            avg_house_consumption_14d_kwh=0.0,
+            batteries_charged_kwh=0.0,
+            batteries_discharged_kwh=0.0,
+            estimated_battery_capacity_kwh=0.0,
+            estimated_battery_soc_pct=0.0,
+            estimated_cost_currency=0.0,
+            estimated_net_consumption_kwh=0.0,
+            export_price=0.0,
+            grid_export_kwh=0.0,
+            grid_import_kwh=0.0,
+            import_price=0.0,
+            recommendation=Recommendations.BatteriesWaitMode.value,
+            solcast_pv_estimate_kwh=0.0,
+        )
+
+        _apply_force_charge_now(
+            config_entry=config_entry,
+            hourly_recommendations=[rec],
+            ev_plan=plan,
+            ev_second_plan=None,
+            now=now,
+        )
+
+        assert rec.recommendation == Recommendations.BatteriesWaitMode.value
+        assert rec.ev_charger_calculated_power == 0.0
+        assert plan.state == "smart_charging_disabled"
+
 
 # ---------------------------------------------------------------------------
 # TestEntityStateAfterCoordinatorPush — entities reflect coordinator data
