@@ -1138,12 +1138,22 @@ Common configurations:
    slots (issue #720).  With hourly price data and 15-min slots the single
    hourly point fans out to all four quarter-hour slots of the hour.
 
-2. **Planner input** (`coordinator._build_planner_input`):
-   When assembling `PricePoint` objects for the planner engine, each stored
-   per-slot price is multiplied by `eds_share` to recover the original
-   hourly-equivalent rate.
-   The planner's cost function always works with full currency/kWh rates, not
-   fractions.
+2. **Planner input** (`coordinator_builder.build_planner_input`):
+   Recommendation slots are deduplicated on `(day_offset, hour)` for
+   consumption averages and Solcast PV (genuinely hour-granular), but
+   **price points are emitted per slot** with an explicit `slot_in_day`
+   field, so quarter-hourly prices survive as distinct `PricePoint`
+   entries (192 for a 48 h horizon at 15-min slots).  Each stored per-slot
+   price is multiplied by `eds_share` to recover the original
+   hourly-equivalent rate.  The planner's cost function always works with
+   full currency/kWh rates, not fractions.
+
+3. **Slot population** (`planner.slot_population.populate_prices`):
+   When price points carry `slot_in_day`, slots are keyed by
+   `(day_offset, slot_in_day)` so each quarter-hourly price lands on its
+   own planner slot; slots the source does not cover fall back to the
+   hourly value.  Points without `slot_in_day` (legacy hourly callers)
+   use the existing `align_hourly_prices` fan-out unchanged.
 
 The divide and multiply are exact inverses — they cancel perfectly and the
 planner always receives the original price rate regardless of configuration.
@@ -1165,6 +1175,9 @@ planner always receives the original price rate regardless of configuration.
 - With 15-min price data and 15-min slots, each quarter-hour price must land
   on exactly its own slot — four distinct prices within an hour must produce
   four distinct slot prices (issue #720).
+- With 15-min price data, 15-min slots, and a 48 h horizon, the planner must
+  receive 192 distinct price points (not 48 collapsed hourly ones) and the
+  MILP must see intra-hour price variation (issue #720 stage 2).
 
 ## Candidate plans
 

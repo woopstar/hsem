@@ -138,6 +138,36 @@ def populate_prices(
         tsi is not None,
     )
     if tsi is not None:
+        # Sub-hourly path: when the points carry slot_in_day (issue #720),
+        # key by (day_offset, slot_in_day) so quarter-hourly prices land on
+        # their own slots instead of being fanned out from one hourly value.
+        if any(pp.slot_in_day is not None for pp in price_points):
+            imp_by_slot = {
+                (pp.day_offset, pp.slot_in_day): pp.import_price
+                for pp in price_points
+                if pp.slot_in_day is not None
+            }
+            exp_by_slot = {
+                (pp.day_offset, pp.slot_in_day): pp.export_price
+                for pp in price_points
+                if pp.slot_in_day is not None
+            }
+            # Hourly fallback for slots the source does not cover (e.g. a
+            # 60-min price source feeding 15-min slots).
+            imp_by_hour = {
+                (pp.day_offset, pp.hour): pp.import_price for pp in price_points
+            }
+            exp_by_hour = {
+                (pp.day_offset, pp.hour): pp.export_price for pp in price_points
+            }
+            for slot, meta in zip(slots, tsi.slots):
+                key = (meta.key.day_offset, meta.key.slot_in_day)
+                hour_key = (meta.key.day_offset, meta.hour)
+                imp = imp_by_slot.get(key, imp_by_hour.get(hour_key, 0.0))
+                exp = exp_by_slot.get(key, exp_by_hour.get(hour_key, 0.0))
+                slot.price = SlotPrice(import_price=imp, export_price=exp)
+            return
+
         # Use (day_offset, hour) keys when any entry carries a non-zero
         # day_offset so that tomorrow's prices are not overwritten by today's.
         imp_prices: dict[int, float] | dict[tuple[int, int], float]
