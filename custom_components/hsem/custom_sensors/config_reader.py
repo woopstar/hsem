@@ -378,6 +378,16 @@ def build_sensor_config(
         or 10.0
     )
 
+    # Wait mode behaviour
+    _wait_mode_behavior = get_config_value(
+        config_entry, "hsem_batteries_wait_mode_behavior"
+    )
+    cfg.batteries_wait_mode_behavior = (
+        str(_wait_mode_behavior).lower()
+        if _wait_mode_behavior is not None
+        else "strict"
+    )
+
     # EV planned load integration
     cfg.ev_planned_load_enabled = convert_to_boolean(
         get_config_value(config_entry, "hsem_ev_planned_load_enabled")

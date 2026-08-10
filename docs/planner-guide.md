@@ -388,7 +388,7 @@ Each `PlannedSlot` in the output list covers one time interval and carries:
 | `force_batteries_discharge` | Forced discharge (excess export to grid) |
 | `force_export` | Negative import price — all available energy exported to earn money |
 | `ev_smart_charging` | EV charging load is allocated to this slot (planner or runtime resolver) |
-| `batteries_wait_mode` | Battery idle — neither charging nor discharging |
+| `batteries_wait_mode` | Battery idle by default; when **Wait mode behaviour** is set to *Self-consumption with reserve*, normal household self-consumption is allowed using energy above the planner's required reserve |
 | `time_passed` | Slot is in the past — no recommendation applied |
 | `missing_input_entities` | Required HA entities were unavailable when this slot was scheduled |
 
@@ -444,6 +444,13 @@ recommendation it is not changed by later rules in the same layer.
 | 4 | Winter month | `batteries_wait_mode` |
 | 5 | Summer month, solar surplus available | `batteries_charge_solar` |
 | 5 | Summer month, no solar surplus | `batteries_discharge_mode` |
+
+> **Wait mode behaviour:** the `batteries_wait_mode` recommendation normally keeps the
+> battery idle.  When `hsem_batteries_wait_mode_behavior` is set to
+> `self_consumption_with_reserve`, the applier switches the inverter to
+> `MaximizeSelfConsumption` and caps discharge power so only surplus energy above
+> the planner's required reserve is used.  This reduces unnecessary grid import
+> while still preserving capacity for future scheduled discharge windows.
 
 **Discharge concentration** (`concentrate_discharge_on_expensive_slots`) runs after the
 seasonal fill but before candidate generation. It re-evaluates all discharge-mode

@@ -14,6 +14,10 @@ from custom_components.hsem.flows.batteries_schedules import (
     get_batteries_schedules_step_schema,
     validate_batteries_schedules_input,
 )
+from custom_components.hsem.flows.batteries_wait_mode import (
+    get_batteries_wait_mode_step_schema,
+    validate_batteries_wait_mode_input,
+)
 from custom_components.hsem.flows.battery_economics import (
     get_battery_economics_step_schema,
     validate_battery_economics_input,
@@ -402,7 +406,7 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
             errors = await validate_batteries_schedules_input(user_input)
             if not errors:
                 self._user_input.update(user_input)
-                return await self.async_step_batteries_excess_export()
+                return await self.async_step_batteries_wait_mode()
 
         data_schema = await get_batteries_schedules_step_schema(
             self._config_entry, hass=self.hass
@@ -410,6 +414,33 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
 
         return self.async_show_form(
             step_id="batteries_schedules",
+            data_schema=data_schema,
+            errors=errors,
+            last_step=False,
+        )
+
+    async def async_step_batteries_wait_mode(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle the batteries_wait_mode options step.
+
+        Allows the user to choose between strict wait and self-consumption
+        with reserve protection.
+        """
+        errors = {}
+
+        if user_input is not None:
+            errors = await validate_batteries_wait_mode_input(user_input)
+            if not errors:
+                self._user_input.update(user_input)
+                return await self.async_step_batteries_excess_export()
+
+        data_schema = await get_batteries_wait_mode_step_schema(
+            self._config_entry, self._user_input, _hass=self.hass
+        )
+
+        return self.async_show_form(
+            step_id="batteries_wait_mode",
             data_schema=data_schema,
             errors=errors,
             last_step=False,

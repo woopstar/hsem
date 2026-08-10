@@ -23,6 +23,9 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_batteries_discharge_efficiency": 98,
     "hsem_batteries_enable_excess_export": False,
     "hsem_batteries_excess_export_discharge_buffer": 10,
+    # Wait mode behaviour: "strict" keeps the battery idle, "self_consumption_with_reserve"
+    # allows normal household self-consumption while protecting the planner reserve.
+    "hsem_batteries_wait_mode_behavior": "strict",
     "hsem_batteries_purchase_price": 0.0,
     "hsem_batteries_expected_cycles": 6000,
     "hsem_batteries_cycle_cost": 0.0,

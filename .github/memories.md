@@ -879,3 +879,30 @@ Do **not** create files like `planner_inputs.py` (6 unrelated dataclasses) or
 **Why**: Smaller, focused files give AI agents exactly the context they need.
 Thematic bucketing loads irrelevant code into every prompt, reducing precision
 and causing edit collisions between unrelated classes.
+
+---
+
+## Wait Mode Self-Consumption with Reserve (issue #742)
+
+`batteries_wait_mode` can now optionally allow normal household self-consumption
+instead of keeping the battery strictly idle.
+
+- Config key: `hsem_batteries_wait_mode_behavior`
+- Values: `"strict"` (default) or `"self_consumption_with_reserve"`
+- When set to `"self_consumption_with_reserve"`, the applier
+  (`custom_components/hsem/custom_sensors/applier.py`) switches the inverter to
+  `MaximizeSelfConsumption` and caps the discharge power so only surplus energy
+  above the planner's required reserve (`current_required_battery_kwh`) can be
+  used.  Once the battery reaches the reserve, the applier falls back to strict
+  TOU wait mode.
+- PV surplus during wait-mode self-consumption is directed to charge the battery
+  (`desired_excess = "charge"`), not exported to grid.
+- The cap is computed from the surplus energy and the slot duration so the
+  reserve is preserved even if the house load is high.
+- EV-active slots keep their existing EV discharge cap logic; the wait-mode cap
+  is not applied while an EV is charging.
+
+Files involved: `flows/batteries_wait_mode.py`, `config_flow.py`,
+`options_flow.py`, `translations/en.json`, `const.py`,
+`models/sensor_config.py`, `custom_sensors/config_reader.py`,
+`custom_sensors/applier.py`.

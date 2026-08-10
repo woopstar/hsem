@@ -23,7 +23,8 @@
       "price_out_of_range": "Price value is outside the allowed range.",
       "required": "This field is required.",
       "start_time_after_end_time": "Start time must be before end time.",
-      "start_time_equals_end_time": "Start time and end time cannot be the same — this creates a zero-length window. Disable the schedule instead."
+      "start_time_equals_end_time": "Start time and end time cannot be the same — this creates a zero-length window. Disable the schedule instead.",
+      "invalid_wait_mode_behavior": "Invalid wait mode behaviour. Choose Strict wait or Self-consumption with reserve."
     },
     "step": {
       "batteries_excess_export": {
@@ -475,6 +476,16 @@
         },
         "description": "Configure energy meters and enable ML-based consumption prediction.",
         "title": "Energy & ML"
+      },
+      "batteries_wait_mode": {
+        "data": {
+          "hsem_batteries_wait_mode_behavior": "Wait Mode Behaviour"
+        },
+        "data_description": {
+          "hsem_batteries_wait_mode_behavior": "Choose how the battery behaves when HSEM selects Wait mode. Strict wait keeps the battery idle. Self-consumption with reserve allows the house to use surplus battery energy above the planner's required reserve, reducing unnecessary grid import."
+        },
+        "description": "Configure how the battery behaves during Wait mode.",
+        "title": "Battery Wait Mode Behaviour"
       }
     }
   },
@@ -498,7 +509,8 @@
       "price_out_of_range": "Price value is outside the allowed range.",
       "required": "This field is required.",
       "start_time_after_end_time": "Start time must be before end time.",
-      "start_time_equals_end_time": "Start time and end time cannot be the same — this creates a zero-length window. Disable the schedule instead."
+      "start_time_equals_end_time": "Start time and end time cannot be the same — this creates a zero-length window. Disable the schedule instead.",
+      "invalid_wait_mode_behavior": "Invalid wait mode behaviour. Choose Strict wait or Self-consumption with reserve."
     },
     "step": {
       "batteries_excess_export": {
@@ -890,6 +902,16 @@
         },
         "description": "Configure energy meters and enable ML-based consumption prediction.",
         "title": "Energy & ML"
+      },
+      "batteries_wait_mode": {
+        "data": {
+          "hsem_batteries_wait_mode_behavior": "Wait Mode Behaviour"
+        },
+        "data_description": {
+          "hsem_batteries_wait_mode_behavior": "Choose how the battery behaves when HSEM selects Wait mode. Strict wait keeps the battery idle. Self-consumption with reserve allows the house to use surplus battery energy above the planner's required reserve, reducing unnecessary grid import."
+        },
+        "description": "Configure how the battery behaves during Wait mode.",
+        "title": "Battery Wait Mode Behaviour"
       }
     }
   },
@@ -935,6 +957,12 @@
         "36": "36 hours",
         "48": "48 hours",
         "72": "72 hours"
+      }
+    },
+    "batteries_wait_mode_behavior": {
+      "options": {
+        "strict": "Strict wait — battery remains idle",
+        "self_consumption_with_reserve": "Self-consumption with reserve — use surplus above the planner reserve"
       }
     }
   },
