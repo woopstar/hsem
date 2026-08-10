@@ -439,11 +439,17 @@ recommendation it is not changed by later rules in the same layer.
 | Priority | Condition | Recommendation |
 |---|---|---|
 | 1 | Export price > import price AND export price ≥ `export_min_price` | `force_export` |
-| 2 | Solar surplus available and battery not full | `batteries_charge_solar` |
+| 2 | Actual PV surplus (`estimated_net_consumption_kwh < 0`) and battery not full | `batteries_charge_solar` |
 | 3 | Future `force_batteries_discharge` slot exists AND battery > required | `batteries_wait_mode` |
 | 4 | Winter month | `batteries_wait_mode` |
-| 5 | Summer month, solar surplus available | `batteries_charge_solar` |
-| 5 | Summer month, no solar surplus | `batteries_discharge_mode` |
+| 5 | Summer month, actual PV surplus | `batteries_charge_solar` |
+| 5 | Summer month, no PV surplus (zero or positive net consumption) | `batteries_discharge_mode` |
+
+> **Note:** `BatteriesChargeSolar` is only assigned when there is a genuine PV
+> surplus (negative net consumption).  A small positive house load with zero PV
+> must not be mislabeled as solar charging — that would cause the applier to
+> write `MaximizeSelfConsumption` instead of `TimeOfUse` + charge TOU
+> (issue #720).
 
 **Discharge concentration** (`concentrate_discharge_on_expensive_slots`) runs after the
 seasonal fill but before candidate generation. It re-evaluates all discharge-mode

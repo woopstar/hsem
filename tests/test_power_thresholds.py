@@ -230,9 +230,10 @@ class TestSolarSurplusThresholdInChargeSchedules:
 
 
 class TestNearZeroThresholdInOptimizationStrategy:
-    """Seasonal optimisation uses NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH to
-    decide whether an unassigned summer slot should charge from solar or
-    discharge the battery."""
+    """Seasonal optimisation assigns solar charge only to slots with an
+    actual PV surplus (negative net consumption).  Slots with a small
+    positive house load must NOT be mislabeled as solar-charging
+    opportunities (issue #720)."""
 
     def _run_summer(self, net_consumption: float) -> str | None:
         """Run optimization strategy on a single unassigned summer slot."""
@@ -248,28 +249,27 @@ class TestNearZeroThresholdInOptimizationStrategy:
         )
         return slot.recommendation
 
-    def test_below_threshold_assigned_charge_solar(self):
-        """A slot with net < threshold (e.g. -0.5 kWh) must get BatteriesChargeSolar."""
+    def test_surplus_assigned_charge_solar(self):
+        """A slot with negative net consumption (PV surplus) must get BatteriesChargeSolar."""
         assert self._run_summer(-0.5) == _CHARGE_SOLAR
 
-    def test_at_exact_threshold_assigned_charge_solar(self):
-        """A slot at exactly the threshold (0.1 kWh) must get BatteriesChargeSolar
-        because the condition is <=."""
-        assert self._run_summer(NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH) == _CHARGE_SOLAR
+    def test_at_exact_zero_assigned_discharge(self):
+        """A slot at exactly zero net consumption has no PV surplus — must get
+        BatteriesDischargeMode, not BatteriesChargeSolar."""
+        assert self._run_summer(0.0) == _DISCHARGE
+
+    def test_small_positive_consumption_assigned_discharge(self):
+        """A slot with small positive consumption (0.08 kWh) and no PV must
+        get BatteriesDischargeMode, not BatteriesChargeSolar (issue #720)."""
+        assert self._run_summer(0.08) == _DISCHARGE
 
     def test_just_above_threshold_assigned_discharge(self):
-        """A slot just above the threshold (0.11 kWh) must get BatteriesDischargeMode."""
-        assert (
-            self._run_summer(NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH + 0.01) == _DISCHARGE
-        )
+        """A slot just above the old threshold (0.11 kWh) must get BatteriesDischargeMode."""
+        assert self._run_summer(0.11) == _DISCHARGE
 
     def test_high_consumption_assigned_discharge(self):
         """A high-consumption slot (1.2 kWh) must get BatteriesDischargeMode in summer."""
         assert self._run_summer(1.2) == _DISCHARGE
-
-    def test_zero_net_consumption_assigned_charge_solar(self):
-        """Zero net consumption is <= threshold, so must get BatteriesChargeSolar."""
-        assert self._run_summer(0.0) == _CHARGE_SOLAR
 
 
 # ===========================================================================
@@ -279,7 +279,8 @@ class TestNearZeroThresholdInOptimizationStrategy:
 
 class TestSolarChargingLoopThreshold:
     """The 'solar charging until battery full' loop inside
-    apply_optimization_strategy also uses NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH."""
+    apply_optimization_strategy only charges from actual PV surplus
+    (negative net consumption)."""
 
     def _run_solar_charge_loop(self, net_consumptions: list[float]) -> list[str | None]:
         """Return recommendations from multiple slots after the charge loop."""
@@ -298,29 +299,29 @@ class TestSolarChargingLoopThreshold:
         return [s.recommendation for s in slots]
 
     def test_surplus_slots_charged_first(self):
-        """Slots below threshold should receive BatteriesChargeSolar in charge loop."""
-        # All slots below threshold
+        """Slots with PV surplus (negative net) should receive BatteriesChargeSolar."""
         recs = self._run_solar_charge_loop([-0.5, -0.3, -0.1])
         assert all(r == _CHARGE_SOLAR for r in recs)
 
     def test_consumption_slot_skipped_by_charge_loop(self):
-        """A slot above the threshold should not be charged by the solar loop."""
+        """A slot with positive consumption should not be charged by the solar loop."""
         # mix: slot 0 is surplus, slot 1 is consumption
         recs = self._run_solar_charge_loop([-0.5, 0.5])
         # slot 0: should be charged
         assert recs[0] == _CHARGE_SOLAR
-        # slot 1: above threshold, so NOT charged by the loop
+        # slot 1: positive consumption, so NOT charged by the loop
         # (it will become BatteriesDischargeMode from the seasonal fill)
         assert recs[1] != _CHARGE_SOLAR
 
-    def test_at_exact_threshold_included_in_charge_loop(self):
-        """A slot at exactly the near-zero threshold is included (condition <=)."""
-        recs = self._run_solar_charge_loop([NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH])
-        assert recs[0] == _CHARGE_SOLAR
+    def test_at_exact_zero_excluded_from_charge_loop(self):
+        """A slot at exactly zero net consumption has no PV surplus — excluded."""
+        recs = self._run_solar_charge_loop([0.0])
+        assert recs[0] != _CHARGE_SOLAR
 
-    def test_just_above_threshold_excluded_from_charge_loop(self):
-        """A slot just above threshold is excluded from the solar charge loop."""
-        recs = self._run_solar_charge_loop([NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH + 0.01])
+    def test_small_positive_consumption_excluded_from_charge_loop(self):
+        """A slot with small positive consumption (0.08 kWh) and no PV must
+        be excluded from the solar charge loop (issue #720)."""
+        recs = self._run_solar_charge_loop([0.08])
         assert recs[0] != _CHARGE_SOLAR
 
 

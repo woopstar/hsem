@@ -12,7 +12,6 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 
-from custom_components.hsem.const import NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH
 from custom_components.hsem.models.battery_schedule_input import BatteryScheduleInput
 from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.utils.datetime_utils import as_tz
@@ -528,7 +527,12 @@ def apply_optimization_strategy(
         for rec in sorted(day_slots, key=lambda x: x.price.export_price):
             if day_charged >= day_budget:
                 break
-            if rec.estimated_net_consumption_kwh <= NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH:
+            # Only charge from solar when there is an actual PV surplus
+            # (negative net consumption).  A small positive house load
+            # must not be treated as a solar-charging opportunity —
+            # otherwise the planner labels grid-charging slots as
+            # BatteriesChargeSolar (issue #720).
+            if rec.estimated_net_consumption_kwh < 0.0:
                 slot_solar = abs(rec.estimated_net_consumption_kwh)
                 slot_energy = min(slot_solar, day_budget - day_charged)
                 day_charged += slot_energy
@@ -552,7 +556,12 @@ def apply_optimization_strategy(
         if current_month in months_winter:
             rec.recommendation = Recommendations.BatteriesWaitMode.value
         elif current_month in months_summer:
-            if rec.estimated_net_consumption_kwh <= NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH:
+            # Only charge from solar when there is an actual PV surplus
+            # (negative net consumption).  A small positive house load
+            # must not be treated as a solar-charging opportunity —
+            # otherwise the planner labels grid-charging slots as
+            # BatteriesChargeSolar (issue #720).
+            if rec.estimated_net_consumption_kwh < 0.0:
                 rec.recommendation = Recommendations.BatteriesChargeSolar.value
             else:
                 rec.recommendation = Recommendations.BatteriesDischargeMode.value
