@@ -30,6 +30,7 @@ it from the config entry and passes it to the relevant entity constructors.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
@@ -112,6 +113,12 @@ from custom_components.hsem.utils.weekday_profile import weekday_profile
 
 if TYPE_CHECKING:
     from custom_components.hsem.ml.consumption_predictor import ConsumptionPredictor
+
+
+# Seconds to wait after the last options change before scheduling a planner
+# run.  Rapid switch/number/time toggles restart this timer, so the planner
+# only rebuilds once after the user stops clicking.
+OPTIONS_UPDATE_DEBOUNCE_SECONDS = 0.25
 
 
 # ---------------------------------------------------------------------------
@@ -481,6 +488,9 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         # can cancel a still-running task (issue: switch toggles felt frozen
         # because the update listener awaited the full MILP/ML pipeline).
         self._options_update_task: asyncio.Task | None = None
+        # Debounce task for option changes.  Rapid toggles restart this timer
+        # so the planner only runs once after the user stops clicking.
+        self._options_update_debounce_task: asyncio.Task | None = None
 
     # ------------------------------------------------------------------
     # HA lifecycle
@@ -560,14 +570,18 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             await ocpp.stop()
             self._ocpp_server = None
 
-        # Cancel any pending options-update background task.
+        # Cancel any pending options-update background task and debounce timer.
         task = getattr(self, "_options_update_task", None)
         if task is not None and not task.done():
             task.cancel()
             self._options_update_task = None
+        debounce_task = getattr(self, "_options_update_debounce_task", None)
+        if debounce_task is not None and not debounce_task.done():
+            debounce_task.cancel()
+            self._options_update_debounce_task = None
 
     async def async_options_updated(self) -> None:
-        """Schedule a pipeline re-run after an options change.
+        """Schedule a debounced pipeline re-run after an options change.
 
         Runs the update cycle as a **background task** so the caller (the
         config-entry update listener, triggered synchronously by
@@ -576,20 +590,51 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         service call until the entire read → plan (MILP/ML) → apply
         pipeline finished — making the UI feel frozen.
 
-        Repeated toggles cancel any still-pending run and reschedule, so
-        the pipeline always reflects the latest option state.  The
-        ``_update_lock`` in ``_async_handle_update`` additionally dedupes
-        against any concurrently running scheduled cycle.
+        A short debounce window is used so rapid switch/number/time toggles
+        only trigger a single planner run after the user stops clicking.
+        The background task is created with ``eager_start=False`` so the
+        switch service call returns before any setup work begins.
         """
+        if (
+            self._options_update_debounce_task is not None
+            and not self._options_update_debounce_task.done()
+        ):
+            self._options_update_debounce_task.cancel()
+        self._options_update_debounce_task = self.hass.async_create_task(
+            self._async_options_update_debounced(),
+            name="hsem_options_update_debounce",
+            eager_start=False,
+        )
+
+    async def _async_options_update_debounced(self) -> None:
+        """Wait for the debounce window, then schedule the planner run."""
+        try:
+            await asyncio.sleep(OPTIONS_UPDATE_DEBOUNCE_SECONDS)
+        except asyncio.CancelledError:
+            # Superseded by a newer options update — not an error.
+            async_log(
+                "debug",
+                "[coordinator] options-update debounce cancelled — "
+                "superseded by a newer options change.",
+            )
+            return
+
+        # Cancel any still-pending previous options-update task before
+        # scheduling a fresh run with the latest option state.
         if (
             self._options_update_task is not None
             and not self._options_update_task.done()
         ):
             self._options_update_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._options_update_task
+
         self._options_update_task = self.hass.async_create_task(
             self._async_options_update_background(),
             name="hsem_options_update",
+            eager_start=False,
         )
+        self._options_update_debounce_task = None
 
     async def _async_options_update_background(self) -> None:
         """Background wrapper: run the update cycle, swallowing cancellation."""
@@ -1011,7 +1056,12 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                     # standard Home Assistant log when the user enables
                     # verbose logging.
                     set_hsem_verbose(cfg.verbose_logging)
-                    planner_output = run_planner(planner_input)
+                    # Run the planner in HA's executor pool.  The MILP/ML
+                    # solver is CPU-bound; running it in the event-loop
+                    # thread blocks the HA UI for the full solve duration.
+                    planner_output = await self.hass.async_add_executor_job(
+                        run_planner, planner_input
+                    )
                     self._last_planner_output = planner_output
 
                     # Record the time this plan was created so the slot-boundary

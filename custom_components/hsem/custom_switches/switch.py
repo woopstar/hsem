@@ -98,15 +98,19 @@ class HSEMSwitch(HSEMEntity, SwitchEntity):
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the switch on and persist to config entry."""
         self._attr_is_on = True
-        await self._persist_state()
+        # Write HA state immediately so the UI toggle reflects the user action
+        # before the config-entry update triggers a background planner run.
         self.async_write_ha_state()
+        await self._persist_state()
 
     @override
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the switch off and persist to config entry."""
         self._attr_is_on = False
-        await self._persist_state()
+        # Write HA state immediately so the UI toggle reflects the user action
+        # before the config-entry update triggers a background planner run.
         self.async_write_ha_state()
+        await self._persist_state()
 
     async def _persist_state(self) -> None:
         """Write the current on/off value to the config entry options."""
