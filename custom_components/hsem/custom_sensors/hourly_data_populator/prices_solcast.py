@@ -177,8 +177,14 @@ async def _async_update_hourly_field(
     # Each source exposes a different attribute key / time-key / value-key
     data_sources: dict[str, list[dict[str, str]]] = {
         "forecast": [{"k": "hour", "v": "price"}],
-        "raw_tomorrow": [{"k": "hour", "v": "price"}],
-        "raw_today": [{"k": "hour", "v": "price"}],
+        "raw_tomorrow": [
+            {"k": "hour", "v": "price"},
+            {"k": "start", "v": "value"},  # custom-components/nordpool
+        ],
+        "raw_today": [
+            {"k": "hour", "v": "price"},
+            {"k": "start", "v": "value"},  # custom-components/nordpool
+        ],
         "prices": [{"k": "start", "v": "price"}],
         "prices_today": [
             {"k": "start", "v": "price"},
@@ -370,8 +376,14 @@ def _update_hourly_field_from_attrs(
 
     data_sources: dict[str, list[dict[str, str]]] = {
         "forecast": [{"k": "hour", "v": "price"}],
-        "raw_tomorrow": [{"k": "hour", "v": "price"}],
-        "raw_today": [{"k": "hour", "v": "price"}],
+        "raw_tomorrow": [
+            {"k": "hour", "v": "price"},
+            {"k": "start", "v": "value"},  # custom-components/nordpool
+        ],
+        "raw_today": [
+            {"k": "hour", "v": "price"},
+            {"k": "start", "v": "value"},  # custom-components/nordpool
+        ],
         "prices": [{"k": "start", "v": "price"}],
         "prices_today": [
             {"k": "start", "v": "price"},

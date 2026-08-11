@@ -881,6 +881,25 @@ Regression tests: ``tests/planner/test_zero_pv_solar_charge_mislabel.py``.
 
 ---
 
+## Nordpool Price Format — raw_today/raw_tomorrow (issue #750)
+
+``custom-components/nordpool`` publishes ``raw_today`` / ``raw_tomorrow``
+attributes as ``{"start": datetime, "end": datetime, "value": price}``.
+HSEM's price populator (``custom_sensors/hourly_data_populator/prices_solcast.py``)
+mapped those attributes as ``{"k": "hour", "v": "price"}``, so every entry
+was silently skipped and all planner slots got ``import_price = 0.0``.
+
+**Canonical rule:** the ``data_sources`` mapping for ``raw_today`` /
+``raw_tomorrow`` accepts both the legacy ``hour``/``price`` format and
+the nordpool ``start``/``value`` format.  The mapping is a list of
+fallbacks — add new formats as additional ``{"k": ..., "v": ...}``
+entries rather than replacing existing ones.
+
+Regression tests: ``tests/test_15min_price_matching.py``
+(``TestNordpoolRawFormat``).
+
+---
+
 ## File Organization — By Responsibility, Not By Theme
 
 AI agents naturally bucket related things together (e.g. "all planner inputs in one file").

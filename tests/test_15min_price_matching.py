@@ -212,3 +212,117 @@ class TestQuarterHourlyPriceMatching:
             assert rec.import_price == pytest.approx(expected, abs=1e-4), (
                 f"Hour {h}: expected {expected}, got {rec.import_price}"
             )
+
+
+class TestNordpoolRawFormat:
+    """Regression tests for issue #750 — nordpool raw_today/raw_tomorrow
+    entries use ``start``/``end``/``value`` keys, not ``hour``/``price``.
+
+    Bug
+    ---
+    ``custom-components/nordpool`` publishes ``raw_today`` and
+    ``raw_tomorrow`` attributes as::
+
+        {"start": datetime, "end": datetime, "value": price}
+
+    HSEM's price populator mapped those attributes as ``{"k": "hour",
+    "v": "price"}``, so ``data.get("hour")`` returned ``None`` for every
+    entry and all prices were silently skipped.  Every planner slot ended
+    up with ``import_price = 0.0`` — no error, no warning.
+
+    Fix
+    ---
+    The ``raw_today`` / ``raw_tomorrow`` mapping now accepts both the
+    legacy ``hour``/``price`` format and the nordpool ``start``/``value``
+    format.
+    """
+
+    def setup_method(self) -> None:
+        self.base = datetime(2026, 8, 11, 0, 0, 0, tzinfo=UTC)
+
+    def _nordpool_entries(self, count: int = 96) -> list[dict[str, str]]:
+        """Entries in the exact format published by custom-components/nordpool."""
+        return [
+            {
+                "start": (self.base + timedelta(minutes=15 * i)).isoformat(),
+                "end": (self.base + timedelta(minutes=15 * (i + 1))).isoformat(),
+                "value": f"{0.5 + i * 0.01:.5f}",
+            }
+            for i in range(count)
+        ]
+
+    def test_nordpool_raw_today_prices_ingested(self) -> None:
+        """Nordpool-format raw_today entries must land on the correct slots."""
+        cfg = _Cfg(price_interval=15, slot_interval=15)
+        recs = [
+            _make_rec(
+                self.base + timedelta(minutes=15 * i),
+                self.base + timedelta(minutes=15 * (i + 1)),
+            )
+            for i in range(96)
+        ]
+        raw = self._nordpool_entries()
+        attrs = {
+            "sensor.eds_import": {"raw_today": raw},
+            "sensor.eds_export": {"raw_today": raw},
+        }
+        _populate(recs, attrs, cfg)
+
+        for i, rec in enumerate(recs):
+            expected = 0.5 + i * 0.01
+            assert rec.import_price == pytest.approx(expected, abs=1e-5), (
+                f"Slot {i} ({rec.start}): expected {expected}, got {rec.import_price}"
+            )
+            assert rec.export_price == pytest.approx(expected, abs=1e-5)
+
+    def test_nordpool_raw_tomorrow_prices_ingested(self) -> None:
+        """Nordpool-format raw_tomorrow entries must land on the correct slots."""
+        cfg = _Cfg(price_interval=15, slot_interval=15)
+        recs = [
+            _make_rec(
+                self.base + timedelta(minutes=15 * i),
+                self.base + timedelta(minutes=15 * (i + 1)),
+            )
+            for i in range(96)
+        ]
+        raw = self._nordpool_entries()
+        attrs = {
+            "sensor.eds_import": {"raw_tomorrow": raw},
+            "sensor.eds_export": {"raw_tomorrow": raw},
+        }
+        _populate(recs, attrs, cfg)
+
+        for i, rec in enumerate(recs):
+            expected = 0.5 + i * 0.01
+            assert rec.import_price == pytest.approx(expected, abs=1e-5), (
+                f"Slot {i} ({rec.start}): expected {expected}, got {rec.import_price}"
+            )
+
+    def test_legacy_hour_price_format_still_works(self) -> None:
+        """The legacy ``hour``/``price`` format must continue to work."""
+        cfg = _Cfg(price_interval=15, slot_interval=15)
+        recs = [
+            _make_rec(
+                self.base + timedelta(minutes=15 * i),
+                self.base + timedelta(minutes=15 * (i + 1)),
+            )
+            for i in range(4)
+        ]
+        raw = [
+            {
+                "hour": (self.base + timedelta(minutes=15 * i)).isoformat(),
+                "price": f"{0.10 + i * 0.01:.5f}",
+            }
+            for i in range(4)
+        ]
+        attrs = {
+            "sensor.eds_import": {"raw_today": raw},
+            "sensor.eds_export": {"raw_today": raw},
+        }
+        _populate(recs, attrs, cfg)
+
+        for i, rec in enumerate(recs):
+            expected = 0.10 + i * 0.01
+            assert rec.import_price == pytest.approx(expected, abs=1e-5), (
+                f"Slot {i}: expected {expected}, got {rec.import_price}"
+            )
