@@ -412,6 +412,17 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         self._window_hys_previous_rec: str | None = None
         self._window_hys_previous_slot_start: datetime | None = None
 
+        # Per-slot EV charger power freeze (issue #738).
+        # The EV planner recomputes ev_charger_calculated_power whenever the
+        # planner reruns, mixing live PV/consumption data into the current
+        # slot. That makes the charger command oscillate inside a 15-minute
+        # slot. We freeze the value at slot start and reuse it across replans
+        # until the next slot begins. Explicit overrides (force-charge-now,
+        # auto-full-EV) are applied on top of the frozen value each cycle.
+        self._current_slot_start: datetime | None = None
+        self._current_slot_ev_power_w: float = 0.0
+        self._current_slot_ev_second_power_w: float = 0.0
+
         # Event-driven re-planning — track state at last plan to avoid
         # re-solving the MILP when nothing material has changed.
         self._last_plan_ev_connected: bool | None = False
@@ -1146,6 +1157,12 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                             self._window_hys_previous_slot_start = s.start
                             break
 
+                # Freeze the current slot's per-EV charger power before
+                # copying planner output to hourly recommendations. This keeps
+                # the charger command stable across replans inside the same
+                # 15-minute slot (issue #738).
+                self._freeze_ev_charger_power_for_current_slot(planner_output, now)
+
                 # Apply planner output (with hysteresis-applied slots) to
                 # hourly_recommendations so the current slot resolution in
                 # step 9 sees the held recommendation.
@@ -1651,6 +1668,86 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             live.ev_second_planned_load_smart_charging_enabled
         )
         self._last_plan_ev2_deadline = live.ev_second_planned_load_deadline
+
+    def _freeze_ev_charger_power_for_current_slot(
+        self, output: PlannerOutput, now: datetime
+    ) -> None:
+        """Freeze per-EV charger power for the current slot across replans.
+
+        The EV planner recomputes ``ev_charger_calculated_power`` from live
+        data whenever the planner reruns. Without freezing, the charger
+        command oscillates inside a single 15-minute slot as clouds pass or
+        the EV itself toggles on/off. We store the value computed at slot
+        start and rewrite the current slot with that stored value on every
+        subsequent replan until the next slot begins.
+
+        Explicit overrides (force-charge-now, auto-full-EV) are applied
+        after this freeze, so they can still change the current slot's
+        command for as long as they remain active. When an override ends,
+        the freeze restores the originally planned slot-start value.
+
+        Args:
+            output: Planner output whose current slot will be rewritten in
+                place when we are still inside the same slot.
+            now: Timezone-aware current datetime used to locate the current
+                slot and compare against the stored slot-start time.
+        """
+        if now.tzinfo is None:
+            return
+
+        for slot in output.slots:
+            s_start = as_tz(slot.start, now.tzinfo)
+            s_end = as_tz(slot.end, now.tzinfo)
+            if not (s_start <= now < s_end):
+                continue
+
+            if self._current_slot_start is None or utc_key(
+                self._current_slot_start
+            ) != utc_key(s_start):
+                # New slot — capture the freshly planned power values as the
+                # frozen baseline for this slot.
+                self._current_slot_start = s_start
+                self._current_slot_ev_power_w = slot.ev_charger_calculated_power
+                self._current_slot_ev_second_power_w = (
+                    slot.ev_second_charger_calculated_power
+                )
+                async_log(
+                    "debug",
+                    "[freeze] New EV power baseline for slot %s: "
+                    "primary=%dW second=%dW",
+                    s_start.isoformat(),
+                    self._current_slot_ev_power_w,
+                    self._current_slot_ev_second_power_w,
+                )
+            else:
+                # Same slot — restore the frozen baseline so the charger
+                # command does not chase live conditions.
+                if (
+                    abs(
+                        slot.ev_charger_calculated_power - self._current_slot_ev_power_w
+                    )
+                    > 1e-9
+                    or abs(
+                        slot.ev_second_charger_calculated_power
+                        - self._current_slot_ev_second_power_w
+                    )
+                    > 1e-9
+                ):
+                    async_log(
+                        "debug",
+                        "[freeze] Restoring frozen EV power for slot %s: "
+                        "primary %dW→%dW, second %dW→%dW",
+                        s_start.isoformat(),
+                        slot.ev_charger_calculated_power,
+                        self._current_slot_ev_power_w,
+                        slot.ev_second_charger_calculated_power,
+                        self._current_slot_ev_second_power_w,
+                    )
+                slot.ev_charger_calculated_power = self._current_slot_ev_power_w
+                slot.ev_second_charger_calculated_power = (
+                    self._current_slot_ev_second_power_w
+                )
+            break
 
     def _apply_planner_output(self, output: PlannerOutput) -> None:
         """Write :class:`PlannerOutput` decisions back into the recommendation list.

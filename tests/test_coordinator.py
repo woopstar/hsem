@@ -28,7 +28,6 @@ and fast we use one of two approaches depending on what is being verified:
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import inspect
 from typing import Any
 from unittest.mock import MagicMock, patch
