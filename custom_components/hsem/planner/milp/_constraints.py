@@ -48,6 +48,7 @@ def _build_constraints(
     _has_session_demand: bool,
     max_grid_export_per_slot_kwh: float = 0.0,
     export_limit_active: bool = False,
+    battery_export_blocked: np.ndarray | None = None,  # type: ignore[name-defined]
 ) -> dict:
     """Build all LP constraint matrices and variable bounds.
 
@@ -171,18 +172,34 @@ def _build_constraints(
     # ed[t] ≤ base_load[t] / η_dis.  This prevents the battery from
     # exporting to the grid — it only serves house load.  Used when the
     # user has disabled excess export in the config flow.
+    #
+    # battery_export_blocked[t] (issue #752) is a per-slot mask that
+    # selectively applies the SAME cap (ed[t] ≤ base_load[t] / η_dis) only
+    # to slots where the RAW export_price is strictly below the user's
+    # ``battery_export_min_price``.  The battery may still serve house
+    # load on those slots; only intentional battery-to-grid export (i.e.
+    # discharge above what house load needs) is blocked.  The mask is
+    # evaluated against the raw export price upstream of the
+    # ``min_export_price`` and export-≤-import clamps so the user's
+    # explicit floor is honoured even when other guards are lower.
     # ------------------------------------------------------------------
     ev_discharge_guard_active = (not active_evs) and bool(np.any(ev_accounted > 1e-9))
+    if battery_export_blocked is None:
+        battery_export_blocked = np.zeros(len(base_load), dtype=bool)
     ed_ub_per_slot: list[float] = []
     for t in range(m):
         # Per-slot cap: battery must not discharge more than what's needed
         # to cover house load (minus EV-accounted load when applicable).
         # When no_export=True, all slots get this cap.  Otherwise, only
-        # EV-accounted slots get it.
+        # EV-accounted slots and battery_export_blocked slots get it.
         cap_house_load = base_load[t] / discharge_eff
         if ev_discharge_guard_active and ev_accounted[t] > 1e-9:
             cap_house_load = max(base_load[t] - ev_accounted[t], 0.0) / discharge_eff
-        if no_export or (ev_discharge_guard_active and ev_accounted[t] > 1e-9):
+        if (
+            no_export
+            or bool(battery_export_blocked[t])
+            or (ev_discharge_guard_active and ev_accounted[t] > 1e-9)
+        ):
             ed_ub_per_slot.append(min(cap_house_load, max_dis))
         else:
             ed_ub_per_slot.append(max_dis)

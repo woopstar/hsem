@@ -344,14 +344,24 @@ def score_plan(
             import_cost_disc += cost * discount
 
         # 2. Export revenue — clamp export prices below export_min_price
-        #    to 0 to match the applier's physical export block and the MILP's
-        #    clamping (milp_optimizer.py).  Without this the cost function
-        #    would report revenue for exports that can never happen.
+        #    to 0 to match the applier's physical export block and the
+        #    MILP's clamping (milp_optimizer.py).  Additionally zero
+        #    battery-destined export revenue when the slot is below the
+        #    user's ``battery_export_min_price`` floor (issue #752): the
+        #    MILP forbids ``force_batteries_discharge`` there, so that
+        #    export can never be realised by the battery.
         if slot.grid_export_kwh > 1e-9:
             effective_exp_price = exp_price
             if (
                 weights.export_min_price > 1e-9
                 and effective_exp_price < weights.export_min_price
+            ):
+                effective_exp_price = 0.0
+            if (
+                weights.battery_export_min_price > 1e-9
+                and effective_exp_price < weights.battery_export_min_price
+                and slot.batteries_discharged_kwh > 1e-9
+                and slot.solcast_pv_estimate_kwh <= 1e-9
             ):
                 effective_exp_price = 0.0
             rev = slot.grid_export_kwh * effective_exp_price
@@ -396,21 +406,28 @@ def score_plan(
             conversion_loss_cost_disc += conv * discount
         if slot.batteries_discharged_kwh > 1e-9 and discharge_loss_fraction > 1e-9:
             lost_kwh_discharge = slot.batteries_discharged_kwh * discharge_loss_fraction
-            # Destination-aware discharge loss pricing (issue #641).
-            # If the slot is a net exporter, the discharge is destined for
-            # export — price loss at the export price (foregone revenue).
-            # Otherwise, price at the import price (avoided import cost).
+            # Destination-aware discharge loss pricing (issue #641):
+            # net-exporter → price loss at export price; otherwise import price.
             if slot.grid_export_kwh > 1e-9:
-                # Export-destined discharge: use sanitised export price.
                 p_loss = exp_price
                 if (
                     weights.export_min_price > 1e-9
                     and p_loss < weights.export_min_price
                 ):
                     p_loss = 0.0
+                # Battery-destined export floored by battery_export_min_price
+                # (issue #752): when the slot's raw export price is below
+                # the user's floor and the discharge is battery-destined (no
+                # PV surplus), that export can never be realised, so the
+                # foregone-export valuation is 0.
+                if (
+                    weights.battery_export_min_price > 1e-9
+                    and p_loss < weights.battery_export_min_price
+                    and slot.solcast_pv_estimate_kwh <= 1e-9
+                ):
+                    p_loss = 0.0
                 p_loss = max(p_loss, 0.0)
             else:
-                # House-load-covering discharge: use import price (unchanged).
                 p_loss = imp_price_obj
             conv = lost_kwh_discharge * p_loss
             conversion_loss_cost += conv

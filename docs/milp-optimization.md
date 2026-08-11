@@ -279,6 +279,24 @@ This is a **hard bound** on the `ge[t]` variable — unlike the fuse it needs no
 
 Where $D_v$ is the deadline slot index for EV v.
 
+**Battery export minimum price floor (issue #752):**
+
+For each slot $t$, when `battery_export_min_price > 0` and the slot's **raw** `p_exp[t] < battery_export_min_price` (evaluated before the `min_export_price` and export-≤-import clamps):
+
+$$
+ed[t] \leq \frac{\mathrm{base\_load}[t]}{\eta_{\mathrm{dis}}}
+$$
+
+This is the **per-slot, soft-switch companion to the global `no_export` cap**. Where `no_export` blocks battery export on every slot when `excess_export_enabled = False`, the floor blocks it only on slots where the user's explicit per-slot price guard is unsatisfied. The battery can still serve house load on the blocked slot — it just cannot intentionally export to the grid there. Above the floor the optimizer is free to decide whether exporting is worthwhile; reaching the threshold does **not** automatically trigger export.
+
+Scope: the floor applies only to intentional battery-to-grid export (`ForceBatteriesDischarge`). It does not affect normal battery self-consumption, battery discharge for house load, direct PV export (`ge` is not capped — only `ed` is), or PV charging of the battery.
+
+Evaluation on the **raw** `p_exp` is essential: the user's `battery_export_min_price` floor must be honoured even when the `recommended_threshold` (auto-calculated cycle wear) or the inverter's `export_min_price` physical floor are lower.  Selecting the larger of the three floors would force every user to overwrite their own threshold when they want a stricter guard, defeating the purpose of the dedicated setting.
+
+The non-MILP `apply_excess_export` path enforces the same floor by requiring `export_price >= max(export_min_price, recommended_threshold, battery_export_min_price)` for any slot it would otherwise label `ForceBatteriesDischarge`.
+
+When `battery_export_min_price = 0` (default), no slot is ever blocked by the floor — the behavior is entirely backward compatible with the pre-#752 PLP.
+
 ---
 
 ## Price sanitisation

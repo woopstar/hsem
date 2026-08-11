@@ -84,6 +84,17 @@ class PlannerInput:
             Safety buffer kept in the battery before forced export (0-100).
         excess_export_price_threshold:
             Minimum export price required to trigger forced export.
+        battery_export_min_price:
+            Per-slot hard floor on the export price below which intentional
+            battery-to-grid discharge is forbidden (issue #752).  ``0.0``
+            (default) disables the guard.  When ``> 0`` and a slot's
+            ``export_price`` is strictly below this value, the MILP caps
+            the discharge variable so the battery can only serve house
+            load (no grid export) for that slot.  Reaching the threshold
+            does NOT automatically trigger export — the optimizer still
+            decides.  Applies only to intentional battery-to-grid export
+            (``force_batteries_discharge``); does not affect normal battery
+            self-consumption, PV export, or PV charging of the battery.
         export_min_price:
             Minimum export price for grid power control (below this the
             inverter export is throttled to zero).
@@ -148,6 +159,19 @@ class PlannerInput:
     excess_export_enabled: bool = False
     excess_export_discharge_buffer_pct: float = 10.0
     excess_export_price_threshold: float = 0.10
+
+    # --- per-slot hard floor for intentional battery-to-grid export (issue #752) ---
+    #: Per-slot hard floor on the export price below which intentional
+    #: battery-to-grid discharge is forbidden.  ``0.0`` (default) disables
+    #: the guard — fully backward compatible.  When ``> 0`` and a slot's
+    #: ``export_price`` is strictly below this floor, the MILP caps
+    #: ``ed[t]`` so the battery can only serve house load (no grid export)
+    #: for that slot.  The guard applies ONLY to intentional battery-to-grid export (``force_batteries_discharge``); it does NOT restrict
+    #: normal battery self-consumption, battery discharge for house load,
+    #: direct PV export, or PV charging of the battery.  Above the floor
+    #: the optimizer continues to decide freely — reaching the threshold
+    #: does NOT automatically trigger export.
+    battery_export_min_price: float = 0.0
 
     # --- grid export control ---
     export_min_price: float = 0.0

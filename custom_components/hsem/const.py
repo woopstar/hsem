@@ -23,6 +23,9 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_batteries_discharge_efficiency": 98,
     "hsem_batteries_enable_excess_export": False,
     "hsem_batteries_excess_export_discharge_buffer": 10,
+    # Per-slot hard floor for intentional battery-to-grid export (issue #752).
+    # 0.0 = disabled (default) — fully backward compatible.
+    "hsem_batteries_export_min_price": 0.0,
     # Wait mode behaviour: "strict" keeps the battery idle, "self_consumption_with_reserve"
     # allows normal household self-consumption while protecting the planner reserve.
     "hsem_batteries_wait_mode_behavior": "strict",

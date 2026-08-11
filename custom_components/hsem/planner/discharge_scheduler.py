@@ -213,14 +213,17 @@ def apply_excess_export(
     *,
     export_min_price: float = 0.0,
     recommended_threshold: float = 0.0,
+    battery_export_min_price: float = 0.0,
 ) -> None:
     """Mark high-export-price future slots for forced battery discharge.
 
     Only triggered when the battery holds more energy than needed until
     the next solar surplus.  Grid-charged batteries require a minimum price
     difference; solar-charged batteries export opportunistically but still
-    require ``export_price >= max(export_min_price, recommended_threshold)``
-    — the higher of the user-configured minimum and the cycle-wear cost.
+    require ``export_price >= max(export_min_price, recommended_threshold,
+    battery_export_min_price)`` — the highest of the user-configured minimum
+    (inverter physical floor), the cycle-wear cost, and the per-slot hard
+    floor for intentional battery-to-grid export (issue #752).
 
     Args:
         slots: Mutable list of planned slots.
@@ -237,6 +240,9 @@ def apply_excess_export(
             from :func:`~custom_components.hsem.utils.misc.calculate_recommended_threshold`.
             Used as a floor — exporting below this price costs more in
             battery wear than it earns in revenue.
+        battery_export_min_price: Per-slot hard floor for intentional
+            battery-to-grid export (issue #752).  ``0.0`` disables the
+            guard — fully backward compatible.
     """
     # battery_discharge_budget_kwh is the kWh the battery can export beyond what is
     # already needed to cover future house load.  Solar surplus in a slot does NOT
@@ -245,17 +251,21 @@ def apply_excess_export(
     # draws down the battery, so we drain the budget by max(net, 0) per slot.
     #
     battery_discharge_budget_kwh = float("inf")  # let concentrate + SoC handle limits
+    effective_min_export_price = max(
+        export_min_price, recommended_threshold, battery_export_min_price
+    )
     log_planner(
         "debug",
         "[disch] apply_excess_export  budget=%.3f  current=%.3f  required=%.3f  "
         "price_threshold=%.4f  recommended_threshold=%.4f  "
-        "effective_min_export_price=%.4f",
+        "battery_export_min_price=%.4f  effective_min_export_price=%.4f",
         battery_discharge_budget_kwh,
         current_capacity,
         required_capacity,
         export_price_threshold,
         recommended_threshold,
-        max(export_min_price, recommended_threshold),
+        battery_export_min_price,
+        effective_min_export_price,
     )
     if battery_discharge_budget_kwh < 0:
         log_planner(
@@ -292,7 +302,7 @@ def apply_excess_export(
                     >= s.price.import_price + recommended_threshold
                 )
             )
-            and s.price.export_price >= max(export_min_price, recommended_threshold)
+            and s.price.export_price >= effective_min_export_price
         ),
         key=lambda x: x.price.export_price,
         reverse=True,

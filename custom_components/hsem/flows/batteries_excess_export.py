@@ -28,6 +28,13 @@ async def get_batteries_excess_export_step_schema(  # NOSONAR
     at runtime from the configured purchase price, expected cycles, and the
     live battery usable capacity using ``calculate_recommended_threshold()``.
 
+    A separate optional ``hsem_batteries_export_min_price`` floor (issue #752)
+    gives the user a hard per-slot guard for *intentional* battery-to-grid
+    export.  When the slot's export price is strictly below this floor the
+    MILP caps the discharge variable so the battery can serve house load but
+    cannot export to the grid.  Defaults to 0 (disabled) which preserves the
+    pre-#752 behaviour.
+
     Args:
         config_entry: Existing config entry (used during options flow editing).
         _user_input: Accumulated user input dict from previous config flow steps
@@ -59,6 +66,22 @@ async def get_batteries_excess_export_step_schema(  # NOSONAR
                     }
                 }
             ),
+            vol.Required(
+                "hsem_batteries_export_min_price",
+                default=get_config_value(
+                    config_entry,
+                    "hsem_batteries_export_min_price",
+                ),
+            ): selector(
+                {
+                    "number": {
+                        "min": 0.0,
+                        "max": 2.0,
+                        "step": 0.01,
+                        "mode": "box",
+                    }
+                }
+            ),
         }
     )
 
@@ -69,7 +92,9 @@ async def validate_batteries_excess_export_input(
     """Validate user input for batteries excess export configuration.
 
     The price threshold is auto-calculated at runtime from battery
-    depreciation parameters, so only the discharge buffer is validated here.
+    depreciation parameters, so only the discharge buffer and the optional
+    battery export minimum price floor (issue #752) are validated here.
+    Required-field enforcement is handled by the voluptuous schema.
 
     Args:
         user_input: Dict of field name → value submitted by the user.
@@ -84,4 +109,11 @@ async def validate_batteries_excess_export_input(
         max_price=50.0,
         allow_negative=False,
     )
-    return merge_errors(buffer_errors)
+    export_floor_errors = validate_price(
+        user_input,
+        "hsem_batteries_export_min_price",
+        min_price=0.0,
+        max_price=2.0,
+        allow_negative=False,
+    )
+    return merge_errors(buffer_errors, export_floor_errors)

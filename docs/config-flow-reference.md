@@ -205,6 +205,7 @@ Excess battery export configuration.
 |---|---|---|---|
 | Enable excess export | `hsem_batteries_enable_excess_export` | `False` | Master switch |
 | Discharge buffer | `hsem_batteries_excess_export_discharge_buffer` | 10 % | Safety SoC buffer before forced export |
+| Battery export min price | `hsem_batteries_export_min_price` | `0.0` | Per-slot hard floor for intentional battery-to-grid export (issue #752). When > 0, the MILP forbids marking a slot as `force_batteries_discharge` when the export price is strictly below this floor — the battery can still serve house load in those slots. Reaching the threshold does NOT automatically trigger export; the optimizer still decides whether selling is worthwhile. Applies only to intentional battery-to-grid export, not to normal self-consumption, PV export, or PV charging. Set to 0 to disable. |
 | Price threshold | — | Auto-calculated | Computed from battery depreciation settings at runtime |
 
 

@@ -117,6 +117,16 @@ class CostWeights:
     # in milp_optimizer.py so that cost_function scores match MILP assumptions.
     export_min_price: float = 0.0
 
+    # Per-slot hard floor for intentional battery-to-grid export (issue #752).
+    # When > 0 and a slot's raw ``export_price`` is strictly below this value,
+    # the MILP and ``apply_excess_export`` both forbid marking the slot as
+    # ``ForceBatteriesDischarge`` — the battery may serve house load but not
+    # export to the grid on those slots.  Mirrored in the cost function so that
+    # scored costs match the optimisation assumptions: "battery-destined"
+    # export revenue (discharge loss priced at export) is treated as 0 on
+    # blocked slots because that export can never happen.
+    battery_export_min_price: float = 0.0
+
     # Battery capacity parameters used by the deferred-export correction in
     # the terminal-SoC charge premium (issue #592).  Both must be positive
     # for the correction to activate; defaults keep it disabled so existing

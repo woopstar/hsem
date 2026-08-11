@@ -290,6 +290,10 @@ def build_planner_input(
                 else live.battery_usable_capacity_kwh
             ),
         ),
+        # Per-slot hard floor for intentional battery-to-grid export (issue #752).
+        battery_export_min_price=(
+            convert_to_float(cfg.batteries_export_min_price) or 0.0
+        ),
         export_min_price=convert_to_float(cfg.export_electricity_min_price) or 0.0,
         main_fuse_amps=(float(cfg.main_fuse_amps) if cfg.main_fuse_amps > 0 else None),
         main_fuse_phases=cfg.main_fuse_phases,
