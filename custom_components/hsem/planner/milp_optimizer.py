@@ -68,6 +68,7 @@ def solve_milp(
     main_fuse_amps: float | None = None,
     main_fuse_phases: int = 3,
     max_grid_export_power_kw: float | None = None,
+    battery_export_min_price: float = 0.0,
 ) -> tuple[list[PlannedSlot], dict] | None:
     """Solve the LP and return a deep-copy slot list with MILP recommendations.
 
@@ -178,6 +179,10 @@ def solve_milp(
             per-slot ``ge[t]`` is hard-bounded to
             ``max_grid_export_power_kw * slot_hours`` kWh so the plan never
             exceeds the site limit.  ``None`` or 0 disables the bound.
+        battery_export_min_price:
+            Per-slot hard floor below which intentional battery-to-grid
+            discharge is forbidden (issue #752). `0.0` disables it.
+            Caps `ed[t]` to `base_load[t]/discharge_eff` on blocked slots.
 
     Returns:
         A tuple ``(slots, diagnostics)`` where:
@@ -194,7 +199,8 @@ def solve_milp(
         "[milp] solve_milp  slots=%d  current=%.3f  usable=%.3f  "
         "max_chg=%.3f  max_dis=%s  cycle_cost=%.6f  "
         "chg_eff=%.2f  dis_eff=%.2f  discount=%.4f  repl_price=%s  "
-        "no_export=%s  min_export_price=%.4f  fuse=%s",
+        "no_export=%s  min_export_price=%.4f  battery_export_min_price=%.4f  "
+        "fuse=%s",
         len(slots),
         current_kwh,
         usable_kwh,
@@ -211,6 +217,7 @@ def solve_milp(
         ),
         no_export,
         min_export_price,
+        battery_export_min_price,
         (
             f"{main_fuse_amps:.1f}A/{main_fuse_phases}ph"
             if main_fuse_amps is not None
@@ -261,6 +268,12 @@ def solve_milp(
     # Replace NaN prices with 0 to prevent solver numerical issues
     p_imp = np.nan_to_num(p_imp, nan=0.0)
     p_exp = np.nan_to_num(p_exp, nan=0.0)
+
+    # Per-slot hard floor for intentional battery-to-grid export (issue
+    # #752). 0.0 (default) → mask all-False, backward compatible.
+    battery_export_blocked = np.zeros(len(future_idx), dtype=bool)
+    if battery_export_min_price > 1e-9:
+        battery_export_blocked = p_exp < battery_export_min_price
 
     # Clamp export prices below min_export_price to 0.
     # The applier physically sets the inverter to GRID_EXPORT_LIMIT_WATT
@@ -575,6 +588,7 @@ def solve_milp(
         _has_session_demand,
         max_grid_export_per_slot_kwh=max_grid_export_per_slot_kwh,
         export_limit_active=export_limit_active,
+        battery_export_blocked=battery_export_blocked,
     )
 
     A_eq = constraints["A_eq"]

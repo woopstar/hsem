@@ -314,12 +314,13 @@ def generate_candidates(
             main_fuse_amps=inp.main_fuse_amps,
             main_fuse_phases=inp.main_fuse_phases,
             max_grid_export_power_kw=inp.max_grid_export_power_kw,
+            battery_export_min_price=inp.battery_export_min_price,
         )
         log_planner(
             "debug",
             "[gen] MILP solve called  cycle_cost=%.6f  no_export=%s  "
             "excess_export_enabled=%s  min_export_price=%.4f  "
-            "ev_configs=%d",
+            "battery_export_min_price=%.4f  ev_configs=%d",
             effective_cycle_cost,
             not inp.excess_export_enabled,
             inp.excess_export_enabled,
@@ -332,6 +333,7 @@ def generate_candidates(
                     capacity_loss_pct=inp.battery_capacity_loss_pct,
                 ),
             ),
+            inp.battery_export_min_price,
             len(ev_configs) if ev_configs else 0,
         )
         if milp_result is not None:

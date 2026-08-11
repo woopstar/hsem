@@ -122,6 +122,8 @@ class SensorConfig:
 
         batteries_enable_excess_export: Enable opportunistic forced-discharge export.
         batteries_excess_export_discharge_buffer: Safety buffer percentage to keep.
+        batteries_export_min_price: Per-slot hard floor for intentional
+            battery-to-grid export (issue #752).  ``0.0`` disables the floor.
         batteries_wait_mode_behavior: How ``batteries_wait_mode`` is interpreted.
             ``strict`` keeps the battery idle; ``self_consumption_with_reserve``
             allows normal household self-consumption while protecting the
@@ -232,6 +234,12 @@ class SensorConfig:
     # Excess export
     batteries_enable_excess_export: bool = False
     batteries_excess_export_discharge_buffer: float = 10.0
+    #: Per-slot hard floor for intentional battery-to-grid export (issue #752).
+    #: When ``> 0`` and a slot's export price is strictly below this floor the
+    #: MILP caps the battery discharge variable so the battery can only cover
+    #: house load (no grid export).  ``0.0`` = disabled (default) — fully
+    #: backward compatible.
+    batteries_export_min_price: float = 0.0
 
     # Wait mode behaviour
     batteries_wait_mode_behavior: str = "strict"

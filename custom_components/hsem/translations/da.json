@@ -29,11 +29,13 @@
       "batteries_excess_export": {
         "data": {
           "hsem_batteries_enable_excess_export": "Aktiver overskuds-eksport",
-          "hsem_batteries_excess_export_discharge_buffer": "Afladningsbuffer (%)"
+          "hsem_batteries_excess_export_discharge_buffer": "Afladningsbuffer (%)",
+          "hsem_batteries_export_min_price": "Batterieksport Min. Pris"
         },
         "data_description": {
           "hsem_batteries_enable_excess_export": "Aktiver eller deaktiver eksport af overskydende batterikapacitet til nettet, når det er økonomisk fordelagtigt.",
-          "hsem_batteries_excess_export_discharge_buffer": "Indstil sikkerhedsbufferprocenten for at opretholde minimum batterireserver (0-50%). Standard er 10% for at sikre tilstrækkelig kapacitet til uventet efterspørgsel."
+          "hsem_batteries_excess_export_discharge_buffer": "Indstil sikkerhedsbufferprocenten for at opretholde minimum batterireserver (0-50%). Standard er 10% for at sikre tilstrækkelig kapacitet til uventet efterspørgsel.",
+          "hsem_batteries_export_min_price": "Hårdt prægulv per slot for tilsigtet batteri-til-net eksport (issue #752). Når værdien > 0, forbyder HSEM at markere et slot som force_batteries_discharge når eksportprisen er strengt under dette gulv — batteriet kan stadig betjene husforbruget i disse slots. At nå tærsklen udløser IKKE automatisk eksport; optimizeren bestemmer stadig, om salg er økonomisk fordelagtigt. Gælder kun for tilsigtet batteri-til-net eksport, ikke for normalt selvforbrug, PV-eksport eller PV-opladning. Sæt til 0 for at deaktivere (standard)."
         },
         "description": "Konfigurer indstillinger for eksport af overskydende batterikapacitet til nettet, når det er økonomisk fordelagtigt.",
         "title": "Overskuds-eksport"
@@ -506,11 +508,13 @@
       "batteries_excess_export": {
         "data": {
           "hsem_batteries_enable_excess_export": "Enable Excess Battery Export",
-          "hsem_batteries_excess_export_discharge_buffer": "Discharge Buffer (%)"
+          "hsem_batteries_excess_export_discharge_buffer": "Discharge Buffer (%)",
+          "hsem_batteries_export_min_price": "Batterieksport Min. Pris"
         },
         "data_description": {
           "hsem_batteries_enable_excess_export": "Enable or disable the excess battery export feature, which automatically exports excess battery capacity to the grid when economically beneficial.",
-          "hsem_batteries_excess_export_discharge_buffer": "Set the safety buffer percentage to maintain minimum battery reserves (0-50%). Default is 10% to ensure adequate capacity for unexpected demand."
+          "hsem_batteries_excess_export_discharge_buffer": "Set the safety buffer percentage to maintain minimum battery reserves (0-50%). Default is 10% to ensure adequate capacity for unexpected demand.",
+          "hsem_batteries_export_min_price": "Hårdt prægulv per slot for tilsigtet batteri-til-net eksport (issue #752). Når værdien > 0, forbyder HSEM at markere et slot som force_batteries_discharge når eksportprisen er strengt under dette gulv — batteriet kan stadig betjene husforbruget i disse slots. At nå tærsklen udløser IKKE automatisk eksport; optimizeren bestemmer stadig, om salg er økonomisk fordelagtigt. Gælder kun for tilsigtet batteri-til-net eksport, ikke for normalt selvforbrug, PV-eksport eller PV-opladning. Sæt til 0 for at deaktivere (standard)."
         },
         "description": "Configure excess battery export settings to automatically sell excess energy to the grid when economically beneficial.",
         "title": "Excess Battery Export"

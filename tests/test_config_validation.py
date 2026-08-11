@@ -894,6 +894,7 @@ class TestFlowValidatorsUseConfigValidator:
             {
                 "hsem_batteries_enable_excess_export": True,
                 "hsem_batteries_excess_export_discharge_buffer": 51,
+                "hsem_batteries_export_min_price": 0.0,
             }
         )
         assert (
@@ -911,6 +912,7 @@ class TestFlowValidatorsUseConfigValidator:
             {
                 "hsem_batteries_enable_excess_export": True,
                 "hsem_batteries_excess_export_discharge_buffer": 10,
+                "hsem_batteries_export_min_price": 0.0,
             }
         )
         assert errors == {}

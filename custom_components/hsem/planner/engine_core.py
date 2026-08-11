@@ -175,6 +175,7 @@ def _schedule_slots(
             warnings,
             export_min_price=inp.export_min_price,
             recommended_threshold=rt,
+            battery_export_min_price=inp.battery_export_min_price,
         )
         log_planner(
             "debug",
@@ -474,6 +475,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         charge_efficiency_pct=inp.battery_charge_efficiency_pct,
         discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
         export_min_price=inp.export_min_price,
+        battery_export_min_price=inp.battery_export_min_price,
         time_discount_rate=inp.time_discount_rate,
         battery_usable_capacity_kwh=usable_kwh,
         max_charge_per_slot_kwh=mcps,

@@ -488,9 +488,37 @@ bounds** on the discharge variable `ed[t]` (implemented as variable bounds in
    Note this also suppresses battery-driven grid arbitrage — intentional:
    "excess export disabled" means the battery never feeds the grid.
 
-When both apply, the tighter cap wins.  Because the battery cannot export
-under `no_export`, the MILP labels discharge slots `BatteriesDischargeMode`
-(self-consumption) rather than `ForceBatteriesDischarge` in post-processing.
+3. **Battery export minimum price floor (issue #752)** — when
+   `battery_export_min_price > 0` and the slot's RAW export price is
+   strictly below this floor (`p_exp[t] < battery_export_min_price`), the
+   battery can serve house load on that slot but cannot intentionally
+   export to the grid:
+
+   ```text
+   ed[t] <= base_load[t] / discharge_eff  (only on blocked slots)
+   ```
+
+   This is the per-slot, soft-switch companion to the global `no_export`
+   cap: instead of blocking battery export everywhere, the floor blocks
+   it only on slots whose raw export price is below the user's explicit
+   guard.  The mask is evaluated on the RAW `p_exp` (before the
+   `export_min_price` and export-≤-import clamps) so the user's explicit
+   price signal is honoured even when the recommended threshold or
+   inverter physical floor are lower.  Above the floor the optimiser is
+   free to decide whether exporting is worthwhile — reaching the
+   threshold does NOT auto-trigger export.  The guard applies only to
+   intentional battery-to-grid export (`ForceBatteriesDischarge`); it
+   does NOT restrict normal battery self-consumption, battery discharge
+   for house load, direct PV export, or PV charging of the battery.  The
+   non-MILP `apply_excess_export` path applies the same floor by
+   requiring `export_price >= max(export_min_price,
+   recommended_threshold, battery_export_min_price)` for any slot it
+   would otherwise label `ForceBatteriesDischarge`.
+
+When any apply, the tighter cap wins.  When the battery cannot export on
+a slot (`no_export` or a blocked-by-floor slot), the MILP labels
+discharge slots `BatteriesDischargeMode` (self-consumption) rather than
+`ForceBatteriesDischarge` in post-processing.
 
 ### EV co-optimisation (MILP)
 
@@ -932,6 +960,33 @@ cost) and the LP prefers curtailment (cost 0) over export (cost > 0).
 Invariant: ``export_price < export_min_price`` → planner treats export
 revenue as 0 in both optimisation and scoring.
 
+**Battery export minimum price floor (``battery_export_min_price``, issue
+#752):** When ``battery_export_min_price > 0`` and a slot's raw
+``export_price`` is strictly below this floor, the MILP forbids
+intentional battery-to-grid discharge in that slot (either by capping
+``ed[t]`` to ``base_load[t] / discharge_eff``, or by requiring
+``export_price >= battery_export_min_price`` before
+``apply_excess_export`` labels a slot ``ForceBatteriesDischarge``). To
+keep cost-function scores consistent with the optimisation assumptions:
+
+- ``CostWeights.battery_export_min_price`` mirrors the floor in
+  ``score_plan``.
+- When ``export_price < battery_export_min_price`` AND the slot is a net
+  exporter AND PV alone cannot account for the export (i.e. no material PV
+  surplus available on the slot), the export-destined portion is treated as
+  battery-destined and the export revenue (and discharge-loss
+  destination-aware pricing) is zeroed for that slot — that export can
+  never be realised by the battery.
+- Slots where PV would be exported (``solcast_pv_estimate_kwh > 0``)
+  still receive full export revenue.  The floor never restricts PV export.
+- Above the floor the optimizer decides freely — reaching the threshold
+  does NOT auto-trigger export.
+
+Invariant: ``battery_export_min_price > 0`` AND ``export_price <
+battery_export_min_price`` AND the slot's export is battery-destined (no
+PV surplus available) → the cost function scores that slot's
+export-destined revenue and discharge-loss valuation as 0.
+
 **Export-≤-import clamp (MILP unbounded-LP fix, issue #635):**
 Before solving, the MILP also clamps ``export_price[t]`` to never
 exceed ``import_price[t]`` for the same slot:
@@ -1092,6 +1147,16 @@ case `terminal_soc_value = 0.0` and `score == total_cost + penalties`.
 - Given two otherwise-identical plans, the one that ends with more stored
   battery energy must have the lower `terminal_soc_value` and therefore the
   lower `score` (all else equal).
+- (issue #752) When `battery_export_min_price > 0` and a slot's raw
+  `export_price` is strictly below this floor, the MILP never schedules
+  intentional battery-to-grid export on that slot — `grid_export_kwh` may
+  be > 0 there only when PV surplus alone would have been exported.
+- (issue #752) The non-MILP `apply_excess_export` path never labels a
+  slot `ForceBatteriesDischarge` when `export_price <
+  battery_export_min_price`.
+- (issue #752) With `battery_export_min_price = 0` (default) the
+  planner produces identical results to the pre-#752 code (backward
+  compatible).
 
 ## Price interval semantics
 

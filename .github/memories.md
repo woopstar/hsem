@@ -270,6 +270,45 @@ Also in `_build_constraints`, the session-EV AC load is simply
 by definition.  Do not re-introduce a multiply-then-divide by
 `charger_efficiency`.
 
+## Battery Export Minimum Price Floor (Issue #752)
+
+A third per-slot ed cap, in the same `_build_constraints` loop:
+
+3. **Battery-export-min-price floor** — when `battery_export_min_price > 0`
+   and the slot's RAW export price is strictly below the floor
+   (`p_exp[t] < battery_export_min_price`, evaluated on the raw p_exp
+   BEFORE the `min_export_price` and export-≤-import clamps), apply
+   `ed[t] ≤ base_load / η_dis` to that slot.  This is the per-slot,
+   soft-switch companion to the global `no_export` cap — it blocks
+   *intentional* battery-to-grid export only on slots below the user's
+   explicit floor, not everywhere.  Above the floor the optimizer is
+   free to decide whether exporting is worthwhile; reaching the threshold
+   does NOT auto-trigger export.  The non-MILP `apply_excess_export` path
+   enforces the same floor via
+   `export_price >= max(export_min_price, recommended_threshold, battery_export_min_price)`.
+
+   - The mask is computed in `milp_optimizer.py::solve_milp`
+     (`battery_export_blocked`) and passed to `_build_constraints` via the
+     `battery_export_blocked=` kwarg.  Wire it end-to-end:
+     `const.py` (`hsem_batteries_export_min_price` default 0.0) →
+     `flows/batteries_excess_export.py` schema/validator →
+     `models/sensor_config.py::batteries_export_min_price` →
+     `custom_sensors/config_reader.py` →
+     `models/planner_input.py::battery_export_min_price` →
+     `coordinator_builder.py::build_planner_input` →
+     `planner/candidate_generator.py::generate_candidates` →
+     `planner/milp_optimizer.py::solve_milp` (kwarg) →
+     `planner/milp/_constraints.py::_build_constraints` (mask).
+   - The cost function mirrors the floor via
+     `CostWeights.battery_export_min_price`; battery-destined export
+     revenue (and discharge-loss export-destined pricing) is zeroed on
+     blocked slots so scored costs match the optimisation.
+   - The guard applies ONLY to intentional battery-to-grid export
+     (`force_batteries_discharge`).  It does NOT affect normal battery
+     self-consumption, PV export, or PV charging.  With the default
+     `0.0` the planner is identical to the pre-#752 code (backward
+     compatible) — verify the backward-compat invariant in tests.
+
 ## Live-Injection Spike Floor (Issue #592)
 
 In `planner/engine_population.py::_inject_live_data_into_current_slot`, the

@@ -272,6 +272,7 @@ The pre-charge window ends at `schedule.start` and is sized to fill the battery 
 | `excess_export_discharge_buffer_pct` | `10.0` | Safety SoC buffer kept before forced export |
 | `excess_export_price_threshold` | Auto-calculated | Computed at runtime from battery depreciation settings (purchase price, expected cycles, usable capacity) via `calculate_recommended_threshold()`. |
 | `export_min_price` | `0.0` | Below this export price the inverter throttles export to zero |
+| `battery_export_min_price` | `0.0` | Per-slot hard floor for intentional battery-to-grid export (issue #752). When > 0 and a slot's raw `export_price` is strictly below this value, the MILP caps `ed[t]` so the battery can only serve house load (no grid export) for that slot — `force_batteries_discharge` is never labelled there. Reaching the threshold does NOT auto-trigger export; the optimizer still decides. Applies only to intentional battery-to-grid export, not to normal battery self-consumption, PV export, or PV charging. Set to 0 to disable. |
 
 ### Seasonal configuration
 
