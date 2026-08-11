@@ -898,6 +898,12 @@ entries rather than replacing existing ones.
 Regression tests: ``tests/test_15min_price_matching.py``
 (``TestNordpoolRawFormat``).
 
+**Observability rule:** when a configured price sensor yields zero matched
+data points, the populator logs a ``warning`` naming the sensor.  A
+``debug`` message is logged for Solcast sensors (PV forecast is optional).
+This makes format mismatches visible instead of silently planning with
+``import_price = 0.0`` (issue #750).
+
 ---
 
 ## File Organization — By Responsibility, Not By Theme
