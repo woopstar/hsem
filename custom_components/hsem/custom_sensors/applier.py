@@ -78,7 +78,42 @@ def _fmt_live_power_w(power_w: float | None) -> str:
     """Format a live power reading for log lines (``None`` → ``n/a``)."""
     if power_w is None:
         return "n/a"
-    return f"{int(power_w)}W"
+    return f"{int(power_w)} W"
+
+
+def _wait_mode_self_consumption_cap_w(
+    battery_capacity_kwh: float,
+    required_capacity_kwh: float,
+    slot_hours: float,
+    max_discharge_power_w: int,
+) -> int:
+    """Return the discharge power cap for wait-mode self-consumption.
+
+    When the battery holds more energy than the planner has reserved for future
+    expensive periods, the surplus may be used for normal household
+    self-consumption.  The cap is the power required to consume exactly that
+    surplus over the slot duration; the inverter will only draw what the house
+    actually needs, so the battery will not discharge faster than the surplus
+    allows.
+
+    Args:
+        battery_capacity_kwh: Current usable battery energy above the discharge
+            floor (kWh).
+        required_capacity_kwh: Energy the planner has reserved for future use
+            (kWh).
+        slot_hours: Duration of the current recommendation slot in hours.
+        max_discharge_power_w: Maximum discharge power supported by the battery
+            pack (W).
+
+    Returns:
+        Discharge power cap in watts.  ``0`` when there is no surplus above the
+        reserve or the slot duration is invalid.
+    """
+    surplus_kwh = max(battery_capacity_kwh - required_capacity_kwh, 0.0)
+    if surplus_kwh <= 1e-9 or slot_hours <= 1e-9:
+        return 0
+    cap_w = int(surplus_kwh / slot_hours * 1000.0)
+    return min(cap_w, max_discharge_power_w)
 
 
 def compute_ev_discharge_cap_w(
@@ -542,12 +577,82 @@ async def async_apply_battery_settings(
             return summary
 
         case Recommendations.BatteriesWaitMode.value:
-            tou_modes = DEFAULT_HSEM_BATTERIES_WAIT_MODE
-            working_mode = WorkingModes.TimeOfUse.value
+            # Strict wait keeps the battery idle in TOU mode.  Self-consumption
+            # with reserve switches to MaximizeSelfConsumption so the house can
+            # use surplus battery energy above the planner's required reserve.
+            if cfg.batteries_wait_mode_behavior == "self_consumption_with_reserve":
+                surplus = (
+                    live.battery_current_capacity_kwh - current_required_battery_kwh
+                )
+                if surplus > 1e-9:
+                    working_mode = WorkingModes.MaximizeSelfConsumption.value
+                else:
+                    tou_modes = DEFAULT_HSEM_BATTERIES_WAIT_MODE
+                    working_mode = WorkingModes.TimeOfUse.value
+            else:
+                tou_modes = DEFAULT_HSEM_BATTERIES_WAIT_MODE
+                working_mode = WorkingModes.TimeOfUse.value
 
         case _:
             # Unrecognised recommendation — nothing to apply.
             return summary
+
+    # Wait mode self-consumption: cap discharge power so only surplus energy
+    # above the planner's required reserve can be used.  This preserves the
+    # reserve for future scheduled discharge windows while still allowing the
+    # house to cover normal self-consumption from the surplus.
+    wait_mode_self_consumption = (
+        recommendation == Recommendations.BatteriesWaitMode.value
+        and cfg.batteries_wait_mode_behavior == "self_consumption_with_reserve"
+        and working_mode == WorkingModes.MaximizeSelfConsumption.value
+        and not ev_active
+    )
+    if wait_mode_self_consumption:
+        slot_hours = slot_duration_hours(rec.start, rec.end)
+        surplus = max(
+            live.battery_current_capacity_kwh - current_required_battery_kwh, 0.0
+        )
+        cap_w = _wait_mode_self_consumption_cap_w(
+            battery_capacity_kwh=live.battery_current_capacity_kwh,
+            required_capacity_kwh=current_required_battery_kwh,
+            slot_hours=slot_hours,
+            max_discharge_power_w=max_discharge_power,
+        )
+        if live.huawei_batteries_max_discharge_power_w != cap_w:
+            discharge_entity = cfg.huawei_solar_batteries_maximum_discharging_power
+            if discharge_entity is None:
+                _LOGGER.debug(
+                    "Wait mode self-consumption discharge power entity not configured; "
+                    "skipping write.",
+                    "warning",
+                )
+                return summary
+            _de_wait: str = discharge_entity  # narrowed for closure
+            wait_cap_result = await async_write_and_verify(
+                entity_id=_de_wait,
+                desired=cap_w,
+                writer=lambda: async_set_number_value(sensor, _de_wait, cap_w),
+                reader=lambda: _read_number_state(sensor, _de_wait),
+            )
+            summary.results.append(wait_cap_result)
+            _LOGGER.debug(
+                "Wait mode self-consumption — capped max discharge power to %d W "
+                "(capacity=%.2f kWh, required=%.2f kWh, surplus=%.2f kWh, "
+                "slot_hours=%.3f)",
+                cap_w,
+                live.battery_current_capacity_kwh,
+                current_required_battery_kwh,
+                surplus,
+                slot_hours,
+            )
+            if wait_cap_result.status == ApplyStatus.FAILED:
+                _LOGGER.debug(
+                    "Wait mode self-consumption discharge cap write FAILED for %s. "
+                    "Blocking further battery writes this cycle.",
+                    discharge_entity,
+                    "error",
+                )
+                return summary
 
     # Override discharge power when EV uses V2H
     if recommendation == Recommendations.EVSmartCharging.value and (
@@ -581,17 +686,23 @@ async def async_apply_battery_settings(
                 )
                 return summary
 
-    # Excess PV use in TOU — fed_to_grid for wait/fully-fed modes, charge otherwise.
+    # Excess PV use in TOU — fed_to_grid for strict wait/fully-fed modes, charge
+    # otherwise.  Wait-mode self-consumption keeps excess PV in the battery so
+    # the surplus above the reserve can be used for household self-consumption.
     # ForceExport maps to WorkingModes.FullyFedToGrid at the hardware level so we
     # check both BatteriesWaitMode and ForceExport recommendations here.
     desired_excess = (
-        "fed_to_grid"
-        if recommendation
-        in (
-            Recommendations.BatteriesWaitMode.value,
-            Recommendations.ForceExport.value,
+        "charge"
+        if wait_mode_self_consumption
+        else (
+            "fed_to_grid"
+            if recommendation
+            in (
+                Recommendations.BatteriesWaitMode.value,
+                Recommendations.ForceExport.value,
+            )
+            else "charge"
         )
-        else "charge"
     )
     if live.huawei_batteries_excess_pv_use_in_tou != desired_excess:
         excess_entity = cfg.huawei_solar_batteries_excess_pv_energy_use_in_tou

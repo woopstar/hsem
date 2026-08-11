@@ -12,7 +12,7 @@ The config flow is a multi-step wizard. Steps appear in this order:
 quick_setup → init → prices → months → solcast → huawei_solar
     → battery_economics → power → ev → [ev_second] → ev_planned_load
     → [ev_second_planned_load] → ocpp → batteries_schedules
-    → batteries_excess_export → weighted_values
+    → batteries_wait_mode → batteries_excess_export → weighted_values
     → energy_and_ml
 ```
 
@@ -188,6 +188,14 @@ Battery charge/discharge schedule windows (up to three).
 | End time | `hsem_batteries_enable_batteries_schedule_N_end` | Varies | Window end (HH:MM:SS) |
 
 Schedule 1 and 2 are enabled by default; schedule 3 is disabled by default.
+
+### Step: `batteries_wait_mode`
+
+Battery wait-mode behaviour.
+
+| Field | Key | Default | Description |
+|---|---|---|---|
+| Wait mode behaviour | `hsem_batteries_wait_mode_behavior` | `strict` | `strict` keeps the battery idle in Wait mode; `self_consumption_with_reserve` allows normal household self-consumption while protecting the planner's required battery reserve |
 
 ### Step: `batteries_excess_export`
 

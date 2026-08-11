@@ -62,7 +62,7 @@ ignored.
 | `batteries_charge_grid` | Force-charge the battery from the grid |
 | `batteries_charge_solar` | Charge the battery from PV only |
 | `batteries_discharge_mode` | Discharge the battery to cover house load |
-| `batteries_wait_mode` | Battery idle — neither charging nor discharging |
+| `batteries_wait_mode` | Battery idle by default; follows the configured **Wait mode behaviour** when selected by the planner |
 | `ev_smart_charging` | Prioritise EV charging |
 | `force_batteries_discharge` | Force-discharge the battery to the grid (export) |
 | `force_export` | Export all available energy to the grid |
