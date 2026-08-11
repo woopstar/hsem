@@ -77,7 +77,7 @@ async def async_populate_price_and_solcast(
     solcast_source_minutes = 60
 
     # Import price — read from primary sensor (may embed forecast attributes)
-    await _async_update_hourly_field(
+    import_matched = await _async_update_hourly_field(
         sensor,
         recommendations,
         cfg.import_electricity_price_sensor,
@@ -88,7 +88,7 @@ async def async_populate_price_and_solcast(
     )
     # Import price — fallback to dedicated forecast sensor if configured
     if cfg.import_electricity_price_forecast_sensor:
-        await _async_update_hourly_field(
+        import_matched += await _async_update_hourly_field(
             sensor,
             recommendations,
             cfg.import_electricity_price_forecast_sensor,
@@ -97,8 +97,15 @@ async def async_populate_price_and_solcast(
             cfg.solcast_pv_forecast_forecast_likelihood,
             price_source_minutes,
         )
+    if import_matched == 0:
+        _LOGGER.warning(
+            "No import price data matched from sensor(s) %s — "
+            "planner will use 0.0 for all slots. "
+            "Check that the sensor is available and its attribute format is supported.",
+            cfg.import_electricity_price_sensor,
+        )
     # Export price — read from primary sensor
-    await _async_update_hourly_field(
+    export_matched = await _async_update_hourly_field(
         sensor,
         recommendations,
         cfg.export_electricity_price_sensor,
@@ -109,7 +116,7 @@ async def async_populate_price_and_solcast(
     )
     # Export price — fallback to dedicated forecast sensor
     if cfg.export_electricity_price_forecast_sensor:
-        await _async_update_hourly_field(
+        export_matched += await _async_update_hourly_field(
             sensor,
             recommendations,
             cfg.export_electricity_price_forecast_sensor,
@@ -118,8 +125,15 @@ async def async_populate_price_and_solcast(
             cfg.solcast_pv_forecast_forecast_likelihood,
             price_source_minutes,
         )
+    if export_matched == 0:
+        _LOGGER.warning(
+            "No export price data matched from sensor(s) %s — "
+            "planner will use 0.0 for all slots. "
+            "Check that the sensor is available and its attribute format is supported.",
+            cfg.export_electricity_price_sensor,
+        )
     # Solcast today
-    await _async_update_hourly_field(
+    solcast_today_matched = await _async_update_hourly_field(
         sensor,
         recommendations,
         cfg.solcast_pv_forecast_forecast_today,
@@ -128,8 +142,14 @@ async def async_populate_price_and_solcast(
         cfg.solcast_pv_forecast_forecast_likelihood,
         solcast_source_minutes,
     )
+    if solcast_today_matched == 0:
+        _LOGGER.debug(
+            "No Solcast today data matched from sensor %s — "
+            "PV estimates will be 0.0 for today.",
+            cfg.solcast_pv_forecast_forecast_today,
+        )
     # Solcast tomorrow
-    await _async_update_hourly_field(
+    solcast_tomorrow_matched = await _async_update_hourly_field(
         sensor,
         recommendations,
         cfg.solcast_pv_forecast_forecast_tomorrow,
@@ -138,6 +158,12 @@ async def async_populate_price_and_solcast(
         cfg.solcast_pv_forecast_forecast_likelihood,
         solcast_source_minutes,
     )
+    if solcast_tomorrow_matched == 0:
+        _LOGGER.debug(
+            "No Solcast tomorrow data matched from sensor %s — "
+            "PV estimates will be 0.0 for tomorrow.",
+            cfg.solcast_pv_forecast_forecast_tomorrow,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -153,7 +179,7 @@ async def _async_update_hourly_field(
     share: float,
     solcast_likelihood_key: str,
     source_interval_minutes: int,
-) -> None:
+) -> int:
     """Match sensor attribute data to recommendation slots and write one field.
 
     Args:
@@ -163,22 +189,31 @@ async def _async_update_hourly_field(
         field_name: Attribute name on :class:`HourlyRecommendation` to set.
         share: Divisor applied to each raw value (accounts for sub-hourly slots).
         solcast_likelihood_key: Attribute key for Solcast PV estimate field.
+
+    Returns:
+        Number of data points successfully matched to at least one slot.
     """
     if sensor_id is None:
-        return
+        return 0
 
     source_window = timedelta(minutes=source_interval_minutes)
 
     sensor_state = sensor.hass.states.get(sensor_id)
     if not sensor_state:
         _LOGGER.debug(f"Input sensor {sensor_id} was not found for data.")
-        return
+        return 0
 
     # Each source exposes a different attribute key / time-key / value-key
     data_sources: dict[str, list[dict[str, str]]] = {
         "forecast": [{"k": "hour", "v": "price"}],
-        "raw_tomorrow": [{"k": "hour", "v": "price"}],
-        "raw_today": [{"k": "hour", "v": "price"}],
+        "raw_tomorrow": [
+            {"k": "hour", "v": "price"},
+            {"k": "start", "v": "value"},  # custom-components/nordpool
+        ],
+        "raw_today": [
+            {"k": "hour", "v": "price"},
+            {"k": "start", "v": "value"},  # custom-components/nordpool
+        ],
         "prices": [{"k": "start", "v": "price"}],
         "prices_today": [
             {"k": "start", "v": "price"},
@@ -195,6 +230,7 @@ async def _async_update_hourly_field(
         "forecasts": [{"k": "start_time", "v": "per_kwh"}],
     }
 
+    matched = 0
     for attr, kv_list in data_sources.items():
         sensor_data = sensor_state.attributes.get(attr) or []
         if not sensor_data:
@@ -257,6 +293,9 @@ async def _async_update_hourly_field(
                     obj_start = normalize_datetime(obj.start)
                     if dt_key <= obj_start < dt_key + source_window:
                         setattr(obj, field_name, round(value, 5))
+                        matched += 1
+
+    return matched
 
 
 # ---------------------------------------------------------------------------
@@ -286,7 +325,7 @@ def populate_price_and_solcast_from_snapshot(
     price_source_minutes = cfg.electricity_price_update_interval
     solcast_source_minutes = 60
 
-    _update_hourly_field_from_attrs(
+    import_matched = _update_hourly_field_from_attrs(
         recommendations,
         snapshot.sensor_attributes.get(cfg.import_electricity_price_sensor or ""),
         "import_price",
@@ -295,7 +334,7 @@ def populate_price_and_solcast_from_snapshot(
         price_source_minutes,
     )
     if cfg.import_electricity_price_forecast_sensor:
-        _update_hourly_field_from_attrs(
+        import_matched += _update_hourly_field_from_attrs(
             recommendations,
             snapshot.sensor_attributes.get(
                 cfg.import_electricity_price_forecast_sensor or ""
@@ -305,7 +344,14 @@ def populate_price_and_solcast_from_snapshot(
             cfg.solcast_pv_forecast_forecast_likelihood,
             price_source_minutes,
         )
-    _update_hourly_field_from_attrs(
+    if import_matched == 0:
+        _LOGGER.warning(
+            "No import price data matched from sensor(s) %s — "
+            "planner will use 0.0 for all slots. "
+            "Check that the sensor is available and its attribute format is supported.",
+            cfg.import_electricity_price_sensor,
+        )
+    export_matched = _update_hourly_field_from_attrs(
         recommendations,
         snapshot.sensor_attributes.get(cfg.export_electricity_price_sensor or ""),
         "export_price",
@@ -314,7 +360,7 @@ def populate_price_and_solcast_from_snapshot(
         price_source_minutes,
     )
     if cfg.export_electricity_price_forecast_sensor:
-        _update_hourly_field_from_attrs(
+        export_matched += _update_hourly_field_from_attrs(
             recommendations,
             snapshot.sensor_attributes.get(
                 cfg.export_electricity_price_forecast_sensor or ""
@@ -324,7 +370,14 @@ def populate_price_and_solcast_from_snapshot(
             cfg.solcast_pv_forecast_forecast_likelihood,
             price_source_minutes,
         )
-    _update_hourly_field_from_attrs(
+    if export_matched == 0:
+        _LOGGER.warning(
+            "No export price data matched from sensor(s) %s — "
+            "planner will use 0.0 for all slots. "
+            "Check that the sensor is available and its attribute format is supported.",
+            cfg.export_electricity_price_sensor,
+        )
+    solcast_today_matched = _update_hourly_field_from_attrs(
         recommendations,
         snapshot.sensor_attributes.get(cfg.solcast_pv_forecast_forecast_today or ""),
         "solcast_pv_estimate_kwh",
@@ -332,7 +385,13 @@ def populate_price_and_solcast_from_snapshot(
         cfg.solcast_pv_forecast_forecast_likelihood,
         solcast_source_minutes,
     )
-    _update_hourly_field_from_attrs(
+    if solcast_today_matched == 0:
+        _LOGGER.debug(
+            "No Solcast today data matched from sensor %s — "
+            "PV estimates will be 0.0 for today.",
+            cfg.solcast_pv_forecast_forecast_today,
+        )
+    solcast_tomorrow_matched = _update_hourly_field_from_attrs(
         recommendations,
         snapshot.sensor_attributes.get(cfg.solcast_pv_forecast_forecast_tomorrow or ""),
         "solcast_pv_estimate_kwh",
@@ -340,6 +399,12 @@ def populate_price_and_solcast_from_snapshot(
         cfg.solcast_pv_forecast_forecast_likelihood,
         solcast_source_minutes,
     )
+    if solcast_tomorrow_matched == 0:
+        _LOGGER.debug(
+            "No Solcast tomorrow data matched from sensor %s — "
+            "PV estimates will be 0.0 for tomorrow.",
+            cfg.solcast_pv_forecast_forecast_tomorrow,
+        )
 
 
 def _update_hourly_field_from_attrs(
@@ -349,7 +414,7 @@ def _update_hourly_field_from_attrs(
     share: float,
     solcast_likelihood_key: str,
     source_interval_minutes: int,
-) -> None:
+) -> int:
     """Match pre-read sensor attribute data to recommendation slots.
 
     This is the snapshot-based counterpart of ``_async_update_hourly_field``.
@@ -362,16 +427,25 @@ def _update_hourly_field_from_attrs(
         field_name: Attribute name on :class:`HourlyRecommendation` to set.
         share: Divisor applied to each raw value.
         solcast_likelihood_key: Attribute key for Solcast PV estimate field.
+
+    Returns:
+        Number of data points successfully matched to at least one slot.
     """
     if attributes is None:
-        return
+        return 0
 
     source_window = timedelta(minutes=source_interval_minutes)
 
     data_sources: dict[str, list[dict[str, str]]] = {
         "forecast": [{"k": "hour", "v": "price"}],
-        "raw_tomorrow": [{"k": "hour", "v": "price"}],
-        "raw_today": [{"k": "hour", "v": "price"}],
+        "raw_tomorrow": [
+            {"k": "hour", "v": "price"},
+            {"k": "start", "v": "value"},  # custom-components/nordpool
+        ],
+        "raw_today": [
+            {"k": "hour", "v": "price"},
+            {"k": "start", "v": "value"},  # custom-components/nordpool
+        ],
         "prices": [{"k": "start", "v": "price"}],
         "prices_today": [
             {"k": "start", "v": "price"},
@@ -388,6 +462,7 @@ def _update_hourly_field_from_attrs(
         "forecasts": [{"k": "start_time", "v": "per_kwh"}],
     }
 
+    matched = 0
     for attr, kv_list in data_sources.items():
         sensor_data = attributes.get(attr) or []
         if not sensor_data:
@@ -423,3 +498,6 @@ def _update_hourly_field_from_attrs(
                     obj_start = normalize_datetime(obj.start)
                     if dt_key <= obj_start < dt_key + source_window:
                         setattr(obj, field_name, round(value, 5))
+                        matched += 1
+
+    return matched
