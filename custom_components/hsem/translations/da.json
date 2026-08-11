@@ -412,6 +412,16 @@
         "description": "Konfigurer energimålere og aktiver ML-baseret forbrugsprognose.",
         "title": "Energi og ML"
       },
+      "batteries_wait_mode": {
+        "data": {
+          "hsem_batteries_wait_mode_behavior": "Ventetilstand-adfærd"
+        },
+        "data_description": {
+          "hsem_batteries_wait_mode_behavior": "Vælg hvordan batteriet opfører sig, når HSEM vælger ventetilstand. Streng ventetilstand holder batteriet inaktivt. Selvforbrug med reserve tillader huset at bruge overskydende batterienergi over planlæggerens nødvendige reserve, hvilket reducerer unødvendig netimport."
+        },
+        "description": "Konfigurer hvordan batteriet opfører sig i ventetilstand.",
+        "title": "Batteri Ventetilstand-adfærd"
+      },
       "ocpp": {
         "data": {
           "hsem_ocpp_enabled": "Aktiver OCPP Server",
@@ -857,6 +867,16 @@
         "description": "Konfigurer energimålere og aktiver ML-baseret forbrugsprognose.",
         "title": "Energi og ML"
       },
+      "batteries_wait_mode": {
+        "data": {
+          "hsem_batteries_wait_mode_behavior": "Ventetilstand-adfærd"
+        },
+        "data_description": {
+          "hsem_batteries_wait_mode_behavior": "Vælg hvordan batteriet opfører sig, når HSEM vælger ventetilstand. Streng ventetilstand holder batteriet inaktivt. Selvforbrug med reserve tillader huset at bruge overskydende batterienergi over planlæggerens nødvendige reserve, hvilket reducerer unødvendig netimport."
+        },
+        "description": "Konfigurer hvordan batteriet opfører sig i ventetilstand.",
+        "title": "Batteri Ventetilstand-adfærd"
+      },
       "ocpp": {
         "data": {
           "hsem_ocpp_enabled": "Aktiver OCPP Server",
@@ -919,6 +939,12 @@
         "36": "36 hours",
         "48": "48 hours",
         "72": "72 hours"
+      }
+    },
+    "batteries_wait_mode_behavior": {
+      "options": {
+        "strict": "Streng ventetilstand — batteriet forbliver inaktivt",
+        "self_consumption_with_reserve": "Selvforbrug med reserve — brug overskud over planlæggerens reserve"
       }
     }
   },

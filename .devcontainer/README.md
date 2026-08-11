@@ -46,6 +46,15 @@ To uninstall the relay:
    sh .devcontainer/scripts/install-agent-relay.sh uninstall
    ```
 
+**macOS filesystem performance**
+
+Docker Desktop on macOS runs containers inside a Linux VM, so the default bind-mounted workspace is slower than the native container filesystem. This devcontainer mitigates that by:
+
+- Mounting the workspace with `consistency=cached` to reduce cross-VM sync overhead.
+- Storing Python tool caches (`__pycache__`, `.mypy_cache`, `.pytest_cache`, `.ruff_cache`, `uv`) in a named Docker volume (`hsem-cache`) instead of inside the bind-mounted workspace.
+
+These changes are automatic after rebuilding the container. You may see an empty `.cache` folder on your Mac; this is expected and harmless — the actual cache data lives inside the Docker volume.
+
 **Linux note**: On a native Linux Docker host, you can add `--privileged` and USB
 device mounts via `runArgs` in `devcontainer.json` for direct hardware access.
 

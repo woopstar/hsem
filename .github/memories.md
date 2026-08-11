@@ -858,6 +858,29 @@ Regression tests: ``tests/test_avg_sensor_partial_day.py``.
 
 ---
 
+## Solar-Charge Mislabel at Zero PV (issue #720 follow-up)
+
+``apply_optimization_strategy`` used ``NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH``
+(0.1 kWh) to decide whether an unassigned summer slot should charge from
+solar.  A slot with a small positive house load (e.g. 0.08 kWh) and zero
+PV would pass the ``<= 0.1`` check and get ``BatteriesChargeSolar`` even
+though there was no PV surplus at all.  The result was a grid-charging
+slot masquerading as solar charging, which:
+
+- Confused the ``hourly_recommendations`` output
+- Caused the applier to write ``MaximizeSelfConsumption`` instead of
+  ``TimeOfUse`` + charge TOU
+- Made the plan look more fragmented than it actually was
+
+**Canonical rule:** ``BatteriesChargeSolar`` is only assigned when there
+is a genuine PV surplus (``estimated_net_consumption_kwh < 0``).  A small
+positive house load with zero PV must not be treated as a solar-charging
+opportunity.
+
+Regression tests: ``tests/planner/test_zero_pv_solar_charge_mislabel.py``.
+
+---
+
 ## File Organization — By Responsibility, Not By Theme
 
 AI agents naturally bucket related things together (e.g. "all planner inputs in one file").
@@ -904,3 +927,30 @@ current slot while active; when they end, the frozen value is restored.
 This is a runtime stability rule, not a planner algorithm change. The planner
 still sees live data for battery/SoC decisions; only the per-EV charger power
 command is held constant.
+
+---
+
+## Wait Mode Self-Consumption with Reserve (issue #742)
+
+`batteries_wait_mode` can now optionally allow normal household self-consumption
+instead of keeping the battery strictly idle.
+
+- Config key: `hsem_batteries_wait_mode_behavior`
+- Values: `"strict"` (default) or `"self_consumption_with_reserve"`
+- When set to `"self_consumption_with_reserve"`, the applier
+  (`custom_components/hsem/custom_sensors/applier.py`) switches the inverter to
+  `MaximizeSelfConsumption` and caps the discharge power so only surplus energy
+  above the planner's required reserve (`current_required_battery_kwh`) can be
+  used.  Once the battery reaches the reserve, the applier falls back to strict
+  TOU wait mode.
+- PV surplus during wait-mode self-consumption is directed to charge the battery
+  (`desired_excess = "charge"`), not exported to grid.
+- The cap is computed from the surplus energy and the slot duration so the
+  reserve is preserved even if the house load is high.
+- EV-active slots keep their existing EV discharge cap logic; the wait-mode cap
+  is not applied while an EV is charging.
+
+Files involved: `flows/batteries_wait_mode.py`, `config_flow.py`,
+`options_flow.py`, `translations/en.json`, `const.py`,
+`models/sensor_config.py`, `custom_sensors/config_reader.py`,
+`custom_sensors/applier.py`.

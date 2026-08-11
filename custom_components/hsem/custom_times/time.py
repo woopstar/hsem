@@ -147,8 +147,10 @@ class HSEMTimeEntity(HSEMEntity, TimeEntity):
             The new time selected by the user.
         """
         self._attr_native_value = value
-        await self._persist_value()
+        # Write HA state immediately so the UI reflects the new time before
+        # the config-entry update triggers a background planner run.
         self.async_write_ha_state()
+        await self._persist_value()
 
     # ------------------------------------------------------------------
     # Config-entry persistence

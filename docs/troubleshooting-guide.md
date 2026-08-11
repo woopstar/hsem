@@ -191,6 +191,9 @@ exposes, PV forecast will be all zeros.
 HSEM classifies each month as winter or summer based on the _Winter Months_
 setting. In winter mode the planner uses `batteries_wait_mode` — it does not
 actively charge from solar. In summer mode it uses solar charging strategies.
+You can change **Wait mode behaviour** to *Self-consumption with reserve* if
+you want the battery to cover normal household load during wait periods while
+still protecting the planner's required reserve.
 
 - **Check:** `sensor.hsem_plan_explanation` → `forecast_mode`. Does it
   match your expectation for the current month?
@@ -326,7 +329,10 @@ the day, the battery will be in `batteries_wait_mode` outside that window.
 **5d. Planner in winter wait mode**
 
 In winter months, the planner uses `batteries_wait_mode` by default — it
-doesn't actively charge or discharge. This is intentional.
+doesn't actively charge or discharge. This is intentional, but you can enable
+**Self-consumption with reserve** in the **Battery Wait Mode Behaviour** step if
+you prefer the battery to cover household load using surplus capacity above the
+planner reserve.
 
 - **Check:** `sensor.hsem_plan_explanation` → `forecast_mode` is `winter`
   and `selected_strategy` is `winter_wait`.

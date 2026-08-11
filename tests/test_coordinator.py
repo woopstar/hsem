@@ -31,7 +31,7 @@ import asyncio
 import contextlib
 import inspect
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -70,6 +70,7 @@ def _make_bare_coordinator() -> HSEMDataUpdateCoordinator:
     cfg.recommendation_interval_length = 24
     coord._cfg = cfg
     coord._options_update_task = None
+    coord._options_update_debounce_task = None
     return coord
 
 
@@ -246,9 +247,13 @@ class TestOptionsUpdateBackgroundTask:
     schedules the cycle via ``hass.async_create_task`` with
     cancel-and-reschedule semantics so repeated toggles collapse into one
     run and the listener returns immediately.
+
+    A short debounce window is used so rapid toggles only trigger a single
+    planner run after the user stops clicking.
     """
 
     @pytest.mark.asyncio
+    @patch("custom_components.hsem.coordinator.OPTIONS_UPDATE_DEBOUNCE_SECONDS", 0.0)
     async def test_options_updated_schedules_background_task(self) -> None:
         """async_options_updated returns immediately after scheduling a task."""
         coordinator = _make_bare_coordinator()
@@ -256,7 +261,7 @@ class TestOptionsUpdateBackgroundTask:
 
         scheduled: list[asyncio.Task] = []
 
-        def _create_task(coro: Any, *, name: str) -> asyncio.Task:
+        def _create_task(coro: Any, *, name: str, **kwargs: Any) -> asyncio.Task:
             task = asyncio.get_running_loop().create_task(coro, name=name)
             scheduled.append(task)
             return task
@@ -271,23 +276,30 @@ class TestOptionsUpdateBackgroundTask:
 
         await coordinator.async_options_updated()
 
-        # The method must have scheduled exactly one background task.
+        # The method must have scheduled exactly one debounce task with
+        # eager-start disabled so the switch service call returns immediately.
         coordinator.hass.async_create_task.assert_called_once()  # type: ignore[union-attr]  # mock assertion
+        call_kwargs = coordinator.hass.async_create_task.call_args[1]  # type: ignore[attr-defined]
+        assert call_kwargs.get("eager_start") is False
         assert len(scheduled) == 1
-        assert scheduled[0].get_name() == "hsem_options_update"
+        assert scheduled[0].get_name() == "hsem_options_update_debounce"
 
-        # Let the background task finish.
+        # Let the debounce task finish; it then schedules the background task.
         await scheduled[0]
+        assert len(scheduled) == 2
+        assert scheduled[1].get_name() == "hsem_options_update"
+        await scheduled[1]
 
     @pytest.mark.asyncio
+    @patch("custom_components.hsem.coordinator.OPTIONS_UPDATE_DEBOUNCE_SECONDS", 0.0)
     async def test_repeated_toggle_cancels_pending_task(self) -> None:
-        """A second options update cancels the still-pending first task."""
+        """Repeated options updates collapse into a single background run."""
         coordinator = _make_bare_coordinator()
         coordinator.hass = MagicMock()
 
         scheduled: list[asyncio.Task] = []
 
-        def _create_task(coro: Any, *, name: str) -> asyncio.Task:
+        def _create_task(coro: Any, *, name: str, **kwargs: Any) -> asyncio.Task:
             task = asyncio.get_running_loop().create_task(coro, name=name)
             scheduled.append(task)
             return task
@@ -305,20 +317,29 @@ class TestOptionsUpdateBackgroundTask:
 
         await coordinator.async_options_updated()
         assert len(scheduled) == 1
-        await started.wait()  # ensure the first task is actually running
+        debounce_task = scheduled[0]
+        assert debounce_task.get_name() == "hsem_options_update_debounce"
 
-        await coordinator.async_options_updated()
+        # Let the debounce task fire and start the background update cycle.
+        await started.wait()
         assert len(scheduled) == 2
-        assert scheduled[0].cancelled() or scheduled[0].cancelling()
+        background_task = scheduled[1]
+        assert background_task.get_name() == "hsem_options_update"
 
-        # Clean up: let the second task be cancelled too so we don't leak.
-        scheduled[1].cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await scheduled[1]
+        # A second toggle cancels the previous debounce/background tasks and
+        # schedules a fresh debounce task.
+        await coordinator.async_options_updated()
+        assert len(scheduled) == 3
+        assert scheduled[2].get_name() == "hsem_options_update_debounce"
+
+        # Let the new debounce task fire so it cancels the old background task.
+        await scheduled[2]
+        assert background_task.cancelled() or background_task.cancelling()
 
     @pytest.mark.asyncio
+    @patch("custom_components.hsem.coordinator.OPTIONS_UPDATE_DEBOUNCE_SECONDS", 0.0)
     async def test_teardown_cancels_pending_options_task(self) -> None:
-        """async_teardown must cancel a still-running options-update task."""
+        """async_teardown must cancel pending debounce and options-update tasks."""
         coordinator = _make_bare_coordinator()
         coordinator.hass = MagicMock()
 
@@ -327,14 +348,21 @@ class TestOptionsUpdateBackgroundTask:
 
         coordinator._async_handle_update = _blocking_cycle  # type: ignore[method-assign]  # test monkey-patch
         coordinator.hass.async_create_task = MagicMock(  # type: ignore[method-assign]  # test monkey-patch
-            side_effect=lambda coro, *, name: asyncio.get_running_loop().create_task(
-                coro, name=name
+            side_effect=lambda coro, *, name, **kwargs: (
+                asyncio.get_running_loop().create_task(coro, name=name)
             )
         )
 
         await coordinator.async_options_updated()
+        debounce_task = coordinator._options_update_debounce_task
+        assert debounce_task is not None and not debounce_task.done()
+
+        # Wait for the debounce task to schedule the background task.
+        await debounce_task
         task = coordinator._options_update_task
         assert task is not None and not task.done()
+        # The debounce task is cleared once it has scheduled the background run.
+        assert coordinator._options_update_debounce_task is None
 
         await coordinator.async_teardown()
 

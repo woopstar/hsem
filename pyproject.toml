@@ -11,7 +11,7 @@ license = {text = "AGPL-3.0"}
 requires-python = ">=3.14.2,<3.15"
 dependencies = [
     "voluptuous==0.15.2",
-    "homeassistant==2026.8.0",
+    "homeassistant==2026.8.1",
     "scipy==1.18.0",
     "numpy==2.5.1"
 ]
@@ -25,12 +25,12 @@ dev = [
     "pytest-timeout==2.4.0",
     "pyright==1.1.411",
     "vulture==2.16",
-    "ruff==0.16.1",
+    "ruff==0.16.2",
     "black==26.5.1",
     "isort==8.0.1",
 ]
 lint = [
-    "ruff==0.16.1",
+    "ruff==0.16.2",
     "black==26.5.1",
     "isort==8.0.1",
 ]

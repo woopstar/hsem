@@ -738,7 +738,8 @@ class TestP008MagicThresholds:
             "charging/pre_charge.py must import SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH"
         )
 
-        # Also verify discharge_scheduler.py still imports its constant.
+        # Also verify discharge_scheduler.py does not import the removed
+        # near-zero constant (issue #720 removed the misapplied threshold).
         source = pathlib.Path(
             "custom_components/hsem/planner/discharge_scheduler.py"
         ).read_text(encoding="utf-8")
@@ -750,17 +751,17 @@ class TestP008MagicThresholds:
                 for alias in node.names:
                     imported_names.add(alias.asname or alias.name)
 
-        assert "NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH" in imported_names, (
-            "discharge_scheduler.py must import NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH"
+        assert "NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH" not in imported_names, (
+            "discharge_scheduler.py must not import "
+            "NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH — the threshold was "
+            "misapplied to positive-consumption slots (issue #720)"
         )
 
     def test_near_zero_threshold_used_in_optimization_strategy(self) -> None:
-        """A slot at exactly NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH gets BatteriesChargeSolar
-        (condition is <=), not BatteriesDischargeMode — validates that the threshold
-        drives the decision."""
+        """A slot at exactly zero net consumption has no PV surplus and must get
+        BatteriesDischargeMode, not BatteriesChargeSolar (issue #720)."""
         from datetime import UTC, datetime
 
-        from custom_components.hsem.const import NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH
         from custom_components.hsem.models.planned_slot import PlannedSlot
         from custom_components.hsem.planner.discharge_scheduler import (
             apply_optimization_strategy,
@@ -773,7 +774,7 @@ class TestP008MagicThresholds:
             start=datetime(2024, 6, 15, 12, 0, tzinfo=UTC),
             end=datetime(2024, 6, 15, 13, 0, tzinfo=UTC),
             price=SlotPrice(import_price=0.20, export_price=0.05),
-            estimated_net_consumption_kwh=NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH,
+            estimated_net_consumption_kwh=0.0,
             recommendation=None,
         )
         apply_optimization_strategy(
@@ -784,8 +785,9 @@ class TestP008MagicThresholds:
             required_capacity=0.0,
             months_winter=[1, 2, 3, 4, 10, 11, 12],
         )
-        assert slot.recommendation == Recommendations.BatteriesChargeSolar.value, (
-            "A slot at the near-zero boundary must be classified as BatteriesChargeSolar"
+        assert slot.recommendation == Recommendations.BatteriesDischargeMode.value, (
+            "A slot at zero net consumption has no PV surplus and must be "
+            "classified as BatteriesDischargeMode"
         )
 
 

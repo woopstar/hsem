@@ -49,10 +49,13 @@ echo "SSH agent bridge ready:  /tmp/ssh-agent.sock -> ${AGENT_HOST}:${SSH_PORT}"
 echo "GPG agent bridge ready:   /tmp/S.gpg-agent -> ${AGENT_HOST}:${GPG_PORT}"
 echo "scdaemon bridge ready:    /tmp/S.scdaemon -> ${AGENT_HOST}:${SCDAEMON_PORT}"
 
-# Copy host gnupg data to container-local writable directory, then
-# replace the sockets with our relayed ones
+# Copy host gnupg data to a container-local writable directory, then
+# replace the sockets with our relayed ones.
+# Skip host agent sockets here: they cannot be reliably copied across
+# Docker Desktop bind mounts and are recreated as symlinks below.
 rm -rf /tmp/gpg-home
-cp -a /root/.gnupg /tmp/gpg-home
+mkdir -p /tmp/gpg-home
+find /root/.gnupg -mindepth 1 -maxdepth 1 ! -type s -exec cp -a {} /tmp/gpg-home/ \;
 rm -f /tmp/gpg-home/S.gpg-agent /tmp/gpg-home/S.scdaemon /tmp/gpg-home/S.gpg-agent.ssh
 ln -sf /tmp/S.gpg-agent /tmp/gpg-home/S.gpg-agent
 ln -sf /tmp/S.scdaemon /tmp/gpg-home/S.scdaemon

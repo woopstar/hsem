@@ -199,8 +199,12 @@ async def populate_ml_house_consumption(
                 _last_temp_fetch = now_ts
 
     # Train — retrain gate skips fitting when no new data has arrived.
+    # The fit is CPU-bound (numpy ridge solve), so run it in HA's executor
+    # pool to avoid blocking the event loop.
     was_fitted_before = predictor.trained
-    predictor.train(history, reference_time, temperatures)
+    await hass.async_add_executor_job(
+        predictor.train, history, reference_time, temperatures
+    )
 
     if predictor.trained and not was_fitted_before:
         HSEM_LOGGER.info(

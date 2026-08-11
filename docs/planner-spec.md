@@ -77,10 +77,16 @@ in the same layer must not change it.
 **Seasonal fill** (remaining `None` slots):
 
 1. Export price > import price AND export price ≥ `export_min_price` → `force_export`
-2. Solar surplus and battery not full → `batteries_charge_solar`
+2. Actual PV surplus (`estimated_net_consumption_kwh < 0`) and battery not full → `batteries_charge_solar`
 3. Future `force_batteries_discharge` AND battery > required → `batteries_wait_mode`
 4. Winter month → `batteries_wait_mode`
-5. Summer month, solar surplus → `batteries_charge_solar`; else → `batteries_discharge_mode`
+5. Summer month, actual PV surplus → `batteries_charge_solar`; else → `batteries_discharge_mode`
+
+> **Note:** `BatteriesChargeSolar` is only assigned when there is a genuine PV
+> surplus (negative net consumption).  A small positive house load with zero PV
+> must not be mislabeled as solar charging — that would cause the applier to
+> write `MaximizeSelfConsumption` instead of `TimeOfUse` + charge TOU
+> (issue #720).
 
 ### Layer 2 — EV planned load labelling (post-simulation)
 

@@ -237,11 +237,30 @@ class TestHSEMTimeEntitySetValue:
 
     @pytest.mark.asyncio
     async def test_set_value_calls_async_write_ha_state(self) -> None:
-        """async_write_ha_state is called after persisting to push the update to HA."""
+        """async_write_ha_state is called to push the update to HA."""
         entity = self._make_entity()
         entity.async_write_ha_state = MagicMock()  # type: ignore[method-assign,misc]  # test monkey-patch
         await entity.async_set_value(time(8, 0, 0))
         entity.async_write_ha_state.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_set_value_writes_state_before_persisting(self) -> None:
+        """UI feedback happens before the config-entry update triggers planning."""
+        entity = self._make_entity()
+        calls: list[str] = []
+
+        def _track_write_state() -> None:
+            calls.append("write_state")
+
+        def _track_update_entry(*args: object, **kwargs: object) -> None:
+            calls.append("update_entry")
+
+        entity.async_write_ha_state = _track_write_state  # type: ignore[method-assign,misc,assignment]  # test monkey-patch
+        entity.hass.config_entries.async_update_entry = _track_update_entry  # type: ignore[method-assign,misc,assignment]  # test monkey-patch
+
+        await entity.async_set_value(time(8, 0, 0))
+
+        assert calls == ["write_state", "update_entry"]
 
     @pytest.mark.asyncio
     async def test_set_value_multiple_times(self) -> None:

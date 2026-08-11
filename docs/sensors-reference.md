@@ -34,7 +34,7 @@ all planner output as attributes.
 | `force_batteries_discharge` | Forced discharge to grid (excess export) |
 | `force_export` | Negative import price — all energy exported |
 | `ev_smart_charging` | EV charging load allocated |
-| `batteries_wait_mode` | Battery idle |
+| `batteries_wait_mode` | Battery idle; may allow self-consumption above the planner reserve depending on **Wait mode behaviour** |
 | `time_passed` | Slot is in the past |
 | `missing_input_entities` | Required HA entities unavailable |
 
@@ -58,6 +58,7 @@ all planner output as attributes.
 | `months_winter` / `months_summer` | list[int] | Configured winter/summer month ranges |
 | `batteries_enable_excess_export` | bool | Excess export gating enabled |
 | `batteries_excess_export_discharge_buffer` | float | Discharge buffer for excess export |
+| `batteries_wait_mode_behavior` | string | Wait mode behaviour: `strict` or `self_consumption_with_reserve` |
 | `house_consumption_energy_weight_1d` | float | 1-day consumption prediction weight |
 | `house_consumption_energy_weight_3d` | float | 3-day weight |
 | `house_consumption_energy_weight_7d` | float | 7-day weight |
