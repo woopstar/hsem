@@ -26,6 +26,7 @@ Fix (three parts)
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
 
 import pytest
 
@@ -186,14 +187,18 @@ class TestBuildPlannerInputSlotInDay:
 
         recs = [_rec(i) for i in range(192)]
 
-        inp = build_planner_input(
-            cfg=cfg,
-            live=LiveState(),
-            hourly_recommendations=recs,
-            batteries_schedules=[],
-            previous_winner_name=None,
-            previous_winner_score=0.0,
-        )
+        # build_planner_input derives day_offset from hsem_now() (via
+        # dt_util.now()). Pin the current time to the recommendation window so
+        # the test stays deterministic regardless of the wall-clock date.
+        with patch("homeassistant.util.dt.now", return_value=base):
+            inp = build_planner_input(
+                cfg=cfg,
+                live=LiveState(),
+                hourly_recommendations=recs,
+                batteries_schedules=[],
+                previous_winner_name=None,
+                previous_winner_score=0.0,
+            )
 
         assert len(inp.price_points) == 192
         assert len(inp.consumption_averages) == 48  # still hour-deduplicated
