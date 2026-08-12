@@ -46,6 +46,11 @@ jobs:
         run: |
           mkdir -p ~/.ssh ~/.gnupg
           : > ~/.gitconfig
+          if ! command -v powershell >/dev/null 2>&1 && command -v pwsh >/dev/null 2>&1; then
+            mkdir -p ~/.local/bin
+            ln -s "$(command -v pwsh)" ~/.local/bin/powershell
+            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          fi
 
       - name: Run all quality gates
         uses: devcontainers/ci@v0.3
