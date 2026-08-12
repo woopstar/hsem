@@ -41,7 +41,12 @@ if (Test-Path $SshSource) {
 $GitconfigSource = Join-Path $HostConfigDir '.gitconfig'
 $GitconfigTarget = Join-Path $StageDir '.gitconfig'
 if (Test-Path $GitconfigSource) {
-    Copy-Item -Path $GitconfigSource -Destination $GitconfigTarget -Force
+    $GitconfigItem = Get-Item -LiteralPath $GitconfigSource
+    if ($GitconfigItem.PSIsContainer) {
+        New-Item -ItemType File -Force -Path $GitconfigTarget | Out-Null
+    } else {
+        Copy-Item -LiteralPath $GitconfigSource -Destination $GitconfigTarget -Force
+    }
 } else {
     New-Item -ItemType File -Force -Path $GitconfigTarget | Out-Null
 }
