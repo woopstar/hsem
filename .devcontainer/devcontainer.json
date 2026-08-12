@@ -17,9 +17,8 @@
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/hsem,type=bind,consistency=cached",
   "workspaceFolder": "/workspaces/hsem",
   "mounts": [
-    "type=bind,source=${localEnv:HOME}/.ssh,target=/root/.ssh,readonly",
-    "type=bind,source=${localEnv:HOME}/.gnupg,target=/root/.gnupg",
-    "type=bind,source=${localEnv:HOME}/.gitconfig,target=/root/.gitconfig",
+    "type=bind,source=${localEnv:HOME}${localEnv:USERPROFILE}/.ssh,target=/root/.ssh,readonly",
+    "type=bind,source=${localEnv:HOME}${localEnv:USERPROFILE}/.gitconfig,target=/root/.gitconfig",
     "source=hsem-cache,target=/workspaces/hsem/.cache,type=volume"
   ],
   "containerEnv": {

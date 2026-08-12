@@ -46,6 +46,54 @@ To uninstall the relay:
    sh .devcontainer/scripts/install-agent-relay.sh uninstall
    ```
 
+**Windows setup**: Docker Desktop on Windows cannot forward Windows named pipes or
+GnuPG's emulated sockets into containers, so the same TCP relay architecture is used.
+The Windows relay ([start-agent-relay.ps1](scripts/start-agent-relay.ps1)) is pure
+PowerShell — no Python or other dependencies needed on the host.
+
+Prerequisites:
+
+- [Gpg4win](https://gpg4win.org/) (or another GnuPG for Windows) with the YubiKey
+  already set up, and `%APPDATA%\gnupg\gpg-agent.conf` containing:
+  ```
+  enable-ssh-support
+  enable-win32-openssh-support
+  ```
+  The second option makes gpg-agent serve the `\\.\pipe\openssh-ssh-agent` named
+  pipe, which the relay forwards to the container on port 9999.
+- Docker Desktop for Windows.
+
+Setup steps:
+
+1. **Install the relay as a per-user Scheduled Task** (starts at logon, restarts on
+   failure, no admin required). Run in PowerShell from the repository root:
+   ```powershell
+   powershell -NoProfile -ExecutionPolicy Bypass -File .devcontainer\scripts\install-agent-relay.ps1 install
+   ```
+   This starts TCP relays on ports 9999 (SSH agent), 9998 (GPG agent), 9997 (scdaemon),
+   and snapshots your public GnuPG key material (`%APPDATA%\gnupg`) into
+   `.devcontainer/gnupg-host/` (git-ignored) so the container can verify signatures
+   and know which keys live on the YubiKey. Re-run `install` after adding new keys.
+
+2. **Check status**:
+   ```powershell
+   powershell -NoProfile -ExecutionPolicy Bypass -File .devcontainer\scripts\install-agent-relay.ps1 status
+   ```
+
+3. **Open the devcontainer** in VS Code (`F1` → `Dev Containers: Reopen in Container`).
+   The `postCreateCommand` automatically starts the container-side socat bridge.
+
+4. **Verify**: run `ssh -T git@github.com` and `gpg --card-status` in the container terminal.
+
+To uninstall the relay:
+   ```powershell
+   powershell -NoProfile -ExecutionPolicy Bypass -File .devcontainer\scripts\install-agent-relay.ps1 uninstall
+   ```
+
+> **Note:** Signing commits or authenticating may require touching the YubiKey or
+> entering its PIN — the pinentry prompt appears on the Windows host, not in the
+> container.
+
 **macOS filesystem performance**
 
 Docker Desktop on macOS runs containers inside a Linux VM, so the default bind-mounted workspace is slower than the native container filesystem. This devcontainer mitigates that by:

@@ -25,4 +25,8 @@ config/*
 cycle.log
 core
 
+# Windows devcontainer: snapshot of host GnuPG public key material
+# (created by .devcontainer/scripts/install-agent-relay.ps1)
+.devcontainer/gnupg-host/
+
 test-results.xml

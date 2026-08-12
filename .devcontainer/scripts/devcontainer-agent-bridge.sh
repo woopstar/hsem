@@ -53,9 +53,22 @@ echo "scdaemon bridge ready:    /tmp/S.scdaemon -> ${AGENT_HOST}:${SCDAEMON_PORT
 # replace the sockets with our relayed ones.
 # Skip host agent sockets here: they cannot be reliably copied across
 # Docker Desktop bind mounts and are recreated as symlinks below.
+#
+# Source selection:
+#  - macOS/Linux: the host ~/.gnupg bind mount at /root/.gnupg.
+#  - Windows: GnuPG lives in %APPDATA%\gnupg, so the Windows installer
+#    snapshots the public key material into .devcontainer/gnupg-host
+#    (inside the workspace bind mount) instead.
+GPG_SRC=/root/.gnupg
+GPG_SNAPSHOT=/workspaces/hsem/.devcontainer/gnupg-host
+if [ ! -e "${GPG_SRC}/pubring.kbx" ] && [ ! -e "${GPG_SRC}/pubring.gpg" ] \
+    && [ -d "${GPG_SNAPSHOT}" ]; then
+    GPG_SRC="${GPG_SNAPSHOT}"
+    echo "Using Windows gnupg snapshot: ${GPG_SNAPSHOT}"
+fi
 rm -rf /tmp/gpg-home
 mkdir -p /tmp/gpg-home
-find /root/.gnupg -mindepth 1 -maxdepth 1 ! -type s -exec cp -a {} /tmp/gpg-home/ \;
+find "${GPG_SRC}" -mindepth 1 -maxdepth 1 ! -type s -exec cp -a {} /tmp/gpg-home/ \;
 rm -f /tmp/gpg-home/S.gpg-agent /tmp/gpg-home/S.scdaemon /tmp/gpg-home/S.gpg-agent.ssh
 ln -sf /tmp/S.gpg-agent /tmp/gpg-home/S.gpg-agent
 ln -sf /tmp/S.scdaemon /tmp/gpg-home/S.scdaemon
