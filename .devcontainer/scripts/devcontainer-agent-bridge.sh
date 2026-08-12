@@ -59,6 +59,9 @@ echo "scdaemon bridge ready:    /tmp/S.scdaemon -> ${AGENT_HOST}:${SCDAEMON_PORT
 #  - Windows: GnuPG lives in %APPDATA%\gnupg, so the Windows installer
 #    snapshots the public key material into .devcontainer/gnupg-host
 #    (inside the workspace bind mount) instead.
+#
+# CI creates an empty ~/.gitconfig directory as a bind-mount stub, so we
+# must not copy it (git rejects a directory as its config file).
 GPG_SRC=/root/.gnupg
 GPG_SNAPSHOT=/workspaces/hsem/.devcontainer/gnupg-host
 if [ ! -e "${GPG_SRC}/pubring.kbx" ] && [ ! -e "${GPG_SRC}/pubring.gpg" ] \
@@ -68,7 +71,9 @@ if [ ! -e "${GPG_SRC}/pubring.kbx" ] && [ ! -e "${GPG_SRC}/pubring.gpg" ] \
 fi
 rm -rf /tmp/gpg-home
 mkdir -p /tmp/gpg-home
-find "${GPG_SRC}" -mindepth 1 -maxdepth 1 ! -type s -exec cp -a {} /tmp/gpg-home/ \;
+if [ -d "${GPG_SRC}" ]; then
+    find "${GPG_SRC}" -mindepth 1 -maxdepth 1 ! -type s -exec cp -a {} /tmp/gpg-home/ \;
+fi
 rm -f /tmp/gpg-home/S.gpg-agent /tmp/gpg-home/S.scdaemon /tmp/gpg-home/S.gpg-agent.ssh
 ln -sf /tmp/S.gpg-agent /tmp/gpg-home/S.gpg-agent
 ln -sf /tmp/S.scdaemon /tmp/gpg-home/S.scdaemon
@@ -78,8 +83,13 @@ export SSH_AUTH_SOCK=/tmp/ssh-agent.sock
 export GNUPGHOME=/tmp/gpg-home
 
 # Create writable global git config (host ~/.gitconfig is mounted read-only
-# and may point to /opt/homebrew/bin/gpg which doesn't exist in the container)
-cp /root/.gitconfig /tmp/gitconfig 2>/dev/null || true
+# and may point to /opt/homebrew/bin/gpg which doesn't exist in the
+# container). In CI the stub is an empty directory; start from scratch then.
+if [ -f /root/.gitconfig ]; then
+    cp /root/.gitconfig /tmp/gitconfig
+else
+    : > /tmp/gitconfig
+fi
 git config -f /tmp/gitconfig gpg.program /usr/bin/gpg 2>/dev/null || true
 export GIT_CONFIG_GLOBAL=/tmp/gitconfig
 
