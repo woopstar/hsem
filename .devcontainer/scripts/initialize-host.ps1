@@ -22,7 +22,10 @@ New-Item -ItemType Directory -Force -Path $StageDir | Out-Null
 
 $HostConfigDir = $env:USERPROFILE
 if (-not $HostConfigDir) {
-    Write-Error 'Unable to determine host config directory (USERPROFILE not set).'
+    $HostConfigDir = $env:HOME
+}
+if (-not $HostConfigDir) {
+    Write-Error 'Unable to determine host config directory (USERPROFILE or HOME not set).'
 }
 
 Write-Host "Staging host config from: $HostConfigDir"
