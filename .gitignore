@@ -29,4 +29,8 @@ core
 # (created by .devcontainer/scripts/install-agent-relay.ps1)
 .devcontainer/gnupg-host/
 
+# Devcontainer: per-host snapshots of SSH config and gitconfig created by
+# initializeCommand so cross-platform bind mounts always have a valid source.
+.devcontainer/host-config/
+
 test-results.xml

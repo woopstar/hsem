@@ -18,7 +18,8 @@ In the container you will have a dedicated Home Assistant core instance running 
 The devcontainer is pre-configured to use your YubiKey for SSH authentication and GPG signing:
 
 - `gnupg`, `gpg-agent`, `pinentry`, `socat`, `openssh-client`, and `git` are installed in the container
-- Your host `~/.ssh`, `~/.gnupg`, and `~/.gitconfig` are mounted into the container
+- Your host `~/.ssh` and `~/.gitconfig` are staged into `.devcontainer/host-config/` by the `initializeCommand` and then mounted into the container
+- Your host `~/.gnupg` public key material is snapshotted into `.devcontainer/gnupg-host/` by the Windows/macOS installer and mounted into the container
 - `yubikey-manager` CLI (`ykman`) is available for managing your YubiKey
 
 **macOS setup**: Docker Desktop runs inside a Linux VM and cannot forward Unix domain
