@@ -14,7 +14,7 @@
   "initializeCommand": {
     "linux": "sh .devcontainer/scripts/initialize-host.sh",
     "darwin": "sh .devcontainer/scripts/initialize-host.sh",
-    "win32": "pwsh -NoProfile -Command \"if ($IsWindows) { Set-ExecutionPolicy -Scope Process Bypass -Force }; & '${localWorkspaceFolder}/.devcontainer/scripts/initialize-host.ps1'\""
+    "win32": "pwsh -NoProfile -Command \"if (\\$IsWindows) { Set-ExecutionPolicy -Scope Process Bypass -Force }; & '${localWorkspaceFolder}/.devcontainer/scripts/initialize-host.ps1'\""
   },
   "runArgs": ["--name", "hsem-devcontainer"],
   "remoteUser": "root",
