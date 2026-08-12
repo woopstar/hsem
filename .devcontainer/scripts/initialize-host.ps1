@@ -33,10 +33,10 @@ Write-Host "Staging host config from: $HostConfigDir"
 $SshSource = Join-Path $HostConfigDir '.ssh'
 $SshTarget = Join-Path $StageDir '.ssh'
 if (Test-Path $SshSource) {
-    if (Test-Path $SshTarget) {
-        Remove-Item -Recurse -Force $SshTarget
+    New-Item -ItemType Directory -Force -Path $SshTarget | Out-Null
+    Get-ChildItem -LiteralPath $SshSource -Force | ForEach-Object {
+        Copy-Item -LiteralPath $_.FullName -Destination $SshTarget -Recurse -Force
     }
-    Copy-Item -Recurse -Path $SshSource -Destination $SshTarget
 } else {
     New-Item -ItemType Directory -Force -Path $SshTarget | Out-Null
 }
