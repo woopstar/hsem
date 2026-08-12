@@ -996,6 +996,9 @@
           "error": "Error"
         }
       },
+      "ev_charger_calculated_power": {
+        "name": "EV Charger Calculated Power"
+      },
       "ev_charging": {
         "name": "EV Charging Active",
         "state": {
@@ -1013,6 +1016,9 @@
           "waiting": "Waiting",
           "unavailable": "Unavailable"
         }
+      },
+      "ev_second_charger_calculated_power": {
+        "name": "EV 2 Charger Calculated Power"
       },
       "ev_second_optimal_charging_plan": {
         "name": "EV 2 Optimal Charging Plan",
