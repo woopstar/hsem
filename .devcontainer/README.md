@@ -18,7 +18,8 @@ In the container you will have a dedicated Home Assistant core instance running 
 The devcontainer is pre-configured to use your YubiKey for SSH authentication and GPG signing:
 
 - `gnupg`, `gpg-agent`, `pinentry`, `socat`, `openssh-client`, and `git` are installed in the container
-- Your host `~/.ssh` and `~/.gitconfig` are staged into `.devcontainer/host-config/` by the `initializeCommand` and then mounted into the container
+- On Unix hosts, your host `~/.ssh` and `~/.gitconfig` are staged into `.devcontainer/host-config/` by the `initializeCommand` and then mounted into the container
+- On Windows hosts, the installer stages your host `~/.ssh` and `~/.gitconfig` into `.devcontainer/host-config/`
 - Your host `~/.gnupg` public key material is snapshotted into `.devcontainer/gnupg-host/` by the Windows/macOS installer and mounted into the container
 - `yubikey-manager` CLI (`ykman`) is available for managing your YubiKey
 
@@ -72,9 +73,11 @@ Setup steps:
    powershell -NoProfile -ExecutionPolicy Bypass -File .devcontainer\scripts\install-agent-relay.ps1 install
    ```
    This starts TCP relays on ports 9999 (SSH agent), 9998 (GPG agent), 9997 (scdaemon),
-   and snapshots your public GnuPG key material (`%APPDATA%\gnupg`) into
-   `.devcontainer/gnupg-host/` (git-ignored) so the container can verify signatures
-   and know which keys live on the YubiKey. Re-run `install` after adding new keys.
+   stages `%USERPROFILE%\.ssh` and `%USERPROFILE%\.gitconfig` into
+   `.devcontainer/host-config/` (git-ignored), and snapshots your public GnuPG key
+   material (`%APPDATA%\gnupg`) into `.devcontainer/gnupg-host/` (git-ignored) so the
+   container can verify signatures and know which keys live on the YubiKey. Re-run
+   `install` after changing SSH/Git config or adding new keys.
 
 2. **Check status**:
    ```powershell

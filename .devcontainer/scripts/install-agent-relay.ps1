@@ -10,10 +10,12 @@
 
     Install registers an auto-start mechanism for the relay: a per-user
     Scheduled Task (restarts on failure) when policy allows it, otherwise
-    a hidden launcher in the user's Startup folder. It also snapshots the
-    public GnuPG key material (%APPDATA%\gnupg) into
-    .devcontainer/gnupg-host so the container can import public keys and
-    key stubs; re-run install to refresh the snapshot after adding keys.
+    a hidden launcher in the user's Startup folder. It also stages the host
+    .ssh and .gitconfig files into .devcontainer/host-config and snapshots
+    the public GnuPG key material (%APPDATA%\gnupg) into
+    .devcontainer/gnupg-host so the container can import public keys and key
+    stubs; re-run install to refresh the snapshots after changing SSH/Git
+    config or adding keys.
 
     No administrator rights are required.
 
@@ -38,6 +40,7 @@ $ErrorActionPreference = 'Stop'
 $TaskName = 'HSEM Agent Relay'
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RelaySrc = Join-Path $ScriptDir 'start-agent-relay.ps1'
+$HostConfigStage = Join-Path $ScriptDir 'initialize-host.ps1'
 $InstallDir = Join-Path $env:APPDATA 'hsem-agent-relay'
 $RelayDst = Join-Path $InstallDir 'start-agent-relay.ps1'
 $LogFile = Join-Path $InstallDir 'agent-relay.log'
@@ -75,6 +78,12 @@ function Install-Relay {
         }
 
     Copy-Item $RelaySrc $RelayDst -Force
+
+    if (Test-Path $HostConfigStage) {
+        & $HostConfigStage
+    } else {
+        Write-Host "WARNING: Host config staging script not found at $HostConfigStage"
+    }
 
     # Snapshot GnuPG public key material for the container bridge.
     $gpgHome = Join-Path $env:APPDATA 'gnupg'
