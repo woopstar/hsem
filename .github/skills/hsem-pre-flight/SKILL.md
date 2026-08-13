@@ -63,7 +63,7 @@ Based on the change type, read these docs before touching code:
 
 ## Step 6: Understand the Affected Code
 
-Search and read the relevant source files. Do not guess file paths — use `grep` and `find_path` to locate them.
+Search and read the relevant source files. Do not guess file paths — use `grep` and `glob` to locate them.
 
 ## Reminder: One Issue Per Branch
 
