@@ -72,6 +72,46 @@ def get_ev_second_optimal_charging_plan_sensor_entity_id() -> str:
     return f"sensor.{s(f'{DOMAIN}_ev_second_optimal_charging_plan')}"
 
 
+# EV Charger Calculated Power Sensor
+def get_ev_charger_calculated_power_sensor_name() -> str:
+    """Return the display name for the EV charger calculated power sensor."""
+    return "EV Charger Calculated Power"
+
+
+def get_ev_charger_calculated_power_sensor_unique_id(entry_id: str) -> str:
+    """Return a unique ID for the EV charger calculated power sensor.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_ev_charger_calculated_power"
+
+
+def get_ev_charger_calculated_power_sensor_entity_id() -> str:
+    """Return the entity_id for the EV charger calculated power sensor."""
+    return f"sensor.{s(f'{DOMAIN}_ev_charger_calculated_power')}"
+
+
+# EV Second Charger Calculated Power Sensor
+def get_ev_second_charger_calculated_power_sensor_name() -> str:
+    """Return the display name for the second EV charger calculated power sensor."""
+    return "EV 2 Charger Calculated Power"
+
+
+def get_ev_second_charger_calculated_power_sensor_unique_id(entry_id: str) -> str:
+    """Return a unique ID for the second EV charger calculated power sensor.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_ev_second_charger_calculated_power"
+
+
+def get_ev_second_charger_calculated_power_sensor_entity_id() -> str:
+    """Return the entity_id for the second EV charger calculated power sensor."""
+    return f"sensor.{s(f'{DOMAIN}_ev_second_charger_calculated_power')}"
+
+
 # EV Target SoC Number
 def get_ev_target_soc_number_key() -> str:
     """Return the entity description key for the EV target SoC number entity."""

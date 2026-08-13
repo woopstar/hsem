@@ -26,6 +26,10 @@ from custom_components.hsem.custom_sensors.degraded_mode_sensor import (
 from custom_components.hsem.custom_sensors.effective_discharge_floor_sensor import (
     HSEMEffectiveDischargeFloorSensor,
 )
+from custom_components.hsem.custom_sensors.ev_charger_calculated_power_sensor import (
+    HSEMEVChargerCalculatedPowerSensor,
+    HSEMEVSecondChargerCalculatedPowerSensor,
+)
 from custom_components.hsem.custom_sensors.ev_charging_sensor import (
     HSEMEVChargingSensor,
 )
@@ -126,6 +130,12 @@ async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
     ev_second_optimal_charging_plan_sensor = HSEMEVSecondOptimalChargingPlanSensor(
         config_entry, coordinator
     )
+    ev_charger_calculated_power_sensor = HSEMEVChargerCalculatedPowerSensor(
+        config_entry, coordinator
+    )
+    ev_second_charger_calculated_power_sensor = (
+        HSEMEVSecondChargerCalculatedPowerSensor(config_entry, coordinator)
+    )
 
     # Forecast accuracy sensor — exposes predicted-vs-actual metrics.
     forecast_accuracy_sensor = HSEMForecastAccuracySensor(config_entry, coordinator)
@@ -188,6 +198,8 @@ async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
             ev_charging_sensor,
             ev_optimal_charging_plan_sensor,
             ev_second_optimal_charging_plan_sensor,
+            ev_charger_calculated_power_sensor,
+            ev_second_charger_calculated_power_sensor,
             applier_status_sensor,
             plan_explanation_sensor,
             forecast_accuracy_sensor,
