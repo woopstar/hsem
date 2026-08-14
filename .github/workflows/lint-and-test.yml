@@ -43,7 +43,9 @@ jobs:
       - uses: actions/checkout@v7.0.1
 
       - name: Create mount stubs for CI
-        run: mkdir -p ~/.ssh ~/.gnupg ~/.gitconfig
+        run: |
+          mkdir -p ~/.ssh ~/.gnupg
+          touch ~/.gitconfig
 
       - name: Run all quality gates
         uses: devcontainers/ci@v0.3
