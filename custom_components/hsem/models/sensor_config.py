@@ -74,7 +74,8 @@ class SensorConfig:
 
         huawei_solar_device_id_inverter_1: Device ID for inverter 1.
         huawei_solar_device_id_inverter_2: Device ID for inverter 2 (optional).
-        huawei_solar_device_id_batteries: Device ID for the battery pack.
+        huawei_solar_device_id_batteries: Device ID for the primary battery pack.
+        huawei_solar_device_id_batteries_2: Device ID for the secondary battery pack (optional).
         huawei_solar_batteries_working_mode: Entity ID for working mode select.
         huawei_solar_batteries_end_of_discharge_soc: Entity ID for EoD SoC number.
         huawei_solar_batteries_state_of_capacity: Entity ID for SoC sensor.
@@ -151,6 +152,7 @@ class SensorConfig:
     huawei_solar_device_id_inverter_1: str | None = None
     huawei_solar_device_id_inverter_2: str | None = None
     huawei_solar_device_id_batteries: str | None = None
+    huawei_solar_device_id_batteries_2: str | None = None
 
     # Huawei Solar entity IDs
     huawei_solar_batteries_working_mode: str | None = None

@@ -82,6 +82,7 @@ Huawei Solar inverter and battery entity configuration (device selectors and ent
 | Inverter 1 device ID | `hsem_huawei_solar_device_id_inverter_1` | — | Device registry ID for inverter 1 |
 | Inverter 2 device ID | `hsem_huawei_solar_device_id_inverter_2` | — | Device registry ID for inverter 2 (optional) |
 | Batteries device ID | `hsem_huawei_solar_device_id_batteries` | — | Device registry ID for battery |
+| Batteries 2 device ID | `hsem_huawei_solar_device_id_batteries_2` | — | Device registry ID for second battery (optional) |
 | Working mode | `hsem_huawei_solar_batteries_working_mode` | `select.batteries_working_mode` | Battery working mode select |
 | End of discharge SoC | `hsem_huawei_solar_batteries_end_of_discharge_soc` | `number.batteries_end_of_discharge_soc` | Min SoC floor entity |
 | State of capacity | `hsem_huawei_solar_batteries_state_of_capacity` | `sensor.batteries_state_of_capacity` | SoC sensor |

@@ -43,6 +43,12 @@ async def get_huawei_solar_step_schema(
                     config_entry, "hsem_huawei_solar_device_id_batteries"
                 ),
             ): selector({"device": {"integration": "huawei_solar"}}),
+            vol.Optional(
+                "hsem_huawei_solar_device_id_batteries_2",
+                default=get_config_value(
+                    config_entry, "hsem_huawei_solar_device_id_batteries_2"
+                ),
+            ): selector({"device": {"integration": "huawei_solar"}}),
             vol.Required(
                 "hsem_huawei_solar_batteries_working_mode",
                 default=get_config_value(
@@ -156,6 +162,7 @@ async def validate_huawei_solar_input(
         optional_fields=[
             "hsem_huawei_solar_device_id_inverter_2",
             "hsem_huawei_solar_device_id_batteries",
+            "hsem_huawei_solar_device_id_batteries_2",
         ],
     )
 

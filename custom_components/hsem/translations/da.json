@@ -194,6 +194,7 @@
           "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods": "Huawei-batterier TOU-opladnings- og afladningsperioder",
           "hsem_huawei_solar_batteries_working_mode": "Huawei Solar-batterier arbejdstilstandssensor",
           "hsem_huawei_solar_device_id_batteries": "Huawei-batterienhed",
+          "hsem_huawei_solar_device_id_batteries_2": "Huawei-batterienhed 2",
           "hsem_huawei_solar_device_id_inverter_1": "Huawei-vekselretter 1 enhed",
           "hsem_huawei_solar_device_id_inverter_2": "Huawei-vekselretter 2 enhed",
           "hsem_huawei_solar_inverter_active_power_control": "Huawei-vekselretter aktiv effektkontrolsensor",
@@ -216,6 +217,7 @@
           "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods": "Vælg den sensor, der definerer Time-of-Use (TOU) opladnings- og afladningsperioder for dine Huawei-batterier.",
           "hsem_huawei_solar_batteries_working_mode": "Vælg den sensor, der angiver den aktuelle arbejdstilstand for dine Huawei-batterier.",
           "hsem_huawei_solar_device_id_batteries": "Vælg din Huawei-batterienhed.",
+          "hsem_huawei_solar_device_id_batteries_2": "Vælg din sekundære Huawei-batterienhed, hvis relevant.",
           "hsem_huawei_solar_device_id_inverter_1": "Vælg din primære Huawei-vekselretterenhed.",
           "hsem_huawei_solar_device_id_inverter_2": "Vælg din sekundære Huawei-vekselretterenhed, hvis relevant.",
           "hsem_huawei_solar_inverter_active_power_control": "Vælg den sensor, der styrer aktiv effektudgang for din Huawei-vekselretter.",
@@ -674,6 +676,7 @@
           "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods": "Huawei Batteries TOU Charging and Discharging Periods",
           "hsem_huawei_solar_batteries_working_mode": "Huawei Solar Batteries Working Mode Sensor",
           "hsem_huawei_solar_device_id_batteries": "Huawei Batteries Device",
+          "hsem_huawei_solar_device_id_batteries_2": "Huawei Batteries 2 Device",
           "hsem_huawei_solar_device_id_inverter_1": "Huawei Inverter 1 Device",
           "hsem_huawei_solar_device_id_inverter_2": "Huawei Inverter 2 Device",
           "hsem_huawei_solar_inverter_active_power_control": "Huawei Inverter Active Power Control Sensor"
@@ -696,6 +699,7 @@
           "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods": "Select the sensor that defines the Time-of-Use (TOU) charging and discharging periods for your Huawei batteries.",
           "hsem_huawei_solar_batteries_working_mode": "Select the sensor that indicates the current working mode of your Huawei batteries.",
           "hsem_huawei_solar_device_id_batteries": "Select your Huawei battery device.",
+          "hsem_huawei_solar_device_id_batteries_2": "Select your secondary Huawei battery device, if applicable.",
           "hsem_huawei_solar_device_id_inverter_1": "Select your primary Huawei inverter device.",
           "hsem_huawei_solar_device_id_inverter_2": "Select your secondary Huawei inverter device, if applicable.",
           "hsem_huawei_solar_inverter_active_power_control": "Select the sensor that controls the active power output of your Huawei inverter."

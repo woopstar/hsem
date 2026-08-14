@@ -26,7 +26,7 @@ safety-gate assertions from log-formatting changes.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
@@ -354,6 +354,123 @@ class TestBatterySettingsSafetyGate:
             _summary = await async_apply_battery_settings(sensor, cfg, live, rec, 5.0)
 
         mock_wv.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_non_force_mode_stops_forcible_discharge_on_both_batteries(self):
+        """Active forcible state should be stopped on both configured battery devices."""
+        sensor = _make_sensor()
+        cfg = _make_cfg(read_only=False)
+        cfg.huawei_solar_device_id_batteries = "bat1"
+        cfg.huawei_solar_device_id_batteries_2 = "bat2"
+        live = _make_live(degraded_mode=DegradedMode.OK)
+        live.huawei_batteries_forcible_charge_state = "Discharging at 3000W"
+
+        from custom_components.hsem.utils.recommendations import Recommendations
+
+        rec = _make_rec(Recommendations.BatteriesDischargeMode.value)
+
+        with (
+            patch(_LOGGER_PATCH, new_callable=MagicMock),
+            patch(
+                "custom_components.hsem.custom_sensors.applier.async_stop_forcible_discharge",
+                new_callable=AsyncMock,
+            ) as mock_stop,
+        ):
+            _summary = await async_apply_battery_settings(sensor, cfg, live, rec, 5.0)
+
+        assert mock_stop.await_count == 2
+        mock_stop.assert_has_awaits([call(sensor, "bat1"), call(sensor, "bat2")])
+
+    @pytest.mark.asyncio
+    async def test_force_discharge_fans_out_to_both_battery_device_ids(self):
+        """Force-discharge service call should be sent to both configured batteries."""
+        sensor = _make_sensor()
+        cfg = _make_cfg(read_only=False)
+        cfg.huawei_solar_device_id_batteries = "bat1"
+        cfg.huawei_solar_device_id_batteries_2 = "bat2"
+        cfg.huawei_solar_batteries_forcible_charge = "sensor.batteries_forcible_charge"
+        live = _make_live(degraded_mode=DegradedMode.OK)
+        live.battery_usable_capacity_kwh = 10.0
+        live.huawei_batteries_end_of_discharge_soc_pct = 10.0
+
+        from custom_components.hsem.utils.inverter_verify import ApplyResult
+        from custom_components.hsem.utils.recommendations import Recommendations
+
+        rec = _make_rec(Recommendations.ForceBatteriesDischarge.value)
+
+        async def _run_writer_then_ok(
+            entity_id, desired, writer, reader, **kwargs
+        ):  # type: ignore[no-untyped-def]  # local test shim mirrors async_write_and_verify signature
+            await writer()
+            return ApplyResult(
+                entity_id=entity_id,
+                desired=desired,
+                actual=desired,
+                status=ApplyStatus.OK,
+                attempts=1,
+            )
+
+        with (
+            patch(_LOGGER_PATCH, new_callable=MagicMock),
+            patch(
+                "custom_components.hsem.custom_sensors.applier.async_set_forcible_discharge",
+                new_callable=AsyncMock,
+            ) as mock_forcible,
+            patch(
+                "custom_components.hsem.custom_sensors.applier.async_write_and_verify",
+                side_effect=_run_writer_then_ok,
+            ),
+        ):
+            _summary = await async_apply_battery_settings(sensor, cfg, live, rec, 2.0)
+
+        assert mock_forcible.await_count == 2
+        assert mock_forcible.await_args_list[0].args[1] == "bat1"
+        assert mock_forcible.await_args_list[1].args[1] == "bat2"
+
+    @pytest.mark.asyncio
+    async def test_tou_period_write_fans_out_to_both_battery_device_ids(self):
+        """TOU period writes should be applied to both configured battery devices."""
+        sensor = _make_sensor()
+        cfg = _make_cfg(read_only=False)
+        cfg.huawei_solar_device_id_batteries = "bat1"
+        cfg.huawei_solar_device_id_batteries_2 = "bat2"
+        cfg.huawei_solar_batteries_tou_charging_and_discharging_periods = "sensor.tou"
+        live = _make_live(degraded_mode=DegradedMode.OK)
+        live.tou_periods.periods = []
+
+        from custom_components.hsem.utils.inverter_verify import ApplyResult
+        from custom_components.hsem.utils.recommendations import Recommendations
+
+        rec = _make_rec(Recommendations.BatteriesChargeGrid.value)
+
+        async def _run_writer_then_ok(
+            entity_id, desired, writer, reader, **kwargs
+        ):  # type: ignore[no-untyped-def]  # local test shim mirrors async_write_and_verify signature
+            await writer()
+            return ApplyResult(
+                entity_id=entity_id,
+                desired=desired,
+                actual=desired,
+                status=ApplyStatus.OK,
+                attempts=1,
+            )
+
+        with (
+            patch(_LOGGER_PATCH, new_callable=MagicMock),
+            patch(
+                "custom_components.hsem.custom_sensors.applier.async_set_tou_periods",
+                new_callable=AsyncMock,
+            ) as mock_set_tou,
+            patch(
+                "custom_components.hsem.custom_sensors.applier.async_write_and_verify",
+                side_effect=_run_writer_then_ok,
+            ),
+        ):
+            _summary = await async_apply_battery_settings(sensor, cfg, live, rec, 2.0)
+
+        assert mock_set_tou.await_count == 2
+        assert mock_set_tou.await_args_list[0].args[1] == "bat1"
+        assert mock_set_tou.await_args_list[1].args[1] == "bat2"
 
 
 # ---------------------------------------------------------------------------

@@ -41,6 +41,7 @@ def _make_config_entry(**overrides: Any) -> MagicMock:
         "hsem_huawei_solar_device_id_inverter_1": "inv1",
         "hsem_huawei_solar_device_id_inverter_2": "",
         "hsem_huawei_solar_device_id_batteries": "bat1",
+        "hsem_huawei_solar_device_id_batteries_2": "",
         "hsem_huawei_solar_batteries_working_mode": "sensor.wm",
         "hsem_huawei_solar_batteries_end_of_discharge_soc": "sensor.eod",
         "hsem_huawei_solar_batteries_state_of_capacity": "sensor.soc",
@@ -131,6 +132,18 @@ class TestBuildSensorConfig:
             _make_config_entry(hsem_huawei_solar_device_id_inverter_2="")
         )
         assert cfg.huawei_solar_device_id_inverter_2 is None
+
+    def test_batteries_2_empty_string_becomes_none(self):
+        cfg = build_sensor_config(
+            _make_config_entry(hsem_huawei_solar_device_id_batteries_2="")
+        )
+        assert cfg.huawei_solar_device_id_batteries_2 is None
+
+    def test_batteries_2_value_is_preserved(self):
+        cfg = build_sensor_config(
+            _make_config_entry(hsem_huawei_solar_device_id_batteries_2="bat2")
+        )
+        assert cfg.huawei_solar_device_id_batteries_2 == "bat2"
 
     def test_recommendation_interval_minutes(self):
         cfg = build_sensor_config(
