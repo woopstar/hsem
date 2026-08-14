@@ -4,6 +4,7 @@ Includes functions to set the maximum grid export power percentage and
 to configure Time-of-Use (TOU) periods for batteries.
 """
 
+from collections.abc import Mapping
 from typing import Any
 
 import voluptuous as vol
@@ -15,6 +16,9 @@ from homeassistant.exceptions import (
 )
 
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+
+MAX_TOU_PERIODS = 10
+"""Number of TOU period slots a Huawei battery exposes."""
 
 
 async def async_set_grid_export_power_pct(
@@ -305,3 +309,24 @@ async def async_stop_forcible_discharge(self: Any, device_id: str) -> None:
             "HA error during stop_forcible_charge (device_id=%s)", device_id
         )
         raise
+
+
+def extract_tou_periods(attributes: Mapping[str, Any]) -> list[str]:
+    """Return the TOU period strings held in a Huawei TOU entity's attributes.
+
+    The Huawei TOU entity exposes its schedule as ``Period 1`` … ``Period 10``
+    attributes; its *state* is only the number of configured periods and must
+    never be used to compare schedules.
+
+    Args:
+        attributes: Attribute mapping of the TOU periods entity.
+
+    Returns:
+        Period strings in slot order, e.g. ``["00:00-23:59/1234567/+"]``.
+        Empty when the entity exposes no period attributes.
+    """
+    return [
+        str(attributes[key])
+        for key in (f"Period {i}" for i in range(1, MAX_TOU_PERIODS + 1))
+        if key in attributes
+    ]
