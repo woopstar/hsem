@@ -45,6 +45,7 @@ from custom_components.hsem.utils.ha_helpers import (
     async_resolve_entity_id_from_unique_id,
     ha_get_entity_state_and_convert,
 )
+from custom_components.hsem.utils.huawei import extract_tou_periods
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 from custom_components.hsem.utils.misc import get_config_value
 from custom_components.hsem.utils.sensornames.diagnostics import (
@@ -360,11 +361,7 @@ async def async_collect_live_state(
             )
             if isinstance(entity_data, State):
                 tou.raw_state = entity_data.state
-                tou.periods = [
-                    entity_data.attributes[f"Period {i}"]
-                    for i in range(1, 11)
-                    if f"Period {i}" in entity_data.attributes
-                ]
+                tou.periods = list(extract_tou_periods(entity_data.attributes))
             else:
                 state.add_missing_entity("TOU periods entity is not of type State")
         except (

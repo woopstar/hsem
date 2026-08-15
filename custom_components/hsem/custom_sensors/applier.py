@@ -57,6 +57,7 @@ from custom_components.hsem.utils.huawei import (
     async_set_grid_export_power_watt,
     async_set_tou_periods,
     async_stop_forcible_discharge,
+    extract_tou_periods,
 )
 from custom_components.hsem.utils.inverter_verify import (
     ApplyResult,
@@ -727,8 +728,11 @@ async def async_apply_battery_settings(
             )
             return summary
 
-    # TOU periods — no read-back verification (TOU period state is complex JSON;
-    # hash comparison is sufficient; single attempt only).
+    # TOU periods — verified against the entity's live ``Period N`` attributes
+    # (see :func:`_read_tou_periods`).  The gate below uses the pre-write
+    # LiveState snapshot only to decide *whether* a write is needed;
+    # verification must re-read HA, because that snapshot by definition still
+    # holds the old schedule.
     if (
         working_mode == WorkingModes.TimeOfUse.value
         and tou_modes
@@ -743,19 +747,14 @@ async def async_apply_battery_settings(
                 "warning",
             )
             return summary
+        _te: str = tou_entity  # narrowed for closure
         result = await async_write_and_verify(
-            entity_id=tou_entity,
-            desired=generate_hash(str(tou_modes)),
+            entity_id=_te,
+            desired=list(tou_modes),
             writer=lambda: async_set_tou_periods(sensor, battery_device_id, tou_modes),
-            reader=lambda: generate_hash(
-                str(
-                    sensor.hass.states.get(tou_entity).state
-                    if tou_entity and sensor.hass.states.get(tou_entity) is not None
-                    else ""
-                )
-            ),
-            # TOU periods may take longer to propagate; skip equality check
-            # since we always write when the hash differs.
+            reader=lambda: _read_tou_periods(sensor, _te),
+            # The LiveState gate above already established a difference, so the
+            # first attempt must write rather than short-circuit on a stale read.
             skip_if_equal=False,
             max_retries=2,
         )
@@ -890,6 +889,32 @@ def _read_number_state(
         return float(state.state)
     except ValueError, TypeError:
         return None
+
+
+def _read_tou_periods(
+    sensor: Any, entity_id: str | None
+) -> list[str] | None:  # NOSONAR -- HA internal type; circular import risk
+    """Read the live TOU schedule from HA and return it as a period list.
+
+    The schedule lives in the entity's ``Period 1``…``Period 10`` attributes.
+    The entity *state* is only the number of configured periods, so it can
+    never be used to verify a written schedule.  This reads HA directly rather
+    than :class:`LiveState`, whose snapshot is captured before the write and
+    would therefore never reflect it.
+
+    Args:
+        sensor: HSEM sensor instance with a ``hass`` attribute.
+        entity_id: HA entity ID to read.
+
+    Returns:
+        Current period strings, or ``None`` when the entity is unavailable.
+    """
+    if not entity_id:
+        return None
+    state = sensor.hass.states.get(entity_id)
+    if state is None or state.state in (STATE_UNKNOWN, STATE_UNAVAILABLE, None):
+        return None
+    return extract_tou_periods(state.attributes)
 
 
 def _read_select_state(
