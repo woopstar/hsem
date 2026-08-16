@@ -55,7 +55,8 @@ echo "scdaemon bridge ready:    /tmp/S.scdaemon -> ${AGENT_HOST}:${SCDAEMON_PORT
 # Docker Desktop bind mounts and are recreated as symlinks below.
 #
 # Source selection:
-#  - macOS/Linux: the host ~/.gnupg bind mount at /root/.gnupg.
+#  - macOS/Linux: the host ~/.gnupg bind mount at /root/.gnupg, or the
+#    macOS/Linux installer snapshot under .devcontainer/gnupg-host.
 #  - Windows: GnuPG lives in %APPDATA%\gnupg, so the Windows installer
 #    snapshots the public key material into .devcontainer/gnupg-host
 #    (inside the workspace bind mount) instead.

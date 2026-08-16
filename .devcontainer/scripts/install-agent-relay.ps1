@@ -13,9 +13,8 @@
     a hidden launcher in the user's Startup folder. It also stages the host
     .ssh and .gitconfig files into .devcontainer/host-config and snapshots
     the public GnuPG key material (%APPDATA%\gnupg) into
-    .devcontainer/gnupg-host so the container can import public keys and key
-    stubs; re-run install to refresh the snapshots after changing SSH/Git
-    config or adding keys.
+    .devcontainer/gnupg-host so the container can import public keys; rerun
+    install after changing SSH/Git config or adding keys.
 
     No administrator rights are required.
 
@@ -47,13 +46,7 @@ $LogFile = Join-Path $InstallDir 'agent-relay.log'
 $StartupVbs = Join-Path ([Environment]::GetFolderPath('Startup')) 'hsem-agent-relay.vbs'
 $WorkspaceRoot = Split-Path -Parent (Split-Path -Parent $ScriptDir)
 $GpgSnapshot = Join-Path $WorkspaceRoot '.devcontainer\gnupg-host'
-
-# GnuPG files the container needs: public keys (classic keyring and the
-# keyboxd store used by GnuPG 2.5+), trust db, key stubs and revocation
-# certificates. Sockets, locks, sshcontrol and host-specific agent config
-# are excluded — the container never runs its own agent.
-$GpgIncludes = @('pubring.kbx', 'pubring.gpg', 'trustdb.gpg', 'common.conf')
-$GpgIncludeDirs = @('openpgp-revocs.d', 'private-keys-v1.d', 'public-keys.d')
+$GpgExportFile = Join-Path $InstallDir 'public-keys.asc'
 
 function Install-Relay {
     Write-Host 'Installing HSEM agent relay as a Scheduled Task...'
@@ -65,6 +58,10 @@ function Install-Relay {
     if (-not (Get-Command gpgconf.exe -ErrorAction SilentlyContinue)) {
         Write-Host 'WARNING: gpgconf not found in PATH. Install Gpg4win and ensure'
         Write-Host '         gpg-agent.conf contains "enable-win32-openssh-support".'
+    }
+    if (-not (Get-Command gpg.exe -ErrorAction SilentlyContinue)) {
+        Write-Host 'ERROR: gpg.exe not found in PATH.'
+        exit 1
     }
 
     New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
@@ -90,26 +87,17 @@ function Install-Relay {
     if (Test-Path $gpgHome) {
         if (Test-Path $GpgSnapshot) { Remove-Item $GpgSnapshot -Recurse -Force }
         New-Item -ItemType Directory -Force -Path $GpgSnapshot | Out-Null
-        foreach ($file in $GpgIncludes) {
-            $src = Join-Path $gpgHome $file
-            if (Test-Path $src) { Copy-Item $src $GpgSnapshot }
+        Remove-Item $GpgExportFile -Force -ErrorAction SilentlyContinue
+        & gpg.exe --homedir $gpgHome --batch --yes --armor --export |
+            Set-Content -Path $GpgExportFile -Encoding ASCII
+        if ($LASTEXITCODE -ne 0) {
+            throw 'Failed to export public keys from the host GnuPG home.'
         }
-        foreach ($dir in $GpgIncludeDirs) {
-            $src = Join-Path $gpgHome $dir
-            if (Test-Path $src) {
-                $dst = Join-Path $GpgSnapshot $dir
-                New-Item -ItemType Directory -Force -Path $dst | Out-Null
-                Get-ChildItem $src -File |
-                    Where-Object { $_.Name -notlike '*.lock' } |
-                    Copy-Item -Destination $dst
-            }
+        & gpg.exe --homedir $GpgSnapshot --batch --yes --import $GpgExportFile | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw 'Failed to import exported public keys into the container snapshot.'
         }
-        # Flatten the keyboxd store: container GnuPG 2.4 (non-keyboxd)
-        # expects a classic keyring at pubring.kbx.
-        $kbx = Join-Path $GpgSnapshot 'public-keys.d\pubring.db'
-        if ((Test-Path $kbx) -and -not (Test-Path (Join-Path $GpgSnapshot 'pubring.kbx'))) {
-            Copy-Item $kbx (Join-Path $GpgSnapshot 'pubring.kbx')
-        }
+        Remove-Item $GpgExportFile -Force -ErrorAction SilentlyContinue
         Write-Host "Snapshot of $gpgHome -> $GpgSnapshot"
     } else {
         Write-Host "WARNING: GnuPG home not found at $gpgHome; skipping snapshot."

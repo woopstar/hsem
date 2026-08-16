@@ -63,6 +63,8 @@ Prerequisites:
   ```
   The second option makes gpg-agent serve the `\\.\pipe\openssh-ssh-agent` named
   pipe, which the relay forwards to the container on port 9999.
+- A shell such as Git Bash or WSL2 so the devcontainer can run
+  `.devcontainer/scripts/initialize-host.sh` during container initialization.
 - Docker Desktop for Windows.
 
 Setup steps:
