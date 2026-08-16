@@ -418,11 +418,8 @@ def _populate_from_attributes(
         # In both cases we store the raw value directly so that
         # coordinator_builder can pass it straight to the planner
         # without any additional multiply.  The old divide-then-multiply
-        # round-trip (÷ share in populator, × price_share in coordinator_
-        # builder) only worked when the configured price interval matched
-        # the actual data cadence; with auto-detection the share is
-        # derived from the data, not the config, so the round-trip would
-        # produce incorrect values whenever the two differ.
+        # round-trip is gone; with per-attribute auto-detection the raw
+        # value is the only value that remains correct across mixed cadences.
         source_window = timedelta(minutes=detected_interval)
 
         for data in sensor_data:
@@ -457,4 +454,3 @@ def _populate_from_attributes(
                         matched += 1
 
     return matched
-

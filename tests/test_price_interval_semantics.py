@@ -261,44 +261,78 @@ class TestPlannerReceivesFullRate:
 
 
 # ---------------------------------------------------------------------------
-# 6. Solcast share (60 / slot interval) — separate from EDS share
+# 6. Solcast raw-value pass-through to 15-min planner slots
 # ---------------------------------------------------------------------------
 
 
-class TestSolcastShare:
-    """Solcast forecasts are always hourly totals, so share = 60 / slot_interval."""
+class TestSolcastRawValuePassThrough:
+    """Hourly Solcast values must flow through build_planner_input unchanged."""
 
-    def test_solcast_share_15min_slots_is_4(self):
-        """15-min slots: each slot stores 1/4 of the hourly Wh forecast."""
-        solcast_share = 60.0 / 15
-        assert solcast_share == pytest.approx(4.0)
+    def test_hourly_solcast_forecast_fans_out_to_quarter_hour_slots(self):
+        """An hourly 1.0 kWh Solcast forecast must become four 0.25 kWh slots."""
+        from datetime import UTC, datetime, timedelta
+        from unittest.mock import patch
 
-    def test_solcast_share_60min_slots_is_1(self):
-        """60-min slots: no scaling needed."""
-        solcast_share = 60.0 / 60
-        assert solcast_share == pytest.approx(1.0)
+        from custom_components.hsem.coordinator_builder import build_planner_input
+        from custom_components.hsem.models.hourly_recommendation import (
+            HourlyRecommendation,
+        )
+        from custom_components.hsem.models.live_state import LiveState
+        from custom_components.hsem.models.planned_slot import PlannedSlot
+        from custom_components.hsem.models.sensor_config import SensorConfig
+        from custom_components.hsem.planner.slot_population import populate_solcast
 
-    def test_solcast_share_independent_of_eds_interval(self):
-        """Solcast share must not change when the EDS interval changes."""
-        slot_minutes = 15
-        share_eds_60 = 60.0 / slot_minutes
-        share_eds_15 = 60.0 / slot_minutes
-        assert share_eds_60 == pytest.approx(share_eds_15)
+        base = datetime(2026, 8, 9, 0, 0, 0, tzinfo=UTC)
 
-    def test_hourly_solcast_forecast_stored_per_slot_and_recovered(self):
-        """An hourly 1.0 kWh Solcast forecast is stored as-is (raw value).
-        coordinator_builder passes it straight to SolcastSlot.pv_estimate;
-        slot_population.py divides by scale (= 60 / slot_minutes) internally."""
-        hourly_kwh = 1.0
-        slot_minutes = 15
+        def _rec(i: int) -> HourlyRecommendation:
+            start = base + timedelta(minutes=15 * i)
+            return HourlyRecommendation(
+                start=start,
+                end=start + timedelta(minutes=15),
+                recommendation="idle",
+                avg_house_consumption_kwh=0.0,
+                avg_house_consumption_1d_kwh=0.0,
+                avg_house_consumption_3d_kwh=0.0,
+                avg_house_consumption_7d_kwh=0.0,
+                avg_house_consumption_14d_kwh=0.0,
+                batteries_charged_kwh=0.0,
+                batteries_discharged_kwh=0.0,
+                estimated_battery_capacity_kwh=0.0,
+                estimated_battery_soc_pct=0.0,
+                estimated_cost_currency=0.0,
+                estimated_net_consumption_kwh=0.0,
+                export_price=0.0,
+                grid_export_kwh=0.0,
+                grid_import_kwh=0.0,
+                import_price=0.0,
+                solcast_pv_estimate_kwh=1.0,
+            )
 
-        # New contract: raw value stored, no divide/multiply round-trip.
-        stored = hourly_kwh  # populator stores raw
-        planner_hourly = stored  # coordinator passes straight through
+        cfg = SensorConfig()
+        cfg.recommendation_interval_minutes = 15
+        cfg.recommendation_interval_length = 1
 
-        assert stored == pytest.approx(hourly_kwh)
-        assert planner_hourly == pytest.approx(hourly_kwh)
-        # slot_population.py handles the per-slot fraction internally:
-        # per_slot_kwh = pv_estimate / scale  where scale = 60 / slot_minutes
-        scale = 60.0 / slot_minutes
-        assert planner_hourly / scale == pytest.approx(hourly_kwh / 4)
+        recs = [_rec(i) for i in range(4)]
+        with patch("homeassistant.util.dt.now", return_value=base):
+            inp = build_planner_input(
+                cfg=cfg,
+                live=LiveState(),
+                hourly_recommendations=recs,
+                batteries_schedules=[],
+                previous_winner_name=None,
+                previous_winner_score=0.0,
+            )
+
+        slots = [
+            PlannedSlot(
+                start=base + timedelta(minutes=15 * i),
+                end=base + timedelta(minutes=15 * (i + 1)),
+            )
+            for i in range(4)
+        ]
+        populate_solcast(slots, inp.solcast_slots, inp.interval_minutes)
+
+        assert len(inp.solcast_slots) == 1
+        assert [slot.solcast_pv_estimate_kwh for slot in slots] == pytest.approx(
+            [0.25, 0.25, 0.25, 0.25]
+        )

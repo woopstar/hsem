@@ -19,7 +19,7 @@
 | [MILP Optimization](milp-optimization.md) | Full LP formulation, variable layout, constraints, and solver pipeline |
 | [Consumption Prediction](consumption-prediction.md) | Weighted-average model, IQR outlier detection, spike suppression |
 | [Safety Modes](safety-modes.md) | Degraded mode, read-only gate, write-verify applier, runtime resolver |
-| [Price Scaling](price-scaling.md) | EDS price scaling, eds_share conversion factor |
+| [Price Scaling](price-scaling.md) | EDS price cadence auto-detection and raw pass-through |
 | [Services Reference](services-reference.md) | All 5 HSEM services with examples |
 | [Sensors Reference](sensors-reference.md) | Complete entity reference: all sensor, select, switch, number, and time entities |
 | [Dashboard Setup](dashboard-setup.md) | Step-by-step ApexCharts dashboard with full YAML, layout reference, and troubleshooting |
