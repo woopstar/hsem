@@ -1177,71 +1177,67 @@ Electricity prices are **rates** (currency per kWh), not energy quantities.
 Every slot inside the same EDS update interval shares the same price; the
 price is **never summed or averaged** across slots.
 
-### The eds_share conversion factor
+### Source cadence detection and raw-value storage
 
-When EDS and slot widths differ (most common case: EDS 60 min, slots 15 min),
-a conversion factor is needed so internal per-slot storage and the planner
-engine both see correct values:
+`energi_data_service_update_interval` remains the configured expectation for
+price cadence, but population now trusts the **data itself** when possible.
+For each supported attribute array, HSEM measures the gap between consecutive
+timestamps and uses that detected cadence for matching. This happens
+**per attribute**, so one sensor can legitimately publish:
 
-```text
-eds_share = energi_data_service_update_interval / recommendation_interval_minutes
-```
+- `prices_today` every 15 minutes, and
+- `forecast` every 60 minutes
 
-Common configurations:
+without requiring per-provider overrides.
 
-| EDS interval | Slot width | eds_share | Effect |
-|---|---|---|---|
-| 60 min | 15 min | 4.0 | price÷4 stored; planner gets price×4 back |
-| 15 min | 15 min | 1.0 | no scaling — price stored and used unchanged |
-| 60 min | 60 min | 1.0 | no scaling — price stored and used unchanged |
+If detection fails (for example because fewer than two parseable timestamps are
+available), HSEM falls back to the configured interval for prices and to
+60 minutes for Solcast PV data.
 
-### How the scaling pipeline works
+### How the population pipeline works
 
 1. **Population** (`hourly_data_populator._async_update_hourly_field`):
-   Each raw EDS value is divided by `eds_share` before writing to the
-   per-slot `HourlyRecommendation` object.
-   This gives each slot its proportional share of the price-rate value so
-   slot boundaries align correctly.
-   Data-point timestamps are floored to the start of their enclosing *source*
-   interval (the EDS update interval for prices, 60 min for Solcast), never
-   to the hour: a 15-min price point covers only the slots whose start lies
-   inside that 15-min window, so quarter-hourly prices land on distinct
-   slots (issue #720).  With hourly price data and 15-min slots the single
-   hourly point fans out to all four quarter-hour slots of the hour.
+   Each matched value is written into every planner slot covered by its
+   detected source window after normalizing the timestamp to the start of
+   that same source interval. There is **no divide-by-share step**.
+
+   - Prices are rates (`currency / kWh`) and are stored **unchanged** on each
+     covered `HourlyRecommendation` slot.
+   - Solcast entries are hourly energy totals (`kWh`) and are also stored
+     **unchanged** on each covered slot.
+
+   This means a 15-minute price point only covers its own quarter-hour slot,
+   while an hourly price or Solcast point fans out to all four quarter-hour
+   slots inside that hour when `recommendation_interval_minutes = 15`.
 
 2. **Planner input** (`coordinator_builder.build_planner_input`):
    Recommendation slots are deduplicated on `(day_offset, hour)` for
    consumption averages and Solcast PV (genuinely hour-granular), but
    **price points are emitted per slot** with an explicit `slot_in_day`
    field, so quarter-hourly prices survive as distinct `PricePoint`
-   entries (192 for a 48 h horizon at 15-min slots).  Each stored per-slot
-   price is multiplied by `eds_share` to recover the original
-   hourly-equivalent rate.  The planner's cost function always works with
-   full currency/kWh rates, not fractions.
+   entries (192 for a 48 h horizon at 15-minute slots). Stored price values
+   are passed through directly to `PricePoint`; there is **no inverse
+   multiply** in the coordinator.
 
 3. **Slot population** (`planner.slot_population.populate_prices`):
    When price points carry `slot_in_day`, slots are keyed by
    `(day_offset, slot_in_day)` so each quarter-hourly price lands on its
-   own planner slot; slots the source does not cover fall back to the
-   hourly value.  Points without `slot_in_day` (legacy hourly callers)
+   own planner slot; points without `slot_in_day` (legacy hourly callers)
    use the existing `align_hourly_prices` fan-out unchanged.
 
-The divide and multiply are exact inverses — they cancel perfectly and the
-planner always receives the original price rate regardless of configuration.
-
-### What this is NOT
-
-- `eds_share` is **not** a VAT multiplier.
-- `eds_share` is **not** a currency conversion.
-- `eds_share` is **not** an energy-splitting factor (prices are rates, not energy).
+4. **PV slot population** (`planner.slot_population.populate_solcast`):
+   Solcast `pv_estimate` remains the full hourly kWh total. When planner
+   slots are shorter than one hour, the slot populator computes the per-slot
+   fraction from that raw hourly total.
 
 ### Invariants for tests
 
 - A 60-min EDS price of `P` must reach the planner as `P` (not `P/4` or `P*4`).
 - A 15-min EDS price of `P` must reach the planner as `P`.
-- Intermediate per-slot stored values must equal `P / eds_share`.
-- Changing `energi_data_service_update_interval` from 60 to 15 with the same
-  price input must not change the price seen by the planner engine.
+- Intermediate per-slot stored values for prices must equal the raw rate `P`.
+- Changing `energi_data_service_update_interval` with the same timestamped
+  price input must not change the price seen by the planner engine when
+  cadence auto-detection succeeds.
 - Negative prices must survive the full pipeline unchanged.
 - With 15-min price data and 15-min slots, each quarter-hour price must land
   on exactly its own slot — four distinct prices within an hour must produce
@@ -1249,6 +1245,9 @@ planner always receives the original price rate regardless of configuration.
 - With 15-min price data, 15-min slots, and a 48 h horizon, the planner must
   receive 192 distinct price points (not 48 collapsed hourly ones) and the
   MILP must see intra-hour price variation (issue #720 stage 2).
+- With hourly Solcast data and 15-minute slots, one hourly kWh total must fan
+  out to four quarter-hour planner slots whose combined energy equals the raw
+  hourly input.
 
 ## Candidate plans
 
