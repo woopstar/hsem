@@ -137,36 +137,11 @@ def build_planner_input(
     price_points: list[PricePoint] = []
     solcast_slots: list[SolcastSlot] = []
 
-    # Number of recommendation slots that fit inside one wall-clock hour.
-    # Used to up-scale per-slot energy values back to hourly totals before
-    # passing them to the planner engine (which works in Wh per hour).
+    # slots_per_hour is used to up-scale per-slot consumption averages to
+    # hourly totals for the planner engine.  Prices and Solcast PV are now
+    # stored at face value by the populator (no divide/multiply round-trip),
+    # so slots_per_hour is only needed for the consumption averages below.
     slots_per_hour = 60.0 / cfg.recommendation_interval_minutes
-
-    # ------------------------------------------------------------------
-    # Price interval semantics — see also hourly_data_populator.py
-    # ------------------------------------------------------------------
-    # `price_share` is the ratio of the price update interval to the slot width:
-    #
-    #   price_share = electricity_price_update_interval / recommendation_interval_minutes
-    #
-    # In `hourly_data_populator._async_update_hourly_field`, each price was
-    # divided by `price_share` before storing into the per-slot recommendation
-    # object.  Here we multiply it back to recover the original price rate
-    # (currency/kWh) before handing it to the planner.
-    #
-    # This forward-and-back pair is intentional: the divide converts the price
-    # to a per-slot representation suitable for matching slot boundaries, while
-    # the multiply here converts it back to the original hourly rate required by
-    # the planner's cost function.
-    #
-    # Common configurations:
-    #   Price 60 min / slots 15 min  →  price_share = 4.0
-    #   Price 30 min / slots 15 min  →  price_share = 2.0
-    #   Price 15 min / slots 15 min  →  price_share = 1.0  (no-op)
-    #   Price 60 min / slots 60 min  →  price_share = 1.0  (no-op)
-    price_share = (
-        cfg.electricity_price_update_interval / cfg.recommendation_interval_minutes
-    )
 
     # Midnight of the planning day — used to compute per-slot day_offset.
     planning_midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -186,13 +161,12 @@ def build_planner_input(
         slot_in_day = (rec.start.hour * 60 + rec.start.minute) // int(
             cfg.recommendation_interval_minutes
         )
-        # Multiply by price_share to reverse the per-slot divide applied during
-        # population; the planner receives the original currency/kWh rate.
+        # Prices are stored at face value by the populator (no scaling).
         price_points.append(
             PricePoint(
                 hour=h,
-                import_price=round(rec.import_price * price_share, 5),
-                export_price=round(rec.export_price * price_share, 5),
+                import_price=round(rec.import_price, 5),
+                export_price=round(rec.export_price, 5),
                 day_offset=day_offset,
                 slot_in_day=slot_in_day,
             )
@@ -216,7 +190,7 @@ def build_planner_input(
         solcast_slots.append(
             SolcastSlot(
                 hour=h,
-                pv_estimate=round(rec.solcast_pv_estimate_kwh * slots_per_hour, 3),
+                pv_estimate=round(rec.solcast_pv_estimate_kwh, 3),
                 day_offset=day_offset,
             )
         )

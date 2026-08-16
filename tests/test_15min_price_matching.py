@@ -180,10 +180,9 @@ class TestQuarterHourlyPriceMatching:
         }
         _populate(recs, attrs, cfg)
 
-        share = 60 / 15  # stored value is raw / share
         for i, rec in enumerate(recs):
             hour = i // 4
-            expected = (0.10 + hour * 0.05) / share
+            expected = 0.10 + hour * 0.05  # raw value; no divide by share
             assert rec.import_price == pytest.approx(expected, abs=1e-5), (
                 f"Slot {i}: expected {expected}, got {rec.import_price}"
             )
@@ -205,10 +204,9 @@ class TestQuarterHourlyPriceMatching:
         }
         _populate(recs, attrs, cfg)
 
-        # share = 15/60 = 0.25 → stored = raw / 0.25
+        # Populator stores raw value; 60-min slot gets the price at its start boundary.
         for h, rec in enumerate(recs):
-            expected_raw = 1.0 + (h * 4) * 0.01  # price at the hour boundary
-            expected = expected_raw / 0.25
+            expected = 1.0 + (h * 4) * 0.01  # raw price at the hour boundary
             assert rec.import_price == pytest.approx(expected, abs=1e-4), (
                 f"Hour {h}: expected {expected}, got {rec.import_price}"
             )
@@ -325,4 +323,83 @@ class TestNordpoolRawFormat:
             expected = 0.10 + i * 0.01
             assert rec.import_price == pytest.approx(expected, abs=1e-5), (
                 f"Slot {i}: expected {expected}, got {rec.import_price}"
+            )
+
+
+class TestForecastAutoDetection:
+    """Regression test for GitHub issue #720 follow-up.
+
+    When ``forecast`` data is hourly (60-min cadence) but slots are 15-min
+    wide, the old code matched only the ``:00`` slot of each hour and left
+    the ``:15 / :30 / :45`` slots at ``import_price = 0.0``.  The MILP then
+    saw a repeating ``high → 0 → 0 → 0 → high → ...`` pattern and oscillated.
+
+    With auto-detection the populator detects the 60-min cadence of the
+    ``forecast`` attribute and fans each price out to all four 15-min slots.
+    """
+
+    def setup_method(self) -> None:
+        self.base = datetime(2026, 8, 12, 0, 0, 0, tzinfo=UTC)
+
+    def test_hourly_forecast_fans_out_to_15min_slots(self) -> None:
+        """Hourly ``forecast`` prices must reach all four 15-min sub-slots."""
+        cfg = _Cfg(price_interval=15, slot_interval=15)
+        recs = [
+            _make_rec(
+                self.base + timedelta(minutes=15 * i),
+                self.base + timedelta(minutes=15 * (i + 1)),
+            )
+            for i in range(8)  # two hours = 8 slots
+        ]
+        # forecast attribute published by EDS — always hourly, key ``hour``/``price``
+        prices = [1.5, 2.0]
+        raw_forecast = [
+            {
+                "hour": (self.base + timedelta(hours=h)).isoformat(),
+                "price": f"{prices[h]:.5f}",
+            }
+            for h in range(2)
+        ]
+        attrs = {
+            "sensor.eds_import": {"forecast": raw_forecast},
+            "sensor.eds_export": {"forecast": raw_forecast},
+        }
+        _populate(recs, attrs, cfg)
+
+        # Every 15-min sub-slot within the hour must carry the same price.
+        # No slot should be 0.0 (the oscillation bug).
+        for i, rec in enumerate(recs):
+            hour = i // 4
+            expected = prices[hour]
+            assert rec.import_price == pytest.approx(expected, abs=1e-5), (
+                f"Slot {i} ({rec.start}): expected {expected} (hour={hour}), "
+                f"got {rec.import_price}"
+            )
+            assert rec.import_price > 0.0, (
+                f"Slot {i} ({rec.start}) must not be zero — oscillation bug!"
+            )
+
+    def test_forecast_does_not_zero_out_non_hour_slots(self) -> None:
+        """No 15-min slot should have import_price=0 when forecast covers that hour."""
+        cfg = _Cfg(price_interval=15, slot_interval=15)
+        recs = [
+            _make_rec(
+                self.base + timedelta(minutes=15 * i),
+                self.base + timedelta(minutes=15 * (i + 1)),
+            )
+            for i in range(4)  # first hour only
+        ]
+        raw_forecast = [
+            {"hour": self.base.isoformat(), "price": "1.867"},
+        ]
+        attrs = {
+            "sensor.eds_import": {"forecast": raw_forecast},
+            "sensor.eds_export": {"forecast": raw_forecast},
+        }
+        _populate(recs, attrs, cfg)
+
+        for i, rec in enumerate(recs):
+            assert rec.import_price == pytest.approx(1.867, abs=1e-4), (
+                f"Slot {i} at :{15*i:02d} got {rec.import_price}, expected 1.867 — "
+                f"oscillation bug: only :00 slot is matched"
             )
