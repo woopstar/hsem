@@ -33,6 +33,8 @@ jobs:
   MSDO:
     # currently only windows latest is supported
     runs-on: windows-latest
+    # Fork PRs run with a read-only token; this job writes security results.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       security-events: write
     steps:

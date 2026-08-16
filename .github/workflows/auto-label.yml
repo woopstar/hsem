@@ -4,9 +4,9 @@
 name: Auto Label PRs from Conventional Commits
 
 on:
-  pull_request:
+  pull_request_target:
     branches: [main]
-    types: [opened, reopened, labeled, unlabeled]
+    types: [opened, reopened, synchronize, labeled, unlabeled]
   workflow_dispatch:
 
 permissions:
@@ -21,11 +21,9 @@ jobs:
       pull-requests: write
     if: github.event.pull_request.merged == false
     steps:
-      - uses: actions/checkout@v7.0.1
-
       - name: Execute assign labels
         id: action-assign-labels
-        uses: mauroalderete/action-assign-labels@v1
+        uses: mauroalderete/action-assign-labels@671a4ca2da0f900464c58b8b5540a1e07133e915
         with:
           pull-request-number: ${{ github.event.pull_request.number }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
