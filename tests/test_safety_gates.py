@@ -440,6 +440,9 @@ class TestBatterySettingsSafetyGate:
         live = _make_live(degraded_mode=DegradedMode.OK)
         live.huawei_batteries_max_discharge_power_w = 2500
         live.tou_periods.periods = []
+        # Excess PV use already matches desired ("charge") so that check is a no-op
+        # and execution reaches the TOU period fan-out block under test.
+        live.huawei_batteries_excess_pv_use_in_tou = "charge"
 
         from custom_components.hsem.utils.inverter_verify import ApplyResult
         from custom_components.hsem.utils.recommendations import Recommendations
