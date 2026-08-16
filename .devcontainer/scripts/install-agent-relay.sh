@@ -20,6 +20,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 RELAY_SRC="$SCRIPT_DIR/start-agent-relay.py"
 RELAY_DST="$APP_SUPPORT/hsem-agent-relay.py"
 TEMPLATE="$SCRIPT_DIR/com.hsem.agent-relay.plist.template"
+GPG_HOME="${HOME}/.gnupg"
+GPG_SNAPSHOT="$SCRIPT_DIR/../gnupg-host"
+GPG_EXPORT="$APP_SUPPORT/hsem-agent-relay.public-keys.asc"
 
 install_service() {
     echo "Installing HSEM agent relay as LaunchAgent..."
@@ -32,6 +35,19 @@ install_service() {
     # Copy relay to Application Support (launchd can't access arbitrary paths)
     mkdir -p "$APP_SUPPORT"
     cp "$RELAY_SRC" "$RELAY_DST"
+
+    # Snapshot the host public keys so the container can import them without
+    # depending on the host .gnupg bind mount.
+    if [ -d "$GPG_HOME" ] && command -v gpg >/dev/null 2>&1; then
+        rm -rf "$GPG_SNAPSHOT"
+        mkdir -p "$GPG_SNAPSHOT"
+        gpg --homedir "$GPG_HOME" --batch --yes --armor --export > "$GPG_EXPORT"
+        GNUPGHOME="$GPG_SNAPSHOT" gpg --batch --yes --import "$GPG_EXPORT" >/dev/null 2>&1
+        rm -f "$GPG_EXPORT"
+        echo "Snapshot of $GPG_HOME -> $GPG_SNAPSHOT"
+    else
+        echo "WARNING: GnuPG home not found or gpg unavailable; skipping snapshot."
+    fi
 
     # Create LaunchAgents dir if needed
     mkdir -p "$HOME/Library/LaunchAgents"

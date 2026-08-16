@@ -18,7 +18,9 @@ In the container you will have a dedicated Home Assistant core instance running 
 The devcontainer is pre-configured to use your YubiKey for SSH authentication and GPG signing:
 
 - `gnupg`, `gpg-agent`, `pinentry`, `socat`, `openssh-client`, and `git` are installed in the container
-- Your host `~/.ssh`, `~/.gnupg`, and `~/.gitconfig` are mounted into the container
+- On Unix hosts, your host `~/.ssh` and `~/.gitconfig` are staged into `.devcontainer/host-config/` by the `initializeCommand` and then mounted into the container
+- On Windows hosts, the installer stages your host `~/.ssh` and `~/.gitconfig` into `.devcontainer/host-config/`
+- Your host `~/.gnupg` public key material is snapshotted into `.devcontainer/gnupg-host/` by the Windows/macOS installer and mounted into the container
 - `yubikey-manager` CLI (`ykman`) is available for managing your YubiKey
 
 **macOS setup**: Docker Desktop runs inside a Linux VM and cannot forward Unix domain
@@ -45,6 +47,58 @@ To uninstall the relay:
    ```sh
    sh .devcontainer/scripts/install-agent-relay.sh uninstall
    ```
+
+**Windows setup**: Docker Desktop on Windows cannot forward Windows named pipes or
+GnuPG's emulated sockets into containers, so the same TCP relay architecture is used.
+The Windows relay ([start-agent-relay.ps1](scripts/start-agent-relay.ps1)) is pure
+PowerShell — no Python or other dependencies needed on the host.
+
+Prerequisites:
+
+- [Gpg4win](https://gpg4win.org/) (or another GnuPG for Windows) with the YubiKey
+  already set up, and `%APPDATA%\gnupg\gpg-agent.conf` containing:
+  ```
+  enable-ssh-support
+  enable-win32-openssh-support
+  ```
+  The second option makes gpg-agent serve the `\\.\pipe\openssh-ssh-agent` named
+  pipe, which the relay forwards to the container on port 9999.
+- A shell such as Git Bash or WSL2 so the devcontainer can run
+  `.devcontainer/scripts/initialize-host.sh` during container initialization.
+- Docker Desktop for Windows.
+
+Setup steps:
+
+1. **Install the relay as a per-user Scheduled Task** (starts at logon, restarts on
+   failure, no admin required). Run in PowerShell from the repository root:
+   ```powershell
+   powershell -NoProfile -ExecutionPolicy Bypass -File .devcontainer\scripts\install-agent-relay.ps1 install
+   ```
+   This starts TCP relays on ports 9999 (SSH agent), 9998 (GPG agent), 9997 (scdaemon),
+   stages `%USERPROFILE%\.ssh` and `%USERPROFILE%\.gitconfig` into
+   `.devcontainer/host-config/` (git-ignored), and snapshots your public GnuPG key
+   material (`%APPDATA%\gnupg`) into `.devcontainer/gnupg-host/` (git-ignored) so the
+   container can verify signatures and know which keys live on the YubiKey. Re-run
+   `install` after changing SSH/Git config or adding new keys.
+
+2. **Check status**:
+   ```powershell
+   powershell -NoProfile -ExecutionPolicy Bypass -File .devcontainer\scripts\install-agent-relay.ps1 status
+   ```
+
+3. **Open the devcontainer** in VS Code (`F1` → `Dev Containers: Reopen in Container`).
+   The `postCreateCommand` automatically starts the container-side socat bridge.
+
+4. **Verify**: run `ssh -T git@github.com` and `gpg --card-status` in the container terminal.
+
+To uninstall the relay:
+   ```powershell
+   powershell -NoProfile -ExecutionPolicy Bypass -File .devcontainer\scripts\install-agent-relay.ps1 uninstall
+   ```
+
+> **Note:** Signing commits or authenticating may require touching the YubiKey or
+> entering its PIN — the pinentry prompt appears on the Windows host, not in the
+> container.
 
 **macOS filesystem performance**
 
