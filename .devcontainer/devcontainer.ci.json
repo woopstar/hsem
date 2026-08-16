@@ -1,0 +1,27 @@
+{
+  "name": "HSEM CI",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/node:1": {}
+  },
+  "postCreateCommand": "/usr/local/bin/setup-python-deps.sh",
+  "remoteUser": "root",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/hsem,type=bind,consistency=cached",
+  "workspaceFolder": "/workspaces/hsem",
+  "mounts": [
+    "source=hsem-cache,target=/workspaces/hsem/.cache,type=volume"
+  ],
+  "containerEnv": {
+    "CI": "true",
+    "WORKSPACE_DIR": "/workspaces/hsem",
+    "PYTHONPYCACHEPREFIX": "/workspaces/hsem/.cache/pycache",
+    "MYPY_CACHE_DIR": "/workspaces/hsem/.cache/mypy",
+    "PYTEST_CACHE_DIR": "/workspaces/hsem/.cache/pytest",
+    "RUFF_CACHE_DIR": "/workspaces/hsem/.cache/ruff",
+    "UV_CACHE_DIR": "/workspaces/hsem/.cache/uv"
+  }
+}
