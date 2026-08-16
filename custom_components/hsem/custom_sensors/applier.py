@@ -761,12 +761,16 @@ async def async_apply_battery_settings(
             return summary
         _te: str = tou_entity  # narrowed for closure
         for battery_device_id in battery_device_ids:
+
+            async def _write_tou(
+                _dev: str = battery_device_id,
+            ) -> None:
+                await async_set_tou_periods(sensor, _dev, tou_modes)
+
             result = await async_write_and_verify(
                 entity_id=f"{_te}:{battery_device_id}",
                 desired=list(tou_modes),
-                writer=lambda _device_id=battery_device_id: async_set_tou_periods(
-                    sensor, _device_id, tou_modes
-                ),
+                writer=_write_tou,
                 reader=lambda: _read_tou_periods(sensor, _te),
                 # The LiveState gate above already established a difference, so the
                 # first attempt must write rather than short-circuit on a stale read.
@@ -857,15 +861,19 @@ async def _async_apply_forcible_discharge(
 
     results: list[ApplyResult] = []
     for device_id in battery_device_ids:
+
+        async def _write_fc(_dev: str = device_id) -> None:
+            await async_set_forcible_discharge(
+                sensor,
+                _dev,
+                target_soc,
+                max_discharge_power,
+            )
+
         result = await async_write_and_verify(
             entity_id=(bat_fc_entity or "forcible_charge") + f":{device_id}",
             desired=1.0,
-            writer=lambda _device_id=device_id: async_set_forcible_discharge(
-                sensor,
-                _device_id,
-                target_soc,
-                max_discharge_power,
-            ),
+            writer=_write_fc,
             reader=_read_fc_accepted,
             # The forcible_charge sensor changes state immediately when the
             # command is accepted — no need for wide tolerance or retries.
