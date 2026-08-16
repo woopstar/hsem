@@ -36,20 +36,20 @@ def compute_eds_share(
     return eds_update_interval_minutes / recommendation_interval_minutes
 
 
-def simulate_store_price(raw_price: float, eds_share: float) -> float:
+def simulate_store_price(raw_price: float, _eds_share: float) -> float:
     """Simulate what hourly_data_populator writes to a per-slot recommendation.
 
     Since PR #761 the populator stores the raw price directly — no divide.
-    ``eds_share`` is accepted for API compatibility but ignored.
+    ``_eds_share`` is accepted for API compatibility but ignored.
     """
     return raw_price
 
 
-def simulate_planner_price(stored_price: float, eds_share: float) -> float:
+def simulate_planner_price(stored_price: float, _eds_share: float) -> float:
     """Simulate what coordinator_builder hands to the planner.
 
     Since PR #761 the coordinator passes the stored value straight through —
-    no multiply.  ``eds_share`` is accepted for API compatibility but ignored.
+    no multiply.  ``_eds_share`` is accepted for API compatibility but ignored.
     """
     return stored_price
 
