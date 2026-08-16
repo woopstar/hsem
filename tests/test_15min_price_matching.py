@@ -380,7 +380,13 @@ class TestForecastAutoDetection:
             )
 
     def test_forecast_does_not_zero_out_non_hour_slots(self) -> None:
-        """No 15-min slot should have import_price=0 when forecast covers that hour."""
+        """No 15-min slot should have import_price=0 when forecast covers that hour.
+
+        Two entries are required for _detect_interval_minutes to measure a gap
+        and recognise the 60-min cadence.  With only one entry the detector
+        falls back to the configured 15-min fallback and only the :00 slot
+        would be matched — the exact oscillation bug this test guards against.
+        """
         cfg = _Cfg(price_interval=15, slot_interval=15)
         recs = [
             _make_rec(
@@ -389,8 +395,10 @@ class TestForecastAutoDetection:
             )
             for i in range(4)  # first hour only
         ]
+        # Two hourly entries so the detector can measure the 60-min gap.
         raw_forecast = [
             {"hour": self.base.isoformat(), "price": "1.867"},
+            {"hour": (self.base + timedelta(hours=1)).isoformat(), "price": "1.867"},
         ]
         attrs = {
             "sensor.eds_import": {"forecast": raw_forecast},
