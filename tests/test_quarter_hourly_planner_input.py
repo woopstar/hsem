@@ -212,3 +212,61 @@ class TestBuildPlannerInputSlotInDay:
         first_hour = [pp for pp in inp.price_points if pp.day_offset == 0][:4]
         prices = [pp.import_price for pp in first_hour]
         assert len(set(prices)) == 4
+
+    def test_hourly_prices_keep_raw_rate_for_quarter_hour_slots(self) -> None:
+        """A 60-min price source must reach 15-min slots unchanged."""
+        from custom_components.hsem.coordinator_builder import build_planner_input
+        from custom_components.hsem.models.hourly_recommendation import (
+            HourlyRecommendation,
+        )
+        from custom_components.hsem.models.live_state import LiveState
+        from custom_components.hsem.models.sensor_config import SensorConfig
+
+        cfg = SensorConfig()
+        cfg.recommendation_interval_minutes = 15
+        cfg.recommendation_interval_length = 1
+        cfg.electricity_price_update_interval = 60
+
+        base = datetime(2026, 8, 9, 0, 0, 0, tzinfo=UTC)
+
+        def _rec(i: int) -> HourlyRecommendation:
+            start = base + timedelta(minutes=15 * i)
+            return HourlyRecommendation(
+                start=start,
+                end=start + timedelta(minutes=15),
+                recommendation="idle",
+                avg_house_consumption_kwh=0.1,
+                avg_house_consumption_1d_kwh=0.1,
+                avg_house_consumption_3d_kwh=0.1,
+                avg_house_consumption_7d_kwh=0.1,
+                avg_house_consumption_14d_kwh=0.1,
+                batteries_charged_kwh=0.0,
+                batteries_discharged_kwh=0.0,
+                estimated_battery_capacity_kwh=0.0,
+                estimated_battery_soc_pct=0.0,
+                estimated_cost_currency=0.0,
+                estimated_net_consumption_kwh=0.0,
+                export_price=1.234,
+                grid_export_kwh=0.0,
+                grid_import_kwh=0.0,
+                import_price=1.867,
+                solcast_pv_estimate_kwh=0.0,
+            )
+
+        recs = [_rec(i) for i in range(4)]
+
+        with patch("homeassistant.util.dt.now", return_value=base):
+            inp = build_planner_input(
+                cfg=cfg,
+                live=LiveState(),
+                hourly_recommendations=recs,
+                batteries_schedules=[],
+                previous_winner_name=None,
+                previous_winner_score=0.0,
+            )
+
+        assert len(inp.price_points) == 4
+        assert [pp.import_price for pp in inp.price_points] == pytest.approx(
+            [1.867, 1.867, 1.867, 1.867]
+        )
+        assert len({pp.slot_in_day for pp in inp.price_points}) == 4

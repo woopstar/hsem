@@ -107,17 +107,19 @@ can restore.
 
 ### Checks & likely causes
 
-**2a. EDS update interval mismatch**
+**2a. Price cadence not detectable**
 
-The planner uses an `eds_share` conversion factor that depends on whether EDS
-publishes data every 15 minutes or every 60 minutes. If the HSEM config says
-one interval but EDS actually publishes at the other, all prices are silently
-scaled wrong.
+HSEM auto-detects the cadence of each price attribute from its timestamps.
+If an attribute has fewer than two parseable timestamps, or the timestamps are
+malformed, HSEM falls back to the configured EDS interval and may only match
+part of the data.
 
-- **Check:** HSEM → **Configure** → **Energi Data Service** step. Verify
-  the _EDS Update Interval_ (15 or 60) matches what your EDS integration
-  actually uses. Check the EDS integration documentation for your price area.
-- **Fix:** Change the interval to match reality.
+- **Check:** HSEM → **Configure** → **Energi Data Service** step. Verify the
+  sensor attributes contain valid timestamps and that the active attribute key
+  matches the data actually published by your price source.
+- **Fix:** Correct the timestamp format or attribute key so HSEM can detect
+  the real cadence. If the source truly changes cadence (for example, `forecast`
+  vs `prices_today`), HSEM now handles that automatically.
 
 **2b. Grid fee or tax configuration**
 

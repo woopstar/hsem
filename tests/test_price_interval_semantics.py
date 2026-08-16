@@ -1,34 +1,22 @@
-"""Tests for HSEM price interval semantics (issue #371).
+"""Tests for HSEM price interval semantics (issue #371, updated for #720 fix).
 
 Background
 ----------
-HSEM supports two price-data granularities controlled by
-``energi_data_service_update_interval`` (15 min or 60 min) and a planning
-slot width controlled by ``recommendation_interval_minutes`` (15 or 60 min).
+HSEM supports two price-data granularities and a configurable planning slot
+width (``recommendation_interval_minutes``).
 
-The conversion factor is::
-
-    eds_share = energi_data_service_update_interval / recommendation_interval_minutes
-
-In ``hourly_data_populator._async_update_hourly_field`` each raw EDS price is
-divided by ``eds_share`` before writing to the per-slot
-:class:`~custom_components.hsem.models.hourly_recommendation.HourlyRecommendation`
-object.
-
-In ``coordinator._build_planner_input`` the stored per-slot price is multiplied
-back by ``eds_share`` to recover the original hourly-equivalent rate before
-passing it to the planner engine.
+**New contract (since PR #761)**:
+The source cadence is auto-detected per attribute key from the data timestamps.
+The populator stores the **raw price** directly — no divide by ``eds_share``.
+``coordinator_builder`` passes it straight through to the planner — no multiply.
 
 Acceptance criteria verified here
 ----------------------------------
-- A 60-min EDS price P stored in a 15-min slot must equal P / 4.
-- A 15-min EDS price P stored in a 15-min slot must equal P (no scaling).
-- A 60-min EDS price P stored in a 60-min slot must equal P (no scaling).
-- The coordinator's rebuild step multiplies the stored value back to P.
+- A price P stored for any configuration must equal P (raw, no scaling).
+- The planner always receives the original currency/kWh rate.
 - Negative prices survive the full pipeline unchanged.
 - Zero prices are stored and recovered correctly (not treated as missing).
-- The scaling factors for all three common combinations produce the expected
-  round-trip result.
+- The round-trip result is the same for all supported configurations.
 """
 
 from __future__ import annotations
@@ -36,7 +24,7 @@ from __future__ import annotations
 import pytest
 
 # ---------------------------------------------------------------------------
-# Helpers: eds_share formula (mirrors the production code verbatim)
+# Helpers: new contract — store raw, pass raw
 # ---------------------------------------------------------------------------
 
 
@@ -44,18 +32,26 @@ def compute_eds_share(
     eds_update_interval_minutes: int,
     recommendation_interval_minutes: int,
 ) -> float:
-    """Mirror the production formula: eds_share = EDS interval / slot interval."""
+    """Return the ratio of EDS interval to slot interval (kept for reference)."""
     return eds_update_interval_minutes / recommendation_interval_minutes
 
 
-def simulate_store_price(raw_price: float, eds_share: float) -> float:
-    """Simulate what hourly_data_populator writes to a per-slot recommendation."""
-    return raw_price / eds_share
+def simulate_store_price(raw_price: float, _eds_share: float) -> float:
+    """Simulate what hourly_data_populator writes to a per-slot recommendation.
+
+    Since PR #761 the populator stores the raw price directly — no divide.
+    ``_eds_share`` is accepted for API compatibility but ignored.
+    """
+    return raw_price
 
 
-def simulate_planner_price(stored_price: float, eds_share: float) -> float:
-    """Simulate what coordinator._build_planner_input hands to the planner."""
-    return stored_price * eds_share
+def simulate_planner_price(stored_price: float, _eds_share: float) -> float:
+    """Simulate what coordinator_builder hands to the planner.
+
+    Since PR #761 the coordinator passes the stored value straight through —
+    no multiply.  ``_eds_share`` is accepted for API compatibility but ignored.
+    """
+    return stored_price
 
 
 def round_trip_price(
@@ -99,14 +95,15 @@ class TestEdsShareValues:
 
 
 class TestPerSlotStoredValue:
-    """Prices written to per-slot recommendations must equal price / eds_share."""
+    """Since PR #761 prices written to per-slot recommendations equal the raw
+    price for all configurations — no divide by eds_share."""
 
     def test_eds_60min_slot_15min_stores_quarter_price(self):
-        """EDS 60 min / slot 15 min: each slot stores P/4."""
+        """EDS 60 min / slot 15 min: raw price stored unchanged (no divide since PR #761)."""
         raw_price = 1.20
         share = compute_eds_share(60, 15)
         stored = simulate_store_price(raw_price, share)
-        assert stored == pytest.approx(raw_price / 4.0)
+        assert stored == pytest.approx(raw_price)
 
     def test_eds_15min_slot_15min_stores_full_price(self):
         """EDS 15 min / slot 15 min: no scaling — stored value equals input."""
@@ -123,11 +120,11 @@ class TestPerSlotStoredValue:
         assert stored == pytest.approx(raw_price)
 
     def test_negative_price_eds_60min_slot_15min_stores_quarter(self):
-        """Negative prices are scaled by the same factor."""
+        """Negative prices are stored unchanged (no scaling since PR #761)."""
         raw_price = -0.40
         share = compute_eds_share(60, 15)
         stored = simulate_store_price(raw_price, share)
-        assert stored == pytest.approx(raw_price / 4.0)
+        assert stored == pytest.approx(raw_price)
 
     def test_zero_price_stores_zero(self):
         """Zero price must store as zero for all configurations."""
@@ -193,20 +190,21 @@ class TestRoundTripPriceRecovery:
 
 
 # ---------------------------------------------------------------------------
-# 4. Stored value does NOT equal original value when eds_share != 1
+# 4. Stored value equals original raw value for all configurations
 # ---------------------------------------------------------------------------
 
 
 class TestStoredValueIsScaled:
-    """The intermediate stored value (per-slot) must differ from the original
-    when eds_share != 1, confirming the scaling is applied."""
+    """Since PR #761 the populator stores raw values — stored always equals
+    the original price regardless of eds_share."""
 
-    def test_stored_price_differs_from_raw_when_eds_60min_slot_15min(self):
-        raw_price = 2.00
-        share = compute_eds_share(60, 15)
-        stored = simulate_store_price(raw_price, share)
-        # Stored value must be raw_price / 4, NOT raw_price
-        assert abs(stored - raw_price) > 1e-9
+    def test_stored_price_equals_raw_for_all_configs(self):
+        """Since PR #761 the populator stores raw values — stored always equals raw."""
+        for eds, slot in [(60, 15), (15, 15), (60, 60)]:
+            share = compute_eds_share(eds, slot)
+            raw_price = 2.00
+            stored = simulate_store_price(raw_price, share)
+            assert stored == pytest.approx(raw_price), f"config EDS={eds} slot={slot}"
 
     def test_stored_price_equals_raw_when_no_scaling_needed(self):
         """When eds_share == 1, stored value must equal raw price."""
@@ -225,8 +223,8 @@ class TestStoredValueIsScaled:
 class TestPlannerReceivesFullRate:
     """The planner must never receive a sub-slot fraction of a price.
 
-    The multiply step in coordinator._build_planner_input ensures the planner
-    always sees the original hourly-equivalent currency/kWh rate.
+    Since PR #761 the coordinator passes raw values straight through — no
+    multiply — so the planner always sees the original currency/kWh rate.
     """
 
     def test_planner_price_always_equals_original_for_positive_prices(self):
@@ -263,41 +261,78 @@ class TestPlannerReceivesFullRate:
 
 
 # ---------------------------------------------------------------------------
-# 6. Solcast share (60 / slot interval) — separate from EDS share
+# 6. Solcast raw-value pass-through to 15-min planner slots
 # ---------------------------------------------------------------------------
 
 
-class TestSolcastShare:
-    """Solcast forecasts are always hourly totals, so share = 60 / slot_interval."""
+class TestSolcastRawValuePassThrough:
+    """Hourly Solcast values must flow through build_planner_input unchanged."""
 
-    def test_solcast_share_15min_slots_is_4(self):
-        """15-min slots: each slot stores 1/4 of the hourly Wh forecast."""
-        solcast_share = 60.0 / 15
-        assert solcast_share == pytest.approx(4.0)
+    def test_hourly_solcast_forecast_fans_out_to_quarter_hour_slots(self):
+        """An hourly 1.0 kWh Solcast forecast must become four 0.25 kWh slots."""
+        from datetime import UTC, datetime, timedelta
+        from unittest.mock import patch
 
-    def test_solcast_share_60min_slots_is_1(self):
-        """60-min slots: no scaling needed."""
-        solcast_share = 60.0 / 60
-        assert solcast_share == pytest.approx(1.0)
+        from custom_components.hsem.coordinator_builder import build_planner_input
+        from custom_components.hsem.models.hourly_recommendation import (
+            HourlyRecommendation,
+        )
+        from custom_components.hsem.models.live_state import LiveState
+        from custom_components.hsem.models.planned_slot import PlannedSlot
+        from custom_components.hsem.models.sensor_config import SensorConfig
+        from custom_components.hsem.planner.slot_population import populate_solcast
 
-    def test_solcast_share_independent_of_eds_interval(self):
-        """Solcast share must not change when the EDS interval changes."""
-        slot_minutes = 15
-        share_eds_60 = 60.0 / slot_minutes
-        share_eds_15 = 60.0 / slot_minutes
-        assert share_eds_60 == pytest.approx(share_eds_15)
+        base = datetime(2026, 8, 9, 0, 0, 0, tzinfo=UTC)
 
-    def test_hourly_solcast_forecast_stored_per_slot_and_recovered(self):
-        """An hourly 1.0 kWh Solcast forecast in 15-min slots stores 0.25 kWh/slot.
-        The coordinator multiplies back by slots_per_hour to recover 1.0 kWh for
-        the planner engine."""
-        hourly_kwh = 1.0
-        slot_minutes = 15
-        solcast_share = 60.0 / slot_minutes
-        slots_per_hour = 60.0 / slot_minutes
+        def _rec(i: int) -> HourlyRecommendation:
+            start = base + timedelta(minutes=15 * i)
+            return HourlyRecommendation(
+                start=start,
+                end=start + timedelta(minutes=15),
+                recommendation="idle",
+                avg_house_consumption_kwh=0.0,
+                avg_house_consumption_1d_kwh=0.0,
+                avg_house_consumption_3d_kwh=0.0,
+                avg_house_consumption_7d_kwh=0.0,
+                avg_house_consumption_14d_kwh=0.0,
+                batteries_charged_kwh=0.0,
+                batteries_discharged_kwh=0.0,
+                estimated_battery_capacity_kwh=0.0,
+                estimated_battery_soc_pct=0.0,
+                estimated_cost_currency=0.0,
+                estimated_net_consumption_kwh=0.0,
+                export_price=0.0,
+                grid_export_kwh=0.0,
+                grid_import_kwh=0.0,
+                import_price=0.0,
+                solcast_pv_estimate_kwh=1.0,
+            )
 
-        stored_per_slot = hourly_kwh / solcast_share
-        planner_hourly = stored_per_slot * slots_per_hour
+        cfg = SensorConfig()
+        cfg.recommendation_interval_minutes = 15
+        cfg.recommendation_interval_length = 1
 
-        assert stored_per_slot == pytest.approx(0.25)
-        assert planner_hourly == pytest.approx(hourly_kwh)
+        recs = [_rec(i) for i in range(4)]
+        with patch("homeassistant.util.dt.now", return_value=base):
+            inp = build_planner_input(
+                cfg=cfg,
+                live=LiveState(),
+                hourly_recommendations=recs,
+                batteries_schedules=[],
+                previous_winner_name=None,
+                previous_winner_score=0.0,
+            )
+
+        slots = [
+            PlannedSlot(
+                start=base + timedelta(minutes=15 * i),
+                end=base + timedelta(minutes=15 * (i + 1)),
+            )
+            for i in range(4)
+        ]
+        populate_solcast(slots, inp.solcast_slots, inp.interval_minutes)
+
+        assert len(inp.solcast_slots) == 1
+        assert [slot.solcast_pv_estimate_kwh for slot in slots] == pytest.approx(
+            [0.25, 0.25, 0.25, 0.25]
+        )
