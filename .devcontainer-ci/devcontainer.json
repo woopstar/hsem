@@ -1,7 +1,8 @@
 {
   "name": "HSEM CI",
   "build": {
-    "dockerfile": "Dockerfile"
+    "context": "../.devcontainer",
+    "dockerfile": "../.devcontainer/Dockerfile"
   },
   "features": {
     "ghcr.io/devcontainers/features/common-utils:2": {},
