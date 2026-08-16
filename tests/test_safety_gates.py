@@ -363,6 +363,7 @@ class TestBatterySettingsSafetyGate:
         cfg.huawei_solar_device_id_batteries = "bat1"
         cfg.huawei_solar_device_id_batteries_2 = "bat2"
         live = _make_live(degraded_mode=DegradedMode.OK)
+        live.huawei_batteries_max_discharge_power_w = 2500
         live.huawei_batteries_forcible_charge_state = "Discharging at 3000W"
 
         from custom_components.hsem.utils.recommendations import Recommendations
@@ -392,6 +393,7 @@ class TestBatterySettingsSafetyGate:
         live = _make_live(degraded_mode=DegradedMode.OK)
         live.battery_usable_capacity_kwh = 10.0
         live.huawei_batteries_end_of_discharge_soc_pct = 10.0
+        live.huawei_batteries_max_discharge_power_w = 2500
 
         from custom_components.hsem.utils.inverter_verify import ApplyResult
         from custom_components.hsem.utils.recommendations import Recommendations
@@ -436,6 +438,7 @@ class TestBatterySettingsSafetyGate:
         cfg.huawei_solar_device_id_batteries_2 = "bat2"
         cfg.huawei_solar_batteries_tou_charging_and_discharging_periods = "sensor.tou"
         live = _make_live(degraded_mode=DegradedMode.OK)
+        live.huawei_batteries_max_discharge_power_w = 2500
         live.tou_periods.periods = []
 
         from custom_components.hsem.utils.inverter_verify import ApplyResult
