@@ -127,6 +127,14 @@ def build_sensor_config(
     cfg.huawei_solar_device_id_batteries = get_config_value(
         config_entry, "hsem_huawei_solar_device_id_batteries"
     )
+    cfg.huawei_solar_device_id_batteries_2 = get_config_value(
+        config_entry, "hsem_huawei_solar_device_id_batteries_2"
+    )
+    if (
+        cfg.huawei_solar_device_id_batteries_2 is not None
+        and len(cfg.huawei_solar_device_id_batteries_2) == 0
+    ):
+        cfg.huawei_solar_device_id_batteries_2 = None
 
     # Huawei Solar entity IDs
     cfg.huawei_solar_batteries_working_mode = get_config_value(

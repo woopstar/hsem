@@ -302,6 +302,9 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
                     "hsem_huawei_solar_device_id_inverter_2", ""
                 )
                 self._user_input.setdefault("hsem_huawei_solar_device_id_batteries", "")
+                self._user_input.setdefault(
+                    "hsem_huawei_solar_device_id_batteries_2", ""
+                )
 
                 return await self.async_step_battery_economics()
 
@@ -435,6 +438,9 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
                 # Ensure that optional inverter_id is set to an empty string if not provided.
                 self._user_input["hsem_huawei_solar_device_id_inverter_2"] = (
                     self._user_input.get("hsem_huawei_solar_device_id_inverter_2", "")
+                )
+                self._user_input["hsem_huawei_solar_device_id_batteries_2"] = (
+                    self._user_input.get("hsem_huawei_solar_device_id_batteries_2", "")
                 )
 
                 # Ensure that optional ev_charger_status is set to None if not provided.

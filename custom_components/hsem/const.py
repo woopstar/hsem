@@ -116,6 +116,7 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods": "sensor.batteries_tou_charging_and_discharging_periods",
     "hsem_huawei_solar_batteries_working_mode": "select.batteries_working_mode",
     "hsem_huawei_solar_device_id_batteries": vol.UNDEFINED,
+    "hsem_huawei_solar_device_id_batteries_2": vol.UNDEFINED,
     "hsem_huawei_solar_device_id_inverter_1": vol.UNDEFINED,
     "hsem_huawei_solar_device_id_inverter_2": vol.UNDEFINED,
     "hsem_huawei_solar_inverter_active_power_control": "sensor.inverter_active_power_control",

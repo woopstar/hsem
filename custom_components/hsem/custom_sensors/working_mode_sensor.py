@@ -203,6 +203,7 @@ class HSEMWorkingModeSensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
                 "huawei_solar_batteries_tou_charging_and_discharging_periods_entity": cfg.huawei_solar_batteries_tou_charging_and_discharging_periods,
                 "huawei_solar_batteries_working_mode_entity": cfg.huawei_solar_batteries_working_mode,
                 "huawei_solar_device_id_batteries_id": cfg.huawei_solar_device_id_batteries,
+                "huawei_solar_device_id_batteries_2_id": cfg.huawei_solar_device_id_batteries_2,
                 "huawei_solar_device_id_inverter_1_id": cfg.huawei_solar_device_id_inverter_1,
                 "huawei_solar_device_id_inverter_2_id": cfg.huawei_solar_device_id_inverter_2,
                 "huawei_solar_inverter_active_power_control_state_entity": cfg.huawei_solar_inverter_active_power_control,

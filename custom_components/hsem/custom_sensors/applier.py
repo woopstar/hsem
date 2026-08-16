@@ -82,6 +82,18 @@ def _fmt_live_power_w(power_w: float | None) -> str:
     return f"{int(power_w)} W"
 
 
+def _configured_battery_device_ids(cfg: SensorConfig) -> list[str]:
+    """Return configured battery device IDs, preserving order and uniqueness."""
+    device_ids: list[str] = []
+    for device_id in (
+        cfg.huawei_solar_device_id_batteries,
+        cfg.huawei_solar_device_id_batteries_2,
+    ):
+        if device_id and device_id not in device_ids:
+            device_ids.append(device_id)
+    return device_ids
+
+
 def _wait_mode_self_consumption_cap_w(
     battery_capacity_kwh: float,
     required_capacity_kwh: float,
@@ -530,6 +542,7 @@ async def async_apply_battery_settings(
         Recommendations.ForceExport.value,
     ):
         fc_state = live.huawei_batteries_forcible_charge_state or ""
+        battery_device_ids = _configured_battery_device_ids(cfg)
         if (
             fc_state
             and fc_state.lower()
@@ -539,11 +552,10 @@ async def async_apply_battery_settings(
                 STATE_UNKNOWN,
                 "",
             )
-            and cfg.huawei_solar_device_id_batteries is not None
+            and battery_device_ids
         ):
-            await async_stop_forcible_discharge(
-                sensor, cfg.huawei_solar_device_id_batteries
-            )
+            for device_id in battery_device_ids:
+                await async_stop_forcible_discharge(sensor, device_id)
 
     match recommendation:
         case Recommendations.ForceExport.value:
@@ -570,11 +582,11 @@ async def async_apply_battery_settings(
             working_mode = WorkingModes.MaximizeSelfConsumption.value
 
         case Recommendations.ForceBatteriesDischarge.value:
-            forcible_result = await _async_apply_forcible_discharge(
+            forcible_results = await _async_apply_forcible_discharge(
                 sensor, cfg, live, current_required_battery_kwh, max_discharge_power
             )
-            if forcible_result is not None:
-                summary.results.append(forcible_result)
+            if forcible_results:
+                summary.results.extend(forcible_results)
             return summary
 
         case Recommendations.BatteriesWaitMode.value:
@@ -740,32 +752,39 @@ async def async_apply_battery_settings(
         != generate_hash(str(live.tou_periods.periods))
     ):
         tou_entity = cfg.huawei_solar_batteries_tou_charging_and_discharging_periods
-        battery_device_id = cfg.huawei_solar_device_id_batteries
-        if tou_entity is None or battery_device_id is None:
+        battery_device_ids = _configured_battery_device_ids(cfg)
+        if tou_entity is None or not battery_device_ids:
             _LOGGER.debug(
                 "TOU entity or battery device ID not configured; skipping write.",
                 "warning",
             )
             return summary
         _te: str = tou_entity  # narrowed for closure
-        result = await async_write_and_verify(
-            entity_id=_te,
-            desired=list(tou_modes),
-            writer=lambda: async_set_tou_periods(sensor, battery_device_id, tou_modes),
-            reader=lambda: _read_tou_periods(sensor, _te),
-            # The LiveState gate above already established a difference, so the
-            # first attempt must write rather than short-circuit on a stale read.
-            skip_if_equal=False,
-            max_retries=2,
-        )
-        summary.results.append(result)
-        if result.status == ApplyStatus.FAILED:
-            _LOGGER.debug(
-                f"TOU period write FAILED for device {cfg.huawei_solar_device_id_batteries}. "
-                "Blocking further battery writes this cycle.",
-                "error",
+        for battery_device_id in battery_device_ids:
+
+            async def _write_tou(
+                _dev: str = battery_device_id,
+            ) -> None:
+                await async_set_tou_periods(sensor, _dev, tou_modes)
+
+            result = await async_write_and_verify(
+                entity_id=f"{_te}:{battery_device_id}",
+                desired=list(tou_modes),
+                writer=_write_tou,
+                reader=lambda: _read_tou_periods(sensor, _te),
+                # The LiveState gate above already established a difference, so the
+                # first attempt must write rather than short-circuit on a stale read.
+                skip_if_equal=False,
+                max_retries=2,
             )
-            return summary
+            summary.results.append(result)
+            if result.status == ApplyStatus.FAILED:
+                _LOGGER.debug(
+                    "TOU period write FAILED for device %s. Blocking further "
+                    "battery writes this cycle.",
+                    battery_device_id,
+                )
+                return summary
 
     # Working mode
     if working_mode and live.huawei_batteries_working_mode != working_mode:
@@ -805,19 +824,20 @@ async def _async_apply_forcible_discharge(
     live: LiveState,
     current_required_kwh: float,
     max_discharge_power: int,
-) -> ApplyResult | None:
+) -> list[ApplyResult]:
     """Issue a forcible-discharge command to the battery pack and verify acceptance.
 
     Returns:
-        :class:`ApplyResult` with the outcome, or ``None`` if the preconditions
-        were not met and no write was attempted.
+        List of :class:`ApplyResult` entries (one per configured battery device).
+        Returns an empty list if preconditions are not met and no write is attempted.
     """
+    battery_device_ids = _configured_battery_device_ids(cfg)
     if (
         live.battery_usable_capacity_kwh <= 0
         or current_required_kwh < 0
-        or not cfg.huawei_solar_device_id_batteries
+        or not battery_device_ids
     ):
-        return None
+        return []
 
     target_soc = int(
         live.huawei_batteries_end_of_discharge_soc_pct
@@ -825,7 +845,6 @@ async def _async_apply_forcible_discharge(
     target_soc = max(5, min(100, target_soc))  # clamp 5-100 for safety
 
     bat_fc_entity = cfg.huawei_solar_batteries_forcible_charge
-    device_id = cfg.huawei_solar_device_id_batteries
 
     def _read_fc_accepted() -> float | None:
         """Return 1.0 if forcible charge state is active (not stopped/empty),
@@ -840,27 +859,39 @@ async def _async_apply_forcible_discharge(
             return None
         return 1.0
 
-    result = await async_write_and_verify(
-        entity_id=bat_fc_entity or f"forcible:{device_id}",
-        desired=1.0,
-        writer=lambda: async_set_forcible_discharge(
-            sensor,
+    results: list[ApplyResult] = []
+    for device_id in battery_device_ids:
+
+        async def _write_fc(_dev: str = device_id) -> None:
+            await async_set_forcible_discharge(
+                sensor,
+                _dev,
+                target_soc,
+                max_discharge_power,
+            )
+
+        result = await async_write_and_verify(
+            entity_id=(bat_fc_entity or "forcible_charge") + f":{device_id}",
+            desired=1.0,
+            writer=_write_fc,
+            reader=_read_fc_accepted,
+            # The forcible_charge sensor changes state immediately when the
+            # command is accepted — no need for wide tolerance or retries.
+            tolerance=0.0,
+            max_retries=3,
+        )
+        results.append(result)
+        _LOGGER.debug(
+            "Excess battery export: Set forcible discharge for device %s to %d%% "
+            "SOC at %dW power. Verify result: %s",
             device_id,
             target_soc,
             max_discharge_power,
-        ),
-        reader=_read_fc_accepted,
-        # The forcible_charge sensor changes state immediately when the
-        # command is accepted — no need for wide tolerance or retries.
-        tolerance=0.0,
-        max_retries=3,
-    )
-
-    _LOGGER.debug(
-        f"Excess battery export: Set forcible discharge to {target_soc}% SOC "
-        f"at {max_discharge_power}W power. Verify result: {result.status.value}"
-    )
-    return result
+            result.status.value,
+        )
+        if result.status == ApplyStatus.FAILED:
+            break
+    return results
 
 
 # ---------------------------------------------------------------------------
