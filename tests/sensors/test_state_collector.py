@@ -11,6 +11,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+import voluptuous as vol
 
 from custom_components.hsem.custom_sensors.state_collector import (
     _compute_battery_capacities,
@@ -144,6 +145,28 @@ class TestBuildSensorConfig:
             _make_config_entry(hsem_huawei_solar_device_id_batteries_2="bat2")
         )
         assert cfg.huawei_solar_device_id_batteries_2 == "bat2"
+
+    def test_batteries_2_undefined_becomes_none(self):
+        """Regression test for post-merge crash on existing config entries.
+
+        Config entries created before the second battery device ID was
+        introduced store ``vol.UNDEFINED`` for the new key.  The reader must
+        coerce that sentinel to ``None`` instead of calling ``len()`` on it.
+        """
+        cfg = build_sensor_config(
+            _make_config_entry(
+                hsem_huawei_solar_device_id_batteries_2=vol.UNDEFINED
+            )
+        )
+        assert cfg.huawei_solar_device_id_batteries_2 is None
+
+    def test_inverter_2_undefined_becomes_none(self):
+        cfg = build_sensor_config(
+            _make_config_entry(
+                hsem_huawei_solar_device_id_inverter_2=vol.UNDEFINED
+            )
+        )
+        assert cfg.huawei_solar_device_id_inverter_2 is None
 
     def test_recommendation_interval_minutes(self):
         cfg = build_sensor_config(
