@@ -1190,6 +1190,11 @@ timestamps and uses that detected cadence for matching. This happens
 
 without requiring per-provider overrides.
 
+The generic ``prices`` attribute accepts ISO-8601 timestamps in either a
+``start`` field or the ``start_time`` field returned by Tibber price sources.
+Both formats use ``price`` as the rate field and follow the same cadence
+auto-detection rules.
+
 If detection fails (for example because fewer than two parseable timestamps are
 available), HSEM falls back to the configured interval for prices and to
 60 minutes for Solcast PV data.
