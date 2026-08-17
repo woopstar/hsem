@@ -32,6 +32,21 @@ from custom_components.hsem.utils.conversion import (
 from custom_components.hsem.utils.misc import get_config_value
 
 
+def _normalize_optional_device_id(value: Any) -> str | None:
+    """Return a valid device ID string or ``None``.
+
+    Existing config entries may store ``vol.UNDEFINED`` for optional device IDs
+    that were added after the entry was created.  This helper coerces those
+    sentinels — along with empty or whitespace-only strings — to ``None`` so
+    downstream code only has to handle a real string or ``None``.
+    """
+    if value is None or value is vol.UNDEFINED:
+        return None
+    if isinstance(value, str) and value.strip() == "":
+        return None
+    return cast(str, value)
+
+
 def build_sensor_config(
     config_entry: Any,
 ) -> SensorConfig:  # NOSONAR -- HA ConfigEntry; circular import risk
@@ -115,26 +130,16 @@ def build_sensor_config(
     cfg.huawei_solar_device_id_inverter_1 = get_config_value(
         config_entry, "hsem_huawei_solar_device_id_inverter_1"
     )
-    cfg.huawei_solar_device_id_inverter_2 = get_config_value(
-        config_entry, "hsem_huawei_solar_device_id_inverter_2"
+    cfg.huawei_solar_device_id_inverter_2 = _normalize_optional_device_id(
+        get_config_value(config_entry, "hsem_huawei_solar_device_id_inverter_2")
     )
-    if (
-        cfg.huawei_solar_device_id_inverter_2 is not None
-        and len(cfg.huawei_solar_device_id_inverter_2) == 0
-    ):
-        cfg.huawei_solar_device_id_inverter_2 = None
 
     cfg.huawei_solar_device_id_batteries = get_config_value(
         config_entry, "hsem_huawei_solar_device_id_batteries"
     )
-    cfg.huawei_solar_device_id_batteries_2 = get_config_value(
-        config_entry, "hsem_huawei_solar_device_id_batteries_2"
+    cfg.huawei_solar_device_id_batteries_2 = _normalize_optional_device_id(
+        get_config_value(config_entry, "hsem_huawei_solar_device_id_batteries_2")
     )
-    if (
-        cfg.huawei_solar_device_id_batteries_2 is not None
-        and len(cfg.huawei_solar_device_id_batteries_2) == 0
-    ):
-        cfg.huawei_solar_device_id_batteries_2 = None
 
     # Huawei Solar entity IDs
     cfg.huawei_solar_batteries_working_mode = get_config_value(
