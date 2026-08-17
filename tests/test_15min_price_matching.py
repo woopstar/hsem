@@ -211,6 +211,36 @@ class TestQuarterHourlyPriceMatching:
                 f"Hour {h}: expected {expected}, got {rec.import_price}"
             )
 
+    def test_tibber_prices_start_time_format_is_ingested(self) -> None:
+        """HACS Tibber Prices uses ``prices[].start_time`` timestamps."""
+        cfg = _Cfg(price_interval=15, slot_interval=15)
+        recs = [
+            _make_rec(
+                self.base + timedelta(minutes=15 * i),
+                self.base + timedelta(minutes=15 * (i + 1)),
+            )
+            for i in range(4)
+        ]
+        prices = [0.301, 0.287, 0.294, 0.315]
+        raw = [
+            {
+                "start_time": (self.base + timedelta(minutes=15 * i)).isoformat(),
+                "price": price,
+            }
+            for i, price in enumerate(prices)
+        ]
+        attrs = {
+            "sensor.tibber_import": {"prices": raw},
+            "sensor.tibber_export": {"prices": raw},
+        }
+        cfg.import_electricity_price_sensor = "sensor.tibber_import"
+        cfg.export_electricity_price_sensor = "sensor.tibber_export"
+
+        _populate(recs, attrs, cfg)
+
+        assert [rec.import_price for rec in recs] == pytest.approx(prices)
+        assert [rec.export_price for rec in recs] == pytest.approx(prices)
+
 
 class TestNordpoolRawFormat:
     """Regression tests for issue #750 — nordpool raw_today/raw_tomorrow
@@ -408,6 +438,6 @@ class TestForecastAutoDetection:
 
         for i, rec in enumerate(recs):
             assert rec.import_price == pytest.approx(1.867, abs=1e-4), (
-                f"Slot {i} at :{15*i:02d} got {rec.import_price}, expected 1.867 — "
+                f"Slot {i} at :{15 * i:02d} got {rec.import_price}, expected 1.867 — "
                 f"oscillation bug: only :00 slot is matched"
             )

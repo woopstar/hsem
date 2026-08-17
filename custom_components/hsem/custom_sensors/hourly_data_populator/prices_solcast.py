@@ -166,7 +166,7 @@ def _detect_interval_minutes(
         try:
             dt = raw if isinstance(raw, datetime) else datetime.fromisoformat(str(raw))
             timestamps.append(dt)
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             continue
         if len(timestamps) >= 5:
             break
@@ -374,7 +374,10 @@ def _populate_from_attributes(
             {"k": "hour", "v": "price"},
             {"k": "start", "v": "value"},  # custom-components/nordpool
         ],
-        "prices": [{"k": "start", "v": "price"}],
+        "prices": [
+            {"k": "start", "v": "price"},
+            {"k": "start_time", "v": "price"},  # Tibber Prices
+        ],
         "prices_today": [
             {"k": "start", "v": "price"},
             {"k": "time", "v": "price"},
@@ -433,14 +436,14 @@ def _populate_from_attributes(
                 else:
                     try:
                         dt_key = datetime.fromisoformat(str(raw_time))
-                    except (ValueError, TypeError):
+                    except ValueError, TypeError:
                         continue
 
                 try:
                     # Floor to the start of the detected source interval so
                     # that each data point is anchored at its slot boundary.
                     dt_key = normalize_slot_start(dt_key, detected_interval)
-                except (ValueError, OSError):
+                except ValueError, OSError:
                     continue
 
                 value = convert_to_float(data.get(kv["v"]))
