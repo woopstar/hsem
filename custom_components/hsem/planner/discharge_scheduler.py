@@ -221,9 +221,9 @@ def apply_excess_export(
     the next solar surplus.  Grid-charged batteries require a minimum price
     difference; solar-charged batteries export opportunistically but still
     require ``export_price >= max(export_min_price, recommended_threshold,
-    battery_export_min_price)`` — the highest of the user-configured minimum
-    (inverter physical floor), the cycle-wear cost, and the per-slot hard
-    floor for intentional battery-to-grid export (issue #752).
+    battery_export_min_price)`` — the highest of the user-configured
+    battery-export floor, the cycle-wear cost, and the per-slot hard floor
+    for intentional battery-to-grid export (issue #752).
 
     Args:
         slots: Mutable list of planned slots.
@@ -234,8 +234,9 @@ def apply_excess_export(
             grid-charged batteries.
         warnings: Mutable list to append diagnostic messages to.
         export_min_price: Minimum export price (local currency/kWh) below
-            which forced discharge is never triggered.  Sourced from
-            ``hsem_export_electricity_min_price``.
+            which intentional battery-to-grid discharge is never triggered.
+            Sourced from ``hsem_export_electricity_min_price``.  This is a
+            battery-export floor, not a physical grid limit (issue #767).
         recommended_threshold: Battery cycle-wear cost per kWh (depreciation)
             from :func:`~custom_components.hsem.utils.misc.calculate_recommended_threshold`.
             Used as a floor — exporting below this price costs more in

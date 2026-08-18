@@ -139,8 +139,9 @@ class TestInverterPowerControlSafetyGate:
         live = _make_live(degraded_mode=DegradedMode.Degraded)
         # Set a numeric export price so the function can compute export_pct.
         live.export_electricity_price = 0.5
-        # Set current inverter state to force a write (100 → 0 would write).
-        live.huawei_inverter_active_power_control = "Unlimited"
+        # Set current inverter state to a watt-based limit so the applier must
+        # restore unlimited/100% export (issue #767).
+        live.huawei_inverter_active_power_control = "Limited to 100W"
 
         # Set up an inverter device ID so the write loop has something to call.
         cfg.huawei_solar_device_id_inverter_1 = "device_123"
@@ -149,9 +150,9 @@ class TestInverterPowerControlSafetyGate:
         )
         cfg.export_electricity_min_price = 1.0
 
-        # Make the HA state read return an entity indicating "Unlimited" (100 %).
+        # Make the HA state read return the same watt-limited entity.
         mock_state = MagicMock()
-        mock_state.state = "Unlimited"
+        mock_state.state = "Limited to 100W"
         sensor.hass.states.get.return_value = mock_state
 
         with (
@@ -165,8 +166,8 @@ class TestInverterPowerControlSafetyGate:
 
             mock_wv.return_value = ApplyResult(
                 entity_id="sensor.inverter_active_power_control",
-                desired=0,
-                actual=0,
+                desired=100,
+                actual=100,
                 status=ApplyStatus.OK,
                 attempts=1,
             )
@@ -188,10 +189,11 @@ class TestInverterPowerControlSafetyGate:
 
         live = _make_live(degraded_mode=DegradedMode.OK)
         live.export_electricity_price = 0.5
-        live.huawei_inverter_active_power_control = "Unlimited"
+        # Force a write by starting from a watt-limited state (legacy state).
+        live.huawei_inverter_active_power_control = "Limited to 100W"
 
         mock_state = MagicMock()
-        mock_state.state = "Unlimited"
+        mock_state.state = "Limited to 100W"
         sensor.hass.states.get.return_value = mock_state
 
         with (
@@ -205,13 +207,101 @@ class TestInverterPowerControlSafetyGate:
 
             mock_wv.return_value = ApplyResult(
                 entity_id="sensor.inverter_active_power_control",
-                desired=0,
-                actual=0,
+                desired=100,
+                actual=100,
                 status=ApplyStatus.OK,
                 attempts=1,
             )
             _summary = await async_apply_inverter_power_control(sensor, cfg, live)
 
+        mock_wv.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_low_export_price_does_not_block_pv_export(self):
+        """Below export_electricity_min_price the applier must not write a watt limit.
+
+        Regression test for issue #767: writing a grid feed-in limit of 0 W
+        (or any small watt value) below the price threshold blocks surplus PV
+        export as well as battery export.  The fix keeps the connection point
+        at unlimited/100% and gates battery export in the planner.
+        """
+        sensor = _make_sensor()
+        cfg = _make_cfg(read_only=False)
+        cfg.huawei_solar_device_id_inverter_1 = "device_abc"
+        cfg.huawei_solar_inverter_active_power_control = (
+            "sensor.inverter_active_power_control"
+        )
+        cfg.export_electricity_min_price = 0.22
+
+        live = _make_live(degraded_mode=DegradedMode.OK)
+        live.export_electricity_price = 0.10
+        # Inverter currently at unlimited; no write should happen.
+        live.huawei_inverter_active_power_control = "Unlimited"
+
+        mock_state = MagicMock()
+        mock_state.state = "Unlimited"
+        sensor.hass.states.get.return_value = mock_state
+
+        with (
+            patch(_LOGGER_PATCH, new_callable=MagicMock),
+            patch(
+                "custom_components.hsem.utils.huawei.async_set_grid_export_power_watt"
+            ) as mock_watt_write,
+            patch(
+                "custom_components.hsem.utils.huawei.async_set_grid_export_power_pct"
+            ) as mock_pct_write,
+            patch(
+                "custom_components.hsem.custom_sensors.applier.async_write_and_verify",
+                new_callable=AsyncMock,
+            ) as mock_wv,
+        ):
+            _summary = await async_apply_inverter_power_control(sensor, cfg, live)
+
+        mock_watt_write.assert_not_called()
+        mock_pct_write.assert_not_called()
+        mock_wv.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_low_export_price_restores_unlimited_from_watt_limit(self):
+        """If the inverter is stuck at a watt limit, restore unlimited even below min price."""
+        sensor = _make_sensor()
+        cfg = _make_cfg(read_only=False)
+        cfg.huawei_solar_device_id_inverter_1 = "device_abc"
+        cfg.huawei_solar_inverter_active_power_control = (
+            "sensor.inverter_active_power_control"
+        )
+        cfg.export_electricity_min_price = 0.22
+
+        live = _make_live(degraded_mode=DegradedMode.OK)
+        live.export_electricity_price = 0.10
+        live.huawei_inverter_active_power_control = "Limited to 0W"
+
+        mock_state = MagicMock()
+        mock_state.state = "Limited to 0W"
+        sensor.hass.states.get.return_value = mock_state
+
+        with (
+            patch(_LOGGER_PATCH, new_callable=MagicMock),
+            patch(
+                "custom_components.hsem.utils.huawei.async_set_grid_export_power_watt"
+            ) as mock_watt_write,
+            patch(
+                "custom_components.hsem.custom_sensors.applier.async_write_and_verify",
+                new_callable=AsyncMock,
+            ) as mock_wv,
+        ):
+            from custom_components.hsem.utils.inverter_verify import ApplyResult
+
+            mock_wv.return_value = ApplyResult(
+                entity_id="sensor.inverter_active_power_control",
+                desired=100,
+                actual=100,
+                status=ApplyStatus.OK,
+                attempts=1,
+            )
+            _summary = await async_apply_inverter_power_control(sensor, cfg, live)
+
+        mock_watt_write.assert_not_called()
         mock_wv.assert_called_once()
 
 
@@ -400,9 +490,7 @@ class TestBatterySettingsSafetyGate:
 
         rec = _make_rec(Recommendations.ForceBatteriesDischarge.value)
 
-        async def _run_writer_then_ok(
-            entity_id, desired, writer, reader, **kwargs
-        ):  # type: ignore[no-untyped-def]  # local test shim mirrors async_write_and_verify signature
+        async def _run_writer_then_ok(entity_id, desired, writer, reader, **kwargs):  # type: ignore[no-untyped-def]  # local test shim mirrors async_write_and_verify signature
             await writer()
             return ApplyResult(
                 entity_id=entity_id,
@@ -449,9 +537,7 @@ class TestBatterySettingsSafetyGate:
 
         rec = _make_rec(Recommendations.BatteriesChargeGrid.value)
 
-        async def _run_writer_then_ok(
-            entity_id, desired, writer, reader, **kwargs
-        ):  # type: ignore[no-untyped-def]  # local test shim mirrors async_write_and_verify signature
+        async def _run_writer_then_ok(entity_id, desired, writer, reader, **kwargs):  # type: ignore[no-untyped-def]  # local test shim mirrors async_write_and_verify signature
             await writer()
             return ApplyResult(
                 entity_id=entity_id,

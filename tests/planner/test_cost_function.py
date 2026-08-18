@@ -373,12 +373,14 @@ class TestConversionLoss:
         )
         assert bd.conversion_loss_cost == pytest.approx(0.0)
 
-    def test_discharge_loss_export_below_min_price_uses_zero(self):
-        """Export below min_export_price: loss priced at 0 for export slots.
+    def test_discharge_loss_export_below_legacy_min_price_uses_live_price(self):
+        """export_min_price no longer clamps export-destined discharge loss.
 
-        When the applier blocks export (export < min_export_price), the
-        effective export price is 0.  An export-destined discharge in such
-        a slot should have its loss priced at 0.
+        Since issue #767, the applier does not block grid export below
+        export_min_price; surplus PV export is always allowed.  The legacy
+        blanket clamp on discharge-loss pricing has been removed, so an
+        export-destined discharge below the old min price is priced at the
+        live export price.
         """
         slot = _make_slot(
             import_price=0.20,
@@ -394,9 +396,9 @@ class TestConversionLoss:
                 export_min_price=0.05,
             ),
         )
-        # export_price 0.02 < min 0.05 -> clamped to 0.0
-        # lost_kwh = 0.10, cost = 0.10 * 0.0 = 0.0
-        assert bd.conversion_loss_cost == pytest.approx(0.0)
+        # export_price 0.02 is no longer clamped to 0.0 by export_min_price
+        # lost_kwh = 1.0 * (1 - 0.9) = 0.10, cost = 0.10 * 0.02 = 0.002
+        assert bd.conversion_loss_cost == pytest.approx(0.002, rel=1e-6)
 
 
 # ===========================================================================

@@ -502,18 +502,17 @@ bounds** on the discharge variable `ed[t]` (implemented as variable bounds in
    cap: instead of blocking battery export everywhere, the floor blocks
    it only on slots whose raw export price is below the user's explicit
    guard.  The mask is evaluated on the RAW `p_exp` (before the
-   `export_min_price` and export-≤-import clamps) so the user's explicit
-   price signal is honoured even when the recommended threshold or
-   inverter physical floor are lower.  Above the floor the optimiser is
-   free to decide whether exporting is worthwhile — reaching the
-   threshold does NOT auto-trigger export.  The guard applies only to
-   intentional battery-to-grid export (`ForceBatteriesDischarge`); it
-   does NOT restrict normal battery self-consumption, battery discharge
-   for house load, direct PV export, or PV charging of the battery.  The
-   non-MILP `apply_excess_export` path applies the same floor by
-   requiring `export_price >= max(export_min_price,
-   recommended_threshold, battery_export_min_price)` for any slot it
-   would otherwise label `ForceBatteriesDischarge`.
+   export-≤-import clamp) so the user's explicit price signal is honoured
+   even when the recommended threshold or the `export_min_price` floor
+   are lower.  Above the floor the optimiser is free to decide whether
+   exporting is worthwhile — reaching the threshold does NOT auto-trigger
+   export.  The guard applies only to intentional battery-to-grid export
+   (`ForceBatteriesDischarge`); it does NOT restrict normal battery
+   self-consumption, battery discharge for house load, direct PV export,
+   or PV charging of the battery.  The non-MILP `apply_excess_export`
+   path applies the same floor by requiring `export_price >=
+   max(export_min_price, recommended_threshold, battery_export_min_price)`
+   for any slot it would otherwise label `ForceBatteriesDischarge`.
 
 When any apply, the tighter cap wins.  When the battery cannot export on
 a slot (`no_export` or a blocked-by-floor slot), the MILP labels
@@ -939,26 +938,31 @@ is negative — exporting costs money rather than earning it.  The
 ``total_cost`` formula ``import_cost − export_revenue`` correctly handles
 this: subtracting a negative adds the cost.
 
-**Export price clamping (``export_min_price``):**  When
-``export_min_price > 0``, the inverter physically blocks all export for
-slots where ``export_price < export_min_price`` (applier sets
-``GRID_EXPORT_LIMIT_WATT``).  To keep the planner model consistent with
-this physical behaviour:
+**Battery export floor (``export_min_price``):**  ``export_min_price`` is
+a battery-export floor, not a physical grid limit.  The applier no longer
+sets the inverter's grid feed-in limit to block export below this price;
+surplus PV export is always allowed (issue #767).  The planner enforces
+the floor by preventing intentional battery-to-grid discharge on slots
+where ``export_price < export_min_price``:
 
-- The MILP clamps ``export_price`` to 0 for all slots where
-  ``export_price < export_min_price`` *before* solving the LP.
-- The cost function (``score_plan``) applies the same clamping via
-  ``CostWeights.export_min_price``.
-- This clamping only affects the planner's decision-making; the raw slot
-  ``export_price`` is preserved for diagnostics.
+- The MILP caps ``ed[t]`` to ``base_load[t] / discharge_eff`` on blocked
+  slots, so the battery can serve house load but cannot export to the grid.
+- The non-MILP ``apply_excess_export`` path requires
+  ``export_price >= max(export_min_price, recommended_threshold,
+  battery_export_min_price)`` before labelling a slot
+  ``ForceBatteriesDischarge``.
+- The cost function counts PV export revenue at the live export price. It
+  zeroes only battery-destined export revenue on slots blocked by
+  ``battery_export_min_price``.
 
 Negative export prices are **not** clamped — the LP's ``curt[t]``
 variable (zero objective cost) naturally handles them: when
 ``p_exp < 0``, exporting costs money (``−p_exp·ge`` becomes a positive
 cost) and the LP prefers curtailment (cost 0) over export (cost > 0).
 
-Invariant: ``export_price < export_min_price`` → planner treats export
-revenue as 0 in both optimisation and scoring.
+Invariant: ``export_price < export_min_price`` → intentional battery-to-grid
+export is forbidden; PV export is unaffected and is valued at the live
+export price.
 
 **Battery export minimum price floor (``battery_export_min_price``, issue
 #752):** When ``battery_export_min_price > 0`` and a slot's raw

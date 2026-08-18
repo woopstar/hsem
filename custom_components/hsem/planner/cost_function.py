@@ -343,20 +343,16 @@ def score_plan(
             import_cost += cost
             import_cost_disc += cost * discount
 
-        # 2. Export revenue — clamp export prices below export_min_price
-        #    to 0 to match the applier's physical export block and the
-        #    MILP's clamping (milp_optimizer.py).  Additionally zero
-        #    battery-destined export revenue when the slot is below the
-        #    user's ``battery_export_min_price`` floor (issue #752): the
-        #    MILP forbids ``force_batteries_discharge`` there, so that
-        #    export can never be realised by the battery.
+        # 2. Export revenue — PV export is always counted at the live
+        #    export price.  Battery-destined export revenue is zeroed when
+        #    the slot is below the user's ``battery_export_min_price`` floor
+        #    (issue #752): the MILP caps ``ed[t]`` there, so that export can
+        #    never be realised by the battery.  The legacy
+        #    ``export_min_price`` blanket clamp has been removed because the
+        #    applier no longer physically blocks all grid export (issue
+        #    #767); it is now a battery-export floor enforced by the MILP.
         if slot.grid_export_kwh > 1e-9:
             effective_exp_price = exp_price
-            if (
-                weights.export_min_price > 1e-9
-                and effective_exp_price < weights.export_min_price
-            ):
-                effective_exp_price = 0.0
             if (
                 weights.battery_export_min_price > 1e-9
                 and effective_exp_price < weights.battery_export_min_price
@@ -410,11 +406,6 @@ def score_plan(
             # net-exporter → price loss at export price; otherwise import price.
             if slot.grid_export_kwh > 1e-9:
                 p_loss = exp_price
-                if (
-                    weights.export_min_price > 1e-9
-                    and p_loss < weights.export_min_price
-                ):
-                    p_loss = 0.0
                 # Battery-destined export floored by battery_export_min_price
                 # (issue #752): when the slot's raw export price is below
                 # the user's floor and the discharge is battery-destined (no

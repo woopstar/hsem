@@ -12,7 +12,7 @@ Objective: Σ p_imp·gi - p_exp·ge + cycle_cost·m + p_soc·penalties.
 Constraints: SoC recurrence, SoC soft bounds, charge/discharge limits,
 mutex, energy balance (with efficiencies), EV co-optimisation, fuse limit.
 
-Price sanitisation: export<min_export→0, export≤import, import_obj≥0.
+Price sanitisation: battery-export floors, export≤import, import_obj≥0.
 Curtailment variable ``curt[t]`` allows explicit PV shedding.
 
 Pure Python, no HA imports — testable with plain pytest.
@@ -141,13 +141,14 @@ def solve_milp(
             ``None`` disables the terminal-SoC credit term.
         min_export_price:
             Minimum export price (local currency/kWh) for the combined
-            threshold below which export is not worthwhile.  Set by the
-            caller to ``max(export_min_price, recommended_threshold)``
-            where ``export_min_price`` is the inverter's physical block
-            threshold and ``recommended_threshold`` is the
-            depreciation-based discharge minimum.  Used for:
-            - Clamping export prices to 0 before the LP solves (export
-              below this price is physically blocked).
+            battery-export floor.  Set by the caller to
+            ``max(export_min_price, recommended_threshold)`` where
+            ``export_min_price`` is the user-configured battery-export
+            floor and ``recommended_threshold`` is the depreciation-based
+            discharge minimum.  Used for:
+            - Capping ``ed[t]`` to ``base_load[t] / discharge_eff`` on
+              slots where ``p_exp < min_export_price``, preventing
+              intentional battery-to-grid discharge below the floor.
             - Deciding between ``ForceBatteriesDischarge`` and
               ``BatteriesDischargeMode`` in post-processing.
             Defaults to 0.0.
@@ -265,77 +266,14 @@ def solve_milp(
     p_imp = np.array([slots[i].price.import_price for i in future_idx], dtype=float)
     p_exp = np.array([slots[i].price.export_price for i in future_idx], dtype=float)
 
-    # Replace NaN prices with 0 to prevent solver numerical issues
-    p_imp = np.nan_to_num(p_imp, nan=0.0)
-    p_exp = np.nan_to_num(p_exp, nan=0.0)
+    from custom_components.hsem.planner.milp._price_sanitise import sanitize_prices
 
-    # Per-slot hard floor for intentional battery-to-grid export (issue
-    # #752). 0.0 (default) → mask all-False, backward compatible.
-    battery_export_blocked = np.zeros(len(future_idx), dtype=bool)
-    if battery_export_min_price > 1e-9:
-        battery_export_blocked = p_exp < battery_export_min_price
-
-    # Clamp export prices below min_export_price to 0.
-    # The applier physically sets the inverter to GRID_EXPORT_LIMIT_WATT
-    # for these slots, blocking export entirely.  The LP must not optimise
-    # around a price signal that will never be realised.
-    #
-    # Negative export prices are NOT clamped — the LP has a curt[t]
-    # variable with zero objective cost that naturally handles them:
-    # when p_exp < 0, export costs money (p_exp is negative, so
-    # -p_exp·ge becomes a positive cost), and the LP prefers curtailment
-    # (cost 0) over export (cost > 0).
-    if min_export_price > 1e-9:
-        blocked = p_exp < min_export_price
-        n_blocked = int(np.sum(blocked))
-        if n_blocked > 0:
-            log_planner(
-                "debug",
-                "[milp] Clamping %d export prices below min_price (%.4f) to 0 "
-                "(max clamped=%.4f)",
-                n_blocked,
-                min_export_price,
-                float(np.max(p_exp[blocked])),
-            )
-        p_exp = np.where(blocked, 0.0, p_exp)
-
-    # Clamp export price to never exceed import price for the same slot.
-    # Without this, slots where p_exp[t] > p_imp[t] create an unbounded LP
-    # (HiGHS status=3): both gi[t] and ge[t] are [0, ∞) and linked only
-    # through the energy-balance equality, so the LP can drive both to
-    # infinity (import cheap, export expensive) while the terms cancel in
-    # the balance equation.  This is economically correct — no rational
-    # agent imports and exports the same commodity in the same instant for
-    # profit — and capping the achievable arbitrage spread removes the
-    # unbounded direction without changing any other behavior.
-    export_exceeds_import = p_exp > p_imp
-    n_clamped = int(np.sum(export_exceeds_import))
-    if n_clamped > 0:
-        deltas = p_exp[export_exceeds_import] - p_imp[export_exceeds_import]
-        log_planner(
-            "debug",
-            "[milp] Clamping %d export prices that exceed import price "
-            "(max delta=%.4f)",
-            n_clamped,
-            float(np.max(deltas)),
-        )
-        p_exp = np.minimum(p_exp, p_imp)
-
-    # Clamp negative import prices to 0 for objective coefficients.
-    # When p_imp[t] < 0, the gi[t] objective coefficient becomes
-    # negative, incentivising the LP to import infinite energy
-    # (HiGHS status=3, unbounded LP).  curt[t] has zero objective
-    # cost but participates in the energy balance, so the LP can
-    # import-and-curtail for unbounded profit even without p_exp>p_imp.
-    #
-    # Clamping to 0 here removes that unbounded direction while
-    # keeping the original p_imp for the export-≤-import clamp and
-    # penalty scaling (both need the real market signal).
-    #
-    # This is the companion to the export-≤-import clamp above:
-    # together they close both unbounded-LP directions identified in
-    # issue #635.
-    p_imp_obj = np.maximum(p_imp, 0.0)
+    p_imp_obj, p_exp, battery_export_blocked = sanitize_prices(
+        p_imp,
+        p_exp,
+        min_export_price=min_export_price,
+        battery_export_min_price=battery_export_min_price,
+    )
 
     # Net load = house consumption + EV extra load − PV estimate.
     # A positive value means the battery/grid must supply extra energy.

@@ -112,9 +112,11 @@ class CostWeights:
     charge_efficiency_pct: float = 100.0
     discharge_efficiency_pct: float = 100.0
 
-    # Minimum export price — exports below this are physically blocked by the
-    # applier (inverter set to GRID_EXPORT_LIMIT_WATT).  Mirrors the clamping
-    # in milp_optimizer.py so that cost_function scores match MILP assumptions.
+    # Minimum export price — legacy battery-export floor.  The applier no
+    # longer physically blocks grid export below this value (issue #767); it
+    # is now enforced by the MILP/discharge scheduler as a battery-export
+    # floor.  Kept in weights for backward compatibility with callers and
+    # diagnostics.
     export_min_price: float = 0.0
 
     # Per-slot hard floor for intentional battery-to-grid export (issue #752).

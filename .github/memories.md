@@ -18,6 +18,12 @@ for the HSEM (Home Smart Energy Management) project. Read this before making any
 | `charge_scheduler.py` | Assigns charge recommendations to slots |
 | `discharge_scheduler.py` | Assigns discharge recommendations to slots; `concentrate_discharge_on_expensive_slots` uses **per-calendar-day** budget pools |
 | `milp_optimizer.py` | Solves the MILP LP problem — variable vector is 8*n base, growing to 8n + 2n·E + E with EV co-optimisation.  Accepts optional `EVConfig` list for EV integration. |
+| `milp/_price_sanitise.py` | Pre-solve price transformations: NaN handling, battery-export floor mask, export-≤-import clamp, negative-import clamp. |
+| `milp/_constraints.py` | Builds LP constraint matrices and variable bounds. |
+| `milp/_objective.py` | Builds LP objective vector. |
+| `milp/_write_results.py` | Translates LP solution back into `PlannedSlot` recommendations and energy flows. |
+| `milp/_diagnostics.py` | Computes MILP diagnostics and violation reports. |
+| `milp/_export_cap.py` | Resolves DNO/inverter grid-export power cap per slot. |
 | `cost_function.py` | Scores a candidate plan — source of truth for cost math |
 | `soc_simulation.py` | Simulates battery SoC forward through a slot plan |
 | `ev_planner.py` | EV-specific planning logic |
@@ -270,26 +276,30 @@ Also in `_build_constraints`, the session-EV AC load is simply
 by definition.  Do not re-introduce a multiply-then-divide by
 `charger_efficiency`.
 
-## Battery Export Minimum Price Floor (Issue #752)
+## Battery Export Minimum Price Floor (Issues #752 and #767)
 
 A third per-slot ed cap, in the same `_build_constraints` loop:
 
-3. **Battery-export-min-price floor** — when `battery_export_min_price > 0`
-   and the slot's RAW export price is strictly below the floor
-   (`p_exp[t] < battery_export_min_price`, evaluated on the raw p_exp
-   BEFORE the `min_export_price` and export-≤-import clamps), apply
-   `ed[t] ≤ base_load / η_dis` to that slot.  This is the per-slot,
-   soft-switch companion to the global `no_export` cap — it blocks
-   *intentional* battery-to-grid export only on slots below the user's
-   explicit floor, not everywhere.  Above the floor the optimizer is
-   free to decide whether exporting is worthwhile; reaching the threshold
-   does NOT auto-trigger export.  The non-MILP `apply_excess_export` path
-   enforces the same floor via
+3. **Battery-export-min-price floor** — the combined floor is
+   `max(min_export_price, battery_export_min_price)`, where
+   `min_export_price` is passed from the engine as
+   `max(export_min_price, recommended_threshold)`.  When the slot's RAW
+   export price is strictly below the combined floor
+   (`p_exp[t] < effective_floor`, evaluated on the raw p_exp BEFORE the
+   export-≤-import clamp), apply `ed[t] ≤ base_load / η_dis` to that slot.
+   This is the per-slot, soft-switch companion to the global `no_export`
+   cap — it blocks *intentional* battery-to-grid export only on slots below
+   the floor, not everywhere.  Above the floor the optimizer is free to
+   decide whether exporting is worthwhile; reaching the threshold does NOT
+   auto-trigger export.  The non-MILP `apply_excess_export` path enforces
+   the same floor via
    `export_price >= max(export_min_price, recommended_threshold, battery_export_min_price)`.
 
-   - The mask is computed in `milp_optimizer.py::solve_milp`
-     (`battery_export_blocked`) and passed to `_build_constraints` via the
-     `battery_export_blocked=` kwarg.  Wire it end-to-end:
+   - The combined mask is computed in
+     `planner/milp/_price_sanitise.py::sanitize_prices`
+     (`battery_export_blocked`) and passed through `solve_milp` to
+     `_build_constraints` via the `battery_export_blocked=` kwarg.
+     Wire it end-to-end:
      `const.py` (`hsem_batteries_export_min_price` default 0.0) →
      `flows/batteries_excess_export.py` schema/validator →
      `models/sensor_config.py::batteries_export_min_price` →
@@ -298,11 +308,20 @@ A third per-slot ed cap, in the same `_build_constraints` loop:
      `coordinator_builder.py::build_planner_input` →
      `planner/candidate_generator.py::generate_candidates` →
      `planner/milp_optimizer.py::solve_milp` (kwarg) →
+     `planner/milp/_price_sanitise.py::sanitize_prices` (mask) →
      `planner/milp/_constraints.py::_build_constraints` (mask).
-   - The cost function mirrors the floor via
+   - The cost function mirrors the `battery_export_min_price` floor via
      `CostWeights.battery_export_min_price`; battery-destined export
      revenue (and discharge-loss export-destined pricing) is zeroed on
-     blocked slots so scored costs match the optimisation.
+     blocked slots so scored costs match the optimisation.  The legacy
+     blanket `export_min_price` clamp on all export revenue has been
+     removed (issue #767).
+   - The applier (`custom_sensors/applier.py::async_apply_inverter_power_control`)
+     MUST NOT express a battery-export price floor by writing the grid
+     feed-in limit.  Doing so blocks surplus PV export as well as battery
+     export once the battery is full (issue #767).  The applier keeps the
+     grid connection point at unlimited/100% and lets the planner gate the
+     battery path.
    - The guard applies ONLY to intentional battery-to-grid export
      (`force_batteries_discharge`).  It does NOT affect normal battery
      self-consumption, PV export, or PV charging.  With the default
