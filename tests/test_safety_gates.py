@@ -304,6 +304,55 @@ class TestInverterPowerControlSafetyGate:
         mock_watt_write.assert_not_called()
         mock_wv.assert_called_once()
 
+    @pytest.mark.asyncio
+    async def test_negative_export_price_blocks_all_export(self):
+        """Negative export price must write a watt limit to avoid paying to export.
+
+        This preserves the original physical protection that issue #767 was
+        not meant to remove: when exporting costs money, the connection
+        point must be blocked.
+        """
+        sensor = _make_sensor()
+        cfg = _make_cfg(read_only=False)
+        cfg.huawei_solar_device_id_inverter_1 = "device_abc"
+        cfg.huawei_solar_inverter_active_power_control = (
+            "sensor.inverter_active_power_control"
+        )
+        cfg.export_electricity_min_price = 0.22
+
+        live = _make_live(degraded_mode=DegradedMode.OK)
+        live.export_electricity_price = -0.05
+        # Inverter currently unlimited; must switch to watt limit.
+        live.huawei_inverter_active_power_control = "Unlimited"
+
+        mock_state = MagicMock()
+        mock_state.state = "Unlimited"
+        sensor.hass.states.get.return_value = mock_state
+
+        with (
+            patch(_LOGGER_PATCH, new_callable=MagicMock),
+            patch(
+                "custom_components.hsem.utils.huawei.async_set_grid_export_power_pct"
+            ) as mock_pct_write,
+            patch(
+                "custom_components.hsem.custom_sensors.applier.async_write_and_verify",
+                new_callable=AsyncMock,
+            ) as mock_wv,
+        ):
+            from custom_components.hsem.utils.inverter_verify import ApplyResult
+
+            mock_wv.return_value = ApplyResult(
+                entity_id="sensor.inverter_active_power_control",
+                desired=100,
+                actual=100,
+                status=ApplyStatus.OK,
+                attempts=1,
+            )
+            _summary = await async_apply_inverter_power_control(sensor, cfg, live)
+
+        mock_pct_write.assert_not_called()
+        mock_wv.assert_called_once()
+
 
 # ---------------------------------------------------------------------------
 # async_apply_battery_settings — safety gate

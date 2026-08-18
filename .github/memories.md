@@ -318,10 +318,13 @@ A third per-slot ed cap, in the same `_build_constraints` loop:
      removed (issue #767).
    - The applier (`custom_sensors/applier.py::async_apply_inverter_power_control`)
      MUST NOT express a battery-export price floor by writing the grid
-     feed-in limit.  Doing so blocks surplus PV export as well as battery
-     export once the battery is full (issue #767).  The applier keeps the
-     grid connection point at unlimited/100% and lets the planner gate the
-     battery path.
+     feed-in limit for non-negative export prices.  Doing so blocks surplus
+     PV export as well as battery export once the battery is full
+     (issue #767).  The applier keeps the grid connection point at
+     unlimited/100% for non-negative prices and lets the planner gate the
+     battery path.  **Negative export prices are the exception:** when
+     exporting costs money, the applier still writes a physical watt limit
+     to block all grid export.
    - The guard applies ONLY to intentional battery-to-grid export
      (`force_batteries_discharge`).  It does NOT affect normal battery
      self-consumption, PV export, or PV charging.  With the default

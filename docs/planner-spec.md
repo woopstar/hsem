@@ -955,14 +955,15 @@ where ``export_price < export_min_price``:
   zeroes only battery-destined export revenue on slots blocked by
   ``battery_export_min_price``.
 
-Negative export prices are **not** clamped — the LP's ``curt[t]``
-variable (zero objective cost) naturally handles them: when
-``p_exp < 0``, exporting costs money (``−p_exp·ge`` becomes a positive
-cost) and the LP prefers curtailment (cost 0) over export (cost > 0).
+**Negative export prices** are a separate case: when ``p_exp < 0``,
+exporting costs money, so the applier still writes a physical watt
+limit (``GRID_EXPORT_LIMIT_WATT``) to block all grid export, including
+surplus PV.  This is the only price regime where the connection point is
+physically throttled.
 
-Invariant: ``export_price < export_min_price`` → intentional battery-to-grid
-export is forbidden; PV export is unaffected and is valued at the live
-export price.
+Invariant: ``export_price < export_min_price`` AND ``export_price >= 0``
+→ intentional battery-to-grid export is forbidden; PV export is
+unaffected and is valued at the live export price.
 
 **Battery export minimum price floor (``battery_export_min_price``, issue
 #752):** When ``battery_export_min_price > 0`` and a slot's raw

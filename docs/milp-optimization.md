@@ -310,9 +310,10 @@ not have their export price clamped to 0.  Instead, the battery discharge
 variable `ed[t]` is capped to `base_load[t] / η_dis` so the battery can
 serve house load but cannot intentionally export to the grid.  This keeps
 surplus PV export possible (the applier no longer throttles the grid
-feed-in limit, issue #767) while still preventing battery-to-grid discharge
-below the configured floor.  Negative export prices are **not** clamped —
-the `curt[t]` variable (zero objective cost) naturally handles them.
+feed-in limit for non-negative prices, issue #767) while still preventing
+battery-to-grid discharge below the configured floor.  Negative export
+prices are handled by the applier, which writes a physical watt limit to
+block all grid export when exporting costs money.
 
 ### 2. Export-≤-import clamp (issue #635)
 

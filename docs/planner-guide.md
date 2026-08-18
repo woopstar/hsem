@@ -272,7 +272,7 @@ The pre-charge window ends at `schedule.start` and is sized to fill the battery 
 | `excess_export_enabled` | `False` | Enable forced battery → grid export during high-price slots |
 | `excess_export_discharge_buffer_pct` | `10.0` | Safety SoC buffer kept before forced export |
 | `excess_export_price_threshold` | Auto-calculated | Computed at runtime from battery depreciation settings (purchase price, expected cycles, usable capacity) via `calculate_recommended_threshold()`. |
-| `export_min_price` | `0.0` | Minimum export price for intentional battery-to-grid discharge. The inverter no longer throttles the grid feed-in limit; surplus PV export is always allowed (issue #767). |
+| `export_min_price` | `0.0` | Minimum export price for intentional battery-to-grid discharge. The inverter no longer throttles the grid feed-in limit for positive prices; surplus PV export is always allowed (issue #767). Negative export prices still trigger a physical block because exporting then costs money. |
 | `battery_export_min_price` | `0.0` | Per-slot hard floor for intentional battery-to-grid export (issue #752). When > 0 and a slot's raw `export_price` is strictly below this value, the MILP caps `ed[t]` so the battery can only serve house load (no grid export) for that slot — `force_batteries_discharge` is never labelled there. Reaching the threshold does NOT auto-trigger export; the optimizer still decides. Applies only to intentional battery-to-grid export, not to normal battery self-consumption, PV export, or PV charging. Set to 0 to disable. |
 
 ### Seasonal configuration
@@ -822,12 +822,17 @@ Revenue is subtracted from total cost (it reduces the net expense).
 
 **Export price floor:** ``export_min_price`` is a battery-export floor,
 not a physical grid limit.  The applier no longer throttles the grid
-feed-in limit below this price (issue #767), so surplus PV export is
-always allowed.  The MILP and discharge scheduler prevent intentional
-battery-to-grid discharge on slots where ``export_price < export_min_price``.
-The cost function counts PV export revenue at the live export price and
-only zeroes battery-destined export revenue on slots blocked by
+feed-in limit below this price when the export price is non-negative
+(issue #767), so surplus PV export is always allowed.  The MILP and
+discharge scheduler prevent intentional battery-to-grid discharge on
+slots where ``export_price < export_min_price``.  The cost function
+counts PV export revenue at the live export price and only zeroes
+battery-destined export revenue on slots blocked by
 ``battery_export_min_price``.
+
+**Negative export prices** are the exception: when exporting costs
+money, the applier still writes a physical watt limit to block all
+grid export, including surplus PV.
 
 ### Conversion loss cost
 
@@ -1488,9 +1493,10 @@ current SoC but does not retroactively account for the morning shortfall.
 ### Battery export floor, not a grid throttle
 
 `export_min_price` now gates intentional battery-to-grid discharge, not
-the entire grid connection point.  Surplus PV export is always allowed;
-the planner avoids discharging the battery to the grid when the export
-price is below the configured floor.
+the entire grid connection point.  Surplus PV export is always allowed
+when the export price is non-negative.  The exception is negative export
+prices, where the applier still writes a physical block because
+exporting then costs money.
 
 ### Single-zone tariff model
 

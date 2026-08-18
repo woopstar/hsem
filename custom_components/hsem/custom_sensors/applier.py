@@ -40,6 +40,7 @@ from custom_components.hsem.const import (
     DEFAULT_HSEM_BATTERIES_WAIT_MODE,
     DEFAULT_HSEM_EV_CHARGER_TOU_MODES,
     DEFAULT_HSEM_TOU_MODES_FORCE_CHARGE,
+    GRID_EXPORT_LIMIT_WATT,
 )
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.live_state import LiveState
@@ -53,6 +54,7 @@ from custom_components.hsem.utils.ha_helpers import (
 from custom_components.hsem.utils.huawei import (
     async_set_forcible_discharge,
     async_set_grid_export_power_pct,
+    async_set_grid_export_power_watt,
     async_set_tou_periods,
     async_stop_forcible_discharge,
     extract_tou_periods,
@@ -211,16 +213,21 @@ async def async_apply_inverter_power_control(
     cfg: SensorConfig,
     live: LiveState,
 ) -> CycleApplySummary:
-    """Set the grid-export power percentage on all inverters to unlimited.
+    """Set the grid-export power limit on all inverters.
 
-    Keeps the inverter grid connection point at full export (100%) so that
-    surplus PV is never curtailed by a price threshold.  Battery-to-grid
-    export below ``export_electricity_min_price`` is gated by the planner
-    (MILP / discharge scheduler) through battery working-mode and TOU
-    settings, not by throttling the whole grid feed-in limit.
+    The inverter grid connection point is controlled by price:
 
-    Only issues a hardware write when the inverter is not already at
-    unlimited/100%.
+    - Negative export price → block all export with a soft watt floor
+      (``GRID_EXPORT_LIMIT_WATT``), because exporting then costs money.
+    - Non-negative export price → allow unlimited/100% export.  Battery-to-grid
+      export below ``export_electricity_min_price`` is gated planner-side by the
+      MILP and discharge scheduler, not by throttling the whole connection point.
+
+    This avoids the issue described in #767, where a positive-but-low export
+    price caused the applier to write a 100 W connection-point limit that
+    blocked surplus PV export once the battery was full.
+
+    Only issues a hardware write when the inverter state actually needs to change.
 
     Each write is wrapped with :func:`~utils.inverter_verify.async_write_and_verify`
     so that the inverter is polled after the write and the result is verified
@@ -262,27 +269,40 @@ async def async_apply_inverter_power_control(
     if not isinstance(min_price, (int, float)):
         return summary
 
-    export_pct = 100
-
-    # The export-electricity-min-price threshold is intentionally a planner-side
-    # battery-export floor, not a physical grid limit.  Writing a watt-mode feed-
-    # in limit (e.g. 100 W) below this price blocks surplus PV export as well as
-    # battery export, which silently curtails free solar energy once the battery
-    # is full (issue #767).  The planner still avoids battery-to-grid discharge
-    # below this price via the MILP and discharge_scheduler.
-    if export_price < min_price:
-        _LOGGER.warning(
-            "Export price %.4f is below export_electricity_min_price %.4f; "
-            "leaving grid feed-in limit unlimited so PV surplus can still export. "
-            "Battery-to-grid export is gated by the planner.",
+    # Negative export prices are the only case where we physically block the
+    # whole grid connection point.  When exporting costs money we must not
+    # allow any export, including surplus PV.  For all non-negative prices we
+    # keep the connection point unlimited and let the planner gate battery-to-grid
+    # export via export_electricity_min_price (issue #767).
+    if export_price < 0.0:
+        desired = GRID_EXPORT_LIMIT_WATT
+        desired_is_watt = True
+        _LOGGER.debug(
+            "Export price %.4f is negative; blocking all grid export with %d W limit.",
             export_price,
-            min_price,
+            desired,
         )
+    else:
+        desired = 100
+        desired_is_watt = False
+        if export_price < min_price:
+            _LOGGER.debug(
+                "Export price %.4f is below export_electricity_min_price %.4f; "
+                "leaving grid feed-in limit unlimited so PV surplus can export. "
+                "Battery-to-grid export is gated by the planner.",
+                export_price,
+                min_price,
+            )
 
     _LOGGER.debug(
-        f"Determined export power percentage: {export_pct}% "
-        f"(export={export_price}, min={min_price}, "
-        f"ev1_connected={live.ev.is_connected}, ev2_connected={live.ev_second.is_connected})",
+        "Determined export power limit: %s%s (export=%s, min=%s, "
+        "ev1_connected=%s, ev2_connected=%s)",
+        desired,
+        "W" if desired_is_watt else "%",
+        export_price,
+        min_price,
+        live.ev.is_connected,
+        live.ev_second.is_connected,
     )
 
     current_pct = _parse_power_control_pct(live.huawei_inverter_active_power_control)
@@ -302,29 +322,39 @@ async def async_apply_inverter_power_control(
             else None
         )
 
-        # Always allow full export.  Restore unlimited/100% if the inverter is
-        # currently in a watt-based limit mode (legacy state from before this fix).
+        # Skip if the inverter already matches the desired state.
         if (
             current_pct is not None
-            and not current_is_watt
-            and current_pct == export_pct
+            and current_is_watt == desired_is_watt
+            and current_pct == desired
         ):
-            continue  # already at unlimited / 100 %
+            continue
 
-        result = await async_write_and_verify(
-            entity_id=inv_entity or f"inverter:{inv_id}",
-            desired=export_pct,
-            writer=lambda _id=inv_id, _pct=export_pct: (  # type: ignore[misc]  # mypy cannot infer lambda types with default parameters
-                async_set_grid_export_power_pct(sensor, _id, _pct)
-            ),
-            reader=reader_fn,
-        )
+        if desired_is_watt:
+            result = await async_write_and_verify(
+                entity_id=inv_entity or f"inverter:{inv_id}",
+                desired=desired,
+                writer=lambda _id=inv_id, _w=desired: async_set_grid_export_power_watt(  # type: ignore[misc]  # mypy cannot infer lambda types with default parameters
+                    sensor, _id, _w
+                ),
+                reader=reader_fn,
+            )
+        else:
+            result = await async_write_and_verify(
+                entity_id=inv_entity or f"inverter:{inv_id}",
+                desired=desired,
+                writer=lambda _id=inv_id, _pct=desired: (  # type: ignore[misc]  # mypy cannot infer lambda types with default parameters
+                    async_set_grid_export_power_pct(sensor, _id, _pct)
+                ),
+                reader=reader_fn,
+            )
 
         summary.results.append(result)
 
         if result.status == ApplyStatus.FAILED:
+            mode = "W" if desired_is_watt else "%"
             _LOGGER.debug(
-                f"Export power % write FAILED for inverter {inv_id} after all retries. "
+                f"Export power {mode} write FAILED for inverter {inv_id} after all retries. "
                 f"Blocking further writes this cycle.",
                 "error",
             )
