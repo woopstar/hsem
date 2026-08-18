@@ -215,17 +215,16 @@ async def async_apply_inverter_power_control(
 ) -> CycleApplySummary:
     """Set the grid-export power limit on all inverters.
 
-    The inverter grid connection point is controlled by price:
+    Decides whether to block grid export or allow it up to a configured cap,
+    based on the current export price and the user-configured grid export limit.
 
     - Negative export price → block all export with a soft watt floor
       (``GRID_EXPORT_LIMIT_WATT``), because exporting then costs money.
-    - Non-negative export price → allow unlimited/100% export.  Battery-to-grid
-      export below ``export_electricity_min_price`` is gated planner-side by the
-      MILP and discharge scheduler, not by throttling the whole connection point.
-
-    This avoids the issue described in #767, where a positive-but-low export
-    price caused the applier to write a 100 W connection-point limit that
-    blocked surplus PV export once the battery was full.
+    - Non-negative export price → allow export, but cap it at
+      ``cfg.max_grid_export_power_kw`` when that value is configured.  A cap of
+      ``0`` or unset is treated as unlimited/100 %.  Battery-to-grid export
+      below ``export_electricity_min_price`` is gated planner-side, not by
+      throttling the whole connection point (issues #767 and #770).
 
     Only issues a hardware write when the inverter state actually needs to change.
 
@@ -256,8 +255,8 @@ async def async_apply_inverter_power_control(
         return summary
     if not hardware_writes_allowed(live.degraded_mode):
         _LOGGER.debug(
-            f"async_apply_inverter_power_control: skipped — degraded mode: {live.degraded_mode.value}",
-            "warning",
+            "async_apply_inverter_power_control: skipped — degraded mode: %s",
+            live.degraded_mode.value,
         )
         return summary
 
@@ -272,7 +271,7 @@ async def async_apply_inverter_power_control(
     # Negative export prices are the only case where we physically block the
     # whole grid connection point.  When exporting costs money we must not
     # allow any export, including surplus PV.  For all non-negative prices we
-    # keep the connection point unlimited and let the planner gate battery-to-grid
+    # keep the connection point open and let the planner gate battery-to-grid
     # export via export_electricity_min_price (issue #767).
     if export_price < 0.0:
         desired = GRID_EXPORT_LIMIT_WATT
@@ -283,27 +282,35 @@ async def async_apply_inverter_power_control(
             desired,
         )
     else:
-        desired = 100
-        desired_is_watt = False
-        if export_price < min_price:
+        grid_export_cap_kw = cfg.max_grid_export_power_kw
+        if grid_export_cap_kw > 1e-9:
+            # Respect the configured DNO/grid export limit as a hard cap.
+            desired = int(round(grid_export_cap_kw * 1000.0))
+            desired_is_watt = True
             _LOGGER.debug(
-                "Export price %.4f is below export_electricity_min_price %.4f; "
-                "leaving grid feed-in limit unlimited so PV surplus can export. "
-                "Battery-to-grid export is gated by the planner.",
+                "Export price %.4f is non-negative; allowing export up to "
+                "configured grid limit %d W (%.3f kW).",
                 export_price,
-                min_price,
+                desired,
+                grid_export_cap_kw,
             )
-
-    _LOGGER.debug(
-        "Determined export power limit: %s%s (export=%s, min=%s, "
-        "ev1_connected=%s, ev2_connected=%s)",
-        desired,
-        "W" if desired_is_watt else "%",
-        export_price,
-        min_price,
-        live.ev.is_connected,
-        live.ev_second.is_connected,
-    )
+        else:
+            # No cap configured → unlimited/100 % export.
+            desired = 100
+            desired_is_watt = False
+            if export_price < min_price:
+                _LOGGER.debug(
+                    "Export price %.4f is below export_electricity_min_price %.4f; "
+                    "leaving grid feed-in limit unlimited so PV surplus can export. "
+                    "Battery-to-grid export is gated by the planner.",
+                    export_price,
+                    min_price,
+                )
+            else:
+                _LOGGER.debug(
+                    "Export price %.4f is non-negative; allowing unlimited export.",
+                    export_price,
+                )
 
     current_pct = _parse_power_control_pct(live.huawei_inverter_active_power_control)
     current_is_watt = _is_watt_limit(live.huawei_inverter_active_power_control)
@@ -354,9 +361,10 @@ async def async_apply_inverter_power_control(
         if result.status == ApplyStatus.FAILED:
             mode = "W" if desired_is_watt else "%"
             _LOGGER.debug(
-                f"Export power {mode} write FAILED for inverter {inv_id} after all retries. "
-                f"Blocking further writes this cycle.",
-                "error",
+                "Export power %s write FAILED for inverter %s after all retries. "
+                "Blocking further writes this cycle.",
+                mode,
+                inv_id,
             )
             return summary
 

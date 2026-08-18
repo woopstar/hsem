@@ -8,7 +8,7 @@ which can be exercised without a running Home Assistant instance.
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 import voluptuous as vol
@@ -16,6 +16,7 @@ import voluptuous as vol
 from custom_components.hsem.custom_sensors.state_collector import (
     _compute_battery_capacities,
     _compute_net_consumption,
+    _register_listeners,
     build_battery_schedules,
     build_sensor_config,
 )
@@ -445,3 +446,77 @@ class TestReadEvPowerW:
             is_charging=True,
         )
         assert result is None
+
+
+# ---------------------------------------------------------------------------
+# _register_listeners
+# ---------------------------------------------------------------------------
+
+
+class TestRegisterListeners:
+    """State-change listeners must include price sensors for reactive export control."""
+
+    @pytest.mark.asyncio
+    async def test_price_sensors_are_tracked(self):
+        """Import and export price sensors must be registered for state-change events.
+
+        This ensures the coordinator reacts immediately when a new 15-minute
+        price period starts, so the inverter export limit follows the live
+        price (issue #770).
+        """
+        sensor = MagicMock()
+        sensor.hass = MagicMock()
+        sensor._async_handle_update = MagicMock()
+
+        cfg = build_sensor_config(_make_config_entry())
+        state = LiveState()
+        state.force_working_mode = "select.hsem_force_working_mode"
+        tracked: set[str] = set()
+
+        registered_entities: list[str] = []
+
+        def _fake_track(hass, entities, callback):
+            registered_entities.extend(entities)
+            return MagicMock()
+
+        with patch(
+            "custom_components.hsem.custom_sensors.state_collector.async_track_state_change_event",
+            side_effect=_fake_track,
+        ):
+            await _register_listeners(sensor, cfg, state, tracked)
+
+        assert cfg.import_electricity_price_sensor in registered_entities
+        assert cfg.export_electricity_price_sensor in registered_entities
+
+    @pytest.mark.asyncio
+    async def test_price_sensors_not_duplicated(self):
+        """Price sensors must not be registered twice if already tracked."""
+        sensor = MagicMock()
+        sensor.hass = MagicMock()
+        sensor._async_handle_update = MagicMock()
+
+        cfg = build_sensor_config(_make_config_entry())
+        state = LiveState()
+        state.force_working_mode = "select.hsem_force_working_mode"
+        tracked: set[str] = set()
+
+        registrations: list[list[str]] = []
+
+        def _fake_track(hass, entities, callback):
+            registrations.append(list(entities))
+            return MagicMock()
+
+        with patch(
+            "custom_components.hsem.custom_sensors.state_collector.async_track_state_change_event",
+            side_effect=_fake_track,
+        ):
+            await _register_listeners(sensor, cfg, state, tracked)
+            await _register_listeners(sensor, cfg, state, tracked)
+
+        # Flatten all registration calls from both invocations.
+        registered = [e for call in registrations for e in call]
+        # Each price sensor appears exactly once.
+        assert cfg.import_electricity_price_sensor is not None
+        assert cfg.export_electricity_price_sensor is not None
+        assert registered.count(cfg.import_electricity_price_sensor) == 1
+        assert registered.count(cfg.export_electricity_price_sensor) == 1
