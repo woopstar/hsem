@@ -199,24 +199,46 @@ Do **not** remove or change this factor without updating ``docs/planner-spec.md`
 
 ## Export Price Clamping (MILP + Cost Function)
 
-When `export_min_price > 0`, the applier physically blocks all grid export
-by setting the inverter to `GRID_EXPORT_LIMIT_WATT` for any slot where
-`export_price < export_min_price`.  To keep the planner consistent:
+`export_min_price` is no longer a physical grid-export block.  It is a
+battery-export floor only: the MILP and discharge scheduler prevent
+intentional battery-to-grid export when the export price is below the floor,
+but surplus PV export continues unrestricted (issue #767).  To keep the
+planner consistent:
 
-- **MILP** (`milp_optimizer.py`): `p_exp` is clamped to 0 for all slots
-  where `p_exp < export_min_price` **before** the LP solves.  This prevents
-  the LP from optimising around a price signal that will never be realised.
-- **Cost function** (`cost_function.py`): `CostWeights.export_min_price`
-  applies the same clamping in `score_plan()` so that scored costs match
-  the MILP's assumptions.
+- **MILP** (`milp_optimizer.py`): the combined battery-export floor
+  (`max(export_min_price, battery_export_min_price)`) is applied only to
+  `ed[t]`, capping battery discharge to house load on blocked slots.  PV
+  export (`ge[t]`) is left unrestricted for non-negative prices.
+- **Cost function** (`cost_function.py`): battery-destined export revenue is
+  zeroed on blocked slots; PV export is counted at the live export price.
 
-Negative export prices are **not** clamped.  The LP's `curt[t]` variable
-(zero objective cost) naturally handles them: when `p_exp < 0`, exporting
-costs money (`−p_exp·ge` becomes a positive cost in the objective) and the
-LP prefers curtailment (cost 0) over export (cost > 0).
+Negative export prices are physically blocked at the inverter by the
+applier (`GRID_EXPORT_LIMIT_WATT`), because exporting then costs money.
+The LP's `curt[t]` variable (zero objective cost) naturally handles them:
+when `p_exp < 0`, exporting costs money (`−p_exp·ge` becomes a positive cost
+in the objective) and the LP prefers curtailment (cost 0) over export
+(cost > 0).
 
 The raw `slot.price.export_price` is **not** mutated — clamping only affects
 optimisation and scoring.
+
+## Grid Export Power Cap — Applier Enforcement (Issue #770)
+
+`max_grid_export_power_kw` (config step `power`) is a hard cap on grid export.
+It is enforced in two places:
+
+- **Planner** (`milp/_export_cap.py`): when > 0, the MILP upper-bounds `ge[t]`
+  to `max_grid_export_power_kw * slot_hours` so the plan never schedules more
+  export than the DNO/inverter limit.
+- **Applier** (`custom_sensors/applier.py::async_apply_inverter_power_control`):
+  when export is allowed for non-negative prices, the applier writes the
+  configured limit in watts to the inverter (`set_maximum_feed_grid_power`)
+  instead of 100 %.  This means "100 % export" becomes "100 % of the
+  configured grid export limit", not 100 % of inverter capability.  When the
+  cap is `0` or unset, the applier writes unlimited/100 %.
+
+Negative export prices always override the cap and write `GRID_EXPORT_LIMIT_WATT`
+to block all export, because exporting then costs money.
 
 ## MILP Export-≤-Import Clamp (Issue #635 — Unbounded LP Fix)
 

@@ -684,6 +684,10 @@ async def _register_listeners(
         get_ev_second_smart_charging_switch_entity_id(),
         get_ev_second_deadline_time_entity_id(),
         state.force_working_mode,
+        # Price sensors: react immediately when a new 15-minute price period
+        # starts, so export-limit decisions follow the live price (issue #770).
+        cfg.import_electricity_price_sensor,
+        cfg.export_electricity_price_sensor,
     ]
 
     for entity_id in candidates:
