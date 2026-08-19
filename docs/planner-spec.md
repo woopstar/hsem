@@ -79,14 +79,21 @@ in the same layer must not change it.
 1. Export price > import price AND export price ≥ `export_min_price` → `force_export`
 2. Actual PV surplus (`estimated_net_consumption_kwh < 0`) and battery not full → `batteries_charge_solar`
 3. Future `force_batteries_discharge` AND battery > required → `batteries_wait_mode`
-4. Winter month → `batteries_wait_mode`
-5. Summer month, actual PV surplus → `batteries_charge_solar`; else → `batteries_discharge_mode`
+4. Slot's month is a winter month → `batteries_wait_mode`
+5. Slot's month is a summer month, actual PV surplus → `batteries_charge_solar`; else → `batteries_discharge_mode`
 
 > **Note:** `BatteriesChargeSolar` is only assigned when there is a genuine PV
 > surplus (negative net consumption).  A small positive house load with zero PV
 > must not be mislabeled as solar charging — that would cause the applier to
 > write `MaximizeSelfConsumption` instead of `TimeOfUse` + charge TOU
 > (issue #720).
+
+> **Per-slot season:** the seasonal check (steps 4–5) uses each slot's own
+> calendar month (derived from the slot's `start` timestamp in the local
+> timezone), **not** the month of `now`.  This means a planning horizon that
+> crosses a season boundary (e.g. Aug 31 → Sep 1) applies the correct seasonal
+> strategy to every slot independently — summer slots get discharge/solar and
+> winter slots get wait-mode, even within the same 48-hour plan.
 
 ### Layer 2 — EV planned load labelling (post-simulation)
 

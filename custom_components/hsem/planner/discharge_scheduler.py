@@ -487,8 +487,14 @@ def apply_optimization_strategy(
        → ``ForceExport``
     2. Solar surplus → ``BatteriesChargeSolar`` (until battery full)
     3. Future forced export pending and battery above required → ``BatteriesWaitMode``
-    4. Winter month → ``BatteriesWaitMode``
-    5. Summer month with solar → ``BatteriesChargeSolar``; else ``BatteriesDischargeMode``
+    4. Slot's month is a winter month → ``BatteriesWaitMode``
+    5. Slot's month is a summer month with solar → ``BatteriesChargeSolar``;
+       else ``BatteriesDischargeMode``
+
+    The seasonal check (steps 4–5) uses each slot's own calendar month
+    (derived from ``rec.start``), not the month of ``now``.  This means a
+    planning horizon that crosses a season boundary (e.g. Aug 31 → Sep 1)
+    applies the correct seasonal strategy to every slot independently.
 
     Args:
         slots: Mutable list of planned slots.
@@ -511,7 +517,6 @@ def apply_optimization_strategy(
         required_capacity,
         export_min_price,
     )
-    current_month = now.month
     months_summer = [m for m in range(1, 13) if m not in months_winter]
 
     # ForceExport when export > import AND export >= export_min_price (A3 fix)
@@ -564,9 +569,13 @@ def apply_optimization_strategy(
             rec.recommendation = Recommendations.BatteriesWaitMode.value
             continue
 
-        if current_month in months_winter:
+        # Use the slot's own calendar month so that a horizon that
+        # crosses a season boundary (e.g. Aug 31 → Sep 1) applies the
+        # correct seasonal strategy to each slot independently.
+        slot_month = as_tz(rec.start, now.tzinfo).month
+        if slot_month in months_winter:
             rec.recommendation = Recommendations.BatteriesWaitMode.value
-        elif current_month in months_summer:
+        elif slot_month in months_summer:
             # Only charge from solar when there is an actual PV surplus
             # (negative net consumption).  A small positive house load
             # must not be treated as a solar-charging opportunity —
