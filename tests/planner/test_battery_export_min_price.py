@@ -1,4 +1,4 @@
-"""Regression tests for the battery_export_min_price floor (issue #752).
+"""Regression tests for the battery export price floor (issues #752 and #767).
 
 Covers the optional per-slot hard floor for *intentional* battery-to-grid
 export.  When ``battery_export_min_price > 0`` and a slot's RAW export
@@ -249,13 +249,13 @@ class TestMilpBatteryExportMinPrice:
             assert s.batteries_discharged_kwh <= 1e-6
 
     def test_floor_evaluated_on_raw_export_price(self) -> None:
-        """Floor uses raw export_price, not the min_export_price-clamped one.
+        """Floor uses raw export_price, not any post-clamp value.
 
-        If the floor were evaluated AFTER the min_export_price clamp
-        (which sets p_exp < min_export_price to 0), slots with
-        0 < export_price < battery_export_min_price would NOT be blocked
-        because min_export_price=0 doesn't clamp them.  This test ensures
-        the floor is independent of that clamp.
+        The battery export floor must be evaluated on the raw export
+        price (before the export-≤-import clamp).  This ensures the
+        user's explicit floor is honoured regardless of other price
+        guards.  Issue #767 removed the legacy min_export_price clamp,
+        but the floor must still work on the raw price.
         """
         # min_export_price is 0 (disabled), but battery_export_min_price
         # is 0.15.  Slot export_price = 0.10 must still be blocked.
@@ -505,6 +505,34 @@ class TestCostFunctionFloor:
         weights = CostWeights(
             export_min_price=0.0,
             battery_export_min_price=0.15,
+        )
+        bd = score_plan(
+            [slot],
+            initial_battery_kwh=10.0,
+            weights=weights,
+        )
+        assert bd.export_revenue == pytest.approx(0.10, rel=1e-6)
+
+    def test_pv_export_below_legacy_min_price_still_counts(self) -> None:
+        """export_min_price no longer zeroes PV export revenue (issue #767).
+
+        Previously the cost function treated all export below
+        export_min_price as 0.  After issue #767, only battery-destined
+        export below battery_export_min_price is zeroed; PV export is
+        counted at the live export price even when export_min_price is
+        higher.
+        """
+        slot = _slot_with_export(
+            hour=12,
+            export_price=0.10,
+            grid_export_kwh=1.0,
+            pv_kwh=1.5,
+            batteries_discharged_kwh=0.0,
+        )
+
+        weights = CostWeights(
+            export_min_price=0.20,
+            battery_export_min_price=0.0,
         )
         bd = score_plan(
             [slot],

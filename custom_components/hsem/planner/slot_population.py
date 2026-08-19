@@ -418,15 +418,15 @@ def populate_estimated_cost(
     Net consumption >= 0 → cost = net × import_price.
     Net consumption < 0  → revenue = net × export_price (negative cost).
 
-    When ``export_min_price > 0``, export prices below the threshold are
-    treated as 0 to match the physical inverter behaviour (the applier
-    blocks all export below ``export_min_price`` via
-    ``GRID_EXPORT_LIMIT_WATT``).
+    ``export_min_price`` is kept as a parameter for API compatibility but is
+    no longer used to clamp export prices.  The applier no longer physically
+    blocks grid export below the threshold (issue #767); surplus PV export is
+    always allowed and is valued at the live export price.
 
     Args:
         slots: Mutable list of planned slots to update.
-        export_min_price: Minimum export price for grid power control.
-            Export prices below this are clamped to 0.  Defaults to 0.0.
+        export_min_price: Deprecated compatibility parameter.  No longer
+            affects estimated cost calculation.  Defaults to 0.0.
     """
     log_planner(
         "debug",
@@ -440,10 +440,9 @@ def populate_estimated_cost(
             slot.estimated_cost_currency = round(net * slot.price.import_price, 4)
         else:
             exp_price = slot.price.export_price
-            # Clamp to match MILP + cost_function behaviour (issue #483)
+            # Negative export prices are treated as zero for estimation
+            # (curtailment is preferred to paying to export).
             if exp_price < 0.0:
-                exp_price = 0.0
-            if export_min_price > 1e-9 and exp_price < export_min_price:
                 exp_price = 0.0
             slot.estimated_cost_currency = round(net * exp_price, 4)
 

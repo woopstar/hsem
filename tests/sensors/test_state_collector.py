@@ -154,17 +154,13 @@ class TestBuildSensorConfig:
         coerce that sentinel to ``None`` instead of calling ``len()`` on it.
         """
         cfg = build_sensor_config(
-            _make_config_entry(
-                hsem_huawei_solar_device_id_batteries_2=vol.UNDEFINED
-            )
+            _make_config_entry(hsem_huawei_solar_device_id_batteries_2=vol.UNDEFINED)
         )
         assert cfg.huawei_solar_device_id_batteries_2 is None
 
     def test_inverter_2_undefined_becomes_none(self):
         cfg = build_sensor_config(
-            _make_config_entry(
-                hsem_huawei_solar_device_id_inverter_2=vol.UNDEFINED
-            )
+            _make_config_entry(hsem_huawei_solar_device_id_inverter_2=vol.UNDEFINED)
         )
         assert cfg.huawei_solar_device_id_inverter_2 is None
 

@@ -151,7 +151,7 @@ Where:
 |---|---|
 | $\delta_t$ | Time discount per slot: $\delta_t = r^{\Delta t}$ where $\Delta t$ is hours from now |
 | $p_{\mathrm{imp}}[t]$ | Grid import price (currency/kWh).  Sanitised to `max(p_imp_raw[t], 0)` (issue #655).  Also used as a **conservative approximation** for the LP's discharge-side conversion loss coefficient (see note below). |
-| $p_{\mathrm{exp}}[t]$ | Grid export price (currency/kWh). Before solving, `p_exp` is sanitised: (1) clamped to 0 when below `min_export_price` (physically blocked export), and (2) clamped to `min(p_exp, p_imp)` to prevent an unbounded LP when `p_exp > p_imp` in any slot (issue #635). |
+| $p_{\mathrm{exp}}[t]$ | Grid export price (currency/kWh). Before solving, `p_exp` is sanitised by clamping to `min(p_exp, p_imp)` to prevent an unbounded LP when `p_exp > p_imp` in any slot (issue #635).  The legacy `min_export_price` clamp has been removed because the applier no longer physically blocks grid export below this price (issue #767). |
 | $\alpha$ | Battery cycle cost per kWh: $\alpha = \frac{P \cdot L_{pct}/100}{2 \cdot N \cdot C_u}$ |
 | $\epsilon_{\mathrm{chg}}$ | Charge-side loss fraction: $\epsilon_{\mathrm{chg}} = 1 - \eta_{\mathrm{chg}}$ |
 | $\epsilon_{\mathrm{dis}}$ | Discharge-side loss fraction: $\epsilon_{\mathrm{dis}} = 1 - \eta_{\mathrm{dis}}$ |
@@ -291,7 +291,7 @@ This is the **per-slot, soft-switch companion to the global `no_export` cap**. W
 
 Scope: the floor applies only to intentional battery-to-grid export (`ForceBatteriesDischarge`). It does not affect normal battery self-consumption, battery discharge for house load, direct PV export (`ge` is not capped — only `ed` is), or PV charging of the battery.
 
-Evaluation on the **raw** `p_exp` is essential: the user's `battery_export_min_price` floor must be honoured even when the `recommended_threshold` (auto-calculated cycle wear) or the inverter's `export_min_price` physical floor are lower.  Selecting the larger of the three floors would force every user to overwrite their own threshold when they want a stricter guard, defeating the purpose of the dedicated setting.
+Evaluation on the **raw** `p_exp` is essential: the user's `battery_export_min_price` floor must be honoured even when the `recommended_threshold` (auto-calculated cycle wear) or the `export_min_price` battery-export floor are lower.  Selecting the larger of the three floors would force every user to overwrite their own threshold when they want a stricter guard, defeating the purpose of the dedicated setting.
 
 The non-MILP `apply_excess_export` path enforces the same floor by requiring `export_price >= max(export_min_price, recommended_threshold, battery_export_min_price)` for any slot it would otherwise label `ForceBatteriesDischarge`.
 
@@ -303,9 +303,17 @@ When `battery_export_min_price = 0` (default), no slot is ever blocked by the fl
 
 Before the LP is built, two sanitisation steps are applied to `p_exp` to prevent solver instability and maintain consistency with physical constraints:
 
-### 1. Min-export-price clamp
+### 1. Battery export floor (replaces min-export-price clamp)
 
-Slots where `p_exp < min_export_price` are clamped to 0. The applier physically blocks export for these slots by setting the inverter to `GRID_EXPORT_LIMIT_WATT`, so the LP must not optimise around a price signal that will never be realised. Negative export prices are **not** clamped — the `curt[t]` variable (zero objective cost) naturally handles them.
+Slots where `p_exp < max(min_export_price, battery_export_min_price)` do
+not have their export price clamped to 0.  Instead, the battery discharge
+variable `ed[t]` is capped to `base_load[t] / η_dis` so the battery can
+serve house load but cannot intentionally export to the grid.  This keeps
+surplus PV export possible (the applier no longer throttles the grid
+feed-in limit for non-negative prices, issue #767) while still preventing
+battery-to-grid discharge below the configured floor.  Negative export
+prices are handled by the applier, which writes a physical watt limit to
+block all grid export when exporting costs money.
 
 ### 2. Export-≤-import clamp (issue #635)
 

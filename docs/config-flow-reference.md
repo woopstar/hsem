@@ -51,7 +51,7 @@ Energi Data Service, Nordpool, Amber Electric, and any other price source.
 | Export price sensor | `hsem_export_electricity_price_sensor` | `sensor.energi_data_service_produktion` | HA entity for export price |
 | Import price forecast sensor | `hsem_import_electricity_price_forecast_sensor` | — | Optional dedicated import forecast sensor |
 | Export price forecast sensor | `hsem_export_electricity_price_forecast_sensor` | — | Optional dedicated export forecast sensor |
-| Export min price | `hsem_export_electricity_min_price` | 0.0 | Below this, inverter throttles export to zero |
+| Export min price | `hsem_export_electricity_min_price` | 0.0 | Minimum export price for intentional battery-to-grid discharge. The inverter no longer throttles the grid feed-in limit for positive prices; surplus PV export is always allowed (issue #767). Negative export prices still trigger a physical block because exporting then costs money. |
 | Price update interval | `hsem_electricity_price_update_interval` | 15 minutes | How often the price source publishes (15, 30, or 60) |
 
 ### Step: `months`
