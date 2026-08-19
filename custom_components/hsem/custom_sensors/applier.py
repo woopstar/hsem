@@ -215,16 +215,20 @@ async def async_apply_inverter_power_control(
 ) -> CycleApplySummary:
     """Set the grid-export power limit on all inverters.
 
-    Decides whether to block grid export or allow it up to a configured cap,
-    based on the current export price and the user-configured grid export limit.
+    The inverter grid connection point is controlled by price and by the
+    user-configured grid export cap:
 
     - Negative export price → block all export with a soft watt floor
       (``GRID_EXPORT_LIMIT_WATT``), because exporting then costs money.
     - Non-negative export price → allow export, but cap it at
       ``cfg.max_grid_export_power_kw`` when that value is configured.  A cap of
       ``0`` or unset is treated as unlimited/100 %.  Battery-to-grid export
-      below ``export_electricity_min_price`` is gated planner-side, not by
-      throttling the whole connection point (issues #767 and #770).
+      below ``export_electricity_min_price`` is gated planner-side by the
+      MILP and discharge scheduler, not by throttling the whole connection point.
+
+    This avoids the issue described in #767, where a positive-but-low export
+    price caused the applier to write a 100 W connection-point limit that
+    blocked surplus PV export once the battery was full.
 
     Only issues a hardware write when the inverter state actually needs to change.
 
@@ -306,11 +310,17 @@ async def async_apply_inverter_power_control(
                     export_price,
                     min_price,
                 )
-            else:
-                _LOGGER.debug(
-                    "Export price %.4f is non-negative; allowing unlimited export.",
-                    export_price,
-                )
+
+    _LOGGER.debug(
+        "Determined export power limit: %s%s (export=%s, min=%s, "
+        "ev1_connected=%s, ev2_connected=%s)",
+        desired,
+        "W" if desired_is_watt else "%",
+        export_price,
+        min_price,
+        live.ev.is_connected,
+        live.ev_second.is_connected,
+    )
 
     current_pct = _parse_power_control_pct(live.huawei_inverter_active_power_control)
     current_is_watt = _is_watt_limit(live.huawei_inverter_active_power_control)
