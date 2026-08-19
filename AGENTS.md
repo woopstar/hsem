@@ -252,6 +252,24 @@ Before creating a commit, the agent MUST report the result of:
 
 ## Pull Request Guidelines
 
+### GitHub Operations — Use MCP Tools, Never the `gh` CLI (Mandatory)
+
+- **The `gh` CLI is NOT available in the devcontainer.** Do not shell out to `gh` for any
+  GitHub operation (PRs, issues, reviews, branches, releases, etc.).
+- **Always use the GitHub MCP tools** instead:
+  - Create a PR → `create_pull_request`
+  - Update a PR (title/body/draft/reviewers) → `update_pull_request`
+  - Read a PR / diff / files / reviews / comments → `pull_request_read`
+  - Review a PR → `pull_request_review_write` / `add_comment_to_pending_review`
+  - Create / update / close issues → `issue_write` / `issue_read`
+  - List / search issues & PRs → `list_issues` / `search_issues` / `search_pull_requests`
+  - Merge a PR → `merge_pull_request`
+  - Create / list branches → `create_branch` / `list_branches`
+  - Push files to a branch → `push_files`
+- **Local git is still fine** for `git add` / `git commit` / `git checkout` / `git push`
+  (pushing the branch over SSH). Only the *GitHub API* operations (PRs, issues, reviews)
+  must go through the MCP tools.
+
 **REQUIRED: Code Quality Before Submission**
 
 Before submitting a PR, the agent MUST:
@@ -282,10 +300,10 @@ PR after every meaningful commit:
 - **Description** — reflect every change made since the PR was opened: new files, updated logic,
   additional tests, and any acceptance criteria that were added or completed.
 - **Checklist** — tick off acceptance criteria that are now satisfied.
-- Use `gh pr edit --body-file <file>` to apply updates — write the PR body to a
-  temporary file first and pass the path via `--body-file`. **Never** use `--body "..."`
-  with an inline multiline string: this corrupts content in PowerShell (newlines become
-  `∙` and backticks become `\x5c`). Delete the temp file after the command succeeds.
+- Use the **`update_pull_request` MCP tool** to apply updates — pass the full markdown
+  body as the `body` argument. The MCP tool handles multiline content safely (no temp
+  file, no shell escaping). **Never** shell out to `gh pr edit` — the `gh` CLI is not
+  available in the devcontainer.
 - Do NOT leave the PR description stale after follow-up commits.
 
 Before merging any PR, the agent MUST ensure:

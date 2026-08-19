@@ -1062,3 +1062,25 @@ Files involved: `flows/batteries_wait_mode.py`, `config_flow.py`,
 `options_flow.py`, `translations/en.json`, `const.py`,
 `models/sensor_config.py`, `custom_sensors/config_reader.py`,
 `custom_sensors/applier.py`.
+
+## GitHub Operations — MCP Tools Only, Never the `gh` CLI
+
+The `gh` CLI is **not available in the devcontainer**. All GitHub API operations
+must go through the GitHub MCP tools — never shell out to `gh`.
+
+| Operation | MCP tool |
+|---|---|
+| Create a PR | `create_pull_request` |
+| Update a PR (title/body/draft/reviewers) | `update_pull_request` |
+| Read a PR / diff / files / reviews / comments | `pull_request_read` |
+| Review a PR | `pull_request_review_write` / `add_comment_to_pending_review` |
+| Create / update / close issues | `issue_write` / `issue_read` |
+| List / search issues & PRs | `list_issues` / `search_issues` / `search_pull_requests` |
+| Merge a PR | `merge_pull_request` |
+| Create / list branches | `create_branch` / `list_branches` |
+| Push files to a branch | `push_files` |
+
+**Local `git` is still fine** for `git add` / `git commit` / `git checkout` / `git push`
+(pushing the branch over SSH). Only the *GitHub API* operations (PRs, issues, reviews)
+must use the MCP tools. The `update_pull_request` tool accepts the full markdown body
+as the `body` argument — no temp file or shell escaping needed.

@@ -57,10 +57,28 @@ fix(planner): correct cycle cost denominator — Fixes #444
 feat(sensor): add temperature-adaptive charge rate — Fixes #123
 ```
 
+## GitHub Operations — Use MCP Tools, Never the `gh` CLI (Mandatory)
+
+- **The `gh` CLI is NOT available in the devcontainer.** Do not shell out to `gh` for any
+  GitHub operation (PRs, issues, reviews, branches, releases, etc.).
+- **Always use the GitHub MCP tools** instead:
+  - Create a PR → `create_pull_request`
+  - Update a PR (title/body/draft/reviewers) → `update_pull_request`
+  - Read a PR / diff / files / reviews / comments → `pull_request_read`
+  - Review a PR → `pull_request_review_write` / `add_comment_to_pending_review`
+  - Create / update / close issues → `issue_write` / `issue_read`
+  - List / search issues & PRs → `list_issues` / `search_issues` / `search_pull_requests`
+  - Merge a PR → `merge_pull_request`
+  - Create / list branches → `create_branch` / `list_branches`
+  - Push files to a branch → `push_files`
+- **Local git is still fine** for `git add` / `git commit` / `git checkout` / `git push`
+  (pushing the branch over SSH). Only the *GitHub API* operations (PRs, issues, reviews)
+  must go through the MCP tools.
+
 ## Creating a PR
 
 ### PR Title
-Must follow Conventional Commits format: `<type>(<scope>): <description>`
+Must follow Conventional Commits format: `<type>(scope): <description>`
 
 ### PR Description Must Include
 - Summary of changes
@@ -91,22 +109,10 @@ After every follow-up commit on a branch that already has an open PR:
 
 ### How to Update a PR
 
-Always use a temp file for the body — never pass multiline body inline:
+Use the **`update_pull_request` MCP tool** — pass the full markdown body as the `body`
+argument. The MCP tool handles multiline content safely (no temp file, no shell escaping).
 
-```bash
-# Write PR body to a temp file first
-cat > /tmp/pr_body.md << 'EOF'
-<markdown body here>
-EOF
-
-# Edit the PR
-gh pr edit <PR_NUMBER> --title "<type>(scope): updated title" --body-file /tmp/pr_body.md
-
-# Clean up
-rm /tmp/pr_body.md
-```
-
-**Never use `--body "..."` with inline multiline text** — PowerShell corrupts newlines and backticks.
+**Never** shell out to `gh pr edit` — the `gh` CLI is not available in the devcontainer.
 
 ## Merge Rules
 

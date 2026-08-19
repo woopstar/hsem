@@ -142,17 +142,18 @@ git status
 # 9. Commit with conventional commit format
 git commit -m "feat(scope): description - Fixes #<ISSUE_NUMBER>"
 
-# 10. Push and create PR (do not merge)
+# 10. Push the branch (local git over SSH)
 git push origin feat/<issue-number>-<description>
 
-# 11. If the PR already exists and you make further commits, update it
-#     Write the body to a file first, then pass --body-file (shell-agnostic):
-Set-Content -Path pr_body.md -Value @"
-<markdown body here>
-"@
-gh pr edit <PR_NUMBER> --title "<type>(scope): updated title" --body-file pr_body.md
-Remove-Item pr_body.md
+# 11. Create the PR with the GitHub MCP tool (NOT the `gh` CLI — it is not
+#     available in the devcontainer). Pass the full markdown body as the `body`
+#     argument to `create_pull_request`.
 ```
+
+> **GitHub operations use MCP tools, never the `gh` CLI.** The `gh` CLI is not
+> available in the devcontainer. Use `create_pull_request`, `update_pull_request`,
+> `pull_request_read`, `issue_write`/`issue_read`, `search_issues`,
+> `merge_pull_request`, etc. Local `git` (add/commit/checkout/push) is still fine.
 
 ### Keeping an Open PR Up to Date
 
@@ -163,9 +164,10 @@ Whenever you push additional commits to a branch that already has an open PR:
    additional tests, and any newly satisfied acceptance criteria.
 3. Tick off completed items in any checklist inside the PR description.
 4. Never leave the PR description stale after follow-up commits.
-5. **Always write the PR body to a temporary file and use `gh pr edit --body-file`.**
-   Never pass a multiline body inline via `--body "..."` — this corrupts the content
-   in PowerShell (produces `∙` instead of newlines and `\x5c` instead of backticks).
+5. **Use the `update_pull_request` MCP tool** — pass the full markdown body as the `body`
+   argument. The MCP tool handles multiline content safely (no temp file, no shell
+   escaping). **Never** shell out to `gh pr edit` — the `gh` CLI is not available in the
+   devcontainer.
 
 ## Home Assistant Compliance
 

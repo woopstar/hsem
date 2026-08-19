@@ -63,10 +63,26 @@ When asked to solve a GitHub issue, always follow these steps in order:
 12. **Keep the PR up to date** — after every follow-up commit on a branch that already has an open
     PR, update both the PR title and description to reflect the current state of all changes made.
     Tick off any completed acceptance criteria in the PR checklist.
-    - Use `gh pr edit <PR_NUMBER> --title "..." --body-file <file>` — write the PR body
-      to a temp file first, pass it with `--body-file`, then delete the file.
-    - **Never** pass a multiline body inline via `--body "..."`: PowerShell corrupts the
-      content (newlines become `∙` characters; backticks become `\x5c` escapes).
+    - Use the **`update_pull_request` MCP tool** to change the title and/or body. Pass the
+      full markdown body as the `body` argument — the MCP tool handles multiline content
+      safely (no temp file, no shell escaping).
+
+## GitHub Operations — Use MCP Tools, Never the `gh` CLI (Mandatory)
+- **The `gh` CLI is NOT available in the devcontainer.** Do not shell out to `gh` for any
+  GitHub operation (PRs, issues, reviews, branches, releases, etc.).
+- **Always use the GitHub MCP tools** instead:
+  - Create a PR → `create_pull_request`
+  - Update a PR (title/body/draft/reviewers) → `update_pull_request`
+  - Read a PR / diff / files / reviews / comments → `pull_request_read`
+  - Review a PR → `pull_request_review_write` / `add_comment_to_pending_review`
+  - Create / update / close issues → `issue_write` / `issue_read`
+  - List / search issues & PRs → `list_issues` / `search_issues` / `search_pull_requests`
+  - Merge a PR → `merge_pull_request`
+  - Create / list branches → `create_branch` / `list_branches`
+  - Push files to a branch → `push_files`
+- **Local git is still fine** for `git add` / `git commit` / `git checkout` / `git push`
+  (pushing the branch over SSH). Only the *GitHub API* operations (PRs, issues, reviews)
+  must go through the MCP tools.
 
 ## Planner Specification Rule (Mandatory)
 - **Always read `docs/planner-spec.md` before touching any planner code** — engine, cost
