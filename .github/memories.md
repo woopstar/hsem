@@ -1084,3 +1084,28 @@ must go through the GitHub MCP tools — never shell out to `gh`.
 (pushing the branch over SSH). Only the *GitHub API* operations (PRs, issues, reviews)
 must use the MCP tools. The `update_pull_request` tool accepts the full markdown body
 as the `body` argument — no temp file or shell escaping needed.
+
+## Fork Divergence — `Ambilights/hsem-ambilights` Is Not Back-Portable
+
+The AGPL fork `Ambilights/hsem-ambilights` (v7.x) **diverged** from this repo at
+commit `dd8db6ec` (2026-08-11). It is not a linear descendant, so its numbered
+"fix" PRs cannot be cherry-picked onto `main` — they are layered on fork-only
+architecture that does not exist here. Before re-attempting any port, remember:
+
+| Fork PR | Subject | Status for `main` |
+|---|---|---|
+| #5 | ENTSO-E published-price backup | **Feature**, not a fix; new provider. Not needed — no request. |
+| #7 | Remove unused controls + embedded OCPP | **Removal** — explicitly rejected (upstream ships OCPP, schedules, charge-rate learner). |
+| #9 / #22 | PowMr site-attribution / control stability | **Feature** — `origin/main` has no PowMr/secondary-storage subsystem at all. N/A. |
+| #11 | ML history ↔ tracking time | **Ported** (ML core + DST-fold `slot_key` prerequisite). |
+| #13 | Bound terminal inventory at price boundary | Coupled to fork-only `future_value.py`/`_solver_execution.py`/`secondary_storage.py`/`price_forecast.py`. |
+| #15 | Group export-reserve checkpoints | Refines fork-only `_export_reserve.py`; upstream has no export-reserve concept. N/A. |
+| #17 | Harden MILP bounds layout | Core idea **ported natively** as a `len(bounds) == n_vars` fail-fast guard. |
+| #19 | Reject unavailable load + stale solves | Load fail-closed **ported natively**; the authority-generation rollback requires the fork coordinator rewrite. |
+| #21 | Coalesce boundary price refreshes | Requires the fork's forecast-authority-generation machinery (authority `generation` counter). |
+
+**Decision:** `origin/main` remains the baseline. Port only self-contained,
+upstream-relevant *fixes*; re-implement concrete bugs natively (with regression
+tests), never import the fork's v7 planner/coordinator architecture. ENTSO-E and
+PowMr are provider/hardware *features* and stay out unless an explicit request
+arrives.
