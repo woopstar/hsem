@@ -12,7 +12,8 @@ but uses ML predictions instead of rolling-average sensor states.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+import math
+from datetime import datetime, timedelta
 
 from homeassistant.core import HomeAssistant
 
@@ -23,14 +24,28 @@ from custom_components.hsem.ml.history_reader import (
 )
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.sensor_config import SensorConfig
+from custom_components.hsem.utils.datetime_utils import (
+    normalize_datetime,
+    now as hsem_now,
+    slot_key,
+    utc_key,
+)
 from custom_components.hsem.utils.logger import HSEM_LOGGER
 
-# Cache for full history fetch — avoids querying 90 days of recorder
-# data on every 1–5 minute coordinator cycle.
-_last_history_fetch: datetime | None = None
-_cached_history: list[tuple[datetime, int, float]] | None = None
-_last_temp_fetch: datetime | None = None
-_cached_temps: dict[datetime, float] | None = None
+type _HistorySample = tuple[datetime, int, float]
+type _HistoryCacheKey = tuple[int, str, str | None, bool, int, int]
+type _TemperatureCacheKey = tuple[int, str, int]
+type _PredictorContext = tuple[str, str | None, bool, int, int, str | None]
+
+# Cache final, fully processed history rather than an import-only intermediate.
+# The effective configuration is part of the key so another config entry,
+# source entity, cadence, history window, or net/gross mode cannot reuse it.
+_processed_history_cache: dict[
+    _HistoryCacheKey, tuple[datetime, list[_HistorySample]]
+] = {}
+_temperature_history_cache: dict[
+    _TemperatureCacheKey, tuple[datetime, dict[datetime, float]]
+] = {}
 _MIN_HISTORY_REFRESH = timedelta(minutes=60)
 
 
@@ -72,24 +87,35 @@ async def populate_ml_house_consumption(
 
     reader = HistoryReader(hass)
 
-    # Full history fetch — cached for 60 minutes to avoid hammering the
-    # recorder database on every 1–5 minute coordinator cycle.
-    global _last_history_fetch, _cached_history
-    now_ts = datetime.now().astimezone()
-    cache_valid = (
-        _last_history_fetch is not None
-        and _cached_history is not None
-        and (now_ts - _last_history_fetch) < _MIN_HISTORY_REFRESH
+    # Full history fetch — cache the processed series for 60 minutes to avoid
+    # hammering the recorder database on every 1–5 minute coordinator cycle.
+    now_ts = hsem_now()
+    net_enabled = cfg.ml_consumption_net_consumption
+    if net_enabled and not cfg.grid_export_energy_entity:
+        HSEM_LOGGER.warning(
+            "ML populator: net consumption is enabled but no grid export "
+            "energy entity is configured. Falling back to legacy avg sensors."
+        )
+        return False, None
+    export_entity = cfg.grid_export_energy_entity if net_enabled else None
+    cache_key: _HistoryCacheKey = (
+        id(hass),
+        energy_entity,
+        export_entity,
+        net_enabled,
+        slot_minutes,
+        min_days,
     )
+    cached = _processed_history_cache.get(cache_key)
+    cache_valid = cached is not None and _cache_is_fresh(cached[0], now_ts)
 
-    if cache_valid:
-        assert _cached_history is not None  # guarded by cache_valid
-        assert _last_history_fetch is not None  # guarded by cache_valid
-        import_history = _cached_history
+    history: list[_HistorySample]
+    if cache_valid and cached is not None:
+        history = cached[1]
         HSEM_LOGGER.debug(
             "ML populator: using cached history (%d samples, age %.0f min).",
-            len(import_history),
-            (now_ts - _last_history_fetch).total_seconds() / 60,
+            len(history),
+            _physical_elapsed(now_ts, cached[0]).total_seconds() / 60,
         )
     else:
         import_history = await reader.read_energy_history(
@@ -98,72 +124,114 @@ async def populate_ml_house_consumption(
             slot_minutes=slot_minutes,
             max_days=DEFAULT_MAX_HISTORY_DAYS,
         )
-        if import_history:
-            _cached_history = import_history
-            _last_history_fetch = now_ts
-            HSEM_LOGGER.debug(
-                "ML populator: fetched fresh history (%d samples).",
-                len(import_history),
+        if not import_history:
+            HSEM_LOGGER.info(
+                "ML populator: insufficient history for %s (need %d days). "
+                "Falling back to legacy avg sensors.",
+                energy_entity,
+                min_days,
             )
+            return False, None
 
-    if not import_history:
-        HSEM_LOGGER.info(
-            "ML populator: insufficient history for %s (need %d days). "
-            "Falling back to legacy avg sensors.",
-            energy_entity,
-            min_days,
-        )
-        return False, None
-
-    # Build per-slot consumption history.
-    # When using cached import, also skip the export fetch.
-    if cfg.ml_consumption_net_consumption and cfg.grid_export_energy_entity:
-        if cache_valid:
-            # Use cached import directly — export fetch is also skipped.
-            history = import_history
-        else:
+        history = import_history
+        if net_enabled and export_entity is not None:
             export_history = await reader.read_energy_history(
-                entity_id=cfg.grid_export_energy_entity,
+                entity_id=export_entity,
                 days=min_days,
                 slot_minutes=slot_minutes,
                 max_days=DEFAULT_MAX_HISTORY_DAYS,
             )
             if export_history:
                 history = _compute_net_consumption(import_history, export_history)
+                if not _history_meets_minimum_span(history, now_ts, min_days):
+                    HSEM_LOGGER.info(
+                        "ML populator: aligned import/export history is "
+                        "insufficient for %d days. Falling back to legacy "
+                        "avg sensors.",
+                        min_days,
+                    )
+                    return False, None
             else:
                 HSEM_LOGGER.info(
-                    "ML populator: export history unavailable,"
-                    " using import-only consumption."
+                    "ML populator: export history unavailable while net "
+                    "consumption is enabled. Falling back to legacy avg sensors."
                 )
-                history = import_history
-    else:
-        history = import_history
+                return False, None
+
+        if history:
+            _processed_history_cache[cache_key] = (now_ts, history)
+        HSEM_LOGGER.debug(
+            "ML populator: fetched fresh processed history (%d samples).",
+            len(history),
+        )
 
     if not history:
         HSEM_LOGGER.warning("ML populator: empty history after processing")
         return False, None
 
-    # Create or reuse predictor.
-    reference_time = datetime.now().astimezone()
-    use_temp = bool(cfg.ml_consumption_temperature_entity)
+    # Create or reuse predictor.  Calendar calculations use HA local time;
+    # physical sample ages remain correct because all timestamps are aware.
+    reference_time = now_ts
 
     # Compute decay from the actual data span, not the configured window.
     # Half-life = actual_span / 2 gives the oldest data ~14% weight.
-    if history:
-        oldest_age = max(
-            (
-                reference_time - ts.replace(tzinfo=reference_time.tzinfo)
-                if ts.tzinfo is None
-                else reference_time - ts
-            ).total_seconds()
-            / 86400.0
-            for ts, _slot, _energy in history
-        )
-        decay_days = max(oldest_age, 1.0) / 2.0
-    else:
-        decay_days = float(min_days) / 2.0
+    oldest_age = max(
+        _physical_elapsed(reference_time, ts).total_seconds() / 86400.0
+        for ts, _slot, _energy in history
+    )
+    decay_days = max(oldest_age, 1.0) / 2.0
 
-    if predictor is None:
+    # Read temperature history before creating the predictor.  If a configured
+    # sensor has insufficient history, disable the feature safely rather than
+    # fitting a temperature column and then omitting it during inference.
+    temperatures: dict[datetime, float] | None = None
+    temperature_entity = cfg.ml_consumption_temperature_entity
+    if temperature_entity:
+        temp_cache_key: _TemperatureCacheKey = (
+            id(hass),
+            temperature_entity,
+            min_days,
+        )
+        cached_temps = _temperature_history_cache.get(temp_cache_key)
+        temp_cache_valid = cached_temps is not None and _cache_is_fresh(
+            cached_temps[0], now_ts
+        )
+        if temp_cache_valid and cached_temps is not None:
+            temperatures = cached_temps[1]
+        else:
+            temperatures = await _read_temperature_history(
+                reader, temperature_entity, min_days
+            )
+            if temperatures:
+                _temperature_history_cache[temp_cache_key] = (
+                    now_ts,
+                    temperatures,
+                )
+
+    use_temp = bool(temperatures)
+    if not use_temp:
+        temperatures = None
+    if temperature_entity and not use_temp:
+        HSEM_LOGGER.info(
+            "ML populator: temperature history unavailable;"
+            " fitting without temperature."
+        )
+
+    training_context: _PredictorContext = (
+        energy_entity,
+        export_entity,
+        net_enabled,
+        slot_minutes,
+        min_days,
+        temperature_entity if use_temp else None,
+    )
+    if (
+        predictor is None
+        or predictor.slots_per_day != slots_per_day
+        or predictor.use_temperature != use_temp
+        or predictor.use_sequential != cfg.ml_consumption_sequential
+        or predictor.training_context != training_context
+    ):
         predictor = ConsumptionPredictor(
             decay_days=decay_days,
             alpha=1.0,
@@ -171,32 +239,12 @@ async def populate_ml_house_consumption(
             use_temperature=use_temp,
             use_sequential=cfg.ml_consumption_sequential,
         )
+    # A reused predictor must not retain the half-life from its initial fit.
+    predictor.decay_days = decay_days
+    predictor.training_context = training_context
 
     # Store the actual history span so it can be exposed to the user.
-    predictor.actual_history_days = max(oldest_age, 0.0) if history else 0.0
-
-    # Read temperature history if configured.
-    # Expects an outdoor (ambient) temperature sensor in °C.
-    # Indoor thermostats will NOT help predict weather-driven load.
-    # Cached for 60 minutes (temperature changes slowly).
-    temperatures: dict[datetime, float] | None = None
-    if use_temp:
-        global _last_temp_fetch, _cached_temps
-        temp_cache_valid = (
-            _last_temp_fetch is not None
-            and _cached_temps is not None
-            and (now_ts - _last_temp_fetch) < _MIN_HISTORY_REFRESH
-        )
-        if temp_cache_valid:
-            temperatures = _cached_temps
-        else:
-            assert cfg.ml_consumption_temperature_entity is not None
-            temperatures = await _read_temperature_history(
-                reader, cfg.ml_consumption_temperature_entity, min_days
-            )
-            if temperatures:
-                _cached_temps = temperatures
-                _last_temp_fetch = now_ts
+    predictor.actual_history_days = max(oldest_age, 0.0)
 
     # Train — retrain gate skips fitting when no new data has arrived.
     # The fit is CPU-bound (numpy ridge solve), so run it in HA's executor
@@ -205,6 +253,13 @@ async def populate_ml_house_consumption(
     await hass.async_add_executor_job(
         predictor.train, history, reference_time, temperatures
     )
+
+    if not predictor.trained:
+        HSEM_LOGGER.info(
+            "ML populator: history did not produce a trained model;"
+            " falling back to legacy avg sensors."
+        )
+        return False, None
 
     if predictor.trained and not was_fitted_before:
         HSEM_LOGGER.info(
@@ -238,59 +293,80 @@ async def populate_ml_house_consumption(
     buffer_1 = 0
 
     # Read today's actual consumption for completed slots.
-    today_actuals: dict[int, float] = {}
-    today_actuals = await reader.read_today_actuals(
+    today_actuals: dict[datetime, float] = await reader.read_today_actuals(
         entity_id=energy_entity,
         slot_minutes=slot_minutes,
     )
+    today_actuals = {
+        key: value for key, value in today_actuals.items() if math.isfinite(value)
+    }
     if cfg.ml_consumption_net_consumption and cfg.grid_export_energy_entity:
         export_actuals = await reader.read_today_actuals(
             entity_id=cfg.grid_export_energy_entity,
             slot_minutes=slot_minutes,
         )
-        # Subtract export from import per slot.
-        for slot_idx in list(today_actuals.keys()):
-            today_actuals[slot_idx] = max(
-                today_actuals[slot_idx] - export_actuals.get(slot_idx, 0.0),
+        # A missing channel key is unknown, not zero.  Use only physical
+        # slots observed in both meters so recorder gaps cannot silently
+        # become import-only labels in a net-consumption model.
+        aligned_actuals: dict[datetime, float] = {}
+        for physical_key, import_energy in today_actuals.items():
+            if physical_key not in export_actuals:
+                continue
+            export_energy = export_actuals[physical_key]
+            if not math.isfinite(export_energy):
+                continue
+            aligned_actuals[physical_key] = max(
+                import_energy - export_energy,
                 0.01,
             )
+        today_actuals = aligned_actuals
 
     actual_count = 0
     predicted_count = 0
 
-    # In sequential mode, precompute per-day predictions (each slot feeds
-    # its output as lag input to the next).  Independent mode predicts
-    # each slot separately.
-    seq_predictions: dict[int, dict[int, float]] = {}
+    # Sequential mode follows the real recommendation instants in UTC order.
+    # This naturally skips spring's nonexistent hour and preserves both
+    # physical folds of autumn's repeated wall hour.
+    seq_predictions: dict[datetime, float] = {}
+    prediction_temperature = _nearest_temperature(temperatures, reference_time)
     if cfg.ml_consumption_sequential:
-        seen_day_offsets: set[int] = set()
-        for rec in recommendations:
-            seen_day_offsets.add((rec.start.date() - reference_time.date()).days)
-        for day_offset in sorted(seen_day_offsets):
-            seq_predictions[day_offset] = predictor.predict_sequential(
-                day_offset, reference_time
-            )
+        sequence_keys = sorted(
+            {
+                slot_key(normalize_datetime(rec.start), slot_minutes)
+                for rec in recommendations
+            }
+        )
+        sequence_starts = [normalize_datetime(key) for key in sequence_keys]
+        sequential_temperatures = (
+            {key: prediction_temperature for key in sequence_keys}
+            if prediction_temperature is not None
+            else None
+        )
+        seq_predictions = predictor.predict_sequential(
+            sequence_starts, sequential_temperatures
+        )
 
     for rec in recommendations:
-        rec_day_offset = (rec.start.date() - reference_time.date()).days
-        slot_index = (rec.start.hour * 60 + rec.start.minute) // slot_minutes
+        rec_start = normalize_datetime(rec.start)
+        rec_day_offset = (rec_start.date() - reference_time.date()).days
+        slot_index = (rec_start.hour * 60 + rec_start.minute) // slot_minutes
+        physical_key = slot_key(rec_start, slot_minutes)
 
         # Use actual consumption for past slots (day_offset == 0 and slot has ended).
-        if rec_day_offset == 0 and slot_index in today_actuals:
-            per_slot_kwh = round(today_actuals[slot_index], 4)
+        if rec_day_offset == 0 and physical_key in today_actuals:
+            per_slot_kwh = round(today_actuals[physical_key], 4)
             actual_count += 1
         else:
             # Future slot: ML prediction.
             if seq_predictions:
                 # Sequential mode: use precomputed chained prediction.
-                day_preds = seq_predictions.get(rec_day_offset, {})
-                mean = day_preds.get(slot_index, 0.0)
+                mean = seq_predictions.get(physical_key, 0.0)
                 # Safety buffer: use DOW-slot std from raw groups.
                 std = 0.0
                 if predictor.trained:
-                    target_date = reference_time.date() + timedelta(days=rec_day_offset)
-                    dow = target_date.weekday()
-                    group = predictor._raw_groups.get((dow, slot_index), [])
+                    group = predictor._raw_groups.get(
+                        (rec_start.weekday(), slot_index), []
+                    )
                     if len(group) >= 2:
                         std = predictor._weighted_std(group)
                     elif mean > 0:
@@ -298,7 +374,10 @@ async def populate_ml_house_consumption(
             else:
                 # Independent mode: predict each slot separately.
                 mean, std = predictor.predict_with_std(
-                    slot_index, rec_day_offset, reference_time
+                    slot_index,
+                    rec_day_offset,
+                    reference_time,
+                    prediction_temperature,
                 )
             rel_uncertainty = std / mean if mean > 0 else 0.0
             if rel_uncertainty < 0.1:
@@ -344,24 +423,86 @@ async def populate_ml_house_consumption(
     return True, predictor
 
 
-def _compute_net_consumption(
-    import_history: list[tuple[datetime, int, float]],
-    export_history: list[tuple[datetime, int, float]],
-) -> list[tuple[datetime, int, float]]:
-    """Compute net consumption by subtracting export from import per slot."""
-    export_map: dict[tuple[date, int], float] = {}
-    for ts, slot, energy in export_history:
-        key = (ts.date(), slot)
-        export_map[key] = energy
+def _physical_elapsed(later: datetime, earlier: datetime) -> timedelta:
+    """Return elapsed time by UTC instant, retaining local calendar timestamps."""
+    later_aware = later if later.tzinfo is not None else later.astimezone()
+    earlier_aware = (
+        earlier
+        if earlier.tzinfo is not None
+        else earlier.replace(tzinfo=later_aware.tzinfo)
+    )
+    return utc_key(later_aware) - utc_key(earlier_aware)
 
-    net: list[tuple[datetime, int, float]] = []
+
+def _cache_is_fresh(cached_at: datetime, current: datetime) -> bool:
+    """Return whether a cache timestamp is within the physical refresh window."""
+    age = _physical_elapsed(current, cached_at)
+    return timedelta(0) <= age < _MIN_HISTORY_REFRESH
+
+
+def _history_meets_minimum_span(
+    history: list[_HistorySample],
+    reference_time: datetime,
+    min_days: int,
+) -> bool:
+    """Return whether aligned history can train and spans the configured window."""
+    if len(history) < 2:
+        return False
+    oldest_age_days = max(
+        _physical_elapsed(reference_time, timestamp).total_seconds() / 86400.0
+        for timestamp, _slot, _energy in history
+    )
+    return oldest_age_days >= min_days
+
+
+def _compute_net_consumption(
+    import_history: list[_HistorySample],
+    export_history: list[_HistorySample],
+) -> list[_HistorySample]:
+    """Compute net consumption for physical slots present in both channels."""
+    export_map = {
+        utc_key(ts): energy
+        for ts, _slot, energy in export_history
+        if math.isfinite(energy)
+    }
+
+    net: list[_HistorySample] = []
     for ts, slot, import_energy in import_history:
-        key = (ts.date(), slot)
-        export_energy = export_map.get(key, 0.0)
+        if not math.isfinite(import_energy):
+            continue
+        physical_key = utc_key(ts)
+        if physical_key not in export_map:
+            continue
+        export_energy = export_map[physical_key]
         net_energy = max(import_energy - export_energy, 0.01)
         net.append((ts, slot, round(net_energy, 4)))
 
     return net
+
+
+def _nearest_temperature(
+    temperatures: dict[datetime, float] | None,
+    target: datetime,
+) -> float | None:
+    """Return the temperature nearest to *target* by physical time.
+
+    The configured entity provides history rather than a future weather
+    forecast, so inference deliberately persists the newest nearby reading
+    through the prediction horizon.
+    """
+    finite_temperatures = {
+        timestamp: value
+        for timestamp, value in (temperatures or {}).items()
+        if math.isfinite(value)
+    }
+    if not finite_temperatures:
+        return None
+    target_key = utc_key(target)
+    nearest = min(
+        finite_temperatures,
+        key=lambda timestamp: abs((utc_key(timestamp) - target_key).total_seconds()),
+    )
+    return finite_temperatures[nearest]
 
 
 async def _read_temperature_history(
@@ -388,4 +529,10 @@ async def _read_temperature_history(
     if not raw_states:
         return {}
 
-    return dict(raw_states)
+    # Canonical UTC keys preserve both folds of an autumn repeated hour;
+    # local ZoneInfo datetimes with identical wall fields compare equal.
+    return {
+        utc_key(timestamp): value
+        for timestamp, value in raw_states
+        if math.isfinite(value)
+    }

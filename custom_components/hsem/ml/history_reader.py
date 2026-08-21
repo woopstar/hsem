@@ -10,6 +10,7 @@ loop responsive.
 
 from __future__ import annotations
 
+import math
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -19,6 +20,13 @@ from homeassistant.components.recorder import (
 from homeassistant.components.recorder.history import get_significant_states
 from homeassistant.core import HomeAssistant
 
+from custom_components.hsem.utils.datetime_utils import (
+    normalize_datetime,
+    normalize_slot_start,
+    now as hsem_now,
+    slot_key,
+    utc_key,
+)
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 
 # ---------------------------------------------------------------------------
@@ -89,8 +97,9 @@ class HistoryReader:
             ``slot_index`` is 0-based within the day (0 = 00:00-00:15 for
             15-min slots, up to 95 = 23:45-00:00).
         """
-        now = datetime.now().astimezone()
-        start_time = now - timedelta(days=max_days)
+        now = hsem_now()
+        end_time = utc_key(now)
+        start_time = end_time - timedelta(days=max_days)
 
         _LOGGER.debug(
             "ML history: fetching states for %s from %s to %s",
@@ -106,7 +115,7 @@ class HistoryReader:
             get_significant_states,
             self._hass,
             start_time,
-            now,
+            end_time,
             [entity_id],
             None,  # no significant_changes_only filter
             True,  # minimal_response
@@ -133,8 +142,10 @@ class HistoryReader:
         readings: list[tuple[datetime, float]] = []
         for state_obj in entity_states:
             try:
-                ts = state_obj.last_updated
+                ts = normalize_datetime(state_obj.last_updated)
                 value = float(state_obj.state)
+                if not math.isfinite(value):
+                    continue
                 readings.append((ts, value))
             except ValueError, TypeError, AttributeError:
                 continue
@@ -149,7 +160,7 @@ class HistoryReader:
             return []
 
         # Sort by timestamp ascending.
-        readings.sort(key=lambda x: x[0])
+        readings.sort(key=lambda item: utc_key(item[0]))
 
         # Compute per-slot consumption deltas from the accumulator.
         slots_per_day = 24 * 60 // slot_minutes
@@ -158,7 +169,7 @@ class HistoryReader:
         # Check minimum history requirement.
         if history:
             earliest = history[0][0]
-            actual_days = (now - earliest).total_seconds() / 86400.0
+            actual_days = (utc_key(now) - utc_key(earliest)).total_seconds() / 86400.0
             if actual_days < days:
                 _LOGGER.info(
                     "ML history: only %.1f days available for %s (need %d). "
@@ -191,8 +202,9 @@ class HistoryReader:
             List of ``(timestamp, value)`` sorted oldest-first.
             Empty list if insufficient history.
         """
-        now = datetime.now().astimezone()
-        start_time = now - timedelta(days=max_days)
+        now = hsem_now()
+        end_time = utc_key(now)
+        start_time = end_time - timedelta(days=max_days)
 
         states: dict[str, list[Any]] = await get_instance(
             self._hass
@@ -200,7 +212,7 @@ class HistoryReader:
             get_significant_states,
             self._hass,
             start_time,
-            now,
+            end_time,
             [entity_id],
             None,
             True,
@@ -217,17 +229,19 @@ class HistoryReader:
         readings: list[tuple[datetime, float]] = []
         for state_obj in entity_states:
             try:
-                ts = state_obj.last_updated
+                ts = normalize_datetime(state_obj.last_updated)
                 value = float(state_obj.state)
+                if not math.isfinite(value):
+                    continue
                 readings.append((ts, value))
             except ValueError, TypeError, AttributeError:
                 continue
 
-        readings.sort(key=lambda x: x[0])
+        readings.sort(key=lambda item: utc_key(item[0]))
 
         if readings:
             earliest = readings[0][0]
-            actual_days = (now - earliest).total_seconds() / 86400.0
+            actual_days = (utc_key(now) - utc_key(earliest)).total_seconds() / 86400.0
             if actual_days < days:
                 _LOGGER.info(
                     "ML history: only %.1f days available for %s (need %d).",
@@ -243,32 +257,44 @@ class HistoryReader:
         self,
         entity_id: str,
         slot_minutes: int = DEFAULT_SLOT_MINUTES,
-    ) -> dict[int, float]:
+    ) -> dict[datetime, float]:
         """Read today's completed-slot actual consumption from the energy sensor.
 
-        Queries the recorder for the last 24 hours of the energy accumulator
-        and computes per-slot deltas for today's slots that have already
-        ended.  In-progress and future slots are excluded.
+        Queries from one physical slot before HA-local midnight through now,
+        then computes deltas for today's completed slots. In-progress and
+        future slots are excluded.
 
         Args:
             entity_id: The energy accumulator entity ID.
             slot_minutes: Slot width in minutes.
 
         Returns:
-            Dict mapping ``slot_index`` → ``actual_kwh`` for completed
-            slots only.  Empty dict if no data is available.
+            Dict mapping canonical UTC slot-start datetime → ``actual_kwh``
+            for completed slots only.  Physical datetime identity is required
+            so both folds of an autumn repeated hour remain distinct.  Empty
+            dict if no data is available.
         """
-        now = datetime.now().astimezone()
-        midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        now = hsem_now()
+        midnight = now.replace(
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+            fold=0,
+        )
+        # Include one physical slot before local midnight.  Its final reading
+        # is the left boundary needed to calculate the first slot of today.
+        start_time = utc_key(midnight) - timedelta(minutes=slot_minutes)
+        end_time = utc_key(now)
 
-        # Fetch last 24h of states.
+        # Fetch the DST-safe local-day boundary range.
         states: dict[str, list[Any]] = await get_instance(
             self._hass
         ).async_add_executor_job(
             get_significant_states,
             self._hass,
-            midnight - (midnight.utcoffset() or timedelta(0)),
-            now,
+            start_time,
+            end_time,
             [entity_id],
             None,
             True,
@@ -283,8 +309,10 @@ class HistoryReader:
         readings: list[tuple[datetime, float]] = []
         for state_obj in entity_states:
             try:
-                ts = state_obj.last_updated
+                ts = normalize_datetime(state_obj.last_updated)
                 value = float(state_obj.state)
+                if not math.isfinite(value):
+                    continue
                 readings.append((ts, value))
             except ValueError, TypeError, AttributeError:
                 continue
@@ -292,16 +320,19 @@ class HistoryReader:
         if len(readings) < 2:
             return {}
 
-        readings.sort(key=lambda x: x[0])
+        readings.sort(key=lambda item: utc_key(item[0]))
 
         # Compute per-slot deltas for today only.
         slots_per_day = 24 * 60 // slot_minutes
         history = self._compute_slot_deltas(readings, now, slot_minutes, slots_per_day)
 
-        # Filter to today's completed slots and index by slot number.
-        actuals: dict[int, float] = {}
-        for _ts, slot_idx, energy in history:
-            actuals[slot_idx] = energy
+        # Filter to today's completed slots and key by physical slot identity.
+        # ``_compute_slot_deltas`` has already excluded the in-progress slot.
+        actuals: dict[datetime, float] = {}
+        for slot_start, _slot_idx, energy in history:
+            if slot_start.date() != now.date():
+                continue
+            actuals[slot_key(slot_start, slot_minutes)] = energy
 
         return actuals
 
@@ -327,28 +358,34 @@ class HistoryReader:
             List of ``(slot_start_dt, slot_index, energy_kwh)``.
         """
 
-        # Compute a unique slot key for each reading:
-        #   day_number * slots_per_day + slot_index
-        def slot_key(ts: datetime) -> int:
-            minutes_since_midnight = ts.hour * 60 + ts.minute
-            slot_idx = minutes_since_midnight // slot_minutes
-            return ts.toordinal() * slots_per_day + slot_idx
+        # ``slots_per_day`` remains part of the private signature for callers
+        # that already pre-compute it, but physical slot identity comes from a
+        # canonical UTC datetime rather than ``ordinal * slots_per_day``.  A
+        # wall-clock integer would collapse both folds of an autumn repeated
+        # hour and cannot represent a 92/100-slot DST day.
+        del slots_per_day
 
-        # Group readings by slot key.
-        slot_groups: dict[int, list[tuple[datetime, float]]] = {}
+        # Group readings by physical slot identity after converting recorder
+        # UTC timestamps to Home Assistant local time.  Calendar features
+        # (date, DOW, and wall slot) must be derived from the local timestamp;
+        # ordering and identity must remain UTC-based.
+        slot_groups: dict[datetime, list[tuple[datetime, float]]] = {}
         for ts, val in readings:
-            key = slot_key(ts)
-            slot_groups.setdefault(key, []).append((ts, val))
+            if not math.isfinite(val):
+                continue
+            local_ts = normalize_datetime(ts)
+            key = slot_key(local_ts, slot_minutes)
+            slot_groups.setdefault(key, []).append((local_ts, val))
 
         # Get the last reading of each slot.
-        slot_ends: list[tuple[int, datetime, float]] = []
+        slot_ends: list[tuple[datetime, datetime, float]] = []
         for key in sorted(slot_groups.keys()):
             group = slot_groups[key]
-            last_ts, last_val = max(group, key=lambda x: x[0])
+            last_ts, last_val = max(group, key=lambda x: utc_key(x[0]))
             slot_ends.append((key, last_ts, last_val))
 
         # Compute the slot key for "now" and skip incomplete current slot.
-        now_key = slot_key(now)
+        now_key = slot_key(now, slot_minutes)
         slot_ends = [(k, ts, v) for k, ts, v in slot_ends if k < now_key]
 
         if len(slot_ends) < 2:
@@ -357,24 +394,29 @@ class HistoryReader:
         # Compute deltas between consecutive slots.
         history: list[tuple[datetime, int, float]] = []
         for i in range(1, len(slot_ends)):
-            _prev_key, prev_ts, prev_val = slot_ends[i - 1]
-            _curr_key, _curr_ts, curr_val = slot_ends[i]
+            prev_key, _prev_ts, prev_val = slot_ends[i - 1]
+            curr_key, curr_ts, curr_val = slot_ends[i]
+
+            # Never turn a recorder outage into one oversized slot.  Only
+            # adjacent physical slots have compatible accumulator boundaries.
+            if curr_key - prev_key != timedelta(minutes=slot_minutes):
+                continue
+
             delta_kwh = curr_val - prev_val
 
-            # Skip negative deltas (accumulator resets) and zero deltas.
-            if delta_kwh <= 0:
+            # Skip non-finite, negative, reset, and zero deltas.
+            if not math.isfinite(delta_kwh) or delta_kwh <= 0:
                 continue
 
             # Cap unreasonably large deltas.
             if delta_kwh > MAX_SLOT_KWH:
                 continue
 
-            # Compute slot start time and slot index within the day.
-            slot_start = prev_ts.replace(
-                minute=(prev_ts.minute // slot_minutes) * slot_minutes,
-                second=0,
-                microsecond=0,
-            )
+            # Consecutive end-of-slot readings delimit the *current* slot.
+            # Labelling the delta with ``prev_ts`` shifts every observation one
+            # interval early.  Keep the local timestamp (including DST fold)
+            # for calendar features and expose the wall slot separately.
+            slot_start = normalize_slot_start(curr_ts, slot_minutes)
             slot_index = (slot_start.hour * 60 + slot_start.minute) // slot_minutes
 
             history.append((slot_start, slot_index, round(delta_kwh, 4)))

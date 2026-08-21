@@ -105,8 +105,9 @@ def slot_key(value: datetime, interval_minutes: int) -> datetime:
     inside HSEM.  Using it on both sides of a lookup guarantees that:
 
     - Slots from different timezones (e.g. ``ZoneInfo('Europe/Copenhagen')``
-      vs a fixed ``+02:00`` offset) that represent the same wall-clock instant
+      vs a fixed ``+02:00`` offset) that represent the same physical instant
       produce the same key.
+    - The two occurrences of an autumn repeated wall-clock hour remain distinct.
     - Sub-second jitter (microseconds) from ``dt_util.now()`` is stripped.
     - Timestamps with seconds != 0 (e.g. from ``dt_util.now()``) are floored
       to the interval boundary so they match planner slots anchored at midnight.
@@ -119,7 +120,18 @@ def slot_key(value: datetime, interval_minutes: int) -> datetime:
         A timezone-aware :class:`~datetime.datetime` that uniquely identifies
         the slot containing *value* under the given interval width.
     """
-    return normalize_slot_start(value, interval_minutes)
+    return utc_key(normalize_slot_start(value, interval_minutes))
+
+
+def slot_contains(start: datetime, end: datetime, value: datetime) -> bool:
+    """Return whether *value* is inside the half-open slot ``[start, end)``.
+
+    All operands are compared by UTC instant.  Direct comparisons between two
+    datetimes carrying the same :class:`zoneinfo.ZoneInfo` object compare their
+    wall-clock fields and can treat the two occurrences of an autumn repeated
+    hour as equal.
+    """
+    return utc_key(start) <= utc_key(value) < utc_key(end)
 
 
 def as_tz(value: datetime, tz: tzinfo | None) -> datetime:
