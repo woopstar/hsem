@@ -51,6 +51,8 @@ def _build_objective(
     usable_kwh: float = 0.0,
     max_charge_per_slot: float = 0.0,
     current_kwh: float = 0.0,
+    pv_avail: np.ndarray | None = None,  # type: ignore[name-defined]
+    base_load: np.ndarray | None = None,  # type: ignore[name-defined]
 ) -> np.ndarray:  # type: ignore[name-defined]
     """Build the linear objective vector for the MILP.
 
@@ -293,15 +295,25 @@ def _build_objective(
                     slot_mid = slot.start + (slot.end - slot.start) / 2
                     ha = hours_ahead(now, slot_mid)
                     discount = time_discount_rate**ha
-                # Battery-first cap (issue #775): when the battery has
-                # headroom to absorb this slot's surplus, the EV's benefit
-                # is capped at the battery's charge credit so the battery
-                # wins the surplus it can take.  ``battery_has_headroom`` is
-                # True whenever current_kwh < usable_kwh (the battery is not
-                # already full at horizon start) — a conservative, stable
-                # signal that avoids per-slot SoC tracking in the objective.
-                battery_has_headroom = current_kwh < usable_kwh - 1e-9
-                if battery_has_headroom:
+                # Battery-first cap (issue #775): the EV's benefit is capped
+                # at the battery's charge credit ONLY when the battery can
+                # absorb the full slot surplus.  The battery's per-slot
+                # absorption is ``min(max_charge_per_slot, usable_kwh -
+                # current_kwh)``.  When that is >= the slot's PV surplus, the
+                # battery takes it all and the EV should get nothing — so the
+                # EV's (speculative) benefit is capped at the battery's
+                # (concrete) charge credit.  When the battery cannot absorb
+                # the full surplus (e.g. a tiny battery, or the battery is
+                # nearly full), the EV keeps its full benefit for the
+                # remainder the battery cannot take.
+                slot_surplus = 0.0
+                if pv_avail is not None and base_load is not None:
+                    slot_surplus = max(float(pv_avail[t]) - float(base_load[t]), 0.0)
+                battery_absorption = min(
+                    max_charge_per_slot, max(usable_kwh - current_kwh, 0.0)
+                )
+                battery_takes_all = battery_absorption >= slot_surplus - 1e-9
+                if battery_takes_all and slot_surplus > 1e-9:
                     # Magnitude of the battery's charge credit at this slot
                     # (c_obj[ec] is negative = a credit).  Capping the EV
                     # benefit at this value makes the battery weakly

@@ -689,13 +689,13 @@ After the deadline slot `D`:
     to a tiny fixed `0.0001/η_charger` tiebreaker when no future price data is
     available.
   - **Battery-first benefit cap (issue #775)**: the EV's per-kWh benefit is
-    capped at the battery's charge credit (`abs(c_obj[ec[t]])`) whenever the
-    battery has headroom (`current_kwh < usable_kwh`).  The EV's
-    avoided-future-import value is a *speculative* benefit, whereas the
-    battery's charge credit is *concrete* (it has a scheduled discharge
-    window).  Capping the EV benefit at the battery credit makes the battery
-    weakly preferred for the surplus it can absorb; once the battery is
-    saturated, the EV's full value applies to the remaining surplus.  Without
+    capped at the battery's charge credit (`abs(c_obj[ec[t]])`) when the
+    battery can absorb the full slot surplus.  The battery's per-slot
+    absorption is `min(max_charge_per_slot, usable_kwh − current_kwh)`; when
+    that is ≥ the slot's PV surplus, the battery takes it all and the EV's
+    (speculative) benefit is capped at the battery's (concrete) charge credit.
+    When the battery cannot absorb the full surplus (tiny battery, or battery
+    nearly full), the EV keeps its full benefit for the remainder.  Without
     this cap, a high speculative EV value outranks the battery and the two
     oscillate for the same surplus across replans.
   - Because the benefit is priced in real currency terms, charge-past-target

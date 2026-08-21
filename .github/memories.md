@@ -500,21 +500,26 @@ Two mechanisms enforce this (both in `planner/milp/`):
    EVs are excluded — they keep their deadline benefit.
 2. **Objective benefit cap** (`_objective.py`): the EV's per-kWh
    charge-past-target benefit is capped at the battery's charge credit
-   (`abs(c_obj[ec_off + t])`) whenever the battery has headroom
-   (`current_kwh < usable_kwh`).  This makes the battery weakly preferred for
-   the surplus it can absorb; once the battery is saturated the EV's full
-   value applies to the remainder.
+   (`abs(c_obj[ec_off + t])`) when the battery can absorb the full slot
+   surplus.  The battery's per-slot absorption is
+   `min(max_charge_per_slot, usable_kwh − current_kwh)`; when that is ≥ the
+   slot's PV surplus, the EV's (speculative) benefit is capped at the
+   battery's (concrete) charge credit so the battery wins.  When the battery
+   cannot absorb the full surplus (tiny battery, or battery nearly full), the
+   EV keeps its full benefit for the remainder.
 
-`_build_objective` now receives `current_kwh` (added alongside `usable_kwh`)
-to evaluate the headroom signal.  The constraint row count `ev_battery_first_rows`
+`_build_objective` now receives `current_kwh`, `pv_avail`, and `base_load`
+(alongside the existing `usable_kwh` / `max_charge_per_slot`) to evaluate the
+per-slot absorption signal.  The constraint row count `ev_battery_first_rows`
 is `sum(1 for ev in active_evs if ev.charge_past_target) * m` and is included
 in `ev_total_rows`.
 
 The per-slot EV power freeze (`coordinator.py::_freeze_ev_charger_power_for_current_slot`,
-issue #738) must not revive a retracted charge: when the current plan has zero
-EV load for the slot (`ev_planned_load_kwh + ev_accounted_load_kwh < 1e-9`), the
-frozen non-zero command is zeroed and the baseline reset, so a charge the
-planner has cancelled stays cancelled.
+issue #738) must not revive a retracted charge: when the current plan's own
+power command is zero for the slot (the planner decided no charge), the frozen
+non-zero command is zeroed and the baseline reset, so a charge the planner has
+cancelled stays cancelled.  The retraction signal is the current plan's power
+field (read before it is overwritten), not the EV load fields.
 
 ## EV Pre-Deadline Target Cap (Issue #636 — Overcharge Fix)
 
