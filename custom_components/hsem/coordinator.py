@@ -1740,9 +1740,7 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 # zero command in the current plan means the planner decided
                 # no charge this slot.
                 primary_retracted = abs(slot.ev_charger_calculated_power) < 1e-9
-                second_retracted = (
-                    abs(slot.ev_second_charger_calculated_power) < 1e-9
-                )
+                second_retracted = abs(slot.ev_second_charger_calculated_power) < 1e-9
                 if primary_retracted and second_retracted:
                     if (
                         abs(self._current_slot_ev_power_w) > 1e-9
@@ -1759,8 +1757,12 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                         )
                     slot.ev_charger_calculated_power = 0.0
                     slot.ev_second_charger_calculated_power = 0.0
-                    self._current_slot_ev_power_w = 0.0
-                    self._current_slot_ev_second_power_w = 0.0
+                    # Do NOT zero the stored baseline — the retraction is a
+                    # one-time override for this replan.  If the MILP later
+                    # restores the charge in the same slot (e.g. the EV drops
+                    # below target SoC), the freeze must still be able to
+                    # restore the original slot-start command to prevent
+                    # magnitude oscillation (issue #738).
                 else:
                     if (
                         abs(
