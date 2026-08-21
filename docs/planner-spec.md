@@ -689,15 +689,21 @@ After the deadline slot `D`:
     to a tiny fixed `0.0001/η_charger` tiebreaker when no future price data is
     available.
   - **Battery-first benefit cap (issue #775)**: the EV's per-kWh benefit is
-    capped at the battery's charge credit (`abs(c_obj[ec[t]])`) when the
-    battery can absorb the full slot surplus.  The battery's per-slot
-    absorption is `min(max_charge_per_slot, usable_kwh − current_kwh)`; when
-    that is ≥ the slot's PV surplus, the battery takes it all and the EV's
-    (speculative) benefit is capped at the battery's (concrete) charge credit.
-    When the battery cannot absorb the full surplus (tiny battery, or battery
-    nearly full), the EV keeps its full benefit for the remainder.  Without
-    this cap, a high speculative EV value outranks the battery and the two
-    oscillate for the same surplus across replans.
+    capped at the battery's charge credit (`abs(c_obj[ec[t]])`) minus the
+    AC-side efficiency difference (`p_imp_obj[t] × (1/η_charge −
+    1/η_charger)`) when the battery can absorb the full slot surplus.  The
+    efficiency adjustment is required because the LP compares AC-side costs:
+    the battery consumes `1/η_charge` AC per 1 DC stored, while the EV
+    consumes `1/η_charger` AC per 1 DC.  Without the adjustment, equal
+    coefficients still favour the EV when `η_charge < η_charger` (the common
+    case).  The battery's per-slot absorption is
+    `min(max_charge_per_slot, usable_kwh − current_kwh)`; when that is ≥ the
+    slot's PV surplus, the battery takes it all and the EV's (speculative)
+    benefit is capped at the battery's (concrete) charge credit.  When the
+    battery cannot absorb the full surplus (tiny battery, or battery nearly
+    full), the EV keeps its full benefit for the remainder.  Without this cap,
+    a high speculative EV value outranks the battery and the two oscillate
+    for the same surplus across replans.
   - Because the benefit is priced in real currency terms, charge-past-target
     EV charging competes fairly against house battery charging (worth
     ~`p_imp` via avoided future import) and export (`p_exp`) — but the battery

@@ -318,8 +318,23 @@ def _build_objective(
                     # (c_obj[ec] is negative = a credit).  Capping the EV
                     # benefit at this value makes the battery weakly
                     # preferred for the surplus it can absorb.
+                    #
+                    # The cap must account for the AC-side efficiency
+                    # difference between the battery and the EV.  The LP
+                    # compares AC-side costs: the battery consumes
+                    # ``1/charge_eff`` AC per 1 DC stored, while the EV
+                    # consumes ``1/charger_eff`` AC per 1 DC.  When
+                    # ``charge_eff < charger_eff`` (the common case), the
+                    # battery's AC cost is higher, so equal coefficients
+                    # still favour the EV.  Subtracting the efficiency
+                    # difference (``p_imp_obj[t] * (1/charge_eff -
+                    # 1/charger_eff)``) from the cap ensures the battery is
+                    # weakly preferred for the surplus it can absorb.
                     battery_credit = abs(c_obj[ec_off + t])
-                    ev_value_t = min(ev_value, battery_credit)
+                    eff_adj = p_imp_obj[t] * (
+                        1.0 / _charge_eff_frac - 1.0 / ev.charger_efficiency
+                    )
+                    ev_value_t = min(ev_value, max(battery_credit - eff_adj, 0.0))
                 else:
                     ev_value_t = ev_value
                 # Negative coefficient = reduces objective = benefit.
