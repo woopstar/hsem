@@ -1722,31 +1722,74 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             else:
                 # Same slot — restore the frozen baseline so the charger
                 # command does not chase live conditions.
-                if (
-                    abs(
-                        slot.ev_charger_calculated_power - self._current_slot_ev_power_w
+                #
+                # The freeze pins the *magnitude* of the command, not the
+                # charge/no-charge *decision*.  When the current plan has
+                # retracted the EV charge for this slot (the planner set the
+                # command to zero — e.g. the MILP flipped from "charge EV" to
+                # "charge battery" after the EV reached its target SoC), a
+                # stale non-zero baseline must not be restored: that would
+                # keep commanding the charger to draw power for a charge the
+                # planner has already cancelled (issue #775).  Zero the
+                # command and reset the baseline so subsequent replans in
+                # this slot stay zero.
+                #
+                # The retraction signal is the current plan's own power field
+                # (``slot.ev_charger_calculated_power`` / ``..._second_``),
+                # read *before* it is overwritten by the frozen baseline.  A
+                # zero command in the current plan means the planner decided
+                # no charge this slot.
+                primary_retracted = abs(slot.ev_charger_calculated_power) < 1e-9
+                second_retracted = abs(slot.ev_second_charger_calculated_power) < 1e-9
+                if primary_retracted and second_retracted:
+                    if (
+                        abs(self._current_slot_ev_power_w) > 1e-9
+                        or abs(self._current_slot_ev_second_power_w) > 1e-9
+                    ):
+                        async_log(
+                            "debug",
+                            "[freeze] EV charge retracted for slot %s (current "
+                            "plan command is zero) — zeroing stale command: "
+                            "primary %dW→0W, second %dW→0W",
+                            s_start.isoformat(),
+                            self._current_slot_ev_power_w,
+                            self._current_slot_ev_second_power_w,
+                        )
+                    slot.ev_charger_calculated_power = 0.0
+                    slot.ev_second_charger_calculated_power = 0.0
+                    # Do NOT zero the stored baseline — the retraction is a
+                    # one-time override for this replan.  If the MILP later
+                    # restores the charge in the same slot (e.g. the EV drops
+                    # below target SoC), the freeze must still be able to
+                    # restore the original slot-start command to prevent
+                    # magnitude oscillation (issue #738).
+                else:
+                    if (
+                        abs(
+                            slot.ev_charger_calculated_power
+                            - self._current_slot_ev_power_w
+                        )
+                        > 1e-9
+                        or abs(
+                            slot.ev_second_charger_calculated_power
+                            - self._current_slot_ev_second_power_w
+                        )
+                        > 1e-9
+                    ):
+                        async_log(
+                            "debug",
+                            "[freeze] Restoring frozen EV power for slot %s: "
+                            "primary %dW→%dW, second %dW→%dW",
+                            s_start.isoformat(),
+                            slot.ev_charger_calculated_power,
+                            self._current_slot_ev_power_w,
+                            slot.ev_second_charger_calculated_power,
+                            self._current_slot_ev_second_power_w,
+                        )
+                    slot.ev_charger_calculated_power = self._current_slot_ev_power_w
+                    slot.ev_second_charger_calculated_power = (
+                        self._current_slot_ev_second_power_w
                     )
-                    > 1e-9
-                    or abs(
-                        slot.ev_second_charger_calculated_power
-                        - self._current_slot_ev_second_power_w
-                    )
-                    > 1e-9
-                ):
-                    async_log(
-                        "debug",
-                        "[freeze] Restoring frozen EV power for slot %s: "
-                        "primary %dW→%dW, second %dW→%dW",
-                        s_start.isoformat(),
-                        slot.ev_charger_calculated_power,
-                        self._current_slot_ev_power_w,
-                        slot.ev_second_charger_calculated_power,
-                        self._current_slot_ev_second_power_w,
-                    )
-                slot.ev_charger_calculated_power = self._current_slot_ev_power_w
-                slot.ev_second_charger_calculated_power = (
-                    self._current_slot_ev_second_power_w
-                )
             break
 
     def _apply_planner_output(self, output: PlannerOutput) -> None:

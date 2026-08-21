@@ -50,6 +50,9 @@ def _build_objective(
     fuse_active: bool,
     usable_kwh: float = 0.0,
     max_charge_per_slot: float = 0.0,
+    current_kwh: float = 0.0,
+    pv_avail: np.ndarray | None = None,  # type: ignore[name-defined]
+    base_load: np.ndarray | None = None,  # type: ignore[name-defined]
 ) -> np.ndarray:  # type: ignore[name-defined]
     """Build the linear objective vector for the MILP.
 
@@ -259,6 +262,24 @@ def _build_objective(
     # None), fall back to a tiny fixed tiebreaker benefit (0.0001 per kWh
     # AC) so surplus PV still prefers the EV over being wastefully
     # curtailed/exported at near-zero or negative prices.
+    #
+    # Battery-first priority (issue #775): the house battery must take its
+    # share of a slot's PV surplus BEFORE a charge-past-target EV absorbs
+    # any.  The EV's avoided-future-import value is a *speculative* benefit
+    # (it assumes the EV will need that energy later), whereas the battery's
+    # charge credit is a *concrete* one (the battery has a scheduled
+    # discharge window).  Without a guard, the speculative EV value can
+    # outrank the battery's charge credit and divert surplus the battery
+    # needs — the EV and battery then oscillate for the same surplus across
+    # replans.  To enforce battery-first, the EV's per-kWh benefit is capped
+    # at the battery's charge-side cost (the magnitude of the battery's
+    # charge credit, ``abs(c_obj[ec_off + t])``) whenever the battery has
+    # headroom to absorb surplus.  This makes the battery weakly preferred
+    # for the first ``max_charge_per_slot`` kWh of surplus (its absorption
+    # limit); once the battery is saturated, the EV's full value applies to
+    # the remaining surplus.  The shared surplus budget is enforced by the
+    # battery-first constraint in ``_constraints.py``.
+    _charge_eff_frac = 1.0 - charge_loss
     for ev_idx, ev in enumerate(active_evs):
         if ev.charge_past_target:
             ev_off = ev_var_offsets[ev_idx]
@@ -274,8 +295,50 @@ def _build_objective(
                     slot_mid = slot.start + (slot.end - slot.start) / 2
                     ha = hours_ahead(now, slot_mid)
                     discount = time_discount_rate**ha
+                # Battery-first cap (issue #775): the EV's benefit is capped
+                # at the battery's charge credit ONLY when the battery can
+                # absorb the full slot surplus.  The battery's per-slot
+                # absorption is ``min(max_charge_per_slot, usable_kwh -
+                # current_kwh)``.  When that is >= the slot's PV surplus, the
+                # battery takes it all and the EV should get nothing — so the
+                # EV's (speculative) benefit is capped at the battery's
+                # (concrete) charge credit.  When the battery cannot absorb
+                # the full surplus (e.g. a tiny battery, or the battery is
+                # nearly full), the EV keeps its full benefit for the
+                # remainder the battery cannot take.
+                slot_surplus = 0.0
+                if pv_avail is not None and base_load is not None:
+                    slot_surplus = max(float(pv_avail[t]) - float(base_load[t]), 0.0)
+                battery_absorption = min(
+                    max_charge_per_slot, max(usable_kwh - current_kwh, 0.0)
+                )
+                battery_takes_all = battery_absorption >= slot_surplus - 1e-9
+                if battery_takes_all and slot_surplus > 1e-9:
+                    # Magnitude of the battery's charge credit at this slot
+                    # (c_obj[ec] is negative = a credit).  Capping the EV
+                    # benefit at this value makes the battery weakly
+                    # preferred for the surplus it can absorb.
+                    #
+                    # The cap must account for the AC-side efficiency
+                    # difference between the battery and the EV.  The LP
+                    # compares AC-side costs: the battery consumes
+                    # ``1/charge_eff`` AC per 1 DC stored, while the EV
+                    # consumes ``1/charger_eff`` AC per 1 DC.  When
+                    # ``charge_eff < charger_eff`` (the common case), the
+                    # battery's AC cost is higher, so equal coefficients
+                    # still favour the EV.  Subtracting the efficiency
+                    # difference (``p_imp_obj[t] * (1/charge_eff -
+                    # 1/charger_eff)``) from the cap ensures the battery is
+                    # weakly preferred for the surplus it can absorb.
+                    battery_credit = abs(c_obj[ec_off + t])
+                    eff_adj = p_imp_obj[t] * (
+                        1.0 / _charge_eff_frac - 1.0 / ev.charger_efficiency
+                    )
+                    ev_value_t = min(ev_value, max(battery_credit - eff_adj, 0.0))
+                else:
+                    ev_value_t = ev_value
                 # Negative coefficient = reduces objective = benefit.
-                c_obj[ev_off + t] -= (ev_value / ev.charger_efficiency) * discount
+                c_obj[ev_off + t] -= (ev_value_t / ev.charger_efficiency) * discount
 
     # --- Fuse penalty cost (same magnitude as SOC penalties) ---
     # P_fuse = max(p_imp) * 100 — high enough that the solver only exceeds

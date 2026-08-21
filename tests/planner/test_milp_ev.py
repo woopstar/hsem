@@ -732,6 +732,158 @@ def test_charge_past_target_falls_back_to_tiebreaker_when_value_none():
 
 
 # ---------------------------------------------------------------------------
+# Battery-first surplus priority (issue #775)
+# ---------------------------------------------------------------------------
+
+
+@_pytestmark_scipy
+def test_charge_past_target_yields_surplus_to_house_battery():
+    """A charge-past-target EV must not divert PV surplus the house battery needs.
+
+    Mirrors the reported scenario: EV at target SoC (charge_past_target=True)
+    with a high avoided-future-import value (1.20) that would normally beat the
+    battery's charge credit, but the house battery is far from full and has a
+    large absorption capacity.  The battery-first constraint forces the battery
+    to take its share of the surplus first, so the EV gets nothing this slot.
+
+    A low export price (0.01) and a positive terminal replacement price (2.0)
+    make charging the battery genuinely worthwhile, so the LP *wants* to charge
+    it — the only thing that could stop it is the EV stealing the surplus.
+    """
+    slots = [
+        _make_slot(hour=14, day=15, import_price=1.50, export_price=0.01, pv_kwh=5.0)
+    ]
+
+    ev = EVConfig(
+        enabled=True,
+        initial_soc_kwh=40.0,
+        target_kwh=40.0,  # already at target
+        capacity_kwh=50.0,
+        max_charge_per_slot=5.0,
+        charger_efficiency=1.0,
+        charge_past_target=True,
+        future_value_per_kwh=1.20,
+    )
+
+    # House battery: 2 kWh currently stored, 10 kWh usable, can absorb up to
+    # 5 kWh this slot.  It is far from full, so it should take the surplus.
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=2.0,
+        usable_kwh=10.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=None,
+        replacement_price_per_kwh=2.0,
+        ev_configs=[ev],
+    )
+
+    assert result is not None
+    out_slots, _diag = result
+
+    # The battery must absorb the surplus (it has headroom), not the EV.
+    assert out_slots[0].batteries_charged_kwh > 1e-6, (
+        "House battery should charge from PV surplus when it has headroom"
+    )
+    # The EV must not take surplus the battery can absorb.
+    assert out_slots[0].ev_total_planned_load_kwh == pytest.approx(0.0, abs=1e-6), (
+        "EV should not divert surplus PV that the house battery can take"
+    )
+
+
+@_pytestmark_scipy
+def test_charge_past_target_absorbs_surplus_after_battery_full():
+    """Once the house battery is full, the EV may absorb the remaining surplus.
+
+    Same setup as the battery-first test, but the battery starts full
+    (current_kwh == usable_kwh) so it cannot absorb anything.  The EV's
+    avoided-future-import value (1.20) exceeds the export price (0.01), so the
+    EV should take the surplus that would otherwise be exported.
+    """
+    slots = [
+        _make_slot(hour=14, day=15, import_price=1.50, export_price=0.01, pv_kwh=5.0)
+    ]
+
+    ev = EVConfig(
+        enabled=True,
+        initial_soc_kwh=40.0,
+        target_kwh=40.0,  # already at target
+        capacity_kwh=50.0,
+        max_charge_per_slot=5.0,
+        charger_efficiency=1.0,
+        charge_past_target=True,
+        future_value_per_kwh=1.20,
+    )
+
+    # Battery starts full — no headroom to absorb surplus.
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=10.0,
+        usable_kwh=10.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=None,
+        replacement_price_per_kwh=2.0,
+        ev_configs=[ev],
+    )
+
+    assert result is not None
+    out_slots, _diag = result
+
+    # With the battery full, the EV should absorb the surplus (its value
+    # exceeds the export price), not let it be exported.
+    assert out_slots[0].ev_total_planned_load_kwh > 1e-6, (
+        "EV should absorb surplus PV once the house battery is full"
+    )
+
+
+@_pytestmark_scipy
+def test_battery_first_does_not_block_pre_deadline_ev():
+    """The battery-first constraint must not block a below-target (deadline) EV.
+
+    A below-target EV keeps its deadline benefit and may charge ahead of the
+    battery.  This guards against the battery-first row accidentally applying
+    to pre-deadline EVs and starving them of the surplus they need to meet
+    their deadline.
+    """
+    slots = [
+        _make_slot(hour=14, day=15, import_price=1.50, export_price=0.89, pv_kwh=5.0)
+    ]
+
+    # Below-target EV with a deadline: needs +10 kWh by slot 0.
+    ev = EVConfig(
+        enabled=True,
+        initial_soc_kwh=40.0,
+        target_kwh=50.0,
+        capacity_kwh=50.0,
+        max_charge_per_slot=5.0,
+        charger_efficiency=1.0,
+        deadline_slot=0,
+        charge_past_target=False,
+    )
+
+    # House battery has headroom, but the EV's deadline benefit should let it
+    # charge from the surplus regardless.
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=2.0,
+        usable_kwh=10.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=None,
+        ev_configs=[ev],
+    )
+
+    assert result is not None
+    out_slots, _diag = result
+
+    # The below-target EV should still charge (deadline benefit dominates).
+    assert out_slots[0].ev_total_planned_load_kwh > 1e-6, (
+        "Below-target EV should still charge from surplus to meet its deadline"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Target-cap constraint (issue #636)
 # ---------------------------------------------------------------------------
 

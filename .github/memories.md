@@ -482,6 +482,45 @@ When no future price data is available, the MILP falls back to a tiny fixed
 tiebreaker (0.0001/kWh AC) in `milp_optimizer.py`. Never hardcode a
 replacement constant here — always source it from `ev_future_charge_value_per_kwh()`.
 
+## EV Battery-First Surplus Priority (issue #775)
+
+When the EV is at/above its target SoC (charge-past-target mode), surplus PV
+must fill the **house battery first**; the EV only absorbs what the battery
+cannot take.  Without this, the EV's speculative avoided-future-import value
+(issue #630) outranks the battery's concrete charge credit, and the EV and
+battery oscillate for the same surplus across replans.
+
+Two mechanisms enforce this (both in `planner/milp/`):
+
+1. **Shared surplus-budget constraint** (`_constraints.py`): one row per slot,
+   emitted once by the first charge-past-target EV:
+   `ec[t] + Σ ev_c[t]/η_charger ≤ max(0, pv[t] − base_load[t])`.  The battery
+   (`ec`) and every charge-past-target EV share the slot's PV surplus budget,
+   so the EV can only use what the battery leaves.  Pre-deadline (below-target)
+   EVs are excluded — they keep their deadline benefit.
+2. **Objective benefit cap** (`_objective.py`): the EV's per-kWh
+   charge-past-target benefit is capped at the battery's charge credit
+   (`abs(c_obj[ec_off + t])`) when the battery can absorb the full slot
+   surplus.  The battery's per-slot absorption is
+   `min(max_charge_per_slot, usable_kwh − current_kwh)`; when that is ≥ the
+   slot's PV surplus, the EV's (speculative) benefit is capped at the
+   battery's (concrete) charge credit so the battery wins.  When the battery
+   cannot absorb the full surplus (tiny battery, or battery nearly full), the
+   EV keeps its full benefit for the remainder.
+
+`_build_objective` now receives `current_kwh`, `pv_avail`, and `base_load`
+(alongside the existing `usable_kwh` / `max_charge_per_slot`) to evaluate the
+per-slot absorption signal.  The constraint row count `ev_battery_first_rows`
+is `sum(1 for ev in active_evs if ev.charge_past_target) * m` and is included
+in `ev_total_rows`.
+
+The per-slot EV power freeze (`coordinator.py::_freeze_ev_charger_power_for_current_slot`,
+issue #738) must not revive a retracted charge: when the current plan's own
+power command is zero for the slot (the planner decided no charge), the frozen
+non-zero command is zeroed and the baseline reset, so a charge the planner has
+cancelled stays cancelled.  The retraction signal is the current plan's power
+field (read before it is overwritten), not the EV load fields.
+
 ## EV Pre-Deadline Target Cap (Issue #636 — Overcharge Fix)
 
 In `milp_optimizer.py`, the EV deadline benefit coefficient (`-ev_penalty_cost`)
