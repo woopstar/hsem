@@ -475,7 +475,11 @@ class TestRegisterListeners:
 
         registered_entities: list[str] = []
 
-        def _fake_track(hass, entities, callback):
+        def _fake_track(
+            hass: MagicMock,
+            entities: list[str],
+            callback: object,
+        ) -> MagicMock:
             registered_entities.extend(entities)
             return MagicMock()
 
@@ -502,7 +506,11 @@ class TestRegisterListeners:
 
         registrations: list[list[str]] = []
 
-        def _fake_track(hass, entities, callback):
+        def _fake_track(
+            hass: MagicMock,
+            entities: list[str],
+            callback: object,
+        ) -> MagicMock:
             registrations.append(list(entities))
             return MagicMock()
 
