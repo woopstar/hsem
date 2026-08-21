@@ -5,18 +5,22 @@ regression on mixed categorical (DOW, slot) and continuous (day-of-year,
 temperature) features.  L2 regularization naturally handles data sparsity.
 
 Features (index order):
-  0 .. 6*S-1    one-hot (DOW, slot)     — 672 for 15-min
-  6*S, 6*S+1    sin/cos day-of-year      — seasonality
-  6*S+2         temperature (optional)   — weather-driven load
+  0 .. 7*S-1    one-hot (DOW, slot)     — 672 for 15-min
+  7*S, 7*S+1    sin/cos day-of-year      — seasonality
+  7*S+2         temperature (optional)   — weather-driven load
 """
 
 from __future__ import annotations
 
 import math
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import override
 
 import numpy as np
+
+type _SampleFingerprint = tuple[
+    datetime, int, int, int, float, float | None, float | None
+]
 
 
 class ConsumptionPredictor:
@@ -35,7 +39,8 @@ class ConsumptionPredictor:
         decay_days: Exponential time-decay half-life in days.
         alpha: L2 regularization strength.
         slots_per_day: Number of time slots per 24h day.
-        retrain_min_new_samples: Minimum new samples before refitting.
+        retrain_min_new_samples: Minimum unseen or revised valid samples
+            since the last fit before refitting.
         use_temperature: Whether to include temperature as a feature.
     """
 
@@ -56,10 +61,10 @@ class ConsumptionPredictor:
         self._use_sequential = use_sequential
 
         # Feature layout:
-        #   0 .. 6*S-1  = one-hot DOW×slot
-        #   6*S, 6*S+1  = sin/cos day-of-year
-        #   6*S+2       = temperature (if use_temperature)
-        #   6*S+3       = lag feature (prev slot energy, if use_sequential)
+        #   0 .. 7*S-1  = one-hot DOW×slot
+        #   7*S, 7*S+1  = sin/cos day-of-year
+        #   7*S+2       = temperature (if use_temperature)
+        #   7*S+3       = lag feature (prev slot energy, if use_sequential)
         self._n_onehot = 7 * slots_per_day
         self._doy_offset = self._n_onehot
         self._temp_offset = self._n_onehot + 2
@@ -79,8 +84,16 @@ class ConsumptionPredictor:
 
         self._last_fit_samples: int = 0
         self._last_fit_time: datetime | None = None
+        self._last_fit_fingerprints: set[_SampleFingerprint] = set()
         #: Actual calendar days spanned by the input history (set by populator).
         self.actual_history_days: float = 0.0
+        #: Effective source/configuration used for the fitted coefficients.
+        #: The populator replaces the predictor whenever this changes so the
+        #: retrain gate cannot retain coefficients from another
+        #: entity, net/gross mode, interval, or history context.
+        self.training_context: (
+            tuple[str, str | None, bool, int, int, str | None] | None
+        ) = None
 
     @property
     def days_of_history(self) -> float:
@@ -116,6 +129,18 @@ class ConsumptionPredictor:
         """
         if reference_time is None:
             reference_time = datetime.now().astimezone()
+        reference_aware = (
+            reference_time
+            if reference_time.tzinfo is not None
+            else reference_time.astimezone()
+        )
+
+        def as_aware(timestamp: datetime) -> datetime:
+            return (
+                timestamp
+                if timestamp.tzinfo is not None
+                else timestamp.replace(tzinfo=reference_aware.tzinfo)
+            )
 
         n = len(history)
         if n < 2:
@@ -130,18 +155,28 @@ class ConsumptionPredictor:
         temps = temperatures or {}
         self._raw_groups.clear()
 
-        # For sequential mode: track previous slot's energy as lag feature.
+        # Sequential lag follows physical time, not wall-clock slot order.
+        slot_duration = timedelta(minutes=1440 // self._slots_per_day)
         prev_energy = 0.0
+        prev_timestamp_utc: datetime | None = None
+        valid_fingerprints: set[_SampleFingerprint] = set()
 
         valid = 0
-        for ts, slot, energy in history:
+        ordered_history = sorted(
+            history,
+            key=lambda sample: as_aware(sample[0]).astimezone(UTC),
+        )
+        for ts, slot, energy in ordered_history:
             if slot < 0 or slot >= self._slots_per_day:
                 continue
-            if energy <= 0:
+            if not math.isfinite(energy) or energy <= 0:
                 continue
 
-            ts_aware = ts if ts.tzinfo is not None else ts.astimezone()
-            age_days = (reference_time - ts_aware).total_seconds() / 86400.0
+            ts_aware = as_aware(ts)
+            ts_utc = ts_aware.astimezone(UTC)
+            age_days = (
+                reference_aware.astimezone(UTC) - ts_utc
+            ).total_seconds() / 86400.0
             if age_days < 0:
                 continue
 
@@ -159,6 +194,7 @@ class ConsumptionPredictor:
             X[valid, self._doy_offset + 1] = math.cos(2 * math.pi * doy / 365.0)
 
             # Temperature feature.
+            temperature_value: float | None = None
             if self._use_temperature:
                 # Match temperature by slot-start timestamp (nearest).
                 slot_start = ts_aware.replace(
@@ -167,28 +203,53 @@ class ConsumptionPredictor:
                     second=0,
                     microsecond=0,
                 )
-                temp_val = self._lookup_temperature(temps, slot_start)
-                X[valid, self._temp_offset] = temp_val
+                temperature_value = self._lookup_temperature(temps, slot_start)
+                X[valid, self._temp_offset] = temperature_value
 
-            # Lag feature: previous slot's energy.
+            # A lag is valid only across one exact physical interval.  Reset
+            # after recorder gaps, rejected readings, and accumulator resets.
+            lag_value: float | None = None
             if self._use_sequential:
-                X[valid, self._lag_offset] = prev_energy
+                is_contiguous = (
+                    prev_timestamp_utc is not None
+                    and ts_utc - prev_timestamp_utc == slot_duration
+                )
+                lag_value = prev_energy if is_contiguous else 0.0
+                X[valid, self._lag_offset] = lag_value
+
+            # Fingerprint every input that can change this sample's feature
+            # row or target.  UTC identifies the physical observation while
+            # local calendar fields preserve the model's HA-local features.
+            valid_fingerprints.add(
+                (
+                    ts_utc,
+                    dow,
+                    doy,
+                    slot,
+                    float(energy),
+                    temperature_value,
+                    lag_value,
+                )
+            )
 
             y[valid] = energy
             w[valid] = math.exp(-age_days / max(self._decay_days, 0.5))
             prev_energy = energy
+            prev_timestamp_utc = ts_utc
             valid += 1
 
         if valid < 2:
             self._coef = None
             return
 
-        # Retrain gate.
-        new_samples = valid - self._last_fit_samples
+        # Retrain only after enough genuinely new or revised valid samples.
+        # A rolling history often keeps a constant length, so sample count
+        # alone cannot detect that old observations slid out and new ones in.
+        changed_samples = len(valid_fingerprints - self._last_fit_fingerprints)
         if (
             self._coef is not None
-            and self._last_fit_samples > 0
-            and new_samples < self._retrain_min_new
+            and self._last_fit_fingerprints
+            and changed_samples < self._retrain_min_new
         ):
             self._X = X[:valid]
             self._y = y[:valid]
@@ -203,6 +264,8 @@ class ConsumptionPredictor:
         self._y = y
         self._w = w
         self._fit(X, y, w)
+        self._last_fit_time = reference_aware
+        self._last_fit_fingerprints = valid_fingerprints
 
     def predict(
         self,
@@ -263,38 +326,48 @@ class ConsumptionPredictor:
 
     def predict_sequential(
         self,
-        day_offset: int = 0,
-        reference_time: datetime | None = None,
-        temperatures: dict[int, float] | None = None,
-    ) -> dict[int, float]:
-        """Predict all slots sequentially, feeding each prediction as lag input.
+        slot_starts: list[datetime],
+        temperatures: dict[datetime, float] | None = None,
+    ) -> dict[datetime, float]:
+        """Predict recommendation slots in physical order with a lag chain.
 
-        Slot 0 is predicted with prev_energy=0.  Slot 1 uses slot 0's
-        prediction as its lag feature, and so on.  This captures intra-day
-        momentum that independent per-slot predictions miss.
+        The caller supplies the real HA-local recommendation timestamps.
+        Canonical UTC keys keep both autumn folds distinct, while physical
+        ordering skips nonexistent spring wall slots.  Any physical gap
+        resets the lag instead of joining unrelated observations.
         """
         if self._coef is None:
             return {}
 
-        if reference_time is None:
-            reference_time = datetime.now().astimezone()
-
-        target_date = reference_time.date() + timedelta(days=day_offset)
         temps = temperatures or {}
+        slot_minutes = 1440 // self._slots_per_day
+        slot_duration = timedelta(minutes=slot_minutes)
         prev = 0.0
+        prev_timestamp_utc: datetime | None = None
 
-        result: dict[int, float] = {}
-        for s in range(self._slots_per_day):
-            slot_dt = datetime(
-                target_date.year,
-                target_date.month,
-                target_date.day,
-                tzinfo=reference_time.tzinfo,
-            ) + timedelta(minutes=s * (1440 // self._slots_per_day))
-            temp_val = temps.get(s)
-            pred = float(self._predict_from_features(slot_dt, s, temp_val, prev))
-            result[s] = pred
+        # De-duplicate only identical physical instants.  Repeated local wall
+        # slots on an autumn DST day have different UTC keys and survive.
+        physical_slots: dict[datetime, datetime] = {}
+        for timestamp in slot_starts:
+            aware = (
+                timestamp if timestamp.tzinfo is not None else timestamp.astimezone()
+            )
+            physical_slots[aware.astimezone(UTC)] = aware
+
+        result: dict[datetime, float] = {}
+        for physical_start in sorted(physical_slots):
+            slot_dt = physical_slots[physical_start]
+            slot = (slot_dt.hour * 60 + slot_dt.minute) // slot_minutes
+            temp_val = self._lookup_temperature(temps, slot_dt) if temps else None
+            is_contiguous = (
+                prev_timestamp_utc is not None
+                and physical_start - prev_timestamp_utc == slot_duration
+            )
+            lag = prev if is_contiguous else 0.0
+            pred = float(self._predict_from_features(slot_dt, slot, temp_val, lag))
+            result[physical_start] = pred
             prev = pred
+            prev_timestamp_utc = physical_start
         return result
 
     def predict_all_slots(
@@ -350,7 +423,11 @@ class ConsumptionPredictor:
             2 * math.pi * doy / 365.0
         )
 
-        if self._use_temperature and temperature is not None:
+        if (
+            self._use_temperature
+            and temperature is not None
+            and math.isfinite(temperature)
+        ):
             pred += float(self._coef[self._temp_offset]) * temperature
 
         if self._use_sequential:
@@ -439,7 +516,6 @@ class ConsumptionPredictor:
         self._coef = coef
 
         self._last_fit_samples = X.shape[0]
-        self._last_fit_time = datetime.now().astimezone()
 
     def _weighted_std(self, samples: list[tuple[float, float]]) -> float:
         """Compute time-decay weighted standard deviation."""
@@ -462,15 +538,28 @@ class ConsumptionPredictor:
         temperatures: dict[datetime, float],
         target: datetime,
     ) -> float:
-        """Find the temperature closest to the target timestamp."""
-        if not temperatures:
+        """Find the temperature closest to the target physical timestamp."""
+        finite_temperatures = [
+            (timestamp, value)
+            for timestamp, value in temperatures.items()
+            if math.isfinite(value)
+        ]
+        if not finite_temperatures:
             return 0.0
-        best = min(
-            temperatures.keys(),
-            key=lambda t: abs((t - target).total_seconds()),
-            default=target,
-        )
-        return temperatures.get(best, 0.0)
+        target_aware = target if target.tzinfo is not None else target.astimezone()
+        target_utc = target_aware.astimezone(UTC)
+
+        def physical_distance(item: tuple[datetime, float]) -> float:
+            timestamp = item[0]
+            aware = (
+                timestamp
+                if timestamp.tzinfo is not None
+                else timestamp.replace(tzinfo=target_aware.tzinfo)
+            )
+            return abs((aware.astimezone(UTC) - target_utc).total_seconds())
+
+        _best_timestamp, best_value = min(finite_temperatures, key=physical_distance)
+        return best_value
 
     # ------------------------------------------------------------------
     # Properties
@@ -489,6 +578,29 @@ class ConsumptionPredictor:
     @property
     def slots_per_day(self) -> int:
         return self._slots_per_day
+
+    @property
+    def decay_days(self) -> float:
+        """Return the current exponential time-decay half-life in days."""
+        return self._decay_days
+
+    @decay_days.setter
+    def decay_days(self, value: float) -> None:
+        """Refresh decay for a reused predictor before its next training pass."""
+        if not math.isfinite(value) or value <= 0:
+            msg = "decay_days must be finite and positive"
+            raise ValueError(msg)
+        self._decay_days = value
+
+    @property
+    def use_temperature(self) -> bool:
+        """Return whether the fitted feature layout includes temperature."""
+        return self._use_temperature
+
+    @property
+    def use_sequential(self) -> bool:
+        """Return whether the fitted feature layout includes the lag feature."""
+        return self._use_sequential
 
     @property
     def last_fit_time(self) -> datetime | None:
