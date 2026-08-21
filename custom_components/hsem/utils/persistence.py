@@ -18,7 +18,7 @@ def finite_float(
         return None
     try:
         parsed = float(value)
-    except (TypeError, ValueError, OverflowError):
+    except TypeError, ValueError, OverflowError:
         return None
     if not math.isfinite(parsed):
         return None
@@ -35,12 +35,12 @@ def aware_datetime_from_iso(value: Any) -> datetime | None:
         return None
     try:
         parsed = datetime.fromisoformat(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         return None
     try:
         parsed.astimezone(UTC)
-    except (OverflowError, ValueError):
+    except OverflowError, ValueError:
         return None
     return parsed
