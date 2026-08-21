@@ -535,6 +535,19 @@ def solve_milp(
     b_ub = constraints["b_ub"]
     bounds = constraints["bounds"]
 
+    # Fail fast if the positional bounds list is not exactly one entry per
+    # LP variable.  A wrong-width or missing block would otherwise silently
+    # misalign the bounds array handed to linprog and produce either an
+    # opaque solver failure or, worse, bounds applied to the wrong variables.
+    if len(bounds) != n_vars:
+        log_planner(
+            "error",
+            "[milp] bounds layout mismatch: %d bounds for %d variables",
+            len(bounds),
+            n_vars,
+        )
+        return None
+
     # ------------------------------------------------------------------
     # Solve using HiGHS
     # ------------------------------------------------------------------
