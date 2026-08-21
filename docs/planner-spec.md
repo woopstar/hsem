@@ -554,6 +554,13 @@ the MILP decides **when and how much each EV charges**.
   way to `capacity_kwh` regardless of the actual shortfall.
 - **Surplus-only for charge-past-target**: When `charge_past_target=True`,
   `ev_c[t]/η_charger ≤ max(0, pv[t] − base_load[t])` — charging only from PV surplus.
+- **Battery-first for charge-past-target (issue #775)**: When `charge_past_target=True`,
+  the house battery must take its share of the slot's PV surplus before the EV
+  absorbs any.  A shared per-slot row enforces
+  `ec[t] + Σ_ev ev_c[t]/η_charger ≤ max(0, pv[t] − base_load[t])` across all
+  charge-past-target EVs, so the EV can only use surplus the battery cannot
+  take.  Combined with the objective-side benefit cap (below), this guarantees
+  the battery fills first and the EV only absorbs the remainder.
 - No discharge: `ev_c[t] ≥ 0` (via bounds).
 
 **Energy balance** includes EV AC load:
@@ -639,7 +646,7 @@ has zero cost.  The LP always uses available PV to cover house load first.
 |---|---|---|---|
 | 2a | Charge house battery | `charge_loss × p_imp[t]` | Battery below `usable_kwh`, future savings justify the minor conversion loss |
 | 2b | Charge EV (pre-deadline, below target) | `-ev_penalty_cost` (benefit) + `p_imp[t]` (via grid) or `0` (via surplus) | EV below target, `t ≤ D` — the **deadline benefit** forces charging; PV used first, grid import when PV insufficient |
-| 2c | Charge EV (post-deadline, past target) | **−0.0001 / charger_eff** (benefit) | `t > D`, `charge_past_target=True`. Surplus-only constraint: `ev_c/eff ≤ pv − base_load`. House battery fills first, then export, then EV gets remainder |
+| 2c | Charge EV (post-deadline, past target) | **−future_value/η_charger** (benefit, capped at battery charge credit while battery has headroom — issue #775) | `t > D`, `charge_past_target=True`. Surplus-only + battery-first constraints: `ev_c/eff ≤ pv − base_load` and `ec + Σ ev_c/eff ≤ pv − base_load`. House battery fills first, then EV gets the remainder, then export |
 | 2d | Export to grid | **−p_exp[t]** (revenue) | Battery full, EV doesn't want surplus, export price > 0 |
 | 2e | Curtail PV | `0` (free) | Battery full, EV doesn't want surplus, `p_exp ≤ 0` (export costs money or is blocked) |
 
@@ -672,16 +679,29 @@ After the deadline slot `D`:
   charge, but only from genuine PV surplus that would otherwise be curtailed
   or exported at near-zero prices:
   - Surplus-only constraint: `ev_c[t]/η_charger ≤ max(0, pv[t] − base_load[t])`
+  - **Battery-first constraint (issue #775)**: `ec[t] + Σ ev_c[t]/η_charger ≤
+    max(0, pv[t] − base_load[t])` — the house battery takes its share of the
+    surplus first; the EV only absorbs what the battery cannot take.
   - Benefit: `-future_value_per_kwh/η_charger` per kWh AC (issue #630), where
     `future_value_per_kwh` is the avoided cost of importing the same energy
     later (`confidence_factor × mean(import_price)` over the next 24h — see
     `ev_future_charge_value_per_kwh` in `candidate_selector.py`). Falls back
-    to a tiny fixed `0.0001/η_charger` tiebreaker when no future price data
-    is available.
+    to a tiny fixed `0.0001/η_charger` tiebreaker when no future price data is
+    available.
+  - **Battery-first benefit cap (issue #775)**: the EV's per-kWh benefit is
+    capped at the battery's charge credit (`abs(c_obj[ec[t]])`) whenever the
+    battery has headroom (`current_kwh < usable_kwh`).  The EV's
+    avoided-future-import value is a *speculative* benefit, whereas the
+    battery's charge credit is *concrete* (it has a scheduled discharge
+    window).  Capping the EV benefit at the battery credit makes the battery
+    weakly preferred for the surplus it can absorb; once the battery is
+    saturated, the EV's full value applies to the remaining surplus.  Without
+    this cap, a high speculative EV value outranks the battery and the two
+    oscillate for the same surplus across replans.
   - Because the benefit is priced in real currency terms, charge-past-target
     EV charging competes fairly against house battery charging (worth
-    ~`p_imp` via avoided future import) and export (`p_exp`) — whichever has
-    the higher genuine avoided-cost value wins the surplus for that slot.
+    ~`p_imp` via avoided future import) and export (`p_exp`) — but the battery
+    always wins the surplus it can absorb (issue #775).
   - Grid import is never used for post-deadline EV charging.
 
 #### 5. Terminal SoC (horizon-end valuation)
@@ -797,12 +817,16 @@ future_value_per_kwh = confidence_factor × mean(import_price[t] for t in next 2
 
 Because this benefit is priced in the same currency units as `p_imp` and
 `p_exp`, the MILP lets charge-past-target EV charging compete fairly
-against house battery charging and export — whichever has the higher
-genuine avoided-cost value wins the surplus for that slot. When no future
-price data is available (`future_value_per_kwh` is `None`, e.g. missing
-forecast), the MILP falls back to a tiny fixed tiebreaker
-(`0.0001`/kWh AC) so surplus PV still prefers the EV over being wastefully
-curtailed/exported at near-zero or negative prices.
+against house battery charging and export.  However, the house battery always
+wins the surplus it can absorb (issue #775): the EV's benefit is capped at the
+battery's charge credit while the battery has headroom, and a shared
+battery-first constraint (`ec[t] + Σ ev_c[t]/η ≤ pv − base_load`) reserves the
+battery's share of the surplus.  The EV only absorbs surplus the battery
+cannot take. When no future price data is available (`future_value_per_kwh`
+is `None`, e.g. missing forecast), the MILP falls back to a tiny fixed
+tiebreaker (`0.0001`/kWh AC) so surplus PV still prefers the EV over being
+wastefully curtailed/exported at near-zero or negative prices — but only
+after the battery has taken its share.
 
 ### Grid import power limit (main fuse / tariff protection)
 

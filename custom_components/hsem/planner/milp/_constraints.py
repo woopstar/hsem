@@ -237,12 +237,17 @@ def _build_constraints(
     )
     # Surplus-only rows: for charge-past-target EVs, ev_c[t]/eff ≤ max(0, pv[t] - base_load[t])
     ev_surplus_rows = sum(1 for ev in active_evs if ev.charge_past_target) * m
+    # Battery-first rows (issue #775): for charge-past-target EVs, the EV may
+    # only absorb PV surplus that the house battery cannot take.  One shared
+    # row per slot: ec[t] + Σ ev_c[t]/eff ≤ max(0, pv[t] - base_load[t]).
+    ev_battery_first_rows = sum(1 for ev in active_evs if ev.charge_past_target) * m
     ev_total_rows = (
         ev_soc_rows
         + ev_deadline_rows
         + ev_target_rows
         + ev_post_deadline_rows
         + ev_surplus_rows
+        + ev_battery_first_rows
     )
 
     if ev_total_rows > 0:
@@ -256,6 +261,12 @@ def _build_constraints(
         b_ub[:existing_rows] = b_ub_old
 
         ev_row = existing_rows
+        # Index of the first charge-past-target EV (into active_evs).  The
+        # battery-first row is shared across all such EVs, so it is emitted
+        # once, by this EV (issue #775).
+        first_past_target_ev = next(
+            (i for i, e in enumerate(active_evs) if e.charge_past_target), None
+        )
         for ev_idx, ev in enumerate(active_evs):
             ev_off = ev_var_offsets[ev_idx]
             # EV SOC upper bound per slot: Σ_{k≤t} ev_c[k] ≤ cap − init
@@ -331,6 +342,33 @@ def _build_constraints(
                 for t in range(m):
                     surplus_kwh = max(pv_avail[t] - base_load[t], 0.0)
                     A_ub[ev_row + t, ev_off + t] = 1.0 / ev.charger_efficiency
+                    b_ub[ev_row + t] = surplus_kwh
+                ev_row += m
+
+            # Battery-first constraint for charge-past-target EVs (issue #775):
+            #   ec[t] + Σ_ev ev_c[t] / charger_eff ≤ max(0, pv[t] - base_load[t])
+            # The house battery must take its share of the slot's PV surplus
+            # BEFORE the EV absorbs any.  Without this, a charge-past-target
+            # EV valued at its avoided-future-import cost (issue #630) can
+            # outrank the battery's charge credit and divert surplus PV that
+            # the battery needs for its scheduled discharge window — the EV
+            # and battery then oscillate for the same surplus across replans.
+            #
+            # The row is shared across all charge-past-target EVs (the battery
+            # is a single resource), so it is only emitted for the first such
+            # EV; every charge-past-target EV's ev_c[t] contributes to it.
+            # Pre-deadline (below-target) EVs are deliberately excluded — they
+            # keep their deadline benefit and may charge ahead of the battery.
+            if ev.charge_past_target and ev_idx == first_past_target_ev:
+                for t in range(m):
+                    surplus_kwh = max(pv_avail[t] - base_load[t], 0.0)
+                    A_ub[ev_row + t, ec_off + t] = 1.0
+                    for other_idx, other in enumerate(active_evs):
+                        if other.charge_past_target:
+                            A_ub[
+                                ev_row + t,
+                                ev_var_offsets[other_idx] + t,
+                            ] = 1.0 / other.charger_efficiency
                     b_ub[ev_row + t] = surplus_kwh
                 ev_row += m
 

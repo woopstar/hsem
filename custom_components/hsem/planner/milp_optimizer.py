@@ -489,6 +489,7 @@ def solve_milp(
         fuse_active,
         usable_kwh=usable_kwh,
         max_charge_per_slot=max_charge_per_slot,
+        current_kwh=current_kwh,
     )
 
     constraints = _build_constraints(

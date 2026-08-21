@@ -1722,7 +1722,36 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             else:
                 # Same slot — restore the frozen baseline so the charger
                 # command does not chase live conditions.
-                if (
+                #
+                # The freeze pins the *magnitude* of the command, not the
+                # charge/no-charge *decision*.  When the current plan has
+                # retracted the EV charge for this slot (zero EV load — e.g.
+                # the MILP flipped from "charge EV" to "charge battery" after
+                # the EV reached its target SoC), a stale non-zero baseline
+                # must not be restored: that would keep commanding the charger
+                # to draw power for a charge the planner has already cancelled
+                # (issue #775).  Zero the command and reset the baseline so
+                # subsequent replans in this slot stay zero.
+                ev_load_now = slot.ev_planned_load_kwh + slot.ev_accounted_load_kwh
+                if ev_load_now < 1e-9:
+                    if (
+                        abs(self._current_slot_ev_power_w) > 1e-9
+                        or abs(self._current_slot_ev_second_power_w) > 1e-9
+                    ):
+                        async_log(
+                            "debug",
+                            "[freeze] EV charge retracted for slot %s (zero EV "
+                            "load) — zeroing stale command: primary %dW→0W, "
+                            "second %dW→0W",
+                            s_start.isoformat(),
+                            self._current_slot_ev_power_w,
+                            self._current_slot_ev_second_power_w,
+                        )
+                    slot.ev_charger_calculated_power = 0.0
+                    slot.ev_second_charger_calculated_power = 0.0
+                    self._current_slot_ev_power_w = 0.0
+                    self._current_slot_ev_second_power_w = 0.0
+                elif (
                     abs(
                         slot.ev_charger_calculated_power - self._current_slot_ev_power_w
                     )
@@ -1743,10 +1772,10 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                         slot.ev_second_charger_calculated_power,
                         self._current_slot_ev_second_power_w,
                     )
-                slot.ev_charger_calculated_power = self._current_slot_ev_power_w
-                slot.ev_second_charger_calculated_power = (
-                    self._current_slot_ev_second_power_w
-                )
+                    slot.ev_charger_calculated_power = self._current_slot_ev_power_w
+                    slot.ev_second_charger_calculated_power = (
+                        self._current_slot_ev_second_power_w
+                    )
             break
 
     def _apply_planner_output(self, output: PlannerOutput) -> None:
