@@ -3,12 +3,6 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.." || exit
 
-# Pre-import NumPy/SciPy C extensions before pytest-cov's sysmon tracer starts.
-# This works around a Python 3.14 + coverage.py incompatibility that otherwise
-# causes scipy.optimize to fail with "cannot load module more than once per
-# process" and makes the MILP/ML test suites skip.
-export PYTHONPATH="${PWD}/scripts/sitecustomize_import${PYTHONPATH:+:${PYTHONPATH}}"
-
 usage() {
     cat <<EOF
 Usage: quality <command>
@@ -38,7 +32,7 @@ case "${1:-}" in
     test)
         python -m pytest tests/ \
             --timeout=120 \
-            --cov=custom_components.hsem \
+            --cov=custom_components \
             --cov-report=xml \
             --junitxml=test-results.xml \
             "${@:2}"
@@ -57,7 +51,7 @@ case "${1:-}" in
         echo "=== Tests ==="
         python -m pytest tests/ \
             --timeout=120 \
-            --cov=custom_components.hsem \
+            --cov=custom_components \
             --cov-report=xml \
             --junitxml=test-results.xml \
             "${@:2}"

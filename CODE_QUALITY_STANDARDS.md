@@ -133,7 +133,7 @@ Every feature change must include tests:
 pytest tests/ -v
 
 # Verify coverage
-pytest tests/ --cov=custom_components.hsem --cov-report=html
+pytest tests/ --cov=custom_components --cov-report=html
 ```
 
 ### 9. **Comments Explain Why, Not What**
@@ -179,7 +179,7 @@ Before every commit, run:
 git status
 
 # 5. Check coverage doesn’t decrease
-pytest tests/ --cov=custom_components.hsem --cov-report=term-missing
+pytest tests/ --cov=custom_components --cov-report=term-missing
 ```
 
 If any step fails, fix the issues before committing.
