@@ -4,13 +4,16 @@ Covers:
 - Per-hour factor update and rolling window
 - Factor clamping [0.3, 1.5]
 - Intra-hour residual decay over 8 slots
-- Confidence percentile behavior
+- Correction-strength behavior
 - get_corrected_pv with various slots_ahead values
 - Backward compatibility (corrector=None)
 - Edge cases: zero forecast, empty buffers, division by zero
 """
 
 from __future__ import annotations
+
+from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -21,6 +24,7 @@ from custom_components.hsem.utils.solar_corrector import (
     MAX_HISTORY_PER_HOUR,
     MAX_RESIDUALS,
     RESIDUAL_DECAY_SLOTS,
+    SOLAR_CORRECTOR_STATE_VERSION,
     SolarForecastCorrector,
 )
 
@@ -35,7 +39,7 @@ class TestUpdateHour:
         assert c.hour_factors[12] == pytest.approx(0.8)
 
     def test_rolling_window_limit(self) -> None:
-        """Only the last MAX_HISTORY_PER_HOUR samples are kept."""
+        """Keep four eligible quarter-slot samples per wall-clock hour."""
         c = SolarForecastCorrector()
         # Feed 10 updates for hour 10, only last 4 should be used.
         for i in range(10):
@@ -225,8 +229,45 @@ class TestCorrectedPV:
         assert c.get_corrected_pv(12, 3.0) == pytest.approx(3.6)
 
 
+class TestPhysicalSlotsAhead:
+    """Residual decay is anchored to the current physical slot."""
+
+    def test_current_plus_four_plus_eight_slots(self) -> None:
+        corrector = SolarForecastCorrector()
+        corrector.set_reference_time(datetime(2026, 8, 20, 15, 37, tzinfo=UTC))
+        corrector.update_residual(forecast_kwh=2.0, actual_kwh=1.0)
+
+        current = datetime(2026, 8, 20, 15, 30, tzinfo=UTC)
+        plus_four = datetime(2026, 8, 20, 16, 30, tzinfo=UTC)
+        plus_eight = datetime(2026, 8, 20, 17, 30, tzinfo=UTC)
+
+        assert corrector.slots_ahead_for(current, 15, fallback=62) == 0
+        assert corrector.slots_ahead_for(plus_four, 15, fallback=66) == 4
+        assert corrector.slots_ahead_for(plus_eight, 15, fallback=70) == 8
+        assert corrector.get_corrected_pv(15, 1.0, slots_ahead=0) == pytest.approx(0.5)
+        assert corrector.get_corrected_pv(16, 1.0, slots_ahead=4) == pytest.approx(0.75)
+        assert corrector.get_corrected_pv(17, 1.0, slots_ahead=8) == pytest.approx(1.0)
+
+    def test_repeated_local_hour_is_four_physical_slots_apart(self) -> None:
+        stockholm = ZoneInfo("Europe/Stockholm")
+        first_fold = datetime(2026, 10, 25, 2, 0, tzinfo=stockholm, fold=0)
+        second_fold = datetime(2026, 10, 25, 2, 0, tzinfo=stockholm, fold=1)
+        corrector = SolarForecastCorrector()
+        corrector.set_reference_time(first_fold)
+
+        assert first_fold.hour == second_fold.hour == 2
+        assert (
+            corrector.slots_ahead_for(
+                second_fold,
+                15,
+                fallback=0,
+            )
+            == 4
+        )
+
+
 class TestConfidence:
-    """Tests for the confidence percentile behavior."""
+    """Tests for correction-strength behavior."""
 
     def test_default_confidence_uses_full_factor(self) -> None:
         """At default 0.50 confidence, the factor is applied fully."""
@@ -268,11 +309,43 @@ class TestSerialization:
         c.confidence = 0.30
 
         data = c.to_dict()
+        assert data["schema_version"] == SOLAR_CORRECTOR_STATE_VERSION
         restored = SolarForecastCorrector()
         restored.load_from_dict(data)
 
         assert restored.hour_factors == c.hour_factors
         assert restored.confidence == pytest.approx(c.confidence)
+
+    def test_round_trip_preserves_exact_buffers_and_replay_watermark(self) -> None:
+        """Restart resumes the same rolling window without replaying old slots."""
+        corrector = SolarForecastCorrector()
+        for actual in (0.5, 0.75, 1.0, 1.25):
+            corrector.update_hour(12, forecast_kwh=1.0, actual_kwh=actual)
+            corrector.update_residual(forecast_kwh=1.0, actual_kwh=actual)
+        processed = datetime(2026, 8, 20, 12, 45, tzinfo=UTC)
+        corrector.mark_processed(processed)
+
+        payload = corrector.to_dict()
+        restored = SolarForecastCorrector()
+        restored.load_from_dict(
+            payload,
+            restored_at=processed + timedelta(minutes=1),
+        )
+
+        assert restored.to_dict() == payload
+        assert restored._hour_history == corrector._hour_history
+        assert restored._recent_residuals == corrector._recent_residuals
+        assert restored.processed_through == processed
+        assert restored.was_processed(processed) is True
+
+        restored.update_hour(12, forecast_kwh=1.0, actual_kwh=1.5)
+        assert restored._hour_history[12] == [
+            (1.0, 0.75),
+            (1.0, 1.0),
+            (1.0, 1.25),
+            (1.0, 1.5),
+        ]
+        assert restored.hour_factors[12] == pytest.approx(1.125)
 
     def test_load_empty_data_is_noop(self) -> None:
         """Loading an empty dict should leave defaults unchanged."""
@@ -281,6 +354,129 @@ class TestSerialization:
         c.load_from_dict({})
         assert c.confidence == pytest.approx(0.42)
         assert c.hour_factors == {}
+
+    def test_legacy_state_intentionally_discards_contaminated_learning(self) -> None:
+        """Unversioned v7.1.1 factors cold-reset while confidence survives."""
+        corrector = SolarForecastCorrector()
+        corrector.hour_factors = {12: 0.4}
+        corrector._hour_history = {12: [(5.0, 2.0)]}
+        corrector._recent_residuals = [(1.0, 0.5)]
+
+        corrector.load_from_dict(
+            {
+                "hour_factors": {"12": 0.4},
+                "confidence": 0.3,
+            }
+        )
+
+        assert corrector.hour_factors == {}
+        assert corrector._hour_history == {}
+        assert corrector._recent_residuals == []
+        assert corrector.confidence == pytest.approx(0.3)
+
+    def test_v2_state_cold_resets_incomplete_rolling_state(self) -> None:
+        """v2 factors cannot resume because their source buffers were not stored."""
+        corrector = SolarForecastCorrector()
+
+        corrector.load_from_dict(
+            {
+                "schema_version": 2,
+                "hour_factors": {"12": 0.8},
+                "confidence": 0.3,
+            }
+        )
+
+        assert corrector.hour_factors == {}
+        assert corrector._hour_history == {}
+        assert corrector._recent_residuals == []
+        assert corrector.processed_through is None
+        assert corrector.confidence == pytest.approx(0.3)
+
+    def test_malformed_v3_payloads_fail_closed_without_poisoning(self) -> None:
+        """Partial, non-finite, huge, and naive persisted values cold-reset."""
+        valid = {
+            "schema_version": SOLAR_CORRECTOR_STATE_VERSION,
+            "hour_factors": {"12": 0.8},
+            "hour_history": {"12": [[1.0, 0.8]]},
+            "recent_residuals": [[1.0, 0.8]],
+            "confidence": 0.5,
+            "processed_through": "2026-08-20T12:00:00+00:00",
+        }
+        malformed_payloads = [
+            {**valid, "hour_factors": []},
+            {**valid, "hour_factors": {"12": float("nan")}},
+            {
+                **valid,
+                "hour_factors": {"24": 0.8},
+                "hour_history": {"24": [[1.0, 0.8]]},
+            },
+            {**valid, "hour_history": {"12": [[1e308, 0.8]]}},
+            {**valid, "recent_residuals": [[1.0, float("inf")]]},
+            {**valid, "confidence": float("nan")},
+            {**valid, "processed_through": "2026-08-20T12:00:00"},
+            {**valid, "processed_through": "0001-01-01T00:00:00+14:00"},
+            {key: value for key, value in valid.items() if key != "hour_history"},
+        ]
+
+        for payload in malformed_payloads:
+            corrector = SolarForecastCorrector()
+            corrector.update_hour(8, 1.0, 0.7)
+            corrector.update_residual(1.0, 0.7)
+            corrector.mark_processed(datetime(2026, 8, 20, 8, 0, tzinfo=UTC))
+
+            corrector.load_from_dict(payload)
+
+            assert corrector.hour_factors == {}
+            assert corrector._hour_history == {}
+            assert corrector._recent_residuals == []
+            assert corrector.processed_through is None
+            assert 0.10 <= corrector.confidence <= 0.90
+
+    def test_future_replay_watermark_cold_resets_valid_v3_payload(self) -> None:
+        """A poisoned future watermark cannot suppress solar learning."""
+        corrector = SolarForecastCorrector()
+        payload = {
+            "schema_version": SOLAR_CORRECTOR_STATE_VERSION,
+            "hour_factors": {"12": 0.8},
+            "hour_history": {"12": [[1.0, 0.8]]},
+            "recent_residuals": [[1.0, 0.8]],
+            "confidence": 0.5,
+            "processed_through": "2099-01-01T00:00:00+00:00",
+        }
+
+        corrector.load_from_dict(
+            payload,
+            restored_at=datetime(2026, 8, 20, 12, 0, tzinfo=UTC),
+        )
+
+        assert corrector.hour_factors == {}
+        assert corrector._hour_history == {}
+        assert corrector._recent_residuals == []
+        assert corrector.processed_through is None
+
+    @pytest.mark.parametrize(
+        ("forecast_kwh", "actual_kwh"),
+        [
+            (float("nan"), 1.0),
+            (1.0, float("inf")),
+            (-1.0, 1.0),
+            (1e308, 1.0),
+        ],
+    )
+    def test_runtime_samples_reject_nonfinite_or_unbounded_energy(
+        self,
+        forecast_kwh: float,
+        actual_kwh: float,
+    ) -> None:
+        """Bad live samples cannot enter either persisted rolling buffer."""
+        corrector = SolarForecastCorrector()
+
+        corrector.update_hour(12, forecast_kwh, actual_kwh)
+        corrector.update_residual(forecast_kwh, actual_kwh)
+
+        assert corrector.hour_factors == {}
+        assert corrector._hour_history == {}
+        assert corrector._recent_residuals == []
 
 
 class TestBackwardCompatibility:

@@ -14,9 +14,17 @@ from __future__ import annotations
 
 import math
 import statistics
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
+
+from custom_components.hsem.utils.persistence import (
+    aware_datetime_from_iso,
+    finite_float,
+)
+
+_MAX_RESTORED_ENERGY_KWH = 1_000_000.0
 
 # ---------------------------------------------------------------------------
 # Slot record stored in the tracker
@@ -33,13 +41,25 @@ class ForecastSlotRecord:
         end:
             Timezone-aware end of the slot.
         forecast_pv_kwh:
-            Predicted PV production for this slot (kWh).
+            Corrected PV prediction for this slot (kWh).
+        raw_forecast_pv_kwh:
+            Raw, pre-correction PV prediction frozen before the slot starts.
         forecast_load_kwh:
             Predicted house load for this slot (kWh).
+        forecast_soc_pct:
+            Predicted end-of-slot battery SoC frozen before the slot starts.
+        forecast_action:
+            Predicted action label frozen before the slot starts.
         actual_pv_kwh:
             Accumulated actual PV production during this slot (kWh).
         actual_load_kwh:
             Accumulated actual house load during this slot (kWh).
+        forecast_frozen:
+            Whether the pre-slot baseline has been frozen.
+        actual_coverage_seconds:
+            Seconds of the physical slot covered by trusted power samples.
+            ``None`` retains compatibility with records created by older
+            versions and direct callers.
         finalised:
             ``True`` once the slot's end time has passed and error metrics
             have been computed and frozen.
@@ -66,6 +86,33 @@ class ForecastSlotRecord:
     mae_load: float | None = None
     bias_pv: float | None = None
     bias_load: float | None = None
+    raw_forecast_pv_kwh: float | None = None
+    forecast_soc_pct: float | None = None
+    forecast_action: str | None = None
+    forecast_frozen: bool = False
+    actual_coverage_seconds: float | None = None
+
+    @property
+    def accuracy_eligible(self) -> bool:
+        """Return whether this record has an uncontaminated full-slot baseline."""
+        if not self.forecast_frozen or self.raw_forecast_pv_kwh is None:
+            return False
+        if self.actual_coverage_seconds is None:
+            return True
+        duration_seconds = (_utc_key(self.end) - _utc_key(self.start)).total_seconds()
+        return (
+            duration_seconds > 0
+            and self.actual_coverage_seconds >= duration_seconds - 1.0
+        )
+
+    @property
+    def prediction_eligible(self) -> bool:
+        """Return whether all frozen PredictionTracker inputs are available."""
+        return (
+            self.accuracy_eligible
+            and self.forecast_soc_pct is not None
+            and self.forecast_action is not None
+        )
 
     def accumulate_pv(self, energy_kwh: float) -> None:
         """Add *energy_kwh* of measured PV to the slot accumulator.
@@ -114,9 +161,14 @@ class ForecastSlotRecord:
             "start": self.start.isoformat(),
             "end": self.end.isoformat(),
             "forecast_pv_kwh": self.forecast_pv_kwh,
+            "raw_forecast_pv_kwh": self.raw_forecast_pv_kwh,
             "forecast_load_kwh": self.forecast_load_kwh,
+            "forecast_soc_pct": self.forecast_soc_pct,
+            "forecast_action": self.forecast_action,
             "actual_pv_kwh": self.actual_pv_kwh,
             "actual_load_kwh": self.actual_load_kwh,
+            "forecast_frozen": self.forecast_frozen,
+            "actual_coverage_seconds": self.actual_coverage_seconds,
             "finalised": self.finalised,
             "mae_pv": self.mae_pv,
             "mae_load": self.mae_load,
@@ -125,7 +177,7 @@ class ForecastSlotRecord:
         }
 
     @staticmethod
-    def from_dict(data: dict[str, Any]) -> ForecastSlotRecord:
+    def from_dict(data: Mapping[str, Any]) -> ForecastSlotRecord:
         """Deserialize a record from a dictionary produced by :meth:`to_dict`.
 
         Args:
@@ -134,21 +186,80 @@ class ForecastSlotRecord:
         Returns:
             A reconstructed :class:`ForecastSlotRecord`.
         """
-        from datetime import datetime as dt
+        start = aware_datetime_from_iso(data.get("start"))
+        end = aware_datetime_from_iso(data.get("end"))
+        if start is None or end is None:
+            raise ValueError("forecast record timestamps must be timezone-aware")
+        duration_seconds = (_utc_key(end) - _utc_key(start)).total_seconds()
+        if (
+            duration_seconds <= 0
+            or duration_seconds > timedelta(hours=1).total_seconds()
+        ):
+            raise ValueError("forecast record timestamps are not an ordered slot")
 
-        return ForecastSlotRecord(
-            start=dt.fromisoformat(data["start"]),
-            end=dt.fromisoformat(data["end"]),
-            forecast_pv_kwh=data.get("forecast_pv_kwh", 0.0),
-            forecast_load_kwh=data.get("forecast_load_kwh", 0.0),
-            actual_pv_kwh=data.get("actual_pv_kwh", 0.0),
-            actual_load_kwh=data.get("actual_load_kwh", 0.0),
-            finalised=data.get("finalised", False),
-            mae_pv=data.get("mae_pv"),
-            mae_load=data.get("mae_load"),
-            bias_pv=data.get("bias_pv"),
-            bias_load=data.get("bias_load"),
+        forecast_pv_kwh = _required_finite(
+            data.get("forecast_pv_kwh", 0.0),
+            minimum=0.0,
+            maximum=_MAX_RESTORED_ENERGY_KWH,
         )
+        forecast_load_kwh = _required_finite(
+            data.get("forecast_load_kwh", 0.0),
+            minimum=0.0,
+            maximum=_MAX_RESTORED_ENERGY_KWH,
+        )
+        actual_pv_kwh = _required_finite(
+            data.get("actual_pv_kwh", 0.0),
+            minimum=0.0,
+            maximum=_MAX_RESTORED_ENERGY_KWH,
+        )
+        actual_load_kwh = _required_finite(
+            data.get("actual_load_kwh", 0.0),
+            minimum=0.0,
+            maximum=_MAX_RESTORED_ENERGY_KWH,
+        )
+        raw_forecast_pv_kwh = _optional_finite(
+            data.get("raw_forecast_pv_kwh"),
+            minimum=0.0,
+            maximum=_MAX_RESTORED_ENERGY_KWH,
+        )
+        forecast_soc_pct = _optional_finite(
+            data.get("forecast_soc_pct"), minimum=0.0, maximum=100.0
+        )
+        actual_coverage_seconds = _optional_finite(
+            data.get("actual_coverage_seconds"),
+            minimum=0.0,
+            maximum=duration_seconds + 1.0,
+        )
+
+        forecast_action = data.get("forecast_action")
+        if forecast_action is not None and (
+            not isinstance(forecast_action, str) or len(forecast_action) > 128
+        ):
+            raise ValueError("forecast action must be a bounded string")
+
+        forecast_frozen = data.get("forecast_frozen", False)
+        finalised = data.get("finalised", False)
+        if not isinstance(forecast_frozen, bool) or not isinstance(finalised, bool):
+            raise TypeError("forecast lifecycle flags must be booleans")
+
+        record = ForecastSlotRecord(
+            start=start,
+            end=end,
+            forecast_pv_kwh=forecast_pv_kwh,
+            raw_forecast_pv_kwh=raw_forecast_pv_kwh,
+            forecast_load_kwh=forecast_load_kwh,
+            forecast_soc_pct=forecast_soc_pct,
+            forecast_action=forecast_action,
+            actual_pv_kwh=actual_pv_kwh,
+            actual_load_kwh=actual_load_kwh,
+            forecast_frozen=forecast_frozen,
+            actual_coverage_seconds=actual_coverage_seconds,
+        )
+        # Error fields are derived state. Recompute them instead of trusting
+        # persisted MAE/bias values that could be stale or non-finite.
+        if finalised:
+            record.finalise()
+        return record
 
 
 # ---------------------------------------------------------------------------
@@ -246,6 +357,7 @@ class ForecastTracker:
         self._max_slots = max_slots
         # Sorted by start time, oldest first.
         self._records: list[ForecastSlotRecord] = []
+        self._restored_unfinalised_keys: set[datetime] = set()
 
     @property
     def records(self) -> list[ForecastSlotRecord]:
@@ -253,9 +365,14 @@ class ForecastTracker:
         return list(self._records)
 
     @property
+    def restored_unfinalised_keys(self) -> set[datetime]:
+        """Return every restored slot whose lifecycle was not finalised."""
+        return set(self._restored_unfinalised_keys)
+
+    @property
     def summary(self) -> ForecastErrorSummary:
         """Compute and return a summary of all finalised records."""
-        finalised = [r for r in self._records if r.finalised]
+        finalised = [r for r in self._records if r.finalised and r.accuracy_eligible]
         if not finalised:
             return ForecastErrorSummary(window_slots=len(self._records))
 
@@ -343,6 +460,7 @@ class ForecastTracker:
 
         rec = ForecastSlotRecord(start=start, end=end)
         self._records.append(rec)
+        self._records.sort(key=lambda record: _utc_key(record.start))
         self._prune()
         return rec
 
@@ -359,6 +477,33 @@ class ForecastTracker:
             if _same_slot(rec.start, start):
                 return rec
         return None
+
+    def reconcile_unfinalised_layout(
+        self,
+        expected_slots: Iterable[tuple[datetime, datetime]],
+        *,
+        now: datetime,
+    ) -> bool:
+        """Discard an incompatible live layout while keeping finalised history.
+
+        Returns ``True`` when active/future records did not match the current
+        recommendation starts and ends.  Callers use that signal to reset
+        instantaneous-power endpoints so no interval bridges the change.
+        """
+        expected = {_utc_key(start): _utc_key(end) for start, end in expected_slots}
+        now_key = _utc_key(now)
+        incompatible = any(
+            expected.get(_utc_key(record.start)) != _utc_key(record.end)
+            for record in self._records
+            if not record.finalised and _utc_key(record.end) > now_key
+        )
+        if not incompatible:
+            return False
+
+        self._records = [record for record in self._records if record.finalised]
+        retained = {_utc_key(record.start) for record in self._records}
+        self._restored_unfinalised_keys.intersection_update(retained)
+        return True
 
     def finalise_record(self, start: datetime) -> bool:
         """Finalise the record at *start* if it exists and is not yet finalised.
@@ -389,8 +534,23 @@ class ForecastTracker:
         """
         count = 0
         for rec in self._records:
-            if not rec.finalised and rec.end <= now:
+            if not rec.finalised and _utc_key(rec.end) <= _utc_key(now):
                 rec.finalise()
+                count += 1
+        return count
+
+    def freeze_forecasts(self, now: datetime) -> int:
+        """Freeze baselines for slots that have physically started."""
+        count = 0
+        now_key = _utc_key(now)
+        for rec in self._records:
+            if (
+                not rec.finalised
+                and not rec.forecast_frozen
+                and rec.raw_forecast_pv_kwh is not None
+                and _utc_key(rec.start) <= now_key
+            ):
+                rec.forecast_frozen = True
                 count += 1
         return count
 
@@ -399,26 +559,88 @@ class ForecastTracker:
         start: datetime,
         pv_kwh: float,
         load_kwh: float,
+        *,
+        raw_pv_kwh: float | None = None,
+        forecast_soc_pct: float | None = None,
+        forecast_action: str | None = None,
+        observed_at: datetime | None = None,
     ) -> bool:
-        """Set the forecast values for the slot at *start*.
+        """Set an eligible pre-slot forecast baseline.
 
-        Only sets forecast if the record has not been finalised yet.
+        Production callers pass ``observed_at`` and may update a future slot
+        until its physical start.  Direct callers that omit it retain the
+        legacy one-shot behaviour and freeze the baseline immediately.
 
         Args:
             start: Slot start time.
-            pv_kwh: Forecast PV energy (kWh).
+            pv_kwh: Corrected forecast PV energy (kWh).
             load_kwh: Forecast load energy (kWh).
+            raw_pv_kwh: Raw PV forecast before correction.
+            forecast_soc_pct: Predicted end-of-slot battery SoC (%).
+            forecast_action: Predicted action label.
+            observed_at: Time at which this forecast was observed.
 
         Returns:
             ``True`` if the forecast was set, ``False`` if no matching
-            record exists or it is already finalised.
+            record exists, the baseline is frozen, or the slot has started.
         """
         rec = self.find_record(start)
-        if rec is None or rec.finalised:
+        if rec is None or rec.finalised or rec.forecast_frozen:
+            return False
+        if observed_at is not None and _utc_key(observed_at) >= _utc_key(rec.start):
             return False
         rec.forecast_pv_kwh = pv_kwh
+        rec.raw_forecast_pv_kwh = pv_kwh if raw_pv_kwh is None else raw_pv_kwh
         rec.forecast_load_kwh = load_kwh
+        rec.forecast_soc_pct = forecast_soc_pct
+        rec.forecast_action = forecast_action
+        if observed_at is None:
+            rec.forecast_frozen = True
+        elif rec.actual_coverage_seconds is None:
+            rec.actual_coverage_seconds = 0.0
         return True
+
+    def accumulate_power_interval(
+        self,
+        start: datetime,
+        end: datetime,
+        *,
+        pv_power_w: float,
+        load_power_w: float,
+        max_gap_seconds: float,
+    ) -> float:
+        """Allocate prior-sample power over ``[start, end)`` by UTC overlap.
+
+        Long gaps are rejected rather than treating a stale power sample as
+        representative.  The return value is the allocated number of seconds.
+        """
+        start_key = _utc_key(start)
+        end_key = _utc_key(end)
+        elapsed_seconds = (end_key - start_key).total_seconds()
+        if (
+            elapsed_seconds <= 0
+            or max_gap_seconds <= 0
+            or elapsed_seconds > max_gap_seconds
+        ):
+            return 0.0
+
+        assigned_seconds = 0.0
+        for rec in self._records:
+            if rec.finalised or not rec.forecast_frozen:
+                continue
+            overlap_start = max(start_key, _utc_key(rec.start))
+            overlap_end = min(end_key, _utc_key(rec.end))
+            overlap_seconds = (overlap_end - overlap_start).total_seconds()
+            if overlap_seconds <= 0:
+                continue
+            rec.accumulate_pv(compute_accumulated_energy(pv_power_w, overlap_seconds))
+            rec.accumulate_load(
+                compute_accumulated_energy(load_power_w, overlap_seconds)
+            )
+            if rec.actual_coverage_seconds is not None:
+                rec.actual_coverage_seconds += overlap_seconds
+            assigned_seconds += overlap_seconds
+        return assigned_seconds
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -444,18 +666,126 @@ class ForecastTracker:
             "records": [r.to_dict() for r in self._records],
         }
 
-    def load_from_dict(self, data: dict[str, Any]) -> None:
-        """Restore tracker records from a dictionary previously produced
-        by :meth:`to_dict`.
+    def to_persistence_dict(
+        self,
+        *,
+        now: datetime,
+        max_records: int = 24,
+    ) -> dict[str, Any]:
+        """Serialize the bounded records that matter across a restart.
 
-        This replaces the current record list.  Call once on startup
-        after deserializing from HA storage.
-
-        Args:
-            data: A dictionary previously produced by :meth:`to_dict`.
+        The active/frozen slot is retained first, followed by the newest
+        eligible finalised records and then the nearest future baselines.
+        This prevents a long pre-created planning horizon from filling HA's
+        attribute budget with only the farthest-future slots.
         """
+        if now.tzinfo is None or now.utcoffset() is None:
+            raise ValueError("persistence reference time must be timezone-aware")
+        if max_records <= 0:
+            return {"records": []}
+
+        now_key = _utc_key(now)
+        active = sorted(
+            (
+                record
+                for record in self._records
+                if not record.finalised
+                and _utc_key(record.start) <= now_key < _utc_key(record.end)
+            ),
+            key=lambda record: _utc_key(record.start),
+            reverse=True,
+        )
+        frozen = sorted(
+            (
+                record
+                for record in self._records
+                if not record.finalised
+                and record.forecast_frozen
+                and record not in active
+            ),
+            key=lambda record: _utc_key(record.start),
+            reverse=True,
+        )
+        finalised = sorted(
+            (
+                record
+                for record in self._records
+                if record.finalised and record.accuracy_eligible
+            ),
+            key=lambda record: _utc_key(record.start),
+            reverse=True,
+        )
+        future = sorted(
+            (
+                record
+                for record in self._records
+                if not record.finalised
+                and not record.forecast_frozen
+                and record.raw_forecast_pv_kwh is not None
+                and _utc_key(record.start) > now_key
+            ),
+            key=lambda record: _utc_key(record.start),
+        )
+
+        selected: list[ForecastSlotRecord] = []
+        selected_keys: set[datetime] = set()
+        for category in (active, frozen, finalised, future):
+            for record in category:
+                key = _utc_key(record.start)
+                if key in selected_keys:
+                    continue
+                selected.append(record)
+                selected_keys.add(key)
+                if len(selected) >= max_records:
+                    break
+            if len(selected) >= max_records:
+                break
+
+        selected.sort(key=lambda record: _utc_key(record.start))
+        return {"records": [record.to_dict() for record in selected]}
+
+    def load_from_dict(
+        self,
+        data: Any,
+    ) -> None:
+        """Restore valid tracker records without trusting persisted values.
+
+        Invalid records are skipped. The retained records are UTC-sorted,
+        de-duplicated by physical start, and bounded by ``max_slots``.
+        """
+        self._records = []
+        self._restored_unfinalised_keys.clear()
+        if not isinstance(data, Mapping):
+            return
         raw_records = data.get("records", [])
-        self._records = [ForecastSlotRecord.from_dict(r) for r in raw_records]
+        if not isinstance(raw_records, list):
+            return
+
+        parsed_records: list[ForecastSlotRecord] = []
+        for raw_record in raw_records:
+            if not isinstance(raw_record, Mapping):
+                continue
+            try:
+                record = ForecastSlotRecord.from_dict(raw_record)
+            except TypeError, ValueError, OverflowError:
+                continue
+            parsed_records.append(record)
+
+        parsed_records.sort(key=lambda record: _utc_key(record.start))
+        seen: set[datetime] = set()
+        for record in parsed_records:
+            key = _utc_key(record.start)
+            if key in seen:
+                continue
+            seen.add(key)
+            self._records.append(record)
+            if not record.finalised:
+                self._restored_unfinalised_keys.add(key)
+
+        if len(self._records) > self._max_slots:
+            self._records = self._records[-self._max_slots :]
+            retained = {_utc_key(record.start) for record in self._records}
+            self._restored_unfinalised_keys.intersection_update(retained)
 
 
 # ---------------------------------------------------------------------------
@@ -465,7 +795,37 @@ class ForecastTracker:
 
 def _same_slot(a: datetime, b: datetime) -> bool:
     """Return ``True`` when *a* and *b* represent the same slot start."""
-    return a == b
+    return _utc_key(a) == _utc_key(b)
+
+
+def _utc_key(value: datetime) -> datetime:
+    """Return a pure-Python UTC identity without importing HA utilities."""
+    return value.astimezone(UTC).replace(microsecond=0)
+
+
+def _required_finite(
+    value: Any,
+    *,
+    minimum: float | None = None,
+    maximum: float | None = None,
+) -> float:
+    """Return a finite restored value or raise for the caller to skip it."""
+    parsed = finite_float(value, minimum=minimum, maximum=maximum)
+    if parsed is None:
+        raise ValueError("restored numeric value is invalid")
+    return parsed
+
+
+def _optional_finite(
+    value: Any,
+    *,
+    minimum: float | None = None,
+    maximum: float | None = None,
+) -> float | None:
+    """Return a finite optional restored value or reject invalid state."""
+    if value is None:
+        return None
+    return _required_finite(value, minimum=minimum, maximum=maximum)
 
 
 def compute_accumulated_energy(power_w: float, elapsed_seconds: float) -> float:
