@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import math
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
@@ -238,6 +239,100 @@ def _apply_force_charge_now(
             "→ overriding current slot to ev_smart_charging at %dW",
             now_slot.ev_second_charger_calculated_power,
         )
+
+
+# ---------------------------------------------------------------------------
+# Load-forecast fail-closed hold helper
+# ---------------------------------------------------------------------------
+
+#: Live house demand above this wattage is treated as a genuine, non-zero load
+#: that an all-zero consumption profile cannot explain.
+_LOAD_FORECAST_LIVE_DEMAND_THRESHOLD_W = 50.0
+#: Epsilon used to treat a consumption value as numerically zero.
+_LOAD_FORECAST_ZERO_EPSILON_KWH = 1e-9
+
+
+def _apply_load_forecast_hold(
+    recommendations: list[HourlyRecommendation],
+    live: LiveState,
+    now: datetime,
+    *,
+    consumption_ok: bool,
+) -> HourlyRecommendation | None:
+    """Publish a strict current-slot storage hold when load data is unsafe.
+
+    If consumption averages failed to populate, or the entire future profile
+    is numerically zero while live house demand is clearly positive, the
+    planner must not solve or reuse a plan sized on fictional zero load.  In
+    that case the current slot is held in :attr:`BatteriesWaitMode` with zero
+    charge/discharge motion, which the applier treats as a safe storage hold.
+
+    A user-forced working mode always wins over this automatic safety hold.
+
+    Args:
+        recommendations: The hourly recommendations to modify (current slot).
+        live: Live entity state snapshot.
+        now: Current time (timezone-aware).
+        consumption_ok: Whether consumption averages populated successfully.
+
+    Returns:
+        The held current slot, or ``None`` when no hold is applied.
+    """
+    if consumption_ok and _future_consumption_profile_is_nonzero(recommendations, now):
+        return None
+    if str(live.force_working_mode_state).strip().lower() != "auto":
+        return None
+
+    current = next(
+        (
+            rec
+            for rec in recommendations
+            if as_tz(rec.start, now.tzinfo) <= now < as_tz(rec.end, now.tzinfo)
+        ),
+        None,
+    )
+    if current is None:
+        return None
+
+    current.recommendation = Recommendations.BatteriesWaitMode.value
+    current.batteries_charged_kwh = 0.0
+    current.batteries_discharged_kwh = 0.0
+    return current
+
+
+def _future_consumption_profile_is_nonzero(
+    recommendations: list[HourlyRecommendation],
+    now: datetime,
+) -> bool:
+    """Return whether at least one future slot carries a positive load estimate.
+
+    Used to distinguish a legitimate measured-zero night from an all-zero
+    profile produced by a failed or not-yet-ready consumption source.
+    """
+    return any(
+        math.isfinite(rec.avg_house_consumption_kwh)
+        and rec.avg_house_consumption_kwh > _LOAD_FORECAST_ZERO_EPSILON_KWH
+        and as_tz(rec.end, now.tzinfo) > now
+        for rec in recommendations
+    )
+
+
+def _live_demand_contradicts_zero_profile(
+    recommendations: list[HourlyRecommendation],
+    live: LiveState,
+    now: datetime,
+) -> bool:
+    """Return whether live demand disproves an all-zero future load profile."""
+    if _future_consumption_profile_is_nonzero(recommendations, now):
+        return False
+    demand_w = live.house_consumption_power_w
+    if demand_w is None or isinstance(demand_w, bool):
+        return False
+    try:
+        demand = float(demand_w)
+    except TypeError, ValueError:
+        return False
+    return math.isfinite(demand) and demand > _LOAD_FORECAST_LIVE_DEMAND_THRESHOLD_W
 
 
 # ---------------------------------------------------------------------------
@@ -1222,6 +1317,28 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                     ev_second_plan=self._ev_second_charging_plan,
                     now=now,
                 )
+
+                # 8d. Load-forecast fail-closed hold.  When consumption data is
+                # unavailable/invalid, or the entire future profile is zero
+                # while live demand is clearly positive, hold the current slot
+                # in BatteriesWaitMode instead of solving or reusing a plan
+                # sized on fictional zero load.  A forced mode always wins.
+                if not consumption_ok or _live_demand_contradicts_zero_profile(
+                    self._hourly_recommendations, live, now
+                ):
+                    held = _apply_load_forecast_hold(
+                        self._hourly_recommendations,
+                        live,
+                        now,
+                        consumption_ok=consumption_ok,
+                    )
+                    if held is not None:
+                        async_log(
+                            "debug",
+                            "[load] consumption_ok=%s → holding current slot in "
+                            "batteries_wait_mode",
+                            consumption_ok,
+                        )
 
                 # 9. Find the current time-slot recommendation.
                 self._hourly_recommendations.sort(key=lambda x: x.start)
