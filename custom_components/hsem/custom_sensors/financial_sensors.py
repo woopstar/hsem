@@ -1,8 +1,8 @@
 """Financial sensors: export income, import cost, and net grid balance.
 
 Three sensors that expose cumulative monetary totals accumulated across
-coordinator cycles.  Export income and import cost are ``total_increasing``;
-net grid balance is a ``measurement``.
+coordinator cycles. All three use the ``total`` state class because signed
+prices can make their values decrease as well as increase.
 
 State
 -----

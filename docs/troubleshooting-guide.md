@@ -87,11 +87,20 @@ If any of these five entities are missing, HSEM enters `error` mode and
 **1e. Consumption energy sensors not ready after restart**
 
 The `sensor.hsem_house_consumption_energy_*` sensors use HA's statistics table.
-After a restart they need the first statistics period to complete before they
-can restore.
+After a restart they may exist while their restored state is still `unknown` or
+`unavailable`. HSEM keeps that state missing; it does not turn it into a
+zero-load forecast.
 
-- **Fix:** Wait for the next statistics cycle (usually 5 minutes). HSEM
-  shortens its interval to 1 minute until these are ready.
+- **Check:** Inspect `sensor.hsem_working_mode` → `data_quality`.
+  `load_forecast_ready` is false until the future profile is safe, and
+  `load_forecast_reason` identifies the cause. A zero profile with live house
+  demand above 50 W reports `zero_forecast_with_live_demand`.
+- **Behaviour:** Automatic mode publishes a strict `batteries_wait_mode` hold
+  and does not run or reuse an optimized plan. Manual force mode remains higher
+  authority.
+- **Fix:** Wait for the next statistics cycle (usually 5 minutes), or repair an
+  average sensor that remains unavailable. HSEM retries every minute and runs a
+  fresh plan when the profile recovers.
 
 ---
 

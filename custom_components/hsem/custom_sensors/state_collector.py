@@ -15,6 +15,7 @@ so that downstream population functions never need additional
 
 from __future__ import annotations
 
+import math
 import re
 from collections.abc import Callable
 from datetime import datetime, time, timedelta
@@ -777,12 +778,11 @@ async def async_collect_all_states(
                 f"{'None' if val is None else val}",
             )
 
-            # Store 0.0 when the sensor returns None (e.g. 'unknown'
-            # state for a new dynamic child sensor with no data yet).
-            # energy_average_values is rebuilt from scratch every
-            # cycle, so this 0.0 is NOT permanent — as soon as the
-            # sensor accumulates real data, the next read replaces it.
-            energy_average_values[eid] = val or 0.0
+            # Preserve availability provenance. A real 0.0 is a valid
+            # measurement, while None (unknown/unavailable/unparseable)
+            # must remain absent so the population gate can fail closed.
+            if val is not None and math.isfinite(val):
+                energy_average_values[eid] = val
 
     # 3. Pre-read electricity price and Solcast sensor state objects for attribute access
     sensor_attributes: dict[str, dict] = {}

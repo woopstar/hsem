@@ -10,6 +10,7 @@ hour block and average period (1, 3, 7, or 14 days).
 
 from __future__ import annotations
 
+import math
 from datetime import datetime, timedelta
 from typing import Any, override
 
@@ -26,6 +27,7 @@ from homeassistant.helpers.event import (
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from custom_components.hsem.entity import HSEMEntity
+from custom_components.hsem.utils.conversion import convert_to_float
 from custom_components.hsem.utils.ha_helpers import ha_get_entity_state_and_convert
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 
@@ -160,7 +162,14 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
         old_state = await self.async_get_last_state()
 
         if old_state is not None:
-            self._state = float(old_state.state)
+            # A restored ``unknown``/``unavailable``/unparseable state must not
+            # crash ``float()`` or be treated as a finite measurement.
+            restored_state = convert_to_float(old_state.state)
+            self._state = (
+                restored_state
+                if restored_state is not None and math.isfinite(restored_state)
+                else None
+            )
 
             restored_measurements = old_state.attributes.get("measurements", None)
 
@@ -206,7 +215,10 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
 
     async def _async_handle_update(self, event: Any | None = None) -> None:
         """Handle updates to the source sensor."""
-        self._state = 0.00
+        # No completed measurements means unavailable, not measured zero.
+        # A non-empty measurement set whose average is genuinely 0.0 remains
+        # available and is published as zero below.
+        self._state = None
 
         now = dt_util.now()
 

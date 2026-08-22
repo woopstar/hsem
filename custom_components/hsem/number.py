@@ -11,22 +11,14 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from custom_components.hsem.const import DOMAIN
 from custom_components.hsem.custom_numbers.battery_efficiency import (
     HSEMBatteryEfficiencyNumber,
 )
 from custom_components.hsem.custom_numbers.ev_target_soc import HSEMEVTargetSocNumber
-from custom_components.hsem.custom_sensors.charge_rate_numbers import (
-    HSEMChargeRateNumber,
-)
-from custom_components.hsem.utils.charge_rate_learner import TEMP_BUCKETS
 from custom_components.hsem.utils.sensornames.controls import (
     get_charge_efficiency_number_entity_id,
     get_charge_efficiency_number_key,
     get_charge_efficiency_number_unique_id,
-    get_charge_rate_number_entity_id,
-    get_charge_rate_number_key,
-    get_charge_rate_number_unique_id,
     get_discharge_efficiency_number_entity_id,
     get_discharge_efficiency_number_key,
     get_discharge_efficiency_number_unique_id,
@@ -130,29 +122,3 @@ async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
                 )
             )
     async_add_entities(entities)
-
-    # Charge rate number entities — one per temperature bucket (issue #608).
-    charge_entities: list[NumberEntity] = []
-    for bucket_name, _, _ in TEMP_BUCKETS:
-        desc = NumberEntityDescription(
-            key=get_charge_rate_number_key(bucket_name),
-            icon="mdi:thermometer-lines",
-            translation_key=f"charge_rate_{bucket_name}",
-        )
-        charge_entities.append(
-            HSEMChargeRateNumber(
-                hass,
-                config_entry,
-                desc,
-                bucket_name=bucket_name,
-                unique_id=get_charge_rate_number_unique_id(
-                    config_entry.entry_id, bucket_name
-                ),
-                entity_id=get_charge_rate_number_entity_id(bucket_name),
-            )
-        )
-    async_add_entities(charge_entities)
-
-    # Store charge rate entities so the coordinator can refresh them
-    # after the charge rate learner is updated (issue #608).
-    hass.data.setdefault(DOMAIN, {})["charge_rate_entities"] = charge_entities

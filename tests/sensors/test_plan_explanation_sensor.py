@@ -55,6 +55,9 @@ _EXPECTED_ATTR_KEYS = {
     "forecast_net_consumption_kwh",
     "battery_soc_pct",
     "battery_soc_at_end_pct",
+    "hysteresis_active",
+    "hysteresis_reason",
+    "previous_plan_name",
     "constraints",
     "rejected_plans",
 }

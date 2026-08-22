@@ -61,20 +61,19 @@ which equals $\frac{purchase\_price \cdot x}{2 \cdot usable \cdot cycles}$ —
 matching the expected wear for moving $x$ kWh through the battery in one
 direction.
 
-### Conversion loss cost
+### Conversion-loss compatibility field
 
-$$ C_{loss} = \sum_{t \in slots} \frac{charge[t] + discharge[t]}{2} \cdot \frac{\eta_{loss}}{100} \cdot \frac{p_{imp}[t] + p_{exp}[t]}{2} $$
+$$ C_{loss} = 0 $$
 
-Where $\eta_{loss}$ is the round-trip conversion loss percentage.
+For battery-side charge and discharge energy, the physical AC flows are:
 
-The conversion loss term prices the energy lost as heat during charge/discharge
-at the average of import and export price — an opportunity-cost proxy.
+$$ charge_{AC}[t] = \frac{charge[t]}{\eta_{chg}} $$
 
-When separate charge/discharge efficiencies are configured:
+$$ discharge_{AC}[t] = discharge[t] \cdot \eta_{dis} $$
 
-$$ \eta_{loss} = (1 - \eta_{chg} \cdot \eta_{dis}) \times 100 $$
-
-Where $\eta_{chg}$ and $\eta_{dis}$ are efficiency fractions (e.g. 0.97).
+The first quantity increases import or consumes otherwise-exportable PV. The
+second reduces import or creates AC export. Import cost and export revenue thus
+price efficiency exactly once; another loss-price term would double-count it.
 
 ### Tariff cost
 
@@ -87,7 +86,7 @@ configures grid tariff fees.
 
 ## Score (selector objective)
 
-$$ S = C_{total} + P_{soc} + P_{grid} + P_{override} + V_{terminal} $$
+$$ S = C_{total} + P_{soc} + P_{grid} + V_{terminal} $$
 
 ### SoC penalties (quadratic guard)
 
@@ -114,12 +113,6 @@ $$ P_{grid} = \sum_{t \in slots} \max(0, \frac{|gi[t] - ge[t]|}{\Delta t} - L_{g
 Where $\Delta t$ is slot duration in hours, $L_{grid}$ is the configured grid
 power limit in kW, and $w_{grid}$ is the penalty weight per excess kWh.
 
-### Override penalty
-
-$$ P_{override} = N_{override} \cdot w_{override} $$
-
-Where $N_{override}$ counts slots whose recommendation was forced by an override,
-and $w_{override}$ is the cost per override slot.
 
 ### Terminal SoC value (opportunity cost)
 

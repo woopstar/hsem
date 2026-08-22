@@ -31,6 +31,9 @@ We split the cost function into **two distinct aggregates** returned for every c
 total_cost = grid_import_cost − export_revenue + cycle_cost + conversion_loss_cost + tariff_cost
 ```
 
+`conversion_loss_cost` is retained for schema compatibility and is always zero;
+conversion efficiency is already reflected in the physical grid flows.
+
 - Every term in `total_cost` corresponds to a real monetary flow.
 - **No synthetic penalties** enter this aggregate.
 - Suitable for auditing, bill comparison, and user-facing display.
@@ -39,11 +42,11 @@ total_cost = grid_import_cost − export_revenue + cycle_cost + conversion_loss_
 ### 2. `score` — selector objective
 
 ```
-score = total_cost + soc_penalties + grid_limit_penalty + override_penalty + terminal_soc_value
+score = total_cost + soc_penalties + grid_limit_penalty + terminal_soc_value
 ```
 
 - Starts from `total_cost` (always includes real money).
-- Adds **synthetic penalties** (quadratic SoC guard, grid power limit, override cost).
+- Adds **synthetic penalties** (quadratic SoC guard and grid power limit).
 - Adds the **terminal SoC opportunity cost** — a value representing the lost future benefit of stored energy consumed during the horizon.
 - The selector always picks the candidate with the **lowest** `score`, not the lowest `total_cost`.
 

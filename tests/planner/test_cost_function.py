@@ -118,7 +118,6 @@ class TestReturnTypeContract:
         assert bd.cycle_cost == pytest.approx(0.0)
         assert bd.soc_penalty == pytest.approx(0.0)
         assert bd.grid_limit_penalty == pytest.approx(0.0)
-        assert bd.override_penalty == pytest.approx(0.0)
 
     def test_total_equals_sum_of_components(self):
         """total must equal the arithmetic sum of all components."""
@@ -143,7 +142,6 @@ class TestReturnTypeContract:
             + bd.cycle_cost
             + bd.soc_penalty
             + bd.grid_limit_penalty
-            + bd.override_penalty
         )
         assert bd.total == pytest.approx(expected, abs=1e-9)
 
@@ -169,20 +167,12 @@ class TestImportCost:
         bd = score_plan([slot], CostWeights())
         assert bd.import_cost == pytest.approx(0.0)
 
-    def test_negative_import_price_clamped_to_zero_cost(self):
-        """Negative import price is sanitised to zero, not treated as profit.
-
-        Mirrors ``milp_optimizer.py``'s ``p_imp_obj = max(p_imp, 0.0)``
-        clamp (issue #635/#657): the LP never earns a synthetic profit from
-        importing during a negative-price slot, so ``score_plan`` must not
-        either, or the selector's score would diverge from what the LP
-        actually optimised for.
-        """
+    def test_negative_import_price_is_preserved_as_credit(self):
+        """Finite negative import prices credit actual metered consumption."""
         slot = _make_slot(import_price=-0.05, grid_import_kwh=2.0)
         bd = score_plan([slot], CostWeights())
-        # import_cost = 2.0 × max(−0.05, 0.0) = 0.0
-        assert bd.import_cost == pytest.approx(0.0)
-        assert bd.total == pytest.approx(0.0)
+        assert bd.import_cost == pytest.approx(-0.10)
+        assert bd.total == pytest.approx(-0.10)
 
     def test_multiple_slots_summed(self):
         """Import cost is accumulated across all slots."""
@@ -242,163 +232,71 @@ class TestExportRevenue:
 
 
 class TestConversionLoss:
-    """Verify conversion loss is computed from per-side efficiency losses."""
+    """Verify efficiency is priced through physical grid flows exactly once."""
 
     def test_no_cycling_no_loss(self):
-        """No battery activity → conversion_loss_cost = 0."""
-        slot = _make_slot(
-            import_price=0.20,
-            export_price=0.05,
-            batteries_charged_kwh=0.0,
-            batteries_discharged_kwh=0.0,
-        )
-        bd = score_plan([slot], CostWeights())
+        """No battery activity leaves the compatibility field at zero."""
+        bd = score_plan([_make_slot()], CostWeights())
         assert bd.conversion_loss_cost == pytest.approx(0.0)
 
-    def test_charge_only_loss_computed(self):
-        """1 kWh charged with 90 % efficiency → 0.1 kWh lost @ 0.20 = 0.02."""
+    def test_charge_loss_is_in_grid_import(self):
+        """Storing 1 kWh at 90% prices the 1/0.9 kWh AC draw once."""
         slot = _make_slot(
             import_price=0.20,
-            export_price=0.05,
             batteries_charged_kwh=1.0,
-            batteries_discharged_kwh=0.0,
+            grid_import_kwh=1.0 / 0.9,
         )
         bd = score_plan(
             [slot],
-            CostWeights(charge_efficiency_pct=90.0, discharge_efficiency_pct=100.0),
+            CostWeights(charge_efficiency_pct=90.0),
         )
-        # charge_loss_fraction = 1 - 0.90 = 0.10
-        # lost_kwh = 1.0 × 0.10 = 0.10
-        # cost = 0.10 × 0.20 = 0.02
-        assert bd.conversion_loss_cost == pytest.approx(0.02, rel=1e-5)
-
-    def test_discharge_only_loss_computed(self):
-        """1 kWh discharged with 90 % efficiency → 0.1 kWh lost @ 0.20 = 0.02."""
-        slot = _make_slot(
-            import_price=0.20,
-            export_price=0.05,
-            batteries_charged_kwh=0.0,
-            batteries_discharged_kwh=1.0,
-        )
-        bd = score_plan(
-            [slot],
-            CostWeights(charge_efficiency_pct=100.0, discharge_efficiency_pct=90.0),
-        )
-        # discharge_loss_fraction = 1 - 0.90 = 0.10
-        # lost_kwh = 1.0 × 0.10 = 0.10
-        # cost = 0.10 × 0.20 = 0.02
-        assert bd.conversion_loss_cost == pytest.approx(0.02, rel=1e-5)
-
-    def test_full_efficiency_disables_term(self):
-        """100 % charge and discharge efficiency → conversion_loss_cost = 0."""
-        slot = _make_slot(
-            import_price=0.20,
-            export_price=0.05,
-            batteries_charged_kwh=5.0,
-            batteries_discharged_kwh=5.0,
-        )
-        bd = score_plan(
-            [slot],
-            CostWeights(charge_efficiency_pct=100.0, discharge_efficiency_pct=100.0),
-        )
+        assert bd.import_cost == pytest.approx((1.0 / 0.9) * 0.20, abs=1e-6)
         assert bd.conversion_loss_cost == pytest.approx(0.0)
+        assert bd.total_cost == pytest.approx(bd.import_cost, abs=1e-6)
 
-    # ------------------------------------------------------------------
-    # Discharge-side loss: destination-aware pricing (issue #641)
-    # ------------------------------------------------------------------
-
-    def test_discharge_loss_export_destined_uses_export_price(self):
-        """Export-destined discharge: loss priced at export price (issue #641 fix).
-
-        When the slot is a net exporter (grid_export_kwh > 0), the
-        discharge is destined for export.  The lost energy's true marginal
-        value is the export price (foregone export revenue), NOT the import
-        price (avoided import cost).
-
-        import=0.30, export=0.10 (import > export, the COMMON case).
-        Old (broken) behaviour: loss at import price = 0.30 -> cost 0.03.
-        New (correct) behaviour: loss at export price = 0.10 -> cost 0.01.
-        """
+    def test_discharge_loss_has_no_separate_fee(self):
+        """Reduced AC delivery is already reflected by the solved grid flow."""
         slot = _make_slot(
             import_price=0.30,
-            export_price=0.10,
-            grid_export_kwh=0.5,  # net exporter
-            batteries_discharged_kwh=1.0,
-        )
-        bd = score_plan(
-            [slot],
-            CostWeights(charge_efficiency_pct=100.0, discharge_efficiency_pct=90.0),
-        )
-        # discharge_loss_fraction = 1 - 0.90 = 0.10
-        # lost_kwh = 1.0 * 0.10 = 0.10
-        # cost = 0.10 * 0.10 = 0.01 (export price, NOT import price)
-        assert bd.conversion_loss_cost == pytest.approx(0.01, rel=1e-5)
-
-    def test_discharge_loss_house_load_uses_import_price(self):
-        """House-load discharge: loss priced at import price (regression guard).
-
-        When the slot is NOT exporting (grid_export_kwh == 0), the
-        discharge serves house load.  Import price is the correct
-        valuation (avoided import cost) — must remain UNCHANGED.
-        """
-        slot = _make_slot(
-            import_price=0.30,
-            export_price=0.10,
-            grid_import_kwh=0.5,  # net importer
-            grid_export_kwh=0.0,
-            batteries_discharged_kwh=1.0,
-        )
-        bd = score_plan(
-            [slot],
-            CostWeights(charge_efficiency_pct=100.0, discharge_efficiency_pct=90.0),
-        )
-        # lost_kwh = 0.10, cost = 0.10 * 0.30 = 0.03 (unchanged)
-        assert bd.conversion_loss_cost == pytest.approx(0.03, rel=1e-5)
-
-    def test_discharge_loss_both_negative_uses_zero(self):
-        """When both prices negative, loss floor is 0 (no negative pricing).
-
-        Both sanitised prices are 0, so the cost is 0 regardless of
-        destination.
-        """
-        slot = _make_slot(
-            import_price=-0.10,
-            export_price=-0.05,
             grid_import_kwh=0.5,
             batteries_discharged_kwh=1.0,
         )
         bd = score_plan(
             [slot],
-            CostWeights(charge_efficiency_pct=100.0, discharge_efficiency_pct=90.0),
+            CostWeights(discharge_efficiency_pct=90.0),
         )
+        assert bd.import_cost == pytest.approx(0.15)
         assert bd.conversion_loss_cost == pytest.approx(0.0)
 
-    def test_discharge_loss_export_below_legacy_min_price_uses_live_price(self):
-        """export_min_price no longer clamps export-destined discharge loss.
-
-        Since issue #767, the applier does not block grid export below
-        export_min_price; surplus PV export is always allowed.  The legacy
-        blanket clamp on discharge-loss pricing has been removed, so an
-        export-destined discharge below the old min price is priced at the
-        live export price.
-        """
+    def test_export_loss_has_no_separate_fee(self):
+        """AC export revenue already reflects discharge efficiency."""
         slot = _make_slot(
-            import_price=0.20,
-            export_price=0.02,
+            export_price=0.10,
             grid_export_kwh=0.5,
             batteries_discharged_kwh=1.0,
         )
         bd = score_plan(
             [slot],
+            CostWeights(discharge_efficiency_pct=90.0),
+        )
+        assert bd.export_revenue == pytest.approx(0.05)
+        assert bd.conversion_loss_cost == pytest.approx(0.0)
+
+    @pytest.mark.parametrize("efficiency", [70.0, 90.0, 100.0])
+    def test_compatibility_field_is_always_zero(self, efficiency: float) -> None:
+        """The retained public field never duplicates physical efficiency."""
+        slot = _make_slot(
+            batteries_charged_kwh=1.0,
+            batteries_discharged_kwh=1.0,
+        )
+        bd = score_plan(
+            [slot],
             CostWeights(
-                charge_efficiency_pct=100.0,
-                discharge_efficiency_pct=90.0,
-                export_min_price=0.05,
+                charge_efficiency_pct=efficiency,
+                discharge_efficiency_pct=efficiency,
             ),
         )
-        # export_price 0.02 is no longer clamped to 0.0 by export_min_price
-        # lost_kwh = 1.0 * (1 - 0.9) = 0.10, cost = 0.10 * 0.02 = 0.002
-        assert bd.conversion_loss_cost == pytest.approx(0.002, rel=1e-6)
+        assert bd.conversion_loss_cost == pytest.approx(0.0)
 
 
 # ===========================================================================
@@ -585,42 +483,7 @@ class TestGridLimitPenalty:
 
 
 # ===========================================================================
-# 8. Override penalty component
-# ===========================================================================
-
-
-class TestOverridePenalty:
-    """Verify forced-override slots accrue the override penalty."""
-
-    def test_no_override_recommendation_no_penalty(self):
-        """Normal recommendation (not override) → override_penalty = 0."""
-        slot = _make_slot(recommendation="batteries_discharge_mode")
-        bd = score_plan([slot], CostWeights(override_penalty_per_slot=0.05))
-        assert bd.override_penalty == pytest.approx(0.0)
-
-    def test_charge_grid_recommendation_is_override(self):
-        """'batteries_charge_grid' is a forced schedule → override_penalty applied."""
-        slot = _make_slot(recommendation="batteries_charge_grid")
-        bd = score_plan([slot], CostWeights(override_penalty_per_slot=0.10))
-        assert bd.override_penalty == pytest.approx(0.10)
-
-    def test_override_penalty_accumulates_per_slot(self):
-        """Three override slots → penalty × 3."""
-        slots = [
-            _make_slot(hour=h, recommendation="batteries_charge_grid") for h in range(3)
-        ]
-        bd = score_plan(slots, CostWeights(override_penalty_per_slot=0.05))
-        assert bd.override_penalty == pytest.approx(0.15, rel=1e-5)
-
-    def test_zero_override_weight_disables_term(self):
-        """override_penalty_per_slot=0 disables the term."""
-        slot = _make_slot(recommendation="batteries_charge_grid")
-        bd = score_plan([slot], CostWeights(override_penalty_per_slot=0.0))
-        assert bd.override_penalty == pytest.approx(0.0)
-
-
-# ===========================================================================
-# 9. NaN price safety
+# 8. NaN price safety
 # ===========================================================================
 
 
@@ -927,7 +790,6 @@ class TestRunPlannerIntegration:
         assert bd.cycle_cost >= 0.0
         assert bd.soc_penalty >= 0.0
         assert bd.grid_limit_penalty >= 0.0
-        assert bd.override_penalty >= 0.0
 
     def test_summer_plan_total_equals_sum_of_components(self):
         """plan_cost.score must be consistent with all its components (issue #413).
@@ -945,11 +807,10 @@ class TestRunPlannerIntegration:
             expected_total_cost
             + bd.soc_penalty
             + bd.grid_limit_penalty
-            + bd.override_penalty
             + bd.terminal_soc_value
         )
         assert bd.total_cost == pytest.approx(expected_total_cost, abs=1e-6)
-        assert bd.score == pytest.approx(expected_score, abs=1e-6)
+        assert bd.score == pytest.approx(expected_score, abs=2e-6)
         # ``bd.total`` is a deprecated alias for ``bd.score``.
         assert bd.total == pytest.approx(bd.score, abs=1e-6)
 

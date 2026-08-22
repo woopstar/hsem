@@ -124,15 +124,19 @@ def _build_ev_configs_for_milp(
         is_second,
     ) in ev_sources:
         label = "second" if is_second else "primary"
+        session_charge_kw = (
+            inp.ev_second_session_charge_kw if is_second else inp.ev_session_charge_kw
+        )
+        has_live_session = session_charge_kw is not None and session_charge_kw > 1e-9
 
-        if not enabled:
+        if not enabled and not has_live_session:
             log_planner(
                 "debug",
                 "[milp_ev] %s EV excluded: not enabled",
                 label,
             )
             continue
-        if not connected or not smart:
+        if (not connected or not smart) and not has_live_session:
             log_planner(
                 "debug",
                 "[milp_ev] %s EV excluded: connected=%s smart=%s",
@@ -141,17 +145,25 @@ def _build_ev_configs_for_milp(
                 smart,
             )
             continue
-        if cap <= 1e-9 or pwr <= 1e-9:
+        eff = clamp_efficiency(eff_pct)
+        effective_power = max(float(pwr), float(session_charge_kw or 0.0))
+        effective_capacity = float(cap)
+        if has_live_session and effective_capacity <= 1e-9:
+            effective_capacity = max(effective_power * 2.0 * eff, 0.001)
+        if effective_capacity <= 1e-9 or effective_power <= 1e-9:
             log_planner(
                 "debug",
                 "[milp_ev] %s EV excluded: capacity=%.2f power=%.2f (zero/missing)",
                 label,
-                cap,
-                pwr,
+                effective_capacity,
+                effective_power,
             )
             continue
-        initial_kwh = (soc_pct / 100.0) * cap
-        target_kwh = (target_pct / 100.0) * cap
+        initial_kwh = (soc_pct / 100.0) * effective_capacity
+        target_kwh = (target_pct / 100.0) * effective_capacity
+        fixed_session_only = has_live_session and (
+            not enabled or not connected or not smart
+        )
 
         # When the EV is already at or above its target SoC, normally we
         # skip it — there is no energy deficit to meet.  But when
@@ -165,8 +177,14 @@ def _build_ev_configs_for_milp(
         at_or_above_target = target_kwh <= initial_kwh + 1e-9
         deadline_slot: int | None = None
         charge_past_target = False
-        if at_or_above_target:
-            if not allow_past_target or soc_pct >= 100:
+        if fixed_session_only:
+            initial_kwh = 0.0
+            target_kwh = 0.0
+        elif at_or_above_target:
+            if has_live_session:
+                target_kwh = initial_kwh
+                fixed_session_only = True
+            elif not allow_past_target or soc_pct >= 100:
                 log_planner(
                     "debug",
                     "[milp_ev] %s EV excluded: fully_charged (soc=%.1f%% target=%.1f%% "
@@ -178,7 +196,7 @@ def _build_ev_configs_for_milp(
                 )
                 continue  # fully charged or past-target not allowed
             # Charge-past-target mode: allow up to 100 %, no deadline pressure.
-            target_kwh = cap
+            target_kwh = effective_capacity
             charge_past_target = True
         else:
             # Normal mode: map deadline to LP slot index.
@@ -199,9 +217,8 @@ def _build_ev_configs_for_milp(
                 continue
             charge_past_target = False
 
-        eff = clamp_efficiency(eff_pct)
         slot_hours = inp.interval_minutes / 60.0
-        max_dc = pwr * slot_hours * eff  # DC-side kWh per slot
+        max_dc = effective_power * slot_hours * eff  # DC-side kWh per slot
 
         future_value_per_kwh: float | None = None
         if charge_past_target and ev_avg_future_import_price is not None:
@@ -214,7 +231,7 @@ def _build_ev_configs_for_milp(
                 enabled=True,
                 initial_soc_kwh=round(initial_kwh, 3),
                 target_kwh=round(target_kwh, 3),
-                capacity_kwh=round(cap, 3),
+                capacity_kwh=round(effective_capacity, 3),
                 max_charge_per_slot=round(max_dc, 4),
                 charger_efficiency=round(eff, 4),
                 charger_min_power_w=round(min_pwr_w, 1),
@@ -223,6 +240,8 @@ def _build_ev_configs_for_milp(
                 charge_past_target=charge_past_target,
                 future_value_per_kwh=future_value_per_kwh,
                 is_second=is_second,
+                session_charge_kw=session_charge_kw,
+                fixed_session_only=fixed_session_only,
             )
         )
 
@@ -240,30 +259,14 @@ def _build_ev_configs_for_milp(
                 "debug",
                 "[milp_ev] %s EV included  mode=normal  "
                 "soc=%.1f%%  target=%.1f%%  initial=%.3fkWh  target=%.3fkWh  "
-                "deadline_slot=%d  max_dc_per_slot=%.4fkWh",
+                "deadline_slot=%s  max_dc_per_slot=%.4fkWh",
                 label,
                 soc_pct,
                 target_pct,
                 initial_kwh,
                 target_kwh,
-                deadline_slot,
+                deadline_slot if deadline_slot is not None else "none",
                 max_dc,
-            )
-
-    # Apply session charge power from live EV state (issue #615).
-    # Route by identity (is_second), not list position (issue #646).
-    for cfg in configs:
-        if cfg.is_second:
-            cfg.session_charge_kw = inp.ev_second_session_charge_kw
-        else:
-            cfg.session_charge_kw = inp.ev_session_charge_kw
-
-        if cfg.session_charge_kw is not None and cfg.session_charge_kw > 1e-9:
-            log_planner(
-                "debug",
-                "[milp_ev] %s EV session_charge_kw=%.2f (active charging session)",
-                "second" if cfg.is_second else "primary",
-                cfg.session_charge_kw,
             )
 
     if not configs:

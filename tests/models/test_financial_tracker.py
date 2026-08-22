@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
@@ -85,6 +85,45 @@ class TestFinancialTrackerAccumulation:
         assert tracker.import_cost_total == pytest.approx(15.0)
         # Export: (55 - 50) * 1.5 = 7.5
         assert tracker.export_income_total == pytest.approx(7.5)
+
+    def test_timed_interval_uses_left_endpoint_price(self) -> None:
+        """A tariff-boundary sample closes the interval at the old price."""
+        start = datetime(2026, 8, 22, 12, 55, tzinfo=UTC)
+        tracker = FinancialTracker()
+        assert not tracker.accumulate(
+            100.0,
+            50.0,
+            import_price=2.0,
+            export_price=1.0,
+            sample_time=start,
+            max_gap_seconds=600.0,
+        )
+        assert tracker.accumulate(
+            101.0,
+            51.0,
+            import_price=5.0,
+            export_price=4.0,
+            sample_time=start + timedelta(minutes=5),
+            max_gap_seconds=600.0,
+        )
+        assert tracker.import_cost_total == pytest.approx(2.0)
+        assert tracker.export_income_total == pytest.approx(1.0)
+
+    def test_stale_sample_rebaselines_without_replaying_gap(self) -> None:
+        """A long outage does not price its entire meter delta at one rate."""
+        start = datetime(2026, 8, 8, 12, 0, tzinfo=UTC)
+        tracker = FinancialTracker()
+        tracker.accumulate(100.0, 50.0, sample_time=start, max_gap_seconds=600.0)
+        assert not tracker.accumulate(
+            500.0,
+            250.0,
+            import_price=3.0,
+            export_price=2.0,
+            sample_time=start + timedelta(days=14),
+            max_gap_seconds=600.0,
+        )
+        assert tracker.import_cost_total == pytest.approx(0.0)
+        assert tracker.export_income_total == pytest.approx(0.0)
 
     def test_accumulate_ignores_negative_delta(self) -> None:
         """Negative delta (meter reset) is ignored."""
@@ -238,8 +277,12 @@ class TestFinancialTrackerPeriodRollups:
 
     def _make_tracker_with_history(self) -> FinancialTracker:
         """Create a tracker with known daily_log entries."""
-        tracker = FinancialTracker()
         today = date.today()
+        tracker = FinancialTracker(
+            import_cost_total=10.0,
+            export_income_total=5.0,
+            today=today.isoformat(),
+        )
 
         # Add entries for the last 35 days.
         for offset in range(35):

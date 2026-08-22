@@ -42,9 +42,7 @@ class CostWeights:
             for every kWh of excess energy.  ``None`` disables the check.
         grid_limit_penalty_per_kwh:
             Currency/kWh applied to each kWh that exceeds ``grid_limit_kw``.
-        override_penalty_per_slot:
-            Flat cost added for every slot flagged as a forced override.
-            Penalises plans that bypass normal optimisation.
+
         cycle_cost_per_kwh:
             Depreciation cost in local currency per kWh cycled through the
             battery.  When ``None`` it is auto-calculated from
@@ -97,9 +95,6 @@ class CostWeights:
     # Grid limit
     grid_limit_kw: float | None = None
     grid_limit_penalty_per_kwh: float = 0.5
-
-    # Override penalty
-    override_penalty_per_slot: float = 0.0
 
     # Battery cycle depreciation
     cycle_cost_per_kwh: float | None = None
@@ -163,7 +158,8 @@ class PlanCostBreakdown:
             exporting costs money).  This value is *subtracted* from
             :attr:`total_cost`, so a negative value increases total cost.
         conversion_loss_cost:
-            Opportunity cost of energy lost in round-trip battery cycles.
+            Compatibility field, always zero. Conversion efficiency is already
+            physical in grid flows and battery inventory.
         cycle_cost:
             Battery depreciation cost (kWh cycled × cost per kWh).
         soc_penalty:
@@ -172,13 +168,12 @@ class PlanCostBreakdown:
         grid_limit_penalty:
             Penalty for exceeding the configured grid power limit.
             Selector-only — does not enter :attr:`total_cost`.
-        override_penalty:
-            Penalty for forced-override slots.  Selector-only.
+
         terminal_soc_value:
             Per-slot opportunity cost of charging/discharging, summed across
             the horizon.  Each slot's contribution is capped by the
             differential between ``replacement_price_per_kwh`` and that
-            slot's own sanitised import price (mirrors
+            slot's own finite signed import price (mirrors
             ``milp_optimizer.py``'s terminal-SoC objective term exactly,
             issue #655).  Negative (credit) when the plan nets more
             charging than discharging in slots where the differential is
@@ -191,7 +186,7 @@ class PlanCostBreakdown:
         score:
             Selector objective.  Equal to
             ``total_cost + soc_penalty + grid_limit_penalty
-            + override_penalty + terminal_soc_value``.
+            + terminal_soc_value``.
             **Lower is better.**  The candidate selector picks the plan
             with the lowest score.
         total:
@@ -207,7 +202,6 @@ class PlanCostBreakdown:
     cycle_cost: float = 0.0
     soc_penalty: float = 0.0
     grid_limit_penalty: float = 0.0
-    override_penalty: float = 0.0
     terminal_soc_value: float = 0.0
     total_cost: float = 0.0
     score: float = 0.0

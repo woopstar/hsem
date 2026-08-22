@@ -31,12 +31,10 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import math
 from collections.abc import Callable
-from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
-from pathlib import Path
-from typing import TYPE_CHECKING, override
+from dataclasses import replace
+from datetime import datetime, timedelta
+from typing import TYPE_CHECKING, Any, override
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Event, HomeAssistant
@@ -46,13 +44,31 @@ from homeassistant.helpers.event import (
 )
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from custom_components.hsem.const import (
-    DOMAIN,
-    EMA_ALPHA_NET_CONSUMPTION,
-)
+from custom_components.hsem.const import EMA_ALPHA_NET_CONSUMPTION
 from custom_components.hsem.coordinator_builder import (
     build_planner_input,
     generate_recommendation_intervals,
+)
+from custom_components.hsem.coordinator_data import CoordinatorData
+from custom_components.hsem.coordinator_helpers import (
+    LoadForecastSignature,
+    _SimpleSlot,
+    apply_current_ev_power_override,
+    apply_force_charge_now,
+    apply_load_forecast_hold,
+    assess_load_forecast,
+    future_consumption_profile_is_nonzero,
+    live_demand_contradicts_zero_profile,
+    load_forecast_signatures_match,
+)
+from custom_components.hsem.coordinator_tracking import (
+    accumulate_daily_plan_actuals,
+    accumulate_financials,
+    accumulate_forecast_actuals,
+    accumulate_savings,
+    init_financial_tracker,
+    init_prediction_tracker,
+    register_forecasts_from_planner,
 )
 from custom_components.hsem.custom_sensors.hourly_data_populator.consumption import (
     populate_avg_house_consumption_from_snapshot,
@@ -66,7 +82,6 @@ from custom_components.hsem.custom_sensors.state_collector import (  # noqa: F40
     build_battery_schedules,
     build_sensor_config,
 )
-from custom_components.hsem.models.daily_metrics import DailyMetrics
 from custom_components.hsem.models.daily_plan_vs_actual_tracker import (
     DailyPlanVsActualTracker,
 )
@@ -84,7 +99,6 @@ from custom_components.hsem.planner import run_planner
 from custom_components.hsem.planner.charge_scheduler import apply_window_hysteresis
 from custom_components.hsem.planner.ev_planner import EVChargingPlan
 from custom_components.hsem.utils.capacity_learner import CapacityLearner
-from custom_components.hsem.utils.charge_rate_learner import CHARGE_RATE_LEARNER
 from custom_components.hsem.utils.datetime_utils import (
     as_tz,
     now as hsem_now,
@@ -92,21 +106,14 @@ from custom_components.hsem.utils.datetime_utils import (
     utc_now_iso,
 )
 from custom_components.hsem.utils.dynamic_floor import DynamicDischargeFloor
-from custom_components.hsem.utils.forecast_tracker import (
-    ForecastTracker,
-    compute_accumulated_energy,
-)
-from custom_components.hsem.utils.inverter_verify import CycleApplySummary
+from custom_components.hsem.utils.forecast_tracker import ForecastTracker
 from custom_components.hsem.utils.logger import (
     HSEM_LOGGER as _LOGGER,
     async_log,
     set_hsem_verbose,
 )
 from custom_components.hsem.utils.misc import ema_filter, get_config_value
-from custom_components.hsem.utils.prediction_tracker import (
-    PredictionTracker,
-    _action_label,
-)
+from custom_components.hsem.utils.prediction_tracker import PredictionTracker
 from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.solar_corrector import SolarForecastCorrector
 from custom_components.hsem.utils.units import usable_kwh_from_rated
@@ -115,6 +122,14 @@ from custom_components.hsem.utils.weekday_profile import weekday_profile
 if TYPE_CHECKING:
     from custom_components.hsem.ml.consumption_predictor import ConsumptionPredictor
 
+# Compatibility exports retained for existing tests and integrations.
+_apply_force_charge_now = apply_force_charge_now
+_apply_load_forecast_hold = apply_load_forecast_hold
+_assess_load_forecast = assess_load_forecast
+_future_consumption_profile_is_nonzero = future_consumption_profile_is_nonzero
+_live_demand_contradicts_zero_profile = live_demand_contradicts_zero_profile
+_load_forecast_signatures_match = load_forecast_signatures_match
+
 
 # Seconds to wait after the last options change before scheduling a planner
 # run.  Rapid switch/number/time toggles restart this timer, so the planner
@@ -122,293 +137,8 @@ if TYPE_CHECKING:
 OPTIONS_UPDATE_DEBOUNCE_SECONDS = 0.25
 
 
-# ---------------------------------------------------------------------------
-# Lightweight slot for dynamic floor bridge computation
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class _SimpleSlot:
-    """Minimal slot for DynamicDischargeFloor.compute_floor().
-
-    Carries only the fields needed by the bridge computation.
-    """
-
-    start: datetime
-    end: datetime
-    estimated_net_consumption_kwh: float
-    batteries_charged_kwh: float
-    recommendation: str | None
-
-
-# ---------------------------------------------------------------------------
-# Force-charge-now override helper
-# ---------------------------------------------------------------------------
-
-
-def _apply_force_charge_now(
-    *,
-    config_entry: ConfigEntry,
-    hourly_recommendations: list[HourlyRecommendation],
-    ev_plan: EVChargingPlan | None,
-    ev_second_plan: EVChargingPlan | None,
-    now: datetime,
-) -> None:
-    """Apply the force-charge-now override to the current slot.
-
-    When the user toggles ``hsem_ev_force_charge_now`` (or the second-EV
-    equivalent), the current slot's recommendation is overridden to
-    ``ev_smart_charging`` and the calculated charger power is set to the
-    charger's maximum AC power.
-
-    Crucially, force-charge works **even when smart charging is disabled**.
-    The EV planner returns ``smart_charging_disabled`` with zero allocated
-    power in that case, so this function also flips the plan state to
-    ``charging`` so the plan sensor reflects the forced charge.
-
-    Args:
-        config_entry: The HSEM config entry (to read the force-charge switches).
-        hourly_recommendations: The list of hourly recommendations to modify.
-        ev_plan: The primary EV charging plan (may be ``None``).
-        ev_second_plan: The second EV charging plan (may be ``None``).
-        now: Current time (timezone-aware), used to locate the current slot.
-    """
-    force_primary = bool(get_config_value(config_entry, "hsem_ev_force_charge_now"))
-    force_second = bool(
-        get_config_value(config_entry, "hsem_ev_second_force_charge_now")
-    )
-    if not force_primary and not force_second:
-        return
-
-    now_slot = next(
-        (
-            r
-            for r in hourly_recommendations
-            if as_tz(r.start, now.tzinfo) <= now < as_tz(r.end, now.tzinfo)
-        ),
-        None,
-    )
-    if now_slot is None:
-        return
-
-    if force_primary:
-        now_slot.recommendation = Recommendations.EVSmartCharging.value
-        pwr_kw = float(
-            get_config_value(
-                config_entry,
-                "hsem_ev_planned_load_charger_power_kw",
-            )
-            or 0.0
-        )
-        now_slot.ev_charger_calculated_power = (
-            round(pwr_kw * 1000) if pwr_kw > 0 else 0.0
-        )
-        # Flip plan state so the sensor shows "charging" instead of
-        # "smart_charging_disabled" when the user forces a charge.
-        if ev_plan is not None and ev_plan.state == "smart_charging_disabled":
-            ev_plan.state = "charging"
-        async_log(
-            "debug",
-            "[coordinator] Force-Charge-Now: primary EV "
-            "→ overriding current slot to ev_smart_charging at %dW",
-            now_slot.ev_charger_calculated_power,
-        )
-
-    if force_second:
-        now_slot.recommendation = Recommendations.EVSmartCharging.value
-        pwr_kw = float(
-            get_config_value(
-                config_entry,
-                "hsem_ev_second_planned_load_charger_power_kw",
-            )
-            or 0.0
-        )
-        now_slot.ev_second_charger_calculated_power = (
-            round(pwr_kw * 1000) if pwr_kw > 0 else 0.0
-        )
-        # Flip plan state so the sensor shows "charging" instead of
-        # "smart_charging_disabled" when the user forces a charge.
-        if (
-            ev_second_plan is not None
-            and ev_second_plan.state == "smart_charging_disabled"
-        ):
-            ev_second_plan.state = "charging"
-        async_log(
-            "debug",
-            "[coordinator] Force-Charge-Now: second EV "
-            "→ overriding current slot to ev_smart_charging at %dW",
-            now_slot.ev_second_charger_calculated_power,
-        )
-
-
-# ---------------------------------------------------------------------------
-# Load-forecast fail-closed hold helper
-# ---------------------------------------------------------------------------
-
-#: Live house demand above this wattage is treated as a genuine, non-zero load
-#: that an all-zero consumption profile cannot explain.
-_LOAD_FORECAST_LIVE_DEMAND_THRESHOLD_W = 50.0
-#: Epsilon used to treat a consumption value as numerically zero.
-_LOAD_FORECAST_ZERO_EPSILON_KWH = 1e-9
-
-
-def _apply_load_forecast_hold(
-    recommendations: list[HourlyRecommendation],
-    live: LiveState,
-    now: datetime,
-    *,
-    consumption_ok: bool,
-) -> HourlyRecommendation | None:
-    """Publish a strict current-slot storage hold when load data is unsafe.
-
-    If consumption averages failed to populate, or the entire future profile
-    is numerically zero while live house demand is clearly positive, the
-    planner must not solve or reuse a plan sized on fictional zero load.  In
-    that case the current slot is held in :attr:`BatteriesWaitMode` with zero
-    charge/discharge motion, which the applier treats as a safe storage hold.
-
-    A user-forced working mode always wins over this automatic safety hold.
-
-    Args:
-        recommendations: The hourly recommendations to modify (current slot).
-        live: Live entity state snapshot.
-        now: Current time (timezone-aware).
-        consumption_ok: Whether consumption averages populated successfully.
-
-    Returns:
-        The held current slot, or ``None`` when no hold is applied.
-    """
-    if consumption_ok and _future_consumption_profile_is_nonzero(recommendations, now):
-        return None
-    if str(live.force_working_mode_state).strip().lower() != "auto":
-        return None
-
-    current = next(
-        (
-            rec
-            for rec in recommendations
-            if as_tz(rec.start, now.tzinfo) <= now < as_tz(rec.end, now.tzinfo)
-        ),
-        None,
-    )
-    if current is None:
-        return None
-
-    current.recommendation = Recommendations.BatteriesWaitMode.value
-    current.batteries_charged_kwh = 0.0
-    current.batteries_discharged_kwh = 0.0
-    return current
-
-
-def _future_consumption_profile_is_nonzero(
-    recommendations: list[HourlyRecommendation],
-    now: datetime,
-) -> bool:
-    """Return whether at least one future slot carries a positive load estimate.
-
-    Used to distinguish a legitimate measured-zero night from an all-zero
-    profile produced by a failed or not-yet-ready consumption source.
-    """
-    return any(
-        math.isfinite(rec.avg_house_consumption_kwh)
-        and rec.avg_house_consumption_kwh > _LOAD_FORECAST_ZERO_EPSILON_KWH
-        and as_tz(rec.end, now.tzinfo) > now
-        for rec in recommendations
-    )
-
-
-def _live_demand_contradicts_zero_profile(
-    recommendations: list[HourlyRecommendation],
-    live: LiveState,
-    now: datetime,
-) -> bool:
-    """Return whether live demand disproves an all-zero future load profile."""
-    if _future_consumption_profile_is_nonzero(recommendations, now):
-        return False
-    demand_w = live.house_consumption_power_w
-    if demand_w is None or isinstance(demand_w, bool):
-        return False
-    try:
-        demand = float(demand_w)
-    except TypeError, ValueError:
-        return False
-    return math.isfinite(demand) and demand > _LOAD_FORECAST_LIVE_DEMAND_THRESHOLD_W
-
-
-# ---------------------------------------------------------------------------
-# Data payload exposed to subscriber entities
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class CoordinatorData:
-    """Snapshot of a single HSEM update cycle.
-
-    All fields are read-only from the perspective of subscribing entities.
-    The coordinator replaces this object atomically at the end of every cycle.
-
-    Attributes:
-        cfg: Configuration values read from the config entry.
-        live: Live HA entity state snapshot collected at the start of the cycle.
-        hourly_recommendations: Full list of planner recommendation slots.
-        hourly_recommendation: The recommendation slot active *right now*, or
-            ``None`` when no matching slot exists.
-        batteries_schedules: Parsed battery charge/discharge schedule windows.
-        batteries_schedules_remaining_capacity_needed: Total remaining capacity
-            needed across all enabled battery schedules (kWh).
-        current_required_battery: Required battery capacity from the planner (kWh).
-        state: Working-mode recommendation string for the current slot, or one
-            of the :class:`~utils.recommendations.Recommendations` sentinel values.
-        last_updated: ISO-format timestamp of the cycle that produced this data.
-        next_update: ISO-format timestamp of the *next* scheduled cycle.
-    """
-
-    cfg: SensorConfig | None = None
-    live: LiveState | None = None
-    hourly_recommendations: list[HourlyRecommendation] = field(default_factory=list)
-    hourly_recommendation: HourlyRecommendation | None = None
-    batteries_schedules: list = field(default_factory=list)
-    batteries_schedules_remaining_capacity_needed: float = 0.0
-    current_required_battery: float = 0.0
-    state: str | None = None
-    last_updated: str | None = None
-    next_update: str | None = None
-    #: Aggregated write-and-verify results from the most recent hardware apply cycle.
-    #: ``None`` before the first hardware-write cycle completes.
-    apply_summary: CycleApplySummary | None = None
-    #: Human-readable explanation of why the selected plan was chosen.
-    plan_explanation: PlanExplanation = field(default_factory=PlanExplanation)
-    #: Structured data-quality report for price and PV inputs.
-    data_quality: DataQuality = field(default_factory=DataQuality)
-    #: EV optimal charging plan for the primary EV (None when disabled).
-    ev_charging_plan: EVChargingPlan | None = None
-    #: EV optimal charging plan for the second EV (None when disabled).
-    ev_second_charging_plan: EVChargingPlan | None = None
-    #: ISO-format timestamp of the override expiry, or None when no timed
-    #: override is active (issue #317).
-    override_expiry: str | None = None
-    #: Savings tracker with actual vs missed savings metrics.
-    savings_tracker: SavingsTracker = field(default_factory=SavingsTracker)
-    #: Prediction accuracy tracker reference (SoC/MAE/action-mix scorecard, issue #601).
-    prediction_tracker: PredictionTracker | None = None
-    #: Capacity learner for auto-detecting battery usable capacity from
-    #: BMS kWh-remaining and SoC readings.
-    capacity_learner: CapacityLearner = field(default_factory=CapacityLearner)
-    #: Per-hour solar forecast accuracy factors (0-23 → factor).
-    #: Used by the solar confidence diagnostic sensor (issue #602).
-    solar_hour_factors: dict[int, float] = field(default_factory=dict)
-    #: Effective dynamic discharge floor SoC percentage, or None when the
-    #: feature is disabled.  Computed by DynamicDischargeFloor.compute_floor().
-    effective_discharge_floor_pct: float | None = None
-    #: Diagnostics dict from the dynamic floor computation, or None when
-    #: the feature is disabled.
-    effective_discharge_floor_diag: dict | None = None
-    #: Financial tracker with cumulative import cost and export income.
-    financial_tracker: FinancialTracker | None = None
-    #: OCPP charger session dict (CPID → ChargerSession) for sensor entities.
-    ocpp_chargers: dict | None = None
-    #: OCPP completed session log for the sessions sensor.
-    ocpp_sessions: list | None = None
+class _StaleUpdateCycle(Exception):
+    """Raised when a newer registered state event invalidates an in-flight cycle."""
 
 
 # ---------------------------------------------------------------------------
@@ -454,6 +184,11 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
 
         # Lock prevents concurrent executions of the update pipeline.
         self._update_lock = asyncio.Lock()
+        # Registered state changes advance this generation before a cycle runs.
+        # If it changes in flight, the stale cycle is discarded and one durable
+        # follow-up cycle runs from a fresh snapshot.
+        self._update_generation: int = 0
+        self._event_update_pending: bool = False
 
         # Timer handles — cancelled/re-registered when the interval changes.
         self._interval_timer_unsub: Callable[[], None] | None = None
@@ -507,17 +242,6 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         self._window_hys_previous_rec: str | None = None
         self._window_hys_previous_slot_start: datetime | None = None
 
-        # Per-slot EV charger power freeze (issue #738).
-        # The EV planner recomputes ev_charger_calculated_power whenever the
-        # planner reruns, mixing live PV/consumption data into the current
-        # slot. That makes the charger command oscillate inside a 15-minute
-        # slot. We freeze the value at slot start and reuse it across replans
-        # until the next slot begins. Explicit overrides (force-charge-now,
-        # auto-full-EV) are applied on top of the frozen value each cycle.
-        self._current_slot_start: datetime | None = None
-        self._current_slot_ev_power_w: float = 0.0
-        self._current_slot_ev_second_power_w: float = 0.0
-
         # Event-driven re-planning — track state at last plan to avoid
         # re-solving the MILP when nothing material has changed.
         self._last_plan_ev_connected: bool | None = False
@@ -529,6 +253,10 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         self._last_plan_force_mode: str = "auto"
         self._last_plan_slot_start: datetime | None = None
         self._last_plan_import_price: float | None = None
+        self._last_plan_load_forecast_signature: LoadForecastSignature | None = None
+        self._current_load_forecast_signature: LoadForecastSignature | None = None
+        self._load_forecast_recovery_replan_pending: bool = False
+        self._last_load_forecast_readiness_reason: str | None = None
         # EV planned-load config that affects planner optimisation.
         self._last_plan_ev_target_soc: float | None = None
         self._last_plan_ev_smart_charging: bool | None = None
@@ -551,22 +279,16 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         # Daily plan-vs-actual tracker (diagnostic sensor with 90-day history).
         # The history file path is set in async_setup() once hass.config is available.
         self._daily_tracker: DailyPlanVsActualTracker = DailyPlanVsActualTracker()
-        self._daily_tracker_initialized: bool = False
         # Savings tracker (actual vs missed savings with 90-day history).
         self._savings_tracker: SavingsTracker = SavingsTracker()
-        self._savings_tracker_initialized: bool = False
         # Financial tracker — cumulative import cost and export income (never reset).
         # The history file path is set in async_setup() once hass.config is available.
         self._financial_tracker: FinancialTracker = FinancialTracker()
-        self._financial_tracker_initialized: bool = False
-        # Midnight timer unsubscribe handler for daily persistence.
-        self._midnight_unsub: Callable[[], None] | None = None
         # Last slot end time accumulated from planner output (prevents double-counting).
         self._daily_plan_last_accumulated: datetime | None = None
         # Timestamp of the last actual-energy accumulation cycle.
         self._last_accumulation_ts: datetime | None = None
-        #: Previous battery SoC reading for charge-rate learner delta detection.
-        self._last_soc_pct: float | None = None
+
         # Override expiry timestamp for timed manual overrides (issue #317).
         # Set by set_temporary_override when duration_minutes is provided.
         # Checked on every update cycle; when expired, the override is cleared
@@ -608,11 +330,18 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         Call this once after the coordinator is created (from
         :func:`~custom_components.hsem.__init__.async_setup_entry`).
         """
+        # Restore prediction diagnostics before the first cycle so an options
+        # reload does not restart the scorecard warm-up window.
+        try:
+            await init_prediction_tracker(self._prediction_tracker, self.hass)
+        except Exception as e:
+            async_log("error", "Failed to initialise prediction tracker: %s", e)
+
         # Initialise the financial tracker — lazy load from disk on first access.
         # This must happen before the first update cycle so the tracker
         # is available when accumulation runs.
         try:
-            await self._init_financial_tracker()
+            await init_financial_tracker(self._financial_tracker, self.hass)
         except Exception as e:
             async_log("error", "Failed to initialise financial tracker: %s", e)
 
@@ -665,10 +394,13 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         for unsub in self._listener_unsubs:
             unsub()
         self._listener_unsubs.clear()
-        midnight = getattr(self, "_midnight_unsub", None)
-        if midnight is not None:
-            midnight()
-            self._midnight_unsub = None
+        # Cancel midnight timer from daily tracker if registered.
+        daily_tracker = getattr(self, "_daily_tracker", None)
+        if daily_tracker is not None:
+            midnight = getattr(daily_tracker, "_midnight_unsub", None)
+            if midnight is not None:
+                midnight()
+                daily_tracker._midnight_unsub = None  # type: ignore[attr-defined]
 
         # Stop the OCPP server if it was started.
         ocpp = getattr(self, "_ocpp_server", None)
@@ -759,15 +491,258 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
     # ------------------------------------------------------------------
 
     async def _async_handle_update(self, event: Event | None = None) -> None:
-        """Drop concurrent updates; run the update cycle while holding the lock."""
+        """Run updates serially and retain state-change events received in flight."""
+        if event is not None:
+            self._update_generation = getattr(self, "_update_generation", 0) + 1
+            self._event_update_pending = True
         if self._update_lock.locked():
             async_log(
                 "debug",
-                "------ Coordinator update skipped: a previous cycle is still running.",
+                "------ Coordinator update deferred: a previous cycle is still running.",
             )
             return
         async with self._update_lock:
-            await self._async_run_update_cycle()
+            while True:
+                self._event_update_pending = False
+                await self._async_run_update_cycle()
+                if not self._event_update_pending:
+                    break
+
+    async def _async_collect_and_populate(
+        self, now: datetime
+    ) -> tuple[bool, str | None]:
+        """Collect live state, populate consumption/prices, determine working state.
+
+        Returns:
+            (consumption_ok, state) — whether consumption data is ready and the
+            current working-mode state string (or None for full pipeline).
+        """
+        # 1. Reload config from the config entry.
+        self._cfg = build_sensor_config(self._config_entry)
+        cfg = self._cfg
+
+        # 2. Collect ALL HA entity states once into an immutable snapshot.
+        (
+            self._snapshot,
+            self._force_working_mode_entity,
+            new_unsubs,
+        ) = await async_collect_all_states(
+            self,
+            cfg,
+            self._force_working_mode_entity,
+            self._tracked_entities,
+            self._avg_house_consumption_entity_id_cache,
+            entry_id=self._config_entry.entry_id,
+        )
+        self._listener_unsubs.extend(new_unsubs)
+        self._live = self._snapshot.live
+        live = self._live
+
+        # Feed the capacity learner with BMS readings (issue #605).
+        if (
+            live.bms_kwh_remaining is not None
+            and live.huawei_batteries_soc_pct is not None
+        ):
+            getattr(self, "_capacity_learner", CapacityLearner()).update(
+                live.bms_kwh_remaining, live.huawei_batteries_soc_pct
+            )
+
+        # Update the weekday/weekend consumption profile (issue #612).
+        house_w = live.house_consumption_power_w
+        if house_w is not None and house_w > 0:
+            weekday_profile.update(
+                dow=now.weekday(),
+                slot=now.hour,
+                value_kwh=house_w / 1000.0,
+            )
+
+        # Apply EMA smoothing to live net consumption.
+        self._net_consumption_ema = ema_filter(
+            live.net_consumption_w,
+            self._net_consumption_ema,
+            EMA_ALPHA_NET_CONSUMPTION,
+        )
+        live.net_consumption_w = self._net_consumption_ema
+
+        # Override expiry check (issue #317).
+        if self._override_expiry is not None:
+            if now >= self._override_expiry:
+                async_log(
+                    "debug",
+                    "Timed override EXPIRED — clearing select entity to 'auto'.",
+                )
+                await self.hass.services.async_call(
+                    "select",
+                    "select_option",
+                    {"entity_id": live.force_working_mode, "option": "auto"},
+                    blocking=True,
+                )
+                live.force_working_mode_state = "auto"
+                self._override_expiry = None
+            elif live.force_working_mode_state == "auto":
+                async_log(
+                    "debug",
+                    "Override manually cleared before expiry — removing expiry tracking.",
+                )
+                self._override_expiry = None
+
+        # 3. Reset and generate recommendation time-slots.
+        self._hourly_recommendation = None
+        self._hourly_recommendations = generate_recommendation_intervals(
+            cfg.recommendation_interval_minutes,
+            cfg.recommendation_interval_length,
+        )
+
+        # 4. Build battery-schedule objects from config.
+        self._batteries_schedules = build_battery_schedules(cfg)
+        self._batteries_schedules.sort(key=lambda x: x.start)
+
+        # 5. Populate weighted house-consumption averages.
+        set_hsem_verbose(cfg.verbose_logging)
+
+        if cfg.ml_consumption_enabled:
+            from custom_components.hsem.ml.populator import (
+                populate_ml_house_consumption,
+            )
+
+            (
+                consumption_ok,
+                self._ml_predictor,
+            ) = await populate_ml_house_consumption(
+                self.hass,
+                self._hourly_recommendations,
+                cfg,
+                self._ml_predictor,
+            )
+            async_log(
+                "debug",
+                "[ml] populate_ml_house_consumption returned %s",
+                consumption_ok,
+            )
+
+            if not consumption_ok:
+                async_log(
+                    "debug",
+                    "[ml] ML consumption failed — falling back to legacy avg sensors.",
+                )
+                consumption_ok = populate_avg_house_consumption_from_snapshot(
+                    self._hourly_recommendations,
+                    self._snapshot,
+                    cfg,
+                    self._avg_house_consumption_entity_id_cache,
+                    entry_id=self._config_entry.entry_id,
+                )
+        else:
+            consumption_ok = populate_avg_house_consumption_from_snapshot(
+                self._hourly_recommendations,
+                self._snapshot,
+                cfg,
+                self._avg_house_consumption_entity_id_cache,
+                entry_id=self._config_entry.entry_id,
+            )
+            async_log(
+                "debug",
+                "[avg] populate_avg_house_consumption_from_snapshot returned %s, "
+                "cache has %d entries, snapshot has %d energy_avg values",
+                consumption_ok,
+                len(self._avg_house_consumption_entity_id_cache),
+                len(self._snapshot.energy_average_values),
+            )
+
+        load_readiness = assess_load_forecast(
+            self._hourly_recommendations,
+            now,
+            population_succeeded=consumption_ok,
+            live_house_demand_w=live.house_consumption_power_w,
+        )
+        consumption_ok = load_readiness.ready
+        self._current_load_forecast_signature = load_readiness.signature
+        readiness_reason = load_readiness.reason
+        previous_reason = getattr(self, "_last_load_forecast_readiness_reason", None)
+        if consumption_ok:
+            self._data_quality = replace(
+                self._data_quality,
+                load_forecast_ready=True,
+                load_forecast_reason=None,
+            )
+            if previous_reason is not None:
+                async_log(
+                    "info",
+                    "[load] Forecast recovered (%s); a fresh plan is required.",
+                    previous_reason,
+                )
+        else:
+            assert readiness_reason is not None
+            self._load_forecast_recovery_replan_pending = True
+            self._data_quality = replace(
+                self._data_quality,
+                load_forecast_ready=False,
+                load_forecast_reason=readiness_reason,
+            )
+            if readiness_reason != previous_reason:
+                async_log(
+                    "warning",
+                    "[load] Forecast is not ready (%s); automatic control will "
+                    "publish a strict storage hold.",
+                    readiness_reason,
+                )
+        self._last_load_forecast_readiness_reason = readiness_reason
+
+        # Adjust timer based on missing-entities or pending-consumption status.
+        if live.missing_entities or not consumption_ok:
+            await self._set_update_interval(1)
+        else:
+            await self._set_update_interval()
+
+        # 6. Determine working state: forced, missing, or full pipeline.
+        state: str | None = None
+
+        if live.missing_entities and live.force_working_mode_state == "auto":
+            state = Recommendations.MissingInputEntities.value
+            async_log("debug", "Missing input entities, skipping calculations.")
+        elif not consumption_ok and live.force_working_mode_state == "auto":
+            pass  # handled below after price/solcast population
+        elif live.force_working_mode_state != "auto":
+            state = str(live.force_working_mode_state)
+            async_log(
+                "debug",
+                "Force working mode is activated. Setting working mode to %s",
+                live.force_working_mode_state,
+            )
+
+        # 7. Populate electricity prices and Solcast PV estimates.
+        populate_price_and_solcast_from_snapshot(
+            self._hourly_recommendations,
+            self._snapshot,
+            cfg,
+        )
+
+        return consumption_ok, state
+
+    def _capture_accepted_plan_state(self) -> dict[str, Any]:
+        """Capture accepted plan state that a stale or failed cycle may mutate."""
+        names = (
+            "_last_planner_input",
+            "_last_planner_output",
+            "_last_plan_slot_start",
+            "_previous_planner_winner_name",
+            "_previous_planner_winner_score",
+            "_window_hys_previous_rec",
+            "_window_hys_previous_slot_start",
+            "_current_required_battery",
+            "_plan_explanation",
+            "_data_quality",
+            "_ev_charging_plan",
+            "_ev_second_charging_plan",
+            "_hourly_recommendation",
+            "_hourly_recommendations",
+        )
+        return {name: getattr(self, name, None) for name in names}
+
+    def _restore_accepted_plan_state(self, state: dict[str, Any]) -> None:
+        """Restore accepted plan state after a stale, failed, or cancelled cycle."""
+        for name, value in state.items():
+            setattr(self, name, value)
 
     async def _async_run_update_cycle(self) -> None:
         """Execute the full collect → populate → plan cycle.
@@ -779,665 +754,98 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             UpdateFailed: When an unrecoverable error occurs during the pipeline.
         """
         async_log("debug", "------ HSEM Coordinator: starting update cycle")
+        captured_generation = getattr(self, "_update_generation", 0)
+        accepted_plan_state = self._capture_accepted_plan_state()
         now = hsem_now()
 
         try:
-            # 1. Reload config from the config entry.
-            self._cfg = build_sensor_config(self._config_entry)
-            cfg = self._cfg
-
-            # 2. Collect ALL HA entity states once into an immutable snapshot.
-            #    This single call replaces the three-stage read pattern:
-            #    async_collect_live_state → (populate consumption → populate price/solcast).
-            (
-                self._snapshot,
-                self._force_working_mode_entity,
-                new_unsubs,
-            ) = await async_collect_all_states(
-                self,
-                cfg,
-                self._force_working_mode_entity,
-                self._tracked_entities,
-                self._avg_house_consumption_entity_id_cache,
-                entry_id=self._config_entry.entry_id,
-            )
-            self._listener_unsubs.extend(new_unsubs)
-            self._live = self._snapshot.live
+            # Phases 1-7: collect live state, populate consumption/prices/solcast.
+            consumption_ok, state = await self._async_collect_and_populate(now)
             live = self._live
-
-            # Feed the capacity learner with BMS readings (issue #605).
-            if (
-                live.bms_kwh_remaining is not None
-                and live.huawei_batteries_soc_pct is not None
-            ):
-                getattr(self, "_capacity_learner", CapacityLearner()).update(
-                    live.bms_kwh_remaining, live.huawei_batteries_soc_pct
-                )
-
-            # Feed the charge rate learner when battery is actively charging
-            # (issue #608).  Detects charging by SoC increase between cycles
-            # and records the configured max charge power at the estimated
-            # cell temperature (default 25 °C until BMS temp is wired).
-            soc_now = live.huawei_batteries_soc_pct
-            if (
-                soc_now is not None
-                and getattr(self, "_last_soc_pct", None) is not None
-                and soc_now > getattr(self, "_last_soc_pct", 0.0) + 0.5
-                and live.huawei_batteries_max_charge_power_w
-            ):
-                CHARGE_RATE_LEARNER.update(
-                    25.0, live.huawei_batteries_max_charge_power_w
-                )
-                # Persist newly learned rates so they survive HA restarts.
-                from custom_components.hsem.custom_sensors.charge_rate_numbers import (
-                    persist_learned_rates_to_entry,
-                )
-
-                persist_learned_rates_to_entry(self.hass, self._config_entry)
-            if soc_now is not None:
-                self._last_soc_pct = soc_now
-
-            # Refresh charge rate number entities so they reflect the
-            # latest learned rates (issue #608).
-            charge_entities = self.hass.data.get(DOMAIN, {}).get(
-                "charge_rate_entities", []
-            )
-            for entity in charge_entities:
-                entity.async_write_ha_state()
-
-            # Update the weekday/weekend consumption profile (issue #612).
-            house_w = live.house_consumption_power_w
-            if house_w is not None and house_w > 0:
-                weekday_profile.update(
-                    dow=now.weekday(),
-                    slot=now.hour,
-                    value_kwh=house_w / 1000.0,
-                )
-
-            # Update the weekday/weekend consumption profile (issue #612).
-            if house_w is not None and house_w > 0:
-                weekday_profile.update(
-                    dow=now.weekday(),
-                    slot=now.hour,
-                    value_kwh=house_w / 1000.0,
-                )
-
-            # Apply EMA smoothing to live net consumption to damp transients
-            # (støvsuger, kaffemaskine, cloud shadows) so they don't kill
-            # the EV charging setpoint for the rest of a 15-minute slot.
-            self._net_consumption_ema = ema_filter(
-                live.net_consumption_w,
-                self._net_consumption_ema,
-                EMA_ALPHA_NET_CONSUMPTION,
-            )
-            # Swap the raw value with the EMA-smoothed value on the live
-            # state object so all downstream code (PlannerInput builder,
-            # forecast tracker, etc.) sees the damped signal.
-            live.net_consumption_w = self._net_consumption_ema
-
-            # -----------------------------------------------------------------------
-            # Override expiry check (issue #317)
-            # -----------------------------------------------------------------------
-            # When a timed override was set via set_temporary_override with
-            # duration_minutes, check if it has expired.  If so, auto-clear the
-            # select entity back to "auto" so the planner resumes control.
-            #
-            # Also handle the case where the user manually cleared the override
-            # before the expiry — clean up the stored expiry in that case too.
-            if self._override_expiry is not None:
-                if now >= self._override_expiry:
-                    async_log(
-                        "debug",
-                        "Timed override EXPIRED — clearing select entity to 'auto'.",
-                    )
-                    # Fire-and-forget: set the select entity back to "auto".
-                    await self.hass.services.async_call(
-                        "select",
-                        "select_option",
-                        {
-                            "entity_id": live.force_working_mode,
-                            "option": "auto",
-                        },
-                        blocking=True,
-                    )
-                    live.force_working_mode_state = "auto"
-                    self._override_expiry = None
-                elif live.force_working_mode_state == "auto":
-                    # User manually cleared before expiry — remove the tracking.
-                    async_log(
-                        "debug",
-                        "Override manually cleared before expiry — removing expiry tracking.",
-                    )
-                    self._override_expiry = None
-
-            # 3. Reset and generate recommendation time-slots.
-            self._hourly_recommendation = None
-            self._hourly_recommendations = generate_recommendation_intervals(
-                cfg.recommendation_interval_minutes,
-                cfg.recommendation_interval_length,
-            )
-
-            # 4. Build battery-schedule objects from config.
-            self._batteries_schedules = build_battery_schedules(cfg)
-            self._batteries_schedules.sort(key=lambda x: x.start)
-
-            # 5. Populate weighted house-consumption averages.
-            #
-            # Two paths are available:
-            #   a) ML prediction — queries the HA recorder for historical
-            #      energy data and uses a per-(DOW, hour) time-decay model.
-            #   b) Legacy averaging sensors — reads HSEM's own 1d/3d/7d/14d
-            #      RestoreEntity rolling-average sensors (the default).
-            #
-            # The ML path is enabled via `hsem_ml_consumption_enabled`.
-            # When it fails (insufficient history, misconfigured, …), the
-            # coordinator transparently falls back to the legacy pipeline.
-            set_hsem_verbose(cfg.verbose_logging)
-
-            if cfg.ml_consumption_enabled:
-                # ML consumption prediction from recorder history.
-                from custom_components.hsem.ml.populator import (
-                    populate_ml_house_consumption,
-                )
-
-                (
-                    consumption_ok,
-                    self._ml_predictor,
-                ) = await populate_ml_house_consumption(
-                    self.hass,
-                    self._hourly_recommendations,
-                    cfg,
-                    self._ml_predictor,
-                )
-                async_log(
-                    "debug",
-                    "[ml] populate_ml_house_consumption returned %s",
-                    consumption_ok,
-                )
-
-                if not consumption_ok:
-                    # Fallback: ML failed; try legacy avg sensors.
-                    async_log(
-                        "debug",
-                        "[ml] ML consumption failed"
-                        " — falling back to legacy avg sensors.",
-                    )
-                    consumption_ok = populate_avg_house_consumption_from_snapshot(
-                        self._hourly_recommendations,
-                        self._snapshot,
-                        cfg,
-                        self._avg_house_consumption_entity_id_cache,
-                        entry_id=self._config_entry.entry_id,
-                    )
-            else:
-                # Legacy averaging-sensor pipeline (default).
-                consumption_ok = populate_avg_house_consumption_from_snapshot(
-                    self._hourly_recommendations,
-                    self._snapshot,
-                    cfg,
-                    self._avg_house_consumption_entity_id_cache,
-                    entry_id=self._config_entry.entry_id,
-                )
-                async_log(
-                    "debug",
-                    "[avg] populate_avg_house_consumption_from_snapshot returned %s, "
-                    "cache has %d entries, "
-                    "snapshot has %d energy_avg values",
-                    consumption_ok,
-                    len(self._avg_house_consumption_entity_id_cache),
-                    len(self._snapshot.energy_average_values),
-                )
-
-            # Adjust timer based on missing-entities or pending-consumption status.
-            if live.missing_entities or not consumption_ok:
-                await self._set_update_interval(1)
-            else:
-                await self._set_update_interval()
-
-            # 6. Determine working state: forced, missing, or full pipeline.
-            state: str | None = None
-
-            if live.missing_entities and live.force_working_mode_state == "auto":
-                state = Recommendations.MissingInputEntities.value
-                async_log("debug", "Missing input entities, skipping calculations.")
-
-            elif not consumption_ok and live.force_working_mode_state == "auto":
-                # Energy average sensors not yet ready.  Still populate prices
-                # and solcast below, but skip the planner (zeroed consumption
-                # data would produce wrong results).
-                pass  # handled below after price/solcast population
-
-            elif live.force_working_mode_state != "auto":
-                state = str(live.force_working_mode_state)
-                async_log(
-                    "debug",
-                    "Force working mode is activated. Setting working mode to %s",
-                    live.force_working_mode_state,
-                )
-
-            # 7. Populate electricity prices and Solcast PV estimates — always
-            #    run, independent of consumption data.
-            populate_price_and_solcast_from_snapshot(
-                self._hourly_recommendations,
-                self._snapshot,
-                cfg,
-            )
+            assert live is not None, "_async_collect_and_populate must set _live"
+            cfg = self._cfg
 
             # -----------------------------------------------------------------------
             # Forecast-vs-actual accumulation (issue #373)
             # -----------------------------------------------------------------------
-            # Every cycle, accumulate actual PV and load energy into the current
-            # slot based on instantaneous power readings and elapsed time.
-            self._accumulate_forecast_actuals(now, live)
+            (
+                self._last_accumulation_ts,
+                prediction_record_added,
+            ) = accumulate_forecast_actuals(
+                now=now,
+                live=live,
+                hourly_recommendations=self._hourly_recommendations,
+                forecast_tracker=getattr(
+                    self, "_forecast_tracker", ForecastTracker(max_slots=2880)
+                ),
+                last_accumulation_ts=self._last_accumulation_ts,
+                solar_corrector=getattr(
+                    self, "_solar_corrector", SolarForecastCorrector()
+                ),
+                solar_corrector_processed=getattr(
+                    self, "_solar_corrector_processed", set()
+                ),
+                prediction_tracker=getattr(
+                    self, "_prediction_tracker", PredictionTracker(max_records=2880)
+                ),
+                last_planner_output=getattr(self, "_last_planner_output", None),
+            )
+            if (
+                prediction_record_added
+                and self._prediction_tracker.history_file
+                and not await self._prediction_tracker.save_history()
+            ):
+                async_log("warning", "Failed to persist prediction tracker state")
 
+            load_hold = apply_load_forecast_hold(
+                self._hourly_recommendations,
+                live,
+                now,
+                load_forecast_ready=consumption_ok,
+            )
+            if load_hold is not None:
+                reason = self._last_load_forecast_readiness_reason
+                assert reason is not None
+                self._hourly_recommendation = load_hold
+                state = load_hold.recommendation
+                self._plan_explanation = PlanExplanation(
+                    selected_strategy="safety_hold",
+                    winner_name="safety_hold",
+                    summary=(
+                        "Battery held because the house-load forecast is not "
+                        f"ready ({reason})."
+                    ),
+                    constraints=[f"load_forecast:{reason}"],
+                )
+
+            fresh_plan = False
+            planner_output_to_commit: PlannerOutput | None = None
             if (
                 live.force_working_mode_state == "auto"
                 and not live.missing_entities
                 and consumption_ok
             ):
-                # Compute dynamic discharge floor BEFORE the planner runs
-                # so it can influence the planner's discharge/export decisions.
-                dynamic_floor_enabled = bool(
-                    get_config_value(self._config_entry, "hsem_dynamic_discharge_floor")
-                )
-                if dynamic_floor_enabled:
-                    # Compute usable kWh from the live inverter state.
-                    rated_kwh = (
-                        live.huawei_batteries_rated_capacity_wh or 0.0
-                    ) / 1000.0
-                    min_soc_pct = live.huawei_batteries_end_of_discharge_soc_pct or 0.0
-                    max_soc_pct = (
-                        live.huawei_batteries_charging_cutoff_capacity_pct or 100.0
-                    )
-                    _usable_kwh = usable_kwh_from_rated(
-                        rated_kwh, min_soc_pct, max_soc_pct
-                    )
-                    _current_kwh = (
-                        (live.huawei_batteries_soc_pct or 0.0) / 100.0 * _usable_kwh
-                    )
-                    # Build a lightweight slot list from hourly_recommendations
-                    # for the bridge computation (they already have consumption
-                    # and PV estimates populated by the populator).
-                    _bridge_slots: list = []
-                    for rec in self._hourly_recommendations:
-                        _bridge_slots.append(
-                            _SimpleSlot(
-                                start=rec.start,
-                                end=rec.end,
-                                estimated_net_consumption_kwh=(
-                                    rec.avg_house_consumption_kwh
-                                    - rec.solcast_pv_estimate_kwh
-                                ),
-                                batteries_charged_kwh=rec.batteries_charged_kwh,
-                                recommendation=rec.recommendation,
-                            )
-                        )
-                    floor_pct, floor_diag = self._dynamic_floor.compute_floor(
-                        now=now,
-                        slots=_bridge_slots,
-                        current_kwh=_current_kwh,
-                        usable_kwh=_usable_kwh,
-                        configured_min_soc_pct=min_soc_pct,
-                    )
-                    self._effective_discharge_floor_pct = floor_pct
-                    self._effective_discharge_floor_diag = floor_diag
-
-                    # Self-correct the safety margin.
-                    if live.huawei_batteries_soc_pct is not None:
-                        self._dynamic_floor.correct_margin(
-                            live.huawei_batteries_soc_pct, floor_pct
-                        )
-                    _dynamic_floor_pct: float | None = floor_pct
-                else:
-                    self._effective_discharge_floor_pct = None
-                    self._effective_discharge_floor_diag = None
-                    _dynamic_floor_pct = None
-
-                # 8. Run the pure-Python planner engine — only when all data
-                #    is ready.  Skip when consumption averages are still
-                #    pending (first cycle, sensor restore not done).
-                #
-                #    Event-driven re-planning: only re-solve the MILP when
-                #    something material changed (EV state, slot boundary,
-                #    price period, forced mode).  Between events, the
-                #    previous plan is reused to prevent oscillation.
-
-                # Collect session EV charge power for session-aware MILP
-                # optimisation (issue #615).  When an EV is actively charging
-                # in a forced-draw mode, its current charge power is treated
-                # as certain demand for the next 2 hours in the MILP.
-                ev_session_kw: dict[str, float] = {}
-                if live.ev.is_charging and live.ev.power_w:
-                    ev_session_kw["ev"] = (live.ev.power_w or 0.0) / 1000.0
-                if (
-                    cfg.ev_second_enabled
-                    and live.ev_second.is_charging
-                    and live.ev_second.power_w
-                ):
-                    ev_session_kw["ev_second"] = (
-                        live.ev_second.power_w or 0.0
-                    ) / 1000.0
-
-                # Determine whether a full re-plan is needed.
-                should_replan = self._should_replan(live, now)
-
-                if should_replan:
-                    planner_input = build_planner_input(
-                        cfg=cfg,
-                        live=self._live,
-                        hourly_recommendations=self._hourly_recommendations,
-                        batteries_schedules=self._batteries_schedules,
-                        previous_winner_name=self._previous_planner_winner_name,
-                        previous_winner_score=self._previous_planner_winner_score,
-                        ev_session_kw=ev_session_kw if ev_session_kw else None,
-                        dynamic_discharge_floor_pct=_dynamic_floor_pct,
-                        capacity_learner=getattr(
-                            self, "_capacity_learner", CapacityLearner()
-                        ),
-                    )
-                    # Wire the solar forecast corrector into the planner input so
-                    # populate_solcast can apply per-hour accuracy corrections (issue #602).
-                    planner_input.solar_corrector = self._solar_corrector
-                    # Retain for diagnostics dumps (cleared on each cycle).
-                    self._last_planner_input = planner_input
-
-                    # Debug: log per-hour consumption total reaching the planner
-                    # (after builder's *slots_per_hour scaling).
-                    total_1d = sum(
-                        c.avg_1d
-                        for c in planner_input.consumption_averages
-                        if c.avg_1d > 0
-                    )
-                    async_log(
-                        "debug",
-                        "[builder] consumption per-hour total reaching planner:"
-                        " avg_1d=%.2f kWh"
-                        " over %d hours",
-                        total_1d,
-                        len(planner_input.consumption_averages),
-                    )
-
-                    # Propagate the verbose-logging flag into the pure-Python
-                    # planner so detailed slot-level decisions appear in the
-                    # standard Home Assistant log when the user enables
-                    # verbose logging.
-                    set_hsem_verbose(cfg.verbose_logging)
-                    # Run the planner in HA's executor pool.  The MILP/ML
-                    # solver is CPU-bound; running it in the event-loop
-                    # thread blocks the HA UI for the full solve duration.
-                    planner_output = await self.hass.async_add_executor_job(
-                        run_planner, planner_input
-                    )
-                    self._last_planner_output = planner_output
-
-                    # Record the time this plan was created so the slot-boundary
-                    # check in _should_replan uses the actual plan time.
-                    self._last_plan_slot_start = now
-
-                    for warning in planner_output.warnings:
-                        async_log("debug", "[planner] %s", warning)
-
-                    self._current_required_battery = (
-                        planner_output.required_capacity_kwh
-                    )
-                    self._data_quality = planner_output.data_quality
-                    self._ev_charging_plan = planner_output.ev_charging_plan
-                    self._ev_second_charging_plan = (
-                        planner_output.ev_second_charging_plan
-                    )
-
-                    # Warn when an EV is physically charging but no current or
-                    # future slot carries ev_total_planned_load_kwh > 0.
-                    if self._live.any_ev_charging:
-                        has_planned = any(
-                            s.ev_total_planned_load_kwh > 1e-9
-                            for s in planner_output.slots
-                            if s.end > now
-                        )
-                        if not has_planned:
-                            async_log(
-                                "debug",
-                                "[planner] WARNING: EV is physically charging but no "
-                                "current or future slot has ev_total_planned_load_kwh"
-                                " > 0. The EV load is either outside the planning"
-                                " window, smart charging is disabled, or"
-                                " base_load_includes_ev is set but the plan produced"
-                                " zero accounted load. Check EV plan state and slot"
-                                " attributes.",
-                            )
-                else:
-                    # No material changes — reuse the previous plan.
-                    assert self._last_planner_output is not None, (
-                        "_last_planner_output must be set when _should_replan"
-                        " returns False"
-                    )
-                    planner_output = self._last_planner_output
-                    async_log(
-                        "debug",
-                        "[replan] Skipping planner — no material changes detected."
-                        " Reusing plan from %s.",
-                        self._last_plan_slot_start.isoformat()
-                        if self._last_plan_slot_start
-                        else "(unknown)",
-                    )
-
-                # Persist current state so the next cycle can detect changes.
-                self._persist_plan_state(live)
-
-                # -----------------------------------------------------------------------
-                # Window-level hysteresis — prevent rapid recommendation toggles
-                # within a slot (issue #315).
-                # -----------------------------------------------------------------------
-                # Apply to planner output slots BEFORE _apply_planner_output so that
-                # the held recommendation propagates to hourly_recommendations.
-                window_hys_minutes = cfg.planner_window_hysteresis_minutes
-                if window_hys_minutes > 0:
-                    held_rec, held_start = apply_window_hysteresis(
-                        planner_output.slots,
-                        now,
-                        window_hysteresis_minutes=window_hys_minutes,
-                        previous_current_recommendation=(self._window_hys_previous_rec),
-                        previous_current_slot_start=(
-                            self._window_hys_previous_slot_start
-                        ),
-                    )
-                    self._window_hys_previous_rec = held_rec
-                    self._window_hys_previous_slot_start = held_start
-                else:
-                    # Feature disabled — still persist the current recommendation
-                    # so that re-enabling picks up the right state.
-                    for s in planner_output.slots:
-                        if as_tz(s.start, now.tzinfo) <= now < as_tz(s.end, now.tzinfo):
-                            self._window_hys_previous_rec = s.recommendation
-                            self._window_hys_previous_slot_start = s.start
-                            break
-
-                # Freeze the current slot's per-EV charger power before
-                # copying planner output to hourly recommendations. This keeps
-                # the charger command stable across replans inside the same
-                # 15-minute slot (issue #738).
-                self._freeze_ev_charger_power_for_current_slot(planner_output, now)
-
-                # Apply planner output (with hysteresis-applied slots) to
-                # hourly_recommendations so the current slot resolution in
-                # step 9 sees the held recommendation.
-                self._apply_planner_output(planner_output)
-
-                # 8b. Auto-Full EV on negative price override (issue #609).
-                # When import price is ≤ 0 and the feature is enabled,
-                # override the current slot to charge the EV at full power.
-                auto_full_enabled = bool(
-                    get_config_value(
-                        self._config_entry, "hsem_ev_auto_full_negative_price"
-                    )
-                )
-                if auto_full_enabled and live.import_electricity_price <= 0.0:
-                    now_slot = next(
-                        (
-                            r
-                            for r in self._hourly_recommendations
-                            if as_tz(r.start, now.tzinfo)
-                            <= now
-                            < as_tz(r.end, now.tzinfo)
-                        ),
-                        None,
-                    )
-                    if now_slot is not None:
-                        now_slot.recommendation = Recommendations.EVSmartCharging.value
-                        pwr_kw = float(
-                            get_config_value(
-                                self._config_entry,
-                                "hsem_ev_planned_load_charger_power_kw",
-                            )
-                            or 0.0
-                        )
-                        now_slot.ev_charger_calculated_power = (
-                            round(pwr_kw * 1000) if pwr_kw > 0 else 0.0
-                        )
-                        async_log(
-                            "debug",
-                            "[coordinator] Auto-Full EV: negative price (%.4f) "
-                            "→ overriding current slot to ev_smart_charging "
-                            "at %dW",
-                            live.import_electricity_price,
-                            now_slot.ev_charger_calculated_power,
-                        )
-
-                # 8c. Force-charge-now override: when the user toggles the
-                # "EV Force Charge Now" switch, override the current slot's
-                # recommendation and calculated power to charge at max speed.
-                # Force-charge works even when smart charging is disabled —
-                # the plan state is flipped to "charging" so the plan sensor
-                # reflects the forced charge instead of
-                # "smart_charging_disabled".
-                _apply_force_charge_now(
-                    config_entry=self._config_entry,
-                    hourly_recommendations=self._hourly_recommendations,
-                    ev_plan=self._ev_charging_plan,
-                    ev_second_plan=self._ev_second_charging_plan,
-                    now=now,
+                (
+                    state,
+                    fresh_plan,
+                    planner_output_to_commit,
+                ) = await self._run_planner_phase(
+                    now,
+                    live,
+                    cfg,
+                    state,
+                    consumption_ok,
+                    captured_generation,
                 )
 
-                # 8d. Load-forecast fail-closed hold.  When consumption data is
-                # unavailable/invalid, or the entire future profile is zero
-                # while live demand is clearly positive, hold the current slot
-                # in BatteriesWaitMode instead of solving or reusing a plan
-                # sized on fictional zero load.  A forced mode always wins.
-                if not consumption_ok or _live_demand_contradicts_zero_profile(
-                    self._hourly_recommendations, live, now
-                ):
-                    held = _apply_load_forecast_hold(
-                        self._hourly_recommendations,
-                        live,
-                        now,
-                        consumption_ok=consumption_ok,
-                    )
-                    if held is not None:
-                        async_log(
-                            "debug",
-                            "[load] consumption_ok=%s → holding current slot in "
-                            "batteries_wait_mode",
-                            consumption_ok,
-                        )
-
-                # 9. Find the current time-slot recommendation.
-                self._hourly_recommendations.sort(key=lambda x: x.start)
-                # now.tzinfo is guaranteed non-None because hsem_now() returns
-                # a timezone-aware datetime; assert so pyright narrows the type.
-                assert now.tzinfo is not None, (
-                    "hsem_now() must return tz-aware datetime"
-                )
-                hourly_rec = next(
-                    (
-                        r
-                        for r in self._hourly_recommendations
-                        if as_tz(r.start, now.tzinfo) <= now < as_tz(r.end, now.tzinfo)
-                    ),
-                    None,
-                )
-
-                if hourly_rec is not None:
-                    self._hourly_recommendation = hourly_rec
-                    state = hourly_rec.recommendation
-
-                # -----------------------------------------------------------------------
-                # Register forecasts in the forecast tracker from the planner output.
-                # -----------------------------------------------------------------------
-                self._register_forecasts_from_planner(planner_output)
-
-                # -----------------------------------------------------------------------
-                # Daily plan-vs-actual accumulation from planner output.
-                # -----------------------------------------------------------------------
-                try:
-                    await self._accumulate_daily_plan_actuals(now, live, planner_output)
-                except Exception as e:
-                    async_log(
-                        "error",
-                        "Daily plan-vs-actual accumulation failed — "
-                        "continuing without updating daily metrics: %s",
-                        e,
-                    )
-
-                # -----------------------------------------------------------------------
-                # Financial tracker accumulation (issue #599).
-                # -----------------------------------------------------------------------
-                try:
-                    await self._accumulate_financials(now, live)
-                except Exception as e:
-                    async_log(
-                        "error",
-                        "Financial tracker accumulation failed — "
-                        "continuing without updating financial metrics: %s",
-                        e,
-                    )
-
-                # -----------------------------------------------------------------------
-                # Savings tracker accumulation (issue #604).
-                # -----------------------------------------------------------------------
-                try:
-                    await self._accumulate_savings(now, live, planner_output)
-                except Exception as e:
-                    async_log(
-                        "error",
-                        "Savings tracker accumulation failed — "
-                        "continuing without updating savings metrics: %s",
-                        e,
-                    )
-
-            # -----------------------------------------------------------------------
-            # OCPP charge target updates — push planner EV plan to OCPP server
-            # -----------------------------------------------------------------------
-            ocpp_server = getattr(self, "_ocpp_server", None)
-            if ocpp_server is not None and self._cfg.ocpp_enabled:
-                cfg = self._cfg
-                cpid = cfg.ocpp_cpid or "default"
-                if self._ev_charging_plan is not None:
-                    target_kw = self._ev_charging_plan.current_slot_planned_load_kwh
-                    # Convert per-slot kWh to kW by accounting for slot duration
-                    slot_minutes = cfg.recommendation_interval_minutes
-                    if slot_minutes > 0 and target_kw > 0:
-                        target_kw = (target_kw / slot_minutes) * 60.0
-                    # Force-charge-now overrides the planner target when the
-                    # plan is disabled (smart charging off) — the OCPP charger
-                    # must still receive the max-power command.
-                    force_primary = bool(
-                        get_config_value(self._config_entry, "hsem_ev_force_charge_now")
-                    )
-                    if force_primary:
-                        pwr_kw = float(
-                            get_config_value(
-                                self._config_entry,
-                                "hsem_ev_planned_load_charger_power_kw",
-                            )
-                            or 0.0
-                        )
-                        if pwr_kw > 0:
-                            target_kw = pwr_kw
-                    await ocpp_server.update_charge_target(cpid, target_kw, now=now)
-                else:
-                    await ocpp_server.update_charge_target(cpid, 0.0, now=now)
-
+        except _StaleUpdateCycle:
+            self._restore_accepted_plan_state(accepted_plan_state)
+            return
+        except asyncio.CancelledError:
+            self._restore_accepted_plan_state(accepted_plan_state)
+            raise
         except Exception as exc:
+            self._restore_accepted_plan_state(accepted_plan_state)
             raise UpdateFailed(f"HSEM update cycle failed: {exc}") from exc
 
         # Final sort and timestamp.
@@ -1493,9 +901,360 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             savings_tracker=getattr(self, "_savings_tracker", SavingsTracker()),
         )
 
-        # Notify all subscriber entities atomically.
+        if getattr(self, "_update_generation", 0) != captured_generation:
+            async_log(
+                "debug",
+                "[coordinator] Discarding stale cycle: update generation advanced "
+                "%d→%d.",
+                captured_generation,
+                getattr(self, "_update_generation", 0),
+            )
+            self._restore_accepted_plan_state(accepted_plan_state)
+            return
+
+        # Notify all subscriber entities atomically. No await occurs between the
+        # generation check and publication, so a newer event cannot interleave.
         self.async_set_updated_data(data)
+        if fresh_plan:
+            assert planner_output_to_commit is not None
+            self._last_planner_output = planner_output_to_commit
+            self._last_plan_slot_start = now
+            self._persist_plan_state(
+                live,
+                load_forecast_signature=self._current_load_forecast_signature,
+            )
+
+        # Push the accepted EV target only after the freshness gate passes.
+        ocpp_server = getattr(self, "_ocpp_server", None)
+        if ocpp_server is not None and self._cfg.ocpp_enabled:
+            cpid = self._cfg.ocpp_cpid or "default"
+            target_kw = 0.0
+            if self._ev_charging_plan is not None:
+                target_kw = self._ev_charging_plan.current_slot_planned_load_kwh
+                slot_minutes = self._cfg.recommendation_interval_minutes
+                if slot_minutes > 0 and target_kw > 0:
+                    target_kw = target_kw / slot_minutes * 60.0
+                if bool(
+                    get_config_value(self._config_entry, "hsem_ev_force_charge_now")
+                ):
+                    forced_kw = float(
+                        get_config_value(
+                            self._config_entry,
+                            "hsem_ev_planned_load_charger_power_kw",
+                        )
+                        or 0.0
+                    )
+                    if forced_kw > 0:
+                        target_kw = forced_kw
+            await ocpp_server.update_charge_target(cpid, target_kw, now=now)
+
         async_log("debug", "------ HSEM Coordinator: update cycle complete")
+
+    async def _run_planner_phase(
+        self,
+        now: datetime,
+        live: LiveState,
+        cfg: SensorConfig,
+        state: str | None,
+        consumption_ok: bool,
+        captured_generation: int,
+    ) -> tuple[str | None, bool, PlannerOutput]:
+        """Run the planner engine and apply results to recommendations.
+
+        Handles dynamic floor computation, MILP solve (or plan reuse),
+        window hysteresis, EV charger power freeze, and all post-plan
+        overrides (auto-full-EV, force-charge-now, load-forecast hold).
+
+        Returns the updated working-mode state string.
+        """
+        # Compute dynamic discharge floor BEFORE the planner runs.
+        dynamic_floor_enabled = bool(
+            get_config_value(self._config_entry, "hsem_dynamic_discharge_floor")
+        )
+        if dynamic_floor_enabled:
+            rated_kwh = (live.huawei_batteries_rated_capacity_wh or 0.0) / 1000.0
+            min_soc_pct = live.huawei_batteries_end_of_discharge_soc_pct or 0.0
+            max_soc_pct = live.huawei_batteries_charging_cutoff_capacity_pct or 100.0
+            _usable_kwh = usable_kwh_from_rated(rated_kwh, min_soc_pct, max_soc_pct)
+            _current_kwh = (live.huawei_batteries_soc_pct or 0.0) / 100.0 * _usable_kwh
+            _bridge_slots: list = []
+            for rec in self._hourly_recommendations:
+                _bridge_slots.append(
+                    _SimpleSlot(
+                        start=rec.start,
+                        end=rec.end,
+                        estimated_net_consumption_kwh=(
+                            rec.avg_house_consumption_kwh - rec.solcast_pv_estimate_kwh
+                        ),
+                        batteries_charged_kwh=rec.batteries_charged_kwh,
+                        recommendation=rec.recommendation,
+                    )
+                )
+            floor_pct, floor_diag = self._dynamic_floor.compute_floor(
+                now=now,
+                slots=_bridge_slots,
+                current_kwh=_current_kwh,
+                usable_kwh=_usable_kwh,
+                configured_min_soc_pct=min_soc_pct,
+            )
+            self._effective_discharge_floor_pct = floor_pct
+            self._effective_discharge_floor_diag = floor_diag
+            if live.huawei_batteries_soc_pct is not None:
+                self._dynamic_floor.correct_margin(
+                    live.huawei_batteries_soc_pct, floor_pct
+                )
+            _dynamic_floor_pct: float | None = floor_pct
+        else:
+            self._effective_discharge_floor_pct = None
+            self._effective_discharge_floor_diag = None
+            _dynamic_floor_pct = None
+
+        # Collect session EV charge power for session-aware MILP (issue #615).
+        ev_session_kw: dict[str, float] = {}
+        if live.ev.is_charging and live.ev.power_w:
+            ev_session_kw["ev"] = (live.ev.power_w or 0.0) / 1000.0
+        if (
+            cfg.ev_second_enabled
+            and live.ev_second.is_charging
+            and live.ev_second.power_w
+        ):
+            ev_session_kw["ev_second"] = (live.ev_second.power_w or 0.0) / 1000.0
+
+        # Determine whether a full re-plan is needed.
+        should_replan = self._should_replan(
+            live,
+            now,
+            load_forecast_signature=self._current_load_forecast_signature,
+        )
+
+        if should_replan:
+            planner_input = build_planner_input(
+                cfg=cfg,
+                live=live,
+                hourly_recommendations=self._hourly_recommendations,
+                batteries_schedules=self._batteries_schedules,
+                previous_winner_name=self._previous_planner_winner_name,
+                previous_winner_score=self._previous_planner_winner_score,
+                ev_session_kw=ev_session_kw if ev_session_kw else None,
+                dynamic_discharge_floor_pct=_dynamic_floor_pct,
+                capacity_learner=getattr(self, "_capacity_learner", CapacityLearner()),
+            )
+            planner_input.solar_corrector = self._solar_corrector
+            self._last_planner_input = planner_input
+
+            total_1d = sum(
+                c.avg_1d for c in planner_input.consumption_averages if c.avg_1d > 0
+            )
+            async_log(
+                "debug",
+                "[builder] consumption per-hour total reaching planner:"
+                " avg_1d=%.2f kWh over %d hours",
+                total_1d,
+                len(planner_input.consumption_averages),
+            )
+
+            set_hsem_verbose(cfg.verbose_logging)
+            planner_output = await self.hass.async_add_executor_job(
+                run_planner, planner_input
+            )
+            if getattr(self, "_update_generation", 0) != captured_generation:
+                raise _StaleUpdateCycle
+
+            for warning in planner_output.warnings:
+                async_log("debug", "[planner] %s", warning)
+
+            self._current_required_battery = planner_output.required_capacity_kwh
+            self._data_quality = replace(
+                planner_output.data_quality,
+                load_forecast_ready=True,
+                load_forecast_reason=None,
+            )
+            self._ev_charging_plan = planner_output.ev_charging_plan
+            self._ev_second_charging_plan = planner_output.ev_second_charging_plan
+
+            if live.any_ev_charging:
+                has_planned = any(
+                    s.ev_total_planned_load_kwh > 1e-9
+                    for s in planner_output.slots
+                    if s.end > now
+                )
+                if not has_planned:
+                    async_log(
+                        "debug",
+                        "[planner] WARNING: EV is physically charging but no "
+                        "current or future slot has ev_total_planned_load_kwh"
+                        " > 0.",
+                    )
+        else:
+            assert self._last_planner_output is not None, (
+                "_last_planner_output must be set when _should_replan returns False"
+            )
+            from copy import deepcopy
+
+            planner_output = deepcopy(self._last_planner_output)
+            self._current_required_battery = planner_output.required_capacity_kwh
+            self._data_quality = replace(
+                planner_output.data_quality,
+                load_forecast_ready=True,
+                load_forecast_reason=None,
+            )
+            self._ev_charging_plan = planner_output.ev_charging_plan
+            self._ev_second_charging_plan = planner_output.ev_second_charging_plan
+            async_log(
+                "debug",
+                "[replan] Skipping planner — no material changes detected."
+                " Reusing plan from %s.",
+                self._last_plan_slot_start.isoformat()
+                if self._last_plan_slot_start
+                else "(unknown)",
+            )
+
+        # Window-level hysteresis (issue #315).
+        window_hys_minutes = cfg.planner_window_hysteresis_minutes
+        if window_hys_minutes > 0:
+            held_rec, held_start = apply_window_hysteresis(
+                planner_output.slots,
+                now,
+                window_hysteresis_minutes=window_hys_minutes,
+                previous_current_recommendation=self._window_hys_previous_rec,
+                previous_current_slot_start=self._window_hys_previous_slot_start,
+            )
+            self._window_hys_previous_rec = held_rec
+            self._window_hys_previous_slot_start = held_start
+        else:
+            for s in planner_output.slots:
+                if as_tz(s.start, now.tzinfo) <= now < as_tz(s.end, now.tzinfo):
+                    self._window_hys_previous_rec = s.recommendation
+                    self._window_hys_previous_slot_start = s.start
+                    break
+
+        # Apply planner output to hourly recommendations.
+        self._apply_planner_output(planner_output)
+
+        # 8b. Auto-Full EV on negative price override (issue #609).
+        auto_full_enabled = bool(
+            get_config_value(self._config_entry, "hsem_ev_auto_full_negative_price")
+        )
+        if auto_full_enabled and live.import_electricity_price <= 0.0:
+            now_slot = next(
+                (
+                    r
+                    for r in self._hourly_recommendations
+                    if as_tz(r.start, now.tzinfo) <= now < as_tz(r.end, now.tzinfo)
+                ),
+                None,
+            )
+            if now_slot is not None:
+                apply_current_ev_power_override(
+                    config_entry=self._config_entry,
+                    hourly_recommendations=self._hourly_recommendations,
+                    ev_plan=self._ev_charging_plan,
+                    ev_second_plan=self._ev_second_charging_plan,
+                    now=now,
+                    override_primary=True,
+                    override_second=False,
+                    live=live,
+                )
+
+        # 8c. Force-charge-now override.
+        apply_force_charge_now(
+            config_entry=self._config_entry,
+            hourly_recommendations=self._hourly_recommendations,
+            ev_plan=self._ev_charging_plan,
+            ev_second_plan=self._ev_second_charging_plan,
+            now=now,
+            live=live,
+        )
+
+        # 8d. Load-forecast fail-closed hold.
+        if not consumption_ok or live_demand_contradicts_zero_profile(
+            self._hourly_recommendations, live, now
+        ):
+            held = apply_load_forecast_hold(
+                self._hourly_recommendations,
+                live,
+                now,
+                consumption_ok=consumption_ok,
+            )
+            if held is not None:
+                async_log(
+                    "debug",
+                    "[load] consumption_ok=%s → holding current slot in "
+                    "batteries_wait_mode",
+                    consumption_ok,
+                )
+
+        # 9. Find the current time-slot recommendation.
+        self._hourly_recommendations.sort(key=lambda x: x.start)
+        assert now.tzinfo is not None, "hsem_now() must return tz-aware datetime"
+        hourly_rec = next(
+            (
+                r
+                for r in self._hourly_recommendations
+                if as_tz(r.start, now.tzinfo) <= now < as_tz(r.end, now.tzinfo)
+            ),
+            None,
+        )
+
+        if hourly_rec is not None:
+            self._hourly_recommendation = hourly_rec
+            state = hourly_rec.recommendation
+
+        # Register forecasts in the forecast tracker.
+        register_forecasts_from_planner(planner_output, self._forecast_tracker)
+
+        # Daily plan-vs-actual accumulation.
+        try:
+            self._daily_plan_last_accumulated = await accumulate_daily_plan_actuals(
+                now=now,
+                live=live,
+                output=planner_output,
+                daily_tracker=self._daily_tracker,
+                daily_plan_last_accumulated=self._daily_plan_last_accumulated,
+                hass=self.hass,
+            )
+        except Exception as e:
+            async_log(
+                "error",
+                "Daily plan-vs-actual accumulation failed: %s",
+                e,
+            )
+
+        # Financial tracker accumulation (issue #599).
+        try:
+            await accumulate_financials(
+                now=now,
+                live=live,
+                financial_tracker=self._financial_tracker,
+                hass=self.hass,
+                update_interval_minutes=cfg.update_interval,
+            )
+        except Exception as e:
+            async_log(
+                "error",
+                "Financial tracker accumulation failed: %s",
+                e,
+            )
+
+        # Savings tracker accumulation (issue #604).
+        try:
+            await accumulate_savings(
+                now=now,
+                live=live,
+                output=planner_output,
+                savings_tracker=self._savings_tracker,
+                daily_tracker=self._daily_tracker,
+                hourly_recommendation=self._hourly_recommendation,
+                hass=self.hass,
+            )
+        except Exception as e:
+            async_log(
+                "error",
+                "Savings tracker accumulation failed: %s",
+                e,
+            )
+
+        return state, should_replan, planner_output
 
     # ------------------------------------------------------------------
     # DataUpdateCoordinator override
@@ -1558,7 +1317,13 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
     # Planner bridge helpers
     # ------------------------------------------------------------------
 
-    def _should_replan(self, live: LiveState, now: datetime) -> bool:
+    def _should_replan(
+        self,
+        live: LiveState,
+        now: datetime,
+        *,
+        load_forecast_signature: LoadForecastSignature | None = None,
+    ) -> bool:
         """Determine whether the planner should be re-run.
 
         Returns ``True`` when a material event occurred since the last plan:
@@ -1575,6 +1340,23 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         """
         # First run — always plan.
         if self._last_planner_output is None:
+            return True
+
+        if getattr(self, "_load_forecast_recovery_replan_pending", False):
+            async_log(
+                "debug",
+                "[replan] Load forecast recovered after a safety hold — re-planning.",
+            )
+            return True
+
+        if load_forecast_signature is not None and not load_forecast_signatures_match(
+            load_forecast_signature,
+            getattr(self, "_last_plan_load_forecast_signature", None),
+        ):
+            async_log(
+                "debug",
+                "[replan] Future load forecast changed — re-planning.",
+            )
             return True
 
         # Slot boundary crossed — new slot needs a fresh plan.
@@ -1752,7 +1534,12 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
         # Nothing material changed — stick to the plan.
         return False
 
-    def _persist_plan_state(self, live: LiveState) -> None:
+    def _persist_plan_state(
+        self,
+        live: LiveState,
+        *,
+        load_forecast_signature: LoadForecastSignature | None = None,
+    ) -> None:
         """Record the current state after a successful plan run.
 
         Called after every planner run so ``_should_replan`` can compare
@@ -1785,129 +1572,9 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             live.ev_second_planned_load_smart_charging_enabled
         )
         self._last_plan_ev2_deadline = live.ev_second_planned_load_deadline
-
-    def _freeze_ev_charger_power_for_current_slot(
-        self, output: PlannerOutput, now: datetime
-    ) -> None:
-        """Freeze per-EV charger power for the current slot across replans.
-
-        The EV planner recomputes ``ev_charger_calculated_power`` from live
-        data whenever the planner reruns. Without freezing, the charger
-        command oscillates inside a single 15-minute slot as clouds pass or
-        the EV itself toggles on/off. We store the value computed at slot
-        start and rewrite the current slot with that stored value on every
-        subsequent replan until the next slot begins.
-
-        Explicit overrides (force-charge-now, auto-full-EV) are applied
-        after this freeze, so they can still change the current slot's
-        command for as long as they remain active. When an override ends,
-        the freeze restores the originally planned slot-start value.
-
-        Args:
-            output: Planner output whose current slot will be rewritten in
-                place when we are still inside the same slot.
-            now: Timezone-aware current datetime used to locate the current
-                slot and compare against the stored slot-start time.
-        """
-        if now.tzinfo is None:
-            return
-
-        for slot in output.slots:
-            s_start = as_tz(slot.start, now.tzinfo)
-            s_end = as_tz(slot.end, now.tzinfo)
-            if not (s_start <= now < s_end):
-                continue
-
-            if self._current_slot_start is None or utc_key(
-                self._current_slot_start
-            ) != utc_key(s_start):
-                # New slot — capture the freshly planned power values as the
-                # frozen baseline for this slot.
-                self._current_slot_start = s_start
-                self._current_slot_ev_power_w = slot.ev_charger_calculated_power
-                self._current_slot_ev_second_power_w = (
-                    slot.ev_second_charger_calculated_power
-                )
-                async_log(
-                    "debug",
-                    "[freeze] New EV power baseline for slot %s: "
-                    "primary=%dW second=%dW",
-                    s_start.isoformat(),
-                    self._current_slot_ev_power_w,
-                    self._current_slot_ev_second_power_w,
-                )
-            else:
-                # Same slot — restore the frozen baseline so the charger
-                # command does not chase live conditions.
-                #
-                # The freeze pins the *magnitude* of the command, not the
-                # charge/no-charge *decision*.  When the current plan has
-                # retracted the EV charge for this slot (the planner set the
-                # command to zero — e.g. the MILP flipped from "charge EV" to
-                # "charge battery" after the EV reached its target SoC), a
-                # stale non-zero baseline must not be restored: that would
-                # keep commanding the charger to draw power for a charge the
-                # planner has already cancelled (issue #775).  Zero the
-                # command and reset the baseline so subsequent replans in
-                # this slot stay zero.
-                #
-                # The retraction signal is the current plan's own power field
-                # (``slot.ev_charger_calculated_power`` / ``..._second_``),
-                # read *before* it is overwritten by the frozen baseline.  A
-                # zero command in the current plan means the planner decided
-                # no charge this slot.
-                primary_retracted = abs(slot.ev_charger_calculated_power) < 1e-9
-                second_retracted = abs(slot.ev_second_charger_calculated_power) < 1e-9
-                if primary_retracted and second_retracted:
-                    if (
-                        abs(self._current_slot_ev_power_w) > 1e-9
-                        or abs(self._current_slot_ev_second_power_w) > 1e-9
-                    ):
-                        async_log(
-                            "debug",
-                            "[freeze] EV charge retracted for slot %s (current "
-                            "plan command is zero) — zeroing stale command: "
-                            "primary %dW→0W, second %dW→0W",
-                            s_start.isoformat(),
-                            self._current_slot_ev_power_w,
-                            self._current_slot_ev_second_power_w,
-                        )
-                    slot.ev_charger_calculated_power = 0.0
-                    slot.ev_second_charger_calculated_power = 0.0
-                    # Do NOT zero the stored baseline — the retraction is a
-                    # one-time override for this replan.  If the MILP later
-                    # restores the charge in the same slot (e.g. the EV drops
-                    # below target SoC), the freeze must still be able to
-                    # restore the original slot-start command to prevent
-                    # magnitude oscillation (issue #738).
-                else:
-                    if (
-                        abs(
-                            slot.ev_charger_calculated_power
-                            - self._current_slot_ev_power_w
-                        )
-                        > 1e-9
-                        or abs(
-                            slot.ev_second_charger_calculated_power
-                            - self._current_slot_ev_second_power_w
-                        )
-                        > 1e-9
-                    ):
-                        async_log(
-                            "debug",
-                            "[freeze] Restoring frozen EV power for slot %s: "
-                            "primary %dW→%dW, second %dW→%dW",
-                            s_start.isoformat(),
-                            slot.ev_charger_calculated_power,
-                            self._current_slot_ev_power_w,
-                            slot.ev_second_charger_calculated_power,
-                            self._current_slot_ev_second_power_w,
-                        )
-                    slot.ev_charger_calculated_power = self._current_slot_ev_power_w
-                    slot.ev_second_charger_calculated_power = (
-                        self._current_slot_ev_second_power_w
-                    )
-            break
+        if load_forecast_signature is not None:
+            self._last_plan_load_forecast_signature = load_forecast_signature
+            self._load_forecast_recovery_replan_pending = False
 
     def _apply_planner_output(self, output: PlannerOutput) -> None:
         """Write :class:`PlannerOutput` decisions back into the recommendation list.
@@ -1946,6 +1613,8 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
             rec.estimated_battery_soc_pct = slot.estimated_battery_soc_pct
             rec.grid_import_kwh = slot.grid_import_kwh
             rec.grid_export_kwh = slot.grid_export_kwh
+            rec.primary_battery_export_kwh = slot.primary_battery_export_kwh
+            rec.pv_export_kwh = slot.pv_export_kwh
             # Copy the planner's PV estimate so that solcast_pv_estimate,
             # estimated_net_consumption, and ev_planned_load_kwh are all
             # internally consistent in the final HourlyRecommendation output.
@@ -1986,570 +1655,3 @@ class HSEMDataUpdateCoordinator(DataUpdateCoordinator[CoordinatorData]):
                     break
             self._previous_planner_winner_name = output.winner_name
             self._previous_planner_winner_score = winner_score
-
-    # ------------------------------------------------------------------
-    # Forecast-vs-actual tracking (issue #373)
-    # ------------------------------------------------------------------
-
-    def _accumulate_forecast_actuals(self, now: datetime, live: LiveState) -> None:
-        """Accumulate actual PV and load energy into the current slot.
-
-        Called every coordinator cycle to accumulate energy from instantaneous
-        power readings.  Uses the elapsed time since the last accumulation to
-        convert power (W) to energy (kWh).
-
-        Args:
-            now: Current time (timezone-aware).
-            live: The live HA entity state snapshot.
-        """
-        # Compute elapsed seconds since last accumulation.
-        if self._last_accumulation_ts is not None:
-            elapsed = (now - self._last_accumulation_ts).total_seconds()
-        else:
-            elapsed = 0.0
-
-        self._last_accumulation_ts = now
-
-        if elapsed <= 0:
-            return
-
-        # Find the current slot's record.
-        if not self._hourly_recommendations:
-            return
-
-        # Find the slot whose time range contains 'now'.
-        current_slot = None
-        for rec in self._hourly_recommendations:
-            if as_tz(rec.start, now.tzinfo) <= now < as_tz(rec.end, now.tzinfo):
-                current_slot = rec
-                break
-
-        if current_slot is None:
-            return
-
-        # Get or create the tracker record for this slot.
-        tracker_rec = self._forecast_tracker.get_or_create_record(
-            current_slot.start, current_slot.end
-        )
-
-        # Accumulate PV energy.
-        pv_power_w = live.solar_production_power_w or 0.0
-        pv_energy = compute_accumulated_energy(pv_power_w, elapsed)
-        tracker_rec.accumulate_pv(pv_energy)
-
-        # Accumulate load energy.
-        load_power_w = live.house_consumption_power_w or 0.0
-        load_energy = compute_accumulated_energy(load_power_w, elapsed)
-        tracker_rec.accumulate_load(load_energy)
-
-        # Finalise any slots whose end time has passed.
-        self._forecast_tracker.finalise_past_records(now)
-
-        # -------------------------------------------------------------------
-        # Solar forecast auto-correction (issue #602)
-        # -------------------------------------------------------------------
-        # Feed every newly-finalised forecast tracker record into the solar
-        # corrector so it can learn per-hour accuracy factors and update the
-        # intra-hour residual buffer.
-        for frec in self._forecast_tracker.records:
-            if not frec.finalised:
-                continue
-            if frec.start in self._solar_corrector_processed:
-                continue
-
-            self._solar_corrector.update_hour(
-                frec.start.hour, frec.forecast_pv_kwh, frec.actual_pv_kwh
-            )
-            self._solar_corrector.update_residual(
-                frec.forecast_pv_kwh, frec.actual_pv_kwh
-            )
-            self._solar_corrector_processed.add(frec.start)
-
-        # -------------------------------------------------------------------
-        # Prediction accuracy scorecard (issue #601)
-        # -------------------------------------------------------------------
-        # Feed completed slots into the prediction accuracy tracker so the
-        # sensor can report SoC MAE, solar MAPE, and action mix.
-        if self._last_planner_output is not None:
-            for frec in self._forecast_tracker.records:
-                if not frec.finalised:
-                    continue
-                # Find the matching planner slot for this forecast record.
-                planner_slot = None
-                for slot in self._last_planner_output.slots:
-                    if slot.start == frec.start:
-                        planner_slot = slot
-                        break
-                if planner_slot is None:
-                    continue
-                self._prediction_tracker.add_record(
-                    predicted_soc=planner_slot.estimated_battery_soc_pct,
-                    actual_soc=live.huawei_batteries_soc_pct or 0.0,
-                    predicted_pv=planner_slot.solcast_pv_estimate_kwh,
-                    actual_pv=frec.actual_pv_kwh,
-                    predicted_load=planner_slot.avg_house_consumption_kwh,
-                    actual_load=frec.actual_load_kwh,
-                    action=_action_label(planner_slot.recommendation),
-                    slot_start=frec.start,
-                )
-
-    def _register_forecasts_from_planner(self, output: PlannerOutput) -> None:
-        """Register PV and load forecasts from planner output into the tracker.
-
-        This is called after the planner runs successfully.  Forecast values
-        are only set if the tracker record exists and is not yet finalised.
-
-        Args:
-            output: The :class:`~planner.engine.PlannerOutput` returned by the
-                planner engine.
-        """
-        for slot in output.slots:
-            pv_forecast = getattr(slot, "solcast_pv_estimate_kwh", 0.0)
-            load_forecast = getattr(slot, "avg_house_consumption_kwh", 0.0)
-
-            self._forecast_tracker.set_forecasts(
-                start=slot.start,
-                pv_kwh=pv_forecast,
-                load_kwh=load_forecast,
-            )
-
-    # ------------------------------------------------------------------
-    # Daily plan-vs-actual accumulation (issue #540)
-    # ------------------------------------------------------------------
-
-    async def _accumulate_daily_plan_actuals(
-        self,
-        now: datetime,
-        live: LiveState,
-        output: PlannerOutput,
-    ) -> None:
-        """Accumulate plan and actual values into the daily tracker.
-
-        Plan side: sum planned import/export/cycle/PV from planner slots
-        whose end time has passed.
-
-        Actual side: use cumulative energy meter readings from live state,
-        falling back to SoC-based cycle tracking when meters are unavailable.
-
-        Args:
-            now: Current datetime (timezone-aware).
-            live: Live HA entity state snapshot.
-            output: Planner output with slot-level decisions.
-        """
-        await self._init_daily_tracker()
-        tracker = self._daily_tracker
-
-        # Check and handle day rollover first.
-        await tracker.check_day_rollover(now)
-
-        # ---- Plan accumulation ----
-        # Accumulate plan values for the current in-progress slot (and any
-        # completed slots that may have been missed).  The current slot's
-        # plan values are captured before the SoC simulation zeroes them
-        # on the next planner run.
-        self._daily_plan_last_accumulated = _accumulate_plan_for_slots(
-            tracker,
-            output.slots,
-            now,
-            self._daily_plan_last_accumulated,
-        )
-
-        # ---- Actual accumulation ----
-        # Use cumulative energy meter readings when available.
-        # Battery cycle tracking uses SoC delta converted to kWh via rated capacity.
-        soc_pct = live.huawei_batteries_soc_pct
-        rated_cap_kwh = (live.huawei_batteries_rated_capacity_wh or 0.0) / 1000.0
-        tracker.accumulate_actual(
-            grid_import_energy_kwh=live.grid_import_energy_kwh,
-            grid_export_energy_kwh=live.grid_export_energy_kwh,
-            pv_energy_kwh=live.pv_energy_kwh,
-            soc_pct=soc_pct,
-            rated_capacity_kwh=rated_cap_kwh,
-            import_price=live.import_electricity_price,
-            export_price=live.export_electricity_price,
-        )
-
-    # ------------------------------------------------------------------
-    # Financial tracker accumulation (issue #599)
-    # ------------------------------------------------------------------
-
-    async def _init_financial_tracker(self) -> None:
-        """Lazily initialise the financial tracker.
-
-        Called once on the first access.  Loads the JSON history file.
-        Failures are logged and leave the tracker with an empty history
-        file path so the sensors show 'no data' rather than crashing the
-        coordinator.
-        """
-        if getattr(self, "_financial_tracker_initialized", True):
-            return
-
-        try:
-            config_dir = self.hass.config.config_dir
-            self._financial_tracker.history_file = str(
-                Path(config_dir) / ".storage" / "hsem_financial_history.json"
-            )
-            await self._load_financial_tracker()
-            self._financial_tracker_initialized = True
-        except Exception:
-            async_log(
-                "error",
-                "Failed to initialise financial tracker "
-                "(financial sensors will be unavailable)",
-            )
-            self._financial_tracker_initialized = True  # don't retry
-
-    async def _load_financial_tracker(self) -> None:
-        """Load financial tracker state from the JSON persistence file."""
-        path = Path(self._financial_tracker.history_file)
-        if not path.exists():
-            return
-        try:
-            data = await asyncio.to_thread(FinancialTracker._read_history_file, path)
-            if data is not None:
-                loaded = FinancialTracker.from_dict(data)
-                self._financial_tracker = loaded
-        except Exception:
-            async_log("error", "Failed to load financial tracker history")
-
-    async def _persist_financial_tracker(self) -> bool:
-        """Persist financial tracker state to disk atomically."""
-        if not self._financial_tracker.history_file:
-            return False
-        data = self._financial_tracker.as_dict()
-        path = Path(self._financial_tracker.history_file)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        return await asyncio.to_thread(FinancialTracker._write_history_file, data, path)
-
-    async def _accumulate_financials(
-        self,
-        now: datetime,
-        live: LiveState,
-    ) -> None:
-        """Accumulate import cost and export income into the financial tracker.
-
-        Called each coordinator cycle after plan-vs-actual accumulation.
-        Handles day rollover (snapshotting yesterday's totals) before
-        accumulating the live cost deltas from the energy meters.
-
-        Args:
-            now: Current datetime (timezone-aware).
-            live: Live HA entity state snapshot.
-        """
-        await self._init_financial_tracker()
-        tracker = self._financial_tracker
-
-        # Check and handle day rollover first.
-        tracker.check_day_rollover(now)
-
-        # Accumulate cost deltas from live meter readings.
-        tracker.accumulate(
-            grid_import_energy_kwh=live.grid_import_energy_kwh,
-            grid_export_energy_kwh=live.grid_export_energy_kwh,
-            import_price=live.import_electricity_price,
-            export_price=live.export_electricity_price,
-        )
-
-    async def _accumulate_savings(
-        self,
-        now: datetime,
-        live: LiveState,
-        output: PlannerOutput,
-    ) -> None:
-        """Accumulate savings data for the current cycle.
-
-        Computes export revenue delta, charge savings delta, and baseline
-        cost delta from the daily tracker and planner output.
-
-        Args:
-            now: Current datetime (timezone-aware).
-            live: Live HA entity state snapshot.
-            output: Planner output with slot-level decisions.
-        """
-        await self._init_savings_tracker()
-        st = self._savings_tracker
-        dt = self._daily_tracker
-
-        # Check day rollover first.
-        today_str = now.date().isoformat()
-        st.check_day_rollover(today_str)
-
-        # ---- Compute per-cycle deltas from the daily tracker ----
-        current_export_rev = dt.actual.grid_export_rev
-        current_import_cost = dt.actual.grid_import_cost
-
-        export_rev_delta = 0.0
-        if st._last_export_rev is not None:
-            export_rev_delta = max(0.0, current_export_rev - st._last_export_rev)
-        st._last_export_rev = current_export_rev
-
-        import_cost_delta = 0.0
-        if st._last_import_cost is not None:
-            import_cost_delta = max(0.0, current_import_cost - st._last_import_cost)
-        st._last_import_cost = current_import_cost
-
-        # ---- Charge savings: money saved by charging cheap now ----
-        charge_savings_delta = 0.0
-        import_price = live.import_electricity_price
-
-        # Compute average daily import price from planner slots for today.
-        avg_import_price = self._compute_daily_avg_import_price(output)
-
-        # Check if the current recommendation is a charge action.
-        hourly_rec = self._hourly_recommendation
-        from custom_components.hsem.utils.recommendations import CHARGE_RECS
-
-        if (
-            hourly_rec is not None
-            and hourly_rec.recommendation in CHARGE_RECS
-            and import_price < avg_import_price
-            and avg_import_price > 0
-        ):
-            charge_kwh = hourly_rec.batteries_charged_kwh or 0.0
-            if abs(charge_kwh) > 1e-9:
-                charge_savings_delta = charge_kwh * (avg_import_price - import_price)
-
-        # ---- Baseline cost: what passive mode would cost this cycle ----
-        baseline_cost_delta = import_cost_delta
-
-        # ---- Determine if the master switch is on ----
-        switch_on = live.force_working_mode_state == "auto"
-
-        st.accumulate(
-            export_revenue_delta=export_rev_delta,
-            charge_savings_delta=charge_savings_delta,
-            baseline_cost_delta=baseline_cost_delta,
-            switch_on=switch_on,
-        )
-
-    @staticmethod
-    def _compute_daily_avg_import_price(output: PlannerOutput) -> float:
-        """Compute the average import price for today from planner slots."""
-        today_str = date.today().isoformat()
-        prices: list[float] = []
-        for slot in output.slots:
-            slot_date = slot.start.strftime("%Y-%m-%d")
-            if slot_date == today_str:
-                p = getattr(slot, "import_price", None)
-                if p is not None and p > 0:
-                    prices.append(float(p))
-        if not prices:
-            return 0.0
-        return sum(prices) / len(prices)
-
-    async def _init_savings_tracker(self) -> None:
-        """Lazily initialise the savings tracker."""
-        if getattr(self, "_savings_tracker_initialized", True):
-            return
-
-        try:
-            config_dir = self.hass.config.config_dir
-            self._savings_tracker.history_file = str(
-                Path(config_dir) / ".storage" / "hsem_savings_history.json"
-            )
-            await self._savings_tracker.load_history()
-            self._savings_tracker_initialized = True
-        except Exception:
-            async_log(
-                "error",
-                "Failed to initialise savings tracker "
-                "(savings sensor will be unavailable)",
-            )
-            self._savings_tracker_initialized = True  # don't retry
-
-    async def _init_daily_tracker(self) -> None:
-        """Lazily initialise the daily plan-vs-actual tracker.
-
-        Called once on the first access.  Registers the midnight timer
-        and loads the history file.  Failures are logged and leave the
-        tracker with an empty history file path so the sensor shows
-        'no data' rather than crashing the coordinator.
-        """
-        if getattr(self, "_daily_tracker_initialized", True):
-            return
-
-        try:
-            config_dir = self.hass.config.config_dir
-            self._daily_tracker.history_file = str(
-                Path(config_dir) / ".storage" / "hsem_daily_history.json"
-            )
-            await self._daily_tracker.load_history()
-
-            self._midnight_unsub = async_track_time_change(
-                self.hass,
-                self._async_handle_midnight,
-                hour=0,
-                minute=0,
-                second=0,
-            )
-            self._daily_tracker_initialized = True
-        except Exception:
-            async_log(
-                "error",
-                "Failed to initialise daily tracker (plan-vs-actual "
-                "sensor will be unavailable)",
-            )
-            self._daily_tracker_initialized = True  # don't retry
-
-    async def _async_handle_midnight(self, _now: datetime) -> None:
-        """Handle the midnight timer — persist the day's record and reset.
-
-        This is called by the HA time-change listener at 00:00:00 local time.
-        Saves yesterday's record, resets accumulators, and updates today's date
-        so the next update cycle does not double-save.
-
-        Args:
-            _now: The datetime at which the timer fired (unused).
-        """
-        tracker = self._daily_tracker
-        if tracker.history_file:
-            today_record = tracker._build_today_record()
-            saved = await tracker._save_record_to_history(today_record)
-            if saved:
-                async_log(
-                    "info",
-                    "Daily plan-vs-actual record saved for %s",
-                    tracker.today,
-                )
-            else:
-                async_log(
-                    "warning",
-                    "Failed to save daily plan-vs-actual record for %s",
-                    tracker.today,
-                )
-
-            # Reset accumulators for the new day so check_day_rollover()
-            # does not double-save on the next cycle.
-            tracker.today = _now.date().isoformat()
-            tracker.actual = DailyMetrics()
-            tracker.plan = DailyMetrics()
-            tracker.last_soc_pct = None
-            tracker._last_import_energy_kwh = None
-            tracker._last_export_energy_kwh = None
-            tracker._last_pv_energy_kwh = None
-            self._daily_plan_last_accumulated = None
-
-        # Persist the financial tracker at midnight so daily log survives
-        # HA restarts.
-        financial = self._financial_tracker
-        if financial.history_file:
-            saved = await self._persist_financial_tracker()
-            if saved:
-                async_log(
-                    "info",
-                    "Financial tracker persisted for %s",
-                    financial.today,
-                )
-            else:
-                async_log(
-                    "warning",
-                    "Failed to persist financial tracker for %s",
-                    financial.today,
-                )
-
-        # Persist savings tracker state at midnight.
-        st = self._savings_tracker
-        if st.history_file:
-            saved = await st.save_history()
-            if saved:
-                async_log("info", "Savings tracker state saved for %s", st._today)
-            else:
-                async_log(
-                    "warning",
-                    "Failed to save savings tracker state for %s",
-                    st._today,
-                )
-
-
-# ---------------------------------------------------------------------------
-# Module-level helpers for daily plan-vs-actual accumulation
-# ---------------------------------------------------------------------------
-
-
-def _accumulate_plan_for_slots(
-    tracker: DailyPlanVsActualTracker,
-    slots: list,
-    now: datetime,
-    last_accumulated: datetime | None,
-) -> datetime | None:
-    """Accumulate plan values for the current in-progress slot.
-
-    Accumulates the FULL plan value for each slot exactly once, on the
-    first cycle where the slot is the current in-progress slot
-    (``start <= now < end``).  This captures the plan as it was when
-    the slot started, before the SoC simulation zeroes the plan fields
-    for past slots on subsequent planner runs.
-
-    Completed past slots are also handled as a safety net for slots
-    that may become past between cycles (e.g. after a coordinator
-    restart).
-
-    Returns:
-        The accumulation marker (start of the current slot if it was
-        just accumulated, or the last_accumulated value unchanged).
-    """
-    for slot in slots:
-        slot_start = as_tz(slot.start, now.tzinfo) if hasattr(slot, "start") else None
-        slot_end = as_tz(slot.end, now.tzinfo) if hasattr(slot, "end") else None
-
-        # Current in-progress slot: accumulate full plan on first encounter.
-        if (
-            slot_start is not None
-            and slot_end is not None
-            and slot_start <= now < slot_end
-        ):
-            if last_accumulated is None or last_accumulated < slot_start:
-                _add_slot_to_tracker(tracker, slot, fraction=1.0)
-                return slot_start  # Mark this slot as accumulated
-            return last_accumulated  # Already accumulated this slot
-
-        # Safety net: completed past slots that may not have been
-        # accumulated yet.  Only active after the first cycle (when
-        # last_accumulated is not None) to avoid inflating plan values
-        # with stale zeroed fields from past slots on startup.
-        if last_accumulated is not None and slot_end is not None and slot_end <= now:
-            # Use slot_start in the skip-check because last_accumulated
-            # is now a slot-start marker (set by the current-slot branch).
-            if slot_start is not None and slot_start <= last_accumulated:
-                continue
-            _add_slot_to_tracker(tracker, slot, fraction=1.0)
-
-    # If no current slot was found, return the end of the last completed
-    # slot as the marker (prevents re-accumulation of past slots).
-    return _last_completed_slot_end(slots, now) or last_accumulated
-
-
-def _add_slot_to_tracker(
-    tracker: DailyPlanVsActualTracker,
-    slot: object,
-    fraction: float = 1.0,
-) -> None:
-    """Add a single slot's plan values to the tracker, scaled by *fraction*."""
-    gi = (getattr(slot, "grid_import_kwh", 0.0) or 0.0) * fraction
-    ge = (getattr(slot, "grid_export_kwh", 0.0) or 0.0) * fraction
-    chg = (getattr(slot, "batteries_charged_kwh", 0.0) or 0.0) * fraction
-    dis = (getattr(slot, "batteries_discharged_kwh", 0.0) or 0.0) * fraction
-    pv = (getattr(slot, "solcast_pv_estimate_kwh", 0.0) or 0.0) * fraction
-    slot_price = getattr(slot, "price", None)
-    import_price = slot_price.import_price if slot_price is not None else 0.0
-    export_price = slot_price.export_price if slot_price is not None else 0.0
-    cycle_kwh = abs(chg) + abs(dis)
-    tracker.accumulate_plan(
-        grid_import_kwh=gi,
-        grid_export_kwh=ge,
-        cycle_kwh=cycle_kwh,
-        pv_kwh=pv,
-        import_price=import_price,
-        export_price=export_price,
-    )
-
-
-def _last_completed_slot_end(slots: list, now: datetime) -> datetime | None:
-    """Return the end time of the most recent completed slot, or None."""
-    last_end: datetime | None = None
-    for slot in slots:
-        slot_end = as_tz(slot.end, now.tzinfo) if hasattr(slot, "end") else None
-        if slot_end is not None and slot_end <= now:
-            if last_end is None or slot_end > last_end:
-                last_end = slot_end
-    return last_end

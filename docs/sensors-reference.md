@@ -15,7 +15,7 @@ HSEM exposes these entity types:
 | **Select** | 2 | Force working mode override and Solcast likelihood selector |
 | **Switch** | ~15 | Toggle entities for schedules, EV settings, features, and ML options |
 | **Time** | 8 | Start/end time inputs for battery schedules and EV deadlines |
-| **Number** | ~12 | Charge/discharge efficiency, EV target SoC, temperature charge rates |
+| **Number** | 4 | Charge/discharge efficiency and EV target SoC controls |
 
 ---
 
@@ -69,7 +69,7 @@ all planner output as attributes.
 | `hardware_writes_blocked` | bool | Safety gate preventing hardware writes |
 | `apply_status` | string | Last apply result: `ok`, `unverified`, `failed`, `skipped` |
 | `apply_failed_entities` | list[string] | Entities that failed the last hardware write |
-| `data_quality` | dict | Structured input completeness report |
+| `data_quality` | dict | Structured price/PV and load-forecast completeness report |
 | `force_working_mode_state` | string | Active override mode or `auto` |
 
 ### Plan output attributes
@@ -214,6 +214,7 @@ Displays the planner's strategy rationale and per-candidate cost breakdown.
 ## Financial sensors
 
 Cumulative monetary sensors that track grid import cost and export revenue.
+All three use `total` because signed prices may make their values decrease.
 
 **Entities:**
 - `sensor.hsem_export_income` — Cumulative export revenue
@@ -225,7 +226,7 @@ Cumulative monetary sensors that track grid import cost and export revenue.
 | Property | Value |
 |---|---|
 | **Type** | `sensor` |
-| **State class** | `total_increasing` |
+| **State class** | `total` |
 | **State** | Cumulative export revenue (local currency) |
 | **Device class** | `monetary` |
 
@@ -234,7 +235,7 @@ Cumulative monetary sensors that track grid import cost and export revenue.
 | Property | Value |
 |---|---|
 | **Type** | `sensor` |
-| **State class** | `total_increasing` |
+| **State class** | `total` |
 | **State** | Cumulative import cost (local currency) |
 | **Device class** | `monetary` |
 
@@ -243,7 +244,7 @@ Cumulative monetary sensors that track grid import cost and export revenue.
 | Property | Value |
 |---|---|
 | **Type** | `sensor` |
-| **State class** | `measurement` |
+| **State class** | `total` |
 | **State** | Net grid balance (`export_income − import_cost`, local currency) |
 | **Device class** | `monetary` |
 
@@ -557,9 +558,9 @@ Detects when the inverter is actively curtailing PV production.
 | `sensor.hsem_recommendation_interval_sensor` | Recommendation Interval | Slot width and horizon info | Minutes |
 | `sensor.hsem_update_interval_sensor` | Update Interval | Current polling interval | Minutes |
 | `sensor.hsem_working_mode` | Working Mode | Active battery recommendation | Working mode state |
-| `sensor.hsem_export_income` | Export Income | Cumulative export revenue | Monetary (total_increasing) |
-| `sensor.hsem_import_cost` | Import Cost | Cumulative import cost | Monetary (total_increasing) |
-| `sensor.hsem_net_grid_balance` | Net Grid Balance | Export income minus import cost | Monetary (measurement) |
+| `sensor.hsem_export_income` | Export Income | Cumulative export revenue | Monetary (total) |
+| `sensor.hsem_import_cost` | Import Cost | Cumulative import cost | Monetary (total) |
+| `sensor.hsem_net_grid_balance` | Net Grid Balance | Export income minus import cost | Monetary (total) |
 | `sensor.hsem_effective_discharge_floor` | Effective Discharge Floor | Current effective floor SoC | Percentage |
 | `sensor.hsem_ocpp_charger_status` | OCPP Charger Status | Charger connection/charging state | String |
 | `sensor.hsem_ocpp_charger_power` | OCPP Charger Power | Live charging power | kW |
@@ -627,20 +628,6 @@ This setting is also configurable in the options flow.
 | `number.hsem_ev_target_soc` | Primary EV target SoC | 0–100 % |
 | `number.hsem_ev_second_target_soc` | Second EV target SoC | 0–100 % |
 
-### Temperature-based charge rates
-
-Charge rate limits based on ambient temperature ranges. Each adjusts the maximum
-charge power the planner may request within the corresponding temperature band.
-
-| Entity | Temperature range |
-|---|---|
-| `number.hsem_charge_rate_below_0` | Below 0 °C |
-| `number.hsem_charge_rate_0_to_5` | 0–5 °C |
-| `number.hsem_charge_rate_6_to_15` | 6–15 °C |
-| `number.hsem_charge_rate_16_to_21` | 16–21 °C |
-| `number.hsem_charge_rate_21_to_35` | 21–35 °C |
-| `number.hsem_charge_rate_35_to_50` | 35–50 °C |
-| `number.hsem_charge_rate_above_50` | Above 50 °C |
 
 ---
 
@@ -704,25 +691,27 @@ These changes are internal to the planner and do not expose new entities:
 
 ## Data quality attribute
 
-The `data_quality` dict on the working mode sensor provides a structured
-input completeness report. Example structure:
+The `data_quality` dict on the working mode sensor is the serialized planner
+input-completeness report. Example structure:
 
 ```json
 {
-  "import_price": true,
-  "export_price": true,
-  "house_consumption": true,
-  "solar_production": true,
-  "battery_soc": true,
-  "battery_capacity": true,
-  "solcast_today": true,
-  "solcast_tomorrow": false,
-  "ev_connected": true,
-  "ev_soc": true,
-  "ev_second_connected": null,
-  "ev_second_soc": null
+  "is_complete": false,
+  "load_forecast_ready": false,
+  "load_forecast_reason": "zero_forecast_with_live_demand",
+  "horizon_has_tomorrow": true,
+  "horizon_days": 2,
+  "tomorrow_price_missing_hours": [],
+  "tomorrow_pv_missing_hours": [],
+  "day2_price_missing_hours": [],
+  "day2_pv_missing_hours": [],
+  "today_price_missing_hours": [],
+  "today_pv_missing_hours": []
 }
 ```
 
-Each key is a sensor category; the value is `true` (available), `false`
-(missing), or `null` (not configured / not applicable).
+`load_forecast_ready` is false when average-sensor provenance or a populated
+future value is missing, non-finite, or negative. A complete zero profile is
+valid while live house demand is at most 50 W; above that threshold the reason
+is `zero_forecast_with_live_demand`. `is_complete` requires both load readiness
+and complete price/PV inputs.

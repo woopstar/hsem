@@ -107,6 +107,9 @@ class PlanExplanation:
             "forecast_net_consumption_kwh": round(self.forecast_net_consumption_kwh, 3),
             "battery_soc_pct": round(self.battery_soc_pct, 1),
             "battery_soc_at_end_pct": round(self.battery_soc_at_end_pct, 1),
+            "hysteresis_active": self.hysteresis_active,
+            "hysteresis_reason": self.hysteresis_reason,
+            "previous_plan_name": self.previous_plan_name,
             "constraints": list(self.constraints),
             "rejected_plans": [
                 {

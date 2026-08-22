@@ -323,7 +323,7 @@ class TestRoundtripEfficiency:
 
 
 class TestCostFunctionEfficiency:
-    """Verify that charge/discharge efficiency affects the conversion_loss_cost term."""
+    """Verify efficiency affects physical flows, not a duplicate money term."""
 
     def _make_cost_slot(
         self,
@@ -373,53 +373,51 @@ class TestCostFunctionEfficiency:
         # Since both efficiencies are 100 %, conversion_loss is 0
         assert bd.conversion_loss_cost == pytest.approx(0.0, abs=1e-6)
 
-    def test_90_90_efficiency_roundtrip_loss_fraction(self) -> None:
-        """90 % charge × 90 % discharge → per-side loss fractions = 0.10 each."""
+    def test_90_90_efficiency_keeps_compatibility_field_zero(self) -> None:
+        """Physical efficiency must not be charged again in the public field."""
         slot = self._make_cost_slot(
-            batteries_charged_kwh=5.0, batteries_discharged_kwh=5.0, grid_import_kwh=5.0
+            batteries_charged_kwh=5.0,
+            batteries_discharged_kwh=5.0,
+            grid_import_kwh=5.0 / 0.9,
         )
-        weights = CostWeights(
-            charge_efficiency_pct=90.0,
-            discharge_efficiency_pct=90.0,  # legacy term irrelevant
-        )
-        bd = score_plan([slot], weights)
-        # charge_loss_fraction = 1 - 0.90 = 0.10
-        # discharge_loss_fraction = 1 - 0.90 = 0.10
-        # lost_kwh_charge = 5.0 × 0.10 = 0.5 @ 0.20 = 0.10
-        # lost_kwh_discharge = 5.0 × 0.10 = 0.5 @ 0.20 = 0.10
-        # total = 0.20
-        assert bd.conversion_loss_cost == pytest.approx(0.20, abs=1e-6)
-
-    def test_95_95_efficiency_lower_loss_than_90_90(self) -> None:
-        """95 % / 95 % efficiency produces lower conversion_loss_cost than 90 % / 90 %."""
-        slot = self._make_cost_slot(
-            batteries_charged_kwh=5.0, batteries_discharged_kwh=5.0, grid_import_kwh=5.0
-        )
-        bd_95 = score_plan(
+        bd = score_plan(
             [slot],
-            CostWeights(charge_efficiency_pct=95.0, discharge_efficiency_pct=95.0),
+            CostWeights(
+                charge_efficiency_pct=90.0,
+                discharge_efficiency_pct=90.0,
+            ),
         )
-        bd_90 = score_plan(
-            [slot],
-            CostWeights(charge_efficiency_pct=90.0, discharge_efficiency_pct=90.0),
-        )
-        assert bd_95.conversion_loss_cost < bd_90.conversion_loss_cost
+        assert bd.conversion_loss_cost == pytest.approx(0.0, abs=1e-6)
 
-    def test_conversion_loss_overridden_by_explicit_efficiencies(self) -> None:
-        """When explicit efficiencies are set, conversion_loss_pct is overridden."""
+    def test_higher_efficiency_reduces_physical_import_cost(self) -> None:
+        """Storing 5 kWh draws less billable AC energy at 95% than 90%."""
+        slot_95 = self._make_cost_slot(
+            batteries_charged_kwh=5.0, grid_import_kwh=5.0 / 0.95
+        )
+        slot_90 = self._make_cost_slot(
+            batteries_charged_kwh=5.0, grid_import_kwh=5.0 / 0.90
+        )
+        bd_95 = score_plan([slot_95], CostWeights(charge_efficiency_pct=95.0))
+        bd_90 = score_plan([slot_90], CostWeights(charge_efficiency_pct=90.0))
+        assert bd_95.import_cost < bd_90.import_cost
+        assert bd_95.conversion_loss_cost == pytest.approx(0.0)
+        assert bd_90.conversion_loss_cost == pytest.approx(0.0)
+
+    def test_explicit_efficiencies_do_not_create_separate_loss_cost(self) -> None:
+        """Explicit efficiencies remain physical-only in authoritative scoring."""
         slot = self._make_cost_slot(
-            batteries_charged_kwh=5.0, batteries_discharged_kwh=5.0, grid_import_kwh=5.0
+            batteries_charged_kwh=5.0,
+            batteries_discharged_kwh=5.0,
+            grid_import_kwh=5.0,
         )
-        # explicit 90/90 overrides conversion_loss_pct=50 (which would be absurdly high)
-        weights = CostWeights(
-            charge_efficiency_pct=90.0,
-            discharge_efficiency_pct=90.0,
+        bd = score_plan(
+            [slot],
+            CostWeights(
+                charge_efficiency_pct=90.0,
+                discharge_efficiency_pct=90.0,
+            ),
         )
-        bd = score_plan([slot], weights)
-        # charge_loss_fraction = 0.10, lost_kwh_charge = 0.5 @ 0.20 = 0.10
-        # discharge_loss_fraction = 0.10, lost_kwh_discharge = 0.5 @ 0.20 = 0.10
-        # total = 0.20 (not the absurd 50 % roundtrip)
-        assert bd.conversion_loss_cost == pytest.approx(0.20, abs=1e-6)
+        assert bd.conversion_loss_cost == pytest.approx(0.0, abs=1e-6)
 
     def test_import_cost_reflects_real_grid_draw_at_90pct_charge(self) -> None:
         """Grid import cost uses grid_import_kwh (which includes charge-side loss).

@@ -236,9 +236,9 @@ class TestReconfigureOptionsFlow:
 class TestOptionsFlowPreservesEntityManagedOptions:
     """Regression: saving the options flow must not reset entity-managed options.
 
-    Switches (force-charge-now, smart charging, read-only, …), numbers
-    (target SoC), times (deadline), and learned charge rates are persisted
-    by their entities directly into ``config_entry.options`` and are NOT
+    Switches (force-charge-now, smart charging, read-only, …), target-SoC
+    numbers, EV deadline times, and selectors are persisted by their entities
+    directly into ``config_entry.options`` and are NOT
     collected by any options-flow schema.  When the options flow finishes
     with ``async_create_entry(data=self._user_input)``, HA replaces the
     entire options dict — dropping those keys and resetting the switches
