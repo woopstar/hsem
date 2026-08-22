@@ -27,6 +27,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# rtk installation
+RUN curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh
+RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> /root/.bashrc
+
 # Copy devcontainer helper scripts
 COPY scripts/devcontainer-agent-bridge.sh /usr/local/bin/devcontainer-agent-bridge.sh
 COPY scripts/setup-python-deps.sh /usr/local/bin/setup-python-deps.sh
