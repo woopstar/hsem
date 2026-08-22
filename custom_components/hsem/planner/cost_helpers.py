@@ -1,4 +1,4 @@
-"""Cost function helpers — override detection and cycle cost resolution."""
+"""Cost-function helpers for cycle cost and terminal valuation."""
 
 from __future__ import annotations
 
@@ -12,34 +12,42 @@ from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import resolve_cycle_cost
 from custom_components.hsem.utils.units import usable_kwh_from_rated
 
-# ---------------------------------------------------------------------------
-# Override detection helpers
-# ---------------------------------------------------------------------------
 
-#: Recommendation values that represent schedule-forced modes rather than
-#: the optimiser's free choice.  Used to detect override slots.
-_OVERRIDE_RECOMMENDATIONS: frozenset[str] = frozenset(
-    {
-        "batteries_charge_grid",  # schedule-driven grid charge
-    }
-)
+def grid_cash_flow_cost(
+    grid_import_kwh: float,
+    grid_export_kwh: float,
+    import_price: float,
+    export_price: float,
+    *,
+    price_actionable: bool = True,
+    export_min_price: float = 0.0,
+) -> float:
+    """Return auditable signed meter cash flow; positive is net cost."""
+    if not price_actionable:
+        return 0.0
+    effective_import = import_price if math.isfinite(import_price) else 0.0
+    effective_export = export_price if math.isfinite(export_price) else 0.0
+    if export_min_price > 1e-9 and effective_export < export_min_price:
+        effective_export = 0.0
+    return (
+        max(grid_import_kwh, 0.0) * effective_import
+        - max(grid_export_kwh, 0.0) * effective_export
+    )
 
 
-def _is_override_slot(slot: PlannedSlot) -> bool:
-    """Return ``True`` if *slot* was set by a forced override.
-
-    Currently an override is defined as a slot whose recommendation is
-    ``"batteries_charge_grid"`` (a schedule-driven hard constraint).  Extend
-    this set as HSEM gains more override modes.
-
-    Args:
-        slot: The slot to inspect.
-
-    Returns:
-        ``True`` when the slot represents a forced override.
-    """
-    return bool(
-        slot.recommendation and slot.recommendation in _OVERRIDE_RECOMMENDATIONS
+def slot_grid_cash_flow_cost(
+    slot: PlannedSlot,
+    *,
+    export_min_price: float = 0.0,
+) -> float:
+    """Return one slot's signed meter cash flow from final grid fields."""
+    return grid_cash_flow_cost(
+        slot.grid_import_kwh,
+        slot.grid_export_kwh,
+        slot.price.import_price,
+        slot.price.export_price,
+        price_actionable=bool(getattr(slot, "price_actionable", True)),
+        export_min_price=export_min_price,
     )
 
 

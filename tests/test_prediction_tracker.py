@@ -12,7 +12,8 @@ Covers:
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -504,3 +505,52 @@ class TestEmptyTracker:
         tracker.compute_metrics()
         assert tracker.soc_mae_7d is None
         assert tracker.solar_mape is None
+
+
+class TestPredictionTrackerPersistence:
+    """Bounded history survives integration reloads safely."""
+
+    @pytest.mark.asyncio
+    async def test_history_roundtrip_avoids_second_warmup(self, tmp_path: Path) -> None:
+        history_path = tmp_path / "prediction.json"
+        original = PredictionTracker(
+            max_records=10,
+            history_file=str(history_path),
+            _warmup_slots=0,
+        )
+        assert original.add_record(**_make_record_args(hour=1)) is True
+        assert await original.save_history() is True
+
+        restored = PredictionTracker(
+            max_records=10,
+            history_file=str(history_path),
+            _warmup_slots=4,
+        )
+        await restored.load_history()
+        assert len(restored.records) == 1
+        assert (
+            restored.add_record(
+                **{
+                    **_make_record_args(hour=1),
+                    "slot_start": _slot_start(1) + timedelta(minutes=15),
+                }
+            )
+            is True
+        )
+        assert len(restored.records) == 2
+
+    def test_load_rejects_malformed_records(self) -> None:
+        tracker = PredictionTracker(_warmup_slots=0)
+        tracker.load_from_dict(
+            {
+                "records": [
+                    {
+                        "slot_start": "not-a-date",
+                        "predicted_soc_pct": "nan",
+                        "action": "charge",
+                    }
+                ]
+            }
+        )
+        assert tracker.records == []
+        assert tracker.soc_mae_7d is None

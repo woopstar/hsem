@@ -6,8 +6,9 @@ rollups (today, last 7 days, last 30 days, this month, this year).
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 
@@ -69,9 +70,13 @@ class FinancialTracker:
     _today_start_import_cost: float = field(default=0.0, repr=False)
     _today_start_export_income: float = field(default=0.0, repr=False)
 
-    # Last-seen cumulative meter readings for delta computation.
+    # Last-seen cumulative meter readings and endpoint prices.
     _last_import_energy_kwh: float | None = field(default=None, repr=False)
     _last_export_energy_kwh: float | None = field(default=None, repr=False)
+    _last_import_sample_at: datetime | None = field(default=None, repr=False)
+    _last_export_sample_at: datetime | None = field(default=None, repr=False)
+    _last_import_price: float | None = field(default=None, repr=False)
+    _last_export_price: float | None = field(default=None, repr=False)
 
     daily_log: dict[str, FinancialDayEntry] = field(default_factory=dict)
     today: str = ""
@@ -101,6 +106,13 @@ class FinancialTracker:
         """Net grid balance today (export income − import cost)."""
         return self.export_income_today - self.import_cost_today
 
+    def _tracking_date(self) -> date:
+        """Return the coordinator-owned local calendar day for rollups."""
+        try:
+            return date.fromisoformat(self.today)
+        except ValueError:
+            return date.today()
+
     def _sum_period(self, days: int) -> dict[str, float]:
         """Sum daily entries for the last *days* calendar days.
 
@@ -111,12 +123,17 @@ class FinancialTracker:
             Dict with keys ``import_cost``, ``export_income``, and
             ``net_balance``.
         """
-        today_date = date.today()
+        today_date = self._tracking_date()
+        today_key = today_date.isoformat()
         total_import = 0.0
         total_export = 0.0
         for offset in range(days):
-            d = today_date - timedelta(days=offset)
-            entry = self.daily_log.get(d.isoformat())
+            day_key = (today_date - timedelta(days=offset)).isoformat()
+            if day_key == today_key:
+                total_import += self.import_cost_today
+                total_export += self.export_income_today
+                continue
+            entry = self.daily_log.get(day_key)
             if entry is not None:
                 total_import += entry.import_cost
                 total_export += entry.export_income
@@ -128,12 +145,13 @@ class FinancialTracker:
 
     def _sum_month(self) -> dict[str, float]:
         """Sum daily entries for the current month."""
-        today_date = date.today()
+        today_date = self._tracking_date()
+        today_key = today_date.isoformat()
         month_key = today_date.strftime("%Y-%m")
-        total_import = 0.0
-        total_export = 0.0
+        total_import = self.import_cost_today
+        total_export = self.export_income_today
         for entry in self.daily_log.values():
-            if entry.date.startswith(month_key):
+            if entry.date != today_key and entry.date.startswith(month_key):
                 total_import += entry.import_cost
                 total_export += entry.export_income
         return {
@@ -144,12 +162,13 @@ class FinancialTracker:
 
     def _sum_year(self) -> dict[str, float]:
         """Sum daily entries for the current year."""
-        today_date = date.today()
+        today_date = self._tracking_date()
+        today_key = today_date.isoformat()
         year_key = today_date.strftime("%Y")
-        total_import = 0.0
-        total_export = 0.0
+        total_import = self.import_cost_today
+        total_export = self.export_income_today
         for entry in self.daily_log.values():
-            if entry.date.startswith(year_key):
+            if entry.date != today_key and entry.date.startswith(year_key):
                 total_import += entry.import_cost
                 total_export += entry.export_income
         return {
@@ -168,33 +187,79 @@ class FinancialTracker:
         grid_export_energy_kwh: float | None = None,
         import_price: float = 0.0,
         export_price: float = 0.0,
-    ) -> None:
-        """Accumulate import cost and export income from live meter readings.
+        *,
+        sample_time: datetime | None = None,
+        max_gap_seconds: float | None = None,
+    ) -> bool:
+        """Accumulate meter deltas using each channel's prior endpoint price.
 
-        Computes the delta between consecutive cumulative meter readings,
-        multiplies by the applicable price, and adds to the running totals.
+        Timed calls price the physical interval at the price sampled with its
+        left endpoint. A missing or stale channel establishes a new baseline
+        without replaying the gap at one current price. Untimed calls preserve
+        the legacy direct-call behaviour and use the supplied price immediately.
 
-        Args:
-            grid_import_energy_kwh: Cumulative grid import meter reading (kWh).
-            grid_export_energy_kwh: Cumulative grid export meter reading (kWh).
-            import_price: Current import spot price (currency/kWh).
-            export_price: Current export spot price (currency/kWh).
+        Returns:
+            True when every present meter channel was temporally contiguous.
         """
-        # Grid import cost delta.
-        if grid_import_energy_kwh is not None:
-            if self._last_import_energy_kwh is not None:
-                delta = grid_import_energy_kwh - self._last_import_energy_kwh
-                if delta > 1e-9:
-                    self.import_cost_total += delta * import_price
-            self._last_import_energy_kwh = grid_import_energy_kwh
+        sample_key: datetime | None = None
+        if sample_time is not None and sample_time.tzinfo is not None:
+            sample_key = sample_time.astimezone(UTC)
 
-        # Grid export income delta.
+        def contiguous(last_sample: datetime | None) -> bool:
+            if sample_time is None:
+                return True
+            if sample_key is None or last_sample is None:
+                return False
+            elapsed = (sample_key - last_sample.astimezone(UTC)).total_seconds()
+            return elapsed >= 0.0 and (
+                max_gap_seconds is None or elapsed <= max(float(max_gap_seconds), 0.0)
+            )
+
+        channel_continuity: list[bool] = []
+
+        if grid_import_energy_kwh is not None:
+            is_contiguous = contiguous(self._last_import_sample_at)
+            channel_continuity.append(is_contiguous)
+            if is_contiguous and self._last_import_energy_kwh is not None:
+                delta = grid_import_energy_kwh - self._last_import_energy_kwh
+                interval_price = (
+                    import_price if sample_time is None else self._last_import_price
+                )
+                if (
+                    delta > 1e-9
+                    and interval_price is not None
+                    and math.isfinite(interval_price)
+                ):
+                    self.import_cost_total += delta * interval_price
+            self._last_import_energy_kwh = grid_import_energy_kwh
+            if sample_key is not None:
+                self._last_import_sample_at = sample_key
+                self._last_import_price = (
+                    float(import_price) if math.isfinite(import_price) else None
+                )
+
         if grid_export_energy_kwh is not None:
-            if self._last_export_energy_kwh is not None:
+            is_contiguous = contiguous(self._last_export_sample_at)
+            channel_continuity.append(is_contiguous)
+            if is_contiguous and self._last_export_energy_kwh is not None:
                 delta = grid_export_energy_kwh - self._last_export_energy_kwh
-                if delta > 1e-9:
-                    self.export_income_total += delta * export_price
+                interval_price = (
+                    export_price if sample_time is None else self._last_export_price
+                )
+                if (
+                    delta > 1e-9
+                    and interval_price is not None
+                    and math.isfinite(interval_price)
+                ):
+                    self.export_income_total += delta * interval_price
             self._last_export_energy_kwh = grid_export_energy_kwh
+            if sample_key is not None:
+                self._last_export_sample_at = sample_key
+                self._last_export_price = (
+                    float(export_price) if math.isfinite(export_price) else None
+                )
+
+        return all(channel_continuity) if channel_continuity else True
 
     # ------------------------------------------------------------------
     # Day rollover
@@ -292,6 +357,18 @@ class FinancialTracker:
                 if self._last_export_energy_kwh is not None
                 else None
             ),
+            "_last_import_sample_at": (
+                self._last_import_sample_at.astimezone(UTC).isoformat()
+                if self._last_import_sample_at is not None
+                else None
+            ),
+            "_last_export_sample_at": (
+                self._last_export_sample_at.astimezone(UTC).isoformat()
+                if self._last_export_sample_at is not None
+                else None
+            ),
+            "_last_import_price": self._last_import_price,
+            "_last_export_price": self._last_export_price,
             "today": self.today,
             "daily_log": [
                 e.as_dict()
@@ -317,6 +394,35 @@ class FinancialTracker:
         last_export = data.get("_last_export_energy_kwh")
         if last_export is not None:
             tracker._last_export_energy_kwh = float(last_export)
+
+        def parse_datetime(value: object) -> datetime | None:
+            if not isinstance(value, str):
+                return None
+            try:
+                parsed = datetime.fromisoformat(value)
+            except ValueError:
+                return None
+            if parsed.tzinfo is None:
+                return None
+            return parsed.astimezone(UTC)
+
+        def parse_price(value: object) -> float | None:
+            if isinstance(value, bool):
+                return None
+            try:
+                parsed = float(value)  # type: ignore[arg-type]
+            except TypeError, ValueError:
+                return None
+            return parsed if math.isfinite(parsed) else None
+
+        tracker._last_import_sample_at = parse_datetime(
+            data.get("_last_import_sample_at")
+        )
+        tracker._last_export_sample_at = parse_datetime(
+            data.get("_last_export_sample_at")
+        )
+        tracker._last_import_price = parse_price(data.get("_last_import_price"))
+        tracker._last_export_price = parse_price(data.get("_last_export_price"))
 
         daily_list = data.get("daily_log", [])
         if isinstance(daily_list, list):

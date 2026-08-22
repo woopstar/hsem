@@ -30,7 +30,8 @@ Additional diagnostic attributes are merged from the coordinator snapshot:
 - ``current_slot_start`` / ``current_slot_end`` / ``current_slot_recommendation``
   — the active time-slot boundaries and its recommendation.
 - ``last_apply_status`` — outcome of the most recent hardware-write cycle.
-- ``data_quality_complete`` — ``True`` when all price and PV data is available.
+- ``data_quality_complete`` — ``True`` when price, PV, and the house-load
+  forecast are all available.
 
 The sensor is a *diagnostic* entity (``EntityCategory.DIAGNOSTIC``) so it
 appears in the *Diagnostic* section of the device page and is excluded from

@@ -74,3 +74,6 @@ class EVConfig:
     #: certain demand at this power level instead of using the probabilistic
     #: planned-load model.
     session_charge_kw: float | None = None
+    #: Measured session demand that remains a fixed site load but must not emit
+    #: an HSEM charger command because smart control is unavailable/ineligible.
+    fixed_session_only: bool = False

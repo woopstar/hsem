@@ -5,8 +5,7 @@ The cost function exposes two distinct aggregate numbers:
 - ``total_cost`` — money outcome only.
   ``import_cost − export_revenue + cycle_cost + conversion_loss_cost``.
 - ``score`` — selector objective.
-  ``total_cost + soc_penalty + grid_limit_penalty + override_penalty
-   + terminal_soc_value``.
+  ``total_cost + soc_penalty + grid_limit_penalty + terminal_soc_value``.
 
 The candidate selector picks the plan with the lowest ``score``, **not** the
 lowest ``total_cost``.  ``score`` is what disambiguates plans that have the
@@ -135,7 +134,6 @@ class TestScoreEqualsTotalCostWhenClean:
         # No penalties, no terminal-SoC inputs → score == total_cost.
         assert bd.soc_penalty == pytest.approx(0.0)
         assert bd.grid_limit_penalty == pytest.approx(0.0)
-        assert bd.override_penalty == pytest.approx(0.0)
         assert bd.terminal_soc_value == pytest.approx(0.0)
         assert bd.score == pytest.approx(bd.total_cost, abs=1e-9)
 

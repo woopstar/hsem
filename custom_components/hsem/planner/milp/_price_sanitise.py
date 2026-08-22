@@ -5,8 +5,12 @@ and consistent with the physical system:
 
 - NaN handling
 - Battery-export floor mask (issues #752 and #767)
-- Export-≤-import clamp (issue #635)
-- Negative-import clamp for objective coefficients (issue #655)
+- Finite-value normalization
+- Battery-export floor mask (issues #752 and #767)
+
+Grid flows are now finitely bounded and direction-exclusive in the MILP, so
+finite signed market prices can remain authoritative without unbounded wash
+flows.
 """
 
 from __future__ import annotations
@@ -39,10 +43,9 @@ def sanitize_prices(
     but cannot intentionally export to the grid.  PV export is intentionally
     left unrestricted (issue #767).
 
-    The export-≤-import clamp prevents an unbounded LP when
-    ``p_exp > p_imp`` in any slot.  Negative import prices are clamped to
-    0 for objective coefficients only; the raw ``p_imp`` is preserved for
-    the export-≤-import clamp and penalty scaling.
+    Finite signed import/export prices are preserved. Bounded grid variables
+    and the binary grid-flow direction constraint prevent unbounded same-slot
+    import/export wash flows.
 
     Args:
         p_imp: Raw import prices per active slot.
@@ -53,9 +56,9 @@ def sanitize_prices(
 
     Returns:
         ``(p_imp_obj, p_exp_sanitized, battery_export_blocked)`` where
-        ``p_imp_obj`` is the non-negative import price used in the
-        objective, ``p_exp_sanitized`` is the export price after the
-        export-≤-import clamp, and ``battery_export_blocked`` is a bool
+        ``p_imp_obj`` is the finite signed import price used in the objective,
+        ``p_exp_sanitized`` is the finite signed export price, and
+        ``battery_export_blocked`` is a bool
         mask of slots below the combined battery-export floor.
     """
     import numpy as np
@@ -80,22 +83,6 @@ def sanitize_prices(
                 float(np.max(p_exp[battery_export_blocked])),
             )
 
-    # Export-≤-import clamp prevents an unbounded LP (issue #635).
-    export_exceeds_import = p_exp > p_imp
-    n_clamped = int(np.sum(export_exceeds_import))
-    if n_clamped > 0:
-        deltas = p_exp[export_exceeds_import] - p_imp[export_exceeds_import]
-        log_planner(
-            "debug",
-            "[milp] Clamping %d export prices that exceed import price "
-            "(max delta=%.4f)",
-            n_clamped,
-            float(np.max(deltas)),
-        )
-        p_exp = np.minimum(p_exp, p_imp)
-
-    # Clamp negative import prices to 0 for objective coefficients
-    # (issue #655).  Keep raw p_imp for the clamp above and penalties.
-    p_imp_obj = np.maximum(p_imp, 0.0)
+    p_imp_obj = p_imp.copy()
 
     return p_imp_obj, p_exp, battery_export_blocked

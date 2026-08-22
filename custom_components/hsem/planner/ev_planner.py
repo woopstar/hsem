@@ -707,7 +707,7 @@ def rebuild_ev_plan_from_slots(
         A new :class:`EVChargingPlan` with ``charging_slots`` derived from
         the MILP's per-EV slot decisions.
     """
-    from custom_components.hsem.utils.datetime_utils import as_tz
+    from custom_components.hsem.utils.datetime_utils import as_tz, slot_contains
     from custom_components.hsem.utils.units import slot_duration_hours
 
     eff = clamp_efficiency(charger_efficiency_pct)
@@ -727,8 +727,12 @@ def rebuild_ev_plan_from_slots(
         power_w = getattr(s, power_field, 0.0)
         if power_w < 1e-9:
             continue
-        # Convert AC power (W) back to AC load (kWh) using the slot duration.
-        slot_hours = slot_duration_hours(s.start, s.end)
+        # Current-slot commands apply only for the remaining physical duration.
+        slot_hours = (
+            slot_duration_hours(max(now, s.start), s.end)
+            if slot_contains(s.start, s.end, now)
+            else slot_duration_hours(s.start, s.end)
+        )
         ac_load = power_w * slot_hours / 1000.0
 
         # Convert AC load back to DC-side delivered energy for display.
@@ -755,9 +759,19 @@ def rebuild_ev_plan_from_slots(
             ac_load_kwh=round(ac_load, 3),
             solar_surplus_kwh=round(solar_used_dc, 3),
             import_needed_kwh=round(import_needed, 3),
-            import_price=getattr(getattr(s, "price", None), "import_price", 0.0),
+            import_price=getattr(
+                getattr(s, "price", None),
+                "import_price",
+                getattr(s, "import_price", 0.0),
+            ),
             estimated_cost=round(
-                ac_load * getattr(getattr(s, "price", None), "import_price", 0.0), 4
+                (import_needed / eff)
+                * getattr(
+                    getattr(s, "price", None),
+                    "import_price",
+                    getattr(s, "import_price", 0.0),
+                ),
+                4,
             ),
         )
         charging_slots.append(ev_slot)

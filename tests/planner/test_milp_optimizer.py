@@ -2528,19 +2528,13 @@ def test_milp_energy_fields_consistent_after_mutex_resolution():
 
 
 # ---------------------------------------------------------------------------
-# Issue #641: Discharge-side conversion loss destination-aware pricing
+# Primary conversion loss is physical in grid flows
 # ---------------------------------------------------------------------------
 
 
 @_scipy_skip()
-def test_milp_discharge_loss_destination_aware_diagnostic():
-    """Post-hoc diagnostic correctly prices export-destined discharge loss.
-
-    Scenario: 2-slot horizon. Slot 0 has cheap import (charge). Slot 1 has
-    expensive import AND good export price, so the battery discharges to
-    export (grid_export_kwh > 0).  The post-hoc diagnostic must price the
-    discharge loss at the EXPORT price (0.24), not the import price (0.30).
-    """
+def test_milp_primary_conversion_loss_compatibility_fields_are_zero():
+    """Physical efficiency appears in AC export without a duplicate fee."""
     slots = [
         _make_slot(
             hour=0,
@@ -2568,18 +2562,8 @@ def test_milp_discharge_loss_destination_aware_diagnostic():
     assert milp_result is not None, "MILP must return a solution"
     result, diag = milp_result
 
-    # Verify the diagnostic field exists and matches the hand-computed value.
-    # Hand-computed: 5.0 kWh discharged, 10 % loss = 0.50 kWh lost.
-    # Export-destined -> priced at export price 0.24 -> cost = 0.12.
-    assert "discharge_loss_cost_destination_aware" in diag, (
-        "diagnostics must include discharge_loss_cost_destination_aware"
-    )
-    assert diag["discharge_loss_cost_destination_aware"] == pytest.approx(
-        0.12, rel=1e-4
-    ), (
-        "Expected destination-aware discharge loss cost 0.12, "
-        f"got {diag['discharge_loss_cost_destination_aware']}"
-    )
+    assert "discharge_loss_cost_destination_aware" in diag
+    assert diag["discharge_loss_cost_destination_aware"] == pytest.approx(0.0)
 
     # Run SoC simulation to populate battery fields.  MILP output must be
     # simulated with milp_prepopulated=True so the LP-derived energy flows
@@ -2598,7 +2582,7 @@ def test_milp_discharge_loss_destination_aware_diagnostic():
         milp_prepopulated=True,
     )
 
-    # Score the plan with destination-aware pricing.
+    # Score the same physical plan.
     bd = score_plan(
         result,
         CostWeights(
@@ -2609,36 +2593,23 @@ def test_milp_discharge_loss_destination_aware_diagnostic():
         now=_NOW,
     )
 
-    # The scorer must agree with the diagnostic: 0.12.
-    assert bd.conversion_loss_cost == pytest.approx(0.12, rel=1e-4), (
-        f"Expected conversion_loss_cost 0.12, got {bd.conversion_loss_cost}"
-    )
+    assert bd.conversion_loss_cost == pytest.approx(0.0)
 
 
 @_scipy_skip()
-def test_milp_lp_coefficient_uses_import_price():
-    """LP objective coefficient for ed[t] uses p_imp_obj (conservative approx).
-
-    The LP cannot know the discharge destination before solving.
-    Using p_imp_obj is the safe, conservative choice — it never leads
-    the LP to be overly optimistic about export profitability.
-    The accurate destination-aware cost is computed post-hoc in the
-    diagnostics and by cost_function.py.
-
-    This test verifies that the LP's own c_obj for ed[t] is NOT
-    changed from the pre-#641 behavior (remains p_imp_obj).
-    """
+def test_milp_arbitrage_requires_only_physical_roundtrip_spread():
+    """A 1.06 export clears the true 1/(0.98*0.98) break-even spread."""
     slots = [
         _make_slot(
             hour=0,
-            import_price=0.05,
-            export_price=0.04,
+            import_price=1.00,
+            export_price=0.00,
             consumption_kwh=0.0,
         ),
         _make_slot(
             hour=1,
-            import_price=0.30,
-            export_price=0.24,
+            import_price=3.00,
+            export_price=1.06,
             consumption_kwh=0.0,
         ),
     ]
@@ -2647,23 +2618,19 @@ def test_milp_lp_coefficient_uses_import_price():
         slots,
         _NOW,
         current_kwh=0.0,
-        usable_kwh=9.0,
-        max_charge_per_slot=5.0,
-        max_discharge_per_slot=5.0,
-        discharge_efficiency_pct=90.0,
+        usable_kwh=1.0,
+        max_charge_per_slot=1.0,
+        max_discharge_per_slot=1.0,
+        charge_efficiency_pct=98.0,
+        discharge_efficiency_pct=98.0,
     )
     assert milp_result is not None, "MILP must return a solution"
     result, diag = milp_result
 
-    # The destination-aware diagnostic must report the correct value.
-    # Same scenario as the diagnostic test: 0.12.
-    assert "discharge_loss_cost_destination_aware" in diag
-    assert diag["discharge_loss_cost_destination_aware"] == pytest.approx(
-        0.12, rel=1e-4
-    ), (
-        "Expected destination-aware discharge loss cost 0.12, "
-        f"got {diag['discharge_loss_cost_destination_aware']}"
-    )
+    assert result[0].batteries_charged_kwh == pytest.approx(1.0, abs=0.002)
+    assert result[1].batteries_discharged_kwh == pytest.approx(1.0, abs=0.002)
+    assert result[1].grid_export_kwh == pytest.approx(0.98, abs=0.002)
+    assert diag["discharge_loss_cost_destination_aware"] == pytest.approx(0.0)
 
 
 # ---------------------------------------------------------------------------
@@ -2672,13 +2639,12 @@ def test_milp_lp_coefficient_uses_import_price():
 
 
 @_scipy_skip()
-def test_milp_exports_solar_in_expensive_slots_charges_in_cheap():
-    """MILP must export solar surplus during expensive hours and charge during cheap.
+def test_milp_exports_all_solar_without_future_battery_value():
+    """Without future demand or terminal value, all surplus should export.
 
-    Acceptance criteria from issue #694:
-    Setup with 4 slots — first two expensive (p_imp=3.0), last two cheap (p_imp=0.1),
-    enough solar in cheap slots to fill battery. Battery should export in expensive
-    slots and charge in cheap slots.
+    Explicit export-source attribution prevents a hidden charge/export wash.
+    Cheap-slot PV charging has no economic value when the horizon contains no
+    later demand and no terminal inventory valuation.
     """
     slots = [
         _make_slot(
@@ -2738,11 +2704,10 @@ def test_milp_exports_solar_in_expensive_slots_charges_in_cheap():
             f"got ec={s.batteries_charged_kwh:.3f}"
         )
 
-    # Cheap slots (2-3): must charge battery from solar
-    total_charged = sum(result[i].batteries_charged_kwh for i in range(2, 4))
-    assert total_charged > 1.0, (
-        f"Cheap slots (2-3): expected battery charging > 1 kWh, got {total_charged:.3f}"
-    )
+    for slot in result:
+        assert slot.batteries_charged_kwh == pytest.approx(0.0)
+        assert slot.primary_battery_export_kwh == pytest.approx(0.0)
+        assert slot.pv_export_kwh == pytest.approx(5.0)
 
 
 @_scipy_skip()

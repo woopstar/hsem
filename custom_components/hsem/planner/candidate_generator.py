@@ -288,6 +288,17 @@ def generate_candidates(
             user_margin=inp.battery_cycle_cost_per_kwh,
         )
 
+        depreciation_export_floor = calculate_recommended_threshold(
+            purchase_price=inp.battery_purchase_price,
+            expected_cycles=inp.battery_expected_cycles,
+            usable_capacity=usable_kwh,
+            capacity_loss_pct=inp.battery_capacity_loss_pct,
+        )
+        effective_battery_export_floor = max(
+            inp.battery_export_min_price,
+            depreciation_export_floor,
+        )
+
         milp_result = solve_milp(
             baseline_slots,
             now,
@@ -300,21 +311,14 @@ def generate_candidates(
             discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
             time_discount_rate=inp.time_discount_rate,
             replacement_price_per_kwh=replacement_price_per_kwh,
-            min_export_price=max(
-                inp.export_min_price,
-                calculate_recommended_threshold(
-                    purchase_price=inp.battery_purchase_price,
-                    expected_cycles=inp.battery_expected_cycles,
-                    usable_capacity=usable_kwh,
-                    capacity_loss_pct=inp.battery_capacity_loss_pct,
-                ),
-            ),
+            min_export_price=inp.export_min_price,
             ev_configs=ev_configs,
             no_export=not inp.excess_export_enabled,
             main_fuse_amps=inp.main_fuse_amps,
             main_fuse_phases=inp.main_fuse_phases,
             max_grid_export_power_kw=inp.max_grid_export_power_kw,
-            battery_export_min_price=inp.battery_export_min_price,
+            battery_export_min_price=effective_battery_export_floor,
+            excess_export_discharge_buffer_pct=(inp.excess_export_discharge_buffer_pct),
         )
         log_planner(
             "debug",

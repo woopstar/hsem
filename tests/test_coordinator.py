@@ -473,3 +473,30 @@ class TestCoordinatorDataExposure:
         """coordinator.data must be None before async_setup is called."""
         coord = _make_bare_coordinator()
         assert coord.data is None
+
+
+# ---------------------------------------------------------------------------
+# Reused-plan isolation (no cache corruption)
+# ---------------------------------------------------------------------------
+
+
+class TestReusedPlanIsolation:
+    """The reuse path must not mutate the cached accepted plan."""
+
+    def test_reuse_path_deepcopies_cached_output(self) -> None:
+        """The reuse branch must deep-copy ``_last_planner_output``.
+
+        Hysteresis and the EV-charger freeze mutate ``planner_output.slots``
+        in place.  Aliasing the cached output would corrupt the accepted plan
+        that subsequent cycles reuse.
+        """
+        source = inspect.getsource(HSEMDataUpdateCoordinator._run_planner_phase)
+        assert "planner_output = deepcopy(self._last_planner_output)" in source, (
+            "The reuse branch must assign "
+            "``planner_output = deepcopy(self._last_planner_output)``"
+            " so downstream in-place mutations cannot corrupt the cache."
+        )
+        # The plain aliasing assignment must no longer be present.
+        assert "planner_output = self._last_planner_output" not in source, (
+            "The reuse branch must not alias the cached output directly."
+        )

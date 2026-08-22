@@ -14,7 +14,7 @@ flowchart TD
     D{EV configs provided?}
     E[Rebuild net_load without pre-computed EV planned loads]
     F[Keep fixed EV planned load in net_load]
-    G[Build objective vector c_obj: import cost, export revenue, cycle cost, conversion loss, terminal-SoC credit, SoC penalties, EV deadline penalties, EV pre-deadline benefit, EV charge-past-target benefit]
+    G[Build objective vector c_obj: import cost, export revenue, cycle cost, terminal-SoC credit, SoC penalties, EV deadline penalties, EV pre-deadline benefit, EV charge-past-target benefit]
     H[Build equality constraints A_eq: energy balance per slot inc. EV charger load]
     I[Build inequality constraints A_ub: SoC recurrence soft bounds, mutual exclusion, cycle cost auxiliary m >= ec/ed, EV cumulative SOC, EV deadline target, EV post-deadline zero-charge, EV surplus-only]
     J[Build variable bounds: ec, ed capped; pv fixed to actual surplus; penalties >= 0]
@@ -125,10 +125,7 @@ $$
     && \text{export revenue} \\
     + & \alpha \cdot m[t]
     && \text{battery cycle cost (depreciation)} \\
-    + & \epsilon_{\mathrm{chg}} \cdot p_{\mathrm{imp}}[t] \cdot ec[t]
-    && \text{charge-side conversion loss cost} \\
-    + & \epsilon_{\mathrm{dis}} \cdot p_{\mathrm{imp}}[t] \cdot ed[t]
-    && \text{discharge-side conversion loss cost *} \\
+
     + & p_{\mathrm{soc}} \cdot \bigl( \mathrm{s\_max\_pen}[t] + \mathrm{s\_min\_pen}[t] \bigr)
     && \text{SoC soft-constraint penalties} \\
     + & p_{\mathrm{fuse}} \cdot \mathrm{gi\_pen}[t]
@@ -150,11 +147,10 @@ Where:
 | Symbol | Description |
 |---|---|
 | $\delta_t$ | Time discount per slot: $\delta_t = r^{\Delta t}$ where $\Delta t$ is hours from now |
-| $p_{\mathrm{imp}}[t]$ | Grid import price (currency/kWh).  Sanitised to `max(p_imp_raw[t], 0)` (issue #655).  Also used as a **conservative approximation** for the LP's discharge-side conversion loss coefficient (see note below). |
+| $p_{\mathrm{imp}}[t]$ | Grid import price (currency/kWh), sanitised to `max(p_imp_raw[t], 0)` (issue #655). |
 | $p_{\mathrm{exp}}[t]$ | Grid export price (currency/kWh). Before solving, `p_exp` is sanitised by clamping to `min(p_exp, p_imp)` to prevent an unbounded LP when `p_exp > p_imp` in any slot (issue #635).  The legacy `min_export_price` clamp has been removed because the applier no longer physically blocks grid export below this price (issue #767). |
 | $\alpha$ | Battery cycle cost per kWh: $\alpha = \frac{P \cdot L_{pct}/100}{2 \cdot N \cdot C_u}$ |
-| $\epsilon_{\mathrm{chg}}$ | Charge-side loss fraction: $\epsilon_{\mathrm{chg}} = 1 - \eta_{\mathrm{chg}}$ |
-| $\epsilon_{\mathrm{dis}}$ | Discharge-side loss fraction: $\epsilon_{\mathrm{dis}} = 1 - \eta_{\mathrm{dis}}$ |
+
 | $\gamma$ | Terminal-SoC replacement price (currency/kWh), from the engine |
 | $p_{\mathrm{soc}}$ | SoC penalty cost: $\max(p_{\mathrm{imp}}) \times 100$ |
 | $p_{\mathrm{fuse}}$ | Fuse penalty cost: $\max(p_{\mathrm{imp}}) \times 100$ (same magnitude as SoC) |
@@ -279,6 +275,23 @@ This is a **hard bound** on the `ge[t]` variable — unlike the fuse it needs no
 
 Where $D_v$ is the deadline slot index for EV v.
 
+**Conditional battery-export reserve:**
+
+When excess export is enabled and the discharge buffer is positive, explicit
+battery-origin export `bx[t]` activates binary `z_export[t]`. Every slot in one
+contiguous forecast PV-surplus run uses the checkpoint derived from that run's
+final slot: immediately before the next distinct surplus run, or horizon end.
+
+```text
+bx[t] <= max_discharge_per_slot * z_export[t]
+SoC[checkpoint[t]] >= buffer_kwh - usable_kwh * (1 - z_export[t])
+```
+
+Aggregate export is source-constrained by direct PV plus battery AC export, so
+the reserve and no-export mode can suppress battery export without restricting
+ordinary PV export. Grouping changes only checkpoint preprocessing and adds no
+variables or rows beyond the per-slot source/reserve formulation.
+
 **Battery export minimum price floor (issue #752):**
 
 For each slot $t$, when `battery_export_min_price > 0` and the slot's **raw** `p_exp[t] < battery_export_min_price` (evaluated before the `min_export_price` and export-≤-import clamps):
@@ -329,44 +342,17 @@ This condition occurs in practice whenever negative import spot prices coincide 
 
 The clamp is economically correct and capping the achievable arbitrage spread removes the unbounded direction without changing any other optimisation behaviour.
 
-### 3. Discharge-side loss pricing: destination-aware valuation (issue #641)
+### 3. Primary conversion loss: physical single-count accounting
 
-The LP's pre-solve objective uses `p_imp[t]` (the sanitised import price)
-for the discharge-side conversion loss coefficient.  This is a
-**conservative approximation**: the LP cannot know before solving whether
-the discharged energy will go to house load (correctly valued at import
-price) or to export (correctly valued at export price), because the
-gi[t]/ge[t] split is itself an LP decision.
+The site balance uses `ec[t] / charge_efficiency` as AC charge draw and
+`ed[t] * discharge_efficiency` as AC discharge delivery. Consequently the
+`gi[t]` and `ge[t]` money coefficients price conversion loss exactly once. A
+separate `(1-efficiency)` coefficient would double-count it.
 
-Defaulting to the (typically higher) import price is the safe choice for
-the LP's own optimization — it never leads the LP to be overly optimistic
-about an export cycle's profitability.  After the LP solves and the
-per-slot grid_export_kwh / grid_import_kwh fields are written, the
-**destination-aware** cost is computed:
-
-```text
-For each slot:
-  if grid_export_kwh > 0 (net exporter):
-    p_loss = max(export_price, 0)  # after min-export-price clamp
-  else (net importer or idle):
-    p_loss = max(import_price, 0)
-  discharge_loss_cost = batteries_discharged * (1 - dis_eff) * p_loss
-```
-
-This destination-aware valuation is used by:
-- `cost_function.py::score_plan()` — the authoritative scorer (sees the
-  solved energy flows).
-- The `discharge_loss_cost_destination_aware` key in `solve_milp()`'s
-  returned diagnostics dict (post-hoc).
-
-The LP objective coefficient and the scored cost are allowed to differ
-because they answer different questions: the LP must decide before knowing
-the outcome (conservative approximation), while the scorer evaluates the
-finished plan with full information (accurate valuation).  This is not a
-violation of the LP/cost-function consistency rule — the rule requires
-that the LP's decisions are scoreable consistently, not that a
-necessarily-uninformed pre-solve coefficient matches a fully-informed
-post-solve number.
+The retained `conversion_loss_cost` and
+`discharge_loss_cost_destination_aware` fields remain for schema compatibility
+and are always zero. The LP and authoritative scorer use the same single-count
+physical model.
 
 ---
 

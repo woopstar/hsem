@@ -131,9 +131,17 @@ These helpers exist — never re-implement them inline:
 
 ## File Size Rule (Mandatory)
 
-- **Hard limit: 30 KB per file** in `planner/` and `utils/`.
-- If a file exceeds 30 KB, split it before adding more features.
-- Check file size before every PR: `wc -c custom_components/hsem/planner/*.py`
+- **Hard limit: 30 KB AND 1000 lines per file** across the entire codebase.
+  Both limits must be satisfied.  A file under 30 KB but over 1000 lines still
+  needs splitting.
+- If a file exceeds either limit, split it before adding more features.
+- Check before every PR:
+  ```bash
+  # Lines
+  find custom_components/hsem -name '*.py' -exec sh -c 'l=$(wc -l < "$1"); [ "$l" -gt 1000 ] && echo "$l $1"' _ {} \;
+  # Size
+  find custom_components/hsem -name '*.py' -exec sh -c 's=$(wc -c < "$1"); [ "$s" -gt 30720 ] && echo "$s $1"' _ {} \;
+  ```
 
 ## Issue-Solving Rules
 - Always read `AGENTS.md` and `CLAUDE.md` before starting any issue work.
@@ -206,3 +214,31 @@ These helpers exist — never re-implement them inline:
 - Do not redefine `DISCHARGE_RECS`, `CHARGE_RECS`, or `clamp_efficiency()` locally — import from canonical locations.
 - Do not use `cycle_cost * 0.30` as a threshold proxy — use `calculate_recommended_threshold()`.
 - Do not use `break` in slot iteration loops unless the loop is explicitly ordered and early exit is provably correct.
+
+<!-- rtk-instructions v2 -->
+# RTK — Token-Optimized CLI
+
+**rtk** is a CLI proxy that filters and compresses command outputs, saving 60-90% tokens.
+
+## Rule
+
+Always prefix shell commands with `rtk`:
+
+```bash
+# Instead of:              Use:
+git status                 rtk git status
+git log -10                rtk git log -10
+cargo test                 rtk cargo test
+docker ps                  rtk docker ps
+kubectl get pods           rtk kubectl get pods
+```
+
+## Meta commands (use directly)
+
+```bash
+rtk gain              # Token savings dashboard
+rtk gain --history    # Per-command savings history
+rtk discover          # Find missed rtk opportunities
+rtk proxy <cmd>       # Run raw (no filtering) but track usage
+```
+<!-- /rtk-instructions -->

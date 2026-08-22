@@ -7,10 +7,18 @@ pure Python, testable with plain ``pytest``.
 
 from __future__ import annotations
 
+import asyncio
+import json
+import os
 import statistics
+import tempfile
 from collections import defaultdict
+from collections.abc import Mapping
+from contextlib import suppress
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
 
 from custom_components.hsem.models.prediction_record import PredictionRecord
 
@@ -62,6 +70,7 @@ class PredictionTracker:
     """
 
     max_records: int = 672  # 7 days at 15-min = 672 slots
+    history_file: str = ""
 
     records: list[PredictionRecord] = field(default_factory=list)
 
@@ -74,6 +83,7 @@ class PredictionTracker:
 
     _warmup_slots: int = 4  # Skip first 4 slots (1 hour) after restart
     _slots_seen: int = field(default=0, repr=False)
+    _seen_starts: set[datetime] = field(default_factory=set, repr=False)
     _recorded_starts: set[datetime] = field(default_factory=set, repr=False)
 
     # ------------------------------------------------------------------
@@ -90,7 +100,7 @@ class PredictionTracker:
         actual_load: float,
         action: str,
         slot_start: datetime,
-    ) -> None:
+    ) -> bool:
         """Add a prediction-vs-actual record for a completed slot.
 
         The warm-up gate silently drops the first ``_warmup_slots`` slots
@@ -109,13 +119,14 @@ class PredictionTracker:
             slot_start: Timezone-aware start of the slot (used for
                 deduplication).
         """
-        if slot_start in self._recorded_starts:
-            return
+        if slot_start in self._seen_starts:
+            return False
+        self._seen_starts.add(slot_start)
 
         self._slots_seen += 1
 
         if self._slots_seen <= self._warmup_slots:
-            return
+            return False
 
         self._recorded_starts.add(slot_start)
 
@@ -132,6 +143,7 @@ class PredictionTracker:
         self.records.append(record)
         self._prune()
         self.compute_metrics()
+        return True
 
     def compute_metrics(self) -> None:
         """Recompute MAE / MAPE / action mix from the rolling buffer.
@@ -196,6 +208,84 @@ class PredictionTracker:
         """
         self._slots_seen = 0
 
+    def to_persistence_dict(self) -> dict[str, Any]:
+        """Return bounded history for JSON persistence."""
+        self._prune()
+        return {
+            "version": 1,
+            "updated_at": datetime.now(UTC).isoformat(),
+            "records": [record.as_dict() for record in self.records],
+        }
+
+    def load_from_dict(self, data: Mapping[str, Any]) -> None:
+        """Replace current history with validated persisted records."""
+        restored: dict[datetime, PredictionRecord] = {}
+        raw_records = data.get("records", [])
+        if isinstance(raw_records, list):
+            for raw in raw_records[-self.max_records :]:
+                if isinstance(raw, Mapping):
+                    record = PredictionRecord.from_dict(raw)
+                    if record is not None:
+                        restored[record.slot_start.astimezone(UTC)] = record
+        self.records = sorted(
+            restored.values(), key=lambda record: record.slot_start.astimezone(UTC)
+        )[-self.max_records :]
+        self._recorded_starts = {record.slot_start for record in self.records}
+        self._seen_starts = set(self._recorded_starts)
+        self._slots_seen = self._warmup_slots if self.records else 0
+        self.compute_metrics()
+
+    async def load_history(self) -> None:
+        """Load prediction history from disk when available."""
+        if not self.history_file:
+            return
+        path = Path(self.history_file)
+        if not path.exists():
+            return
+        data = await asyncio.to_thread(self._read_history_file, path)
+        if isinstance(data, Mapping):
+            self.load_from_dict(data)
+
+    async def save_history(self) -> bool:
+        """Persist prediction history atomically."""
+        if not self.history_file:
+            return False
+        path = Path(self.history_file)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return await asyncio.to_thread(
+            self._write_history_file, path, self.to_persistence_dict()
+        )
+
+    @staticmethod
+    def _read_history_file(path: Path) -> dict[str, Any] | None:
+        try:
+            with open(path, encoding="utf-8") as handle:
+                payload = json.load(handle)
+            return payload if isinstance(payload, dict) else None
+        except json.JSONDecodeError, OSError:
+            return None
+
+    @staticmethod
+    def _write_history_file(path: Path, data: Mapping[str, Any]) -> bool:
+        try:
+            fd, temporary_path = tempfile.mkstemp(
+                suffix=".json",
+                prefix=".hsem_prediction_history_",
+                dir=str(path.parent),
+                text=True,
+            )
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                    json.dump(data, handle, separators=(",", ":"), ensure_ascii=False)
+                os.replace(temporary_path, path)
+            except Exception:
+                with suppress(OSError):
+                    os.unlink(temporary_path)
+                raise
+            return True
+        except OSError:
+            return False
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
@@ -205,3 +295,4 @@ class PredictionTracker:
         while len(self.records) > self.max_records:
             removed = self.records.pop(0)
             self._recorded_starts.discard(removed.slot_start)
+            self._seen_starts.discard(removed.slot_start)

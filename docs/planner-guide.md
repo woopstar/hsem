@@ -79,7 +79,6 @@ The total number of slots generated is `(interval_length_hours * 60) // interval
 | `battery_max_soc_pct` | `float` | Maximum allowed SoC ceiling (%, default 100) |
 | `battery_max_charge_power_w` | `float` | Maximum charge power in Watts |
 | `battery_max_discharge_power_w` | `float \| None` | Maximum discharge power in Watts (`None` = unlimited). Derived from the rated capacity via `get_max_discharge_power()`, which covers S0/S1 single- and two-stack capacities (5–30 kWh); unknown capacities log a warning and fall back to 2500 W |
-| `battery_conversion_loss_pct` | `float` | Round-trip conversion loss (%) |
 
 The planner converts power limits to per-slot energy limits internally:
 
@@ -99,8 +98,7 @@ max_charge_per_slot_kwh = battery_max_charge_power_w / 1000 * (interval_minutes 
 | `battery_discharge_efficiency_pct` | `float` | Discharge-side efficiency (%), e.g. 98 |
 
 When `battery_cycle_cost_per_kwh` is `0.0`, the planner auto-derives cycle cost from
-purchase price, rated capacity, expected cycles, capacity loss at EOL, and round-trip
-conversion loss:
+purchase price, rated capacity, expected cycles, and capacity loss at EOL:
 
 ```text
 depreciation      = (purchase_price × capacity_loss_pct / 100)
@@ -108,9 +106,10 @@ depreciation      = (purchase_price × capacity_loss_pct / 100)
 threshold         = depreciation
 ```
 
-Conversion (in)efficiency losses are priced per-slot by the MILP objective
-and the cost function's ``conversion_loss_cost`` term, both of which use the
-actual import price of each slot rather than a fixed add-on.  The 2× factor
+Conversion efficiency is physical in the site balance: storing `x` kWh draws
+`x / charge_efficiency` AC and removing `x` kWh delivers
+`x * discharge_efficiency` AC. Grid import cost and export revenue price the
+loss exactly once; the compatibility `conversion_loss_cost` field is zero. The 2× factor
 in the depreciation term accounts for one full cycle (charge + discharge).  The
 ``capacity_loss_pct`` (default 30 %) accounts for the fraction of the battery's
 value that is consumed over its lifetime — typically 20 % physical capacity
@@ -270,10 +269,16 @@ The pre-charge window ends at `schedule.start` and is sized to fill the battery 
 | Field | Default | Description |
 |---|---|---|
 | `excess_export_enabled` | `False` | Enable forced battery → grid export during high-price slots |
-| `excess_export_discharge_buffer_pct` | `10.0` | Safety SoC buffer kept before forced export |
+| `excess_export_discharge_buffer_pct` | `10.0` | Conditional safety reserve retained through the demand window after battery export; one contiguous PV-surplus run shares one checkpoint |
 | `excess_export_price_threshold` | Auto-calculated | Computed at runtime from battery depreciation settings (purchase price, expected cycles, usable capacity) via `calculate_recommended_threshold()`. |
 | `export_min_price` | `0.0` | Minimum export price for intentional battery-to-grid discharge. The inverter no longer throttles the grid feed-in limit for positive prices; surplus PV export is always allowed (issue #767). Negative export prices still trigger a physical block because exporting then costs money. |
 | `battery_export_min_price` | `0.0` | Per-slot hard floor for intentional battery-to-grid export (issue #752). When > 0 and a slot's raw `export_price` is strictly below this value, the MILP caps `ed[t]` so the battery can only serve house load (no grid export) for that slot — `force_batteries_discharge` is never labelled there. Reaching the threshold does NOT auto-trigger export; the optimizer still decides. Applies only to intentional battery-to-grid export, not to normal battery self-consumption, PV export, or PV charging. Set to 0 to disable. |
+
+The reserve uses one checkpoint for every slot in a contiguous forecast
+PV-surplus run. That checkpoint follows the run's demand window—immediately
+before the next distinct surplus run, or horizon end. Planned PV or grid charge
+may restore the reserve before it is measured. If it cannot, battery-origin
+export may be suppressed while direct PV export remains available.
 
 ### Seasonal configuration
 
@@ -803,9 +808,12 @@ total_cost
   − export_revenue
   + conversion_loss_cost
   + cycle_cost
+
+score
+  = total_cost
   + soc_penalty
   + grid_limit_penalty
-  + override_penalty
+  + terminal_soc_value
 ```
 
 ### Grid import cost
@@ -816,8 +824,8 @@ grid_import_cost = Σ (grid_import_kwh[slot] × import_price[slot])
 
 The cost function prices actual grid energy drawn, not stored energy.
 If the battery stores `x` kWh and charge efficiency is `e`, the grid
-import is `x / e`. This means conversion losses are implicitly included
-in the import cost before the explicit conversion-loss term.
+import is `x / e`. Conversion loss is therefore already included in import
+cost and must not receive an explicit second charge.
 
 ### Export revenue
 
@@ -841,17 +849,17 @@ battery-destined export revenue on slots blocked by
 money, the applier still writes a physical watt limit to block all
 grid export, including surplus PV.
 
-### Conversion loss cost
+### Conversion loss compatibility field
 
-Energy lost in the round trip (charge → store → discharge) is priced at
-the average of the slot's import and export prices as an opportunity cost:
+Primary efficiency is fully represented in physical grid flows:
 
 ```text
-avg_price[slot] = (import_price[slot] + export_price[slot]) / 2
-loss_kwh[slot]  = (batteries_charged[slot] + batteries_discharged[slot])
-                  × (conversion_loss_pct / 100) / 2
-conversion_loss_cost = Σ (loss_kwh[slot] × avg_price[slot])
+charge_ac_draw = batteries_charged_kwh / charge_efficiency
+discharge_ac_delivery = batteries_discharged_kwh * discharge_efficiency
+conversion_loss_cost = 0.0
 ```
+
+The field remains in diagnostics for schema compatibility only.
 
 ### Battery cycle cost
 
@@ -868,18 +876,9 @@ Auto-derived cycle cost (when not explicitly configured):
 cycle_cost_per_kwh = purchase_price / (rated_capacity_kwh × expected_cycles)
 ```
 
-The price threshold used by the profitability guard adds round-trip conversion
-loss on top of depreciation:
-
-```text
-price_threshold = cycle_cost_per_kwh + conversion_loss
-conversion_loss = 1 / (charge_eff × discharge_eff) − 1
-```
-
-**Depreciation example:** A 10 kWh battery bought for 30 000 DKK with 6 000 expected
-cycles costs `30000 / (10 × 6000) = 0.50 DKK/kWh` of throughput.
-**With 98 % efficiency:** conversion loss adds ~0.042 DKK/kWh, giving a combined
-threshold of ~0.542 DKK/kWh.
+The displayed recommended threshold is the resolved depreciation cost. Physical
+efficiency remains visible to the optimizer through AC grid flows rather than a
+second fixed fee.
 
 ### SoC penalties
 
@@ -911,17 +910,6 @@ if slot_power_kw > grid_limit_kw:
     grid_limit_penalty += excess_kwh × grid_limit_penalty_per_kwh
 ```
 
-### Override penalty
-
-Slots forcibly set by a manual schedule (recommendation = `batteries_charge_grid`)
-can optionally incur a flat penalty to express that deviating from the natural
-optimal state has a cost:
-
-```text
-override_penalty = count(override_slots) × override_penalty_per_slot
-```
-
-Default `override_penalty_per_slot` is `0.0` — disabled unless explicitly configured.
 
 ### Terminal SoC accounting
 
@@ -1018,6 +1006,25 @@ Non-critical labels (e.g. `tomorrow_price_missing_hours:…`) trigger `Degraded`
 mode. The plan is computed and applied, but the coordinator logs a warning and
 surfaces the gap in `data_quality`.
 
+### Load-forecast readiness
+
+Historical average-sensor availability is preserved: `unknown`, `unavailable`,
+unparseable, and non-finite states remain missing, while a genuine finite zero
+remains valid. Before planning, every future slot's weighted, 1-day, 3-day,
+7-day, and 14-day load values must be finite and non-negative.
+
+A complete zero forecast is accepted while finite live house demand is at most
+50 W. Above 50 W it is rejected as `zero_forecast_with_live_demand`. While the
+forecast is unsafe, automatic mode does not run or reuse an optimized plan; it
+publishes a strict current-slot `batteries_wait_mode` with primary charge,
+discharge, import, and export motion cleared. Manual force mode remains higher
+authority. Recovery or a material future-load change forces a fresh solve, and
+the reuse baseline advances only after successful publication.
+
+Registered state events received during a solve advance a coordinator generation.
+The stale cycle is discarded before publication and one durable follow-up cycle
+runs from a fresh snapshot.
+
 ### Safety gate behaviour
 
 The write-verify applier (`WriteVerifyApplier`) enforces these gates
@@ -1046,7 +1053,9 @@ The `DataQuality` object on `PlannerOutput` reports completeness of the planning
 | `day2_pv_missing_hours` | `list[int]` | Hours with no PV forecast for day +2 |
 | `horizon_has_tomorrow` | `bool` | `True` when horizon extends beyond 24 h |
 | `horizon_days` | `int` | Number of calendar days covered (1, 2, or 3) |
-| `is_complete` | `bool` | `True` when no missing data was detected |
+| `load_forecast_ready` | `bool` | `True` when future load provenance and values are safe to optimize |
+| `load_forecast_reason` | `str/None` | Machine-readable rejection reason, or `None` when ready |
+| `is_complete` | `bool` | `True` when price/PV inputs are complete and `load_forecast_ready` is true |
 
 ### Home Assistant attribute serialisation
 
@@ -1058,6 +1067,8 @@ directly to a sensor's `extra_state_attributes`:
   "is_complete": true,
   "horizon_has_tomorrow": true,
   "horizon_days": 2,
+  "load_forecast_ready": true,
+  "load_forecast_reason": null,
   "tomorrow_price_missing_hours": [],
   "tomorrow_pv_missing_hours": [],
   "day2_price_missing_hours": [],

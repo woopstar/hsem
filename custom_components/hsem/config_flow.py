@@ -104,6 +104,24 @@ _V1_DEPRECATED_KEYS: frozenset[str] = frozenset(
     }
 )
 
+_CHARGE_RATE_BUCKETS: tuple[str, ...] = (
+    "below_0",
+    "0_to_5",
+    "6_to_15",
+    "16_to_21",
+    "21_to_35",
+    "35_to_50",
+    "above_50",
+)
+
+# The temperature learner never received a battery-temperature entity and
+# therefore always fell back to the configured inverter limit. Remove both its
+# persisted sample blob and the seven manual override values during v3 migration.
+_V3_DEPRECATED_KEYS: frozenset[str] = frozenset(
+    {"hsem_charge_rate_learned_rates"}
+    | {f"hsem_charge_rate_override_{bucket}" for bucket in _CHARGE_RATE_BUCKETS}
+)
+
 # New keys introduced in v2 that did not exist in v1.  When
 # migrating a v1 entry these are backfilled with their defaults.
 _V2_NEW_KEY_DEFAULTS: dict[str, Any] = {
@@ -158,7 +176,7 @@ _V2_NEW_KEY_DEFAULTS: dict[str, Any] = {
 class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: ignore[reportGeneralTypeIssues]  # HA ConfigFlow class hierarchy triggers false-positive on MRO
     """Config flow for HSEM."""
 
-    VERSION = 2
+    VERSION = 3
 
     async def async_migrate_entry(
         self, hass: HomeAssistant, config_entry: ConfigEntry
@@ -180,14 +198,16 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
             )
             return False
 
-        if config_entry.version == 1:
-            data = _migrate_v1_to_v2(dict(config_entry.data))
-            hass.config_entries.async_update_entry(config_entry, data=data, version=2)
+        original_version = config_entry.version
+        migrated_version = original_version
+        data = dict(config_entry.data)
+        options = dict(config_entry.options)
+
+        if migrated_version == 1:
+            data = _migrate_v1_to_v2(data)
             # v6.0.0 (#523) prefixed every entity unique_id with the config
-            # entry id, but shipped no entity-registry migration -- so existing
-            # v5 entities were orphaned and re-created with a "_2" suffix (losing
-            # their entity_id and long-term statistics). Rename the registry
-            # entries IN PLACE so entity_id + history are preserved.
+            # entry id, but shipped no entity-registry migration. Rename those
+            # rows in place so entity IDs and history are preserved.
             _prefix = f"{DOMAIN}_{config_entry.entry_id}_"
 
             @callback
@@ -202,10 +222,26 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
             await er.async_migrate_entries(
                 hass, config_entry.entry_id, _migrate_unique_id
             )
+            migrated_version = 2
 
+        if migrated_version == 2:
+            data = _migrate_v2_to_v3(data)
+            options = _migrate_v2_to_v3(options)
+            _remove_v3_charge_rate_registry_entries(hass, config_entry.entry_id)
+            migrated_version = 3
+
+        if migrated_version != original_version:
+            hass.config_entries.async_update_entry(
+                config_entry,
+                data=data,
+                options=options,
+                version=migrated_version,
+            )
             _LOGGER.info(
-                "Config entry %s migrated from v1 to v2",
+                "Config entry %s migrated from v%s to v%s",
                 config_entry.entry_id,
+                original_version,
+                migrated_version,
             )
 
         return True
@@ -844,3 +880,26 @@ def _migrate_v1_to_v2(data: dict[str, Any]) -> dict[str, Any]:
             migrated[month_key] = convert_months_to_int(raw)
 
     return migrated
+
+
+def _migrate_v2_to_v3(values: dict[str, Any]) -> dict[str, Any]:
+    """Remove persisted values for the retired charge-rate learner."""
+    return {
+        key: value for key, value in values.items() if key not in _V3_DEPRECATED_KEYS
+    }
+
+
+@callback
+def _remove_v3_charge_rate_registry_entries(hass: HomeAssistant, entry_id: str) -> None:
+    """Remove registry rows for the seven retired charge-rate number entities."""
+    registry = er.async_get(hass)
+    retired_unique_ids = {
+        f"{DOMAIN}_{entry_id}_charge_rate_{bucket}" for bucket in _CHARGE_RATE_BUCKETS
+    } | {f"{DOMAIN}_charge_rate_{bucket}" for bucket in _CHARGE_RATE_BUCKETS}
+    for entity_entry in list(er.async_entries_for_config_entry(registry, entry_id)):
+        if (
+            entity_entry.platform == DOMAIN
+            and entity_entry.domain == "number"
+            and entity_entry.unique_id in retired_unique_ids
+        ):
+            registry.async_remove(entity_entry.entity_id)

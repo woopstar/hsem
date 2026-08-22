@@ -750,7 +750,7 @@ class TestWinnerCostIdentity:
         Spec (issue #413) requires:
             total_cost = import - export_revenue + cycle + conversion_loss
             score      = total_cost + soc_penalty + grid_limit_penalty
-                         + override_penalty + terminal_soc_value
+                         + terminal_soc_value
         """
         result = run_planner(make_winter_day_input())
         assert result.plan_cost is not None
@@ -762,7 +762,6 @@ class TestWinnerCostIdentity:
             expected_total_cost
             + bd.soc_penalty
             + bd.grid_limit_penalty
-            + bd.override_penalty
             + bd.terminal_soc_value
         )
         assert bd.total_cost == pytest.approx(expected_total_cost, abs=1e-5)

@@ -20,6 +20,9 @@ if TYPE_CHECKING:
     from custom_components.hsem.models.ev_config import EVConfig
     from custom_components.hsem.models.planned_slot import PlannedSlot
 
+# Resolve source-attribution degeneracy without materially changing economics.
+_BATTERY_EXPORT_SOURCE_TIEBREAK = 1e-7
+
 
 def _build_objective(
     slots: list[PlannedSlot],
@@ -31,6 +34,7 @@ def _build_objective(
     ed_off: int,
     gi_off: int,
     ge_off: int,
+    battery_export_off: int,
     m_off: int,
     s_max_off: int,
     s_min_off: int,
@@ -43,8 +47,7 @@ def _build_objective(
     p_exp: np.ndarray,  # type: ignore[name-defined]
     p_soc: float,
     cycle_cost_per_kwh: float,
-    charge_loss: float,
-    discharge_loss: float,
+    charge_eff: float,
     time_discount_rate: float,
     replacement_price_per_kwh: float | None,
     fuse_active: bool,
@@ -94,28 +97,15 @@ def _build_objective(
             ha = hours_ahead(now, slot_mid)
             discount = time_discount_rate**ha
 
-        # Charge-side conversion loss: energy lost during charge, priced at
-        # this slot's import price (where the charge occurs).
-        c_obj[ec_off + t] = (charge_loss * p_imp_obj[t]) * discount
-        # Discharge-side conversion loss: energy lost during discharge.
-        # Priced at the sanitised import price of the discharge slot.
-        #
-        # NOTE (issue #641): This is a CONSERVATIVE APPROXIMATION.  The
-        # LP cannot know the destination of discharged energy (house load
-        # vs. export) before solving, because the gi[t]/ge[t] split is
-        # itself an LP decision.  Defaulting to the (typically higher)
-        # import price is the safe choice — it never leads the LP to be
-        # overly optimistic about an export cycle's profitability.
-        #
-        # The accurate destination-aware cost is computed post-hoc in
-        # cost_function.py::score_plan() (which sees the solved
-        # grid_export_kwh/grid_import_kwh fields) and reported in the
-        # diagnostics dict as "discharge_loss_cost_destination_aware".
-        c_obj[ed_off + t] = (discharge_loss * p_imp_obj[t]) * discount
+        # Conversion losses are already physical in the site balance:
+        # charging draws ec/charge_eff AC and discharging delivers
+        # ed*discharge_eff AC. The gi/ge money coefficients therefore price
+        # those losses exactly once; no separate ec/ed loss coefficient applies.
         # Cycle cost through auxiliary variable m[t] (= max(ec, ed))
         c_obj[m_off + t] = cycle_cost_per_kwh * discount
         c_obj[gi_off + t] = p_imp_obj[t] * discount  # grid import cost
         c_obj[ge_off + t] = -p_exp[t] * discount  # export revenue (negative = gain)
+        c_obj[battery_export_off + t] = _BATTERY_EXPORT_SOURCE_TIEBREAK
         # pv[t] has zero objective cost
         # curt[t] has zero objective cost (curtailment is free)
 
@@ -149,13 +139,7 @@ def _build_objective(
         # LP rushes to satisfy the terminal-SoC target immediately rather
         # than deferring charging to cheaper slots with ample solar.
         #
-        #   Export benefit:  -p_exp[t]
-        #   Charge cost:     (charge_loss·p_imp[t] - premium + cycle_cost) · η_chg
-        #
-        # Requiring export ≤ charge (both negative = both beneficial):
-        #   -p_exp[t] ≤ (charge_loss·p_imp[t] - premium + cycle_cost) · η_chg
-        #   → premium ≤ charge_loss·p_imp[t] + cycle_cost + p_exp[t] / η_chg
-        #
+
         # The cap only reduces the terminal premium — it can never increase
         # it.  When p_exp[t] is high the cap is large and rarely binds;
         # when p_exp[t] is low (cheap slots) the cap is small, but the LP
@@ -190,12 +174,11 @@ def _build_objective(
             # The discharge penalty is NOT capped — it remains at the
             # full terminal_premium to prevent unnecessary discharging
             # (issue #638).
-            _charge_eff = 1.0 - charge_loss
             _charge_premium = compute_charge_premium(
                 replacement_price_per_kwh=replacement_price_per_kwh,
                 imp_price_obj=p_imp_obj[t],
                 exp_price=p_exp[t],
-                charge_eff=_charge_eff,
+                charge_eff=charge_eff,
                 deferred_export_price=(
                     _deferred_by_lp_idx[t] if _deferred_by_lp_idx else None
                 ),
@@ -279,7 +262,7 @@ def _build_objective(
     # limit); once the battery is saturated, the EV's full value applies to
     # the remaining surplus.  The shared surplus budget is enforced by the
     # battery-first constraint in ``_constraints.py``.
-    _charge_eff_frac = 1.0 - charge_loss
+    _charge_eff_frac = charge_eff
     for ev_idx, ev in enumerate(active_evs):
         if ev.charge_past_target:
             ev_off = ev_var_offsets[ev_idx]

@@ -218,7 +218,7 @@ with zero Home Assistant imports. This makes them:
 
 The cost function returns two distinct aggregates:
 
-- **`total_cost`** — the real-money outcome (sum of grid import cost, export revenue, cycle cost, conversion loss). Auditable and comparable to an electricity bill.
+- **`total_cost`** — the real-money outcome (grid import cost minus export revenue plus cycle cost). The retained conversion-loss field is zero because efficiency is already physical in the grid flows. Auditable and comparable to an electricity bill.
 - **`score`** — the selector objective. Equals `total_cost` plus synthetic penalties (SoC guard, grid limit, override) and terminal-SoC opportunity cost. The selector picks the plan with the lowest **score**, not the lowest money cost.
 
 This split prevents the selector from preferring plans that look cheap only because they drain the battery to zero or violate soft safety constraints.
