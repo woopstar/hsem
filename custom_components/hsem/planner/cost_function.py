@@ -19,10 +19,11 @@ The cost function aggregates seven independently-tunable terms:
 
 Money terms (sum to ``total_cost``):
 
-1. **Import cost** — energy imported from the grid × the sanitised
-   (non-negative) import price.  Negative spot prices are clamped to 0 for
-   this term — mirrors ``milp_optimizer.py``'s ``p_imp_obj`` clamp, so a
-   negative price is never scored as a profit for importing (issue #655).
+1. **Import cost** — energy imported from the grid × the finite signed
+   import price.  A negative spot price keeps its sign, so ``import_cost``
+   becomes negative when the site is paid to consume — mirroring
+   ``milp_optimizer.py``'s ``p_imp_obj``, which no longer clamps at zero
+   (issue #655).  Non-finite prices are treated as ``0.0``.
 2. **Export revenue** — energy exported to the grid × export price
    (negative contribution, i.e. revenue reduces total cost).
 3. **Battery conversion-loss compatibility field** — always zero. Physical
@@ -39,7 +40,7 @@ Selector-only terms (added on top of ``total_cost`` to produce ``score``):
    exceeds the configured grid power limit, proportional to the excess energy.
 7. **Terminal SoC value** — per-slot opportunity cost of charging/discharging,
    capped by the differential between ``replacement_price_per_kwh`` and that
-   slot's own sanitised import price:
+   slot's own finite signed import price:
    ``terminal_premium[t] = max(0, replacement_price_per_kwh - imp_price_obj[t])``.
    Discharging a slot incurs ``+terminal_premium[t]`` per kWh; charging earns
    ``-terminal_premium[t]`` per kWh.  Summed across all slots.  This mirrors
@@ -315,15 +316,14 @@ def score_plan(
         if not math.isfinite(exp_price):
             exp_price = 0.0
 
-        # Sanitised (non-negative) import price — mirrors milp_optimizer.py's
-        # p_imp_obj clamp.  A negative spot price must never be scored as a
-        # profit for importing or for lossy conversion: the MILP's own
-        # objective never rewards those events (its gi[t]/ec[t]/ed[t]
-        # coefficients use p_imp_obj = max(p_imp, 0)), so the selector must
-        # value the identical physical decisions the same way, or its score
-        # no longer matches what the LP actually optimised for (issue #655).
-        # The raw (possibly negative) imp_price is still used for export
-        # clamping logic elsewhere and is unaffected by this sanitisation.
+        # Signed import price — mirrors milp_optimizer.py's p_imp_obj, which
+        # no longer clamps at zero.  A finite negative spot price is a real
+        # economic signal: the site is paid to consume, so import_cost must be
+        # allowed to go negative.  Grid flows are bounded and made
+        # direction-exclusive by grid_flow_mode in the MILP, so preserving the
+        # sign no longer admits an unbounded import/export wash flow.  The
+        # selector must value the identical physical decisions the same way the
+        # LP did, or its score stops matching the solved objective (issue #655).
         imp_price_obj = imp_price
 
         # 1. Import cost — grid_import_kwh already reflects the extra grid draw

@@ -554,6 +554,7 @@ def solve_milp(
         slot_hours,
         _has_session_demand,
         session_slot_hours=session_slot_hours,
+        available_slot_hours=available_slot_hours,
         max_grid_export_per_slot_kwh=max_grid_export_per_slot_kwh,
         export_limit_active=export_limit_active,
         battery_export_blocked=battery_export_blocked,

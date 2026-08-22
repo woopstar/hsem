@@ -173,7 +173,7 @@ class PlanCostBreakdown:
             Per-slot opportunity cost of charging/discharging, summed across
             the horizon.  Each slot's contribution is capped by the
             differential between ``replacement_price_per_kwh`` and that
-            slot's own sanitised import price (mirrors
+            slot's own finite signed import price (mirrors
             ``milp_optimizer.py``'s terminal-SoC objective term exactly,
             issue #655).  Negative (credit) when the plan nets more
             charging than discharging in slots where the differential is

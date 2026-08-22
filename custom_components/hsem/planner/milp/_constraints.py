@@ -58,6 +58,7 @@ def _build_constraints(
     grid_import_ub_per_slot: np.ndarray | None = None,  # type: ignore[name-defined]
     grid_export_ub_per_slot: np.ndarray | None = None,  # type: ignore[name-defined]
     session_slot_hours: np.ndarray | None = None,  # type: ignore[name-defined]
+    available_slot_hours: np.ndarray | None = None,  # type: ignore[name-defined]
 ) -> dict:
     """Build all LP constraint matrices and variable bounds.
 
@@ -69,6 +70,8 @@ def _build_constraints(
 
     if session_slot_hours is None:
         session_slot_hours = np.full(m, slot_hours)
+    if available_slot_hours is None:
+        available_slot_hours = np.full(m, slot_hours)
 
     # ------------------------------------------------------------------
     # Equality constraints: energy balance per slot
@@ -280,16 +283,49 @@ def _build_constraints(
         first_past_target_ev = next(
             (i for i, e in enumerate(active_evs) if e.charge_past_target), None
         )
+        session_evs = set(session_ev_indices)
+
+        def _pinned_session_dc(ev_idx: int, ev: EVConfig, t: int) -> float | None:
+            """Return DC energy a live session pins into slot *t*, else ``None``.
+
+            Mirrors the session branch of the ``ev_*_charge`` bounds exactly,
+            including its ``max_charge_per_slot`` clamp, so rows and bounds
+            always agree on how much energy is already committed.
+            """
+            if (
+                ev_idx not in session_evs
+                or t >= session_slots
+                or ev.session_charge_kw is None
+            ):
+                return None
+            return min(
+                max(ev.session_charge_kw, 0.0)
+                * float(session_slot_hours[t])
+                * ev.charger_efficiency,
+                ev.max_charge_per_slot,
+            )
+
         for ev_idx, ev in enumerate(active_evs):
             ev_off = ev_var_offsets[ev_idx]
             # EV SOC upper bound per slot: Σ_{k≤t} ev_c[k] ≤ cap − init
             #   For each t in 0..m-1:
             #   Σ_{k=0..t} ev_c[k] ≤ ev.capacity_kwh - ev.initial_soc_kwh
+            # Slots already pinned by a live session are fixed by their bounds,
+            # so they are moved to the right-hand side instead of staying as
+            # free columns.  The clamp at zero keeps the model feasible when a
+            # session already commits more than the remaining headroom (an EV
+            # near full that is still drawing power); leaving the row negative
+            # would make the whole solve infeasible.
             headroom = max(ev.capacity_kwh - ev.initial_soc_kwh, 0.0)
             for t in range(m):
+                fixed_session_dc = 0.0
                 for k in range(t + 1):
-                    A_ub[ev_row + t, ev_off + k] = 1.0
-                b_ub[ev_row + t] = headroom
+                    pinned = _pinned_session_dc(ev_idx, ev, k)
+                    if pinned is None:
+                        A_ub[ev_row + t, ev_off + k] = 1.0
+                    else:
+                        fixed_session_dc += pinned
+                b_ub[ev_row + t] = max(headroom - fixed_session_dc, 0.0)
             ev_row += m
 
             # EV deadline soft constraint:
@@ -325,9 +361,14 @@ def _build_constraints(
                 shortfall = ev.target_kwh - ev.initial_soc_kwh
                 d = ev.deadline_slot
                 d = max(0, min(d, m - 1))
+                fixed_session_dc = 0.0
                 for k in range(d + 1):
-                    A_ub[ev_row, ev_off + k] = 1.0
-                b_ub[ev_row] = shortfall
+                    pinned = _pinned_session_dc(ev_idx, ev, k)
+                    if pinned is None:
+                        A_ub[ev_row, ev_off + k] = 1.0
+                    else:
+                        fixed_session_dc += pinned
+                b_ub[ev_row] = max(shortfall - fixed_session_dc, 0.0)
                 ev_row += 1
 
             # Post-deadline zero-charge constraint:
@@ -343,7 +384,12 @@ def _build_constraints(
                 d = ev.deadline_slot
                 d = max(0, min(d, m - 1))
                 for t in range(d + 1, m):
-                    A_ub[ev_row, ev_off + t] = 1.0
+                    # A session-pinned slot cannot be forced to zero; its
+                    # energy is already committed by the bounds.  Skipping the
+                    # coefficient keeps the row count stable while avoiding an
+                    # infeasible 0 ≤ 0 conflict against a fixed positive value.
+                    if _pinned_session_dc(ev_idx, ev, t) is None:
+                        A_ub[ev_row, ev_off + t] = 1.0
                     b_ub[ev_row] = 0.0
                     ev_row += 1
 
@@ -353,9 +399,14 @@ def _build_constraints(
             # surplus — never battery discharge or grid import.
             if ev.charge_past_target:
                 for t in range(m):
-                    surplus_kwh = max(pv_avail[t] - base_load[t], 0.0)
-                    A_ub[ev_row + t, ev_off + t] = 1.0 / ev.charger_efficiency
-                    b_ub[ev_row + t] = surplus_kwh
+                    # Session-pinned slots are uncontrollable demand, not
+                    # past-target charging, so the surplus-only rule does not
+                    # apply to them and would otherwise be infeasible whenever
+                    # a live session runs without forecast PV surplus.
+                    if _pinned_session_dc(ev_idx, ev, t) is None:
+                        surplus_kwh = max(pv_avail[t] - base_load[t], 0.0)
+                        A_ub[ev_row + t, ev_off + t] = 1.0 / ev.charger_efficiency
+                        b_ub[ev_row + t] = surplus_kwh
                 ev_row += m
 
             # Battery-first constraint for charge-past-target EVs (issue #775):
@@ -452,7 +503,14 @@ def _build_constraints(
                 for ev_idx, ev in enumerate(active_evs)
                 if ev_idx in session_evs and t in session_slots_set
             )
-            fixed_site_import = max(float(base_load[t]) + fixed_session_ac, 0.0)
+            # Forecast PV serves house load before any grid import, so the
+            # unavoidable baseline is net of PV.  Omitting it would inflate the
+            # cap by the whole PV forecast and let controllable charging push
+            # past the fuse on exactly the sunny slots where surplus-charging
+            # pressure is highest.
+            fixed_site_import = max(
+                float(base_load[t]) - float(pv_avail[t]) + fixed_session_ac, 0.0
+            )
             A_ub[existing_rows + m + t, gi_off + t] = 1.0
             hard_cap = max(max_grid_import_per_slot_kwh, fixed_site_import)
             b_ub[existing_rows + m + t] = hard_cap
@@ -623,7 +681,15 @@ def _build_constraints(
             elif ev.fixed_session_only:
                 ev_bounds.append((0.0, 0.0))
             else:
-                ev_bounds.append((0.0, ev.max_charge_per_slot))
+                # A partly elapsed current slot can only deliver its remaining
+                # minutes of charge, so the flexible ceiling is scaled down
+                # accordingly.  Without this the optimiser reserves a full
+                # slot's energy that the charger cannot physically deliver.
+                duration_scale = min(
+                    max(float(available_slot_hours[t]) / max(slot_hours, 1e-9), 0.0),
+                    1.0,
+                )
+                ev_bounds.append((0.0, ev.max_charge_per_slot * duration_scale))
         bounds_builder.set(f"ev_{ev_idx}_charge", ev_var_offsets[ev_idx], ev_bounds)
         bounds_builder.fill(
             f"ev_{ev_idx}_target_penalty",

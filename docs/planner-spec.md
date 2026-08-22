@@ -774,8 +774,9 @@ so the LP's decisions and the selector's score never diverge.
 
 - **Undiscounted** — terminal SoC is a single point-in-time valuation at
   horizon end, matching `cost_function.py`'s `terminal_soc_value` treatment.
-- The differential uses the sanitised import price (`max(p_imp, 0)`) so
-  negative import prices cannot artificially inflate the terminal premium.
+- The differential uses the finite signed import price. The premium itself
+  is floored at zero (`max(0, repl - p_imp)`), so a negative import price
+  cannot inflate the terminal premium beyond `replacement_price_per_kwh`.
 
 The post-hoc `terminal_soc_credit` calculation in the diagnostics dict is
 retained as a consistency check but no longer drives the LP's decisions.
@@ -839,8 +840,16 @@ The diagnostic soft row is paired with a hard no-worsening row:
 gi[t] <= max(max_grid_import_per_slot_kwh, fixed_site_import[t])
 ```
 
-`fixed_site_import` includes unavoidable house demand and fixed live EV
-sessions. An existing overload remains feasible and visible through
+`fixed_site_import` is the unavoidable house demand **net of forecast PV**,
+plus any fixed live EV session:
+
+```text
+fixed_site_import[t] = max(base_load[t] - pv_avail[t] + fixed_session_ac[t], 0)
+```
+
+Netting PV is required: without it the cap is inflated by the whole PV
+forecast on sunny slots and controllable charging can import straight through
+the fuse. An existing overload remains feasible and visible through
 `gi_pen[t]`, but controllable battery or flexible EV charging cannot worsen it.
 
 **Diagnostics**:
@@ -1088,7 +1097,7 @@ terminal-SoC term exactly (issue #655/#657) so the selector's score always
 matches what the LP actually optimised for:
 
 ```text
-imp_price_obj[t]     = max(slot.price.import_price, 0.0)
+imp_price_obj[t]     = slot.price.import_price   # finite, signed
 terminal_premium[t]  = max(0, replacement_price_per_kwh - imp_price_obj[t])
 charge_premium[t]    = max(0, replacement_price_per_kwh - imp_price_obj[t]
                              - slot.price.export_price / charge_eff
@@ -1118,7 +1127,7 @@ Sign convention (per slot):
   (penalty) term, increasing `score`.
 
 The per-slot premium is capped by the differential between
-`replacement_price_per_kwh` and that slot's own sanitised import price.  When
+`replacement_price_per_kwh` and that slot's own signed import price.  When
 `replacement_price_per_kwh <= imp_price_obj[t]`, the premium is zero for that
 slot - charging/discharging then has no terminal-SoC effect, because the LP
 saw no genuine opportunity cost either.  This prevents the selector from
@@ -1132,10 +1141,13 @@ now rather than later.  Using the average over all future slots (including
 expensive peak prices) systematically over-values stored energy during
 high-price periods and biases the selector against discharging.
 
-Import prices are sanitised the same way as the MILP's own objective
-(`imp_price_obj = max(imp_price, 0.0)`) before the import-cost term is scored.
-Primary efficiency changes the physical `grid_import_kwh` and
-`grid_export_kwh` fields; the LP and scorer add no separate loss-price term.
+Finite actionable import and export rates retain their sign in `score_plan`
+and in the MILP objective; neither clamps a negative import price to zero. A
+finite negative import price therefore produces a negative `import_cost` for
+real `grid_import_kwh`. Non-finite or non-actionable prices remain neutral
+rather than becoming economic signals. Primary efficiency changes the physical
+`grid_import_kwh` and `grid_export_kwh` fields; the LP and scorer add no
+separate loss-price term.
 
 Terminal-SoC accounting is **only active** when both `initial_battery_kwh`
 and `replacement_price_per_kwh` are supplied to `score_plan`.  Unit tests

@@ -127,9 +127,10 @@ def _build_objective(
         # +replacement_price penalty dominated the per-slot import-saving
         # benefit.
         #
-        # The differential is computed against the sanitised import price
-        # (p_imp_obj, non-negative) so that negative import prices cannot
-        # artificially inflate the terminal premium.
+        # The differential is computed against the finite signed import
+        # price (p_imp_obj).  The premium itself is floored at zero, so a
+        # negative import price cannot inflate the terminal premium beyond
+        # replacement_price_per_kwh.
         #
         # SECOND CAP (issue #694): the terminal premium must never make
         # battery charging more attractive than grid export for the same

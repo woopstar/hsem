@@ -173,7 +173,8 @@ def compute_charge_premium(
 
     Args:
         replacement_price_per_kwh: Value of one stored kWh at horizon end.
-        imp_price_obj: Sanitised (non-negative) import price for the slot.
+        imp_price_obj: Finite signed import price for the slot; negative
+            values are preserved and are not clamped to zero.
         exp_price: Export price for the slot (already clamped by the caller).
         charge_eff: Charge efficiency fraction (0–1).
         deferred_export_price: Minimum export price across *future* slots

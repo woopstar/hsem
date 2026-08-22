@@ -4,7 +4,6 @@ Centralises the pre-solve price transformations that keep the LP bounded
 and consistent with the physical system:
 
 - NaN handling
-- Battery-export floor mask (issues #752 and #767)
 - Finite-value normalization
 - Battery-export floor mask (issues #752 and #767)
 
