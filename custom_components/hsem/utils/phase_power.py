@@ -77,7 +77,56 @@ def charger_power_to_current_a(power_w: float, topology: str | None) -> int:
     if not math.isfinite(power_w) or power_w <= 0.0:
         return 0
     phases = PHASE_COUNT if topology == EV_TOPOLOGY_THREE_PHASE_BALANCED else 1
-    return int(math.floor(power_w / (GRID_PHASE_VOLTAGE * phases)))
+    return int(math.floor(power_w / (GRID_PHASE_VOLTAGE * phases) + 1e-9))
+
+
+def charger_current_to_power_w(
+    current_a: int | float,
+    topology: str | None,
+) -> float:
+    """Return AC charger power for a per-phase current command.
+
+    Charger current controls use the same whole-amp value on every active
+    phase. Unknown topology stays conservative and is treated as one phase.
+    Invalid or non-positive currents produce a zero-power command.
+    """
+    if not math.isfinite(current_a) or current_a <= 0.0:
+        return 0.0
+    phases = PHASE_COUNT if topology == EV_TOPOLOGY_THREE_PHASE_BALANCED else 1
+    return float(current_a) * GRID_PHASE_VOLTAGE * phases
+
+
+def charger_max_power_to_current_a(
+    power_w: float,
+    topology: str | None,
+) -> int:
+    """Return the nearest whole-amp nameplate current.
+
+    Configured charger power is an approximate nameplate. Snapping it to the
+    nearest supported current preserves the physical rating: for example,
+    11.0 kW for a balanced three-phase charger represents 16 A (11.04 kW),
+    not a 15 A hard cap. Half-amp ties round upward deterministically.
+    """
+    step_power_w = charger_current_to_power_w(1, topology)
+    if not math.isfinite(power_w) or power_w <= 0.0 or step_power_w <= 0.0:
+        return 0
+    return int(math.floor(power_w / step_power_w + 0.5))
+
+
+def charger_min_power_to_current_a(
+    power_w: float,
+    topology: str | None,
+) -> int:
+    """Return the first whole-amp command at or above a power threshold.
+
+    Configured minimum power is a physical start threshold, so it rounds up.
+    A 3.6 kW balanced three-phase threshold therefore becomes 6 A / 4.14 kW;
+    publishing 5 A would ask the charger to run below its configured minimum.
+    """
+    step_power_w = charger_current_to_power_w(1, topology)
+    if not math.isfinite(power_w) or power_w <= 0.0 or step_power_w <= 0.0:
+        return 0
+    return int(math.ceil((power_w - 1e-9) / step_power_w))
 
 
 def normalize_ev_phase_topology(value: object) -> str:

@@ -17,6 +17,9 @@ from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import clamp_efficiency
 from custom_components.hsem.utils.phase_power import (
+    charger_current_to_power_w,
+    charger_max_power_to_current_a,
+    charger_min_power_to_current_a,
     normalize_ev_phase_topology,
 )
 
@@ -156,7 +159,18 @@ def _build_ev_configs_for_milp(
             continue
         eff = clamp_efficiency(eff_pct)
         session_power_kw = max(float(session_charge_kw or 0.0), 0.0)
-        configured_max_power_w = max(float(pwr), 0.0) * 1000.0
+        configured_max_current_a = charger_max_power_to_current_a(
+            max(float(pwr), 0.0) * 1000.0,
+            phase_topology,
+        )
+        configured_max_power_w = charger_current_to_power_w(
+            configured_max_current_a,
+            phase_topology,
+        )
+        effective_min_power_w = charger_current_to_power_w(
+            charger_min_power_to_current_a(min_pwr_w, phase_topology),
+            phase_topology,
+        )
         effective_capacity = float(cap)
         if has_live_session and effective_capacity <= 1e-9:
             effective_capacity = max(session_power_kw * 2.0 * eff, 0.001)
@@ -171,10 +185,7 @@ def _build_ev_configs_for_milp(
         initial_kwh = (soc_pct / 100.0) * effective_capacity
         target_kwh = (target_pct / 100.0) * effective_capacity
         fixed_session_only = has_live_session and (
-            not enabled
-            or not connected
-            or not smart
-            or configured_max_power_w <= 1e-9
+            not enabled or not connected or not smart or configured_max_power_w <= 1e-9
         )
 
         # When the EV is already at or above its target SoC, normally we
@@ -266,7 +277,7 @@ def _build_ev_configs_for_milp(
                 capacity_kwh=round(effective_capacity, 3),
                 max_charge_per_slot=round(max_dc, 4),
                 charger_efficiency=round(eff, 4),
-                charger_min_power_w=round(min_pwr_w, 1),
+                charger_min_power_w=round(effective_min_power_w, 1),
                 charger_phase_topology=phase_topology,
                 deadline_slot=deadline_slot,
                 base_load_includes_ev=base_includes,

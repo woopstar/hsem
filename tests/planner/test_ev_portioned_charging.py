@@ -32,6 +32,9 @@ from custom_components.hsem.planner.milp_optimizer import is_scipy_available, so
 from custom_components.hsem.utils.phase_power import (
     EV_TOPOLOGY_SINGLE_PHASE,
     EV_TOPOLOGY_THREE_PHASE_BALANCED,
+    charger_current_to_power_w,
+    charger_max_power_to_current_a,
+    charger_min_power_to_current_a,
     charger_power_to_current_a,
 )
 from tests.planner.test_session_ev import _NOW, _build_slots
@@ -82,6 +85,46 @@ def test_current_conversion_rejects_unusable_power(power_w: float) -> None:
     assert charger_power_to_current_a(power_w, EV_TOPOLOGY_THREE_PHASE_BALANCED) == 0
 
 
+def test_balanced_nameplate_and_threshold_use_asymmetric_rounding() -> None:
+    """11.0 kW is a 16 A nameplate while 3.6 kW starts at 6 A.
+
+    Nameplate: 11,000 / (230 * 3) = 15.94 A -> nearest = 16 A.
+    Threshold: 3,600 / (230 * 3) = 5.22 A -> ceiling = 6 A.
+    An individual 11,000 W slot remains a floor and therefore exposes 15 A.
+    """
+    topology = EV_TOPOLOGY_THREE_PHASE_BALANCED
+
+    assert charger_max_power_to_current_a(11_000.0, topology) == 16
+    assert charger_min_power_to_current_a(3_600.0, topology) == 6
+    assert charger_power_to_current_a(11_000.0, topology) == 15
+    assert charger_current_to_power_w(16, topology) == pytest.approx(11_040.0)
+    assert charger_current_to_power_w(6, topology) == pytest.approx(4_140.0)
+
+
+@pytest.mark.parametrize("current_a", [0.0, -1.0, float("nan"), float("inf")])
+def test_current_to_power_rejects_unusable_current(current_a: float) -> None:
+    """Zero, negative and non-finite currents publish no power."""
+    assert (
+        charger_current_to_power_w(current_a, EV_TOPOLOGY_THREE_PHASE_BALANCED) == 0.0
+    )
+
+
+@pytest.mark.parametrize("power_w", [0.0, -1.0, float("nan"), float("inf")])
+def test_max_power_rounding_rejects_unusable_power(power_w: float) -> None:
+    """Zero, negative and non-finite nameplate power rounds to 0 A."""
+    assert (
+        charger_max_power_to_current_a(power_w, EV_TOPOLOGY_THREE_PHASE_BALANCED) == 0
+    )
+
+
+@pytest.mark.parametrize("power_w", [0.0, -1.0, float("nan"), float("inf")])
+def test_min_power_rounding_rejects_unusable_power(power_w: float) -> None:
+    """Zero, negative and non-finite threshold power rounds to 0 A."""
+    assert (
+        charger_min_power_to_current_a(power_w, EV_TOPOLOGY_THREE_PHASE_BALANCED) == 0
+    )
+
+
 # ---------------------------------------------------------------------------
 # Nameplate cap (issue #789)
 # ---------------------------------------------------------------------------
@@ -94,10 +137,11 @@ def test_current_conversion_rejects_unusable_power(power_w: float) -> None:
 def test_managed_session_cannot_expand_the_configured_nameplate() -> None:
     """A measured 6 kW draw cannot turn a configured 3 kW cap into a command.
 
-    A managed (smart-controlled) live session is capped at the configured
-    charger power even if its power sensor currently reports a higher draw;
-    only an unmanaged accounting-only session (``fixed_session_only``) may
-    retain the larger physical observation.
+    The single-phase configured nameplate snaps to 13 A / 2990 W.  A managed
+    (smart-controlled) live session is capped there even if its power sensor
+    currently reports a higher draw; only an unmanaged accounting-only
+    session (``fixed_session_only``) may retain the larger physical
+    observation.
     """
     slots = _build_slots(
         4,
@@ -128,7 +172,7 @@ def test_managed_session_cannot_expand_the_configured_nameplate() -> None:
     assert len(configs) == 1
     ev = configs[0]
     assert ev.fixed_session_only is False
-    assert ev.max_charge_per_slot == pytest.approx(3.0)
+    assert ev.max_charge_per_slot == pytest.approx(2.99)
 
     result = solve_milp(
         slots,
@@ -142,8 +186,8 @@ def test_managed_session_cannot_expand_the_configured_nameplate() -> None:
 
     assert result is not None
     planned, _diagnostics = result
-    assert planned[0].ev_charger_calculated_power == pytest.approx(3_000.0)
-    assert all(slot.ev_charger_calculated_power <= 3_000.0 for slot in planned)
+    assert planned[0].ev_charger_calculated_power == pytest.approx(2_990.0)
+    assert all(slot.ev_charger_calculated_power <= 2_990.0 for slot in planned)
 
 
 def test_unmanaged_session_may_expand_the_accounting_envelope() -> None:

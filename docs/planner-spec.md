@@ -1010,6 +1010,76 @@ surfaced in the MILP EV diagnostics as `reportioned_slots`.
 - Without an eligible candidate slot (no headroom before the deadline), the
   residue is reported as unplaceable rather than silently dropped.
 
+#### Executable whole-amp plans (issue #789)
+
+Issue #788 floors the *published ceiling* to whole amps for the diagnostic
+current-limit sensors, but the underlying planned energy fields
+(`ev_planned_load_kwh`, `ev_accounted_load_kwh`, `ev_charger_calculated_power`,
+grid import/export, `estimated_cost_currency`) were still the MILP's raw
+continuous decision — a value no whole-amp command can actually deliver. A
+plan that promises 2.5 kWh of EV charging while the nearest executable
+command only delivers 2.3 kWh silently mispriced the plan and understated
+grid export/battery headroom by the gap.
+
+`planner/milp/_ev_quantize.py::_quantize_ev_allocation_to_whole_amps()`
+closes this gap by quantizing each EV's *flexible* (non-session) allocation
+to whole-amp-achievable energy before any other output field is derived from
+it — the plan's numbers are therefore always physically executable, not an
+idealised continuous target the ceiling sensor floors on display only:
+
+1. **Per-slot floor.** Each occupied slot's DC energy is converted to AC
+   power, floored to whole amps (`charger_power_to_current_a`), and clamped
+   to the charger's own amp-rounded rating
+   (`charger_max_power_to_current_a` on the configured power) — never above
+   its nameplate, never above the concentration pass's own settled ceiling
+   for that slot (`slot_ceiling_dc`, `dc + room_dc(t)`).
+2. **Residue fill.** The fractional energy lost to flooring across all
+   occupied slots is pooled and spent as whole additional amp-steps on
+   slots that still have headroom under their own ceiling, cheapest
+   (smallest step) slots first, **never exceeding the original target**.
+3. **One further slot.** If residue remains and no occupied slot has
+   headroom, one further empty, deadline-eligible slot may open at the
+   charger's activation minimum, borrowing amp-steps back from slots that
+   can spare them above that minimum — the same borrow-and-open pattern as
+   the stranded-residue re-portioning above, now amp-step granular.
+4. **Managed sessions are quantized too.** A live session's *fixed* LP
+   energy is snapped to the same whole-amp command that will be published
+   (`command_current_a`, floored, zeroed below the activation minimum)
+   whenever the session is *managed* (`fixed_session_only=False` — HSEM
+   still emits a command for it); the residue this leaves is folded into the
+   flexible quantization's target so other slots can recover it. An
+   *unmanaged* session (`fixed_session_only=True`) emits no command and
+   keeps its measured physical draw verbatim — quantization never runs on it.
+5. **Irreducible residue is reported, never invented.** Whatever cannot be
+   placed at whole-amp granularity — because it is smaller than one amp-step
+   and every slot with headroom is already spent — surfaces as
+   `deadline_penalty_kwh` in the MILP EV diagnostics exactly like an
+   unreachable deadline target. A strict target can therefore leave
+   `deadline_met=False` even when the pre-#789 continuous LP would have
+   reported it met; this is the genuine physical granularity of a whole-amp
+   command, not a regression.
+
+Grid import/export, `estimated_net_consumption_kwh`, and
+`estimated_cost_currency` are all derived from the same quantized `ev_c[t]`
+values used for the published power fields (issue #637's single-merged-pass
+rule), so a genuine residual PV surplus left behind by flooring is free for
+the house battery or export to claim — it is never double-counted as EV
+energy.
+
+##### Invariants
+
+- Every commanded (non-session, non-fixed) slot's `ev_charger_calculated_power`
+  is an exact whole-amp multiple of the charger's phase voltage.
+- The quantized total for one EV never exceeds the pre-quantization target
+  for that EV (`sum(quantized) <= target_dc_kwh`).
+- An unmanaged session (`fixed_session_only=True`) is never quantized; its
+  measured energy is published verbatim with no HSEM command.
+- A managed session's fixed energy is quantized to the same whole-amp
+  command the ceiling sensor would publish for it.
+- Any irreducible sub-amp-step shortfall is surfaced as
+  `deadline_penalty_kwh`, never silently discarded and never invented as
+  extra energy.
+
 ### Grid export power limit (DNO/inverter export cap — issue #726)
 
 When `max_grid_export_power_kw` is provided and > 0, the MILP adds a
