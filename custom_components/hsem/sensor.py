@@ -30,6 +30,10 @@ from custom_components.hsem.custom_sensors.ev_charger_calculated_power_sensor im
     HSEMEVChargerCalculatedPowerSensor,
     HSEMEVSecondChargerCalculatedPowerSensor,
 )
+from custom_components.hsem.custom_sensors.ev_charger_current_limit_sensor import (
+    HSEMEVChargerCurrentLimitSensor,
+    HSEMEVSecondChargerCurrentLimitSensor,
+)
 from custom_components.hsem.custom_sensors.ev_charging_sensor import (
     HSEMEVChargingSensor,
 )
@@ -137,6 +141,12 @@ async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
     ev_second_charger_calculated_power_sensor = (
         HSEMEVSecondChargerCalculatedPowerSensor(config_entry, coordinator)
     )
+    ev_charger_current_limit_sensor = HSEMEVChargerCurrentLimitSensor(
+        config_entry, coordinator
+    )
+    ev_second_charger_current_limit_sensor = HSEMEVSecondChargerCurrentLimitSensor(
+        config_entry, coordinator
+    )
 
     # Forecast accuracy sensor — exposes predicted-vs-actual metrics.
     forecast_accuracy_sensor = HSEMForecastAccuracySensor(config_entry, coordinator)
@@ -213,6 +223,8 @@ async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
             ev_second_optimal_charging_plan_sensor,
             ev_charger_calculated_power_sensor,
             ev_second_charger_calculated_power_sensor,
+            ev_charger_current_limit_sensor,
+            ev_second_charger_current_limit_sensor,
             applier_status_sensor,
             plan_explanation_sensor,
             forecast_accuracy_sensor,

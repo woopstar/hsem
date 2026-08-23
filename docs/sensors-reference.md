@@ -357,6 +357,33 @@ of the working-mode sensor.
 
 ---
 
+## EV charger current limit sensors
+
+Diagnostic sensors publishing the planner's per-slot EV charging ceiling in
+**whole amps**, for an external current controller to consume. HSEM owns the
+economics (how many amps are worth drawing this slot); the external
+controller keeps final authority for fuse safety and may only ramp *within*
+the published ceiling. Conversion always rounds down and is phase-aware (see
+[planner-spec.md](planner-spec.md) *Published charging ceiling and
+stranded-residue re-portioning*).
+
+**Entities:**
+- `sensor.hsem_ev_charger_current_limit` — Primary EV
+- `sensor.hsem_ev_second_charger_current_limit` — Second EV
+
+| State | Unit | Description |
+|---|---|---|
+| ≥ 0 | A | Ceiling for the active slot, floored to whole amps (`0` when no charging is planned) |
+
+**Key attributes:**
+
+| Attribute | Description |
+|---|---|
+| `phase_topology` | The charger's configured phase topology used for the conversion |
+| `schedule` | Up to 24 future slots, each `{start, current_a, power_w}` |
+
+---
+
 ## Daily plan-vs-actual sensor
 
 Diagnostic sensor tracking daily cumulative plan-vs-actual energy deviations.
@@ -557,6 +584,8 @@ Detects when the inverter is actively curtailing PV production.
 | `sensor.hsem_degraded_mode_sensor` | System Health | Overall system health | `ok`, `degraded`, `error` |
 | `sensor.hsem_ev_charger_calculated_power` | EV Charger Calculated Power | Planner target power for primary EV charger | Watts (W) |
 | `sensor.hsem_ev_second_charger_calculated_power` | EV 2 Charger Calculated Power | Planner target power for second EV charger | Watts (W) |
+| `sensor.hsem_ev_charger_current_limit` | EV Charger Current Limit | Planner charging ceiling for primary EV charger | Amps (A) |
+| `sensor.hsem_ev_second_charger_current_limit` | EV 2 Charger Current Limit | Planner charging ceiling for second EV charger | Amps (A) |
 | `sensor.hsem_ev_charging_sensor` | EV Charging Active | Any EV actively charging | `on`, `off` |
 | `sensor.hsem_ev_optimal_charging_plan` | EV Optimal Charging Plan | Primary EV plan state | `charging`, `waiting`, etc. |
 | `sensor.hsem_ev_second_optimal_charging_plan` | EV Second Optimal Charging Plan | Second EV plan state | `charging`, `waiting`, etc. |

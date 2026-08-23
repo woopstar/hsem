@@ -12,7 +12,10 @@ shared helpers below), never by re-deriving a fraction inline.
 
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING
+
+from custom_components.hsem.utils.units import GRID_PHASE_VOLTAGE
 
 if TYPE_CHECKING:
     from custom_components.hsem.models.ev_config import EVConfig
@@ -51,6 +54,30 @@ def ev_phase_share(topology: str | None) -> float:
     if topology == EV_TOPOLOGY_THREE_PHASE_BALANCED:
         return 1.0 / PHASE_COUNT
     return 1.0
+
+
+def charger_power_to_current_a(power_w: float, topology: str | None) -> int:
+    """Return the whole-amp ceiling equivalent to an AC charger command.
+
+    HSEM plans in watts, but an external current controller that consumes the
+    published charging ceiling is commanded in whole amps, so the conversion
+    belongs in one place.  Rounding is always *down*: a partial amp the
+    charger cannot be commanded to draw must never be published as available
+    headroom.
+
+    Args:
+        power_w: Planned AC power for the charger, in watts.
+        topology: The charger's phase topology.  A balanced three-phase
+            charger spreads the command over ``PHASE_COUNT`` phases; anything
+            else is treated as single-phase.
+
+    Returns:
+        Whole amps per phase, floored, and never negative.
+    """
+    if not math.isfinite(power_w) or power_w <= 0.0:
+        return 0
+    phases = PHASE_COUNT if topology == EV_TOPOLOGY_THREE_PHASE_BALANCED else 1
+    return int(math.floor(power_w / (GRID_PHASE_VOLTAGE * phases)))
 
 
 def normalize_ev_phase_topology(value: object) -> str:

@@ -1031,6 +1031,9 @@
       "ev_charger_calculated_power": {
         "name": "EV Charger Calculated Power"
       },
+      "ev_charger_current_limit": {
+        "name": "EV Charger Current Limit"
+      },
       "ev_charging": {
         "name": "EV Charging Active",
         "state": {
@@ -1051,6 +1054,9 @@
       },
       "ev_second_charger_calculated_power": {
         "name": "EV 2 Charger Calculated Power"
+      },
+      "ev_second_charger_current_limit": {
+        "name": "EV 2 Charger Current Limit"
       },
       "ev_second_optimal_charging_plan": {
         "name": "EV 2 Optimal Charging Plan",
