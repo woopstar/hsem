@@ -4,19 +4,10 @@ Formulated as a continuous LP via ``scipy.optimize.linprog`` with HiGHS.
 Binary flags relaxed to continuous; mutex constraint prevents
 simultaneous charge+discharge.
 
-Decision variables per slot t (9+n*1 for EVs + fuse penalties):
-ec, ed, gi, ge, pv, m (=max(ec,ed)), s_max_pen, s_min_pen, curt.
-
-Objective: Σ p_imp·gi - p_exp·ge + cycle_cost·m + p_soc·penalties.
-
-Constraints: SoC recurrence, SoC soft bounds, charge/discharge limits,
-mutex, energy balance (with efficiencies), EV co-optimisation, fuse limit.
-
-Price sanitisation: battery-export floors only; finite signed import and
-export rates are preserved (no export≤import or import≥0 clamp).
-Curtailment variable ``curt[t]`` allows explicit PV shedding.
-
-Pure Python, no HA imports — testable with plain pytest.
+Pure Python, no HA imports — testable with plain pytest.  Constraint,
+bounds, objective, diagnostics, write-out and fuse setup live in the
+``planner/milp/`` submodules so this orchestrator stays under the
+repository's 30 KB file limit.
 """
 
 from __future__ import annotations
@@ -143,25 +134,16 @@ def solve_milp(
             ``None`` disables the terminal-SoC credit term.
         min_export_price:
             Minimum export price (local currency/kWh) for the combined
-            battery-export floor.  Set by the caller to
-            ``max(export_min_price, recommended_threshold)`` where
-            ``export_min_price`` is the user-configured battery-export
-            floor and ``recommended_threshold`` is the depreciation-based
-            discharge minimum.  Used for:
-            - Capping ``ed[t]`` to ``base_load[t] / discharge_eff`` on
-              slots where ``p_exp < min_export_price``, preventing
-              intentional battery-to-grid discharge below the floor.
-            - Deciding between ``ForceBatteriesDischarge`` and
-              ``BatteriesDischargeMode`` in post-processing.
-            Defaults to 0.0.
+            battery-export floor.  Caps ``ed[t]`` to
+            ``base_load[t] / discharge_eff`` on slots where the export
+            price is below the floor, and decides between
+            ``ForceBatteriesDischarge`` and ``BatteriesDischargeMode`` in
+            post-processing.  Defaults to 0.0.
         ev_configs:
             Optional list of :class:`EVConfig` objects (one per EV).  When
-            provided, the MILP co-optimises EV charging alongside the battery.
-            EV loads are treated as decision variables with deadline-target
-            soft constraints.  The ``ev_planned_load_kwh`` field on the input
-            slots is ignored for EV-enabled slots (the MILP decides allocation).
-            ``None`` (default) uses pre-computed ``ev_planned_load_kwh`` as
-            fixed inputs (backward-compatible behaviour).
+            provided, the MILP co-optimises EV charging alongside the battery
+            with deadline-target soft constraints; ``None`` (default) uses
+            pre-computed ``ev_planned_load_kwh`` as fixed inputs.
         no_export:
             When ``True``, caps battery discharge per slot so the battery
             never exports to the grid — it only serves house load.  The
@@ -169,9 +151,11 @@ def solve_milp(
         main_fuse_amps:
             Main fuse/breaker rating in amps.  When provided and > 0, a soft
             constraint limits total grid import power per slot to
-            ``main_fuse_amps * 230 * main_fuse_phases / 1000 * (interval_minutes / 60)`` kWh.
+            ``main_fuse_amps * 230 * main_fuse_phases / 1000`` kWh per hour.
             A penalty variable ``gi_pen[t]`` absorbs any excess, preventing
             infeasibility when house base load alone exceeds the fuse rating.
+            When EV co-optimisation is also active, hard per-phase rows are
+            added (see ``_phase_fuse.py`` and the planner spec).
             ``None`` or 0 disables the constraint (identical to current behaviour).
         main_fuse_phases:
             Electrical phase count (1 or 3).  Used as the multiplier in the
@@ -180,22 +164,19 @@ def solve_milp(
         max_grid_export_power_kw:
             DNO/inverter grid export cap in kW (issue #726).  When > 0, the
             per-slot ``ge[t]`` is hard-bounded to
-            ``max_grid_export_power_kw * slot_hours`` kWh so the plan never
-            exceeds the site limit.  ``None`` or 0 disables the bound.
+            ``max_grid_export_power_kw * slot_hours`` kWh.  ``None`` or 0
+            disables the bound.
         battery_export_min_price:
             Per-slot hard floor below which intentional battery-to-grid
-            discharge is forbidden (issue #752). `0.0` disables it.
-            Caps `ed[t]` to `base_load[t]/discharge_eff` on blocked slots.
+            discharge is forbidden (issue #752).  ``0.0`` disables it.
 
     Returns:
-        A tuple ``(slots, diagnostics)`` where:
-        - ``slots`` is a list of :class:`PlannedSlot` copies with MILP-derived
-          recommendations.
-        - ``diagnostics`` is a dict with keys ``"s_max_pen"``, ``"s_min_pen"``,
-          ``"has_violations"``, ``"total_violation_kwh"``,
-          ``"discharge_loss_cost_destination_aware"``.
-        Returns ``None`` if the solver fails (unrelated to constraint
-        violations — e.g., solver crash or numerical issue).
+        A tuple ``(slots, diagnostics)`` where ``slots`` is a list of
+        :class:`PlannedSlot` copies with MILP-derived recommendations and
+        ``diagnostics`` carries penalty/fuse/EV keys (see
+        ``_diagnostics.py``).  Returns ``None`` if the solver fails
+        (unrelated to constraint violations — e.g., solver crash or
+        numerical issue).
     """
     log_planner(
         "debug",
@@ -268,9 +249,6 @@ def solve_milp(
     p_imp = np.array([slots[i].price.import_price for i in future_idx], dtype=float)
     p_exp = np.array([slots[i].price.export_price for i in future_idx], dtype=float)
 
-    from custom_components.hsem.planner.milp._fuse_setup import (
-        resolve_fuse_import_limit_kwh,
-    )
     from custom_components.hsem.planner.milp._layout import (
         build_milp_column_layout,
         derive_milp_offsets,
@@ -437,31 +415,28 @@ def solve_milp(
     ev_var_offsets = _off.ev_var_offsets
     ev_pen_offsets = _off.ev_pen_offsets
 
-    # --- Fuse constraint variables ---
+    # --- Fuse constraint variables (aggregate + per-phase) ---
     # When main_fuse_amps is provided and > 0, gi_pen[t] penalty variables
-    # absorb grid import exceeding the fuse rating.
-    if fuse_active:
-        gi_pen_off = column_layout.offset("grid_import_penalty")
-        first_slot = slots[future_idx[0]]
-        max_grid_import_per_slot_kwh = resolve_fuse_import_limit_kwh(
-            main_fuse_amps=main_fuse_amps,
-            main_fuse_phases=main_fuse_phases,
-            slot_start=first_slot.start,
-            slot_end=first_slot.end,
-        )
-    else:
-        gi_pen_off = 0  # unused when fuse is inactive
-        max_grid_import_per_slot_kwh = 0.0
+    # absorb grid import exceeding the fuse rating.  Per-phase headroom and
+    # the EV phase-topology flag are resolved alongside in _phase_fuse.py.
+    from custom_components.hsem.planner.milp._fuse_setup import (
+        resolve_fuse_variables,
+    )
 
-    # Per-phase fuse headroom (EV charger phase topology): one phase may
-    # carry at most its single-phase share of the aggregate fuse.  Active
-    # only when EV co-optimisation is present — see _phase_fuse.py.
-    if main_fuse_amps is not None and main_fuse_amps > 1e-9:
-        max_phase_import_per_slot_kwh = main_fuse_amps * 230.0 / 1000.0 * slot_hours
-        phase_fuse_active = bool(active_evs) and slot_hours > 0
-    else:
-        max_phase_import_per_slot_kwh = 0.0
-        phase_fuse_active = False
+    (
+        gi_pen_off,
+        max_grid_import_per_slot_kwh,
+        phase_fuse_active,
+        max_phase_import_per_slot_kwh,
+    ) = resolve_fuse_variables(
+        fuse_active=fuse_active,
+        main_fuse_amps=main_fuse_amps,
+        main_fuse_phases=main_fuse_phases,
+        column_layout=column_layout,
+        active_evs=active_evs,
+        slot_hours=slot_hours,
+        first_slot=slots[future_idx[0]],
+    )
 
     # Finite physical grid bounds close both signed-price unbounded directions.
     charge_eff = clamp_efficiency(charge_efficiency_pct)
@@ -729,25 +704,19 @@ def solve_milp(
     # Uses the same shared topology shares as the constraint rows, so a plan
     # the solver accepted is never erased by a validator that assumed a
     # different topology.
-    phase_validation: dict[str, object] = {"valid": True, "reason": "ok"}
-    if phase_fuse_active:
-        from custom_components.hsem.planner.milp._phase_fuse import (
-            phase_envelope_from_published_slots,
-        )
+    from custom_components.hsem.planner.milp._phase_fuse import (
+        validate_published_phase_envelope,
+    )
 
-        max_phase_kwh, _excess = phase_envelope_from_published_slots(
-            out_slots=out_slots,
-            future_idx=future_idx,
-            active_evs=active_evs,
-            session_slots_set=session_slots_set,
-            slot_hours=slot_hours,
-        )
-        phase_validation = {
-            "valid": True,
-            "reason": "ok",
-            "max_phase_import_kwh": round(max_phase_kwh, 6),
-            "limit_kwh": round(max_phase_import_per_slot_kwh, 6),
-        }
+    phase_validation = validate_published_phase_envelope(
+        out_slots=out_slots,
+        future_idx=future_idx,
+        active_evs=active_evs,
+        session_slots_set=session_slots_set,
+        slot_hours=slot_hours,
+        phase_fuse_active=phase_fuse_active,
+        max_phase_import_per_slot_kwh=max_phase_import_per_slot_kwh,
+    )
 
     # Compute diagnostics
     diagnostics = _compute_milp_diagnostics(
@@ -772,8 +741,10 @@ def solve_milp(
     )
     diagnostics["primary_postwrite_inventory_validation"] = inventory_validation
     if phase_fuse_active:
-        diagnostics["phase_fuse_validation"] = phase_validation
-        diagnostics["max_phase_import_kwh"] = phase_validation["max_phase_import_kwh"]
+        diagnostics.update(
+            phase_fuse_validation=phase_validation,
+            max_phase_import_kwh=phase_validation["max_phase_import_kwh"],
+        )
     if ev_writeback_diagnostics:
         diagnostics["ev"] = ev_writeback_diagnostics
     attach_export_reserve_diagnostics(

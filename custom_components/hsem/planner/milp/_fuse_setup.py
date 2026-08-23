@@ -15,6 +15,40 @@ from custom_components.hsem.utils.units import (
 )
 
 
+def resolve_fuse_variables(
+    *,
+    fuse_active: bool,
+    main_fuse_amps: float | None,
+    main_fuse_phases: int,
+    column_layout: object,
+    active_evs: list,
+    slot_hours: float,
+    first_slot: object,
+) -> tuple[int, float, bool, float]:
+    """Resolve aggregate and per-phase fuse variables for one MILP model.
+
+    Returns ``(gi_pen_off, max_grid_import_per_slot_kwh, phase_fuse_active,
+    max_phase_import_per_slot_kwh)``.
+    """
+    from custom_components.hsem.planner.milp._phase_fuse import resolve_phase_fuse
+
+    if fuse_active:
+        gi_pen_off = column_layout.offset("grid_import_penalty")  # type: ignore[attr-defined]
+        max_grid = resolve_fuse_import_limit_kwh(
+            main_fuse_amps=main_fuse_amps,
+            main_fuse_phases=main_fuse_phases,
+            slot_start=first_slot.start,  # type: ignore[attr-defined]
+            slot_end=first_slot.end,  # type: ignore[attr-defined]
+        )
+        phase_active, phase_cap = resolve_phase_fuse(
+            main_fuse_amps=main_fuse_amps,
+            active_evs=active_evs,
+            slot_hours=slot_hours,
+        )
+        return (gi_pen_off, max_grid, phase_active, phase_cap)
+    return (0, 0.0, False, 0.0)
+
+
 def resolve_fuse_import_limit_kwh(
     *,
     main_fuse_amps: float | None,

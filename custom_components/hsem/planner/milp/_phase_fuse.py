@@ -31,6 +31,66 @@ if TYPE_CHECKING:
     from custom_components.hsem.planner.milp._layout import MilpColumnLayout
 
 
+def resolve_phase_fuse(
+    *,
+    main_fuse_amps: float | None,
+    active_evs: list[EVConfig],
+    slot_hours: float,
+) -> tuple[bool, float]:
+    """Return ``(phase_fuse_active, max_phase_import_per_slot_kwh)``.
+
+    Per-phase fuse headroom (EV charger phase topology): one phase may carry
+    at most its single-phase share of the aggregate fuse.  Active only when
+    EV co-optimisation is present — without EV variables there is no
+    controllable load to correct onto a phase.
+    """
+    if main_fuse_amps is not None and main_fuse_amps > 1e-9 and slot_hours > 0:
+        cap = main_fuse_amps * 230.0 / 1000.0 * slot_hours
+        return (bool(active_evs), cap)
+    return (False, 0.0)
+
+
+def extend_with_phase_fuse_rows(
+    *,
+    A_ub: np.ndarray,  # type: ignore[name-defined]
+    b_ub: np.ndarray,  # type: ignore[name-defined]
+    m: int,
+    column_layout: MilpColumnLayout,
+    active_evs: list[EVConfig],
+    session_slots_set: set[int],
+    session_slot_hours: np.ndarray,  # type: ignore[name-defined]
+    slot_hours: float,
+    available_slot_hours: np.ndarray,  # type: ignore[name-defined]
+    max_phase_import_per_slot_kwh: float,
+) -> tuple[np.ndarray, np.ndarray]:  # type: ignore[name-defined]
+    """Return ``(A_ub, b_ub)`` extended with ``PHASE_COUNT * m`` hard rows.
+
+    Thin wrapper that owns the matrix reallocation so callers stay under the
+    repository file-size limit; the row math itself lives in
+    :func:`add_phase_fuse_constraints`.
+    """
+    phase_rows = PHASE_COUNT * m
+    new_a = np.zeros((A_ub.shape[0] + phase_rows, A_ub.shape[1]))
+    new_b = np.zeros(b_ub.shape[0] + phase_rows)
+    new_a[: A_ub.shape[0], :] = A_ub
+    new_b[: b_ub.shape[0]] = b_ub
+    add_phase_fuse_constraints(
+        A_ub=new_a,
+        b_ub=new_b,
+        row_start=A_ub.shape[0],
+        m=m,
+        column_layout=column_layout,
+        num_evs=len(active_evs),
+        active_evs=active_evs,
+        session_slots_set=session_slots_set,
+        session_slot_hours=session_slot_hours,
+        slot_hours=slot_hours,
+        available_slot_hours=available_slot_hours,
+        max_phase_import_per_slot_kwh=max_phase_import_per_slot_kwh,
+    )
+    return (new_a, new_b)
+
+
 def add_phase_fuse_constraints(
     *,
     A_ub: np.ndarray,  # type: ignore[name-defined]
@@ -89,6 +149,39 @@ def add_phase_fuse_constraints(
                     )
 
             b_ub[row] = max_phase_import_per_slot_kwh
+
+
+def validate_published_phase_envelope(
+    *,
+    out_slots: list[PlannedSlot],
+    future_idx: list[int],
+    active_evs: list[EVConfig],
+    session_slots_set: set[int],
+    slot_hours: float,
+    phase_fuse_active: bool,
+    max_phase_import_per_slot_kwh: float,
+) -> dict[str, object]:
+    """Return the post-solve per-phase envelope validation dict.
+
+    Uses the same shared topology shares as the constraint rows, so a plan
+    the solver accepted is never erased by a validator that assumed a
+    different topology.
+    """
+    if not phase_fuse_active:
+        return {"valid": True, "reason": "ok"}
+    max_phase_kwh, _excess = phase_envelope_from_published_slots(
+        out_slots=out_slots,
+        future_idx=future_idx,
+        active_evs=active_evs,
+        session_slots_set=session_slots_set,
+        slot_hours=slot_hours,
+    )
+    return {
+        "valid": True,
+        "reason": "ok",
+        "max_phase_import_kwh": round(max_phase_kwh, 6),
+        "limit_kwh": round(max_phase_import_per_slot_kwh, 6),
+    }
 
 
 def phase_envelope_from_published_slots(

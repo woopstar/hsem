@@ -14,7 +14,6 @@ from custom_components.hsem.planner.milp._layout import (
     MilpColumnLayout,
     build_milp_column_layout,
 )
-from custom_components.hsem.utils.phase_power import PHASE_COUNT
 
 if TYPE_CHECKING:
     from custom_components.hsem.models.ev_config import EVConfig
@@ -170,48 +169,20 @@ def _build_constraints(
         b_ub[cycle_row_start + m + t] = 0.0
 
     # ------------------------------------------------------------------
-    # EV discharge guard: when base_load_includes_ev=True and EV
-    # co-optimisation is NOT active, the EV load is already captured in
-    # avg_house_consumption_kwh via ev_accounted_load_kwh.  The battery
-    # must not discharge to cover this portion of base_load — the EV is
-    # served by grid (or PV).
-    #
-    # When co-optimisation IS active, the EV has its own decision
-    # variables and base_load already excludes EV load, so the guard is
-    # skipped.
-    #
-    # Without this cap, the live-injected current-slot house consumption
-    # (which includes EV power when the CT clamp is upstream of the
-    # charger) causes the MILP to discharge the home battery into the EV
-    # (issue #592).
-    #
-    # Per-slot upper bound on ed:
+    # EV discharge guard (issue #592): when base_load_includes_ev=True and
+    # EV co-optimisation is NOT active, the EV load is already captured in
+    # avg_house_consumption_kwh.  The battery must not discharge to cover
+    # it — without this cap the live-injected house consumption makes the
+    # MILP discharge the home battery into the EV.
     #   ed[t] ≤ max(0, base_load[t] − ev_accounted[t]) / η_dis
-    # Only slots where ev_accounted > 0 are capped; uncapped slots use max_dis.
-    #
-    # Note on PV interaction: although base_load is net of PV and
-    # ev_accounted is gross EV load, the formula is exact — not
-    # over-conservative.  With H = gross house consumption (incl. EV) and
-    # P = PV production, base_load = max(H−P, 0), and the non-EV unmet
-    # demand the battery may serve is max(H − ev − P, 0).  When
-    # base_load > 0: base_load − ev = H − P − ev, identical.  When
-    # base_load = 0 (PV surplus): H − P ≤ 0 so both sides are 0.  Hence
+    # The formula is exact, not over-conservative: with H = gross house
+    # consumption (incl. EV) and P = PV, base_load = max(H−P, 0), and
     # max(base_load − ev, 0) == max(H − ev − P, 0) in all cases.
-    #
-    # When no_export=True, the per-slot cap is extended to ALL slots:
-    # ed[t] ≤ base_load[t] / η_dis.  This prevents the battery from
-    # exporting to the grid — it only serves house load.  Used when the
-    # user has disabled excess export in the config flow.
-    #
-    # battery_export_blocked[t] (issue #752) is a per-slot mask that
-    # selectively applies the SAME cap (ed[t] ≤ base_load[t] / η_dis) only
-    # to slots where the RAW export_price is strictly below the user's
-    # ``battery_export_min_price``.  The battery may still serve house
-    # load on those slots; only intentional battery-to-grid export (i.e.
-    # discharge above what house load needs) is blocked.  The mask is
-    # evaluated against the raw export price upstream of the
-    # ``min_export_price`` and export-≤-import clamps so the user's
-    # explicit floor is honoured even when other guards are lower.
+    # With no_export=True the cap extends to ALL slots (battery never
+    # exports).  battery_export_blocked[t] (issue #752) applies the same
+    # cap only to slots whose RAW export price is strictly below the
+    # user's ``battery_export_min_price``, so only intentional
+    # battery-to-grid export is blocked; house-load service continues.
     # ------------------------------------------------------------------
     ev_discharge_guard_active = (not active_evs) and bool(np.any(ev_accounted > 1e-9))
     if battery_export_blocked is None:
@@ -510,18 +481,16 @@ def _build_constraints(
             A_ub[existing_rows + t, gi_pen_off + t] = -1.0
             b_ub[existing_rows + t] = max_grid_import_per_slot_kwh
 
-            # Hard no-worsening row: controllable charging may not increase an
-            # unavoidable house/live-session overload.
+            # Hard no-worsening row: controllable charging may not increase
+            # an unavoidable house/live-session overload.  The baseline is
+            # net of forecast PV — omitting PV would inflate the cap on
+            # exactly the sunny slots where surplus-charging pressure is
+            # highest (see planner-spec.md, grid import power limit).
             fixed_session_ac = sum(
                 max(ev.session_charge_kw or 0.0, 0.0) * float(session_slot_hours[t])
                 for ev_idx, ev in enumerate(active_evs)
                 if ev_idx in session_evs and t in session_slots_set
             )
-            # Forecast PV serves house load before any grid import, so the
-            # unavoidable baseline is net of PV.  Omitting it would inflate the
-            # cap by the whole PV forecast and let controllable charging push
-            # past the fuse on exactly the sunny slots where surplus-charging
-            # pressure is highest.
             fixed_site_import = max(
                 float(base_load[t]) - float(pv_avail[t]) + fixed_session_ac, 0.0
             )
@@ -530,30 +499,18 @@ def _build_constraints(
             b_ub[existing_rows + m + t] = hard_cap
             hard_grid_import_cap_per_slot_kwh[t] = hard_cap
 
-    # ------------------------------------------------------------------
-    # Hard per-phase fuse rows (EV charger phase topology): each phase's
-    # worst-case envelope may not exceed its single-phase headroom.  Rows
-    # are emitted only when EV co-optimisation is active — without EV
-    # variables there is no controllable load to correct onto a phase.
-    # ------------------------------------------------------------------
+    # Hard per-phase fuse rows (EV charger phase topology): see
+    # _phase_fuse.extend_with_phase_fuse_rows for the row model.
     if phase_fuse_active and active_evs:
         from custom_components.hsem.planner.milp._phase_fuse import (
-            add_phase_fuse_constraints,
+            extend_with_phase_fuse_rows,
         )
 
-        phase_rows = PHASE_COUNT * m
-        old_a, old_b = A_ub, b_ub
-        A_ub = np.zeros((A_ub.shape[0] + phase_rows, n_vars))
-        b_ub = np.zeros(b_ub.shape[0] + phase_rows)
-        A_ub[: old_a.shape[0], :] = old_a
-        b_ub[: old_b.shape[0]] = old_b
-        add_phase_fuse_constraints(
+        A_ub, b_ub = extend_with_phase_fuse_rows(
             A_ub=A_ub,
             b_ub=b_ub,
-            row_start=old_a.shape[0],
             m=m,
             column_layout=column_layout,
-            num_evs=len(active_evs),
             active_evs=active_evs,
             session_slots_set=session_slots_set,
             session_slot_hours=session_slot_hours,
