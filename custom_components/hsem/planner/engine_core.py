@@ -11,6 +11,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from custom_components.hsem.models.ev_config import EVConfig
+from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.planner_output import PlannerOutput
 from custom_components.hsem.planner.candidate_generator import (
@@ -209,6 +210,32 @@ def _schedule_slots(
     return mcps, mdps, max_soc_kwh, rc, warnings
 
 
+def _label_commanded_ev_slots(slots: list[PlannedSlot]) -> None:
+    """Apply the EV display label only where HSEM has actuator intent.
+
+    Fixed/accounted session energy is physical demand, not permission to run a
+    charger. Only a positive per-charger command may relabel a slot; this keeps
+    Smart Charging off authoritative even while stale live power is still
+    measured.
+    """
+    protected = frozenset(
+        {
+            Recommendations.BatteriesChargeGrid.value,
+            Recommendations.ForceBatteriesDischarge.value,
+            Recommendations.ForceExport.value,
+            Recommendations.TimePassed.value,
+            Recommendations.MissingInputEntities.value,
+        }
+    )
+    for slot in slots:
+        ev_commanded = (
+            slot.ev_charger_calculated_power > 1e-9
+            or slot.ev_second_charger_calculated_power > 1e-9
+        )
+        if ev_commanded and slot.recommendation not in protected:
+            slot.recommendation = Recommendations.EVSmartCharging.value
+
+
 def _sanitize_passive_ev_fallback(
     candidates: list,
     ev_configs: list[EVConfig] | None,
@@ -257,7 +284,6 @@ def _sanitize_passive_ev_fallback(
                 slot.ev_accounted_load_kwh += session_ac_kwh
             else:
                 slot.ev_planned_load_kwh += session_ac_kwh
-            slot.recommendation = Recommendations.EVSmartCharging.value
             slot.estimated_net_consumption_kwh = (
                 slot.avg_house_consumption_kwh
                 + slot.ev_planned_load_kwh
@@ -600,23 +626,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     # drift and to ensure the final score matches the selector's score.
     slots = winner.slots
 
-    # Spec (planner-spec.md, Layer 2): slots with ev_total_planned_load_kwh > 0
-    # are relabelled ev_smart_charging UNLESS the recommendation is one of the
-    # protected set below.  batteries_charge_solar and batteries_wait_mode are
-    # intentionally NOT protected — they are overridden so dashboards reflect
-    # the EV activity rather than a solar-charge label during an EV session.
-    _EV_KEEP = frozenset(
-        {
-            Recommendations.BatteriesChargeGrid.value,
-            Recommendations.ForceBatteriesDischarge.value,
-            Recommendations.ForceExport.value,
-            Recommendations.TimePassed.value,
-            Recommendations.MissingInputEntities.value,
-        }
-    )
-    for s in slots:
-        if abs(s.ev_total_planned_load_kwh) > 1e-9 and s.recommendation not in _EV_KEEP:
-            s.recommendation = Recommendations.EVSmartCharging.value
+    _label_commanded_ev_slots(slots)
     cur_rec: str | None = None
     for s in slots:
         if as_tz(s.start, now.tzinfo) <= now < as_tz(s.end, now.tzinfo):

@@ -194,6 +194,18 @@ def build_planner_input(
     _w7d = convert_to_int(cfg.house_consumption_energy_weight_7d)
     _w14d = convert_to_int(cfg.house_consumption_energy_weight_14d)
 
+    # Prefer the bounded delivered-energy-credited SoC over the raw reported
+    # value so a vehicle API that updates SoC far less often than charger
+    # power does not stall the planner's view of progress (issue #789).
+    ev_soc_pct = convert_to_float(live.ev.effective_soc_pct)
+    if ev_soc_pct is None:
+        ev_soc_pct = convert_to_float(live.ev_planned_load_current_soc_pct)
+    ev_second_soc_pct = convert_to_float(live.ev_second.effective_soc_pct)
+    if ev_second_soc_pct is None:
+        ev_second_soc_pct = convert_to_float(
+            live.ev_second_planned_load_current_soc_pct
+        )
+
     return PlannerInput(
         now_iso=now.isoformat(),
         interval_minutes=cfg.recommendation_interval_minutes,
@@ -272,10 +284,7 @@ def build_planner_input(
         ev_planned_load_smart_charging_enabled=bool(
             live.ev_planned_load_smart_charging_enabled
         ),
-        ev_planned_load_current_soc_pct=convert_to_float(
-            live.ev_planned_load_current_soc_pct
-        )
-        or 0.0,
+        ev_planned_load_current_soc_pct=ev_soc_pct or 0.0,
         ev_planned_load_target_soc_pct=convert_to_float(
             live.ev_planned_load_target_soc_pct
         )
@@ -316,10 +325,7 @@ def build_planner_input(
         ev_second_planned_load_smart_charging_enabled=bool(
             live.ev_second_planned_load_smart_charging_enabled
         ),
-        ev_second_planned_load_current_soc_pct=convert_to_float(
-            live.ev_second_planned_load_current_soc_pct
-        )
-        or 0.0,
+        ev_second_planned_load_current_soc_pct=ev_second_soc_pct or 0.0,
         ev_second_planned_load_target_soc_pct=convert_to_float(
             live.ev_second_planned_load_target_soc_pct
         )

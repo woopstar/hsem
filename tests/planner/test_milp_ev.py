@@ -91,23 +91,23 @@ _pytestmark_scipy = pytest.mark.skipif(
 
 
 @_pytestmark_scipy
-def test_ev_reaches_target_by_deadline():
-    """MILP charges EV to target by the deadline slot.
+def test_ev_uses_largest_executable_target_below_deadline_cap():
+    """MILP charges to the largest whole-amp value below the target cap.
 
     Setup: 10 slots (14:00-23:00), EV at 0 kWh needs 20 kWh by slot 8 (22:00).
-    Max charge per slot = 3 kWh (DC-side), so 6 slots * 3 = 18 < 20, meaning
-    the EV can't quite reach the target.  With 7 slots before deadline,
-    7*3 = 21 >= 20, target is reachable.  The MILP should charge enough.
+    The executable 14 A / 3220 W nameplate delivers 2.898 kWh DC per slot,
+    so six slots cannot reach 20 kWh while seven slots can.  The strict target
+    cap leaves only the final sub-amp-step residue.
     """
     slots = _build_slots(10, start_hour=14, import_price=0.20)
     # EV: 50 kWh battery, currently at 20% (10 kWh), target 60% (30 kWh),
-    # needs 20 kWh, max charge 3 kWh/slot (DC), deadline = slot 6 (20:00)
+    # needs 20 kWh, max charge 2.898 kWh/slot (DC), deadline = slot 6 (20:00)
     ev = EVConfig(
         enabled=True,
         initial_soc_kwh=10.0,
         target_kwh=30.0,
         capacity_kwh=50.0,
-        max_charge_per_slot=3.0,
+        max_charge_per_slot=2.898,
         charger_efficiency=0.90,
         deadline_slot=6,  # 0-based LP index: slot 14+6=20:00
     )
@@ -134,7 +134,10 @@ def test_ev_reaches_target_by_deadline():
 
     # EV diagnostics
     assert "ev" in diag
-    assert diag["ev"]["ev0"]["deadline_met"] is True
+    # Ninety-six amp-hours deliver 19.872 kWh DC.  A 97th amp-hour would
+    # deliver 20.079 kWh and violate the strict 20 kWh target cap.
+    assert diag["ev"]["ev0"]["deadline_met"] is False
+    assert diag["ev"]["ev0"]["deadline_penalty_kwh"] == pytest.approx(0.128)
 
 
 @_pytestmark_scipy
@@ -261,7 +264,7 @@ def test_two_evs_cooptimized():
         initial_soc_kwh=10.0,
         target_kwh=30.0,  # need 20 kWh
         capacity_kwh=50.0,
-        max_charge_per_slot=3.0,
+        max_charge_per_slot=2.898,
         charger_efficiency=0.90,
         deadline_slot=8,
         base_load_includes_ev=False,
@@ -269,9 +272,9 @@ def test_two_evs_cooptimized():
     ev2 = EVConfig(
         enabled=True,
         initial_soc_kwh=5.0,
-        target_kwh=15.0,  # need 10 kWh
+        target_kwh=14.775,  # need an executable 9.775 kWh
         capacity_kwh=40.0,
-        max_charge_per_slot=2.0,
+        max_charge_per_slot=1.955,
         charger_efficiency=0.85,
         deadline_slot=10,
         base_load_includes_ev=False,
@@ -291,9 +294,12 @@ def test_two_evs_cooptimized():
     _out_slots, diag = result
 
     assert "ev" in diag
-    # Both EVs should meet their deadlines
-    assert diag["ev"]["ev0"]["deadline_met"] is True
+    # EV0 exposes its irreducible strict-cap residue; EV1's target is exactly
+    # executable on its 10 A / 2300 W nameplate lattice.
+    assert diag["ev"]["ev0"]["deadline_met"] is False
     assert diag["ev"]["ev1"]["deadline_met"] is True
+    assert diag["ev"]["ev0"]["deadline_penalty_kwh"] == pytest.approx(0.128)
+    assert diag["ev"]["ev1"]["deadline_penalty_kwh"] == pytest.approx(0.0)
 
     # EV0 total DC should be ~20 kWh, EV1 total DC should be ~10 kWh
     assert diag["ev"]["ev0"]["total_dc_kwh"] == pytest.approx(20.0, rel=0.05)
@@ -432,10 +438,11 @@ def test_cooptimization_uses_cheap_slots_for_ev():
 
 @_pytestmark_scipy
 def test_ev_charger_calculated_power_from_milp():
-    """MILP writes correct ev_charger_calculated_power from its energy decisions.
+    """MILP writes executable whole-amp power from its energy decisions.
 
     EV needs 6 kWh over 3 slots (max 3 kWh/slot).  Each slot is 1 h wide.
-    Expected AC power per slot: 3.0 / 0.9 / 1.0 * 1000 = ~3333 W.
+    The 3333 W approximate nameplate snaps to 14 A / 3220 W.  Every active
+    command is a 230 W step and stays between the 6 A minimum and that rating.
     """
     slots = _build_slots(6, start_hour=14, import_price=0.10, consumption_kwh=0.5)
     ev = EVConfig(
@@ -461,13 +468,15 @@ def test_ev_charger_calculated_power_from_milp():
     assert result is not None
     out_slots, _diag = result
 
-    # Expected: 3.0 kWh DC / 0.90 eff / 1.0 h * 1000 = 3333 W (rounded)
-    expected_power = round((3.0 / 0.90 / 1.0) * 1000)
     ev_charging_slots = [s for s in out_slots if s.ev_total_planned_load_kwh > 1e-6]
     assert len(ev_charging_slots) >= 2, "EV should charge in at least 2 slots"
     for s in ev_charging_slots:
-        assert s.ev_charger_calculated_power == expected_power, (
-            f"Expected {expected_power} W, got {s.ev_charger_calculated_power}"
+        current_a = s.ev_charger_calculated_power / 230.0
+        assert current_a == pytest.approx(round(current_a), abs=1e-9)
+        assert 6 <= current_a <= 14
+        assert s.ev_total_planned_load_kwh == pytest.approx(
+            s.ev_charger_calculated_power / 1000.0,
+            abs=0.001,
         )
 
 
@@ -1114,9 +1123,8 @@ def test_full_planner_with_ev_integration():
     if output.winner_name == "milp":
         diag = milp_candidates[0].diagnostics
         if diag and "ev" in diag:
-            assert diag["ev"]["ev0"]["deadline_met"] is True, (
-                "MILP should meet EV deadline in summer scenario"
-            )
+            assert diag["ev"]["ev0"]["deadline_met"] is False
+            assert 0.0 < diag["ev"]["ev0"]["deadline_penalty_kwh"] < 0.207
 
 
 @_pytestmark_scipy

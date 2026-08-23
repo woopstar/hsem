@@ -8,8 +8,12 @@ from __future__ import annotations
 
 import pytest
 
-from custom_components.hsem.coordinator_builder import _resolve_max_discharge_power_w
+from custom_components.hsem.coordinator_builder import (
+    _resolve_max_discharge_power_w,
+    build_planner_input,
+)
 from custom_components.hsem.models.live_state import LiveState
+from custom_components.hsem.models.sensor_config import SensorConfig
 
 
 class TestResolveMaxDischargePowerW:
@@ -58,3 +62,24 @@ class TestResolveMaxDischargePowerW:
     def test_missing_rated_capacity_and_live_value_returns_none(self) -> None:
         live = self._live(ev_charging=False, max_discharge_w=0.0, rated_wh=0)
         assert _resolve_max_discharge_power_w(live) is None
+
+
+def test_builder_prefers_bounded_effective_ev_soc() -> None:
+    """Credited energy must reduce planner demand without replacing raw telemetry."""
+    cfg = SensorConfig()
+    cfg.ev_planned_load_enabled = True
+    live = LiveState()
+    live.ev_planned_load_current_soc_pct = 40.0
+    live.ev.effective_soc_pct = 45.5
+
+    planner_input = build_planner_input(
+        cfg=cfg,
+        live=live,
+        hourly_recommendations=[],
+        batteries_schedules=[],
+        previous_winner_name=None,
+        previous_winner_score=0.0,
+    )
+
+    assert planner_input.ev_planned_load_enabled is True
+    assert planner_input.ev_planned_load_current_soc_pct == pytest.approx(45.5)

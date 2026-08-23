@@ -40,6 +40,12 @@ class EVLiveState:
     soc_target_pct: float | None = None
     """Target SoC configured by the user, or None if unavailable."""
 
+    effective_soc_pct: float | None = None
+    """Reported SoC plus bounded delivered-energy credit, or None when inactive."""
+
+    delivered_energy_credit_kwh: float = 0.0
+    """Measured battery energy not yet reflected in reported SoC."""
+
     is_connected: bool | None = None
     """True when a vehicle is physically plugged in, or None if unknown."""
 

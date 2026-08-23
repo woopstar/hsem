@@ -115,9 +115,10 @@ All other fields have sensible defaults (target SoC 80 %, deadline 07:00, effici
 | **EV Charge Deadline (fixed HH:MM fallback)** | Yes | `07:00` | Deadline to use when no entity is configured. The planner will not schedule EV load after this time. |
 | **EV Smart Charging Enabled Entity** | Optional | — | Boolean entity (`binary_sensor`, `input_boolean`, `switch`) that enables/disables smart charging at runtime. When this entity is `off`, the sensor shows `smart_charging_disabled` and no EV load is allocated. |
 | **EV Battery Capacity (kWh)** | Yes | `0` | EV battery nameplate capacity. Range 1–200 kWh, step 0.5 kWh. |
-| **EV Charger Power (kW)** | Yes | `0` | AC output power of the charger. Range 0.1–50 kW, step 0.1 kW. |
+| **EV Charger Power (kW)** | Yes | `0` | Approximate AC nameplate. Snapped to the nearest executable whole amp by the configured phase topology when publishing a command — `11.0 kW` single-phase becomes `13 A / 2.99 kW`; `11.0 kW` balanced three-phase becomes `16 A / 11.04 kW`. Range 0.1–50 kW, step 0.1 kW. |
+| **EV Charger Phase Topology** | Yes | `single_phase` | Safe default for single-phase or unknown wiring — every hard per-phase check assumes the whole command lands on one phase. Select `three_phase_balanced` only after confirming the charger draws balanced current across all three phases. |
 | **EV Charger Efficiency** | Yes | `100` % | Fraction of AC energy delivered to the EV battery. Most AC chargers are 95–100 %. Range 50–100 %, step 1 %. |
-| **Charger Min Power (W)** | Yes | `1380` | Minimum AC power required for the charger to physically operate (230 V × 6 A). Below this, the slot is zeroed out by engine post-processing. Range 0–22000 W, step 10 W. |
+| **Charger Min Power (W)** | Yes | `1380` | Physical start threshold, rounded up to the first executable whole amp for the configured topology (`1380 W` single-phase → `6 A`). Below this, the slot is zeroed out (or re-portioned into another slot) by engine post-processing. Range 0–22000 W, step 10 W. |
 | **Base House Load Already Includes EV** | Yes | `off` | See [Double-counting](#double-counting). |
 | **EV Actual Charging Power Sensor (optional)** | Optional | — | Sensor for real-time EV charge power. Used for diagnostics only — not fed into the planner. |
 
@@ -255,35 +256,52 @@ enabling the full smart-charging schedule.
 
 ### Session-aware EV demand
 
-When the EV is actively plugged in and drawing power, the MILP planner treats
-the next 2 hours of EV load as **near-certain** demand rather than
-probabilistic. This prevents the battery planner from grid-charging the home
-battery against EV demand that is definitely happening right now.
+When an EV is actively drawing power, HSEM distinguishes demand it can
+command from demand it can only observe (issue #789). This prevents a
+running charger from reserving hours it does not need, or from authorising
+itself after Smart Charging has been turned off.
 
 **How it works:**
 1. The coordinator reads `live.ev.is_charging` and `live.ev.power_w`.
-2. If the EV is actively charging, the first 2 hours of future slots get
-   fixed EV load bounds (slot count is resolution-dependent: 8 slots at
-   15-minute, 4 at 30-minute, 2 at 60-minute).
-3. A grid-charge prevention constraint blocks battery grid-charging during
-   those session slots.
-4. A post-solve guard overrides any `BatteriesChargeGrid` recommendations
-   in session slots to `BatteriesChargeSolar` or skip.
+2. For a **managed** session (smart charging enabled and connected), only the
+   remaining minutes of the current slot are fixed to the observed power,
+   capped by the EV's own remaining target. Later slots stay controllable
+   and are selected by price/PV like any other flexible allocation.
+3. For an **unmanaged** session (smart charging disabled, disconnected, or
+   incompletely configured — HSEM never emits a command for it), up to two
+   hours of future slots are fixed as physical demand (slot count is
+   resolution-dependent: 8 slots at 15-minute, 4 at 30-minute, 2 at
+   60-minute), but no `ev_smart_charging` label or charger command is
+   published for it.
+4. Primary and second EV certainty windows are tracked independently — an
+   unmanaged second EV's window can never make a different, managed first
+   EV's flexible slots look session-fixed.
+5. A grid-charge prevention constraint blocks battery grid-charging during
+   the union of every EV's fixed slots.
 
 **Conditions:**
 - Activates only when `live.ev.is_charging == True` AND `live.ev.power_w > 0`.
 - Applies independently to the second EV if configured.
+- With a configured EV Actual Charging Power Sensor, measured session energy
+  is also credited against a stale vehicle SoC reading until its own
+  telemetry catches up; disconnecting or restarting the integration clears
+  that in-memory credit (`utils/ev_delivered_energy.py`).
+
+See [planner-spec.md](planner-spec.md) *Session EV invariant* for the exact
+per-slot energy bounds.
 
 ---
 
 ## Sensor entities
 
-After setup, two diagnostic sensor entities are created:
+After setup, plan and executable-current sensor entities are created:
 
 | Entity | States | Meaning |
 |---|---|---|
 | `sensor.hsem_ev_optimal_charging_plan` | see below | Primary EV plan state |
 | `sensor.hsem_ev_second_optimal_charging_plan` | see below | Second EV plan state |
+| `sensor.hsem_ev_charger_current_limit` | whole amps | Primary current ceiling for the active slot; unavailable and `0` until a successful live plan owns it (issue #789) |
+| `sensor.hsem_ev_second_charger_current_limit` | whole amps | Second-EV current ceiling with the same fail-closed semantics |
 
 ### Sensor states
 
@@ -311,8 +329,8 @@ deadline: "2026-05-15T07:00:00+02:00"
 current_slot_planned_load_kwh: 9.2
 planned_load_by_slot:
   "2026-05-15T10:00:00+02:00": 9.2
-  "2026-05-15T11:00:00+02:00": 11.0
-  "2026-05-15T01:00:00+02:00": 11.0
+  "2026-05-15T11:00:00+02:00": 11.04
+  "2026-05-15T01:00:00+02:00": 11.04
   "2026-05-15T02:00:00+02:00": 10.1
 charging_slots:
   - start: "2026-05-15T10:00:00+02:00"
@@ -369,13 +387,21 @@ If you are on a version before this fix, update HSEM.
 
 ### EV charging slots show zero power
 
-The engine post-processing applies a **per-EV minimum power floor** (default
-1380 W per EV, configurable via `hsem_ev_planned_load_charger_min_power_w` and
-`hsem_ev_second_planned_load_charger_min_power_w`).  If an EV's computed AC power
-for a slot falls below **its own** threshold, that EV's power field is zeroed
-because the charger physically cannot operate below 6 A (230 V × 6 A = 1380 W).
-Each EV is checked independently against its own minimum — a higher minimum on
-one EV does not affect the other.
+HSEM converts each EV's configured minimum power into the first executable
+whole amp at or above that physical start threshold (default 1380 W per EV,
+configurable via `hsem_ev_planned_load_charger_min_power_w` and
+`hsem_ev_second_planned_load_charger_min_power_w`). For a single-phase
+charger, 1380 W becomes 6 A. For a balanced three-phase charger, configure the
+minimum near the intended per-phase current — a 6 A minimum should be
+configured around 3.6 kW and becomes 6 A / 4.14 kW; leaving the 1380 W default
+would only mean 2 A per phase.
+
+Sub-minimum fragments are first concentrated or re-portioned into another
+actionable slot before the deadline. If no safe whole-amp command fits
+anywhere, HSEM publishes `0` for that slot and reports the residue as unmet
+instead of asking the charger to run below its minimum. Each EV is checked
+independently against its own minimum — a higher minimum on one EV does not
+affect the other.
 
 ### Deadline is in the past
 

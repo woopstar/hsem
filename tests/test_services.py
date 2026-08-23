@@ -76,6 +76,18 @@ def get_coordinator_patcher(mock_coordinator: MagicMock) -> Generator[None]:
         yield
 
 
+@pytest.fixture(autouse=True)
+def integration_version_patcher() -> Generator[AsyncMock]:
+    """Keep service tests on the async manifest-version boundary."""
+    version_lookup = AsyncMock(return_value="7.3.1")
+    with patch.object(
+        services_module,
+        "async_get_hsem_integration_version",
+        version_lookup,
+    ):
+        yield version_lookup
+
+
 @pytest.mark.asyncio
 async def test_register_and_unregister_services(mock_hass: MagicMock) -> None:
     """All services in SERVICE_HANDLER_MAP are registered and unregistered."""
@@ -263,6 +275,7 @@ async def test_export_diagnostics_no_planner_output_raises(
 async def test_export_diagnostics_returns_dump(
     mock_hass: MagicMock,
     mock_coordinator: MagicMock,
+    integration_version_patcher: AsyncMock,
 ) -> None:
     """export_diagnostics returns the diagnostics dictionary."""
     call = _make_service_call(mock_hass)
@@ -274,6 +287,8 @@ async def test_export_diagnostics_returns_dump(
         result = await services_module.async_handle_export_diagnostics(call)
 
     mock_dump.assert_called_once()
+    assert mock_dump.call_args.kwargs["integration_version"] == "7.3.1"
+    integration_version_patcher.assert_awaited_once_with(mock_hass)
     assert result == {"integration_version": "1.0.0"}
 
 

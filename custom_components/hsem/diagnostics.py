@@ -22,12 +22,14 @@ issues.
 
 from __future__ import annotations
 
-from homeassistant.const import STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
 
 from custom_components.hsem import HSEMConfigEntry
 from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
 from custom_components.hsem.utils.diagnostics import build_diagnostics_dump
+from custom_components.hsem.utils.integration_version import (
+    async_get_hsem_integration_version,
+)
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 
 # ---------------------------------------------------------------------------
@@ -81,14 +83,7 @@ async def async_get_config_entry_diagnostics(  # NOSONAR -- HA diagnostics hook,
             "entry_id": entry.entry_id,
         }
 
-    try:
-        from importlib.metadata import version as pkg_version
-
-        integration_version = pkg_version("hsem")
-    except Exception:  # noqa: BLE001
-        integration_version = (
-            str(entry.version) if hasattr(entry, "version") else STATE_UNKNOWN
-        )
+    integration_version = await async_get_hsem_integration_version(hass)
 
     return build_diagnostics_dump(
         planner_input,

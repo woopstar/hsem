@@ -77,7 +77,56 @@ def charger_power_to_current_a(power_w: float, topology: str | None) -> int:
     if not math.isfinite(power_w) or power_w <= 0.0:
         return 0
     phases = PHASE_COUNT if topology == EV_TOPOLOGY_THREE_PHASE_BALANCED else 1
-    return int(math.floor(power_w / (GRID_PHASE_VOLTAGE * phases)))
+    return int(math.floor(power_w / (GRID_PHASE_VOLTAGE * phases) + 1e-9))
+
+
+def charger_current_to_power_w(
+    current_a: int | float,
+    topology: str | None,
+) -> float:
+    """Return AC charger power for a per-phase current command.
+
+    Charger current controls use the same whole-amp value on every active
+    phase. Unknown topology stays conservative and is treated as one phase.
+    Invalid or non-positive currents produce a zero-power command.
+    """
+    if not math.isfinite(current_a) or current_a <= 0.0:
+        return 0.0
+    phases = PHASE_COUNT if topology == EV_TOPOLOGY_THREE_PHASE_BALANCED else 1
+    return float(current_a) * GRID_PHASE_VOLTAGE * phases
+
+
+def charger_max_power_to_current_a(
+    power_w: float,
+    topology: str | None,
+) -> int:
+    """Return the nearest whole-amp nameplate current.
+
+    Configured charger power is an approximate nameplate. Snapping it to the
+    nearest supported current preserves the physical rating: for example,
+    11.0 kW for a balanced three-phase charger represents 16 A (11.04 kW),
+    not a 15 A hard cap. Half-amp ties round upward deterministically.
+    """
+    step_power_w = charger_current_to_power_w(1, topology)
+    if not math.isfinite(power_w) or power_w <= 0.0 or step_power_w <= 0.0:
+        return 0
+    return int(math.floor(power_w / step_power_w + 0.5))
+
+
+def charger_min_power_to_current_a(
+    power_w: float,
+    topology: str | None,
+) -> int:
+    """Return the first whole-amp command at or above a power threshold.
+
+    Configured minimum power is a physical start threshold, so it rounds up.
+    A 3.6 kW balanced three-phase threshold therefore becomes 6 A / 4.14 kW;
+    publishing 5 A would ask the charger to run below its configured minimum.
+    """
+    step_power_w = charger_current_to_power_w(1, topology)
+    if not math.isfinite(power_w) or power_w <= 0.0 or step_power_w <= 0.0:
+        return 0
+    return int(math.ceil((power_w - 1e-9) / step_power_w))
 
 
 def normalize_ev_phase_topology(value: object) -> str:
@@ -137,23 +186,26 @@ def executable_ev_phase_kwh(
 def fixed_session_phase_ac_kwh(
     *,
     active_evs: list[EVConfig],
-    session_slots_set: set[int],
+    session_slots_by_ev: dict[int, set[int]],
     lp_t: int,
     hours: float,
     unmanaged_only: bool = False,
 ) -> float:
     """Return one phase's share of full-slot AC energy for measured sessions.
 
-    Session variables are fixed to the observed charger power during the
-    certainty window.  Each session is weighted by its charger's
-    :attr:`~EVConfig.phase_share`, so a single-phase charger keeps the full
-    worst-case envelope while a balanced three-phase charger contributes only
-    the third it can physically place on any one phase.
+    Session variables are fixed to the observed charger power during each
+    EV's own certainty window (bounded by control authority — issue #789),
+    so membership is checked per EV rather than against one shared,
+    site-wide slot set: an unmanaged second charger's window must not make a
+    different, managed charger's flexible slots look session-fixed.  Each
+    session is weighted by its charger's :attr:`~EVConfig.phase_share`, so a
+    single-phase charger keeps the full worst-case envelope while a balanced
+    three-phase charger contributes only the third it can physically place
+    on any one phase.
     """
-    if lp_t not in session_slots_set:
-        return 0.0
     return sum(
         max(float(ev.session_charge_kw or 0.0), 0.0) * hours * ev.phase_share
-        for ev in active_evs
-        if not unmanaged_only or ev.fixed_session_only
+        for ev_idx, ev in enumerate(active_evs)
+        if lp_t in session_slots_by_ev.get(ev_idx, set())
+        and (not unmanaged_only or ev.fixed_session_only)
     )

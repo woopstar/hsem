@@ -382,6 +382,11 @@ stranded-residue re-portioning*).
 | `phase_topology` | The charger's configured phase topology used for the conversion |
 | `schedule` | Up to 24 future slots, each `{start, current_a, power_w}` |
 
+Startup and a failed coordinator cycle are fail-closed: the entity is
+unavailable and its native value is `0`. A previously restored positive
+state is never accepted as a live actuator command (issue #789) — only a
+successful, live coordinator recommendation can publish a positive ceiling.
+
 ---
 
 ## Daily plan-vs-actual sensor
@@ -405,6 +410,23 @@ Boolean sensor indicating whether any EV is actively drawing power.
 |---|---|
 | `on` | At least one EV is charging |
 | `off` | No EV is charging |
+
+**Key attributes:**
+
+| Attribute | Meaning |
+|---|---|
+| `ev_soc_pct` / `ev_second_soc_pct` | Vehicle integration's reported SoC |
+| `ev_effective_soc_pct` / `ev_second_effective_soc_pct` | Reported SoC plus bounded delivered-energy credit when session identity is valid, else `None` |
+| `ev_delivered_energy_credit_kwh` / `ev_second_delivered_energy_credit_kwh` | Battery-side measured energy not yet reflected by vehicle telemetry |
+| `ev_power_w` / `ev_second_power_w` | Live measured charger power |
+
+Delivered-energy credit is in memory only (issue #789). It clears on
+disconnect, restart, unsafe session/SoC identity changes, and battery
+capacity changes. Invalid power readings and excessive sample gaps add no
+energy and break the integration interval without erasing credit already
+validated in the same identified session. See
+[planner-spec.md](planner-spec.md) *Session EV invariant* and
+`utils/ev_delivered_energy.py`.
 
 ---
 

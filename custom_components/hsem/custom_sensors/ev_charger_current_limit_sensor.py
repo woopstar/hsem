@@ -37,12 +37,7 @@ from typing import Any, override
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.components.sensor.const import SensorDeviceClass, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import (
-    STATE_UNAVAILABLE,
-    STATE_UNKNOWN,
-    EntityCategory,
-    UnitOfElectricCurrent,
-)
+from homeassistant.const import EntityCategory, UnitOfElectricCurrent
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from custom_components.hsem.coordinator import (
@@ -108,7 +103,6 @@ class HSEMEVChargerCurrentLimitSensorBase(
         HSEMEntity.__init__(self, config_entry)
 
         self._config_entry = config_entry
-        self._restored_state: int | None = None
 
     # ------------------------------------------------------------------
     # Internals
@@ -133,7 +127,21 @@ class HSEMEVChargerCurrentLimitSensorBase(
             if self._is_second
             else rec.ev_charger_calculated_power
         )
-        return max(float(value), 0.0)
+        try:
+            return max(float(value), 0.0)
+        except TypeError, ValueError:
+            return 0.0
+
+    def _live_data(self) -> CoordinatorData | None:
+        """Return successful coordinator data that owns a live command."""
+        data: CoordinatorData | None = self.coordinator.data
+        if (
+            not self.coordinator.last_update_success
+            or data is None
+            or data.hourly_recommendation is None
+        ):
+            return None
+        return data
 
     # ------------------------------------------------------------------
     # HA entity properties
@@ -160,9 +168,10 @@ class HSEMEVChargerCurrentLimitSensorBase(
         charger drawing in this slot — so it is published rather than
         suppressed.
         """
-        data: CoordinatorData | None = self.coordinator.data
-        if data is None or data.hourly_recommendation is None:
-            return self._restored_state
+        data = self._live_data()
+        if data is None:
+            return 0
+        assert data.hourly_recommendation is not None  # guaranteed by _live_data()
         return charger_power_to_current_a(
             self._power_w(data.hourly_recommendation),
             self._topology(data),
@@ -177,16 +186,14 @@ class HSEMEVChargerCurrentLimitSensorBase(
     @property
     @override
     def available(self) -> bool:
-        """True once the coordinator has completed at least one successful cycle."""
-        return (
-            self.coordinator.last_update_success and self.coordinator.data is not None
-        ) or self._restored_state is not None
+        """True only while a successful live recommendation owns the command."""
+        return self._live_data() is not None
 
     @property
     @override
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return the forward ceiling schedule and the topology it assumes."""
-        data: CoordinatorData | None = self.coordinator.data
+        data = self._live_data()
         if data is None:
             return {"phase_topology": None, "schedule": []}
         topology = self._topology(data)
@@ -213,18 +220,8 @@ class HSEMEVChargerCurrentLimitSensorBase(
 
     @override
     async def async_added_to_hass(self) -> None:
-        """Restore the previous ceiling and register the coordinator listener."""
+        """Register listeners without restoring a stale actuator ceiling."""
         await super().async_added_to_hass()
-        restored = await self.async_get_last_state()
-        if restored is not None and restored.state not in {
-            STATE_UNAVAILABLE,
-            STATE_UNKNOWN,
-            None,
-        }:
-            try:
-                self._restored_state = int(float(restored.state))
-            except TypeError, ValueError:
-                self._restored_state = None
 
 
 class HSEMEVChargerCurrentLimitSensor(HSEMEVChargerCurrentLimitSensorBase):

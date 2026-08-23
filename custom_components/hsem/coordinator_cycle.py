@@ -9,6 +9,7 @@ order, so ``self`` and every attribute reference are unchanged.
 from __future__ import annotations
 
 import asyncio
+import math
 from dataclasses import replace
 from datetime import datetime
 from typing import Any
@@ -42,14 +43,17 @@ from custom_components.hsem.custom_sensors.state_collector import (  # noqa: F40
     build_battery_schedules,
     build_sensor_config,
 )
+from custom_components.hsem.models.live_state import EVLiveState, LiveState
 from custom_components.hsem.models.plan_explanation import PlanExplanation
 from custom_components.hsem.models.planner_output import PlannerOutput
 from custom_components.hsem.models.savings_tracker import SavingsTracker
+from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.utils.capacity_learner import CapacityLearner
 from custom_components.hsem.utils.datetime_utils import (
     now as hsem_now,
     utc_now_iso,
 )
+from custom_components.hsem.utils.ev_delivered_energy import EVDeliveredEnergyTracker
 from custom_components.hsem.utils.forecast_tracker import ForecastTracker
 from custom_components.hsem.utils.logger import (
     async_log,
@@ -60,6 +64,13 @@ from custom_components.hsem.utils.prediction_tracker import PredictionTracker
 from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.solar_corrector import SolarForecastCorrector
 from custom_components.hsem.utils.weekday_profile import weekday_profile
+
+# A stale vehicle SoC must eventually shrink the remaining planner demand, but
+# not wake the MILP for every small power sample. Credit accumulates against the
+# last accepted plan and crosses both an energy and a cadence gate.
+EV_DELIVERED_ENERGY_REPLAN_DELTA_KWH = 0.25
+EV_DELIVERED_ENERGY_REPLAN_MIN_SECONDS = 60.0
+EV_DELIVERED_ENERGY_MAX_GAP_SECONDS = 3600.0
 
 
 class CoordinatorCycleMixin(CoordinatorSharedState):
@@ -94,6 +105,7 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
         self._listener_unsubs.extend(new_unsubs)
         self._live = self._snapshot.live
         live = self._live
+        self._update_ev_delivered_energy_credit(live, cfg, now)
 
         # Feed the capacity learner with BMS readings (issue #605).
         if (
@@ -275,6 +287,109 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
         )
 
         return consumption_ok, state
+
+    def _update_ev_delivered_energy_credit(
+        self,
+        live: LiveState,
+        cfg: SensorConfig,
+        now: datetime,
+    ) -> None:
+        """Attach bounded effective SoC estimates to one live snapshot."""
+        max_gap_seconds = min(
+            max(float(cfg.update_interval) * 120.0, 300.0),
+            EV_DELIVERED_ENERGY_MAX_GAP_SECONDS,
+        )
+        chargers = (
+            (
+                live.ev,
+                cfg.ev,
+                bool(cfg.ev_planned_load_enabled),
+                live.ev_planned_load_target_soc_pct,
+                float(cfg.ev_planned_load_battery_capacity_kwh),
+                float(cfg.ev_planned_load_charger_power_kw) * 1000.0,
+                float(cfg.ev_planned_load_charger_efficiency_pct),
+                bool(cfg.ev.allow_charge_past_target_soc),
+                "_ev_delivered_energy_tracker",
+            ),
+            (
+                live.ev_second,
+                cfg.ev_second,
+                bool(cfg.ev_second_planned_load_enabled),
+                live.ev_second_planned_load_target_soc_pct,
+                float(cfg.ev_second_planned_load_battery_capacity_kwh),
+                float(cfg.ev_second_planned_load_charger_power_kw) * 1000.0,
+                float(cfg.ev_second_planned_load_charger_efficiency_pct),
+                bool(cfg.ev_second.allow_charge_past_target_soc),
+                "_ev_second_delivered_energy_tracker",
+            ),
+        )
+        for (
+            ev_live,
+            ev_cfg,
+            enabled,
+            target_soc_pct,
+            capacity_kwh,
+            configured_max_power_w,
+            efficiency_pct,
+            allow_past_target,
+            tracker_attribute,
+        ) in chargers:
+            tracker = getattr(self, tracker_attribute, None)
+            if not isinstance(tracker, EVDeliveredEnergyTracker):
+                tracker = EVDeliveredEnergyTracker()
+                setattr(self, tracker_attribute, tracker)
+
+            # A configured connection sensor is the session-identity boundary.
+            # Without it, carrying an estimate across two vehicles is unsafe.
+            identity_valid = (
+                enabled
+                and ev_cfg.connected_entity is not None
+                and ev_live.is_connected is True
+            )
+            if not identity_valid:
+                tracker.reset()
+                ev_live.effective_soc_pct = None
+                ev_live.delivered_energy_credit_kwh = 0.0
+                continue
+
+            # Permit normal metering tolerance above the configured nameplate,
+            # while rejecting unit mistakes and runaway sensor values.
+            telemetry_max_power_w = max(
+                configured_max_power_w * 1.25,
+                configured_max_power_w + 1000.0,
+            )
+            estimate = tracker.update(
+                now=now,
+                connected=True,
+                charging=ev_live.is_charging,
+                power_w=ev_live.power_w,
+                reported_soc_pct=ev_live.soc_pct,
+                target_soc_pct=target_soc_pct,
+                battery_capacity_kwh=capacity_kwh,
+                charger_efficiency_pct=efficiency_pct,
+                max_power_w=telemetry_max_power_w,
+                allow_charge_past_target=allow_past_target,
+                max_gap_seconds=max_gap_seconds,
+            )
+            ev_live.effective_soc_pct = estimate.effective_soc_pct
+            ev_live.delivered_energy_credit_kwh = estimate.credit_kwh
+
+    @staticmethod
+    def _ev_effective_energy_kwh(
+        ev_live: EVLiveState,
+        battery_capacity_kwh: float,
+    ) -> float | None:
+        """Return bounded effective battery energy when tracking is active."""
+        soc_pct = ev_live.effective_soc_pct
+        if (
+            soc_pct is None
+            or not math.isfinite(soc_pct)
+            or not 0.0 <= soc_pct <= 100.0
+            or not math.isfinite(battery_capacity_kwh)
+            or battery_capacity_kwh <= 0.0
+        ):
+            return None
+        return soc_pct / 100.0 * battery_capacity_kwh
 
     def _capture_accepted_plan_state(self) -> dict[str, Any]:
         """Capture accepted plan state that a stale or failed cycle may mutate."""

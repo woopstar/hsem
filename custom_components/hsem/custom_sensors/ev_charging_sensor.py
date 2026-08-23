@@ -132,10 +132,14 @@ class HSEMEVChargingSensor(
                 "ev_charging": False,
                 "ev_power_w": None,
                 "ev_soc_pct": None,
+                "ev_effective_soc_pct": None,
+                "ev_delivered_energy_credit_kwh": 0.0,
                 "ev_second_enabled": False,
                 "ev_second_charging": False,
                 "ev_second_power_w": None,
                 "ev_second_soc_pct": None,
+                "ev_second_effective_soc_pct": None,
+                "ev_second_delivered_energy_credit_kwh": 0.0,
             }
         live = data.live
         cfg = data.cfg
@@ -143,12 +147,18 @@ class HSEMEVChargingSensor(
             "ev_charging": live.ev.is_charging,
             "ev_power_w": live.ev.power_w,
             "ev_soc_pct": live.ev.soc_pct,
+            "ev_effective_soc_pct": live.ev.effective_soc_pct,
+            "ev_delivered_energy_credit_kwh": live.ev.delivered_energy_credit_kwh,
             "ev_second_enabled": (
                 bool(cfg.ev_second_enabled) if cfg is not None else False
             ),
             "ev_second_charging": live.ev_second.is_charging,
             "ev_second_power_w": live.ev_second.power_w,
             "ev_second_soc_pct": live.ev_second.soc_pct,
+            "ev_second_effective_soc_pct": live.ev_second.effective_soc_pct,
+            "ev_second_delivered_energy_credit_kwh": (
+                live.ev_second.delivered_energy_credit_kwh
+            ),
         }
 
     # ------------------------------------------------------------------
