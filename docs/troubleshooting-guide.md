@@ -222,6 +222,27 @@ Use the `sensor.forecast_accuracy` sensor to track forecast quality over time.
   `pv_estimate` to `pv_estimate90` for a conservative estimate, or to
   `pv_estimate10` for an optimistic one).
 
+**3e. Current-slot live house reading ignored (or a stale reading trusted)**
+
+The coordinator now marks the live house-power reading authoritative only
+when it can prove the reading is genuine: the entity is configured, its
+value is present, finite, and non-negative, and it is not on the live
+state's missing-entities list (`coordinator_builder._resolve_live_house_measurement`,
+issue #792). A real, measured **0 W** house reading is a valid value and
+overwrites the current slot's forecast; an unavailable reading (missing
+entity, negative/non-finite value) leaves the forecast untouched instead of
+being masked by whatever number happens to sit in the raw watt field.
+
+- **Check:** `sensor.hsem_plan_explanation` for the current slot's
+  `avg_house_consumption_kwh` against your house power sensor's live value.
+- **Behaviour:** If the house power sensor is temporarily unavailable, the
+  slot keeps using the forecast until the sensor recovers — this is
+  expected, not a bug.
+- **Fix:** If the plan still doesn't reflect a genuine live reading, verify
+  the configured _House Consumption Power_ entity is not appearing in
+  HSEM's missing-entities diagnostics and reports a non-negative, numeric
+  value in Watts.
+
 ---
 
 ## 4. Inverter write failures

@@ -249,6 +249,24 @@ arrival).
 The raw Solcast data is never mutated; corrections are only applied at
 consumption time when the planner reads PV estimates.
 
+#### Current-slot live sampling
+
+Live house and PV readings that replace the current slot's forecast (see
+[Live data injection](planner-spec.md#live-data-injection-current-slot) in the
+planner spec) are only authoritative when the coordinator can prove the
+reading is genuine. `coordinator_builder._resolve_live_house_measurement` /
+`_resolve_live_solar_measurement` mark a reading available only when its
+configured entity is set, the value is present, finite, and non-negative, and
+the entity is not on the live-state's missing-entities list. A measured 0 W
+is a valid, available reading — it is no longer indistinguishable from "no
+reading yet". When a channel is unavailable, the engine leaves that slot's
+forecast value untouched instead of injecting a stale or invalid number.
+
+A short-window median sampler (`utils/live_power.py::LivePowerWindow`) is
+available for smoothing bursty live power over multiple ticks before it
+reaches the planner, but is not yet wired into the coordinator's update
+cycle — today's live values are still the latest single reading per cycle.
+
 ### Schedule windows
 
 | Field | Type | Description |
