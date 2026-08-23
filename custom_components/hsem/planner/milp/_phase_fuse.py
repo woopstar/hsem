@@ -57,8 +57,6 @@ def extend_with_phase_fuse_rows(
     m: int,
     column_layout: MilpColumnLayout,
     active_evs: list[EVConfig],
-    session_slots_set: set[int],
-    session_slot_hours: np.ndarray,  # type: ignore[name-defined]
     slot_hours: float,
     available_slot_hours: np.ndarray,  # type: ignore[name-defined]
     max_phase_import_per_slot_kwh: float,
@@ -82,8 +80,6 @@ def extend_with_phase_fuse_rows(
         column_layout=column_layout,
         num_evs=len(active_evs),
         active_evs=active_evs,
-        session_slots_set=session_slots_set,
-        session_slot_hours=session_slot_hours,
         slot_hours=slot_hours,
         available_slot_hours=available_slot_hours,
         max_phase_import_per_slot_kwh=max_phase_import_per_slot_kwh,
@@ -100,8 +96,6 @@ def add_phase_fuse_constraints(
     column_layout: MilpColumnLayout,
     num_evs: int,
     active_evs: list[EVConfig],
-    session_slots_set: set[int],
-    session_slot_hours: np.ndarray,  # type: ignore[name-defined]
     slot_hours: float,
     available_slot_hours: np.ndarray,  # type: ignore[name-defined]
     max_phase_import_per_slot_kwh: float,
@@ -117,6 +111,13 @@ def add_phase_fuse_constraints(
     command for a single-phase or unknown charger, exactly the balanced third
     for a three-phase one.  The full-slot scale preserves instantaneous power
     for a partially elapsed current slot.
+
+    A session-fixed ``ev_c[t]`` is bounded to an exact value elsewhere (its
+    LP variable's lower and upper bound are equal), so this row's
+    coefficient does not need session-specific handling: the same
+    ``duration_scale`` used for a flexible slot already gives the correct
+    per-phase contribution for a fixed one, because the fixed DC energy
+    itself was sized using that same available-hours fraction (issue #789).
     """
     gi_off = column_layout.offset("grid_import")
     ge_off = column_layout.offset("grid_export")
@@ -126,14 +127,10 @@ def add_phase_fuse_constraints(
     for t in range(m):
         # Fraction of the slot still ahead — a partially elapsed current slot
         # can only draw its remaining minutes of power.
-        duration_scale = min(
+        full_slot_scale = min(
             max(float(available_slot_hours[t]) / max(slot_hours, 1e-9), 0.0),
             1.0,
         )
-        if t in session_slots_set:
-            full_slot_scale = float(session_slot_hours[t]) / max(slot_hours, 1e-9)
-        else:
-            full_slot_scale = duration_scale
 
         for phase_index in range(PHASE_COUNT):
             row = row_start + t * PHASE_COUNT + phase_index
@@ -156,7 +153,7 @@ def validate_published_phase_envelope(
     out_slots: list[PlannedSlot],
     future_idx: list[int],
     active_evs: list[EVConfig],
-    session_slots_set: set[int],
+    session_slots_by_ev: dict[int, set[int]] | None,
     slot_hours: float,
     phase_fuse_active: bool,
     max_phase_import_per_slot_kwh: float,
@@ -173,7 +170,7 @@ def validate_published_phase_envelope(
         out_slots=out_slots,
         future_idx=future_idx,
         active_evs=active_evs,
-        session_slots_set=session_slots_set,
+        session_slots_by_ev=session_slots_by_ev or {},
         slot_hours=slot_hours,
     )
     return {
@@ -189,7 +186,7 @@ def phase_envelope_from_published_slots(
     out_slots: list[PlannedSlot],
     future_idx: list[int],
     active_evs: list[EVConfig],
-    session_slots_set: set[int],
+    session_slots_by_ev: dict[int, set[int]],
     slot_hours: float,
 ) -> tuple[float, float]:
     """Return ``(max_phase_import_kwh, total_excess_kwh)`` for a solved plan.
@@ -215,7 +212,7 @@ def phase_envelope_from_published_slots(
         )
         session_kwh = fixed_session_phase_ac_kwh(
             active_evs=active_evs,
-            session_slots_set=session_slots_set,
+            session_slots_by_ev=session_slots_by_ev,
             lp_t=lp_t,
             hours=slot_hours,
         )

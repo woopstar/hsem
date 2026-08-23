@@ -49,7 +49,6 @@ def _build_constraints(
     no_export: bool,
     session_slots_set: set[int],
     session_ev_indices: list[int],
-    session_slots: int,
     slot_hours: float,
     _has_session_demand: bool,
     max_grid_export_per_slot_kwh: float = 0.0,
@@ -61,7 +60,7 @@ def _build_constraints(
     grid_flow_mode_off: int = 0,
     grid_import_ub_per_slot: np.ndarray | None = None,  # type: ignore[name-defined]
     grid_export_ub_per_slot: np.ndarray | None = None,  # type: ignore[name-defined]
-    session_slot_hours: np.ndarray | None = None,  # type: ignore[name-defined]
+    session_dc_by_ev: dict[int, dict[int, float]] | None = None,
     available_slot_hours: np.ndarray | None = None,  # type: ignore[name-defined]
     column_layout: MilpColumnLayout | None = None,
     phase_fuse_active: bool = False,
@@ -75,8 +74,8 @@ def _build_constraints(
     """
     import numpy as np
 
-    if session_slot_hours is None:
-        session_slot_hours = np.full(m, slot_hours)
+    if session_dc_by_ev is None:
+        session_dc_by_ev = {}
     if available_slot_hours is None:
         available_slot_hours = np.full(m, slot_hours)
     if column_layout is None:
@@ -268,27 +267,15 @@ def _build_constraints(
         first_past_target_ev = next(
             (i for i, e in enumerate(active_evs) if e.charge_past_target), None
         )
-        session_evs = set(session_ev_indices)
 
         def _pinned_session_dc(ev_idx: int, ev: EVConfig, t: int) -> float | None:
             """Return DC energy a live session pins into slot *t*, else ``None``.
 
-            Mirrors the session branch of the ``ev_*_charge`` bounds exactly,
-            including its ``max_charge_per_slot`` clamp, so rows and bounds
+            ``session_dc_by_ev`` is computed once per EV in ``milp_optimizer.py``
+            (bounded by control authority — issue #789), so rows and bounds
             always agree on how much energy is already committed.
             """
-            if (
-                ev_idx not in session_evs
-                or t >= session_slots
-                or ev.session_charge_kw is None
-            ):
-                return None
-            return min(
-                max(ev.session_charge_kw, 0.0)
-                * float(session_slot_hours[t])
-                * ev.charger_efficiency,
-                ev.max_charge_per_slot,
-            )
+            return session_dc_by_ev.get(ev_idx, {}).get(t)
 
         for ev_idx, ev in enumerate(active_evs):
             ev_off = ev_var_offsets[ev_idx]
@@ -434,13 +421,13 @@ def _build_constraints(
         session_ac_by_slot: dict[int, float] = {}
         for ev_idx in session_ev_indices:
             ev = active_evs[ev_idx]
-            skw = ev.session_charge_kw
-            assert skw is not None
-            # AC-side session load per slot (kW × hours).  The DC/AC
-            # efficiency conversion cancels out by definition, so this is
-            # simply the AC power multiplied by the slot duration.
-            for t in session_slots_set:
-                session_ac = skw * float(session_slot_hours[t])
+            fixed_dc = session_dc_by_ev.get(ev_idx)
+            if fixed_dc is None:
+                continue
+            # AC-side session load: the fixed DC energy divided by charger
+            # efficiency (bounded by control authority — issue #789).
+            for t, dc in fixed_dc.items():
+                session_ac = float(dc) / max(ev.charger_efficiency, 0.01)
                 session_ac_by_slot[t] = session_ac_by_slot.get(t, 0.0) + session_ac
 
         session_t_list = sorted(session_slots_set)
@@ -473,7 +460,6 @@ def _build_constraints(
         b_ub = np.zeros(existing_rows + fuse_rows)
         A_ub[:existing_rows, :] = A_ub_old
         b_ub[:existing_rows] = b_ub_old
-        session_evs = set(session_ev_indices)
         hard_grid_import_cap_per_slot_kwh = np.zeros(m)
         for t in range(m):
             # Soft diagnostic row.
@@ -487,9 +473,10 @@ def _build_constraints(
             # exactly the sunny slots where surplus-charging pressure is
             # highest (see planner-spec.md, grid import power limit).
             fixed_session_ac = sum(
-                max(ev.session_charge_kw or 0.0, 0.0) * float(session_slot_hours[t])
-                for ev_idx, ev in enumerate(active_evs)
-                if ev_idx in session_evs and t in session_slots_set
+                float(session_dc_by_ev[ev_idx][t])
+                / max(active_evs[ev_idx].charger_efficiency, 0.01)
+                for ev_idx in session_ev_indices
+                if ev_idx in session_dc_by_ev and t in session_dc_by_ev[ev_idx]
             )
             fixed_site_import = max(
                 float(base_load[t]) - float(pv_avail[t]) + fixed_session_ac, 0.0
@@ -512,8 +499,6 @@ def _build_constraints(
             m=m,
             column_layout=column_layout,
             active_evs=active_evs,
-            session_slots_set=session_slots_set,
-            session_slot_hours=session_slot_hours,
             slot_hours=slot_hours,
             available_slot_hours=available_slot_hours,
             max_phase_import_per_slot_kwh=max_phase_import_per_slot_kwh,
@@ -617,8 +602,7 @@ def _build_constraints(
         column_layout=column_layout,
         active_evs=active_evs,
         session_ev_indices=session_ev_indices,
-        session_slots=session_slots,
-        session_slot_hours=session_slot_hours,
+        session_dc_by_ev=session_dc_by_ev,
         available_slot_hours=available_slot_hours,
         slot_hours=slot_hours,
         pv_avail=pv_avail,

@@ -186,23 +186,26 @@ def executable_ev_phase_kwh(
 def fixed_session_phase_ac_kwh(
     *,
     active_evs: list[EVConfig],
-    session_slots_set: set[int],
+    session_slots_by_ev: dict[int, set[int]],
     lp_t: int,
     hours: float,
     unmanaged_only: bool = False,
 ) -> float:
     """Return one phase's share of full-slot AC energy for measured sessions.
 
-    Session variables are fixed to the observed charger power during the
-    certainty window.  Each session is weighted by its charger's
-    :attr:`~EVConfig.phase_share`, so a single-phase charger keeps the full
-    worst-case envelope while a balanced three-phase charger contributes only
-    the third it can physically place on any one phase.
+    Session variables are fixed to the observed charger power during each
+    EV's own certainty window (bounded by control authority — issue #789),
+    so membership is checked per EV rather than against one shared,
+    site-wide slot set: an unmanaged second charger's window must not make a
+    different, managed charger's flexible slots look session-fixed.  Each
+    session is weighted by its charger's :attr:`~EVConfig.phase_share`, so a
+    single-phase charger keeps the full worst-case envelope while a balanced
+    three-phase charger contributes only the third it can physically place
+    on any one phase.
     """
-    if lp_t not in session_slots_set:
-        return 0.0
     return sum(
         max(float(ev.session_charge_kw or 0.0), 0.0) * hours * ev.phase_share
-        for ev in active_evs
-        if not unmanaged_only or ev.fixed_session_only
+        for ev_idx, ev in enumerate(active_evs)
+        if lp_t in session_slots_by_ev.get(ev_idx, set())
+        and (not unmanaged_only or ev.fixed_session_only)
     )

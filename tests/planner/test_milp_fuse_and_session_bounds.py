@@ -42,8 +42,7 @@ def _build(
     fuse_active: bool = True,
     session_slots_set: set[int] | None = None,
     session_ev_indices: list[int] | None = None,
-    session_slots: int = 0,
-    session_slot_hours: np.ndarray | None = None,
+    session_dc_by_ev: dict[int, dict[int, float]] | None = None,
     available_slot_hours: np.ndarray | None = None,
 ) -> dict:
     """Call ``_build_constraints`` with compact, valid defaults."""
@@ -79,13 +78,12 @@ def _build(
         False,
         session_slots_set or set(),
         session_ev_indices or [],
-        session_slots,
         _SLOT_HOURS,
         bool(session_ev_indices),
         battery_export_off=off.offset("primary_battery_export"),
         export_mode_off=off.offset("battery_export_mode"),
         grid_flow_mode_off=off.offset("grid_flow_mode"),
-        session_slot_hours=session_slot_hours,
+        session_dc_by_ev=session_dc_by_ev,
         available_slot_hours=available_slot_hours,
         column_layout=off,
     )
@@ -185,15 +183,23 @@ def test_flexible_ev_bound_defaults_to_full_slot() -> None:
 # ---------------------------------------------------------------------------
 
 
+def _pinned_dc(ev: EVConfig) -> float:
+    """Return the DC energy a full-hour session slot pins for *ev*."""
+    return min(
+        max(float(ev.session_charge_kw or 0.0), 0.0) * 1.0 * ev.charger_efficiency,
+        ev.max_charge_per_slot,
+    )
+
+
 def _session_build(ev: EVConfig) -> dict:
     """Build with a 2-slot live session pinned on the single EV."""
+    pinned = _pinned_dc(ev)
     return _build(
         active_evs=[ev],
         max_grid_import_per_slot_kwh=1000.0,
         session_slots_set={0, 1},
         session_ev_indices=[0],
-        session_slots=2,
-        session_slot_hours=np.array([1.0, 1.0, 0.0, 0.0]),
+        session_dc_by_ev={0: {0: pinned, 1: pinned}},
     )
 
 
@@ -278,6 +284,7 @@ def test_session_slots_excluded_from_past_target_surplus_rows() -> None:
         session_charge_kw=3.0,
     )
     # No PV at all: a surplus row over a pinned slot would be 0 >= positive.
+    pinned = _pinned_dc(ev)
     constraints = _build(
         active_evs=[ev],
         max_grid_import_per_slot_kwh=1000.0,
@@ -285,8 +292,7 @@ def test_session_slots_excluded_from_past_target_surplus_rows() -> None:
         base_load=np.full(_M, 1.0),
         session_slots_set={0, 1},
         session_ev_indices=[0],
-        session_slots=2,
-        session_slot_hours=np.array([1.0, 1.0, 0.0, 0.0]),
+        session_dc_by_ev={0: {0: pinned, 1: pinned}},
     )
     off = _offsets(1)
     ev_off = off.offset("ev_0_charge")

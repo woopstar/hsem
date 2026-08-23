@@ -1928,24 +1928,62 @@ effective_floor_pct ≥ configured_min_soc_pct    (always)
 effective_floor_pct ≤ 1.50 × bridge_reserve_raw  (after learning period)
 ```
 
-### Session EV invariant
+### Session EV invariant — bounded by control authority (issue #789)
 
 When an active charging session is detected (`session_charge_kw > 0`), the
-MILP treats the next 2 hours as **fixed EV demand** with exact bounds.  The number of slots covered is derived from the configured slot
-interval: `round(2 / slot_hours)`, which yields 8 slots at 15-minute
-resolution, 4 slots at 30-minute resolution, and 2 slots at 60-minute
-resolution.
+size of the certainty window the MILP fixes as measured demand depends on
+whether HSEM can actually stop that charger
+(`planner/milp/_session_window.py::resolve_session_windows`):
+
+- **Unmanaged** (`fixed_session_only=True` — smart planning disabled,
+  disconnected, or incompletely configured, so HSEM emits no command): the
+  whole bounded **two-hour** forecast window is certain, uncontrollable
+  demand — unchanged from the original fix (issue #615). The number of
+  slots covered is derived from the configured slot interval:
+  `round(2 / slot_hours)`, which yields 8 slots at 15-minute resolution,
+  4 slots at 30-minute resolution, and 2 slots at 60-minute resolution.
+- **Managed** (HSEM can start/stop this charger through the bridge every
+  cycle): only the **already-running remainder of the current slot** is
+  certain. Reserving further slots would lock in energy the planner has no
+  reason to commit to and cannot cancel. The pinned amount is additionally
+  capped at the EV's own remaining target
+  (`min(target_kwh, capacity_kwh) − initial_soc_kwh`), so a session that
+  already satisfies its target does not force additional certain charging.
 
 ```text
-For t = 1 … SESSION_SLOTS (first 2 hours of future slots):
-    ev_c[t] ≥ min(session_charge_kw × slot_duration_hours, ev_max_charge_per_slot)
+Unmanaged, for t = 0 … SESSION_SLOTS-1 (bounded 2-hour window):
+    ev_c[t] = min(session_charge_kw × available_hours[t] × charger_efficiency,
+                  ev_max_charge_per_slot × duration_scale[t])
+
+Managed, t = 0 only (current slot's remaining executable minutes):
+    ev_c[0] = min(session_charge_kw × available_hours[0] × charger_efficiency,
+                  ev_max_charge_per_slot × duration_scale[0],
+                  remaining_target_dc)
 ```
 
-These bounds prevent the MILP from reallocating measured demand. If smart
-planning is disabled, disconnected, or incompletely configured, the session is
-still represented as fixed site load but all later slots are zero and HSEM emits
-no charger command (`fixed_session_only`). When `session_charge_kw == 0`, no
-fixed-session bounds are applied.
+`available_hours[t]` is the slot's remaining duration (the full slot for
+every future slot; only the current slot can be partial), and
+`duration_scale[t] = available_hours[t] / slot_hours`.
+
+These per-EV, per-slot fixed amounts (`session_dc_by_ev`) are exact bounds
+(`ev_c[t] == fixed_dc[t]`), not a shared, site-wide time mask: an unmanaged
+second charger's certainty window must never make a different, managed
+first charger's flexible slots look session-fixed, or its flexible
+allocations would be silently converted into measured demand during
+writeback. Every hard per-EV site — constraint-row construction
+(`_constraints.py`), variable bounds (`_bounds.py`), the aggregate/per-phase
+fuse rows (`_constraints.py`, `_phase_fuse.py`), and the write-out/
+whole-amp-quantization pass (`_write_results.py`, `_ev_quantize.py`) — reads
+`session_dc_by_ev` (or its per-EV `session_slots_by_ev` slot-index view),
+never a single shared `session_slots_set`, except where the check is
+genuinely site-wide (the battery grid-charge-prevention row, which blocks
+grid-charging across the union of every EV's fixed slots).
+
+When `session_charge_kw == 0`, no fixed-session bounds are applied for that
+EV. A managed session's fixed energy is itself quantized to a whole-amp
+command like any other published EV power (see "Executable whole-amp plans"
+above); an unmanaged session emits no command and its measured demand is
+published verbatim.
 
 ## EV planned load integration
 

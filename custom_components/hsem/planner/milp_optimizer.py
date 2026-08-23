@@ -22,9 +22,6 @@ from custom_components.hsem.planner._scipy_probe import (  # noqa: F401
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import clamp_efficiency
-from custom_components.hsem.utils.units import (
-    slot_duration_hours,
-)
 
 if TYPE_CHECKING:
     from custom_components.hsem.models.planned_slot import PlannedSlot
@@ -345,46 +342,28 @@ def solve_milp(
     m = len(future_idx)  # number of active LP slots
 
     # ------------------------------------------------------------------
-    # Session-aware EV demand (issue #615).
-    # When an EV is actively charging (session_charge_kw is set), treat
-    # the first 2 hours as certain demand at that power level.
-    # Grid-charging the battery is blocked during these slots to avoid
-    # stacking battery charge on top of the EV draw.
+    # Session-aware EV demand, bounded by control authority (issue #615,
+    # #789).  See _session_window.resolve_session_windows for the full
+    # managed-vs-unmanaged certainty-window derivation.
     # ------------------------------------------------------------------
-    slot_hours = (
-        slot_duration_hours(slots[future_idx[0]].start, slots[future_idx[0]].end)
-        if future_idx
-        else 0.0
+    from custom_components.hsem.planner.milp._session_window import (
+        resolve_session_windows,
     )
-    SESSION_HOURS = 2.0
-    available_slot_hours = np.asarray(
-        [
-            (
-                slot_duration_hours(max(now, slots[slot_i].start), slots[slot_i].end)
-                if slots[slot_i].start <= now < slots[slot_i].end
-                else slot_duration_hours(slots[slot_i].start, slots[slot_i].end)
-            )
-            for slot_i in future_idx
-        ],
-        dtype=float,
+
+    _session_windows = resolve_session_windows(
+        slots=slots,
+        future_idx=future_idx,
+        now=now,
+        active_evs=active_evs,
+        m=m,
     )
-    session_slot_hours = np.zeros(m)
-    hours_remaining = SESSION_HOURS
-    for t, available_hours in enumerate(available_slot_hours):
-        if hours_remaining <= 1e-9:
-            break
-        session_slot_hours[t] = float(available_hours)
-        hours_remaining -= float(available_hours)
-    SESSION_SLOTS = int(np.count_nonzero(session_slot_hours > 1e-9))
-    session_ev_indices: list[int] = []  # indices into active_evs
-    session_slots_set: set[int] = set()
-    if active_evs and slot_hours > 0:
-        for ev_idx, ev in enumerate(active_evs):
-            if ev.session_charge_kw is not None and ev.session_charge_kw > 1e-9:
-                session_ev_indices.append(ev_idx)
-        if session_ev_indices:
-            session_slots_set = set(range(SESSION_SLOTS))
-    _has_session_demand = bool(session_ev_indices)
+    slot_hours = _session_windows.slot_hours
+    available_slot_hours = _session_windows.available_slot_hours
+    session_ev_indices = _session_windows.session_ev_indices
+    session_dc_by_ev = _session_windows.session_dc_by_ev
+    session_slots_set = _session_windows.session_slots_set
+    session_slots_by_ev = _session_windows.session_slots_by_ev
+    _has_session_demand = _session_windows.has_session_demand
 
     # ------------------------------------------------------------------
     # Variable layout:
@@ -534,10 +513,9 @@ def solve_milp(
         no_export,
         session_slots_set,
         session_ev_indices,
-        SESSION_SLOTS,
         slot_hours,
         _has_session_demand,
-        session_slot_hours=session_slot_hours,
+        session_dc_by_ev=session_dc_by_ev,
         available_slot_hours=available_slot_hours,
         column_layout=column_layout,
         max_grid_export_per_slot_kwh=max_grid_export_per_slot_kwh,
@@ -679,6 +657,8 @@ def solve_milp(
             max_phase_import_per_slot_kwh if phase_fuse_active else None
         ),
         ev_writeback_diagnostics=ev_writeback_diagnostics,
+        session_slots_by_ev=session_slots_by_ev,
+        available_slot_hours=available_slot_hours,
         _min_action_kwh=_MIN_ACTION_KWH,
     )
 
@@ -712,7 +692,7 @@ def solve_milp(
         out_slots=out_slots,
         future_idx=future_idx,
         active_evs=active_evs,
-        session_slots_set=session_slots_set,
+        session_slots_by_ev=session_slots_by_ev,
         slot_hours=slot_hours,
         phase_fuse_active=phase_fuse_active,
         max_phase_import_per_slot_kwh=max_phase_import_per_slot_kwh,

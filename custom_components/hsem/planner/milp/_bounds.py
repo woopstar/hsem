@@ -28,8 +28,7 @@ def build_bounds(
     column_layout: MilpColumnLayout,
     active_evs: list[EVConfig],
     session_ev_indices: list[int],
-    session_slots: int,
-    session_slot_hours: np.ndarray,  # type: ignore[name-defined]
+    session_dc_by_ev: dict[int, dict[int, float]],
     available_slot_hours: np.ndarray,  # type: ignore[name-defined]
     slot_hours: float,
     pv_avail: np.ndarray,  # type: ignore[name-defined]
@@ -92,15 +91,11 @@ def build_bounds(
 
     for ev_idx, ev in enumerate(active_evs):
         is_session_ev = ev_idx in session_ev_indices
+        fixed_dc = session_dc_by_ev.get(ev_idx)
         ev_bounds: list[tuple[float, float | None]] = []
         for t in range(m):
-            if is_session_ev and t < session_slots and ev.session_charge_kw is not None:
-                session_dc = min(
-                    ev.session_charge_kw
-                    * float(session_slot_hours[t])
-                    * ev.charger_efficiency,
-                    ev.max_charge_per_slot,
-                )
+            if is_session_ev and fixed_dc is not None and t in fixed_dc:
+                session_dc = float(fixed_dc[t])
                 ev_bounds.append((session_dc, session_dc))
             elif ev.fixed_session_only:
                 ev_bounds.append((0.0, 0.0))
