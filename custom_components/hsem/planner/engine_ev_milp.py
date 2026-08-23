@@ -155,23 +155,26 @@ def _build_ev_configs_for_milp(
             )
             continue
         eff = clamp_efficiency(eff_pct)
-        effective_power = max(float(pwr), float(session_charge_kw or 0.0))
+        session_power_kw = max(float(session_charge_kw or 0.0), 0.0)
+        configured_max_power_w = max(float(pwr), 0.0) * 1000.0
         effective_capacity = float(cap)
         if has_live_session and effective_capacity <= 1e-9:
-            effective_capacity = max(effective_power * 2.0 * eff, 0.001)
-        if effective_capacity <= 1e-9 or effective_power <= 1e-9:
+            effective_capacity = max(session_power_kw * 2.0 * eff, 0.001)
+        if effective_capacity <= 1e-9:
             log_planner(
                 "debug",
-                "[milp_ev] %s EV excluded: capacity=%.2f power=%.2f (zero/missing)",
+                "[milp_ev] %s EV excluded: capacity=%.2f (zero/missing)",
                 label,
                 effective_capacity,
-                effective_power,
             )
             continue
         initial_kwh = (soc_pct / 100.0) * effective_capacity
         target_kwh = (target_pct / 100.0) * effective_capacity
         fixed_session_only = has_live_session and (
-            not enabled or not connected or not smart
+            not enabled
+            or not connected
+            or not smart
+            or configured_max_power_w <= 1e-9
         )
 
         # When the EV is already at or above its target SoC, normally we
@@ -226,8 +229,28 @@ def _build_ev_configs_for_milp(
                 continue
             charge_past_target = False
 
+        # Configured power is the hard actuator nameplate for every managed
+        # session. Only an unmanaged session may expand its *accounting*
+        # envelope to the measured physical draw; it emits no HSEM command.
+        # Without this distinction, a managed 6 kW measurement could turn a
+        # configured 3 kW charger ceiling into a 6 kW published command.
+        effective_power_w = (
+            max(configured_max_power_w, session_power_kw * 1000.0)
+            if fixed_session_only
+            else configured_max_power_w
+        )
+        effective_power_kw = effective_power_w / 1000.0
+        if effective_power_kw <= 1e-9:
+            log_planner(
+                "debug",
+                "[milp_ev] %s EV excluded: power=%.2f (zero/missing)",
+                label,
+                effective_power_kw,
+            )
+            continue
+
         slot_hours = inp.interval_minutes / 60.0
-        max_dc = effective_power * slot_hours * eff  # DC-side kWh per slot
+        max_dc = effective_power_kw * slot_hours * eff  # DC-side kWh per slot
 
         future_value_per_kwh: float | None = None
         if charge_past_target and ev_avg_future_import_price is not None:

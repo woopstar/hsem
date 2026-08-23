@@ -19,16 +19,22 @@ allocation *after* the (unchanged) concentration pass has already run.
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 import pytest
 
+from custom_components.hsem.models.planner_input import PlannerInput
+from custom_components.hsem.planner.engine_ev_milp import _build_ev_configs_for_milp
 from custom_components.hsem.planner.milp._write_results import (
     _redistribute_below_minimum_power,
 )
+from custom_components.hsem.planner.milp_optimizer import is_scipy_available, solve_milp
 from custom_components.hsem.utils.phase_power import (
     EV_TOPOLOGY_SINGLE_PHASE,
     EV_TOPOLOGY_THREE_PHASE_BALANCED,
     charger_power_to_current_a,
 )
+from tests.planner.test_session_ev import _NOW, _build_slots
 
 # 6 A three-phase minimum on a 15-minute slot at 90% charger efficiency.
 _MIN_W = 3600.0
@@ -74,6 +80,147 @@ def test_current_conversion_always_rounds_down() -> None:
 def test_current_conversion_rejects_unusable_power(power_w: float) -> None:
     """Zero, negative and non-finite commands publish no headroom."""
     assert charger_power_to_current_a(power_w, EV_TOPOLOGY_THREE_PHASE_BALANCED) == 0
+
+
+# ---------------------------------------------------------------------------
+# Nameplate cap (issue #789)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(
+    not is_scipy_available(),
+    reason="scipy not available in this environment",
+)
+def test_managed_session_cannot_expand_the_configured_nameplate() -> None:
+    """A measured 6 kW draw cannot turn a configured 3 kW cap into a command.
+
+    A managed (smart-controlled) live session is capped at the configured
+    charger power even if its power sensor currently reports a higher draw;
+    only an unmanaged accounting-only session (``fixed_session_only``) may
+    retain the larger physical observation.
+    """
+    slots = _build_slots(
+        4,
+        start_hour=14,
+        import_price=0.20,
+        consumption_kwh=0.0,
+        interval_minutes=60,
+    )
+    inp = PlannerInput(
+        now_iso=_NOW.isoformat(),
+        interval_minutes=60,
+        ev_planned_load_enabled=True,
+        ev_planned_load_connected=True,
+        ev_planned_load_smart_charging_enabled=True,
+        ev_planned_load_current_soc_pct=0.0,
+        ev_planned_load_target_soc_pct=80.0,
+        ev_planned_load_battery_capacity_kwh=10.0,
+        ev_planned_load_charger_power_kw=3.0,
+        ev_planned_load_charger_efficiency_pct=100.0,
+        ev_planned_load_charger_phase_topology=EV_TOPOLOGY_SINGLE_PHASE,
+        ev_planned_load_deadline=_NOW + timedelta(hours=4),
+        ev_session_charge_kw=6.0,
+    )
+
+    configs = _build_ev_configs_for_milp(inp, slots, _NOW)
+
+    assert configs is not None
+    assert len(configs) == 1
+    ev = configs[0]
+    assert ev.fixed_session_only is False
+    assert ev.max_charge_per_slot == pytest.approx(3.0)
+
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=10.0,
+        max_charge_per_slot=1.0,
+        max_discharge_per_slot=0.0,
+        ev_configs=configs,
+    )
+
+    assert result is not None
+    planned, _diagnostics = result
+    assert planned[0].ev_charger_calculated_power == pytest.approx(3_000.0)
+    assert all(slot.ev_charger_calculated_power <= 3_000.0 for slot in planned)
+
+
+def test_unmanaged_session_may_expand_the_accounting_envelope() -> None:
+    """An unmanaged (not smart-controlled) session keeps its measured draw.
+
+    HSEM emits no command for a fixed-session-only EV, so the larger
+    measured session power is retained purely for accounting purposes.
+    """
+    slots = _build_slots(
+        4,
+        start_hour=14,
+        import_price=0.20,
+        consumption_kwh=0.0,
+        interval_minutes=60,
+    )
+    inp = PlannerInput(
+        now_iso=_NOW.isoformat(),
+        interval_minutes=60,
+        ev_planned_load_enabled=True,
+        ev_planned_load_connected=True,
+        ev_planned_load_smart_charging_enabled=False,
+        ev_planned_load_current_soc_pct=0.0,
+        ev_planned_load_target_soc_pct=80.0,
+        ev_planned_load_battery_capacity_kwh=10.0,
+        ev_planned_load_charger_power_kw=3.0,
+        ev_planned_load_charger_efficiency_pct=100.0,
+        ev_planned_load_charger_phase_topology=EV_TOPOLOGY_SINGLE_PHASE,
+        ev_planned_load_deadline=_NOW + timedelta(hours=4),
+        ev_session_charge_kw=6.0,
+    )
+
+    configs = _build_ev_configs_for_milp(inp, slots, _NOW)
+
+    assert configs is not None
+    assert len(configs) == 1
+    ev = configs[0]
+    assert ev.fixed_session_only is True
+    assert ev.max_charge_per_slot == pytest.approx(6.0)
+
+
+def test_zero_configured_power_with_live_session_is_fixed_session_only() -> None:
+    """A live session with no configured charger power is never managed.
+
+    ``configured_max_power_w <= 1e-9`` forces ``fixed_session_only`` even
+    when the EV is otherwise enabled/connected/smart, because there is no
+    actuator nameplate to command.
+    """
+    slots = _build_slots(
+        4,
+        start_hour=14,
+        import_price=0.20,
+        consumption_kwh=0.0,
+        interval_minutes=60,
+    )
+    inp = PlannerInput(
+        now_iso=_NOW.isoformat(),
+        interval_minutes=60,
+        ev_planned_load_enabled=True,
+        ev_planned_load_connected=True,
+        ev_planned_load_smart_charging_enabled=True,
+        ev_planned_load_current_soc_pct=0.0,
+        ev_planned_load_target_soc_pct=80.0,
+        ev_planned_load_battery_capacity_kwh=10.0,
+        ev_planned_load_charger_power_kw=0.0,
+        ev_planned_load_charger_efficiency_pct=100.0,
+        ev_planned_load_charger_phase_topology=EV_TOPOLOGY_SINGLE_PHASE,
+        ev_planned_load_deadline=_NOW + timedelta(hours=4),
+        ev_session_charge_kw=6.0,
+    )
+
+    configs = _build_ev_configs_for_milp(inp, slots, _NOW)
+
+    assert configs is not None
+    assert len(configs) == 1
+    ev = configs[0]
+    assert ev.fixed_session_only is True
+    assert ev.max_charge_per_slot == pytest.approx(6.0)
 
 
 # ---------------------------------------------------------------------------
