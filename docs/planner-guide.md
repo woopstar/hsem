@@ -382,6 +382,8 @@ Each `PlannedSlot` in the output list covers one time interval and carries:
 | `ev_planned_load_kwh` | kWh | **Extra** EV AC load added to net consumption (zero when `base_load_includes_ev = True`) |
 | `ev_accounted_load_kwh` | kWh | EV AC load already included in the house consumption sensor (non-zero when `base_load_includes_ev = True`) |
 | `ev_total_planned_load_kwh` | kWh | Total planned EV AC load: `ev_planned_load_kwh + ev_accounted_load_kwh`. Non-zero whenever EV charging is planned, regardless of `base_load_includes_ev` |
+| `ev_charger_calculated_power` | W | Primary EV's executable whole-amp AC command; zero means no HSEM authority |
+| `ev_second_charger_calculated_power` | W | Second EV's executable whole-amp AC command |
 | `estimated_cost` | currency | Net grid cost this slot (positive = import, negative = export) |
 | `recommendation` | string | The action chosen for this slot (see below) |
 
@@ -487,17 +489,21 @@ day N's for the same capacity pool.
 
 ##### Layer 2 — EV planned load labelling (engine, post-simulation)
 
-After the winning candidate is selected and the final SoC simulation is complete,
-slots with **`ev_total_planned_load_kwh > 0`** are re-labelled.
-`ev_total_planned_load_kwh` is used — not `ev_planned_load_kwh` — so that EV-scheduled
-slots are correctly labelled even when `base_load_includes_ev = True`, where
-`ev_planned_load_kwh` is `0.0` but EV charging is still planned.
+After the winning candidate is selected and the final SoC simulation is
+complete, slots with a positive `ev_charger_calculated_power` or
+`ev_second_charger_calculated_power` command may be re-labelled (issue
+#789). Total, accounted, or measured EV load remains physical demand but is
+not actuator authority by itself — only a command HSEM actually publishes
+may relabel a slot. This prevents a charger still drawing after Smart
+Charging is turned off (or a session with no HSEM control, e.g.
+`fixed_session_only`) from recreating its own `ev_smart_charging`
+permission.
 
-| Current recommendation | Has EV load? | Result |
+| Current recommendation | Positive EV command? | Result |
 |---|---|---|
-| `batteries_charge_solar` | Yes (`ev_total > 0`) | → `ev_smart_charging` |
-| `batteries_wait_mode` | Yes (`ev_total > 0`) | → `ev_smart_charging` |
-| `batteries_discharge_mode` | Yes (`ev_total > 0`) | → `ev_smart_charging` (EV label wins) |
+| `batteries_charge_solar` | Yes | → `ev_smart_charging` |
+| `batteries_wait_mode` | Yes | → `ev_smart_charging` |
+| `batteries_discharge_mode` | Yes | → `ev_smart_charging` (EV label wins) |
 | `batteries_charge_grid` | Yes | Kept — grid charge takes priority |
 | `force_batteries_discharge` | Yes | Kept — forced export takes priority |
 | `force_export` | Yes | Kept |
@@ -701,14 +707,20 @@ This prevents double-counting while keeping full observability.
 
 ### HA sensor entities
 
-Two sensor entities expose the EV charging plan as attributes:
+Plan sensors expose the schedule, while current-limit sensors expose commands:
 
 | Entity | Purpose |
 |---|---|
 | `sensor.hsem_ev_optimal_charging_plan` | Primary EV plan state and slot details |
 | `sensor.hsem_ev_second_optimal_charging_plan` | Second EV plan state and slot details |
+| `sensor.hsem_ev_charger_current_limit` | Primary whole-amp ceiling for the active slot |
+| `sensor.hsem_ev_second_charger_current_limit` | Second-EV whole-amp ceiling |
 
-Both sensors share the same attribute schema:
+Current-limit sensors are unavailable and read fail-closed as `0` until a
+successful live coordinator cycle owns a recommendation. A stale restored
+positive value is never reused (issue #789).
+
+Both plan sensors share the same attribute schema:
 
 ```json
 {
@@ -774,24 +786,41 @@ conceptually cleaner and more accurate.
 
 ### Session-aware EV demand
 
-When an EV is **actively charging** (session in progress, current draw
-detected), the next 2 hours are treated as **certain demand** in the MILP.
-The number of slots covered is derived from the configured slot interval
-(8 slots at 15-minute, 4 at 30-minute, 2 at 60-minute).  The live charger
-power is used as a fixed lower bound on EV load for those slots, preventing
-the MILP from re-allocating demand away from a charging session that is
-already underway:
+When an EV is **actively charging**, the fixed-demand window depends on
+whether HSEM can command that charger (issue #789):
+
+- A **managed** smart-charging session fixes only the remaining part of the
+  current slot as exact (not just lower-bound) demand. The fixed amount is
+  capped by the remaining target and deadline; all later slots remain
+  controllable and are optimised freely by the MILP.
+- An **unmanaged** session (smart charging off, disconnected, or
+  incompletely configured — HSEM never emits a command for it) is retained
+  as observed physical demand for up to two executable hours (8×15-minute,
+  4×30-minute, or 2×60-minute slots), but emits no charger command and
+  cannot authorise the `ev_smart_charging` label.
+- Primary and second EV windows remain distinct, including when one session
+  is managed and the other is not — an unmanaged second EV's window can
+  never make the managed first EV's flexible slots look session-fixed.
 
 ```text
-For slots t in [now, now + 2h]:
-    ev_c_lower_bound[t] = min(session_charge_kw × slot_hours,
-                               ev_max_charge_per_slot)
+managed session (current slot only):
+    ev_c[0] = min(measured_power × remaining_slot_hours × efficiency,
+                  physical_slot_limit,
+                  remaining_target)
+
+unmanaged session (bounded two-hour window):
+    ev_c[t] = min(session_charge_kw × slot_hours, ev_max_charge_per_slot)
 ```
 
-This keeps the MILP's plan consistent with the physical state of the EV
-charger and avoids oscillation between charging and idle states within a
-single session.  Slots beyond the 2-hour window are optimised freely by
-the MILP.
+With a configured, positively connected EV Actual Charging Power Sensor,
+HSEM also integrates bounded measured charger power between consecutive
+samples. This in-memory delivered-energy credit raises effective SoC until
+slow vehicle telemetry catches up, reducing the remaining need on
+subsequent plans. Disconnect, restart, an invalid/backwards SoC, an unsafe
+session identity, or a battery capacity change clears the credit. Invalid
+power readings and excessive sample gaps add no energy and break the
+integration interval without erasing credit already validated in the same
+identified session (`utils/ev_delivered_energy.py`).
 
 ---
 

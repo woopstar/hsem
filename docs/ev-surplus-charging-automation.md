@@ -39,6 +39,28 @@ so the charger never exceeds what the MILP planned. Requires two automations
 Both options are documented below. Choose Option B if your goal is "never
 import from grid for the EV."
 
+### Control authority and fail-closed stop
+
+Treat `sensor.hsem_ev_charger_current_limit` (or the second-EV equivalent) as
+the final HSEM run authority. Your bridge/load-balancing automation must stop
+or pause the charger immediately when either of these is true:
+
+- the current-limit sensor is `unavailable`/`unknown`;
+- the current-limit sensor is `0`.
+
+Only a positive current-limit state authorises charging. Startup and a failed
+coordinator cycle publish `0`/unavailable — a value restored from a previous
+Home Assistant session is never treated as a live command (issue #789).
+
+Do not infer permission from `sensor.hsem_workingmode_sensor`,
+`ev_total_planned_load_kwh`, charger status, or measured power: those can
+remain non-zero briefly while an old session winds down. A load balancer may
+reduce actual current below HSEM's ceiling for real-time fuse protection, but
+must never raise current above that ceiling. If a charger API cannot
+represent a `0 A` limit, use its explicit stop/pause action instead when HSEM
+publishes `0` — never clamp a `0 A` HSEM command upward to the charger's
+configured minimum.
+
 > **Native ceiling sensor.** For Option B, `sensor.hsem_ev_charger_current_limit`
 > (and `sensor.hsem_ev_second_charger_current_limit`) now publishes HSEM's
 > per-slot maximum current limit natively, in whole amps, phase-topology aware

@@ -2325,13 +2325,12 @@ class TestEvLoadSemantics:
     # ------------------------------------------------------------------
 
     def test_ev_smart_charging_label_when_base_includes_ev(self):
-        """EVSmartCharging recommendation applied when ev_total > 0,
-        even when ev_planned_load_kwh == 0 (base_load_includes_ev=True).
+        """EVSmartCharging labels a positive command when injected load is zero.
 
-        Before the fix, slots would show batteries_wait_mode or
-        batteries_charge_solar even during scheduled EV charging because
-        the engine checked ev_planned_load_kwh (which is 0) instead of
-        ev_total_planned_load_kwh.
+        With ``base_load_includes_ev=True``, the EV's AC energy is accounted
+        rather than injected. A positive per-charger command is still control
+        authority and receives the EV label. ``ev_total_planned_load_kwh`` is
+        accounting information by itself and must not be treated as authority.
         """
         now_iso = "2024-06-15T06:00:00+00:00"
         from datetime import datetime as _dt2
@@ -2382,9 +2381,15 @@ class TestEvLoadSemantics:
         )
         out = run_planner(inp)
 
-        # There should be at least one slot with ev_total > 0 labelled ev_smart_charging
-        ev_total_slots = [s for s in out.slots if s.ev_total_planned_load_kwh > 1e-9]
-        assert ev_total_slots, "Expected slots with ev_total_planned_load_kwh > 0"
+        # Positive per-charger commands remain authoritative even though their
+        # load is accounted in the base forecast and ev_planned_load_kwh is 0.
+        command_slots = [
+            s
+            for s in out.slots
+            if s.ev_charger_calculated_power > 0
+            or s.ev_second_charger_calculated_power > 0
+        ]
+        assert command_slots, "Expected slots with a positive EV charger command"
 
         _KEEP_LABELS = frozenset(
             {
@@ -2395,14 +2400,16 @@ class TestEvLoadSemantics:
                 "missing_input_entities",
             }
         )
-        for s in ev_total_slots:
+        for s in command_slots:
+            assert s.ev_planned_load_kwh == pytest.approx(0.0)
+            assert s.ev_total_planned_load_kwh > 0
             if s.recommendation in _KEEP_LABELS:
                 continue  # higher-priority label correctly kept
             assert s.recommendation == "ev_smart_charging", (
-                f"Slot {s.start.hour}: ev_total={s.ev_total_planned_load_kwh:.3f} "
+                f"Slot {s.start.hour}: command={s.ev_charger_calculated_power:.0f} W "
                 f"but recommendation='{s.recommendation}' instead of 'ev_smart_charging'. "
-                "The engine must use ev_total_planned_load_kwh for the label decision "
-                "when base_load_includes_ev=True."
+                "A positive per-charger command must drive the label decision "
+                "when base_load_includes_ev=True; accounted energy alone must not."
             )
 
     # ------------------------------------------------------------------
