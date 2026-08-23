@@ -27,6 +27,7 @@ from homeassistant.const import PERCENTAGE, UnitOfEnergy, UnitOfPower
 from homeassistant.helpers.selector import selector
 
 from custom_components.hsem.utils.misc import get_config_value
+from custom_components.hsem.utils.phase_power import EV_PHASE_TOPOLOGIES
 
 # Shared number selectors — defined once for reuse across both EV steps.
 _CAPACITY_SELECTOR = selector(
@@ -77,6 +78,20 @@ _MIN_POWER_W_SELECTOR = selector(
     }
 )
 
+# Charger phase topology decides how much of an EV command any single phase
+# may be assumed to carry in the hard per-phase fuse rows.  ``single_phase``
+# is the safe default: it keeps the pre-feature worst-case envelope.
+_PHASE_TOPOLOGY_SELECTOR = selector(
+    {
+        "select": {
+            "multiple": False,
+            "translation_key": "ev_charger_phase_topology",
+            "mode": "list",
+            "options": list(EV_PHASE_TOPOLOGIES),
+        }
+    }
+)
+
 
 async def build_ev_planned_load_schema(  # NOSONAR
     config_entry: ConfigEntry | None, prefix: str
@@ -120,6 +135,10 @@ async def build_ev_planned_load_schema(  # NOSONAR
                 _k("charger_min_power_w"),
                 default=_v("charger_min_power_w"),
             ): _MIN_POWER_W_SELECTOR,
+            vol.Required(
+                _k("charger_phase_topology"),
+                default=_v("charger_phase_topology"),
+            ): _PHASE_TOPOLOGY_SELECTOR,
         }
     )
 

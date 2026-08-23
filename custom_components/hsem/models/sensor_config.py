@@ -252,12 +252,16 @@ class SensorConfig:
     ev_planned_load_charger_power_kw: float = 0.0
     ev_planned_load_charger_efficiency_pct: float = 100.0
     ev_planned_load_charger_min_power_w: float = 1380.0
+    #: Electrical topology of the primary charger (see ``utils/phase_power``).
+    ev_planned_load_charger_phase_topology: str = "single_phase"
     # EV planned load integration — second EV (optional, disabled by default)
     ev_second_planned_load_enabled: bool = False
     ev_second_planned_load_battery_capacity_kwh: float = 0.0
     ev_second_planned_load_charger_power_kw: float = 0.0
     ev_second_planned_load_charger_efficiency_pct: float = 100.0
     ev_second_planned_load_charger_min_power_w: float = 1380.0
+    #: Electrical topology of the second charger (see ``utils/phase_power``).
+    ev_second_planned_load_charger_phase_topology: str = "single_phase"
 
     # Seasonal configuration
     months_winter: list[int] = field(default_factory=list)
