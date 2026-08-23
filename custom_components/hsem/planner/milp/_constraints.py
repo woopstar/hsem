@@ -14,6 +14,7 @@ from custom_components.hsem.planner.milp._layout import (
     MilpColumnLayout,
     build_milp_column_layout,
 )
+from custom_components.hsem.utils.phase_power import PHASE_COUNT
 
 if TYPE_CHECKING:
     from custom_components.hsem.models.ev_config import EVConfig
@@ -64,6 +65,8 @@ def _build_constraints(
     session_slot_hours: np.ndarray | None = None,  # type: ignore[name-defined]
     available_slot_hours: np.ndarray | None = None,  # type: ignore[name-defined]
     column_layout: MilpColumnLayout | None = None,
+    phase_fuse_active: bool = False,
+    max_phase_import_per_slot_kwh: float = 0.0,
 ) -> dict:
     """Build all LP constraint matrices and variable bounds.
 
@@ -526,6 +529,38 @@ def _build_constraints(
             hard_cap = max(max_grid_import_per_slot_kwh, fixed_site_import)
             b_ub[existing_rows + m + t] = hard_cap
             hard_grid_import_cap_per_slot_kwh[t] = hard_cap
+
+    # ------------------------------------------------------------------
+    # Hard per-phase fuse rows (EV charger phase topology): each phase's
+    # worst-case envelope may not exceed its single-phase headroom.  Rows
+    # are emitted only when EV co-optimisation is active — without EV
+    # variables there is no controllable load to correct onto a phase.
+    # ------------------------------------------------------------------
+    if phase_fuse_active and active_evs:
+        from custom_components.hsem.planner.milp._phase_fuse import (
+            add_phase_fuse_constraints,
+        )
+
+        phase_rows = PHASE_COUNT * m
+        old_a, old_b = A_ub, b_ub
+        A_ub = np.zeros((A_ub.shape[0] + phase_rows, n_vars))
+        b_ub = np.zeros(b_ub.shape[0] + phase_rows)
+        A_ub[: old_a.shape[0], :] = old_a
+        b_ub[: old_b.shape[0]] = old_b
+        add_phase_fuse_constraints(
+            A_ub=A_ub,
+            b_ub=b_ub,
+            row_start=old_a.shape[0],
+            m=m,
+            column_layout=column_layout,
+            num_evs=len(active_evs),
+            active_evs=active_evs,
+            session_slots_set=session_slots_set,
+            session_slot_hours=session_slot_hours,
+            slot_hours=slot_hours,
+            available_slot_hours=available_slot_hours,
+            max_phase_import_per_slot_kwh=max_phase_import_per_slot_kwh,
+        )
 
     # ------------------------------------------------------------------
     # Exact grid direction under signed prices.

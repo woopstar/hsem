@@ -48,14 +48,16 @@
           "hsem_ev_planned_load_battery_capacity_kwh": "EV Battery Capacity (kWh)",
           "hsem_ev_planned_load_charger_power_kw": "EV Charger Power (kW)",
           "hsem_ev_planned_load_charger_efficiency": "EV Charger Efficiency",
-          "hsem_ev_planned_load_charger_min_power_w": "EV Charger Minimum Power (W)"
+          "hsem_ev_planned_load_charger_min_power_w": "EV Charger Minimum Power (W)",
+          "hsem_ev_planned_load_charger_phase_topology": "Charger phase topology"
         },
         "data_description": {
           "hsem_ev_planned_load_enabled": "Enable or disable planned EV charging load integration.",
           "hsem_ev_planned_load_battery_capacity_kwh": "Nameplate battery capacity of the EV in kWh.",
           "hsem_ev_planned_load_charger_power_kw": "AC output power of the EV charger in kW.",
           "hsem_ev_planned_load_charger_efficiency": "Charger efficiency as a percentage (1-100). Default: 100.",
-          "hsem_ev_planned_load_charger_min_power_w": "Minimum AC power (W) the EV charger needs to start charging. Below this the charger will not operate. Default: 1380 W (230 V × 6 A)."
+          "hsem_ev_planned_load_charger_min_power_w": "Minimum AC power (W) the EV charger needs to start charging. Below this the charger will not operate. Default: 1380 W (230 V × 6 A).",
+          "hsem_ev_planned_load_charger_phase_topology": "How the charger distributes its load across the mains phases. Choose 'Single-phase or unknown' unless you have confirmed the charger draws balanced current on all three phases. With per-phase fuse protection enabled, the safe default assumes the entire charger command can land on one phase, which limits planned charging to the single-phase fuse headroom."
         },
         "description": "Configure optional planned EV charging load integration. When enabled, HSEM accounts for upcoming EV charging demand per planner slot.",
         "title": "EV Planned Load Integration"
@@ -66,14 +68,16 @@
           "hsem_ev_second_planned_load_battery_capacity_kwh": "EV 2 Battery Capacity (kWh)",
           "hsem_ev_second_planned_load_charger_power_kw": "EV 2 Charger Power (kW)",
           "hsem_ev_second_planned_load_charger_efficiency": "EV 2 Charger Efficiency",
-          "hsem_ev_second_planned_load_charger_min_power_w": "EV 2 Charger Minimum Power (W)"
+          "hsem_ev_second_planned_load_charger_min_power_w": "EV 2 Charger Minimum Power (W)",
+          "hsem_ev_second_planned_load_charger_phase_topology": "Charger phase topology"
         },
         "data_description": {
           "hsem_ev_second_planned_load_enabled": "Enable or disable planned charging load integration for the second EV.",
           "hsem_ev_second_planned_load_battery_capacity_kwh": "Nameplate battery capacity of the second EV in kWh.",
           "hsem_ev_second_planned_load_charger_power_kw": "AC output power of the second EV charger in kW.",
           "hsem_ev_second_planned_load_charger_efficiency": "Second EV charger efficiency as a percentage (1-100). Default: 100.",
-          "hsem_ev_second_planned_load_charger_min_power_w": "Minimum AC power (W) the second EV charger needs to start charging. Default: 1380 W (230 V × 6 A)."
+          "hsem_ev_second_planned_load_charger_min_power_w": "Minimum AC power (W) the second EV charger needs to start charging. Default: 1380 W (230 V × 6 A).",
+          "hsem_ev_second_planned_load_charger_phase_topology": "How the charger distributes its load across the mains phases. Choose 'Single-phase or unknown' unless you have confirmed the charger draws balanced current on all three phases. With per-phase fuse protection enabled, the safe default assumes the entire charger command can land on one phase, which limits planned charging to the single-phase fuse headroom."
         },
         "description": "Configure optional planned charging load integration for the second EV. Only shown when a second EV charger is enabled.",
         "title": "EV 2 Planned Load Integration"
@@ -545,14 +549,16 @@
           "hsem_ev_planned_load_battery_capacity_kwh": "EV Battery Capacity (kWh)",
           "hsem_ev_planned_load_charger_power_kw": "EV Charger Power (kW)",
           "hsem_ev_planned_load_charger_efficiency": "EV Charger Efficiency",
-          "hsem_ev_planned_load_charger_min_power_w": "EV Charger Minimum Power (W)"
+          "hsem_ev_planned_load_charger_min_power_w": "EV Charger Minimum Power (W)",
+          "hsem_ev_planned_load_charger_phase_topology": "Charger phase topology"
         },
         "data_description": {
           "hsem_ev_planned_load_enabled": "Enable or disable planned EV charging load integration.",
           "hsem_ev_planned_load_battery_capacity_kwh": "Nameplate battery capacity of the EV in kWh.",
           "hsem_ev_planned_load_charger_power_kw": "AC output power of the EV charger in kW.",
           "hsem_ev_planned_load_charger_efficiency": "Charger efficiency as a percentage (1-100). Default: 100.",
-          "hsem_ev_planned_load_charger_min_power_w": "Minimum AC power (W) the EV charger needs to start charging. Below this the charger will not operate. Default: 1380 W (230 V × 6 A)."
+          "hsem_ev_planned_load_charger_min_power_w": "Minimum AC power (W) the EV charger needs to start charging. Below this the charger will not operate. Default: 1380 W (230 V × 6 A).",
+          "hsem_ev_planned_load_charger_phase_topology": "How the charger distributes its load across the mains phases. Choose 'Single-phase or unknown' unless you have confirmed the charger draws balanced current on all three phases. With per-phase fuse protection enabled, the safe default assumes the entire charger command can land on one phase, which limits planned charging to the single-phase fuse headroom."
         },
         "description": "Configure optional planned EV charging load integration. When enabled, HSEM accounts for upcoming EV charging demand per planner slot.",
         "title": "EV Planned Load Integration"
@@ -563,14 +569,16 @@
           "hsem_ev_second_planned_load_battery_capacity_kwh": "EV 2 Battery Capacity (kWh)",
           "hsem_ev_second_planned_load_charger_power_kw": "EV 2 Charger Power (kW)",
           "hsem_ev_second_planned_load_charger_efficiency": "EV 2 Charger Efficiency",
-          "hsem_ev_second_planned_load_charger_min_power_w": "EV 2 Charger Minimum Power (W)"
+          "hsem_ev_second_planned_load_charger_min_power_w": "EV 2 Charger Minimum Power (W)",
+          "hsem_ev_second_planned_load_charger_phase_topology": "Charger phase topology"
         },
         "data_description": {
           "hsem_ev_second_planned_load_enabled": "Enable or disable planned charging load integration for the second EV.",
           "hsem_ev_second_planned_load_battery_capacity_kwh": "Nameplate battery capacity of the second EV in kWh.",
           "hsem_ev_second_planned_load_charger_power_kw": "AC output power of the second EV charger in kW.",
           "hsem_ev_second_planned_load_charger_efficiency": "Second EV charger efficiency as a percentage (1-100). Default: 100.",
-          "hsem_ev_second_planned_load_charger_min_power_w": "Minimum AC power (W) the second EV charger needs to start charging. Default: 1380 W (230 V × 6 A)."
+          "hsem_ev_second_planned_load_charger_min_power_w": "Minimum AC power (W) the second EV charger needs to start charging. Default: 1380 W (230 V × 6 A).",
+          "hsem_ev_second_planned_load_charger_phase_topology": "How the charger distributes its load across the mains phases. Choose 'Single-phase or unknown' unless you have confirmed the charger draws balanced current on all three phases. With per-phase fuse protection enabled, the safe default assumes the entire charger command can land on one phase, which limits planned charging to the single-phase fuse headroom."
         },
         "description": "Configure optional planned charging load integration for the second EV. Only shown when a second EV charger is enabled.",
         "title": "EV 2 Planned Load Integration"
@@ -985,6 +993,12 @@
       "options": {
         "strict": "Strict wait — battery remains idle",
         "self_consumption_with_reserve": "Self-consumption with reserve — use surplus above the planner reserve"
+      }
+    },
+    "ev_charger_phase_topology": {
+      "options": {
+        "single_phase": "Single-phase or unknown (safe default)",
+        "three_phase_balanced": "Three-phase, balanced across L1/L2/L3"
       }
     }
   },

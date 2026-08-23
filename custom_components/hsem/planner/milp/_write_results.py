@@ -14,6 +14,7 @@ import numpy as np
 from custom_components.hsem.models.ev_config import EVConfig
 from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.planner.cost_helpers import slot_grid_cash_flow_cost
+from custom_components.hsem.utils.phase_power import ev_phase_share_for_slot
 from custom_components.hsem.utils.units import (
     ev_dc_to_ac_kwh,
     slot_duration_hours,
@@ -46,6 +47,7 @@ def _write_milp_results_to_slots(
     *,
     gi_off: int | None = None,
     grid_import_cap_per_slot_kwh: np.ndarray | None = None,  # type: ignore[name-defined]
+    max_phase_import_per_slot_kwh: float | None = None,
     ev_writeback_diagnostics: dict[str, dict[str, object]] | None = None,
     _min_action_kwh: float = 1e-4,
 ) -> list[PlannedSlot]:
@@ -122,6 +124,30 @@ def _write_milp_results_to_slots(
                     0.0,
                 )
                 room_dc = min(room_dc, grid_room_ac * ev.charger_efficiency)
+            if max_phase_import_per_slot_kwh is not None:
+                # Per-phase fuse headroom (EV charger phase topology): the
+                # same envelope as the hard constraint rows — gi/3 +
+                # (share - 1/3)·E_ac ≤ cap — so concentration cannot merge
+                # fragments into a slot whose phase envelope would exceed
+                # the single-phase fuse.  Each AC kW of added EV draw
+                # raises the envelope by exactly ``share``.
+                share = ev_phase_share_for_slot(active_evs=active_evs)[
+                    1 if ev.is_second else 0
+                ]
+                gi_kwh = (
+                    float(executable_x[gi_off + t])
+                    if grid_import_cap_per_slot_kwh is not None and gi_off is not None
+                    else 0.0
+                )
+                envelope_now = (
+                    gi_kwh / 3.0
+                    + (share - 1.0 / 3.0) * float(values[t]) / ev.charger_efficiency
+                )
+                phase_room_ac = max(
+                    (max_phase_import_per_slot_kwh - envelope_now) / max(share, 1e-9),
+                    0.0,
+                )
+                room_dc = min(room_dc, phase_room_ac * ev.charger_efficiency)
             added = min(room_dc, donor_energy)
             values[t] += added
             donor_energy -= added

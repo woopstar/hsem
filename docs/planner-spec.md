@@ -878,6 +878,51 @@ the fuse. An existing overload remains feasible and visible through
 **When disabled** (`main_fuse_amps` is `None` or 0): no constraint is
 added — behaviour is identical to the pre-#567 code.
 
+#### Optional hard per-phase charging protection (EV charger phase topology)
+
+When the main fuse is active **and** EV co-optimisation is running, the MILP
+additionally emits `3 × m` hard rows bounding each phase's worst-case
+envelope:
+
+```text
+gi[t]/3 - ge[t]/3 + Σ_e (σ_e - 1/3) · ev_ac[e][t] <= max_phase_import_per_slot_kwh
+```
+
+with
+
+```text
+max_phase_import_per_slot_kwh = main_fuse_amps * 230 / 1000 * slot_hours
+```
+
+`σ_e` is charger *e*'s **phase share**: the fraction of its AC command any
+single phase may be assumed to carry. It is selected per charger via the
+config-flow option `hsem_ev_planned_load_charger_phase_topology` (and its
+`ev_second` counterpart):
+
+| Topology | `σ_e` | Meaning |
+|---|---|---|
+| `single_phase` (default) | `1` | Unknown or single-phase charger. Every phase is checked as if it carries the whole EV command. |
+| `three_phase_balanced` | `1/3` | Charger confirmed to draw balanced current on L1/L2/L3, so the balanced `gi-ge` split already assigns its full physical share. |
+
+`single_phase` is the default and the fallback for any missing or
+unrecognised stored value (`normalize_ev_phase_topology` in
+`utils/phase_power.py`), so an entry written before this option existed keeps
+the original worst-case envelope.
+
+The phase share is read from one shared helper
+(`ev_phase_share` / `EVConfig.phase_share`) by all three hard per-phase sites:
+
+1. the constraint rows above (`planner/milp/_phase_fuse.py`),
+2. the EV-fragment concentration pass during write-out
+   (`planner/milp/_write_results.py`), which refuses to merge fragments into
+   a slot whose phase envelope would exceed the cap,
+3. the post-solve validation of the published plan
+   (`phase_envelope_from_published_slots`, surfaced as
+   `max_phase_import_kwh` in the diagnostics).
+
+A plan the solver accepts is therefore never erased by a validator that
+assumed a different topology.
+
 #### Invariants
 
 - When `main_fuse_amps` is `None` or 0, the MILP produces identical
@@ -890,6 +935,14 @@ added — behaviour is identical to the pre-#567 code.
   controllable charging to stay within the limit.
 - A fixed unavoidable overload remains feasible, but no controllable charge
   may increase it.
+- With EV phase topology unknown or `single_phase`, the entire EV command is
+  limited by the least-free phase; no three-phase multiplier is applied to EV
+  headroom.
+- With a charger configured as `three_phase_balanced`, only one third of its
+  command is charged to any one phase, and a command that fits three-phase
+  headroom is never rejected for exceeding single-phase headroom.
+- An unrecognised or missing stored topology resolves to `single_phase`; a
+  relaxed envelope is never applied by accident.
 
 ### Grid export power limit (DNO/inverter export cap — issue #726)
 

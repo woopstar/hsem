@@ -16,6 +16,9 @@ from custom_components.hsem.planner.candidate_selector import (
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import clamp_efficiency
+from custom_components.hsem.utils.phase_power import (
+    normalize_ev_phase_topology,
+)
 
 
 def _build_ev_configs_for_milp(
@@ -67,6 +70,7 @@ def _build_ev_configs_for_milp(
             float,
             float,
             float,
+            str,
             datetime | None,
             bool,
             bool,
@@ -84,6 +88,7 @@ def _build_ev_configs_for_milp(
             inp.ev_planned_load_charger_power_kw,
             inp.ev_planned_load_charger_efficiency_pct,
             inp.ev_planned_load_charger_min_power_w,
+            normalize_ev_phase_topology(inp.ev_planned_load_charger_phase_topology),
             inp.ev_planned_load_deadline,
             inp.ev_planned_load_base_load_includes_ev,
             inp.ev_planned_allow_charge_past_target_soc,
@@ -100,6 +105,9 @@ def _build_ev_configs_for_milp(
             inp.ev_second_planned_load_charger_power_kw,
             inp.ev_second_planned_load_charger_efficiency_pct,
             inp.ev_second_planned_load_charger_min_power_w,
+            normalize_ev_phase_topology(
+                inp.ev_second_planned_load_charger_phase_topology
+            ),
             inp.ev_second_planned_load_deadline,
             inp.ev_second_planned_load_base_load_includes_ev,
             inp.ev_second_allow_charge_past_target_soc,
@@ -117,6 +125,7 @@ def _build_ev_configs_for_milp(
         pwr,
         eff_pct,
         min_pwr_w,
+        phase_topology,
         deadline,
         base_includes,
         allow_past_target,
@@ -235,6 +244,7 @@ def _build_ev_configs_for_milp(
                 max_charge_per_slot=round(max_dc, 4),
                 charger_efficiency=round(eff, 4),
                 charger_min_power_w=round(min_pwr_w, 1),
+                charger_phase_topology=phase_topology,
                 deadline_slot=deadline_slot,
                 base_load_includes_ev=base_includes,
                 charge_past_target=charge_past_target,

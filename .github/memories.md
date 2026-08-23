@@ -5,6 +5,14 @@ for the HSEM (Home Smart Energy Management) project. Read this before making any
 
 ---
 
+## RTK CLI Rule (Mandatory)
+
+- **Always use `rtk` as a prefix for shell commands** (e.g. `rtk git status`, `rtk pytest`, `rtk grep`).
+- **Always use `rtk grep` / `rtk rg` for code search** instead of native `grep`/`rg` — output is compacted and grouped by file.
+- Use `rtk gain` to check token savings; `rtk proxy <cmd>` runs raw without filtering.
+
+---
+
 ## Architecture — Module Responsibilities
 
 ### Coordinator layer (`custom_components/hsem/`)
@@ -1205,3 +1213,28 @@ of diagnostic sensors (`*_second`) only registers when both the second EV and
 the second server are enabled. Sensor name helpers take a `charger_index`
 argument (1 = primary, 2 = second); `CoordinatorData` carries
 `ocpp_second_chargers` / `ocpp_second_sessions` alongside the primary fields.
+
+## EV Charger Phase Topology (issue #787)
+
+`utils/phase_power.py` is the single authority for EV charger phase topology:
+`EV_PHASE_TOPOLOGIES`, `ev_phase_share()`, `normalize_ev_phase_topology()`,
+plus `executable_ev_phase_kwh()` / `fixed_session_phase_ac_kwh()` /
+`ev_phase_share_for_slot()` shared helpers. Never re-derive a per-phase EV
+fraction inline.
+
+- `single_phase` (σ=1) is the safe default everywhere; unknown/missing/stale
+  stored values normalize to it — never relax a hard fuse constraint by
+  accident.
+- The hard per-phase rows live in `planner/milp/_phase_fuse.py`
+  (`add_phase_fuse_constraints`) and are emitted from `_build_constraints`
+  when `phase_fuse_active` (main fuse active AND active EVs). Envelope:
+  `gi/3 - ge/3 + Σ(σ_e - 1/3)·ev_ac ≤ main_fuse_amps·230/1000·slot_hours`.
+- Three sites must agree via `EVConfig.phase_share`: constraint rows, the
+  EV fragment concentration in `_write_results.py` (clamps `room_dc` by
+  per-phase headroom), and post-solve validation
+  (`phase_envelope_from_published_slots` → `max_phase_import_kwh`
+  diagnostic). A plan the solver accepts must never be erased by a
+  validator assuming a different topology.
+- Config key: `hsem_ev_planned_load_charger_phase_topology` (+ `ev_second_`
+  variant), wired const → flows → translations (config AND options steps)
+  → sensor_config → planner_input → engine_ev_milp → EVConfig.

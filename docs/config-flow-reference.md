@@ -155,6 +155,7 @@ Primary EV planned load integration (optional, default disabled).
 | Charger power | `hsem_ev_planned_load_charger_power_kw` | 0.0 | Charger AC output (kW) |
 | Charger efficiency | `hsem_ev_planned_load_charger_efficiency` | 100 % | Charger efficiency |
 | Charger min power | `hsem_ev_planned_load_charger_min_power_w` | 1380 W | Minimum charger power for physical operation |
+| Charger phase topology | `hsem_ev_planned_load_charger_phase_topology` | `single_phase` | How the charger spreads load across mains phases. `single_phase` (safe default) makes the hard per-phase fuse rows assume the whole command can land on one phase; `three_phase_balanced` charges only one third to each phase. See [planner-spec.md](planner-spec.md) *Optional hard per-phase charging protection*. |
 
 Target SoC and deadline are configured outside this step:
 - **Target SoC**: via the number entity `number.hsem_ev_target_soc`
@@ -167,6 +168,8 @@ Target SoC and deadline are configured outside this step:
 ### Step: `ev_second_planned_load`
 
 Second EV planned load integration (identical fields; only shown when second EV enabled).
+Each charger carries its own `..._charger_phase_topology`, so a three-phase
+primary charger and a single-phase second charger are modelled independently.
 
 ### Step: `ocpp`
 

@@ -453,6 +453,16 @@ def solve_milp(
         gi_pen_off = 0  # unused when fuse is inactive
         max_grid_import_per_slot_kwh = 0.0
 
+    # Per-phase fuse headroom (EV charger phase topology): one phase may
+    # carry at most its single-phase share of the aggregate fuse.  Active
+    # only when EV co-optimisation is present — see _phase_fuse.py.
+    if main_fuse_amps is not None and main_fuse_amps > 1e-9:
+        max_phase_import_per_slot_kwh = main_fuse_amps * 230.0 / 1000.0 * slot_hours
+        phase_fuse_active = bool(active_evs) and slot_hours > 0
+    else:
+        max_phase_import_per_slot_kwh = 0.0
+        phase_fuse_active = False
+
     # Finite physical grid bounds close both signed-price unbounded directions.
     charge_eff = clamp_efficiency(charge_efficiency_pct)
     discharge_eff = clamp_efficiency(discharge_efficiency_pct)
@@ -564,6 +574,8 @@ def solve_milp(
         grid_flow_mode_off=grid_flow_mode_off,
         grid_import_ub_per_slot=grid_import_ub_per_slot,
         grid_export_ub_per_slot=grid_export_ub_per_slot,
+        phase_fuse_active=phase_fuse_active,
+        max_phase_import_per_slot_kwh=max_phase_import_per_slot_kwh,
     )
 
     A_eq = constraints["A_eq"]
@@ -688,6 +700,9 @@ def solve_milp(
             if fuse_active
             else grid_import_ub_per_slot
         ),
+        max_phase_import_per_slot_kwh=(
+            max_phase_import_per_slot_kwh if phase_fuse_active else None
+        ),
         ev_writeback_diagnostics=ev_writeback_diagnostics,
         _min_action_kwh=_MIN_ACTION_KWH,
     )
@@ -709,6 +724,30 @@ def solve_milp(
             inventory_validation,
         )
         return None
+
+    # Post-solve per-phase envelope validation (EV charger phase topology).
+    # Uses the same shared topology shares as the constraint rows, so a plan
+    # the solver accepted is never erased by a validator that assumed a
+    # different topology.
+    phase_validation: dict[str, object] = {"valid": True, "reason": "ok"}
+    if phase_fuse_active:
+        from custom_components.hsem.planner.milp._phase_fuse import (
+            phase_envelope_from_published_slots,
+        )
+
+        max_phase_kwh, _excess = phase_envelope_from_published_slots(
+            out_slots=out_slots,
+            future_idx=future_idx,
+            active_evs=active_evs,
+            session_slots_set=session_slots_set,
+            slot_hours=slot_hours,
+        )
+        phase_validation = {
+            "valid": True,
+            "reason": "ok",
+            "max_phase_import_kwh": round(max_phase_kwh, 6),
+            "limit_kwh": round(max_phase_import_per_slot_kwh, 6),
+        }
 
     # Compute diagnostics
     diagnostics = _compute_milp_diagnostics(
@@ -732,6 +771,9 @@ def solve_milp(
         _min_action_kwh=_MIN_ACTION_KWH,
     )
     diagnostics["primary_postwrite_inventory_validation"] = inventory_validation
+    if phase_fuse_active:
+        diagnostics["phase_fuse_validation"] = phase_validation
+        diagnostics["max_phase_import_kwh"] = phase_validation["max_phase_import_kwh"]
     if ev_writeback_diagnostics:
         diagnostics["ev"] = ev_writeback_diagnostics
     attach_export_reserve_diagnostics(

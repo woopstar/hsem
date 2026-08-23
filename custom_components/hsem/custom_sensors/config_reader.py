@@ -30,6 +30,9 @@ from custom_components.hsem.utils.conversion import (
     convert_to_time,
 )
 from custom_components.hsem.utils.misc import get_config_value
+from custom_components.hsem.utils.phase_power import (
+    normalize_ev_phase_topology,
+)
 
 
 def _normalize_optional_device_id(value: Any) -> str | None:
@@ -433,6 +436,9 @@ def build_sensor_config(
     cfg.ev_planned_load_charger_min_power_w = (
         _min_pwr if _min_pwr is not None else 1380.0
     )
+    cfg.ev_planned_load_charger_phase_topology = normalize_ev_phase_topology(
+        get_config_value(config_entry, "hsem_ev_planned_load_charger_phase_topology")
+    )
 
     # Second EV planned load integration
     cfg.ev_second_planned_load_enabled = convert_to_boolean(
@@ -465,6 +471,11 @@ def build_sensor_config(
     )
     cfg.ev_second_planned_load_charger_min_power_w = (
         _s2_min if _s2_min is not None else 1380.0
+    )
+    cfg.ev_second_planned_load_charger_phase_topology = normalize_ev_phase_topology(
+        get_config_value(
+            config_entry, "hsem_ev_second_planned_load_charger_phase_topology"
+        )
     )
 
     # EV auto-Full on negative price (issue #609)

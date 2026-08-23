@@ -4,6 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from custom_components.hsem.utils.phase_power import (
+    EV_TOPOLOGY_SINGLE_PHASE,
+    ev_phase_share,
+)
+
 
 @dataclass
 class EVConfig:
@@ -77,3 +82,19 @@ class EVConfig:
     #: Measured session demand that remains a fixed site load but must not emit
     #: an HSEM charger command because smart control is unavailable/ineligible.
     fixed_session_only: bool = False
+    #: Electrical topology of this charger, one of
+    #: :data:`~custom_components.hsem.utils.phase_power.EV_PHASE_TOPOLOGIES`.
+    #: ``single_phase`` is the safe default and reproduces the pre-feature
+    #: worst-case envelope, where every hard per-phase row assumes the whole
+    #: EV command lands on that one phase.
+    charger_phase_topology: str = EV_TOPOLOGY_SINGLE_PHASE
+
+    @property
+    def phase_share(self) -> float:
+        """Return the fraction of this charger's AC draw one phase may carry.
+
+        Every hard per-phase site must read the EV topology through this
+        property so constraint construction, solved-vector reconstruction and
+        published-plan validation cannot diverge.
+        """
+        return ev_phase_share(self.charger_phase_topology)

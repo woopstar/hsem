@@ -300,6 +300,9 @@ def build_planner_input(
         ev_planned_load_base_load_includes_ev=bool(
             cfg.house_power_includes_ev_charger_power
         ),
+        ev_planned_load_charger_phase_topology=(
+            cfg.ev_planned_load_charger_phase_topology
+        ),
         ev_planned_allow_charge_past_target_soc=bool(
             cfg.ev.allow_charge_past_target_soc
         ),
@@ -340,6 +343,9 @@ def build_planner_input(
         ev_second_planned_load_deadline=live.ev_second_planned_load_deadline,
         ev_second_planned_load_base_load_includes_ev=bool(
             cfg.house_power_includes_ev_charger_power
+        ),
+        ev_second_planned_load_charger_phase_topology=(
+            cfg.ev_second_planned_load_charger_phase_topology
         ),
         ev_second_allow_charge_past_target_soc=bool(
             cfg.ev_second.allow_charge_past_target_soc
