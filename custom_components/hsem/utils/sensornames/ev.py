@@ -92,6 +92,46 @@ def get_ev_charger_calculated_power_sensor_entity_id() -> str:
     return f"sensor.{s(f'{DOMAIN}_ev_charger_calculated_power')}"
 
 
+# EV Charger Current Limit Sensor
+def get_ev_charger_current_limit_sensor_name() -> str:
+    """Return the display name for the EV charger current limit sensor."""
+    return "EV Charger Current Limit"
+
+
+def get_ev_charger_current_limit_sensor_unique_id(entry_id: str) -> str:
+    """Return a unique ID for the EV charger current limit sensor.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_ev_charger_current_limit"
+
+
+def get_ev_charger_current_limit_sensor_entity_id() -> str:
+    """Return the entity_id for the EV charger current limit sensor."""
+    return f"sensor.{s(f'{DOMAIN}_ev_charger_current_limit')}"
+
+
+# EV Second Charger Current Limit Sensor
+def get_ev_second_charger_current_limit_sensor_name() -> str:
+    """Return the display name for the second EV charger current limit sensor."""
+    return "EV 2 Charger Current Limit"
+
+
+def get_ev_second_charger_current_limit_sensor_unique_id(entry_id: str) -> str:
+    """Return a unique ID for the second EV charger current limit sensor.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_ev_second_charger_current_limit"
+
+
+def get_ev_second_charger_current_limit_sensor_entity_id() -> str:
+    """Return the entity_id for the second EV charger current limit sensor."""
+    return f"sensor.{s(f'{DOMAIN}_ev_second_charger_current_limit')}"
+
+
 # EV Second Charger Calculated Power Sensor
 def get_ev_second_charger_calculated_power_sensor_name() -> str:
     """Return the display name for the second EV charger calculated power sensor."""

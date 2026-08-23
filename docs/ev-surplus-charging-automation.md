@@ -39,6 +39,14 @@ so the charger never exceeds what the MILP planned. Requires two automations
 Both options are documented below. Choose Option B if your goal is "never
 import from grid for the EV."
 
+> **Native ceiling sensor.** For Option B, `sensor.hsem_ev_charger_current_limit`
+> (and `sensor.hsem_ev_second_charger_current_limit`) now publishes HSEM's
+> per-slot maximum current limit natively, in whole amps, phase-topology aware
+> — no template/formula needed to convert `ev_charger_calculated_power` to
+> amps yourself. See [sensors-reference.md](sensors-reference.md) *EV charger
+> current limit sensors*. The manual watt→amp conversion below still applies
+> if you prefer computing it inline in your own automation.
+
 ---
 
 ## The formula

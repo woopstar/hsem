@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import copy
 import math
+from collections.abc import Callable
 from datetime import datetime
 
 import numpy as np
@@ -14,12 +15,88 @@ import numpy as np
 from custom_components.hsem.models.ev_config import EVConfig
 from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.planner.cost_helpers import slot_grid_cash_flow_cost
+from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.phase_power import ev_phase_share_for_slot
 from custom_components.hsem.utils.units import (
     ev_dc_to_ac_kwh,
     slot_duration_hours,
     timedelta_to_hours,
 )
+
+#: A stranded residue at or below this threshold is the sub-milliwatt-hour
+#: artefact of rounding the rated charger power to whole watts, not a
+#: genuine shortfall.  Re-portioning that would open an extra slot and churn
+#: an otherwise clean plan for no material gain.
+_MATERIAL_RESIDUE_KWH = 0.001
+
+#: Minimum kWh a slot's EV allocation must clear to be considered "occupied"
+#: rather than solver noise, mirroring ``_write_milp_results_to_slots``'s
+#: ``_min_action_kwh`` default.
+_MIN_ACTION_KWH = 1e-4
+
+
+def _redistribute_below_minimum_power(
+    values: dict[int, float],
+    *,
+    minimum_dc: float,
+    deadline_lp_limit: int | None,
+    session_slots_set: set[int],
+    room_dc: Callable[[int], float],
+    donor_energy: float,
+) -> tuple[dict[int, float], float, int | None]:
+    """Open one further runnable slot to absorb a stranded EV residue.
+
+    The caller's recipients pass can still leave a residue below the
+    charger's minimum when every recipient is already at a hard ceiling
+    (e.g. a fuse-limited evening).  Discarding it silently misses the
+    deadline by that amount.  This opens one empty, runnable slot before the
+    deadline at the charger minimum instead, borrowing the shortfall back
+    from slots that can spare it above their own minimum.  Later slots are
+    drained first so cheaper early charging is preserved.  Total energy is
+    unchanged when a slot is opened.
+
+    Args:
+        values: Per-LP-slot DC allocation (kWh) for one EV, keyed by LP-slot
+            index.  Mutated in place and also returned.
+        minimum_dc: Charger minimum deliverable DC energy for a full slot
+            (kWh) — below this the charger cannot start.
+        deadline_lp_limit: The EV's deadline LP-slot index, or ``None`` for
+            no deadline (or charge-past-target).  Only deadline-driven
+            charging may open a slot; past-target charging is surplus-only
+            with no target to protect.
+        session_slots_set: LP-slot indices reserved for fixed session
+            demand.  Never opened or drained.
+        room_dc: Callable returning slot ``t``'s remaining headroom (kWh)
+            under its own EV/grid-import/phase caps.
+        donor_energy: The residue left unplaced after the recipients pass.
+
+    Returns:
+        ``(values, remaining_donor_energy, reportioned_lp_slot)``.
+    """
+    if donor_energy <= _MATERIAL_RESIDUE_KWH or deadline_lp_limit is None:
+        return values, donor_energy, None
+    for t in range(deadline_lp_limit + 1):
+        if t in session_slots_set or values.get(t, 0.0) > _MIN_ACTION_KWH:
+            continue
+        if room_dc(t) < minimum_dc - 1e-9:
+            continue
+        spare = {
+            src: max(v - minimum_dc, 0.0)
+            for src, v in values.items()
+            if src != t and src not in session_slots_set and v > _MIN_ACTION_KWH
+        }
+        if donor_energy + sum(spare.values()) < minimum_dc - 1e-9:
+            continue
+        needed = max(minimum_dc - donor_energy, 0.0)
+        for src in sorted(spare, reverse=True):
+            if needed <= 1e-12:
+                break
+            take = min(spare[src], needed)
+            values[src] -= take
+            needed -= take
+        values[t] = minimum_dc
+        return values, 0.0, t
+    return values, donor_energy, None
 
 
 def _write_milp_results_to_slots(
@@ -108,14 +185,9 @@ def _write_milp_results_to_slots(
                 values[t] = 0.0
         if donor_energy <= 1e-9:
             continue
-        recipients = sorted(
-            (t for t in range(m) if t not in session_slots_set),
-            key=lambda t: float(values[t]),
-            reverse=True,
-        )
-        for t in recipients:
-            if donor_energy <= 1e-9:
-                break
+
+        def _room_dc(t: int) -> float:
+            """Headroom slot ``t`` can accept without breaking its own caps."""
             room_dc = max(ev.max_charge_per_slot - float(values[t]), 0.0)
             if grid_import_cap_per_slot_kwh is not None and gi_off is not None:
                 grid_room_ac = max(
@@ -148,10 +220,52 @@ def _write_milp_results_to_slots(
                     0.0,
                 )
                 room_dc = min(room_dc, phase_room_ac * ev.charger_efficiency)
-            added = min(room_dc, donor_energy)
+            return room_dc
+
+        recipients = sorted(
+            (t for t in range(m) if t not in session_slots_set),
+            key=lambda t: float(values[t]),
+            reverse=True,
+        )
+        for t in recipients:
+            if donor_energy <= 1e-9:
+                break
+            added = min(_room_dc(t), donor_energy)
             values[t] += added
             donor_energy -= added
+
+        # Only deadline-driven charging may open a further slot for a
+        # stranded residue — past-target charging is opportunistic
+        # surplus-only demand with no target to protect.
+        reportioned_slot_i: int | None = None
+        if ev.deadline_slot is not None and not ev.charge_past_target:
+            deadline_lp_limit = max(0, min(int(ev.deadline_slot), m - 1))
+            values_by_slot = {t: float(values[t]) for t in range(m)}
+            values_by_slot, donor_energy, reportioned_lp_t = (
+                _redistribute_below_minimum_power(
+                    values_by_slot,
+                    minimum_dc=minimum_dc,
+                    deadline_lp_limit=deadline_lp_limit,
+                    session_slots_set=session_slots_set,
+                    room_dc=_room_dc,
+                    donor_energy=donor_energy,
+                )
+            )
+            if reportioned_lp_t is not None:
+                for t, v in values_by_slot.items():
+                    values[t] = v
+                reportioned_slot_i = future_idx[reportioned_lp_t]
+
         executable_x[ev_off : ev_off + m] = values
+        if reportioned_slot_i is not None:
+            log_planner(
+                "debug",
+                "[milp] EV%s: re-portioned into slot %d to keep the deadline "
+                "target reachable at the %.0f W minimum",
+                "2" if ev.is_second else "1",
+                reportioned_slot_i,
+                ev.charger_min_power_w,
+            )
         if ev_writeback_diagnostics is not None:
             delivered_by_deadline = float(np.sum(values))
             if ev.deadline_slot is not None:
@@ -170,6 +284,7 @@ def _write_milp_results_to_slots(
                     max(original_total_dc - float(np.sum(values)), 0.0),
                     4,
                 ),
+                "reportioned_slots": 1 if reportioned_slot_i is not None else 0,
             }
 
     if ev_writeback_diagnostics is not None:
@@ -193,6 +308,7 @@ def _write_milp_results_to_slots(
                 "deadline_penalty_kwh": round(deadline_penalty, 4),
                 "deadline_met": deadline_penalty < 1e-6,
                 "unplaceable_dc_kwh": 0.0,
+                "reportioned_slots": 0,
             }
 
     # Reset charge/discharge, energy-flow, and EV fields on all future slots;

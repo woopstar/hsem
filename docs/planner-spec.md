@@ -944,6 +944,72 @@ assumed a different topology.
 - An unrecognised or missing stored topology resolves to `single_phase`; a
   relaxed envelope is never applied by accident.
 
+#### Published charging ceiling and stranded-residue re-portioning (issue #788)
+
+The planner already decides *how much* to charge each EV in every future
+slot (`ev_charger_calculated_power` / `ev_second_charger_calculated_power`).
+Two diagnostic sensors publish that decision as a **ceiling** an external
+current controller can consume:
+
+- `sensor.hsem_ev_charger_current_limit` (primary EV)
+- `sensor.hsem_ev_second_charger_current_limit` (second EV)
+
+Each sensor's state is the current slot's ceiling in **whole amps**; a
+`schedule` attribute carries up to 24 future slots (`start`, `current_a`,
+`power_w`) so the intended profile can be inspected without re-deriving it
+from diagnostics. Conversion from watts to amps is done by
+`utils/phase_power.py::charger_power_to_current_a()`:
+
+```text
+amps = floor(power_w / (230 * phases))
+```
+
+`phases` is `PHASE_COUNT` (3) for a charger configured
+`three_phase_balanced`, otherwise `1` — the same topology read by the hard
+per-phase fuse rows above (`normalize_ev_phase_topology`). Rounding is
+**always down**: a partial amp the charger cannot be commanded to draw must
+never be published as available headroom. HSEM owns the economics (how many
+amps are worth drawing this slot); the external controller keeps final
+authority for fuse safety and may only ramp *within* the published ceiling.
+
+**Stranded-residue re-portioning.** The MILP models EV charge as a
+continuous variable, so it may allocate a fragment to a slot too small for
+the charger to actually run (`< charger_min_power_w`). The existing
+EV-fragment concentration pass (`planner/milp/_write_results.py`) folds such
+fragments into other allocated slots first. When every candidate recipient
+is already at a hard ceiling (fuse-limited or phase-limited), a residue can
+still remain unplaced after concentration. Discarding it would silently miss
+the EV's deadline target by that amount.
+
+`_redistribute_below_minimum_power()` handles this residue: when it is
+**material** (> 0.001 kWh — the publishing-rounding artefact left by
+flooring rated power to whole watts) and the EV has a deadline
+(`charge_past_target=False`, since past-target charging is opportunistic
+surplus-only demand with no target to protect), it opens **one** further
+empty, runnable slot before the deadline at the charger minimum and borrows
+the shortfall back from slots that can spare it above their own minimum.
+Later slots are drained first, so the cheaper early charging the solver
+chose is preserved. Total EV energy is unchanged; no commanded slot ends up
+below the charger minimum. The number of slots opened (`0` or `1` per EV) is
+surfaced in the MILP EV diagnostics as `reportioned_slots`.
+
+##### Invariants
+
+- The published ceiling equals the planned command converted to whole amps,
+  always rounded down, using the charger's configured phase topology.
+- Zero, negative, and non-finite planned power all publish a `0 A` ceiling —
+  never negative headroom.
+- A residue at or below the 0.001 kWh publishing artefact never triggers
+  re-portioning — a clean plan is never churned for an immaterial amount.
+- A material residue is re-portioned into an additional runnable slot rather
+  than discarded; total EV energy is preserved (`sum(placed) + deficit ==
+  sum(original)`), and every commanded slot stays at or above the charger
+  minimum.
+- Only deadline-driven charging (`charge_past_target=False`) may open a
+  slot; charge-past-target EVs never trigger re-portioning.
+- Without an eligible candidate slot (no headroom before the deadline), the
+  residue is reported as unplaceable rather than silently dropped.
+
 ### Grid export power limit (DNO/inverter export cap — issue #726)
 
 When `max_grid_export_power_kw` is provided and > 0, the MILP adds a

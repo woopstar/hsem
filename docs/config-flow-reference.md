@@ -157,6 +157,14 @@ Primary EV planned load integration (optional, default disabled).
 | Charger min power | `hsem_ev_planned_load_charger_min_power_w` | 1380 W | Minimum charger power for physical operation |
 | Charger phase topology | `hsem_ev_planned_load_charger_phase_topology` | `single_phase` | How the charger spreads load across mains phases. `single_phase` (safe default) makes the hard per-phase fuse rows assume the whole command can land on one phase; `three_phase_balanced` charges only one third to each phase. See [planner-spec.md](planner-spec.md) *Optional hard per-phase charging protection*. |
 
+The planner's per-slot charging decision for this charger is published as a
+whole-amp ceiling on the diagnostic sensor `sensor.hsem_ev_charger_current_limit`
+(and `sensor.hsem_ev_second_charger_current_limit` for the second EV) for an
+external current controller to consume — no separate config field. Conversion
+respects the charger's `..._charger_phase_topology` above. See
+[planner-spec.md](planner-spec.md) *Published charging ceiling and
+stranded-residue re-portioning*.
+
 Target SoC and deadline are configured outside this step:
 - **Target SoC**: via the number entity `number.hsem_ev_target_soc`
 - **Deadline**: via the HSEM time entity `time.hsem_ev_deadline_time`
