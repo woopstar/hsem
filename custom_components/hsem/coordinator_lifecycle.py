@@ -319,6 +319,14 @@ class CoordinatorLifecycleMixin(CoordinatorSharedState):
             live.ev_second_planned_load_smart_charging_enabled
         )
         self._last_plan_ev2_deadline = live.ev_second_planned_load_deadline
+        self._last_plan_ev_effective_energy_kwh = self._ev_effective_energy_kwh(
+            live.ev,
+            float(self._cfg.ev_planned_load_battery_capacity_kwh),
+        )
+        self._last_plan_ev_second_effective_energy_kwh = self._ev_effective_energy_kwh(
+            live.ev_second,
+            float(self._cfg.ev_second_planned_load_battery_capacity_kwh),
+        )
         if load_forecast_signature is not None:
             self._last_plan_load_forecast_signature = load_forecast_signature
             self._load_forecast_recovery_replan_pending = False

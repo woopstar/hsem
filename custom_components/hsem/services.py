@@ -19,7 +19,6 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntryState
-from homeassistant.const import STATE_UNKNOWN
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 
@@ -27,6 +26,9 @@ from custom_components.hsem.const import DOMAIN
 from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
 from custom_components.hsem.utils.dashboard import async_ensure_hsem_dashboard
 from custom_components.hsem.utils.diagnostics import build_diagnostics_dump
+from custom_components.hsem.utils.integration_version import (
+    async_get_hsem_integration_version,
+)
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 from custom_components.hsem.utils.sensornames.diagnostics import (
     get_force_working_mode_selector_entity_id,
@@ -278,12 +280,7 @@ async def async_handle_export_diagnostics(
             "Wait for the first update cycle to finish."
         )
 
-    try:
-        from importlib.metadata import version as pkg_version
-
-        integration_version = pkg_version("hsem")
-    except Exception:  # noqa: BLE001
-        integration_version = STATE_UNKNOWN
+    integration_version = await async_get_hsem_integration_version(call.hass)
 
     dump = build_diagnostics_dump(
         planner_input,

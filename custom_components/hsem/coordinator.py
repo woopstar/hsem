@@ -75,6 +75,7 @@ from custom_components.hsem.models.state_snapshot import StateSnapshot
 from custom_components.hsem.planner.ev_planner import EVChargingPlan
 from custom_components.hsem.utils.capacity_learner import CapacityLearner
 from custom_components.hsem.utils.dynamic_floor import DynamicDischargeFloor
+from custom_components.hsem.utils.ev_delivered_energy import EVDeliveredEnergyTracker
 from custom_components.hsem.utils.forecast_tracker import ForecastTracker
 from custom_components.hsem.utils.logger import (
     HSEM_LOGGER as _LOGGER,
@@ -214,9 +215,11 @@ class HSEMDataUpdateCoordinator(
         self._last_plan_ev_connected: bool | None = False
         self._last_plan_ev_charging: bool = False
         self._last_plan_ev_soc_below_target: bool = False
+        self._last_plan_ev_effective_energy_kwh: float | None = None
         self._last_plan_ev_second_connected: bool | None = False
         self._last_plan_ev_second_charging: bool = False
         self._last_plan_ev_second_soc_below_target: bool = False
+        self._last_plan_ev_second_effective_energy_kwh: float | None = None
         self._last_plan_force_mode: str = "auto"
         self._last_plan_slot_start: datetime | None = None
         self._last_plan_import_price: float | None = None
@@ -269,6 +272,10 @@ class HSEMDataUpdateCoordinator(
 
         # Battery capacity learner (issue #605).
         self._capacity_learner: CapacityLearner = CapacityLearner()
+        # Session-local credit for vehicle APIs whose SoC updates lag behind
+        # measured charger power. Never persisted across integration restarts.
+        self._ev_delivered_energy_tracker = EVDeliveredEnergyTracker()
+        self._ev_second_delivered_energy_tracker = EVDeliveredEnergyTracker()
 
         # Embedded OCPP 1.6 server for EV charger control (issue #603).
         # One server per EV: primary EV on ``_ocpp_server``, optional second

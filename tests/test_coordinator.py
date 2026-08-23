@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -39,6 +40,9 @@ from custom_components.hsem.coordinator import (
     HSEMDataUpdateCoordinator,
 )
 from custom_components.hsem.coordinator_builder import generate_recommendation_intervals
+from custom_components.hsem.models.live_state import LiveState
+from custom_components.hsem.models.planner_output import PlannerOutput
+from custom_components.hsem.models.sensor_config import SensorConfig
 
 # ---------------------------------------------------------------------------
 # Helper: build a bare coordinator instance without calling __init__
@@ -509,3 +513,61 @@ class TestReusedPlanIsolation:
         assert "planner_output = self._last_planner_output" not in source, (
             "The reuse branch must not alias the cached output directly."
         )
+
+
+# ---------------------------------------------------------------------------
+# EV delivered-energy credit drives replan (issue #789)
+# ---------------------------------------------------------------------------
+
+
+class TestEVDeliveredEnergyReplan:
+    """Credited energy must refresh, then advance, the accepted-plan baseline."""
+
+    def test_material_credit_obeys_cadence_and_rebases_after_acceptance(self) -> None:
+        coordinator = _make_bare_coordinator()
+        cfg = SensorConfig()
+        cfg.update_interval = 5
+        cfg.recommendation_interval_minutes = 60
+        cfg.ev_planned_load_enabled = True
+        cfg.ev_planned_load_battery_capacity_kwh = 100.0
+        cfg.ev_planned_load_charger_power_kw = 30.0
+        cfg.ev_planned_load_charger_efficiency_pct = 100.0
+        cfg.ev.connected_entity = "binary_sensor.ev_connected"
+        coordinator._cfg = cfg
+
+        live = LiveState()
+        live.ev.is_connected = True
+        live.ev.is_charging = True
+        live.ev.power_w = 30_000.0
+        live.ev.soc_pct = 50.0
+        live.ev.soc_target_pct = 80.0
+        live.ev_planned_load_connected = True
+        live.ev_planned_load_current_soc_pct = 50.0
+        live.ev_planned_load_target_soc_pct = 80.0
+
+        start = datetime(2026, 8, 23, 8, 0, tzinfo=UTC)
+        coordinator._update_ev_delivered_energy_credit(live, cfg, start)
+        coordinator._last_planner_output = PlannerOutput()
+        coordinator._last_plan_slot_start = start
+        coordinator._persist_plan_state(live)
+
+        before_cadence = start + timedelta(seconds=30)
+        coordinator._update_ev_delivered_energy_credit(live, cfg, before_cadence)
+        assert live.ev.delivered_energy_credit_kwh == pytest.approx(0.25)
+        assert coordinator._should_replan(live, before_cadence) is False
+
+        after_cadence = start + timedelta(seconds=61)
+        coordinator._update_ev_delivered_energy_credit(live, cfg, after_cadence)
+        assert coordinator._should_replan(live, after_cadence) is True
+
+        coordinator._last_plan_slot_start = after_cadence
+        coordinator._persist_plan_state(live)
+        assert coordinator._should_replan(live, after_cadence) is False
+
+        next_material_change = after_cadence + timedelta(seconds=61)
+        coordinator._update_ev_delivered_energy_credit(
+            live,
+            cfg,
+            next_material_change,
+        )
+        assert coordinator._should_replan(live, next_material_change) is True

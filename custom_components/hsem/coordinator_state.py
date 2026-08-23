@@ -49,6 +49,7 @@ from custom_components.hsem.models.state_snapshot import StateSnapshot
 from custom_components.hsem.planner.ev_planner import EVChargingPlan
 from custom_components.hsem.utils.capacity_learner import CapacityLearner
 from custom_components.hsem.utils.dynamic_floor import DynamicDischargeFloor
+from custom_components.hsem.utils.ev_delivered_energy import EVDeliveredEnergyTracker
 from custom_components.hsem.utils.forecast_tracker import ForecastTracker
 from custom_components.hsem.utils.prediction_tracker import PredictionTracker
 from custom_components.hsem.utils.solar_corrector import SolarForecastCorrector
@@ -81,7 +82,9 @@ class CoordinatorSharedState(_Base):
     _effective_discharge_floor_diag: dict | None
     _effective_discharge_floor_pct: float | None
     _ev_charging_plan: EVChargingPlan | None
+    _ev_delivered_energy_tracker: EVDeliveredEnergyTracker
     _ev_second_charging_plan: EVChargingPlan | None
+    _ev_second_delivered_energy_tracker: EVDeliveredEnergyTracker
     _event_update_pending: bool
     _financial_tracker: FinancialTracker
     _force_working_mode_entity: str | None
@@ -98,8 +101,10 @@ class CoordinatorSharedState(_Base):
     _last_plan_ev_charging: bool
     _last_plan_ev_connected: bool | None
     _last_plan_ev_deadline: datetime | None
+    _last_plan_ev_effective_energy_kwh: float | None
     _last_plan_ev_second_charging: bool
     _last_plan_ev_second_connected: bool | None
+    _last_plan_ev_second_effective_energy_kwh: float | None
     _last_plan_ev_second_soc_below_target: bool
     _last_plan_ev_smart_charging: bool | None
     _last_plan_ev_soc_below_target: bool
@@ -149,3 +154,8 @@ class CoordinatorSharedState(_Base):
     def _apply_planner_output(self, output: Any) -> None: ...
 
     def _persist_plan_state(self, *args: Any, **kwargs: Any) -> None: ...
+
+    @staticmethod
+    def _ev_effective_energy_kwh(
+        ev_live: Any, battery_capacity_kwh: float
+    ) -> float | None: ...

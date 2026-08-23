@@ -14,6 +14,10 @@ from datetime import datetime
 from custom_components.hsem.coordinator_builder import (
     build_planner_input,
 )
+from custom_components.hsem.coordinator_cycle import (
+    EV_DELIVERED_ENERGY_REPLAN_DELTA_KWH,
+    EV_DELIVERED_ENERGY_REPLAN_MIN_SECONDS,
+)
 from custom_components.hsem.coordinator_helpers import (
     LoadForecastSignature,
     _SimpleSlot,
@@ -46,6 +50,7 @@ from custom_components.hsem.planner.charge_scheduler import apply_window_hystere
 from custom_components.hsem.utils.capacity_learner import CapacityLearner
 from custom_components.hsem.utils.datetime_utils import (
     as_tz,
+    utc_key,
 )
 from custom_components.hsem.utils.logger import (
     async_log,
@@ -364,6 +369,54 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
 
         return state, should_replan, planner_output
 
+    def _ev_delivered_energy_requires_replan(
+        self,
+        live: LiveState,
+        now: datetime,
+    ) -> bool:
+        """Return whether credited energy materially changed since acceptance."""
+        last_plan_at = self._last_plan_slot_start
+        if last_plan_at is not None:
+            try:
+                elapsed_seconds = (utc_key(now) - utc_key(last_plan_at)).total_seconds()
+            except TypeError, ValueError:
+                return False
+            if elapsed_seconds < EV_DELIVERED_ENERGY_REPLAN_MIN_SECONDS:
+                return False
+
+        for label, ev_live, capacity_kwh, baseline_kwh in (
+            (
+                "EV",
+                live.ev,
+                float(self._cfg.ev_planned_load_battery_capacity_kwh),
+                getattr(self, "_last_plan_ev_effective_energy_kwh", None),
+            ),
+            (
+                "EV2",
+                live.ev_second,
+                float(self._cfg.ev_second_planned_load_battery_capacity_kwh),
+                getattr(
+                    self,
+                    "_last_plan_ev_second_effective_energy_kwh",
+                    None,
+                ),
+            ),
+        ):
+            current_kwh = self._ev_effective_energy_kwh(ev_live, capacity_kwh)
+            if not ev_live.is_charging or current_kwh is None or baseline_kwh is None:
+                continue
+            delta_kwh = current_kwh - baseline_kwh
+            if abs(delta_kwh) + 1e-9 >= EV_DELIVERED_ENERGY_REPLAN_DELTA_KWH:
+                async_log(
+                    "debug",
+                    "[replan] %s effective battery energy changed by %.3f kWh "
+                    "since the accepted plan — re-planning.",
+                    label,
+                    delta_kwh,
+                )
+                return True
+        return False
+
     # ------------------------------------------------------------------
     # DataUpdateCoordinator override
     # ------------------------------------------------------------------
@@ -433,6 +486,9 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
                     now.isoformat(),
                 )
                 return True
+
+        if self._ev_delivered_energy_requires_replan(live, now):
+            return True
 
         # EV connection state changed.
         if live.ev.is_connected != self._last_plan_ev_connected:
