@@ -34,4 +34,9 @@ RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> /root/.bashrc
 # Copy devcontainer helper scripts
 COPY scripts/devcontainer-agent-bridge.sh /usr/local/bin/devcontainer-agent-bridge.sh
 COPY scripts/setup-python-deps.sh /usr/local/bin/setup-python-deps.sh
-RUN chmod +x /usr/local/bin/devcontainer-agent-bridge.sh /usr/local/bin/setup-python-deps.sh
+COPY scripts/post-create.sh /usr/local/bin/post-create.sh
+COPY scripts/post-start.sh /usr/local/bin/post-start.sh
+COPY scripts/check-agent-bridge.sh /usr/local/bin/check-agent-bridge.sh
+RUN chmod +x /usr/local/bin/devcontainer-agent-bridge.sh /usr/local/bin/setup-python-deps.sh \
+    /usr/local/bin/post-create.sh /usr/local/bin/post-start.sh /usr/local/bin/check-agent-bridge.sh
+RUN echo '. /usr/local/bin/check-agent-bridge.sh' >> /root/.bashrc
