@@ -3,11 +3,24 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.." || exit
 
+# rtk is typically installed to ~/.local/bin, which may be missing from
+# non-interactive shells (CI, hooks). Add it if present.
+if [[ -d "$HOME/.local/bin" ]]; then
+    PATH="$HOME/.local/bin:$PATH"
+fi
+
 # Run a command through rtk when available, otherwise run it directly.
+# Set QUALITY_DEBUG=1 to print which mode is used for each command.
 run() {
     if command -v rtk >/dev/null 2>&1; then
+        if [[ "${QUALITY_DEBUG:-0}" == "1" ]]; then
+            echo "[debug] rtk $*" >&2
+        fi
         rtk "$@"
     else
+        if [[ "${QUALITY_DEBUG:-0}" == "1" ]]; then
+            echo "[debug] (no rtk) $*" >&2
+        fi
         "$@"
     fi
 }
