@@ -435,17 +435,20 @@ Controls and reports the effective discharge floor SoC, which the planner uses a
 
 ## OCPP charger sensors
 
-Sensors providing live status and diagnostics for an OCPP-compliant EV charger connected via the integrated OCPP server.
+Sensors providing live status and diagnostics for an OCPP-compliant EV charger connected via the integrated OCPP server. HSEM runs **one OCPP server per EV** (primary EV on port 9000 by default, second EV on port 9001) — the `_second` variants below exist only when the second EV is configured and the second OCPP server is enabled.
 
 **Configuration keys** (set in config flow):
 
 | Key | Description |
 |---|---|
 | `hsem_ocpp_enabled` | Enable the OCPP server |
-| `hsem_ocpp_port` | TCP port for OCPP WebSocket connections |
+| `hsem_ocpp_port` | TCP port for the primary EV's OCPP WebSocket connections |
 | `hsem_ocpp_cpid` | OCPP charge point identifier |
 | `hsem_ocpp_start_window_s` | Seconds before charge deadline to start charging |
 | `hsem_ocpp_stop_window_s` | Seconds after charge deadline to stop charging |
+| `hsem_ocpp_second_enabled` | Enable the dedicated second-EV OCPP server (requires second EV) |
+| `hsem_ocpp_second_port` | TCP port for the second EV's OCPP WebSocket connections |
+| `hsem_ocpp_second_cpid` | Second EV charger's OCPP charge point identifier |
 
 ### `sensor.hsem_ocpp_charger_status`
 
@@ -478,6 +481,19 @@ Sensors providing live status and diagnostics for an OCPP-compliant EV charger c
 | **Type** | `sensor` |
 | **State** | Number of completed sessions |
 | **Attributes** | `sessions` — list of completed session logs (start time, energy, duration) |
+
+### Second-EV variants
+
+When the second EV is configured with its own OCPP server, four additional
+diagnostic sensors are created with `_second` suffixed entity IDs:
+
+- `sensor.hsem_ocpp_charger_status_sensor_second`
+- `sensor.hsem_ocpp_charger_power_sensor_second`
+- `sensor.hsem_ocpp_charger_info_sensor_second`
+- `sensor.hsem_ocpp_charger_sessions_sensor_second`
+
+These mirror the primary sensors but read from the second EV's dedicated
+OCPP server.
 
 **Template example:**
 

@@ -534,6 +534,16 @@ def build_sensor_config(
     _stop = convert_to_int(get_config_value(config_entry, "hsem_ocpp_stop_window_s"))
     cfg.ocpp_stop_window_s = _stop if _stop is not None else 180
 
+    # Second OCPP server for the optional second EV (separate port).
+    cfg.ocpp_second_enabled = convert_to_boolean(
+        get_config_value(config_entry, "hsem_ocpp_second_enabled")
+    )
+    _ocpp_second_port = convert_to_int(
+        get_config_value(config_entry, "hsem_ocpp_second_port")
+    )
+    cfg.ocpp_second_port = _ocpp_second_port if _ocpp_second_port is not None else 9001
+    cfg.ocpp_second_cpid = get_config_value(config_entry, "hsem_ocpp_second_cpid") or ""
+
     return cfg
 
 

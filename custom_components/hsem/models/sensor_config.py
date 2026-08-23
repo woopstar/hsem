@@ -292,6 +292,10 @@ class SensorConfig:
     ocpp_cpid: str = ""
     ocpp_start_window_s: int = 60
     ocpp_stop_window_s: int = 180
+    # Second OCPP server for the optional second EV (separate port).
+    ocpp_second_enabled: bool = False
+    ocpp_second_port: int = 9001
+    ocpp_second_cpid: str = ""
 
     # Consumption weights
     house_consumption_energy_weight_1d: int = 50

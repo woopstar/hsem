@@ -138,6 +138,10 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_ocpp_cpid": "",
     "hsem_ocpp_start_window_s": 60,
     "hsem_ocpp_stop_window_s": 180,
+    # Second OCPP server for the optional second EV (separate port).
+    "hsem_ocpp_second_enabled": False,
+    "hsem_ocpp_second_port": 9001,
+    "hsem_ocpp_second_cpid": "",
     # Daily plan-vs-actual tracking — optional energy meter entities.
     # When not configured, the sensor falls back to Riemann-sum estimates
     # from instantaneous power sensors.

@@ -97,6 +97,7 @@ from custom_components.hsem.custom_sensors.update_interval_sensor import (
 from custom_components.hsem.custom_sensors.working_mode_sensor import (
     HSEMWorkingModeSensor,
 )
+from custom_components.hsem.utils.misc import get_config_value
 
 
 async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
@@ -175,12 +176,24 @@ async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
     savings_sensor = HSEMSavingsSensor(config_entry, coordinator)
 
     # OCPP charger sensors — expose charger state when OCPP server is enabled.
+    # One set per EV: the second set only when the second EV is configured.
     ocpp_charger_status_sensor = HSEMOCPPChargerStatusSensor(config_entry, coordinator)
     ocpp_charger_power_sensor = HSEMOCPPChargerPowerSensor(config_entry, coordinator)
     ocpp_charger_info_sensor = HSEMOCPPChargerInfoSensor(config_entry, coordinator)
     ocpp_charger_sessions_sensor = HSEMOCPPChargerSessionsSensor(
         config_entry, coordinator
     )
+
+    ocpp_second_entities = []
+    if bool(
+        get_config_value(config_entry, "hsem_ev_second_planned_load_enabled")
+    ) and bool(get_config_value(config_entry, "hsem_ocpp_second_enabled")):
+        ocpp_second_entities = [
+            HSEMOCPPChargerStatusSensor(config_entry, coordinator, charger_index=2),
+            HSEMOCPPChargerPowerSensor(config_entry, coordinator, charger_index=2),
+            HSEMOCPPChargerInfoSensor(config_entry, coordinator, charger_index=2),
+            HSEMOCPPChargerSessionsSensor(config_entry, coordinator, charger_index=2),
+        ]
 
     async_add_entities(
         [
@@ -217,6 +230,7 @@ async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
             ocpp_charger_power_sensor,
             ocpp_charger_info_sensor,
             ocpp_charger_sessions_sensor,
+            *ocpp_second_entities,
         ]
     )
 

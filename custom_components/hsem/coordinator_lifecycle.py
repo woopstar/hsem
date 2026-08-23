@@ -69,7 +69,9 @@ class CoordinatorLifecycleMixin(CoordinatorSharedState):
         except Exception as e:
             async_log("error", "Failed to initialise financial tracker: %s", e)
 
-        # Start the embedded OCPP 1.6 server if enabled (issue #603).
+        # Start the embedded OCPP 1.6 server(s) if enabled (issue #603).
+        # One server per EV: the primary EV uses the primary server, and the
+        # optional second EV gets its own dedicated server on a separate port.
         cfg = build_sensor_config(self._config_entry)
         if cfg.ocpp_enabled:
             try:
@@ -85,6 +87,26 @@ class CoordinatorLifecycleMixin(CoordinatorSharedState):
             except Exception as e:
                 async_log("error", "Failed to start OCPP server: %s", e)
                 self._ocpp_server = None
+
+        # Second OCPP server — only when the second EV is configured/enabled.
+        if cfg.ev_second_planned_load_enabled and cfg.ocpp_second_enabled:
+            try:
+                self._ocpp_second_server = OCPPServer(
+                    hass=self.hass,
+                    host="0.0.0.0",
+                    port=cfg.ocpp_second_port,
+                    start_window_s=cfg.ocpp_start_window_s,
+                    stop_window_s=cfg.ocpp_stop_window_s,
+                )
+                await self._ocpp_second_server.start()
+                async_log(
+                    "info",
+                    "Second OCPP server started on port %d",
+                    cfg.ocpp_second_port,
+                )
+            except Exception as e:
+                async_log("error", "Failed to start second OCPP server: %s", e)
+                self._ocpp_second_server = None
 
         # Run an immediate first cycle so entities have data before first render.
         await self._async_handle_update(None)
@@ -126,11 +148,15 @@ class CoordinatorLifecycleMixin(CoordinatorSharedState):
                 midnight()
                 daily_tracker._midnight_unsub = None  # type: ignore[attr-defined]
 
-        # Stop the OCPP server if it was started.
+        # Stop the OCPP servers if they were started.
         ocpp = getattr(self, "_ocpp_server", None)
         if ocpp is not None:
             await ocpp.stop()
             self._ocpp_server = None
+        ocpp_second = getattr(self, "_ocpp_second_server", None)
+        if ocpp_second is not None:
+            await ocpp_second.stop()
+            self._ocpp_second_server = None
 
         # Cancel any pending options-update background task and debounce timer.
         task = getattr(self, "_options_update_task", None)

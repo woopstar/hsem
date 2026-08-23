@@ -417,6 +417,14 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
             ocpp_chargers = ocpp.charger_sessions
             ocpp_sessions = list(self._ocpp_sessions)
 
+        # Second EV's OCPP server state.
+        ocpp_second_chargers: dict | None = None
+        ocpp_second_sessions: list | None = None
+        ocpp_second = getattr(self, "_ocpp_second_server", None)
+        if ocpp_second is not None:
+            ocpp_second_chargers = ocpp_second.charger_sessions
+            ocpp_second_sessions = []
+
         data = CoordinatorData(
             cfg=self._cfg,
             live=self._live,
@@ -441,6 +449,8 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
             ),
             ocpp_chargers=ocpp_chargers,
             ocpp_sessions=ocpp_sessions,
+            ocpp_second_chargers=ocpp_second_chargers,
+            ocpp_second_sessions=ocpp_second_sessions,
             capacity_learner=getattr(self, "_capacity_learner", CapacityLearner()),
             solar_hour_factors=dict(
                 getattr(self, "_solar_corrector", SolarForecastCorrector()).hour_factors
@@ -481,19 +491,26 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
                 load_forecast_signature=self._current_load_forecast_signature,
             )
 
-        # Push the accepted EV target only after the freshness gate passes.
+        # Push the accepted EV targets only after the freshness gate passes.
+        # Each EV gets its own OCPP server: the primary plan drives the
+        # primary server, the second plan drives the second server.
+        slot_minutes = self._cfg.recommendation_interval_minutes
+        force_primary = bool(
+            get_config_value(self._config_entry, "hsem_ev_force_charge_now")
+        )
+        force_second = bool(
+            get_config_value(self._config_entry, "hsem_ev_second_force_charge_now")
+        )
+
         ocpp_server = getattr(self, "_ocpp_server", None)
         if ocpp_server is not None and self._cfg.ocpp_enabled:
             cpid = self._cfg.ocpp_cpid or "default"
             target_kw = 0.0
             if self._ev_charging_plan is not None:
                 target_kw = self._ev_charging_plan.current_slot_planned_load_kwh
-                slot_minutes = self._cfg.recommendation_interval_minutes
                 if slot_minutes > 0 and target_kw > 0:
                     target_kw = target_kw / slot_minutes * 60.0
-                if bool(
-                    get_config_value(self._config_entry, "hsem_ev_force_charge_now")
-                ):
+                if force_primary:
                     forced_kw = float(
                         get_config_value(
                             self._config_entry,
@@ -504,5 +521,33 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
                     if forced_kw > 0:
                         target_kw = forced_kw
             await ocpp_server.update_charge_target(cpid, target_kw, now=now)
+
+        ocpp_second_server = getattr(self, "_ocpp_second_server", None)
+        if (
+            ocpp_second_server is not None
+            and self._cfg.ocpp_enabled
+            and self._cfg.ocpp_second_enabled
+        ):
+            second_cpid = self._cfg.ocpp_second_cpid or "default"
+            second_target_kw = 0.0
+            if self._ev_second_charging_plan is not None:
+                second_target_kw = (
+                    self._ev_second_charging_plan.current_slot_planned_load_kwh
+                )
+                if slot_minutes > 0 and second_target_kw > 0:
+                    second_target_kw = second_target_kw / slot_minutes * 60.0
+                if force_second:
+                    forced_kw = float(
+                        get_config_value(
+                            self._config_entry,
+                            "hsem_ev_second_planned_load_charger_power_kw",
+                        )
+                        or 0.0
+                    )
+                    if forced_kw > 0:
+                        second_target_kw = forced_kw
+            await ocpp_second_server.update_charge_target(
+                second_cpid, second_target_kw, now=now
+            )
 
         async_log("debug", "------ HSEM Coordinator: update cycle complete")
