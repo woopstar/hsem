@@ -9,11 +9,11 @@
     "ghcr.io/devcontainers/features/github-cli:1": {},
     "ghcr.io/devcontainers/features/node:1": {}
   },
-  "postCreateCommand": "/usr/local/bin/setup-python-deps.sh; if [ -z \"$CI\" ]; then /usr/local/bin/devcontainer-agent-bridge.sh /bin/sh -c 'echo SSH agent ready in container || true'; fi",
-  "postStartCommand": "if [ -z \"$CI\" ]; then nohup /usr/local/bin/devcontainer-agent-bridge.sh /bin/true >/tmp/agent-bridge.log 2>&1 & fi",
+  "postCreateCommand": "/usr/local/bin/post-create.sh",
+  "postStartCommand": "/usr/local/bin/post-start.sh",
   "runArgs": ["--name", "hsem-devcontainer"],
   "remoteUser": "root",
-  "forwardPorts": [8123],
+  // "forwardPorts": [8123],
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/hsem,type=bind,consistency=cached",
   "workspaceFolder": "/workspaces/hsem",
   "mounts": [

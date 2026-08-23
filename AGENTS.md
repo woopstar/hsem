@@ -361,3 +361,5 @@ A change is considered complete when:
 - The implementation adheres strictly to the No-Assumption Rule
 - The change aligns with Home Assistant integration standards
 - Code quality is enhanced (no technical debt introduced)
+
+@RTK.md

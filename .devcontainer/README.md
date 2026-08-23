@@ -37,7 +37,8 @@ relay to bridge the SSH and GPG agents from host to container.
    ```
 
 3. **Open the devcontainer** in VS Code (`F1` → `Remote-Containers: Reopen in Container`).
-   The `postCreateCommand` automatically starts the container-side socat bridge.
+   The `postCreateCommand` (`post-create.sh`) smoke-tests the container-side socat bridge,
+   and `postStartCommand` (`post-start.sh`) restarts it in the background on every start.
 
 4. **Verify**: run `ssh -T git@github.com` and `gpg --card-status` in the container terminal.
 
