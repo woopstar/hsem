@@ -1172,18 +1172,26 @@ architecture that does not exist here. Before re-attempting any port, remember:
 
 | Fork PR | Subject | Status for `main` |
 |---|---|---|
-| #5 | ENTSO-E published-price backup | **Feature**, not a fix; new provider. Not needed — no request. |
+| #5 | ENTSO-E published-price backup | **Feature**, not a fix; new provider. Not needed — no request. The orphaned `models/price_source.py` stub was removed in PR #783. |
 | #7 | Remove unused controls + embedded OCPP | **Removal** — explicitly rejected (upstream ships OCPP, schedules, charge-rate learner). |
 | #9 / #22 | PowMr site-attribution / control stability | **Feature** — `origin/main` has no PowMr/secondary-storage subsystem at all. N/A. |
-| #11 | ML history ↔ tracking time | **Ported** (ML core + DST-fold `slot_key` prerequisite). |
+| #11 | ML history ↔ tracking time | **Ported** (ML core + DST-fold `slot_key` prerequisite). The actual-price-interval half (`ActualPriceInterval`, `_compute_actual_charge_savings`) is deliberately out of scope. |
 | #13 | Bound terminal inventory at price boundary | Coupled to fork-only `future_value.py`/`_solver_execution.py`/`secondary_storage.py`/`price_forecast.py`. |
-| #15 | Group export-reserve checkpoints | Refines fork-only `_export_reserve.py`; upstream has no export-reserve concept. N/A. |
-| #17 | Harden MILP bounds layout | Core idea **ported natively** as a `len(bounds) == n_vars` fail-fast guard. |
-| #19 | Reject unavailable load + stale solves | Load fail-closed **ported natively**; the authority-generation rollback requires the fork coordinator rewrite. |
-| #21 | Coalesce boundary price refreshes | Requires the fork's forecast-authority-generation machinery (authority `generation` counter). |
+| #15 | Group export-reserve checkpoints | **Ported in PR #783** — `milp/_export_reserve.py` now exists here, and the run-grouping loop is exact. Supersedes the earlier "N/A". |
+| #17 | Harden MILP bounds layout | **Ported in PR #783** as `MilpBoundsBuilder` over a declared `MilpColumnLayout`: bounds are addressed by block name, and wrong offsets, overlaps, and unassigned columns all fail before the solve. |
+| #19 | Reject unavailable load + stale solves | **Already complete** — load fail-closed *and* stale-solve rejection are both native. `_update_generation` is captured per cycle and re-checked mid-solve and before publication, with `_restore_accepted_plan_state` rollback. Do not look for the fork's `_forecast_authority_generation` name; the local equivalent predates it. |
+| #21 | Coalesce boundary price refreshes | **Mostly N/A; the one real gap fixed in PR #783.** This repo drives replans from a periodic interval timer, not slot-boundary timers, so there is no boundary to coalesce. Clearing the pending flag inside the update lock was already native. The portable remainder was retrying a *failed* cycle when newer state is pending — previously the exception escaped and stranded `_event_update_pending`. Now bounded by `_MAX_FAILED_UPDATE_RETRIES`. |
 
 **Decision:** `origin/main` remains the baseline. Port only self-contained,
 upstream-relevant *fixes*; re-implement concrete bugs natively (with regression
 tests), never import the fork's v7 planner/coordinator architecture. ENTSO-E and
 PowMr are provider/hardware *features* and stay out unless an explicit request
 arrives.
+
+**Embedded OCPP stays — reconfirmed 2026-08-22 (PR #783).** Fork PR #7 deletes
+`ocpp_server.py`, `ocpp_sensors.py`, `utils/sensornames/ocpp.py`, and
+`models/ocpp_session.py`. This repository ships OCPP as a supported product
+feature, so removing it is a user-facing breaking change with no upstream
+benefit. Treat OCPP's continued presence as a deliberate divergence, never as an
+unfinished port. The same holds for fixed battery schedules. Only the dead
+seven-bucket charge-rate learner from #7 was taken.

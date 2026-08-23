@@ -591,6 +591,23 @@ from being true simultaneously.
 `estimated_net_consumption_kwh` and `estimated_cost_currency` are recomputed
 to reflect the new EV loads.
 
+**Auditable meter cash flow.** `estimated_cost_currency` is the signed meter
+cash flow computed from the final published grid fields, not from any
+intermediate solver vector (`cost_helpers.grid_cash_flow_cost`):
+
+```text
+grid_import_kwh * import_price - grid_export_kwh * export_price
+```
+
+This equals `PlanCost.import_cost - PlanCost.export_revenue`. Battery cycle wear
+is itemised separately in `PlanCost.total_cost`, while terminal value, guard
+penalties, and the structural tiebreak exist only in `PlanCost.score`.
+
+Non-finite rates carry no economic authority and are treated as `0.0`. An
+export price below the effective battery-origin export floor earns `0.0`,
+mirroring the MILP's export block so the published cash flow cannot claim
+revenue the optimiser forbade.
+
 #### Invariants
 
 - When `ev_configs=None`, behaviour is identical to the pre-#530 code
@@ -1027,6 +1044,24 @@ Invariant: ``battery_export_min_price > 0`` AND ``export_price <
 battery_export_min_price`` AND the slot's export is battery-destined (no
 PV surplus available) → the cost function scores that slot's
 export-destined revenue and discharge-loss valuation as 0.
+
+**Effective battery-origin export floor.** The two floors are combined into a
+single production value before the mask is built
+(`milp/_price_sanitise.py`):
+
+```text
+effective_battery_export_floor = max(
+    configured_battery_export_min_price,
+    recommended_battery_depreciation_threshold,
+)
+```
+
+`min_export_price` as passed by the engine already carries the depreciation
+threshold, so the maximum of the two is the operative floor. Slots whose **raw**
+`p_exp` is strictly below it get `ed[t]` capped to `base_load[t] /
+discharge_eff`: the battery may still serve house load but cannot intentionally
+export. Direct PV export and its revenue are never restricted by this floor
+(issue #767).
 
 **Signed-price boundedness:** Finite actionable import and export rates retain
 their sign. Negative import prices therefore credit actual bounded consumption,
@@ -1475,7 +1510,8 @@ Add tests for these invariants:
 
 ## Multi-day planning horizon
 
-The planner supports configurable planning horizons: 24, 48, and 72 hours.
+The planner supports configurable planning horizons: 12, 24, 36, 48, and 72
+hours. All five are offered by the config-flow selector.
 
 The horizon is controlled by `interval_length_hours` in `PlannerInput` (and
 `recommendation_interval_length` in `SensorConfig`). The supported 12, 24, 36,
@@ -1489,7 +1525,9 @@ total_slots = (interval_length_hours * 60) // interval_minutes
 
 | Horizon | 15-min slots | 60-min slots |
 |---|---|---|
+| 12 h | 48 | 12 |
 | 24 h | 96 | 24 |
+| 36 h | 144 | 36 |
 | 48 h | 192 | 48 |
 | 72 h | 288 | 72 |
 
@@ -1660,14 +1698,18 @@ discharge slots on the same day.
 
 ### Invariants for multi-day horizon tests
 
+- A 12-hour horizon produces exactly `(12 * 60) // interval_minutes` slots.
 - A 24-hour horizon produces exactly `(24 * 60) // interval_minutes` slots.
+- A 36-hour horizon produces exactly `(36 * 60) // interval_minutes` slots.
 - A 48-hour horizon produces exactly `(48 * 60) // interval_minutes` slots.
 - A 72-hour horizon produces exactly `(72 * 60) // interval_minutes` slots.
 - All slots have a non-``None`` recommendation regardless of horizon.
 - Day+1 PV estimates are ≤ day+0 estimates for the same hour when both have
   the same raw input (confidence decay applied).
 - Day+2 PV estimates are ≤ day+1 estimates for the same raw input.
-- `DataQuality.horizon_days` equals 1 / 2 / 3 for 24 h / 48 h / 72 h.
+- On ordinary dates, `DataQuality.horizon_days` equals 1 / 1 / 2 / 2 / 3 for
+  12 h / 24 h / 36 h / 48 h / 72 h. A spring-forward physical horizon can touch
+  one extra local date.
 - Missing day+2 price data surfaces in `day2_price_missing_hours`.
 - Missing day+2 PV data surfaces in `day2_pv_missing_hours`.
 - `DataQuality.is_complete` is ``False`` when any future-day data is missing.

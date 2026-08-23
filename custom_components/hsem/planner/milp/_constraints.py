@@ -9,7 +9,11 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from custom_components.hsem.planner.milp._layout import MilpBoundsBuilder
+from custom_components.hsem.planner.milp._bounds import build_bounds
+from custom_components.hsem.planner.milp._layout import (
+    MilpColumnLayout,
+    build_milp_column_layout,
+)
 
 if TYPE_CHECKING:
     from custom_components.hsem.models.ev_config import EVConfig
@@ -59,6 +63,7 @@ def _build_constraints(
     grid_export_ub_per_slot: np.ndarray | None = None,  # type: ignore[name-defined]
     session_slot_hours: np.ndarray | None = None,  # type: ignore[name-defined]
     available_slot_hours: np.ndarray | None = None,  # type: ignore[name-defined]
+    column_layout: MilpColumnLayout | None = None,
 ) -> dict:
     """Build all LP constraint matrices and variable bounds.
 
@@ -72,6 +77,12 @@ def _build_constraints(
         session_slot_hours = np.full(m, slot_hours)
     if available_slot_hours is None:
         available_slot_hours = np.full(m, slot_hours)
+    if column_layout is None:
+        column_layout = build_milp_column_layout(
+            m,
+            len(active_evs),
+            fuse_active=fuse_active,
+        )
 
     # ------------------------------------------------------------------
     # Equality constraints: energy balance per slot
@@ -609,98 +620,27 @@ def _build_constraints(
     # Penalty variables are unbounded above (can absorb arbitrary
     # violations) and non-negative (violations cannot be negative).
     # ------------------------------------------------------------------
-    unbounded: tuple[float, float | None] = (0.0, None)
-    bounds_builder = MilpBoundsBuilder(n_vars)
-    bounds_builder.fill("battery_charge", ec_off, m, (0.0, max_charge_per_slot))
-    bounds_builder.set(
-        "battery_discharge",
-        ed_off,
-        [(0.0, float(ed_ub_per_slot[t])) for t in range(m)],
+    bounds = build_bounds(
+        m=m,
+        column_layout=column_layout,
+        active_evs=active_evs,
+        session_ev_indices=session_ev_indices,
+        session_slots=session_slots,
+        session_slot_hours=session_slot_hours,
+        available_slot_hours=available_slot_hours,
+        slot_hours=slot_hours,
+        pv_avail=pv_avail,
+        max_charge_per_slot=max_charge_per_slot,
+        max_dis=max_dis,
+        ed_ub_per_slot=ed_ub_per_slot,
+        grid_import_ub_per_slot=grid_import_ub_per_slot,
+        grid_export_ub_per_slot=grid_export_ub_per_slot,
+        current_kwh=current_kwh,
+        usable_kwh=usable_kwh,
+        no_export=no_export,
+        reserve_active=reserve_active,
+        fuse_active=fuse_active,
     )
-    bounds_builder.set(
-        "grid_import",
-        gi_off,
-        [(0.0, max(float(grid_import_ub_per_slot[t]), 0.0)) for t in range(m)],
-    )
-    bounds_builder.set(
-        "grid_export",
-        ge_off,
-        [(0.0, max(float(grid_export_ub_per_slot[t]), 0.0)) for t in range(m)],
-    )
-    bounds_builder.set(
-        "pv",
-        pv_off,
-        [(float(pv_avail[t]), float(pv_avail[t])) for t in range(m)],
-    )
-    bounds_builder.fill("primary_throughput", m_off, m, unbounded)
-    bounds_builder.fill(
-        "soc_max_penalty",
-        s_max_off,
-        m,
-        (0.0, max(float(current_kwh - usable_kwh), 0.0)),
-    )
-    bounds_builder.fill(
-        "soc_min_penalty",
-        s_min_off,
-        m,
-        (0.0, max(float(-current_kwh), 0.0)),
-    )
-    bounds_builder.set(
-        "curtailment",
-        curt_off,
-        [(0.0, float(pv_avail[t])) for t in range(m)],
-    )
-    bounds_builder.set(
-        "primary_battery_export",
-        battery_export_off,
-        [((0.0, 0.0) if no_export else (0.0, max_dis)) for _t in range(m)],
-    )
-    bounds_builder.set(
-        "battery_export_mode",
-        export_mode_off,
-        [((0.0, 1.0) if reserve_active else (0.0, 0.0)) for _t in range(m)],
-    )
-    bounds_builder.set(
-        "grid_flow_mode",
-        grid_flow_mode_off,
-        [(0.0, 1.0) for _t in range(m)],
-    )
-
-    for ev_idx, ev in enumerate(active_evs):
-        is_session_ev = ev_idx in session_ev_indices
-        ev_bounds: list[tuple[float, float | None]] = []
-        for t in range(m):
-            if is_session_ev and t < session_slots and ev.session_charge_kw is not None:
-                session_dc = min(
-                    ev.session_charge_kw
-                    * float(session_slot_hours[t])
-                    * ev.charger_efficiency,
-                    ev.max_charge_per_slot,
-                )
-                ev_bounds.append((session_dc, session_dc))
-            elif ev.fixed_session_only:
-                ev_bounds.append((0.0, 0.0))
-            else:
-                # A partly elapsed current slot can only deliver its remaining
-                # minutes of charge, so the flexible ceiling is scaled down
-                # accordingly.  Without this the optimiser reserves a full
-                # slot's energy that the charger cannot physically deliver.
-                duration_scale = min(
-                    max(float(available_slot_hours[t]) / max(slot_hours, 1e-9), 0.0),
-                    1.0,
-                )
-                ev_bounds.append((0.0, ev.max_charge_per_slot * duration_scale))
-        bounds_builder.set(f"ev_{ev_idx}_charge", ev_var_offsets[ev_idx], ev_bounds)
-        bounds_builder.fill(
-            f"ev_{ev_idx}_target_penalty",
-            ev_pen_offsets[ev_idx],
-            1,
-            unbounded,
-        )
-    if fuse_active:
-        bounds_builder.fill("grid_import_penalty", gi_pen_off, m, unbounded)
-
-    bounds = bounds_builder.finalize()
 
     return {
         "A_eq": A_eq,
@@ -708,7 +648,7 @@ def _build_constraints(
         "A_ub": A_ub,
         "b_ub": b_ub,
         "bounds": bounds,
-        "bounds_blocks": bounds_builder.blocks,
+        "bounds_blocks": column_layout.blocks,
         "ev_discharge_guard_active": ev_discharge_guard_active,
         "ed_ub_per_slot": ed_ub_per_slot,
         "hard_grid_import_cap_per_slot_kwh": hard_grid_import_cap_per_slot_kwh,

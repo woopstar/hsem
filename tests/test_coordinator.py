@@ -252,7 +252,10 @@ class TestOptionsUpdateBackgroundTask:
     """
 
     @pytest.mark.asyncio
-    @patch("custom_components.hsem.coordinator.OPTIONS_UPDATE_DEBOUNCE_SECONDS", 0.0)
+    @patch(
+        "custom_components.hsem.coordinator_lifecycle.OPTIONS_UPDATE_DEBOUNCE_SECONDS",
+        0.0,
+    )
     async def test_options_updated_schedules_background_task(self) -> None:
         """async_options_updated returns immediately after scheduling a task."""
         coordinator = _make_bare_coordinator()
@@ -290,7 +293,10 @@ class TestOptionsUpdateBackgroundTask:
         await scheduled[1]
 
     @pytest.mark.asyncio
-    @patch("custom_components.hsem.coordinator.OPTIONS_UPDATE_DEBOUNCE_SECONDS", 0.0)
+    @patch(
+        "custom_components.hsem.coordinator_lifecycle.OPTIONS_UPDATE_DEBOUNCE_SECONDS",
+        0.0,
+    )
     async def test_repeated_toggle_cancels_pending_task(self) -> None:
         """Repeated options updates collapse into a single background run."""
         coordinator = _make_bare_coordinator()
@@ -336,7 +342,10 @@ class TestOptionsUpdateBackgroundTask:
         assert background_task.cancelled() or background_task.cancelling()
 
     @pytest.mark.asyncio
-    @patch("custom_components.hsem.coordinator.OPTIONS_UPDATE_DEBOUNCE_SECONDS", 0.0)
+    @patch(
+        "custom_components.hsem.coordinator_lifecycle.OPTIONS_UPDATE_DEBOUNCE_SECONDS",
+        0.0,
+    )
     async def test_teardown_cancels_pending_options_task(self) -> None:
         """async_teardown must cancel pending debounce and options-update tasks."""
         coordinator = _make_bare_coordinator()

@@ -14,68 +14,23 @@ work, none of which were caught by the existing suite:
 
 from __future__ import annotations
 
-from typing import NamedTuple
-
 import numpy as np
 import pytest
 
 from custom_components.hsem.models.ev_config import EVConfig
 from custom_components.hsem.planner.milp._constraints import _build_constraints
+from custom_components.hsem.planner.milp._layout import (
+    MilpColumnLayout,
+    build_milp_column_layout,
+)
 
 _M = 4
 _SLOT_HOURS = 1.0
 
 
-class _Layout(NamedTuple):
-    """A non-overlapping MILP column layout for the test harness."""
-
-    ec_off: int
-    ed_off: int
-    gi_off: int
-    ge_off: int
-    pv_off: int
-    m_off: int
-    curt_off: int
-    gi_pen_off: int
-    s_max_off: int
-    s_min_off: int
-    battery_export_off: int
-    export_mode_off: int
-    grid_flow_mode_off: int
-    ev_var_offsets: list[int]
-    ev_pen_offsets: list[int]
-    n_vars: int
-
-
-def _offsets(num_evs: int) -> _Layout:
-    """Return a non-overlapping column layout for *num_evs* EVs."""
-    next_col = 13 * _M
-    ev_var_offsets: list[int] = []
-    for _ in range(num_evs):
-        ev_var_offsets.append(next_col)
-        next_col += _M
-    ev_pen_offsets: list[int] = []
-    for _ in range(num_evs):
-        ev_pen_offsets.append(next_col)
-        next_col += 1
-    return _Layout(
-        ec_off=0 * _M,
-        ed_off=1 * _M,
-        gi_off=2 * _M,
-        ge_off=3 * _M,
-        pv_off=4 * _M,
-        m_off=5 * _M,
-        curt_off=6 * _M,
-        gi_pen_off=7 * _M,
-        s_max_off=8 * _M,
-        s_min_off=9 * _M,
-        battery_export_off=10 * _M,
-        export_mode_off=11 * _M,
-        grid_flow_mode_off=12 * _M,
-        ev_var_offsets=ev_var_offsets,
-        ev_pen_offsets=ev_pen_offsets,
-        n_vars=next_col,
-    )
+def _offsets(num_evs: int) -> MilpColumnLayout:
+    """Return the canonical declared layout for *num_evs* EVs."""
+    return build_milp_column_layout(_M, num_evs, fuse_active=True)
 
 
 def _build(
@@ -96,19 +51,19 @@ def _build(
     off = _offsets(len(evs))
     return _build_constraints(
         _M,
-        off.n_vars,
-        off.ec_off,
-        off.ed_off,
-        off.gi_off,
-        off.ge_off,
-        off.pv_off,
-        off.m_off,
-        off.curt_off,
-        off.gi_pen_off,
-        off.s_max_off,
-        off.s_min_off,
-        off.ev_var_offsets,
-        off.ev_pen_offsets,
+        off.column_count,
+        off.offset("battery_charge"),
+        off.offset("battery_discharge"),
+        off.offset("grid_import"),
+        off.offset("grid_export"),
+        off.offset("pv"),
+        off.offset("primary_throughput"),
+        off.offset("curtailment"),
+        off.offset("grid_import_penalty"),
+        off.offset("soc_max_penalty"),
+        off.offset("soc_min_penalty"),
+        [off.offset(f"ev_{i}_charge") for i in range(len(evs))],
+        [off.offset(f"ev_{i}_target_penalty") for i in range(len(evs))],
         evs,
         np.zeros(_M) if pv_avail is None else pv_avail,
         np.zeros(_M) if base_load is None else base_load,
@@ -127,11 +82,12 @@ def _build(
         session_slots,
         _SLOT_HOURS,
         bool(session_ev_indices),
-        battery_export_off=off.battery_export_off,
-        export_mode_off=off.export_mode_off,
-        grid_flow_mode_off=off.grid_flow_mode_off,
+        battery_export_off=off.offset("primary_battery_export"),
+        export_mode_off=off.offset("battery_export_mode"),
+        grid_flow_mode_off=off.offset("grid_flow_mode"),
         session_slot_hours=session_slot_hours,
         available_slot_hours=available_slot_hours,
+        column_layout=off,
     )
 
 
@@ -206,7 +162,7 @@ def test_flexible_ev_bound_scales_with_remaining_slot_time() -> None:
         available_slot_hours=available,
     )
     off = _offsets(1)
-    ev_off = off.ev_var_offsets[0]
+    ev_off = off.offset("ev_0_charge")
     bounds = constraints["bounds"]
     # Slot 0 is only 25 % available -> 4.0 kWh * 0.25.
     assert bounds[ev_off][1] == pytest.approx(1.0)
@@ -218,7 +174,7 @@ def test_flexible_ev_bound_defaults_to_full_slot() -> None:
     """Omitting available_slot_hours keeps the untouched full-slot ceiling."""
     constraints = _build(active_evs=[_ev()], max_grid_import_per_slot_kwh=1000.0)
     off = _offsets(1)
-    ev_off = off.ev_var_offsets[0]
+    ev_off = off.offset("ev_0_charge")
     bounds = constraints["bounds"]
     for t in range(_M):
         assert bounds[ev_off + t][1] == pytest.approx(4.0)
@@ -297,7 +253,7 @@ def test_session_slots_excluded_from_post_deadline_zero_rows() -> None:
     )
     constraints = _session_build(ev)
     off = _offsets(1)
-    ev_off = off.ev_var_offsets[0]
+    ev_off = off.offset("ev_0_charge")
     a_ub = constraints["A_ub"]
     b_ub = constraints["b_ub"]
     # Slot 1 is both post-deadline and session-pinned: no row may force it to
@@ -333,7 +289,7 @@ def test_session_slots_excluded_from_past_target_surplus_rows() -> None:
         session_slot_hours=np.array([1.0, 1.0, 0.0, 0.0]),
     )
     off = _offsets(1)
-    ev_off = off.ev_var_offsets[0]
+    ev_off = off.offset("ev_0_charge")
     a_ub = constraints["A_ub"]
     b_ub = constraints["b_ub"]
     bounds = constraints["bounds"]

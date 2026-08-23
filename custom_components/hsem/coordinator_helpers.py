@@ -424,3 +424,13 @@ def live_demand_contradicts_zero_profile(
         live_house_demand_w=live.house_consumption_power_w,
     )
     return readiness.reason == "zero_forecast_with_live_demand"
+
+
+class _StaleUpdateCycle(Exception):
+    """Raised when a newer registered state event invalidates an in-flight cycle."""
+
+
+# Seconds to wait after the last options change before scheduling a planner
+# run.  Rapid switch/number/time toggles restart this timer, so the planner
+# only rebuilds once after the user stops clicking.
+OPTIONS_UPDATE_DEBOUNCE_SECONDS = 0.25

@@ -19,12 +19,14 @@ def grid_cash_flow_cost(
     import_price: float,
     export_price: float,
     *,
-    price_actionable: bool = True,
     export_min_price: float = 0.0,
 ) -> float:
-    """Return auditable signed meter cash flow; positive is net cost."""
-    if not price_actionable:
-        return 0.0
+    """Return auditable signed meter cash flow; positive is net cost.
+
+    Non-finite rates carry no economic authority and are treated as ``0.0``.
+    An export price below *export_min_price* earns nothing, mirroring the
+    MILP's battery-origin export block.
+    """
     effective_import = import_price if math.isfinite(import_price) else 0.0
     effective_export = export_price if math.isfinite(export_price) else 0.0
     if export_min_price > 1e-9 and effective_export < export_min_price:
@@ -46,7 +48,6 @@ def slot_grid_cash_flow_cost(
         slot.grid_export_kwh,
         slot.price.import_price,
         slot.price.export_price,
-        price_actionable=bool(getattr(slot, "price_actionable", True)),
         export_min_price=export_min_price,
     )
 

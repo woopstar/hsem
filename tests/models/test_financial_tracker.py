@@ -125,6 +125,77 @@ class TestFinancialTrackerAccumulation:
         assert tracker.import_cost_total == pytest.approx(0.0)
         assert tracker.export_income_total == pytest.approx(0.0)
 
+    def test_channels_are_evaluated_independently(self) -> None:
+        """A stale import channel re-baselines without stalling export."""
+        start = datetime(2026, 8, 8, 12, 0, tzinfo=UTC)
+        tracker = FinancialTracker()
+        tracker.accumulate(
+            100.0,
+            50.0,
+            import_price=1.0,
+            export_price=1.0,
+            sample_time=start,
+            max_gap_seconds=600.0,
+        )
+        # Export keeps sampling on time; import disappears for two weeks and
+        # only then returns. Pricing the whole import gap at one rate would be
+        # wrong, but the export channel must keep accumulating normally.
+        tracker.accumulate(
+            None,
+            60.0,
+            import_price=1.0,
+            export_price=2.0,
+            sample_time=start + timedelta(minutes=5),
+            max_gap_seconds=600.0,
+        )
+        assert tracker.export_income_total == pytest.approx(10.0)
+        assert tracker.import_cost_total == pytest.approx(0.0)
+
+        tracker.accumulate(
+            500.0,
+            70.0,
+            import_price=3.0,
+            export_price=2.0,
+            sample_time=start + timedelta(days=14),
+            max_gap_seconds=600.0,
+        )
+        # The import gap is re-baselined rather than replayed at 3.0/kWh, and
+        # the export channel is also stale by now, so neither total moves.
+        assert tracker.import_cost_total == pytest.approx(0.0)
+        assert tracker.export_income_total == pytest.approx(10.0)
+
+    def test_missing_channel_does_not_disturb_the_other_baseline(self) -> None:
+        """Omitting one meter leaves the other channel's accounting intact."""
+        start = datetime(2026, 8, 8, 12, 0, tzinfo=UTC)
+        tracker = FinancialTracker()
+        tracker.accumulate(
+            10.0,
+            5.0,
+            import_price=2.0,
+            export_price=1.0,
+            sample_time=start,
+            max_gap_seconds=600.0,
+        )
+        tracker.accumulate(
+            12.0,
+            None,
+            import_price=2.0,
+            export_price=1.0,
+            sample_time=start + timedelta(minutes=5),
+            max_gap_seconds=600.0,
+        )
+        assert tracker.import_cost_total == pytest.approx(4.0)
+        # Export resumes from its original baseline of 5.0, not from zero.
+        tracker.accumulate(
+            12.0,
+            8.0,
+            import_price=2.0,
+            export_price=1.0,
+            sample_time=start + timedelta(minutes=10),
+            max_gap_seconds=600.0,
+        )
+        assert tracker.export_income_total == pytest.approx(3.0)
+
     def test_accumulate_ignores_negative_delta(self) -> None:
         """Negative delta (meter reset) is ignored."""
         tracker = FinancialTracker()

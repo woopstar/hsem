@@ -104,7 +104,7 @@ class TestInverterPowerControlSafetyGate:
         with (
             patch(_LOGGER_PATCH, new_callable=MagicMock),
             patch(
-                "custom_components.hsem.custom_sensors.applier.async_set_grid_export_power_pct"
+                "custom_components.hsem.custom_sensors.applier_power_control.async_set_grid_export_power_pct"
             ) as mock_write,
         ):
             summary = await async_apply_inverter_power_control(sensor, cfg, live)
@@ -122,7 +122,7 @@ class TestInverterPowerControlSafetyGate:
         with (
             patch(_LOGGER_PATCH, new_callable=MagicMock),
             patch(
-                "custom_components.hsem.custom_sensors.applier.async_set_grid_export_power_pct"
+                "custom_components.hsem.custom_sensors.applier_power_control.async_set_grid_export_power_pct"
             ) as mock_write,
         ):
             summary = await async_apply_inverter_power_control(sensor, cfg, live)
@@ -158,7 +158,7 @@ class TestInverterPowerControlSafetyGate:
         with (
             patch(_LOGGER_PATCH, new_callable=MagicMock),
             patch(
-                "custom_components.hsem.custom_sensors.applier.async_write_and_verify",
+                "custom_components.hsem.custom_sensors.applier_power_control.async_write_and_verify",
                 new_callable=AsyncMock,
             ) as mock_wv,
         ):
@@ -199,7 +199,7 @@ class TestInverterPowerControlSafetyGate:
         with (
             patch(_LOGGER_PATCH, new_callable=MagicMock),
             patch(
-                "custom_components.hsem.custom_sensors.applier.async_write_and_verify",
+                "custom_components.hsem.custom_sensors.applier_power_control.async_write_and_verify",
                 new_callable=AsyncMock,
             ) as mock_wv,
         ):
@@ -251,7 +251,7 @@ class TestInverterPowerControlSafetyGate:
                 "custom_components.hsem.utils.huawei.async_set_grid_export_power_pct"
             ) as mock_pct_write,
             patch(
-                "custom_components.hsem.custom_sensors.applier.async_write_and_verify",
+                "custom_components.hsem.custom_sensors.applier_power_control.async_write_and_verify",
                 new_callable=AsyncMock,
             ) as mock_wv,
         ):
@@ -286,7 +286,7 @@ class TestInverterPowerControlSafetyGate:
                 "custom_components.hsem.utils.huawei.async_set_grid_export_power_watt"
             ) as mock_watt_write,
             patch(
-                "custom_components.hsem.custom_sensors.applier.async_write_and_verify",
+                "custom_components.hsem.custom_sensors.applier_power_control.async_write_and_verify",
                 new_callable=AsyncMock,
             ) as mock_wv,
         ):
@@ -335,7 +335,7 @@ class TestInverterPowerControlSafetyGate:
                 "custom_components.hsem.utils.huawei.async_set_grid_export_power_pct"
             ) as mock_pct_write,
             patch(
-                "custom_components.hsem.custom_sensors.applier.async_write_and_verify",
+                "custom_components.hsem.custom_sensors.applier_power_control.async_write_and_verify",
                 new_callable=AsyncMock,
             ) as mock_wv,
         ):
@@ -380,7 +380,7 @@ class TestInverterPowerControlSafetyGate:
                 "custom_components.hsem.utils.huawei.async_set_grid_export_power_pct"
             ) as mock_pct_write,
             patch(
-                "custom_components.hsem.custom_sensors.applier.async_write_and_verify",
+                "custom_components.hsem.custom_sensors.applier_power_control.async_write_and_verify",
                 new_callable=AsyncMock,
             ) as mock_wv,
         ):
@@ -428,7 +428,7 @@ class TestInverterPowerControlSafetyGate:
                 "custom_components.hsem.utils.huawei.async_set_grid_export_power_pct"
             ) as mock_pct_write,
             patch(
-                "custom_components.hsem.custom_sensors.applier.async_write_and_verify",
+                "custom_components.hsem.custom_sensors.applier_power_control.async_write_and_verify",
                 new_callable=AsyncMock,
             ) as mock_wv,
         ):
@@ -637,11 +637,11 @@ class TestBatterySettingsSafetyGate:
         with (
             patch(_LOGGER_PATCH, new_callable=MagicMock),
             patch(
-                "custom_components.hsem.custom_sensors.applier.async_set_forcible_discharge",
+                "custom_components.hsem.custom_sensors.applier_forcible_discharge.async_set_forcible_discharge",
                 new_callable=AsyncMock,
             ) as mock_forcible,
             patch(
-                "custom_components.hsem.custom_sensors.applier.async_write_and_verify",
+                "custom_components.hsem.custom_sensors.applier_forcible_discharge.async_write_and_verify",
                 side_effect=_run_writer_then_ok,
             ),
         ):
