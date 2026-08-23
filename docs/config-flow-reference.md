@@ -171,14 +171,21 @@ Second EV planned load integration (identical fields; only shown when second EV 
 ### Step: `ocpp`
 
 OCPP (Open Charge Point Protocol) integration for EV charger remote control.
+HSEM runs **one OCPP server per EV**: the primary EV's charger connects to the
+primary server, and — when the second EV is enabled — the second EV's charger
+can connect to a dedicated second server on its own port. The second-server
+fields are only shown when the second EV is configured.
 
 | Field | Key | Default | Description |
 |---|---|---|---|
 | OCPP enabled | `hsem_ocpp_enabled` | `False` | Master switch for OCPP integration |
-| OCPP port | `hsem_ocpp_port` | `9000` | TCP port for the OCPP WebSocket server |
+| OCPP port | `hsem_ocpp_port` | `9000` | TCP port for the primary EV's OCPP WebSocket server |
 | OCPP charge point ID | `hsem_ocpp_cpid` | — | Charge point identifier (as configured in the charger) |
 | Start window | `hsem_ocpp_start_window_s` | `300` | Seconds before a scheduled charge slot to send `RemoteStartTransaction` |
 | Stop window | `hsem_ocpp_stop_window_s` | `300` | Seconds before a non-charge slot to send `RemoteStopTransaction` |
+| Second OCPP enabled | `hsem_ocpp_second_enabled` | `False` | Enable the dedicated second-EV server (only shown with second EV) |
+| Second OCPP port | `hsem_ocpp_second_port` | `9001` | TCP port for the second EV's OCPP WebSocket server (must differ from the primary port) |
+| Second charge point ID | `hsem_ocpp_second_cpid` | — | Charge point identifier of the second EV charger |
 
 ### Step: `batteries_schedule_1/2/3`
 

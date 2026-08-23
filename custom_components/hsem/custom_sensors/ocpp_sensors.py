@@ -1,15 +1,19 @@
 """Diagnostic sensors exposing OCPP charger state to Home Assistant.
 
-Provides four sensors:
+Provides four sensors per OCPP server (one server per EV):
 
 - ``sensor.hsem_ocpp_charger_status`` — Connection status and charging state.
 - ``sensor.hsem_ocpp_charger_power`` — Live charging power (kW).
 - ``sensor.hsem_ocpp_charger_info`` — Vendor, model, firmware, serial.
 - ``sensor.hsem_ocpp_charger_sessions`` — Completed session log.
 
+The second EV's server (when configured) exposes the same four sensors with
+``_second`` entity IDs, reading from the second server's charger state.
+
 All sensors are diagnostic entities that subscribe to the shared
 :class:`~custom_components.hsem.coordinator.HSEMDataUpdateCoordinator`.
-They read charger state from :attr:`CoordinatorData.ocpp_chargers`.
+They read charger state from :attr:`CoordinatorData.ocpp_chargers` and
+:attr:`CoordinatorData.ocpp_second_chargers`.
 """
 
 from __future__ import annotations
@@ -45,6 +49,21 @@ from custom_components.hsem.utils.sensornames.ocpp import (
     get_ocpp_charger_status_sensor_unique_id,
 )
 
+
+def _chargers_for(data: CoordinatorData | None, charger_index: int) -> dict | None:
+    """Return the charger dict for the given EV's OCPP server.
+
+    Args:
+        data: Coordinator data (may be ``None``).
+        charger_index: ``1`` for the primary EV server, ``2`` for the second.
+    """
+    if data is None:
+        return None
+    if charger_index == 2:
+        return data.ocpp_second_chargers
+    return data.ocpp_chargers
+
+
 # ---------------------------------------------------------------------------
 # OCPP Charger Status Sensor
 # ---------------------------------------------------------------------------
@@ -74,22 +93,28 @@ class HSEMOCPPChargerStatusSensor(
         self,
         config_entry: ConfigEntry,
         coordinator: HSEMDataUpdateCoordinator,
+        charger_index: int = 1,
     ) -> None:
         """Initialise the OCPP charger status sensor.
 
         Args:
             config_entry: The HSEM config entry.
             coordinator: The shared coordinator.
+            charger_index: ``1`` for the primary EV server, ``2`` for the
+                second EV's server.
         """
         HSEMCoordinatorEntity.__init__(self, coordinator)
         HSEMEntity.__init__(self, config_entry)
 
         self._config_entry = config_entry
+        self._charger_index = charger_index
         self._attr_unique_id = get_ocpp_charger_status_sensor_unique_id(
-            config_entry.entry_id
+            config_entry.entry_id, charger_index=charger_index
         )
-        self.entity_id = get_ocpp_charger_status_sensor_entity_id()
-        self._name = get_ocpp_charger_status_sensor_name()
+        self.entity_id = get_ocpp_charger_status_sensor_entity_id(
+            charger_index=charger_index
+        )
+        self._name = get_ocpp_charger_status_sensor_name(charger_index)
         self._restored_state: str | None = None
 
     @property
@@ -112,7 +137,7 @@ class HSEMOCPPChargerStatusSensor(
         if data is None:
             return self._restored_state or "disconnected"
 
-        chargers = data.ocpp_chargers or {}
+        chargers = _chargers_for(data, self._charger_index) or {}
         if not chargers:
             return "disconnected"
 
@@ -125,11 +150,12 @@ class HSEMOCPPChargerStatusSensor(
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return per-charger status details."""
         data: CoordinatorData | None = self.coordinator.data
-        if data is None or not data.ocpp_chargers:
+        chargers = _chargers_for(data, self._charger_index)
+        if not chargers:
             return {}
 
         attrs: dict[str, Any] = {}
-        for cpid, session in data.ocpp_chargers.items():
+        for cpid, session in chargers.items():
             attrs[cpid] = {
                 "status": session.status,
                 "power_w": round(session.current_power_w, 1),
@@ -189,22 +215,28 @@ class HSEMOCPPChargerPowerSensor(
         self,
         config_entry: ConfigEntry,
         coordinator: HSEMDataUpdateCoordinator,
+        charger_index: int = 1,
     ) -> None:
         """Initialise the OCPP charger power sensor.
 
         Args:
             config_entry: The HSEM config entry.
             coordinator: The shared coordinator.
+            charger_index: ``1`` for the primary EV server, ``2`` for the
+                second EV's server.
         """
         HSEMCoordinatorEntity.__init__(self, coordinator)
         HSEMEntity.__init__(self, config_entry)
 
         self._config_entry = config_entry
+        self._charger_index = charger_index
         self._attr_unique_id = get_ocpp_charger_power_sensor_unique_id(
-            config_entry.entry_id
+            config_entry.entry_id, charger_index=charger_index
         )
-        self.entity_id = get_ocpp_charger_power_sensor_entity_id()
-        self._name = get_ocpp_charger_power_sensor_name()
+        self.entity_id = get_ocpp_charger_power_sensor_entity_id(
+            charger_index=charger_index
+        )
+        self._name = get_ocpp_charger_power_sensor_name(charger_index)
         self._restored_state: str | None = None
 
     @property
@@ -224,10 +256,11 @@ class HSEMOCPPChargerPowerSensor(
     def state(self) -> float | str:
         """Return the current charging power in kW."""
         data: CoordinatorData | None = self.coordinator.data
-        if data is None or not data.ocpp_chargers:
+        chargers = _chargers_for(data, self._charger_index)
+        if not chargers:
             return self._restored_state or "0.0"
 
-        first = next(iter(data.ocpp_chargers.values()))
+        first = next(iter(chargers.values()))
         return float(round(first.current_power_w / 1000.0, 2))  # type: ignore[no-any-return]
 
     @property
@@ -278,22 +311,28 @@ class HSEMOCPPChargerInfoSensor(
         self,
         config_entry: ConfigEntry,
         coordinator: HSEMDataUpdateCoordinator,
+        charger_index: int = 1,
     ) -> None:
         """Initialise the OCPP charger info sensor.
 
         Args:
             config_entry: The HSEM config entry.
             coordinator: The shared coordinator.
+            charger_index: ``1`` for the primary EV server, ``2`` for the
+                second EV's server.
         """
         HSEMCoordinatorEntity.__init__(self, coordinator)
         HSEMEntity.__init__(self, config_entry)
 
         self._config_entry = config_entry
+        self._charger_index = charger_index
         self._attr_unique_id = get_ocpp_charger_info_sensor_unique_id(
-            config_entry.entry_id
+            config_entry.entry_id, charger_index=charger_index
         )
-        self.entity_id = get_ocpp_charger_info_sensor_entity_id()
-        self._name = get_ocpp_charger_info_sensor_name()
+        self.entity_id = get_ocpp_charger_info_sensor_entity_id(
+            charger_index=charger_index
+        )
+        self._name = get_ocpp_charger_info_sensor_name(charger_index)
         self._restored_state: str | None = None
 
     @property
@@ -313,10 +352,11 @@ class HSEMOCPPChargerInfoSensor(
     def state(self) -> str:
         """Return the charger model or 'disconnected'."""
         data: CoordinatorData | None = self.coordinator.data
-        if data is None or not data.ocpp_chargers:
+        chargers = _chargers_for(data, self._charger_index)
+        if not chargers:
             return self._restored_state or "disconnected"
 
-        first = next(iter(data.ocpp_chargers.values()))
+        first = next(iter(chargers.values()))
         return first.model or "unknown"
 
     @property
@@ -324,10 +364,11 @@ class HSEMOCPPChargerInfoSensor(
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return charger identity details."""
         data: CoordinatorData | None = self.coordinator.data
-        if data is None or not data.ocpp_chargers:
+        chargers = _chargers_for(data, self._charger_index)
+        if not chargers:
             return {}
 
-        first = next(iter(data.ocpp_chargers.values()))
+        first = next(iter(chargers.values()))
         return {
             "vendor": first.vendor,
             "model": first.model,
@@ -384,22 +425,28 @@ class HSEMOCPPChargerSessionsSensor(
         self,
         config_entry: ConfigEntry,
         coordinator: HSEMDataUpdateCoordinator,
+        charger_index: int = 1,
     ) -> None:
         """Initialise the OCPP charger sessions sensor.
 
         Args:
             config_entry: The HSEM config entry.
             coordinator: The shared coordinator.
+            charger_index: ``1`` for the primary EV server, ``2`` for the
+                second EV's server.
         """
         HSEMCoordinatorEntity.__init__(self, coordinator)
         HSEMEntity.__init__(self, config_entry)
 
         self._config_entry = config_entry
+        self._charger_index = charger_index
         self._attr_unique_id = get_ocpp_charger_sessions_sensor_unique_id(
-            config_entry.entry_id
+            config_entry.entry_id, charger_index=charger_index
         )
-        self.entity_id = get_ocpp_charger_sessions_sensor_entity_id()
-        self._name = get_ocpp_charger_sessions_sensor_name()
+        self.entity_id = get_ocpp_charger_sessions_sensor_entity_id(
+            charger_index=charger_index
+        )
+        self._name = get_ocpp_charger_sessions_sensor_name(charger_index)
         self._restored_state: str | None = None
 
     @property
@@ -419,7 +466,12 @@ class HSEMOCPPChargerSessionsSensor(
     def state(self) -> str:
         """Return the session count."""
         data: CoordinatorData | None = self.coordinator.data
-        sessions = data.ocpp_sessions if data is not None else None
+        if data is None:
+            sessions = None
+        elif self._charger_index == 2:
+            sessions = data.ocpp_second_sessions
+        else:
+            sessions = data.ocpp_sessions
         if sessions is None:
             return self._restored_state or "0"
         return str(len(sessions))
@@ -429,7 +481,12 @@ class HSEMOCPPChargerSessionsSensor(
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return session history."""
         data: CoordinatorData | None = self.coordinator.data
-        sessions = data.ocpp_sessions if data is not None else None
+        if data is None:
+            sessions = None
+        elif self._charger_index == 2:
+            sessions = data.ocpp_second_sessions
+        else:
+            sessions = data.ocpp_sessions
         if sessions is None:
             return {}
         return {"sessions": sessions}

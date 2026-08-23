@@ -1195,3 +1195,13 @@ feature, so removing it is a user-facing breaking change with no upstream
 benefit. Treat OCPP's continued presence as a deliberate divergence, never as an
 unfinished port. The same holds for fixed battery schedules. Only the dead
 seven-bucket charge-rate learner from #7 was taken.
+
+**One OCPP server per EV (2026-08-23).** Each EV gets its own embedded OCPP
+server on its own port (defaults 9000 / 9001): the primary plan drives the
+primary server, the second-EV plan drives the second server. The second
+server's config fields (`hsem_ocpp_second_enabled` / `_port` / `_cpid`) are only
+shown in the ocpp flow step when the second EV is enabled, and the second set
+of diagnostic sensors (`*_second`) only registers when both the second EV and
+the second server are enabled. Sensor name helpers take a `charger_index`
+argument (1 = primary, 2 = second); `CoordinatorData` carries
+`ocpp_second_chargers` / `ocpp_second_sessions` alongside the primary fields.

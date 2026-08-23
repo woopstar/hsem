@@ -589,7 +589,10 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
                 self._user_input.update(user_input)
                 return await self.async_step_batteries_schedules()
 
-        data_schema = await get_ocpp_step_schema(None)
+        data_schema = await get_ocpp_step_schema(
+            None,
+            second_ev_enabled=bool(self._user_input.get("hsem_ev_second_enabled")),
+        )
 
         return self.async_show_form(
             step_id="ocpp",

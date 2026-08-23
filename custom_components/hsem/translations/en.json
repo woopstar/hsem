@@ -24,7 +24,8 @@
       "required": "This field is required.",
       "start_time_after_end_time": "Start time must be before end time.",
       "start_time_equals_end_time": "Start time and end time cannot be the same — this creates a zero-length window. Disable the schedule instead.",
-      "invalid_wait_mode_behavior": "Invalid wait mode behaviour. Choose Strict wait or Self-consumption with reserve."
+      "invalid_wait_mode_behavior": "Invalid wait mode behaviour. Choose Strict wait or Self-consumption with reserve.",
+      "port_conflict": "The second OCPP port must differ from the first OCPP port."
     },
     "step": {
       "batteries_excess_export": {
@@ -83,14 +84,20 @@
           "hsem_ocpp_port": "OCPP Port",
           "hsem_ocpp_cpid": "Charge Point ID",
           "hsem_ocpp_start_window_s": "Start Window (s)",
-          "hsem_ocpp_stop_window_s": "Stop Window (s)"
+          "hsem_ocpp_stop_window_s": "Stop Window (s)",
+          "hsem_ocpp_second_enabled": "Enable Second OCPP Server",
+          "hsem_ocpp_second_port": "Second OCPP Port",
+          "hsem_ocpp_second_cpid": "Second Charge Point ID"
         },
         "data_description": {
           "hsem_ocpp_enabled": "Enable the embedded OCPP 1.6 WebSocket server for direct EV charger control. LAN-only — do not expose the port to the internet.",
           "hsem_ocpp_port": "TCP port for the OCPP WebSocket server. Default: 9000. Must be above 1024.",
           "hsem_ocpp_cpid": "Expected charge-point identifier of the EV charger. Leave empty to accept any charger.",
           "hsem_ocpp_start_window_s": "Seconds of sustained surplus required before starting a charge. Prevents rapid start-stop cycling. Default: 60.",
-          "hsem_ocpp_stop_window_s": "Seconds of sustained shortage required before stopping a charge. Prevents rapid stop-start cycling. Default: 180."
+          "hsem_ocpp_stop_window_s": "Seconds of sustained shortage required before stopping a charge. Prevents rapid stop-start cycling. Default: 180.",
+          "hsem_ocpp_second_enabled": "Enable a second, dedicated OCPP server for the second EV. Only available when EV 2 planned load is enabled.",
+          "hsem_ocpp_second_port": "TCP port for the second OCPP WebSocket server. Default: 9001. Must differ from the first server's port.",
+          "hsem_ocpp_second_cpid": "Expected charge-point identifier of the second EV charger. Leave empty to accept any charger."
         },
         "description": "Configure the embedded OCPP 1.6 server for LAN-only EV charger control. When enabled, HSEM sends SetChargingProfile commands directly to your EV charger based on the charging plan.",
         "title": "OCPP Server"
@@ -514,7 +521,8 @@
       "required": "This field is required.",
       "start_time_after_end_time": "Start time must be before end time.",
       "start_time_equals_end_time": "Start time and end time cannot be the same — this creates a zero-length window. Disable the schedule instead.",
-      "invalid_wait_mode_behavior": "Invalid wait mode behaviour. Choose Strict wait or Self-consumption with reserve."
+      "invalid_wait_mode_behavior": "Invalid wait mode behaviour. Choose Strict wait or Self-consumption with reserve.",
+      "port_conflict": "The second OCPP port must differ from the first OCPP port."
     },
     "step": {
       "batteries_excess_export": {
@@ -573,14 +581,20 @@
           "hsem_ocpp_port": "OCPP Port",
           "hsem_ocpp_cpid": "Charge Point ID",
           "hsem_ocpp_start_window_s": "Start Window (s)",
-          "hsem_ocpp_stop_window_s": "Stop Window (s)"
+          "hsem_ocpp_stop_window_s": "Stop Window (s)",
+          "hsem_ocpp_second_enabled": "Enable Second OCPP Server",
+          "hsem_ocpp_second_port": "Second OCPP Port",
+          "hsem_ocpp_second_cpid": "Second Charge Point ID"
         },
         "data_description": {
           "hsem_ocpp_enabled": "Enable the embedded OCPP 1.6 WebSocket server for direct EV charger control. LAN-only — do not expose the port to the internet.",
           "hsem_ocpp_port": "TCP port for the OCPP WebSocket server. Default: 9000. Must be above 1024.",
           "hsem_ocpp_cpid": "Expected charge-point identifier of the EV charger. Leave empty to accept any charger.",
           "hsem_ocpp_start_window_s": "Seconds of sustained surplus required before starting a charge. Prevents rapid start-stop cycling. Default: 60.",
-          "hsem_ocpp_stop_window_s": "Seconds of sustained shortage required before stopping a charge. Prevents rapid stop-start cycling. Default: 180."
+          "hsem_ocpp_stop_window_s": "Seconds of sustained shortage required before stopping a charge. Prevents rapid stop-start cycling. Default: 180.",
+          "hsem_ocpp_second_enabled": "Enable a second, dedicated OCPP server for the second EV. Only available when EV 2 planned load is enabled.",
+          "hsem_ocpp_second_port": "TCP port for the second OCPP WebSocket server. Default: 9001. Must differ from the first server's port.",
+          "hsem_ocpp_second_cpid": "Expected charge-point identifier of the second EV charger. Leave empty to accept any charger."
         },
         "description": "Configure the embedded OCPP 1.6 server for LAN-only EV charger control. When enabled, HSEM sends SetChargingProfile commands directly to your EV charger based on the charging plan.",
         "title": "OCPP Server"

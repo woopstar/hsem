@@ -40,7 +40,7 @@
 ### EV Charging
 - **MILP EV co-optimisation** — EV charging scheduled alongside battery in one LP solve
 - **Session-aware EV demand** — treats actively-charging EV as certain demand for the next 2 hours
-- **Embedded OCPP 1.6 server** — direct EV charger control via WebSocket (Easee, Zaptec, Wallbox, etc.)
+- **Embedded OCPP 1.6 server** — direct EV charger control via WebSocket (Easee, Zaptec, Wallbox, etc.), one server per EV (second EV optional, separate port)
 - **Auto-Full on negative prices** — automatically charges EV at full power when electricity is free
 - **Dual EV support** — independent configuration and planning for two EVs
 

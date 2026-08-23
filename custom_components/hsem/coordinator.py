@@ -271,7 +271,10 @@ class HSEMDataUpdateCoordinator(
         self._capacity_learner: CapacityLearner = CapacityLearner()
 
         # Embedded OCPP 1.6 server for EV charger control (issue #603).
+        # One server per EV: primary EV on ``_ocpp_server``, optional second
+        # EV on ``_ocpp_second_server`` (separate port).
         self._ocpp_server: OCPPServer | None = None
+        self._ocpp_second_server: OCPPServer | None = None
         self._ocpp_sessions: list = []
 
         # ML consumption predictor — cached across cycles so the retrain

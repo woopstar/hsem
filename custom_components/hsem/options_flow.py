@@ -69,6 +69,7 @@ from custom_components.hsem.flows.weighted_values import (
     validate_weighted_values_input,
 )
 from custom_components.hsem.utils.conversion import convert_months_to_int
+from custom_components.hsem.utils.misc import get_config_value
 
 
 class HSEMOptionsFlow(config_entries.OptionsFlow):
@@ -384,7 +385,13 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
                 self._user_input.update(user_input)
                 return await self.async_step_batteries_schedules()
 
-        data_schema = await get_ocpp_step_schema(self._config_entry)
+        data_schema = await get_ocpp_step_schema(
+            self._config_entry,
+            second_ev_enabled=bool(
+                get_config_value(self._config_entry, "hsem_ev_second_enabled")
+                or bool(self._user_input.get("hsem_ev_second_enabled"))
+            ),
+        )
 
         return self.async_show_form(
             step_id="ocpp",

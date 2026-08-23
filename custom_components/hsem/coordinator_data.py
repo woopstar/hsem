@@ -90,3 +90,7 @@ class CoordinatorData:
     ocpp_chargers: dict | None = None
     #: OCPP completed session log for the sessions sensor.
     ocpp_sessions: list | None = None
+    #: Second EV OCPP charger session dict (CPID → ChargerSession).
+    ocpp_second_chargers: dict | None = None
+    #: Second EV OCPP completed session log.
+    ocpp_second_sessions: list | None = None
