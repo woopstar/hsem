@@ -252,7 +252,10 @@ class TestOptionsUpdateBackgroundTask:
     """
 
     @pytest.mark.asyncio
-    @patch("custom_components.hsem.coordinator.OPTIONS_UPDATE_DEBOUNCE_SECONDS", 0.0)
+    @patch(
+        "custom_components.hsem.coordinator_lifecycle.OPTIONS_UPDATE_DEBOUNCE_SECONDS",
+        0.0,
+    )
     async def test_options_updated_schedules_background_task(self) -> None:
         """async_options_updated returns immediately after scheduling a task."""
         coordinator = _make_bare_coordinator()
@@ -290,7 +293,10 @@ class TestOptionsUpdateBackgroundTask:
         await scheduled[1]
 
     @pytest.mark.asyncio
-    @patch("custom_components.hsem.coordinator.OPTIONS_UPDATE_DEBOUNCE_SECONDS", 0.0)
+    @patch(
+        "custom_components.hsem.coordinator_lifecycle.OPTIONS_UPDATE_DEBOUNCE_SECONDS",
+        0.0,
+    )
     async def test_repeated_toggle_cancels_pending_task(self) -> None:
         """Repeated options updates collapse into a single background run."""
         coordinator = _make_bare_coordinator()
@@ -336,7 +342,10 @@ class TestOptionsUpdateBackgroundTask:
         assert background_task.cancelled() or background_task.cancelling()
 
     @pytest.mark.asyncio
-    @patch("custom_components.hsem.coordinator.OPTIONS_UPDATE_DEBOUNCE_SECONDS", 0.0)
+    @patch(
+        "custom_components.hsem.coordinator_lifecycle.OPTIONS_UPDATE_DEBOUNCE_SECONDS",
+        0.0,
+    )
     async def test_teardown_cancels_pending_options_task(self) -> None:
         """async_teardown must cancel pending debounce and options-update tasks."""
         coordinator = _make_bare_coordinator()
@@ -473,3 +482,30 @@ class TestCoordinatorDataExposure:
         """coordinator.data must be None before async_setup is called."""
         coord = _make_bare_coordinator()
         assert coord.data is None
+
+
+# ---------------------------------------------------------------------------
+# Reused-plan isolation (no cache corruption)
+# ---------------------------------------------------------------------------
+
+
+class TestReusedPlanIsolation:
+    """The reuse path must not mutate the cached accepted plan."""
+
+    def test_reuse_path_deepcopies_cached_output(self) -> None:
+        """The reuse branch must deep-copy ``_last_planner_output``.
+
+        Hysteresis and the EV-charger freeze mutate ``planner_output.slots``
+        in place.  Aliasing the cached output would corrupt the accepted plan
+        that subsequent cycles reuse.
+        """
+        source = inspect.getsource(HSEMDataUpdateCoordinator._run_planner_phase)
+        assert "planner_output = deepcopy(self._last_planner_output)" in source, (
+            "The reuse branch must assign "
+            "``planner_output = deepcopy(self._last_planner_output)``"
+            " so downstream in-place mutations cannot corrupt the cache."
+        )
+        # The plain aliasing assignment must no longer be present.
+        assert "planner_output = self._last_planner_output" not in source, (
+            "The reuse branch must not alias the cached output directly."
+        )

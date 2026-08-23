@@ -53,6 +53,16 @@ from custom_components.hsem.flows.init import (
     get_init_step_schema,
     validate_init_step_input,
 )
+from custom_components.hsem.flows.migrations import (  # noqa: F401 — re-exported
+    _CHARGE_RATE_BUCKETS,
+    _V1_DEPRECATED_KEYS,
+    _V1_TO_V2_KEY_RENAMES,
+    _V2_NEW_KEY_DEFAULTS,
+    _V3_DEPRECATED_KEYS,
+    _migrate_v1_to_v2,
+    _migrate_v2_to_v3,
+    _remove_v3_charge_rate_registry_entries,
+)
 from custom_components.hsem.flows.months import get_months_schema, validate_months_input
 from custom_components.hsem.flows.ocpp import (
     get_ocpp_step_schema,
@@ -87,78 +97,12 @@ _LOGGER = logging.getLogger(__name__)
 # Keys that were renamed between config version 1 (v5.1.0 era) and
 # version 2 (v6.0.0).  The left-hand side is the v1 name; the
 # right-hand side is the v2 replacement.
-_V1_TO_V2_KEY_RENAMES: dict[str, str] = {
-    "hsem_energi_data_service_export_min_price": "hsem_export_electricity_min_price",
-    "hsem_energi_data_service_update_interval": "hsem_electricity_price_update_interval",
-    "hsem_energi_data_service_export": "hsem_export_electricity_price_sensor",
-    "hsem_energi_data_service_import": "hsem_import_electricity_price_sensor",
-}
-
-# Keys that existed in v1 but have no equivalent in v2 (removed).
-_V1_DEPRECATED_KEYS: frozenset[str] = frozenset(
-    {
-        "hsem_batteries_enable_batteries_schedule_1_min_price_difference",
-        "hsem_batteries_enable_batteries_schedule_2_min_price_difference",
-        "hsem_batteries_enable_batteries_schedule_3_min_price_difference",
-        "hsem_batteries_conversion_loss",
-    }
-)
-
-# New keys introduced in v2 that did not exist in v1.  When
-# migrating a v1 entry these are backfilled with their defaults.
-_V2_NEW_KEY_DEFAULTS: dict[str, Any] = {
-    # Battery economics
-    "hsem_batteries_charge_efficiency": 98,
-    "hsem_batteries_discharge_efficiency": 98,
-    "hsem_batteries_purchase_price": 0.0,
-    "hsem_batteries_expected_cycles": 6000,
-    "hsem_batteries_cycle_cost": 0.0,
-    "hsem_batteries_capacity_loss_pct": 30,
-    # Excess export
-    "hsem_batteries_enable_excess_export": False,
-    "hsem_batteries_excess_export_discharge_buffer": 10,
-    # Wait mode behaviour
-    "hsem_batteries_wait_mode_behavior": "strict",
-    # Energy price forecast sensors (optional — None = not configured)
-    "hsem_import_electricity_price_forecast_sensor": None,
-    "hsem_export_electricity_price_forecast_sensor": None,
-    # EV smart charging flags
-    "hsem_ev_target_soc": 80,
-    "hsem_ev_deadline_time": "07:00",
-    "hsem_ev_smart_charging": False,
-    "hsem_ev_force_charge_now": False,
-    "hsem_ev_second_target_soc": 80,
-    "hsem_ev_second_deadline_time": "07:00",
-    "hsem_ev_second_smart_charging": False,
-    "hsem_ev_second_force_charge_now": False,
-    # EV planned load (disabled by default)
-    "hsem_ev_planned_load_enabled": False,
-    "hsem_ev_planned_load_battery_capacity_kwh": 0.0,
-    "hsem_ev_planned_load_charger_power_kw": 0.0,
-    "hsem_ev_planned_load_charger_efficiency": 100,
-    "hsem_ev_planned_load_charger_min_power_w": 1380,
-    "hsem_ev_second_planned_load_enabled": False,
-    "hsem_ev_second_planned_load_battery_capacity_kwh": 0.0,
-    "hsem_ev_second_planned_load_charger_power_kw": 0.0,
-    "hsem_ev_second_planned_load_charger_efficiency": 100,
-    "hsem_ev_second_planned_load_charger_min_power_w": 1380,
-    # Planner hysteresis
-    "hsem_planner_hysteresis_enabled": True,
-    "hsem_planner_hysteresis_absolute": 0.0,
-    "hsem_planner_hysteresis_percentage": 5.0,
-    "hsem_planner_window_hysteresis_minutes": 10,
-    # Huawei Solar additions in v2
-    "hsem_huawei_solar_batteries_charging_cutoff_capacity": (
-        "number.batteries_end_of_charge_soc"
-    ),
-    "hsem_huawei_solar_batteries_forcible_charge": ("sensor.batteries_forcible_charge"),
-}
 
 
 class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: ignore[reportGeneralTypeIssues]  # HA ConfigFlow class hierarchy triggers false-positive on MRO
     """Config flow for HSEM."""
 
-    VERSION = 2
+    VERSION = 3
 
     async def async_migrate_entry(
         self, hass: HomeAssistant, config_entry: ConfigEntry
@@ -180,14 +124,16 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
             )
             return False
 
-        if config_entry.version == 1:
-            data = _migrate_v1_to_v2(dict(config_entry.data))
-            hass.config_entries.async_update_entry(config_entry, data=data, version=2)
+        original_version = config_entry.version
+        migrated_version = original_version
+        data = dict(config_entry.data)
+        options = dict(config_entry.options)
+
+        if migrated_version == 1:
+            data = _migrate_v1_to_v2(data)
             # v6.0.0 (#523) prefixed every entity unique_id with the config
-            # entry id, but shipped no entity-registry migration -- so existing
-            # v5 entities were orphaned and re-created with a "_2" suffix (losing
-            # their entity_id and long-term statistics). Rename the registry
-            # entries IN PLACE so entity_id + history are preserved.
+            # entry id, but shipped no entity-registry migration. Rename those
+            # rows in place so entity IDs and history are preserved.
             _prefix = f"{DOMAIN}_{config_entry.entry_id}_"
 
             @callback
@@ -202,10 +148,26 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
             await er.async_migrate_entries(
                 hass, config_entry.entry_id, _migrate_unique_id
             )
+            migrated_version = 2
 
+        if migrated_version == 2:
+            data = _migrate_v2_to_v3(data)
+            options = _migrate_v2_to_v3(options)
+            _remove_v3_charge_rate_registry_entries(hass, config_entry.entry_id)
+            migrated_version = 3
+
+        if migrated_version != original_version:
+            hass.config_entries.async_update_entry(
+                config_entry,
+                data=data,
+                options=options,
+                version=migrated_version,
+            )
             _LOGGER.info(
-                "Config entry %s migrated from v1 to v2",
+                "Config entry %s migrated from v%s to v%s",
                 config_entry.entry_id,
+                original_version,
+                migrated_version,
             )
 
         return True
@@ -813,34 +775,3 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
     ) -> HSEMOptionsFlow:
         """Return the options flow."""
         return HSEMOptionsFlow(config_entry)
-
-
-def _migrate_v1_to_v2(data: dict[str, Any]) -> dict[str, Any]:
-    """Convert a v1 (v5.1.0 era) config data dict to v2.
-
-    Idempotent — safe to call on data that has already been partially migrated.
-    """
-    migrated = dict(data)
-
-    # 1. Rename old keys to new keys (only if the new key is absent).
-    for old_key, new_key in _V1_TO_V2_KEY_RENAMES.items():
-        if old_key in migrated and new_key not in migrated:
-            migrated[new_key] = migrated.pop(old_key)
-
-    # 2. Drop deprecated keys that have no v2 equivalent.
-    for key in _V1_DEPRECATED_KEYS:
-        migrated.pop(key, None)
-
-    # 3. Backfill new keys with their defaults (only if absent).
-    for key, default in _V2_NEW_KEY_DEFAULTS.items():
-        if key not in migrated:
-            migrated[key] = default
-
-    # 4. Convert month lists from strings to ints (v5.1.0 stored them as
-    #    strings; v6.0.0 expects integers).
-    for month_key in ("hsem_months_summer", "hsem_months_winter"):
-        raw = migrated.get(month_key, [])
-        if raw and isinstance(raw[0], str):
-            migrated[month_key] = convert_months_to_int(raw)
-
-    return migrated

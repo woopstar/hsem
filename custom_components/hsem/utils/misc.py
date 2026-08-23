@@ -233,10 +233,8 @@ def calculate_recommended_threshold(
 
     The threshold represents the minimum price spread required for grid
     charging to be economically rational.  It covers only battery
-    depreciation — conversion (in)efficiency losses are handled separately
-    by the MILP objective and the cost function's ``conversion_loss_cost``
-    term, both of which price the losses using the actual import price of
-    each slot rather than a fixed add-on.
+    depreciation. Conversion (in)efficiency is already physical in the MILP's
+    AC grid draw and delivery and therefore needs no separate price add-on.
 
     Args:
         purchase_price: Total battery system cost in local currency.

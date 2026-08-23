@@ -11,8 +11,9 @@ class DataQuality:
     """Structured diagnostics about the completeness of planning inputs.
 
     Populated by :func:`~custom_components.hsem.planner.engine.run_planner`
-    after aligning price and PV series.  All ``missing_*`` fields list
-    wall-clock hours (0-23) for which data was absent.
+    after aligning price and PV series, then enriched by the coordinator with
+    house-load forecast readiness.  All ``missing_*`` fields list wall-clock
+    hours (0-23) for which data was absent.
 
     Attributes:
         tomorrow_price_missing_hours:
@@ -39,6 +40,12 @@ class DataQuality:
         horizon_days:
             Number of distinct calendar days covered by the horizon
             (1 = today only, 2 = today + tomorrow, 3 = today + 2 future days).
+        load_forecast_ready:
+            True only when the consumption source provided a complete, finite
+            future load profile that passed coordinator readiness checks.
+        load_forecast_reason:
+            Machine-readable reason the load profile was rejected, or None
+            when it is ready.
     """
 
     tomorrow_price_missing_hours: list[int] = field(default_factory=list)
@@ -49,11 +56,13 @@ class DataQuality:
     today_pv_missing_hours: list[int] = field(default_factory=list)
     horizon_has_tomorrow: bool = False
     horizon_days: int = 1
+    load_forecast_ready: bool = True
+    load_forecast_reason: str | None = None
 
     @property
     def is_complete(self) -> bool:
         """Return ``True`` when no missing data was detected."""
-        return not (
+        return self.load_forecast_ready and not (
             self.tomorrow_price_missing_hours
             or self.tomorrow_pv_missing_hours
             or self.day2_price_missing_hours
@@ -82,6 +91,8 @@ class DataQuality:
             "is_complete": self.is_complete,
             "horizon_has_tomorrow": self.horizon_has_tomorrow,
             "horizon_days": self.horizon_days,
+            "load_forecast_ready": self.load_forecast_ready,
+            "load_forecast_reason": self.load_forecast_reason,
             "tomorrow_price_missing_hours": sorted(self.tomorrow_price_missing_hours),
             "tomorrow_pv_missing_hours": sorted(self.tomorrow_pv_missing_hours),
             "day2_price_missing_hours": sorted(self.day2_price_missing_hours),

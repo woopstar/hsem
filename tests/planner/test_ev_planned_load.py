@@ -1129,12 +1129,15 @@ class TestEvSmartChargingRecommendationLabel:
             s for s in out.slots if s.recommendation == "ev_smart_charging"
         ]
         if ev_smart_slots:
-            # At least one charge window should cover the EV slots
-            all_window_starts = {w.start for w in out.charge_windows}
-            ev_starts = {s.start for s in ev_smart_slots}
-            assert ev_starts & all_window_starts, (
-                "ev_smart_charging slots should appear in at least one charge window"
-            )
+            # Contiguous EV slots may be grouped into one wider charge window;
+            # the window start therefore need not equal every contained slot start.
+            assert all(
+                any(
+                    window.start <= slot.start and slot.end <= window.end
+                    for window in out.charge_windows
+                )
+                for slot in ev_smart_slots
+            ), "every ev_smart_charging slot must be covered by a charge window"
 
 
 # ---------------------------------------------------------------------------

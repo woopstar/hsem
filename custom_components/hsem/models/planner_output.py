@@ -46,8 +46,8 @@ class PlannerOutput:
             load, import/export and SoC series are aligned to this axis.
             ``None`` when the planner was invoked without a valid horizon.
         data_quality:
-            Structured diagnostics about the completeness of price and PV
-            inputs for today and tomorrow.  Exposes which hours are missing
+            Structured diagnostics about the completeness of price, PV, and
+            load-forecast inputs for today and tomorrow.  Exposes which hours are missing
             so dashboards and logs can display the gap explicitly rather
             than silently treating missing slots as zero.
         extra:
@@ -67,7 +67,7 @@ class PlannerOutput:
     missing_inputs: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     time_series_index: TimeSeriesIndex | None = field(default=None, repr=False)
-    #: Structured data-quality report for price and PV inputs.
+    #: Structured data-quality report for price, PV, and load-forecast inputs.
     data_quality: DataQuality = field(default_factory=DataQuality)
     extra: dict[str, Any] = field(default_factory=dict)
     #: Human-readable explanation of why the selected plan was chosen and what

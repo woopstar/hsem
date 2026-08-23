@@ -1,4 +1,4 @@
-"""Cost function helpers — override detection and cycle cost resolution."""
+"""Cost-function helpers for cycle cost and terminal valuation."""
 
 from __future__ import annotations
 
@@ -12,34 +12,43 @@ from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import resolve_cycle_cost
 from custom_components.hsem.utils.units import usable_kwh_from_rated
 
-# ---------------------------------------------------------------------------
-# Override detection helpers
-# ---------------------------------------------------------------------------
 
-#: Recommendation values that represent schedule-forced modes rather than
-#: the optimiser's free choice.  Used to detect override slots.
-_OVERRIDE_RECOMMENDATIONS: frozenset[str] = frozenset(
-    {
-        "batteries_charge_grid",  # schedule-driven grid charge
-    }
-)
+def grid_cash_flow_cost(
+    grid_import_kwh: float,
+    grid_export_kwh: float,
+    import_price: float,
+    export_price: float,
+    *,
+    export_min_price: float = 0.0,
+) -> float:
+    """Return auditable signed meter cash flow; positive is net cost.
 
-
-def _is_override_slot(slot: PlannedSlot) -> bool:
-    """Return ``True`` if *slot* was set by a forced override.
-
-    Currently an override is defined as a slot whose recommendation is
-    ``"batteries_charge_grid"`` (a schedule-driven hard constraint).  Extend
-    this set as HSEM gains more override modes.
-
-    Args:
-        slot: The slot to inspect.
-
-    Returns:
-        ``True`` when the slot represents a forced override.
+    Non-finite rates carry no economic authority and are treated as ``0.0``.
+    An export price below *export_min_price* earns nothing, mirroring the
+    MILP's battery-origin export block.
     """
-    return bool(
-        slot.recommendation and slot.recommendation in _OVERRIDE_RECOMMENDATIONS
+    effective_import = import_price if math.isfinite(import_price) else 0.0
+    effective_export = export_price if math.isfinite(export_price) else 0.0
+    if export_min_price > 1e-9 and effective_export < export_min_price:
+        effective_export = 0.0
+    return (
+        max(grid_import_kwh, 0.0) * effective_import
+        - max(grid_export_kwh, 0.0) * effective_export
+    )
+
+
+def slot_grid_cash_flow_cost(
+    slot: PlannedSlot,
+    *,
+    export_min_price: float = 0.0,
+) -> float:
+    """Return one slot's signed meter cash flow from final grid fields."""
+    return grid_cash_flow_cost(
+        slot.grid_import_kwh,
+        slot.grid_export_kwh,
+        slot.price.import_price,
+        slot.price.export_price,
+        export_min_price=export_min_price,
     )
 
 
@@ -165,7 +174,8 @@ def compute_charge_premium(
 
     Args:
         replacement_price_per_kwh: Value of one stored kWh at horizon end.
-        imp_price_obj: Sanitised (non-negative) import price for the slot.
+        imp_price_obj: Finite signed import price for the slot; negative
+            values are preserved and are not clamped to zero.
         exp_price: Export price for the slot (already clamped by the caller).
         charge_eff: Charge efficiency fraction (0–1).
         deferred_export_price: Minimum export price across *future* slots

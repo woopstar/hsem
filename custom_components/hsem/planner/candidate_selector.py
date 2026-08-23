@@ -40,6 +40,7 @@ from custom_components.hsem.planner.candidate_generator import (
     CANDIDATE_BASELINE,
     CANDIDATE_MILP,
     CANDIDATE_NO_ACTION,
+    CANDIDATE_PASSIVE,
     CandidatePlan,
 )
 from custom_components.hsem.planner.cost_function import CostWeights, score_plan
@@ -270,9 +271,21 @@ def select_best_candidate(  # NOSONAR
     )
 
     # --- Step 4: pick winner (lowest cost) among eligible candidates ------
-    # Exclude no_action from winner selection — it is a diagnostic floor
-    # only and must never win.
-    eligible = [c for c in valid if c.name != CANDIDATE_NO_ACTION]
+    # A validated MILP is the sole production optimisation authority. Passive
+    # is executable only when no valid MILP exists; no_action is diagnostic.
+    valid_milp = [candidate for candidate in valid if candidate.name == CANDIDATE_MILP]
+    production_set = bool(
+        _find_by_name(candidates, CANDIDATE_NO_ACTION)
+        and _find_by_name(candidates, CANDIDATE_PASSIVE)
+    )
+    if valid_milp:
+        eligible = valid_milp
+    elif production_set:
+        eligible = [
+            candidate for candidate in valid if candidate.name == CANDIDATE_PASSIVE
+        ]
+    else:
+        eligible = valid
 
     if not eligible:
         # Degenerate case — fall back to baseline regardless of validity
@@ -380,7 +393,11 @@ def select_best_candidate(  # NOSONAR
     ):
         # Find the previous winner's candidate in the current candidate list
         prev_candidate = _find_by_name(candidates, previous_winner_name)
-        if prev_candidate is not None and prev_candidate is not winner:
+        if (
+            prev_candidate is not None
+            and prev_candidate is not winner
+            and prev_candidate in eligible
+        ):
             prev_score = getattr(getattr(prev_candidate, "_cost", None), "score", None)
             new_score = winner_cost.score
             if prev_score is not None:

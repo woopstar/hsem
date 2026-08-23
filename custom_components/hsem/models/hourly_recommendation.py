@@ -76,6 +76,8 @@ class HourlyRecommendation:
     import_price: float
     recommendation: Any | None
     solcast_pv_estimate_kwh: float
+    primary_battery_export_kwh: float = 0.0
+    pv_export_kwh: float = 0.0
     ev_planned_load_kwh: float = 0.0
     ev_accounted_load_kwh: float = 0.0
     ev_total_planned_load_kwh: float = 0.0

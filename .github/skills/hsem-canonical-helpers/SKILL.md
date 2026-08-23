@@ -93,7 +93,7 @@ assert result == pytest.approx(expected, rel=1e-6)
 |-------|----------|-----------|
 | Planner | `custom_components/hsem/planner/` | `engine.py`, `cost_function.py`, `soc_simulation.py`, `candidate_generator.py`, `candidate_selector.py`, `slot_population.py`, `charge_scheduler.py`, `discharge_scheduler.py`, `milp_optimizer.py`, `ev_planner.py` |
 | ML | `custom_components/hsem/ml/` | `consumption_predictor.py`, `history_reader.py`, `populator.py` |
-| Utils | `custom_components/hsem/utils/` | `recommendations.py`, `misc.py`, `sensornames.py`, `prices.py`, `huawei.py`, `logger.py`, `solar_corrector.py`, `dynamic_floor.py`, `capacity_learner.py`, `charge_rate_learner.py`, `prediction_tracker.py`, `weekday_profile.py`, `ev_mode_resolver.py` |
+| Utils | `custom_components/hsem/utils/` | `recommendations.py`, `misc.py`, `sensornames.py`, `prices.py`, `huawei.py`, `logger.py`, `solar_corrector.py`, `dynamic_floor.py`, `capacity_learner.py`, `prediction_tracker.py`, `weekday_profile.py`, `ev_mode_resolver.py` |
 
 ### Utility Function Centralization
 

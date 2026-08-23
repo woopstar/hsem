@@ -37,6 +37,8 @@ every step in order so individual entities can be customised.
 |---|---|---|---|
 | Device name | `device_name` | `"Huawei Solar Energy Management"` | Friendly name for the integration |
 | Update interval | `hsem_update_interval` | 5 minutes | Coordinator polling interval |
+| Recommendation interval | `hsem_recommendation_interval_minutes` | 15 minutes | Planner slot resolution (15 or 60 minutes) |
+| Planning horizon | `hsem_recommendation_interval_length` | 48 hours | Physical horizon: 12, 24, 36, 48, or 72 hours |
 | Read-only mode | `hsem_read_only` | `False` | Block all hardware writes when enabled |
 | Verbose logging | `hsem_verbose_logging` | `False` | Enable debug-level planner logging |
 
@@ -205,7 +207,7 @@ Excess battery export configuration.
 | Field | Key | Default | Description |
 |---|---|---|---|
 | Enable excess export | `hsem_batteries_enable_excess_export` | `False` | Master switch |
-| Discharge buffer | `hsem_batteries_excess_export_discharge_buffer` | 10 % | Safety SoC buffer before forced export |
+| Discharge buffer | `hsem_batteries_excess_export_discharge_buffer` | 10 % | Conditional SoC reserve retained through the demand window after intentional battery export. Every slot in one contiguous PV-surplus run shares the same later checkpoint; direct PV export is unaffected. |
 | Battery export min price | `hsem_batteries_export_min_price` | `0.0` | Per-slot hard floor for intentional battery-to-grid export (issue #752). When > 0, the MILP forbids marking a slot as `force_batteries_discharge` when the export price is strictly below this floor — the battery can still serve house load in those slots. Reaching the threshold does NOT automatically trigger export; the optimizer still decides whether selling is worthwhile. Applies only to intentional battery-to-grid export, not to normal self-consumption, PV export, or PV charging. Set to 0 to disable. |
 | Price threshold | — | Auto-calculated | Computed from battery depreciation settings at runtime |
 

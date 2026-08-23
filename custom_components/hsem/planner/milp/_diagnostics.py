@@ -25,9 +25,6 @@ def _compute_milp_diagnostics(
     gi_off: int,
     gi_pen_off: int,
     replacement_price_per_kwh: float | None,
-    min_export_price: float,
-    p_imp_obj: np.ndarray,  # type: ignore[name-defined]
-    discharge_loss: float,
     fuse_active: bool,
     max_grid_import_per_slot_kwh: float,
     active_evs: list[EVConfig],
@@ -51,9 +48,6 @@ def _compute_milp_diagnostics(
         current_kwh: Battery energy at horizon start (above floor, kWh).
         usable_kwh: Maximum usable energy (kWh).
         replacement_price_per_kwh: Terminal-SoC replacement price.
-        min_export_price: Minimum export price threshold.
-        p_imp_obj: Sanitised import-price array (objective coefficients).
-        discharge_loss: Discharge-side loss fraction (0-1).
         fuse_active: Whether the main-fuse constraint is active.
         max_grid_import_per_slot_kwh: Max grid import per slot (kWh).
         active_evs: List of active EV configs.
@@ -69,7 +63,6 @@ def _compute_milp_diagnostics(
         ``total_curtailment_kwh``, ``discharge_loss_cost_destination_aware``,
         and optionally ``ev``.
     """
-    import numpy as np
 
     from custom_components.hsem.utils.logger import log_planner
     from custom_components.hsem.utils.recommendations import Recommendations
@@ -124,11 +117,17 @@ def _compute_milp_diagnostics(
                 v["kwh"],
             )
 
-    # --- Extract fuse penalty values ---
+    # --- Recompute fuse diagnostics from final executable rounded slots ---
     total_fuse_violation_kwh = 0.0
     if fuse_active:
-        gi_pen_sol = result.x[gi_pen_off : gi_pen_off + m]
-        gi_pen_list = [float(v) for v in gi_pen_sol]
+        gi_pen_list = [
+            max(
+                float(out_slots[future_idx[t]].grid_import_kwh)
+                - max_grid_import_per_slot_kwh,
+                0.0,
+            )
+            for t in range(m)
+        ]
         total_fuse_violation_kwh = sum(gi_pen_list)
         if total_fuse_violation_kwh > 1e-6:
             has_violations = True
@@ -136,7 +135,7 @@ def _compute_milp_diagnostics(
                 if gi_pen_list[t] > 1e-6:
                     slot_i = future_idx[t]
                     s_start = slots[slot_i].start.isoformat()
-                    gi_val = float(result.x[gi_off + t])
+                    gi_val = float(out_slots[slot_i].grid_import_kwh)
                     log_planner(
                         "warning",
                         "[milp] Fuse violation slot %d (%s): "
@@ -189,38 +188,6 @@ def _compute_milp_diagnostics(
         total_curtailment_kwh,
     )
 
-    # ------------------------------------------------------------------
-    # Post-hoc destination-aware discharge loss cost (issue #641).
-    #
-    # The LP's pre-solve objective uses p_imp_obj for ed[t] as a
-    # conservative approximation (the LP cannot know the discharge
-    # destination before solving).  Once the LP has solved and the
-    # per-slot grid_export_kwh / grid_import_kwh fields are written,
-    # we can compute the economically accurate cost using the actual
-    # destination of each discharged kWh.
-    #
-    # This value should match cost_function.py::score_plan()'s
-    # conversion_loss_cost for the discharge-side portion.
-    # ------------------------------------------------------------------
-    discharge_loss_dest_aware = 0.0
-    for t in range(m):
-        slot_i = future_idx[t]
-        s = out_slots[slot_i]
-        if s.batteries_discharged_kwh <= 1e-9:
-            continue
-        lost_kwh = s.batteries_discharged_kwh * discharge_loss
-        if s.grid_export_kwh > 1e-9:
-            # Export-destined discharge: price at export price.
-            exp_p = slots[slot_i].price.export_price
-            # Apply same sanitisation as cost_function.py
-            if min_export_price > 1e-9 and exp_p < min_export_price:
-                exp_p = 0.0
-            p_loss = max(exp_p, 0.0)
-        else:
-            # House-load-covering discharge: price at import price.
-            p_loss = p_imp_obj[t]
-        discharge_loss_dest_aware += lost_kwh * p_loss
-
     diagnostics: dict = {
         "s_max_pen": s_max_pen_list,
         "s_min_pen": s_min_pen_list,
@@ -229,7 +196,8 @@ def _compute_milp_diagnostics(
         "total_fuse_violation_kwh": round(total_fuse_violation_kwh, 4),
         "terminal_soc_credit": round(terminal_soc_credit, 4),
         "total_curtailment_kwh": round(total_curtailment_kwh, 4),
-        "discharge_loss_cost_destination_aware": round(discharge_loss_dest_aware, 6),
+        # Compatibility field: physical gi/ge flows already price efficiency.
+        "discharge_loss_cost_destination_aware": 0.0,
     }
 
     # --- EV diagnostics ---

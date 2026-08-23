@@ -6,12 +6,14 @@ Extracted from ``solve_milp`` so the orchestrator remains under 30 KB.
 from __future__ import annotations
 
 import copy
+import math
 from datetime import datetime
 
 import numpy as np
 
 from custom_components.hsem.models.ev_config import EVConfig
 from custom_components.hsem.models.planned_slot import PlannedSlot
+from custom_components.hsem.planner.cost_helpers import slot_grid_cash_flow_cost
 from custom_components.hsem.utils.units import (
     ev_dc_to_ac_kwh,
     slot_duration_hours,
@@ -27,7 +29,7 @@ def _write_milp_results_to_slots(
     ed_sol: np.ndarray,  # type: ignore[name-defined]
     result_x: np.ndarray,  # type: ignore[name-defined]
     m: int,
-    ge_off: int,
+    battery_export_off: int,
     active_evs: list[EVConfig],
     ev_var_offsets: list[int],
     pv_avail: np.ndarray,  # type: ignore[name-defined]
@@ -42,6 +44,9 @@ def _write_milp_results_to_slots(
     usable_kwh: float,
     curt_sol_full: np.ndarray,  # type: ignore[name-defined]
     *,
+    gi_off: int | None = None,
+    grid_import_cap_per_slot_kwh: np.ndarray | None = None,  # type: ignore[name-defined]
+    ev_writeback_diagnostics: dict[str, dict[str, object]] | None = None,
     _min_action_kwh: float = 1e-4,
 ) -> list[PlannedSlot]:
     """Write MILP solution into a deep-copied slot list.
@@ -54,7 +59,7 @@ def _write_milp_results_to_slots(
         ed_sol: Solved discharge energy per LP slot (kWh).
         result_x: Full LP solution vector.
         m: Number of active LP slots (``len(future_idx)``).
-        ge_off: Offset of ``ge[t]`` variables in *result_x*.
+        battery_export_off: Offset of battery-side export variables.
         active_evs: List of active EV configs for EV write-out.
         ev_var_offsets: Start offset of each EV's ``ev_c[t]`` block.
         pv_avail: Per-slot PV surplus (positive kWh).
@@ -78,6 +83,91 @@ def _write_milp_results_to_slots(
     from custom_components.hsem.utils.recommendations import Recommendations
 
     out_slots: list[PlannedSlot] = [copy.copy(s) for s in slots]
+    executable_x = result_x.copy()
+
+    # Concentrate flexible EV fragments below startup power into already
+    # allocated slots without exceeding per-slot EV or grid-import headroom.
+    for ev_idx, ev in enumerate(active_evs):
+        if ev.fixed_session_only or ev.charger_min_power_w <= 1e-9:
+            continue
+        ev_off = ev_var_offsets[ev_idx]
+        values = executable_x[ev_off : ev_off + m].copy()
+        original_total_dc = float(np.sum(values))
+        minimum_dc = (
+            ev.charger_min_power_w
+            / 1000.0
+            * slot_duration_hours(slots[future_idx[0]].start, slots[future_idx[0]].end)
+            * ev.charger_efficiency
+        )
+        donor_energy = 0.0
+        for t, value in enumerate(values):
+            if _min_action_kwh < value < minimum_dc - 1e-9:
+                donor_energy += float(value)
+                values[t] = 0.0
+        if donor_energy <= 1e-9:
+            continue
+        recipients = sorted(
+            (t for t in range(m) if t not in session_slots_set),
+            key=lambda t: float(values[t]),
+            reverse=True,
+        )
+        for t in recipients:
+            if donor_energy <= 1e-9:
+                break
+            room_dc = max(ev.max_charge_per_slot - float(values[t]), 0.0)
+            if grid_import_cap_per_slot_kwh is not None and gi_off is not None:
+                grid_room_ac = max(
+                    float(grid_import_cap_per_slot_kwh[t])
+                    - float(executable_x[gi_off + t]),
+                    0.0,
+                )
+                room_dc = min(room_dc, grid_room_ac * ev.charger_efficiency)
+            added = min(room_dc, donor_energy)
+            values[t] += added
+            donor_energy -= added
+        executable_x[ev_off : ev_off + m] = values
+        if ev_writeback_diagnostics is not None:
+            delivered_by_deadline = float(np.sum(values))
+            if ev.deadline_slot is not None:
+                delivered_by_deadline = float(
+                    np.sum(values[: max(0, min(ev.deadline_slot, m - 1)) + 1])
+                )
+            deadline_penalty = max(
+                ev.target_kwh - ev.initial_soc_kwh - delivered_by_deadline,
+                0.0,
+            )
+            ev_writeback_diagnostics[f"ev{ev_idx}"] = {
+                "total_dc_kwh": round(float(np.sum(values)), 4),
+                "deadline_penalty_kwh": round(deadline_penalty, 4),
+                "deadline_met": deadline_penalty < 1e-6,
+                "unplaceable_dc_kwh": round(
+                    max(original_total_dc - float(np.sum(values)), 0.0),
+                    4,
+                ),
+            }
+
+    if ev_writeback_diagnostics is not None:
+        for ev_idx, ev in enumerate(active_evs):
+            key = f"ev{ev_idx}"
+            if key in ev_writeback_diagnostics:
+                continue
+            ev_off = ev_var_offsets[ev_idx]
+            values = executable_x[ev_off : ev_off + m]
+            delivered_by_deadline = float(np.sum(values))
+            if ev.deadline_slot is not None:
+                delivered_by_deadline = float(
+                    np.sum(values[: max(0, min(ev.deadline_slot, m - 1)) + 1])
+                )
+            deadline_penalty = max(
+                ev.target_kwh - ev.initial_soc_kwh - delivered_by_deadline,
+                0.0,
+            )
+            ev_writeback_diagnostics[key] = {
+                "total_dc_kwh": round(float(np.sum(values)), 4),
+                "deadline_penalty_kwh": round(deadline_penalty, 4),
+                "deadline_met": deadline_penalty < 1e-6,
+                "unplaceable_dc_kwh": 0.0,
+            }
 
     # Reset charge/discharge, energy-flow, and EV fields on all future slots;
     # past slots keep TimePassed.
@@ -87,6 +177,8 @@ def _write_milp_results_to_slots(
         out_slots[i].batteries_discharged_kwh = 0.0
         out_slots[i].grid_import_kwh = 0.0
         out_slots[i].grid_export_kwh = 0.0
+        out_slots[i].primary_battery_export_kwh = 0.0
+        out_slots[i].pv_export_kwh = 0.0
         out_slots[i].ev_planned_load_kwh = 0.0
         out_slots[i].ev_accounted_load_kwh = 0.0
         out_slots[i].ev_total_planned_load_kwh = 0.0
@@ -102,7 +194,7 @@ def _write_milp_results_to_slots(
     if active_evs:
         for ev_idx in range(len(active_evs)):
             ev_off = ev_var_offsets[ev_idx]
-            ev_c_sol = result_x[ev_off : ev_off + m]
+            ev_c_sol = executable_x[ev_off : ev_off + m]
             for lp_t in range(m):
                 if float(ev_c_sol[lp_t]) >= _min_action_kwh:
                     ev_charging_slots.add(lp_t)
@@ -115,7 +207,7 @@ def _write_milp_results_to_slots(
     if active_evs:
         for ev_idx, ev in enumerate(active_evs):
             ev_off = ev_var_offsets[ev_idx]
-            ev_c_sol = result_x[ev_off : ev_off + m]
+            ev_c_sol = executable_x[ev_off : ev_off + m]
             for lp_t in range(m):
                 ev_dc = float(ev_c_sol[lp_t])
                 if ev_dc >= _min_action_kwh:
@@ -142,7 +234,7 @@ def _write_milp_results_to_slots(
     for lp_t, slot_i in enumerate(future_idx):
         ec_kwh = float(ec_sol[lp_t])
         ed_kwh = float(ed_sol[lp_t])
-        ge_kwh = float(result_x[ge_off + lp_t])  # raw LP export (for recommendation)
+        battery_export_dc = float(result_x[battery_export_off + lp_t])
 
         if ec_kwh > _min_action_kwh and ed_kwh > _min_action_kwh:
             # Degenerate LP vertex (simultaneous charge+discharge).
@@ -193,6 +285,8 @@ def _write_milp_results_to_slots(
                 ec_kwh = 0.0
                 ed_kwh = 0.0
 
+        battery_export_dc = min(battery_export_dc, max(ed_kwh, 0.0))
+
         if ec_kwh > _min_action_kwh:
             # Use BatteriesChargeSolar when PV surplus is available,
             # BatteriesChargeGrid otherwise.  When EV is also charging
@@ -221,7 +315,7 @@ def _write_milp_results_to_slots(
             # If the LP is exporting (ge > 0) in this slot, use
             # ForceBatteriesDischarge to signal that the battery should
             # cover house load AND export excess to grid.
-            if ge_kwh > _min_action_kwh and p_exp[lp_t] >= min_export_price:
+            if battery_export_dc > _min_action_kwh and p_exp[lp_t] >= min_export_price:
                 out_slots[
                     slot_i
                 ].recommendation = Recommendations.ForceBatteriesDischarge.value
@@ -233,6 +327,17 @@ def _write_milp_results_to_slots(
         # Write resolved charge/discharge kWh fields consistently.
         resolved_charge = round(max(ec_kwh, 0.0), 3)
         resolved_discharge = round(max(ed_kwh, 0.0), 3)
+        if resolved_charge > 0.0:
+            headroom = max(usable_kwh - running_soc, 0.0)
+            resolved_charge = min(
+                resolved_charge, math.floor(headroom * 1000.0) / 1000.0
+            )
+        if resolved_discharge > 0.0:
+            headroom = max(running_soc, 0.0)
+            resolved_discharge = min(
+                resolved_discharge,
+                math.floor(headroom * 1000.0) / 1000.0,
+            )
         out_slots[slot_i].batteries_charged_kwh = resolved_charge
         out_slots[slot_i].batteries_discharged_kwh = resolved_discharge
 
@@ -262,6 +367,16 @@ def _write_milp_results_to_slots(
             out_slots[slot_i].grid_import_kwh = 0.0
             out_slots[slot_i].grid_export_kwh = round(-net_flow, 3)
 
+        grid_export = out_slots[slot_i].grid_export_kwh
+        battery_export_ac = round(
+            min(max(battery_export_dc * discharge_eff, 0.0), grid_export),
+            3,
+        )
+        out_slots[slot_i].primary_battery_export_kwh = battery_export_ac
+        out_slots[slot_i].pv_export_kwh = round(
+            max(grid_export - battery_export_ac, 0.0), 3
+        )
+
         # Advance resolved SoC for headroom-based degenerate-vertex
         # resolution in subsequent slots (issue #662).
         running_soc += resolved_charge - resolved_discharge
@@ -279,7 +394,7 @@ def _write_milp_results_to_slots(
 
         for ev_idx, ev in enumerate(active_evs):
             ev_off = ev_var_offsets[ev_idx]
-            ev_c_sol = result_x[ev_off : ev_off + m]
+            ev_c_sol = executable_x[ev_off : ev_off + m]
             for lp_t, slot_i in enumerate(future_idx):
                 ev_dc_kwh = float(ev_c_sol[lp_t])
                 if ev_dc_kwh < _min_action_kwh:
@@ -333,6 +448,11 @@ def _write_milp_results_to_slots(
                     )
                 ac_power_w = min(ac_power_w, max_ac_power_w)
 
+                if ev.fixed_session_only:
+                    # Keep measured energy in site accounting without emitting
+                    # an HSEM command for an unmanaged session.
+                    continue
+
                 # Floor at the charger's minimum operating power — if the
                 # target power is below the minimum the charger needs to
                 # start, it will never deliver any energy.  Zero out the
@@ -342,7 +462,31 @@ def _write_milp_results_to_slots(
                     ev.charger_min_power_w > 1e-9
                     and ac_power_w < ev.charger_min_power_w
                 ):
-                    ac_power_w = 0
+                    # The charger cannot execute this fragment. Remove its
+                    # energy and grid flow instead of publishing energy with a
+                    # zero command.
+                    if ev.base_load_includes_ev:
+                        out_slots[slot_i].ev_accounted_load_kwh = round(
+                            max(out_slots[slot_i].ev_accounted_load_kwh - ac_load, 0.0),
+                            3,
+                        )
+                    else:
+                        out_slots[slot_i].ev_planned_load_kwh = round(
+                            max(out_slots[slot_i].ev_planned_load_kwh - ac_load, 0.0),
+                            3,
+                        )
+                    out_slots[slot_i].ev_total_planned_load_kwh = round(
+                        max(out_slots[slot_i].ev_total_planned_load_kwh - ac_load, 0.0),
+                        3,
+                    )
+                    net_grid = (
+                        out_slots[slot_i].grid_import_kwh
+                        - out_slots[slot_i].grid_export_kwh
+                        - ac_load
+                    )
+                    out_slots[slot_i].grid_import_kwh = round(max(net_grid, 0.0), 3)
+                    out_slots[slot_i].grid_export_kwh = round(max(-net_grid, 0.0), 3)
+                    continue
 
                 # Write to the correct charger power field by EV identity
                 # (is_second), NOT by list position (ev_idx).  When the
@@ -359,8 +503,7 @@ def _write_milp_results_to_slots(
                     out_slots[slot_i].ev_charger_calculated_power = max(
                         ac_power_w, out_slots[slot_i].ev_charger_calculated_power
                     )
-        # Recompute estimated_net_consumption_kwh and estimated_cost_currency
-        # to reflect new EV loads
+        # Recompute estimated net consumption to reflect executable EV loads.
         for i in future_idx:
             s = out_slots[i]
             s.estimated_net_consumption_kwh = (
@@ -368,10 +511,14 @@ def _write_milp_results_to_slots(
                 + s.ev_planned_load_kwh
                 - s.solcast_pv_estimate_kwh
             )
-            net = s.estimated_net_consumption_kwh
-            if net > 0:
-                s.estimated_cost_currency = round(net * s.price.import_price, 4)
-            else:
-                s.estimated_cost_currency = round(net * s.price.export_price, 4)
+
+    for i in future_idx:
+        out_slots[i].estimated_cost_currency = round(
+            slot_grid_cash_flow_cost(
+                out_slots[i],
+                export_min_price=min_export_price,
+            ),
+            4,
+        )
 
     return out_slots

@@ -7,6 +7,20 @@ for the HSEM (Home Smart Energy Management) project. Read this before making any
 
 ## Architecture — Module Responsibilities
 
+### Coordinator layer (`custom_components/hsem/`)
+
+| File | Responsibility |
+|---|---|
+| `coordinator.py` | HA lifecycle and collect/populate/plan/publication orchestration |
+| `coordinator_data.py` | Atomic `CoordinatorData` snapshot exposed to entities |
+| `coordinator_helpers.py` | Pure override, strict-hold, and load-readiness/signature helpers |
+| `coordinator_tracking.py` | Forecast, daily, financial, and savings accumulation |
+
+Load-average availability must remain explicit: unknown/non-finite values are
+missing, genuine finite zero is valid, and contradictory zero load above 50 W
+live demand fails closed. Registered state events received during an in-flight
+cycle are durable; stale generations must not publish.
+
 ### Planner layer (`custom_components/hsem/planner/`)
 
 | File | Responsibility |
@@ -49,7 +63,6 @@ for the HSEM (Home Smart Energy Management) project. Read this before making any
 | `solar_corrector.py` | Per-hour PV forecast accuracy auto-correction (issue #602) |
 | `dynamic_floor.py` | Dynamic self-learning discharge floor (bridge-to-refill computation) |
 | `capacity_learner.py` | Battery usable capacity auto-detection from BMS readings |
-| `charge_rate_learner.py` | Temperature-adaptive charge rate learning (7 buckets, p90) |
 | `prediction_tracker.py` | Prediction accuracy scorecard (SoC MAE, solar MAPE, action mix) |
 | `weekday_profile.py` | Weekday/weekend split house load EWMA profiles |
 | `ev_mode_resolver.py` | Auto-Full EV charging on negative electricity prices |
@@ -158,10 +171,25 @@ The `m[t]` constraints are: `m[t] >= ec[t]` and `m[t] >= ed[t]`.
 
 ## File Size Rules
 
-- **Hard limit: 30 KB per file** in the planner and utils layers.
-- If a file exceeds 30 KB, split it before adding more features.
-- Current oversized planner files: `ev_planner.py` (31.8 KB).
-- Check before every PR: `wc -c custom_components/hsem/planner/*.py`.
+- **Hard limit: 30 KB AND 1000 lines per file** across the entire codebase.
+  Both limits must be satisfied — a file under 30 KB but over 1000 lines still
+  needs splitting.  These limits keep files small enough for efficient AI
+  development (context window, diff size, review latency).
+- If a file exceeds either limit, split it before adding more features.
+- Current oversized files (as of 2026-08-21):
+  - `coordinator.py` — 116 KB, 2555 lines (needs splitting)
+  - `applier.py` — 44 KB, 1083 lines (needs splitting)
+  - `ev_planner.py` — 32 KB, 795 lines (over 30 KB)
+  - `config_flow.py` — 31 KB, 846 lines (over 30 KB)
+  - `forecast_tracker.py` — 31 KB, 841 lines (over 30 KB)
+  - `state_collector.py` — 31 KB, 837 lines (over 30 KB)
+- Check before every PR:
+  ```bash
+  # Lines
+  find custom_components/hsem -name '*.py' -exec sh -c 'l=$(wc -l < "$1"); [ "$l" -gt 1000 ] && echo "$l $1"' _ {} \;
+  # Size
+  find custom_components/hsem -name '*.py' -exec sh -c 's=$(wc -c < "$1"); [ "$s" -gt 30720 ] && echo "$s $1"' _ {} \;
+  ```
 
 ---
 
@@ -172,6 +200,23 @@ The `m[t]` constraints are: `m[t] >= ec[t]` and `m[t] >= ed[t]`.
 - Use math equations (`$$ ... $$`) for formulas instead of plain text or code-block formulas.
 
 ---
+
+## Cost Score Formula
+
+The selector score contains no fixed-schedule/override term:
+
+$$
+score = total\_cost + soc\_penalty + grid\_limit\_penalty + terminal\_soc\_value
+$$
+
+Recommendation labels are not independent economic costs. Their effects are
+already represented by energy flows, conversion losses, cycle wear, and terminal
+inventory valuation.
+
+The former seven-bucket charge-rate learner and number entities are retired. They
+had no wired battery-temperature input and therefore never produced a functional
+temperature-dependent planner limit. Use the live Huawei maximum-charge-power
+entity as the planner's physical charge limit.
 
 ## Cycle Cost Formula
 
@@ -261,9 +306,9 @@ cancel in the energy-balance equality, causing `solve_milp()` to return
 ## MILP Negative-Import-Price Clamp (Issue #655 — Second Unbounded Direction)
 
 After the export-≤-import clamp, a second sanitisation step creates
-`p_imp_obj = np.maximum(p_imp, 0.0)` and uses it for **all objective
-coefficients** that involve the import price (`gi[t]`, conversion loss on
-`ec[t]` and `ed[t]`).  The original `p_imp` is preserved for the
+`p_imp_obj = np.maximum(p_imp, 0.0)` for the grid-import objective
+coefficient. Primary conversion efficiency is already physical in the energy
+balance and has no separate loss-price coefficient.  The original `p_imp` is preserved for the
 export-≤-import clamp and penalty scaling.
 
 When `p_imp[t] < 0`, the `gi[t]` objective coefficient becomes negative,
@@ -297,6 +342,17 @@ Also in `_build_constraints`, the session-EV AC load is simply
 `session_charge_kw × slot_hours` — the DC/AC efficiency conversion cancels
 by definition.  Do not re-introduce a multiply-then-divide by
 `charger_efficiency`.
+
+## Grouped Battery-Export Reserve Checkpoints
+
+The MILP uses explicit battery-origin export and direct-PV export source fields.
+When excess export and its discharge buffer are enabled, material battery export
+activates a binary reserve condition. All slots in one contiguous forecast
+PV-surplus run share the checkpoint derived from the run's final slot—the end of
+the following demand window, immediately before the next distinct surplus run,
+or horizon end. This prevents adjacent surplus slots from bypassing the reserve
+by moving battery export to the run's final slot. Direct PV export remains
+unrestricted by the battery reserve.
 
 ## Battery Export Minimum Price Floor (Issues #752 and #767)
 
@@ -451,11 +507,10 @@ it too.  Post-hoc adjustments are for diagnostics only.
 copy of the pre-#638 MILP formula) even after `milp_optimizer.py` was fixed
 in PR #656.  It now computes the identical per-slot capped-differential
 term shown above, summed across `batteries_charged_kwh[t]` /
-`batteries_discharged_kwh[t]`.  `score_plan()` also now clamps import price
-via `imp_price_obj = max(imp_price, 0.0)` before pricing `import_cost` and
-both conversion-loss terms — mirroring the MILP's `p_imp_obj` clamp — so a
-negative-price slot never scores as a synthetic profit that the LP itself
-never realises. Always grep both files together when touching any pricing
+`batteries_discharged_kwh[t]`.  `score_plan()` also clamps import price via
+`imp_price_obj = max(imp_price, 0.0)` before pricing `import_cost`, mirroring
+the MILP's `p_imp_obj` clamp. Conversion efficiency is priced once through
+physical grid flows; compatibility loss fields remain zero. Always grep both files together when touching any pricing
 term; a mismatch here is easy to introduce silently and hard to notice
 without side-by-side numeric verification using varying (non-flat) prices.
 
@@ -514,12 +569,11 @@ per-slot absorption signal.  The constraint row count `ev_battery_first_rows`
 is `sum(1 for ev in active_evs if ev.charge_past_target) * m` and is included
 in `ev_total_rows`.
 
-The per-slot EV power freeze (`coordinator.py::_freeze_ev_charger_power_for_current_slot`,
-issue #738) must not revive a retracted charge: when the current plan's own
-power command is zero for the slot (the planner decided no charge), the frozen
-non-zero command is zeroed and the baseline reset, so a charge the planner has
-cancelled stays cancelled.  The retraction signal is the current plan's power
-field (read before it is overwritten), not the EV load fields.
+EV charger watts must remain coherent with the accepted slot's EV energy,
+grid flow, net load, and cost fields. Production no longer invokes the old
+per-slot power freeze because restoring stale watts after replanning can revive
+a command whose energy is no longer reserved. Runtime overrides update the
+complete current-slot accounting and respect aggregate fuse headroom.
 
 ## EV Pre-Deadline Target Cap (Issue #636 — Overcharge Fix)
 
@@ -623,8 +677,8 @@ Always check `docs/huawei_entities.md` before looking elsewhere.
 - Log to `hsem.log` (10 MB × 5 files rotating) in HA config dir.
 - **Never call `HSEM_LOGGER.debug()`/`.info()`/`.warning()` directly from pure-Python
   planner/utils modules that can run synchronously inside the coordinator's async
-  update cycle** (e.g. `planner/*.py`, `utils/solar_corrector.py`, `utils/dynamic_floor.py`,
-  `utils/capacity_learner.py`, `utils/charge_rate_learner.py`). The `RotatingFileHandler`
+  update cycle** (e.g. `planner/*.py`, `utils/solar_corrector.py`,
+  `utils/dynamic_floor.py`, `utils/capacity_learner.py`). The `RotatingFileHandler`
   performs blocking `open()`/`write()` calls that trigger Home Assistant's
   "Detected blocking call to open" warning when invoked from the event loop.
   Always use `log_planner(level, msg, *args)` instead — it offloads file I/O to a
@@ -760,8 +814,8 @@ during expensive hours over charging the battery, because:
 
 - Export revenue: ``-p_exp[t]`` — negative coefficient = profit, large
   when prices are high.
-- Battery charge cost: ``charge_loss × p_imp_obj[t]`` — small positive
-  cost, proportional to the import price (conversion loss).
+- Battery charge opportunity cost is physical: stored charge draws
+  ``ec/charge_efficiency`` AC or consumes otherwise-exportable PV.
 
 The LP is a global optimiser — it sees all future slots and will defer
 battery charging to cheap slots when future solar is sufficient.
@@ -1053,27 +1107,12 @@ and causing edit collisions between unrelated classes.
 ## EV Charger Power Must Be Slot-Stable (issue #738)
 
 `ev_charger_calculated_power` and `ev_second_charger_calculated_power` are HSEM's
-*command* to the EV charger. They must remain **constant for the entire current
-15-minute slot** once computed at slot start.
-
-The EV planner recomputes these fields whenever the planner reruns, and the
-recomputation uses live-injected PV and house-consumption data for the current
-slot. Without freezing, a Go-E or similar charger that uses the field as a
-power setpoint sees the target jump whenever:
-
-- a cloud changes the live PV reading,
-- the charger itself toggles on/off (changing `is_charging`), or
-- any other replan trigger fires inside the slot.
-
-The coordinator freezes the slot-start values in
-`_freeze_ev_charger_power_for_current_slot` and restores them to the current
-slot on every replan. Explicit overrides (force-charge-now, auto-full-EV on
-negative price) are applied **after** the freeze, so they can still change the
-current slot while active; when they end, the frozen value is restored.
-
-This is a runtime stability rule, not a planner algorithm change. The planner
-still sees live data for battery/SoC decisions; only the per-EV charger power
-command is held constant.
+commands to the EV chargers. They must be published with matching EV energy,
+grid import/export, net-load, cost, and EV-plan fields from the same accepted
+snapshot. A replan may change the command, but production must never restore an
+older watt value in isolation. Force-charge and negative-price Auto-Full use the
+same coherent accounting path, respect aggregate fuse headroom, and suppress a
+request when the corresponding EV is explicitly disconnected.
 
 ---
 
@@ -1133,18 +1172,26 @@ architecture that does not exist here. Before re-attempting any port, remember:
 
 | Fork PR | Subject | Status for `main` |
 |---|---|---|
-| #5 | ENTSO-E published-price backup | **Feature**, not a fix; new provider. Not needed — no request. |
+| #5 | ENTSO-E published-price backup | **Feature**, not a fix; new provider. Not needed — no request. The orphaned `models/price_source.py` stub was removed in PR #783. |
 | #7 | Remove unused controls + embedded OCPP | **Removal** — explicitly rejected (upstream ships OCPP, schedules, charge-rate learner). |
 | #9 / #22 | PowMr site-attribution / control stability | **Feature** — `origin/main` has no PowMr/secondary-storage subsystem at all. N/A. |
-| #11 | ML history ↔ tracking time | **Ported** (ML core + DST-fold `slot_key` prerequisite). |
+| #11 | ML history ↔ tracking time | **Ported** (ML core + DST-fold `slot_key` prerequisite). The actual-price-interval half (`ActualPriceInterval`, `_compute_actual_charge_savings`) is deliberately out of scope. |
 | #13 | Bound terminal inventory at price boundary | Coupled to fork-only `future_value.py`/`_solver_execution.py`/`secondary_storage.py`/`price_forecast.py`. |
-| #15 | Group export-reserve checkpoints | Refines fork-only `_export_reserve.py`; upstream has no export-reserve concept. N/A. |
-| #17 | Harden MILP bounds layout | Core idea **ported natively** as a `len(bounds) == n_vars` fail-fast guard. |
-| #19 | Reject unavailable load + stale solves | Load fail-closed **ported natively**; the authority-generation rollback requires the fork coordinator rewrite. |
-| #21 | Coalesce boundary price refreshes | Requires the fork's forecast-authority-generation machinery (authority `generation` counter). |
+| #15 | Group export-reserve checkpoints | **Ported in PR #783** — `milp/_export_reserve.py` now exists here, and the run-grouping loop is exact. Supersedes the earlier "N/A". |
+| #17 | Harden MILP bounds layout | **Ported in PR #783** as `MilpBoundsBuilder` over a declared `MilpColumnLayout`: bounds are addressed by block name, and wrong offsets, overlaps, and unassigned columns all fail before the solve. |
+| #19 | Reject unavailable load + stale solves | **Already complete** — load fail-closed *and* stale-solve rejection are both native. `_update_generation` is captured per cycle and re-checked mid-solve and before publication, with `_restore_accepted_plan_state` rollback. Do not look for the fork's `_forecast_authority_generation` name; the local equivalent predates it. |
+| #21 | Coalesce boundary price refreshes | **Mostly N/A; the one real gap fixed in PR #783.** This repo drives replans from a periodic interval timer, not slot-boundary timers, so there is no boundary to coalesce. Clearing the pending flag inside the update lock was already native. The portable remainder was retrying a *failed* cycle when newer state is pending — previously the exception escaped and stranded `_event_update_pending`. Now bounded by `_MAX_FAILED_UPDATE_RETRIES`. |
 
 **Decision:** `origin/main` remains the baseline. Port only self-contained,
 upstream-relevant *fixes*; re-implement concrete bugs natively (with regression
 tests), never import the fork's v7 planner/coordinator architecture. ENTSO-E and
 PowMr are provider/hardware *features* and stay out unless an explicit request
 arrives.
+
+**Embedded OCPP stays — reconfirmed 2026-08-22 (PR #783).** Fork PR #7 deletes
+`ocpp_server.py`, `ocpp_sensors.py`, `utils/sensornames/ocpp.py`, and
+`models/ocpp_session.py`. This repository ships OCPP as a supported product
+feature, so removing it is a user-facing breaking change with no upstream
+benefit. Treat OCPP's continued presence as a deliberate divergence, never as an
+unfinished port. The same holds for fixed battery schedules. Only the dead
+seven-bucket charge-rate learner from #7 was taken.

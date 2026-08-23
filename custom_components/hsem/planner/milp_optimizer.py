@@ -12,7 +12,8 @@ Objective: Σ p_imp·gi - p_exp·ge + cycle_cost·m + p_soc·penalties.
 Constraints: SoC recurrence, SoC soft bounds, charge/discharge limits,
 mutex, energy balance (with efficiencies), EV co-optimisation, fuse limit.
 
-Price sanitisation: battery-export floors, export≤import, import_obj≥0.
+Price sanitisation: battery-export floors only; finite signed import and
+export rates are preserved (no export≤import or import≥0 clamp).
 Curtailment variable ``curt[t]`` allows explicit PV shedding.
 
 Pure Python, no HA imports — testable with plain pytest.
@@ -24,13 +25,14 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from custom_components.hsem.models.ev_config import EVConfig
+from custom_components.hsem.planner._scipy_probe import (  # noqa: F401
+    is_scipy_available,
+)
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import clamp_efficiency
 from custom_components.hsem.utils.units import (
-    fuse_max_energy_per_slot_kwh,
     slot_duration_hours,
-    timedelta_to_hours,
 )
 
 if TYPE_CHECKING:
@@ -69,6 +71,7 @@ def solve_milp(
     main_fuse_phases: int = 3,
     max_grid_export_power_kw: float | None = None,
     battery_export_min_price: float = 0.0,
+    excess_export_discharge_buffer_pct: float = 0.0,
 ) -> tuple[list[PlannedSlot], dict] | None:
     """Solve the LP and return a deep-copy slot list with MILP recommendations.
 
@@ -101,10 +104,9 @@ def solve_milp(
     and ``estimated_battery_capacity_kwh`` while preserving the LP-derived
     energy flow fields.
 
-    The MILP objective now includes conversion loss costs so its optimisation
-    matches the cost function's ``total_cost``.  The energy balance equation
-    accounts for charge/discharge efficiencies so ``gi[t]`` reflects real grid
-    import (not the idealised lossless value).
+    The energy balance accounts for charge/discharge efficiencies so ``gi[t]``
+    and ``ge[t]`` contain the real AC draw and delivery. Their money terms price
+    conversion loss exactly once; no separate loss coefficient is added.
 
     Args:
         slots:
@@ -266,7 +268,17 @@ def solve_milp(
     p_imp = np.array([slots[i].price.import_price for i in future_idx], dtype=float)
     p_exp = np.array([slots[i].price.export_price for i in future_idx], dtype=float)
 
+    from custom_components.hsem.planner.milp._fuse_setup import (
+        resolve_fuse_import_limit_kwh,
+    )
+    from custom_components.hsem.planner.milp._layout import (
+        build_milp_column_layout,
+        derive_milp_offsets,
+    )
     from custom_components.hsem.planner.milp._price_sanitise import sanitize_prices
+    from custom_components.hsem.planner.milp._reserve_diagnostics import (
+        attach_export_reserve_diagnostics,
+    )
 
     p_imp_obj, p_exp, battery_export_blocked = sanitize_prices(
         p_imp,
@@ -367,10 +379,25 @@ def solve_milp(
         else 0.0
     )
     SESSION_HOURS = 2.0
-    if slot_hours > 1e-9:
-        SESSION_SLOTS = min(round(SESSION_HOURS / slot_hours), m)
-    else:
-        SESSION_SLOTS = min(8, m)  # fallback guard, should not normally trigger
+    available_slot_hours = np.asarray(
+        [
+            (
+                slot_duration_hours(max(now, slots[slot_i].start), slots[slot_i].end)
+                if slots[slot_i].start <= now < slots[slot_i].end
+                else slot_duration_hours(slots[slot_i].start, slots[slot_i].end)
+            )
+            for slot_i in future_idx
+        ],
+        dtype=float,
+    )
+    session_slot_hours = np.zeros(m)
+    hours_remaining = SESSION_HOURS
+    for t, available_hours in enumerate(available_slot_hours):
+        if hours_remaining <= 1e-9:
+            break
+        session_slot_hours[t] = float(available_hours)
+        hours_remaining -= float(available_hours)
+    SESSION_SLOTS = int(np.count_nonzero(session_slot_hours > 1e-9))
     session_ev_indices: list[int] = []  # indices into active_evs
     session_slots_set: set[int] = set()
     if active_evs and slot_hours > 0:
@@ -386,55 +413,56 @@ def solve_milp(
     #   x = [ec(0..m-1), ed(0..m-1), gi(0..m-1), ge(0..m-1),
     #        pv(0..m-1), m(0..m-1),
     #        s_max_pen(0..m-1), s_min_pen(0..m-1),
-    #        curt(0..m-1)]
+    #        curt(0..m-1), bx(0..m-1), z_export(0..m-1)]
     #   + [evN_c(0..m-1) for each active EV]      ← EV DC charge per slot
     #   + [evN_target_pen for each active EV]      ← deadline target slack
     # ------------------------------------------------------------------
-    ec_off, ed_off, gi_off, ge_off, pv_off, m_off = 0, m, 2 * m, 3 * m, 4 * m, 5 * m
-    s_max_off = 6 * m
-    s_min_off = 7 * m
-    curt_off = 8 * m
-    n_vars = 9 * m
-
-    # --- EV variable layout ---
-    ev_var_offsets: list[int] = []  # start of ev_c[t] block per EV
-    ev_pen_offsets: list[int] = []  # index of deadline penalty per EV
-    for _ev_idx, _ev in enumerate(active_evs):
-        ev_var_offsets.append(n_vars)
-        n_vars += m  # ev_c[0..m-1] per EV
-        ev_pen_offsets.append(n_vars)
-        n_vars += 1  # single penalty per EV
+    # The declared layout is the single source of truth for the decision-vector
+    # shape; every offset below is read from it rather than recomputed by hand,
+    # so the constraint matrices and the bounds assembly cannot drift apart.
+    fuse_active = main_fuse_amps is not None and main_fuse_amps > 1e-9
+    column_layout = build_milp_column_layout(
+        m,
+        len(active_evs),
+        fuse_active=fuse_active,
+    )
+    _off = derive_milp_offsets(column_layout, len(active_evs))
+    n_vars = _off.n_vars
+    ec_off, ed_off, gi_off, ge_off = _off.ec_off, _off.ed_off, _off.gi_off, _off.ge_off
+    pv_off, m_off = _off.pv_off, _off.m_off
+    s_max_off, s_min_off, curt_off = _off.s_max_off, _off.s_min_off, _off.curt_off
+    battery_export_off = _off.battery_export_off
+    export_mode_off = _off.export_mode_off
+    grid_flow_mode_off = _off.grid_flow_mode_off
+    ev_var_offsets = _off.ev_var_offsets
+    ev_pen_offsets = _off.ev_pen_offsets
 
     # --- Fuse constraint variables ---
-    # When main_fuse_amps is provided and > 0, add gi_pen[t] penalty
-    # variables that absorb grid import exceeding the fuse rating.
-    fuse_active = main_fuse_amps is not None and main_fuse_amps > 1e-9
+    # When main_fuse_amps is provided and > 0, gi_pen[t] penalty variables
+    # absorb grid import exceeding the fuse rating.
     if fuse_active:
-        gi_pen_off = n_vars
-        n_vars += m  # gi_pen[0..m-1] per slot
-        # Calculate max grid import per slot in kWh (single source of truth
-        # shared with the post-hoc EV/battery throttle in engine_core).
-        # We derive interval_minutes from the first slot's duration.
+        gi_pen_off = column_layout.offset("grid_import_penalty")
         first_slot = slots[future_idx[0]]
-        interval_minutes = timedelta_to_hours(first_slot.end - first_slot.start) * 60.0
-        assert main_fuse_amps is not None  # guarded by fuse_active
-        max_grid_import_per_slot_kwh = fuse_max_energy_per_slot_kwh(
-            main_fuse_amps,
-            main_fuse_phases,
-            interval_minutes / 60.0,
-        )
-        log_planner(
-            "debug",
-            "[milp] Main fuse constraint active: %d A × %d-phase → max %.3f kWh/slot "
-            "(interval=%.0f min)",
-            main_fuse_amps,
-            main_fuse_phases,
-            max_grid_import_per_slot_kwh,
-            interval_minutes,
+        max_grid_import_per_slot_kwh = resolve_fuse_import_limit_kwh(
+            main_fuse_amps=main_fuse_amps,
+            main_fuse_phases=main_fuse_phases,
+            slot_start=first_slot.start,
+            slot_end=first_slot.end,
         )
     else:
         gi_pen_off = 0  # unused when fuse is inactive
         max_grid_import_per_slot_kwh = 0.0
+
+    # Finite physical grid bounds close both signed-price unbounded directions.
+    charge_eff = clamp_efficiency(charge_efficiency_pct)
+    discharge_eff = clamp_efficiency(discharge_efficiency_pct)
+    ev_import_capacity = sum(
+        ev.max_charge_per_slot / max(ev.charger_efficiency, 0.01) for ev in active_evs
+    )
+    grid_import_ub_per_slot = (
+        base_load + max_charge_per_slot / charge_eff + ev_import_capacity
+    )
+    grid_export_ub_per_slot = pv_avail + max_dis * discharge_eff
 
     # Grid export power cap (issue #726): hard per-slot bound on ge[t].
     from custom_components.hsem.planner.milp._export_cap import _resolve_export_cap
@@ -442,14 +470,11 @@ def solve_milp(
     export_limit_active, max_grid_export_per_slot_kwh = _resolve_export_cap(
         max_grid_export_power_kw, slots, future_idx
     )
-    # Resolve charge/discharge efficiencies for the energy balance equation.
-    # The MILP must account for real-world conversion losses so its solution
-    # matches the cost function's total_cost (which includes conversion loss
-    # via the conversion_loss_cost term).
-    charge_eff = clamp_efficiency(charge_efficiency_pct)
-    discharge_eff = clamp_efficiency(discharge_efficiency_pct)
-    charge_loss = 1.0 - charge_eff
-    discharge_loss = 1.0 - discharge_eff
+    if export_limit_active:
+        grid_export_ub_per_slot = np.minimum(
+            grid_export_ub_per_slot,
+            max_grid_export_per_slot_kwh,
+        )
 
     # ------------------------------------------------------------------
     # Build objective vector and constraint matrices
@@ -470,6 +495,7 @@ def solve_milp(
         ed_off,
         gi_off,
         ge_off,
+        battery_export_off,
         m_off,
         s_max_off,
         s_min_off,
@@ -482,8 +508,7 @@ def solve_milp(
         p_exp,
         p_soc,
         cycle_cost_per_kwh,
-        charge_loss,
-        discharge_loss,
+        charge_eff,
         time_discount_rate,
         replacement_price_per_kwh,
         fuse_active,
@@ -527,9 +552,18 @@ def solve_milp(
         SESSION_SLOTS,
         slot_hours,
         _has_session_demand,
+        session_slot_hours=session_slot_hours,
+        available_slot_hours=available_slot_hours,
+        column_layout=column_layout,
         max_grid_export_per_slot_kwh=max_grid_export_per_slot_kwh,
         export_limit_active=export_limit_active,
         battery_export_blocked=battery_export_blocked,
+        battery_export_off=battery_export_off,
+        export_mode_off=export_mode_off,
+        excess_export_discharge_buffer_pct=excess_export_discharge_buffer_pct,
+        grid_flow_mode_off=grid_flow_mode_off,
+        grid_import_ub_per_slot=grid_import_ub_per_slot,
+        grid_export_ub_per_slot=grid_export_ub_per_slot,
     )
 
     A_eq = constraints["A_eq"]
@@ -555,6 +589,9 @@ def solve_milp(
     # Solve using HiGHS
     # ------------------------------------------------------------------
     try:
+        integrality = np.zeros(n_vars, dtype=int)
+        integrality[export_mode_off : export_mode_off + m] = 1
+        integrality[grid_flow_mode_off : grid_flow_mode_off + m] = 1
         result = linprog(
             c_obj,
             A_ub=A_ub,
@@ -564,6 +601,7 @@ def solve_milp(
             bounds=bounds,
             method="highs",
             options={"time_limit": _SOLVER_TIME_LIMIT_S, "disp": False},
+            integrality=integrality,
         )
     except Exception as exc:
         log_planner("warning", "[milp] Solver raised an exception: %s", exc)
@@ -620,7 +658,8 @@ def solve_milp(
         _write_milp_results_to_slots,
     )
 
-    # Write MILP decision variables into output slots
+    # Write MILP decision variables into output slots.
+    ev_writeback_diagnostics: dict[str, dict[str, object]] = {}
     out_slots = _write_milp_results_to_slots(
         slots,
         future_idx,
@@ -629,7 +668,7 @@ def solve_milp(
         ed_sol,
         result.x,
         m,
-        ge_off,
+        battery_export_off,
         active_evs,
         ev_var_offsets,
         pv_avail,
@@ -643,8 +682,33 @@ def solve_milp(
         current_kwh,
         usable_kwh,
         curt_sol_full,
+        gi_off=gi_off,
+        grid_import_cap_per_slot_kwh=(
+            constraints["hard_grid_import_cap_per_slot_kwh"]
+            if fuse_active
+            else grid_import_ub_per_slot
+        ),
+        ev_writeback_diagnostics=ev_writeback_diagnostics,
         _min_action_kwh=_MIN_ACTION_KWH,
     )
+
+    from custom_components.hsem.planner.milp._postwrite_validation import (
+        validate_primary_inventory,
+    )
+
+    inventory_validation = validate_primary_inventory(
+        out_slots,
+        future_idx,
+        current_kwh=current_kwh,
+        usable_kwh=usable_kwh,
+    )
+    if not bool(inventory_validation["valid"]):
+        log_planner(
+            "warning",
+            "[milp] Rejecting executable primary inventory: %s",
+            inventory_validation,
+        )
+        return None
 
     # Compute diagnostics
     diagnostics = _compute_milp_diagnostics(
@@ -659,9 +723,6 @@ def solve_milp(
         gi_off,
         gi_pen_off,
         replacement_price_per_kwh,
-        min_export_price,
-        p_imp_obj,
-        discharge_loss,
         fuse_active,
         max_grid_import_per_slot_kwh,
         active_evs,
@@ -670,29 +731,18 @@ def solve_milp(
         terminal_soc_credit,
         _min_action_kwh=_MIN_ACTION_KWH,
     )
+    diagnostics["primary_postwrite_inventory_validation"] = inventory_validation
+    if ev_writeback_diagnostics:
+        diagnostics["ev"] = ev_writeback_diagnostics
+    attach_export_reserve_diagnostics(
+        diagnostics,
+        constraints,
+        m=m,
+        export_mode_off=export_mode_off,
+        solution=result.x,
+        ec_sol=ec_sol,
+        ed_sol=ed_sol,
+        current_kwh=current_kwh,
+    )
 
     return out_slots, diagnostics
-
-
-def is_scipy_available() -> bool:
-    """Return ``True`` if scipy is importable in the current environment.
-
-    The import result is cached at module level so that the blocking
-    ``import scipy.optimize`` happens exactly once at import time rather
-    than on every planner run inside the Home Assistant event loop.
-    """
-    return _SCIPY_AVAILABLE
-
-
-# --- Module-level cache: computed once at import time --------------------
-def _check_scipy() -> bool:
-    """Check whether scipy is importable.  Called once at module load."""
-    try:
-        import scipy.optimize  # noqa: F401
-
-        return True
-    except ImportError:
-        return False
-
-
-_SCIPY_AVAILABLE: bool = _check_scipy()

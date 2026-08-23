@@ -15,6 +15,7 @@ so that downstream population functions never need additional
 
 from __future__ import annotations
 
+import math
 import re
 from collections.abc import Callable
 from datetime import datetime, time, timedelta
@@ -27,6 +28,10 @@ from homeassistant.helpers.event import async_track_state_change_event
 from custom_components.hsem.custom_sensors.config_reader import (  # noqa: F401 — re-exported for backward compat in coordinator.py
     build_battery_schedules,
     build_sensor_config,
+)
+from custom_components.hsem.custom_sensors.state_collector_compute import (  # noqa: F401 — re-exported for callers
+    _compute_battery_capacities,
+    _compute_net_consumption,
 )
 from custom_components.hsem.models.live_state import (
     EVLiveState,
@@ -428,66 +433,6 @@ async def async_collect_live_state(
     return state, fwm_entity, new_unsubs
 
 
-# ---------------------------------------------------------------------------
-# Private helpers
-# ---------------------------------------------------------------------------
-
-
-def _compute_battery_capacities(state: LiveState) -> None:
-    """Fill ``battery_usable_capacity_kwh``, ``battery_current_capacity_kwh``,
-    and ``battery_rated_capacity_min_kwh`` from the raw entity readings.
-
-    This is the extracted logic from
-    ``_async_calculate_remaining_battery_capacity`` in the sensor.
-    """
-    rated_wh = state.huawei_batteries_rated_capacity_wh
-    soc_pct = state.huawei_batteries_soc_pct
-
-    if not isinstance(rated_wh, (int, float)) or not isinstance(soc_pct, (int, float)):
-        return
-
-    rated_kwh = rated_wh / 1000.0
-    eod_soc = state.huawei_batteries_end_of_discharge_soc_pct or 5.0
-    # Respect the max-SoC ceiling from the charging cutoff entity; default to 100 %
-    # (no upper restriction) when the entity is unavailable.
-    max_soc = state.huawei_batteries_charging_cutoff_capacity_pct or 100.0
-    effective_max_soc = min(max(max_soc, eod_soc), 100.0)
-    reserve_kwh = rated_kwh * (eod_soc / 100.0)
-    max_kwh = rated_kwh * (effective_max_soc / 100.0)
-    usable_kwh = max(max_kwh - reserve_kwh, 0.0)
-    current_kwh = (soc_pct / 100.0) * rated_kwh
-    available_kwh = max(current_kwh - reserve_kwh, 0.0)
-
-    state.battery_rated_capacity_min_kwh = round(reserve_kwh, 3)
-    state.battery_usable_capacity_kwh = round(usable_kwh, 2)
-    state.battery_current_capacity_kwh = round(available_kwh, 2)
-    # BMS-reported energy remaining — the total kWh stored in the battery
-    # (including reserve).  Used by CapacityLearner for capacity auto-detection.
-    state.bms_kwh_remaining = round(current_kwh, 3)
-
-
-def _compute_net_consumption(state: LiveState, cfg: SensorConfig) -> None:
-    """Compute ``net_consumption_w`` and ``net_consumption_with_ev_w``.
-
-    Extracted from ``_async_calculate_net_consumption`` in the sensor.
-    """
-    house_w = state.house_consumption_power_w
-    solar_w = state.solar_production_power_w
-
-    if not isinstance(house_w, (int, float)) or not isinstance(solar_w, (int, float)):
-        state.net_consumption_w = 0.0
-        return
-
-    ev_w = (state.ev.power_w or 0.0) + (state.ev_second.power_w or 0.0)
-
-    if cfg.house_power_includes_ev_charger_power:
-        state.net_consumption_with_ev_w = round(house_w - solar_w, 3)
-        state.net_consumption_w = round(house_w - solar_w - ev_w, 3)
-    else:
-        state.net_consumption_with_ev_w = round(house_w - solar_w + ev_w, 3)
-        state.net_consumption_w = round(house_w - solar_w, 3)
-
-
 def _read_ev_power_w(
     sensor: Any,  # NOSONAR -- HA internal type; circular import risk
     entity_id: str,
@@ -777,12 +722,11 @@ async def async_collect_all_states(
                 f"{'None' if val is None else val}",
             )
 
-            # Store 0.0 when the sensor returns None (e.g. 'unknown'
-            # state for a new dynamic child sensor with no data yet).
-            # energy_average_values is rebuilt from scratch every
-            # cycle, so this 0.0 is NOT permanent — as soon as the
-            # sensor accumulates real data, the next read replaces it.
-            energy_average_values[eid] = val or 0.0
+            # Preserve availability provenance. A real 0.0 is a valid
+            # measurement, while None (unknown/unavailable/unparseable)
+            # must remain absent so the population gate can fail closed.
+            if val is not None and math.isfinite(val):
+                energy_average_values[eid] = val
 
     # 3. Pre-read electricity price and Solcast sensor state objects for attribute access
     sensor_attributes: dict[str, dict] = {}

@@ -94,6 +94,7 @@ def test_hold_publishes_wait_mode_and_zero_motion() -> None:
     held = _apply_load_forecast_hold(recs, _live(500.0), _NOW, consumption_ok=False)
 
     assert held is recs[0]
+    assert held is not None
     assert held.recommendation == Recommendations.BatteriesWaitMode.value
     assert held.batteries_charged_kwh == 0.0
     assert held.batteries_discharged_kwh == 0.0
