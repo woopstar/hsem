@@ -209,6 +209,13 @@ class PlannerInput:
     #: partially-elapsed slot.
     live_house_consumption_w: float = 0.0
 
+    #: Whether ``live_house_consumption_w`` came from an available live
+    #: measurement. ``None`` preserves the legacy direct-caller convention:
+    #: positive power is authoritative and the default 0 W means absent. Runtime
+    #: coordinator inputs set an explicit boolean, allowing a measured 0 W to
+    #: remain authoritative.
+    live_house_consumption_available: bool | None = None
+
     # --- time discount for selector score ---
     #: Per-hour exponential discount factor applied to the selector score
     #: (not to total_cost).  A value of 1.0 disables the discount entirely.

@@ -16,6 +16,7 @@ directly.
 
 from __future__ import annotations
 
+import math
 from datetime import timedelta
 
 from custom_components.hsem.models.battery_schedule_input import BatteryScheduleInput
@@ -77,6 +78,44 @@ def _resolve_max_discharge_power_w(live: LiveState) -> float | None:
         return float(get_max_discharge_power(rated_wh))
     # Degraded fallback: no rated capacity known — use the live read-back.
     return convert_to_float(live.huawei_batteries_max_discharge_power_w) or None
+
+
+def _resolve_live_solar_measurement(
+    cfg: SensorConfig,
+    live: LiveState,
+) -> tuple[float, bool]:
+    """Return live solar power and whether that reading is authoritative."""
+    value = convert_to_float(live.solar_production_power_w)
+    missing = any(
+        "solar_production_power" in item for item in live.missing_entities_list
+    )
+    available = (
+        bool(cfg.solar_production_power)
+        and value is not None
+        and math.isfinite(value)
+        and value >= 0.0
+        and not missing
+    )
+    return (float(value) if value is not None and available else 0.0), available
+
+
+def _resolve_live_house_measurement(
+    cfg: SensorConfig,
+    live: LiveState,
+) -> tuple[float, bool]:
+    """Return live house power and whether that reading is authoritative."""
+    value = convert_to_float(live.house_consumption_power_w)
+    missing = any(
+        "house_consumption_power" in item for item in live.missing_entities_list
+    )
+    available = (
+        bool(cfg.house_consumption_power)
+        and value is not None
+        and math.isfinite(value)
+        and value >= 0.0
+        and not missing
+    )
+    return (float(value) if value is not None and available else 0.0), available
 
 
 # ---------------------------------------------------------------------------
@@ -206,6 +245,9 @@ def build_planner_input(
             live.ev_second_planned_load_current_soc_pct
         )
 
+    live_solar_w, _live_solar_available = _resolve_live_solar_measurement(cfg, live)
+    live_house_w, live_house_available = _resolve_live_house_measurement(cfg, live)
+
     return PlannerInput(
         now_iso=now.isoformat(),
         interval_minutes=cfg.recommendation_interval_minutes,
@@ -274,9 +316,9 @@ def build_planner_input(
         ),
         months_winter=list(cfg.months_winter or []),
         house_power_includes_ev=bool(cfg.house_power_includes_ev_charger_power),
-        live_solar_production_w=convert_to_float(live.solar_production_power_w) or 0.0,
-        live_house_consumption_w=convert_to_float(live.house_consumption_power_w)
-        or 0.0,
+        live_solar_production_w=live_solar_w,
+        live_house_consumption_w=live_house_w,
+        live_house_consumption_available=live_house_available,
         is_read_only=bool(cfg.read_only),
         # EV planned load
         ev_planned_load_enabled=bool(cfg.ev_planned_load_enabled),

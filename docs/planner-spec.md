@@ -300,6 +300,34 @@ forecast PV and consumption with live measurements
 are converted to a projected full-slot kWh by multiplying by the slot's full
 duration.
 
+### Live house availability is explicit, not inferred (issue #792)
+
+`PlannerInput.live_house_consumption_available` is a tri-state
+(`bool | None`).  The coordinator (`coordinator_builder.build_planner_input`,
+via `_resolve_live_house_measurement`) always sets an explicit `bool`: the
+reading is authoritative only when its entity is configured, present,
+finite, non-negative, and not on `live.missing_entities_list`.  `None` is
+reserved for direct/legacy callers (e.g. hand-built `PlannerInput` instances
+in tests) that never set the field — for those, injection falls back to the
+old heuristic (`live_house_consumption_w > 1e-9`).
+
+This closes the gap where a genuine, available **0 W** house reading was
+indistinguishable from "no reading yet" (both read as `0.0` and failed the
+old `> 1e-9` check): a real 0 W reading now overwrites the forecast, while an
+explicitly-unavailable reading leaves the forecast untouched regardless of
+what stale/default wattage happens to be sitting in
+`live_house_consumption_w`.  `_resolve_live_solar_measurement` is hardened
+with the same finite/non-negative checks for consistency, though PV
+injection itself still keys off `live_solar_production_w > 1e-9` (solar
+availability tri-stating is not yet wired end-to-end).
+
+`utils/live_power.py` (`LivePowerEstimate` / `LivePowerWindow`) provides a
+short rolling-median sampler for smoothing bursty live power across
+multiple ticks before it reaches the planner.  It is not yet wired into the
+coordinator's update cycle — that integration (continuous sampling,
+same-tick secondary-site normalization, EV-ambiguity gating, and
+mismatch-triggered replanning) is future work.
+
 When `house_power_includes_ev = True`, the live house reading may contain EV
 charging power that the battery must not serve (issue #592).  Two layers
 protect against this:

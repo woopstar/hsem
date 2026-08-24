@@ -146,11 +146,13 @@ class _Inp:
         live_house_w: float,
         live_solar_w: float = 0.0,
         includes_ev: bool = True,
+        live_house_available: bool | None = None,
         ev_kw: float | None = None,
     ) -> None:
         self.interval_minutes = 60
         self.live_solar_production_w = live_solar_w
         self.live_house_consumption_w = live_house_w
+        self.live_house_consumption_available = live_house_available
         self.house_power_includes_ev = includes_ev
         self.ev_session_charge_kw = ev_kw
         self.ev_second_session_charge_kw = None
@@ -200,6 +202,40 @@ def test_live_injection_normal_load_passes_through():
     inp = _Inp(live_house_w=600.0)  # 0.6 kWh — 1.5x forecast, fine
     _inject_live_data_into_current_slot([slot], inp, _NOW)  # type: ignore[arg-type]
     assert slot.avg_house_consumption_kwh == pytest.approx(0.6)
+
+
+def test_explicit_unavailable_house_preserves_current_forecast():
+    """A numeric fallback is not authority when availability is explicitly false."""
+    slot = _current_slot(forecast_kwh=0.4)
+    inp = _Inp(live_house_w=4000.0, live_house_available=False)
+
+    _inject_live_data_into_current_slot([slot], inp, _NOW)  # type: ignore[arg-type]
+
+    assert slot.avg_house_consumption_kwh == pytest.approx(0.4)
+
+
+def test_explicit_available_zero_house_overwrites_current_forecast():
+    """A physical 0 W house reading is distinct from an unavailable default."""
+    slot = _current_slot(forecast_kwh=0.4)
+    inp = _Inp(live_house_w=0.0, live_house_available=True)
+
+    _inject_live_data_into_current_slot([slot], inp, _NOW)  # type: ignore[arg-type]
+
+    assert slot.avg_house_consumption_kwh == pytest.approx(0.0)
+
+
+def test_genuine_over_three_times_load_is_uncapped_for_ev_exclusive_meter():
+    """The EV ambiguity cap cannot discard a real high EV-exclusive house load."""
+    slot = _current_slot(forecast_kwh=0.4)
+    inp = _Inp(
+        live_house_w=4000.0,
+        includes_ev=False,
+        live_house_available=True,
+    )
+
+    _inject_live_data_into_current_slot([slot], inp, _NOW)  # type: ignore[arg-type]
+
+    assert slot.avg_house_consumption_kwh == pytest.approx(4.0)
 
 
 def test_live_injection_preserves_sub_window_averages():

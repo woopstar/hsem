@@ -175,7 +175,12 @@ def _inject_live_data_into_current_slot(
                 )
                 slot.solcast_pv_estimate_kwh = round(live_pv_kwh, 3)
 
-            if inp.live_house_consumption_w > 1e-9:
+            live_house_available = getattr(
+                inp, "live_house_consumption_available", None
+            )
+            if live_house_available is None:
+                live_house_available = inp.live_house_consumption_w > 1e-9
+            if live_house_available:
                 # When house power includes EV charger load, the live reading
                 # may include EV power that the battery must not serve.
                 #
