@@ -20,6 +20,7 @@ from custom_components.hsem.planner.milp._layout import (
 
 if TYPE_CHECKING:
     from custom_components.hsem.models.ev_config import EVConfig
+    from custom_components.hsem.planner.milp._ev_amp_lattice import EvAmpPlan
 
 
 def build_bounds(
@@ -42,6 +43,7 @@ def build_bounds(
     no_export: bool,
     reserve_active: bool,
     fuse_active: bool,
+    ev_amp_plan: EvAmpPlan | None = None,
 ) -> list[Bound]:
     """Return the complete, validated solver bounds vector."""
     unbounded: tuple[float, float | None] = (0.0, None)
@@ -116,5 +118,12 @@ def build_bounds(
         )
     if fuse_active:
         bounds_builder.fill("grid_import_penalty", unbounded)
+
+    if ev_amp_plan is not None:
+        from custom_components.hsem.planner.milp._ev_amp_lattice import (
+            write_ev_amp_bounds,
+        )
+
+        write_ev_amp_bounds(bounds_builder, ev_amp_plan, m=m)
 
     return bounds_builder.finalize()

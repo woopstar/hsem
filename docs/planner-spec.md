@@ -553,6 +553,15 @@ the MILP decides **when and how much each EV charges**.
 - `ev_c[t]` — DC-side energy delivered to the EV battery in slot `t` (kWh).
   Bounded by `[0, ev.max_charge_per_slot]`.
 - `ev_pen` — single slack variable absorbing unmet deadline target (kWh).
+- `ev_amps[t]` — solver-native whole-amp charger command for a **managed**
+  EV (not `fixed_session_only`), semi-integer (HiGHS type 3): either `0` or
+  an integer in `[min_amp, rated_amp]` (issue #797).  Linked to `ev_c[t]` by
+  the equality `ev_c[t] = ev_amps[t] × one_amp_dc_kwh[t]`, so a solved plan
+  is always directly executable — there is no post-solve quantization step
+  that can diverge from what was solved.  See
+  `planner/milp/_ev_amp_lattice.py`.
+- `ev_on[t]` — optional binary, present only for a managed EV whose Huawei
+  discharge permission is restrictive (see *Discharge permission* below).
 
 **EV constraints**:
 - SOC dynamics (cumulative, no discharge):
@@ -562,12 +571,18 @@ the MILP decides **when and how much each EV charges**.
   LP-slot index of the effective deadline.
 - **Post-deadline zero-charge**: For EVs with a deadline and `charge_past_target=False`,
   `ev_c[t] = 0` for all `t > D`. This prevents charging after the deadline.
-- **Target-cap constraint** (issue #636): For EVs with a deadline and
-  `charge_past_target=False`, a hard upper bound caps cumulative pre-deadline
-  charge at the economic shortfall:
-  `Σ_{k≤D} ev_c[k] ≤ target_kwh − initial_soc_kwh`.
-  Without this, the benefit coefficient on `ev_c[t]` would drive charging all the
-  way to `capacity_kwh` regardless of the actual shortfall.
+- **Target-cap constraint** (issue #636, relaxed by issue #797): For EVs
+  with a deadline and `charge_past_target=False`, a hard upper bound caps
+  cumulative pre-deadline charge near the economic shortfall:
+  `Σ_{k≤D} ev_c[k] ≤ target_kwh − initial_soc_kwh + activation_quantum`.
+  `activation_quantum` is the largest single-slot energy the EV's charger
+  startup minimum could deliver across the pre-deadline slots — the
+  smallest amount whole-amp hardware might have to overshoot by when no
+  executable point lands exactly on the target.  Without this relaxation, a
+  target with no exact whole-amp solution reports an avoidable deadline
+  miss even though the nearest reachable whole-amp point is one activation
+  quantum away.  `charge_past_target=True` still uses its own surplus-only
+  mechanism instead.
 - **Surplus-only for charge-past-target**: When `charge_past_target=True`,
   `ev_c[t]/η_charger ≤ max(0, pv[t] − base_load[t])` — charging only from PV surplus.
 - **Battery-first for charge-past-target (issue #775)**: When `charge_past_target=True`,
@@ -592,18 +607,89 @@ ev_penalty_cost = max(p_imp) * max(energy_needed, 1.0) * 10
 ```
 ensuring the MILP always prefers meeting the target when physically possible.
 
-**Pre-deadline slots** (`t ≤ D`): Each `ev_c[t]` receives a negative objective
-coefficient of `-ev_penalty_cost`, creating a direct benefit that forces the LP
-to charge the EV. The LP will use PV surplus first (free), then grid import
-(costs `p_imp[t]`) when PV alone is insufficient.
+**Pre-deadline slots** (`t ≤ D`, issue #797): `ev_c[t]` receives **no** direct
+per-kWh benefit coefficient.  The slack penalty alone already prices meeting
+the deadline at `ev_penalty_cost` per kWh shortfall — almost always far above
+any real `p_imp[t]` — so the LP already prefers charging over paying the
+penalty without an additional coefficient; charging still pays its own real
+grid/PV opportunity cost (PV surplus first, then grid import at `p_imp[t]`
+when insufficient).  Each pre-deadline slot instead carries a tiny positive
+tiebreak cost, `_EV_TARGET_ENERGY_TIEBREAK_COST = 1e-7` per kWh, nudging the
+LP toward the smallest executable (whole-amp) energy that clears the
+target-cap constraint rather than leaving it indifferent among
+cost-equivalent solutions above the target.  (Prior to issue #797, `ev_c[t]`
+carried a large negative `-ev_penalty_cost` coefficient mirroring the slack
+penalty; removing it let the target-cap activation-quantum relaxation above
+work without also inflating the reward for the extra energy.)
 
-This pre-deadline benefit is **mutually exclusive** with `charge_past_target`.
-The LP construction guards the pre-deadline benefit block with
-`and not ev.charge_past_target` (mirroring the post-deadline zero-charge and
-target-cap constraints), so an EV in charge-past-target mode never receives the
-large penalty-driven benefit. The LP enforces this exclusion directly — it does
-not rely on caller discipline in `engine_core.py` to prevent both conditions
-from being true simultaneously.
+### Discharge permission and whole-amp lattice (issue #797)
+
+Huawei exposes **one global battery discharge limit**, shared by the house
+battery and every EV.  `EVConfig.force_max_discharge_power` (permission, not
+a command) and `EVConfig.max_discharge_power_w` (ceiling) express the user's
+opt-in for the primary battery to discharge while a specific EV charges.
+`planner/milp/_ev_amp_lattice.py::resolve_ev_amp_plan` computes each
+managed EV's:
+
+- `discharge_cap_kwh` — `0` unless `force_max_discharge_power` is `True`
+  with a finite, positive `max_discharge_power_w` (fail-closed).
+- Whether it `needs_on`: a conditional `ev_on[t]` binary is created only
+  when the EV can command a positive amp (`runnable`) **and**
+  `discharge_cap_kwh < max_dis` — i.e. its discharge permission is
+  restrictive.  Full permission or a structurally-always-zero amp lattice
+  (e.g. a `managed_session_cap_only` sentinel, see below) needs no binary.
+
+When `ev_on[t]` exists, three rows per slot link it to the amp variable and
+cap primary discharge conditionally:
+
+```text
+ev_amps[t]      ≤ rated_amp · ev_on[t]
+min_amp · ev_on[t] ≤ ev_amps[t]
+ed[t] + (max_dis − discharge_cap_kwh) · ev_on[t] ≤ max_dis
+```
+
+so `ed[t] ≤ discharge_cap_kwh` exactly while the EV has a non-zero command,
+and `ed[t]` is unconstrained by this row while `ev_on[t] = 0`.  A live
+session's already-flowing current is physical evidence independent of any
+amp decision: when a managed EV reports live telemetry
+(`session_charge_kw > 0`) with a restrictive `discharge_cap_kwh`, one direct
+row caps `ed[0] ≤ discharge_cap_kwh` on the current slot regardless of what
+the solver commands for future slots.
+
+**`managed_session_cap_only` sentinel**: when a managed EV's live session is
+already at or above target (and past-target charging is disallowed or it is
+already at 100%), `engine_ev_milp.py::_build_ev_configs_for_milp` admits it
+with `max_charge_per_slot = 0.0` instead of excluding it — so its
+current-slot discharge permission/ceiling still applies — rather than
+silently marking it `fixed_session_only` (which would misreport it as
+unmanaged).  `resolve_ev_amp_plan` naturally reduces its amp bounds to
+`(0, 0)` (unrunnable, since `rated_current_a` derives from a zero
+`max_charge_per_slot`), so `needs_on` stays `False` for it: no wasted binary
+for an EV that can never command a positive amp.
+
+**Column layout**: `ev_{i}_amps` / `ev_{i}_on` blocks are declared last in
+`build_milp_column_layout` (`planner/milp/_layout.py`), after every physical
+and fuse block, using the same `MilpColumnLayout`/`MilpBoundsBuilder`
+machinery as every other named block (see *Named MILP bounds layout*
+below) — no separate incremental-width tracking is needed because the full
+column count (including amp/on columns) is known before any constraint
+matrix is built.
+
+**Write-out**: because `ev_c[t]` is already tied to an executable whole-amp
+command by the equality constraint above, `planner/milp/_write_results.py`
+publishes a managed EV's solved allocation **verbatim** — no post-solve
+concentration, minimum-power redistribution, or quantization.  The legacy
+`_redistribute_below_minimum_power` / `_quantize_one_ev_allocation` helpers
+(`planner/milp/_ev_quantize.py`) remain available for direct/compatibility
+callers but are never invoked from the production write-out path.
+
+**Time-limited incumbents**: semi-integer variables make the model more
+expensive for HiGHS to solve to proven optimality within the solver's time
+budget.  `planner/milp/_incumbent.py::validate_incumbent` checks a
+HiGHS `status=1` ("time limit") result's decision vector against the
+complete model (bounds, equality/inequality residuals, integrality) before
+`solve_milp()` accepts it as a feasible — if unproven-optimal — plan,
+instead of discarding a good solution outright.
 
 **Post-deadline slots** (`t > D`):
 - When `charge_past_target=False`: `ev_c[t]` is hard-constrained to zero —

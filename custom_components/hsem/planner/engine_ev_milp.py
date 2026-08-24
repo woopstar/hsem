@@ -79,6 +79,8 @@ def _build_ev_configs_for_milp(
             bool,
             float,
             bool,
+            float,
+            bool,
         ]
     ] = [
         (
@@ -96,6 +98,8 @@ def _build_ev_configs_for_milp(
             inp.ev_planned_load_base_load_includes_ev,
             inp.ev_planned_allow_charge_past_target_soc,
             inp.ev_past_target_confidence_factor,
+            inp.ev_planned_load_force_max_discharge_power,
+            inp.ev_planned_load_max_discharge_power_w,
             False,  # is_second = False (primary EV)
         ),
         (
@@ -115,6 +119,8 @@ def _build_ev_configs_for_milp(
             inp.ev_second_planned_load_base_load_includes_ev,
             inp.ev_second_allow_charge_past_target_soc,
             inp.ev_second_past_target_confidence_factor,
+            inp.ev_second_planned_load_force_max_discharge_power,
+            inp.ev_second_planned_load_max_discharge_power_w,
             True,  # is_second = True (second EV)
         ),
     ]
@@ -133,6 +139,8 @@ def _build_ev_configs_for_milp(
         base_includes,
         allow_past_target,
         past_target_confidence_factor,
+        force_max_discharge_power,
+        max_discharge_power_w,
         is_second,
     ) in ev_sources:
         label = "second" if is_second else "primary"
@@ -200,13 +208,19 @@ def _build_ev_configs_for_milp(
         at_or_above_target = target_kwh <= initial_kwh + 1e-9
         deadline_slot: int | None = None
         charge_past_target = False
+        managed_session_cap_only = False
         if fixed_session_only:
             initial_kwh = 0.0
             target_kwh = 0.0
         elif at_or_above_target:
-            if has_live_session:
+            if has_live_session and (not allow_past_target or soc_pct >= 100):
+                # Keep a command-zero managed sentinel while physical power
+                # is still present.  Huawei's discharge limit is global, so
+                # the MILP must retain this EV's current-slot permission/
+                # ceiling even though target completion forbids future EV
+                # charging.
                 target_kwh = initial_kwh
-                fixed_session_only = True
+                managed_session_cap_only = True
             elif not allow_past_target or soc_pct >= 100:
                 log_planner(
                     "debug",
@@ -218,9 +232,11 @@ def _build_ev_configs_for_milp(
                     allow_past_target,
                 )
                 continue  # fully charged or past-target not allowed
-            # Charge-past-target mode: allow up to 100 %, no deadline pressure.
-            target_kwh = effective_capacity
-            charge_past_target = True
+            else:
+                # Charge-past-target mode: allow up to 100 %, no deadline
+                # pressure.
+                target_kwh = effective_capacity
+                charge_past_target = True
         else:
             # Normal mode: map deadline to LP slot index.
             eff_deadline = _effective_deadline_dt(deadline)
@@ -261,7 +277,17 @@ def _build_ev_configs_for_milp(
             continue
 
         slot_hours = inp.interval_minutes / 60.0
-        max_dc = effective_power_kw * slot_hours * eff  # DC-side kWh per slot
+        # EVConfig carries one internally coherent exact energy envelope. The
+        # user-facing approximate nameplate was already snapped to whole
+        # amps; use the same rounded efficiency stored on the config so
+        # recovering AC power in the MILP cannot lose the top amp to an
+        # independent rounding of the raw configured efficiency.
+        config_eff = round(eff, 4)
+        max_dc = (
+            0.0
+            if managed_session_cap_only
+            else effective_power_kw * slot_hours * config_eff
+        )
 
         future_value_per_kwh: float | None = None
         if charge_past_target and ev_avg_future_import_price is not None:
@@ -275,14 +301,16 @@ def _build_ev_configs_for_milp(
                 initial_soc_kwh=round(initial_kwh, 3),
                 target_kwh=round(target_kwh, 3),
                 capacity_kwh=round(effective_capacity, 3),
-                max_charge_per_slot=round(max_dc, 4),
-                charger_efficiency=round(eff, 4),
+                max_charge_per_slot=max_dc,
+                charger_efficiency=config_eff,
                 charger_min_power_w=round(effective_min_power_w, 1),
                 charger_phase_topology=phase_topology,
                 deadline_slot=deadline_slot,
                 base_load_includes_ev=base_includes,
                 charge_past_target=charge_past_target,
                 future_value_per_kwh=future_value_per_kwh,
+                force_max_discharge_power=force_max_discharge_power,
+                max_discharge_power_w=max(float(max_discharge_power_w), 0.0),
                 is_second=is_second,
                 session_charge_kw=session_charge_kw,
                 fixed_session_only=fixed_session_only,
@@ -299,12 +327,14 @@ def _build_ev_configs_for_milp(
                 future_value_per_kwh if future_value_per_kwh else 0.0,
             )
         else:
+            mode = "managed_session_cap_only" if managed_session_cap_only else "normal"
             log_planner(
                 "debug",
-                "[milp_ev] %s EV included  mode=normal  "
+                "[milp_ev] %s EV included  mode=%s  "
                 "soc=%.1f%%  target=%.1f%%  initial=%.3fkWh  target=%.3fkWh  "
                 "deadline_slot=%s  max_dc_per_slot=%.4fkWh",
                 label,
+                mode,
                 soc_pct,
                 target_pct,
                 initial_kwh,

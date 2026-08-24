@@ -249,6 +249,13 @@ class PlannerInput:
     #: PV, to account for uncertainty in whether the EV will actually need
     #: the extra energy.
     ev_past_target_confidence_factor: float = 0.9
+    #: Permission for the Huawei house battery to discharge while the
+    #: primary EV charges (issue #797).  Never creates discharge on its own
+    #: — it only lifts the MILP's fail-closed discharge cap for this EV.
+    ev_planned_load_force_max_discharge_power: bool = False
+    #: Huawei discharge ceiling (W) while the primary EV charges.  Only
+    #: meaningful when ``ev_planned_load_force_max_discharge_power`` is True.
+    ev_planned_load_max_discharge_power_w: float = 0.0
 
     # --- EV planned load integration — second EV (optional, disabled by default) ---
     #: When True, the second EV planned load feature is active.
@@ -269,6 +276,10 @@ class PlannerInput:
     ev_second_allow_charge_past_target_soc: bool = False
     #: Same as ev_past_target_confidence_factor, for the second EV.
     ev_second_past_target_confidence_factor: float = 0.9
+    #: Same as ev_planned_load_force_max_discharge_power, for the second EV.
+    ev_second_planned_load_force_max_discharge_power: bool = False
+    #: Same as ev_planned_load_max_discharge_power_w, for the second EV.
+    ev_second_planned_load_max_discharge_power_w: float = 0.0
 
     # --- planner hysteresis — keep the active plan unless the new plan
     # is materially better (anti-flapping, issue #372). ---

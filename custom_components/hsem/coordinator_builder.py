@@ -361,6 +361,13 @@ def build_planner_input(
             cfg.ev.past_target_confidence_factor
         )
         or 0.9,
+        ev_planned_load_force_max_discharge_power=bool(
+            cfg.ev.force_max_discharge_power
+        ),
+        ev_planned_load_max_discharge_power_w=convert_to_float(
+            cfg.ev.max_discharge_power
+        )
+        or 0.0,
         # Second EV planned load
         ev_second_planned_load_enabled=bool(cfg.ev_second_planned_load_enabled),
         ev_second_planned_load_connected=bool(live.ev_second_planned_load_connected),
@@ -402,6 +409,13 @@ def build_planner_input(
             cfg.ev_second.past_target_confidence_factor
         )
         or 0.9,
+        ev_second_planned_load_force_max_discharge_power=bool(
+            cfg.ev_second.force_max_discharge_power
+        ),
+        ev_second_planned_load_max_discharge_power_w=convert_to_float(
+            cfg.ev_second.max_discharge_power
+        )
+        or 0.0,
         time_discount_rate=0.995,
         # Planner hysteresis (issue #372)
         planner_hysteresis_enabled=bool(cfg.planner_hysteresis_enabled),

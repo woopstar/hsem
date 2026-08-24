@@ -23,6 +23,10 @@ if TYPE_CHECKING:
 # Resolve source-attribution degeneracy without materially changing economics.
 _BATTERY_EXPORT_SOURCE_TIEBREAK = 1e-7
 
+# Resolve otherwise free PV/zero-price deadline allocations toward the
+# smallest executable whole-amp energy above the target (issue #797).
+_EV_TARGET_ENERGY_TIEBREAK_COST = 1e-7
+
 
 def _build_objective(
     slots: list[PlannedSlot],
@@ -207,32 +211,26 @@ def _build_objective(
             # when it needs significant energy, but doesn't force EV charging
             # when it only needs a small top-up (e.g., 90% -> 100%) at the
             # expense of a critically low house battery.
+            #
+            # No direct per-kWh benefit is placed on ev_c[t] (issue #797):
+            # the slack penalty alone already prices meeting the deadline at
+            # ev_penalty_cost per kWh shortfall, which is almost always far
+            # above any real p_imp[t], so the LP already prefers charging
+            # over paying the penalty without an additional coefficient.
+            # Charging still pays its own real grid/PV opportunity cost.  A
+            # tiny per-kWh tiebreak cost nudges the LP toward the smallest
+            # executable (whole-amp) energy that clears the target-cap
+            # constraint, rather than leaving it indifferent among
+            # cost-equivalent solutions above the target.
             energy_needed = ev.target_kwh - ev.initial_soc_kwh
             ev_penalty_cost = max(p_imp_max, 0.1) * max(energy_needed, 1.0) * 10.0
             c_obj[ev_pen_offsets[ev_idx]] = ev_penalty_cost
 
-            # Direct benefit on ev_c[t]: the avoided penalty per kWh of DC
-            # charge delivered before the deadline.  Without this, the LP
-            # sees ev_c[t] as having zero benefit — only the slack penalty
-            # provides an incentive, and the LP may prefer paying the penalty
-            # over importing expensive grid power to charge the EV.
-            #
-            # The benefit equals the penalty cost per kWh, so the LP always
-            # prefers charging over paying the penalty.  Slots before the
-            # deadline get the full benefit; slots after get zero coefficient.
-            # Post-deadline charging is forbidden by hard constraints below
-            # unless charge_past_target is enabled (surplus PV only).
             ev_off = ev_var_offsets[ev_idx]
             d = ev.deadline_slot
             d = max(0, min(d, m - 1))
-            for t in range(m):
-                if t <= d:
-                    # Negative coefficient = benefit (reduces objective).
-                    # The benefit is the avoided penalty per kWh DC.
-                    c_obj[ev_off + t] -= ev_penalty_cost
-                # Post-deadline slots: no benefit (coefficient stays 0).
-                # Hard constraints below prevent charging unless
-                # charge_past_target is enabled.
+            for t in range(d + 1):
+                c_obj[ev_off + t] += _EV_TARGET_ENERGY_TIEBREAK_COST
 
     # --- EV charge-past-target benefit ---
     # When an EV is already at its user-configured target SoC but

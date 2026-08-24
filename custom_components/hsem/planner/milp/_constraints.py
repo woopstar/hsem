@@ -14,9 +14,14 @@ from custom_components.hsem.planner.milp._layout import (
     MilpColumnLayout,
     build_milp_column_layout,
 )
+from custom_components.hsem.utils.phase_power import (
+    charger_current_to_power_w,
+    charger_min_power_to_current_a,
+)
 
 if TYPE_CHECKING:
     from custom_components.hsem.models.ev_config import EVConfig
+    from custom_components.hsem.planner.milp._ev_amp_lattice import EvAmpPlan
 
 
 def _build_constraints(
@@ -65,6 +70,7 @@ def _build_constraints(
     column_layout: MilpColumnLayout | None = None,
     phase_fuse_active: bool = False,
     max_phase_import_per_slot_kwh: float = 0.0,
+    ev_amp_plan: EvAmpPlan | None = None,
 ) -> dict:
     """Build all LP constraint matrices and variable bounds.
 
@@ -317,11 +323,15 @@ def _build_constraints(
                 ev_row += 1
 
             # EV target-cap constraint:
-            # Σ_{k≤D} ev_c[k] ≤ target_kwh - initial_soc_kwh
-            # Caps EV charging at the economic target for pre-deadline
+            # Σ_{k≤D} ev_c[k] ≤ target_kwh - initial_soc_kwh + activation_quantum
+            # Caps EV charging near the economic target for pre-deadline
             # slots.  Without this, the benefit coefficient on ev_c[t]
             # would drive charging all the way to capacity_kwh
-            # regardless of the actual shortfall.
+            # regardless of the actual shortfall.  One activation quantum
+            # (the smallest executable whole-amp energy) is permitted above
+            # the exact target: whole-amp hardware may have no executable
+            # point exactly at the remaining need, and a strict cap would
+            # report an avoidable deadline miss (issue #797).
             # Does NOT apply when charge_past_target is enabled — that
             # mode intentionally allows charging beyond target_kwh via
             # a separate surplus-only mechanism.
@@ -333,6 +343,27 @@ def _build_constraints(
                 shortfall = ev.target_kwh - ev.initial_soc_kwh
                 d = ev.deadline_slot
                 d = max(0, min(d, m - 1))
+                activation_current_a = max(
+                    charger_min_power_to_current_a(
+                        ev.charger_min_power_w,
+                        ev.charger_phase_topology,
+                    ),
+                    1,
+                )
+                activation_power_w = charger_current_to_power_w(
+                    activation_current_a,
+                    ev.charger_phase_topology,
+                )
+                activation_quantum_dc = max(
+                    (
+                        activation_power_w
+                        * float(available_slot_hours[k])
+                        * ev.charger_efficiency
+                        / 1000.0
+                        for k in range(d + 1)
+                    ),
+                    default=0.0,
+                )
                 fixed_session_dc = 0.0
                 for k in range(d + 1):
                     pinned = _pinned_session_dc(ev_idx, ev, k)
@@ -340,7 +371,10 @@ def _build_constraints(
                         A_ub[ev_row, ev_off + k] = 1.0
                     else:
                         fixed_session_dc += pinned
-                b_ub[ev_row] = max(shortfall - fixed_session_dc, 0.0)
+                b_ub[ev_row] = max(
+                    shortfall - fixed_session_dc + activation_quantum_dc,
+                    0.0,
+                )
                 ev_row += 1
 
             # Post-deadline zero-charge constraint:
@@ -616,6 +650,7 @@ def _build_constraints(
         no_export=no_export,
         reserve_active=reserve_active,
         fuse_active=fuse_active,
+        ev_amp_plan=ev_amp_plan,
     )
 
     return {

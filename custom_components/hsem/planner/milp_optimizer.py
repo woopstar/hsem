@@ -12,6 +12,7 @@ repository's 30 KB file limit.
 
 from __future__ import annotations
 
+import math
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -310,7 +311,24 @@ def solve_milp(
     active_evs: list[EVConfig] = []
     if ev_configs:
         for ev in ev_configs:
-            if ev.enabled and ev.capacity_kwh > 1e-9 and ev.max_charge_per_slot > 1e-9:
+            try:
+                session_kw = (
+                    float(ev.session_charge_kw)
+                    if ev.session_charge_kw is not None
+                    else 0.0
+                )
+            except TypeError, ValueError:
+                session_kw = 0.0
+            has_live_session = math.isfinite(session_kw) and session_kw > 1e-9
+            # A managed live session (managed_session_cap_only, issue #797)
+            # has max_charge_per_slot=0 by construction — it must still be
+            # admitted so its Huawei discharge permission/ceiling is
+            # honoured even though it can command no further charge.
+            if (
+                ev.enabled
+                and ev.capacity_kwh > 1e-9
+                and (ev.max_charge_per_slot > 1e-9 or has_live_session)
+            ):
                 active_evs.append(ev)
         if active_evs:
             # Recompute net_load without EV planned loads
@@ -378,12 +396,27 @@ def solve_milp(
     # shape; every offset below is read from it rather than recomputed by hand,
     # so the constraint matrices and the bounds assembly cannot drift apart.
     fuse_active = main_fuse_amps is not None and main_fuse_amps > 1e-9
+
+    # Solver-native whole-amp EV lattice (issue #797): resolved before the
+    # column layout so it can declare each EV's ev_{i}_amps / ev_{i}_on
+    # blocks up front — no incremental widening required.
+    from custom_components.hsem.planner.milp._ev_amp_lattice import (
+        resolve_ev_amp_plan,
+    )
+
+    ev_amp_plan = resolve_ev_amp_plan(
+        active_evs, max_dis=max_dis, slot_hours=slot_hours
+    )
     column_layout = build_milp_column_layout(
         m,
         len(active_evs),
         fuse_active=fuse_active,
+        ev_amp_widths=ev_amp_plan.amp_widths(m),
+        ev_on_widths=ev_amp_plan.on_widths(m),
     )
     _off = derive_milp_offsets(column_layout, len(active_evs))
+    ev_amp_offsets = _off.ev_amp_offsets
+    ev_on_offsets = _off.ev_on_offsets
     n_vars = _off.n_vars
     ec_off, ed_off, gi_off, ge_off = _off.ec_off, _off.ed_off, _off.gi_off, _off.ge_off
     pv_off, m_off = _off.pv_off, _off.m_off
@@ -529,6 +562,31 @@ def solve_milp(
         grid_export_ub_per_slot=grid_export_ub_per_slot,
         phase_fuse_active=phase_fuse_active,
         max_phase_import_per_slot_kwh=max_phase_import_per_slot_kwh,
+        ev_amp_plan=ev_amp_plan,
+    )
+
+    # Solver-native whole-amp EV lattice (issue #797): link ev_c[t] to the
+    # executable amp variable and, for any EV whose Huawei discharge
+    # permission is restrictive, cap primary discharge while it charges.
+    # Appended last, after every other dense-matrix extension, so it can
+    # reference the widest (final) n_vars directly.
+    from custom_components.hsem.planner.milp._ev_amp_lattice import (
+        add_ev_amp_lattice_constraints,
+    )
+
+    constraints = add_ev_amp_lattice_constraints(
+        constraints,
+        ev_amp_plan,
+        active_evs,
+        n_vars=n_vars,
+        m=m,
+        ev_var_offsets=ev_var_offsets,
+        ev_amp_offsets=ev_amp_offsets,
+        ev_on_offsets=ev_on_offsets,
+        ed_off=ed_off,
+        max_dis=max_dis,
+        available_slot_hours=available_slot_hours,
+        session_dc_by_ev=session_dc_by_ev,
     )
 
     A_eq = constraints["A_eq"]
@@ -553,10 +611,21 @@ def solve_milp(
     # ------------------------------------------------------------------
     # Solve using HiGHS
     # ------------------------------------------------------------------
+    from custom_components.hsem.planner.milp._ev_amp_lattice import (
+        ev_amp_integrality,
+    )
+
     try:
         integrality = np.zeros(n_vars, dtype=int)
         integrality[export_mode_off : export_mode_off + m] = 1
         integrality[grid_flow_mode_off : grid_flow_mode_off + m] = 1
+        integrality |= ev_amp_integrality(
+            ev_amp_plan,
+            n_vars=n_vars,
+            ev_amp_offsets=ev_amp_offsets,
+            ev_on_offsets=ev_on_offsets,
+            m=m,
+        )
         result = linprog(
             c_obj,
             A_ub=A_ub,
@@ -572,12 +641,49 @@ def solve_milp(
         log_planner("warning", "[milp] Solver raised an exception: %s", exc)
         return None
 
-    if not result.success:
+    status_code = int(getattr(result, "status", -1))
+    solver_message = str(getattr(result, "message", ""))
+    is_time_limit = status_code == 1 and "time limit" in solver_message.casefold()
+    if not result.success and not is_time_limit:
         log_planner(
             "debug",
             "[milp] Solver returned status=%s (%s)",
             result.status,
             result.message,
+        )
+        return None
+
+    # A time limit means only that optimality was not proven — HiGHS may
+    # still have returned a feasible incumbent.  Semi-integer EV amp
+    # variables (issue #797) make the model materially harder for HiGHS to
+    # solve to proven optimality within the time budget, so a time-limited
+    # feasible incumbent must be validated and accepted rather than
+    # discarded outright.
+    from custom_components.hsem.planner.milp._incumbent import validate_incumbent
+
+    validation = validate_incumbent(
+        getattr(result, "x", None),
+        n_vars=n_vars,
+        slot_count=n,
+        future_idx=future_idx,
+        m=m,
+        variable_blocks={
+            block.name: (block.offset, block.width) for block in column_layout.blocks
+        },
+        a_eq=A_eq,
+        b_eq=b_eq,
+        a_ub=A_ub,
+        b_ub=b_ub,
+        bounds=bounds,
+        integrality=integrality,
+    )
+    if not validation.valid:
+        log_planner(
+            "warning",
+            "[milp] Rejected solver solution status=%s time_limit=%s validation=%s",
+            status_code,
+            is_time_limit,
+            validation.reason,
         )
         return None
 
@@ -647,18 +753,7 @@ def solve_milp(
         current_kwh,
         usable_kwh,
         curt_sol_full,
-        gi_off=gi_off,
-        grid_import_cap_per_slot_kwh=(
-            constraints["hard_grid_import_cap_per_slot_kwh"]
-            if fuse_active
-            else grid_import_ub_per_slot
-        ),
-        max_phase_import_per_slot_kwh=(
-            max_phase_import_per_slot_kwh if phase_fuse_active else None
-        ),
         ev_writeback_diagnostics=ev_writeback_diagnostics,
-        session_slots_by_ev=session_slots_by_ev,
-        available_slot_hours=available_slot_hours,
         _min_action_kwh=_MIN_ACTION_KWH,
     )
 
