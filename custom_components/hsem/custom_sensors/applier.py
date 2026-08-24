@@ -37,15 +37,17 @@ from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 
 from custom_components.hsem.const import (
     DEFAULT_HSEM_BATTERIES_WAIT_MODE,
-    DEFAULT_HSEM_EV_CHARGER_TOU_MODES,
     DEFAULT_HSEM_TOU_MODES_FORCE_CHARGE,
 )
 from custom_components.hsem.custom_sensors.applier_caps import (  # noqa: F401
     _configured_battery_device_ids,
+    _ev_is_active_or_planned,
     _fmt_live_power_w,
+    _held_planned_export_is_authoritative,
+    _planned_ev_discharge_cap_w,
+    _primary_battery_hold,
     _should_force_export_for_ev,
     _wait_mode_self_consumption_cap_w,
-    compute_ev_discharge_cap_w,
 )
 from custom_components.hsem.custom_sensors.applier_forcible_discharge import (  # noqa: F401
     _async_apply_forcible_discharge,
@@ -166,70 +168,66 @@ async def async_apply_battery_settings(
                 return summary
 
     recommendation = rec.recommendation
+    primary_battery_hold = _primary_battery_hold(rec)
+    held_planned_export = _held_planned_export_is_authoritative(rec)
 
-    # When an EV is actively charging and we are NOT in a forced-discharge
-    # or forced-export recommendation, cap the battery discharge power to
-    # prevent the Huawei inverter from physically discharging into the EV.
-    #
-    # The inverter's CT clamp sees the full EV load as demand and will
-    # offset it from the battery unless the discharge power is explicitly
-    # restricted.  The cap is the house-only consumption — the battery
-    # still covers normal house load while 100 % of the EV load goes to
-    # the grid.  This applies identically to HSEM-planned and unplanned
-    # ("ghost") EV charging (issue #592).
-    ev_active = live.any_ev_charging
-    if ev_active and recommendation not in (
+    # Huawei exposes ONE global battery discharge limit, shared with every EV.
+    # An EV that is charging or about to be commanded (planned power > 0)
+    # must have explicitly opted in via force_max_discharge_power before the
+    # primary battery may discharge at all in this slot — permission, never a
+    # command on its own (issue #797).  This replaces the old house-only-load
+    # heuristic (issue #592): the cap is now the planner's own solved
+    # discharge rate for this slot, not a derived historical/live-net guess.
+    relevant_evs = tuple(
+        (name, ev, planned_power_w)
+        for name, ev, planned_power_w in (
+            ("primary", live.ev, rec.ev_charger_calculated_power),
+            ("second", live.ev_second, rec.ev_second_charger_calculated_power),
+        )
+        if _ev_is_active_or_planned(ev=ev, planned_power_w=planned_power_w)
+    )
+    if (primary_battery_hold or relevant_evs) and recommendation not in (
         Recommendations.ForceBatteriesDischarge.value,
         Recommendations.ForceExport.value,
     ):
         discharge_entity = cfg.huawei_solar_batteries_maximum_discharging_power
         if discharge_entity is not None:
-            # Determine whether HSEM actually planned EV charging.
-            # Fields come from the planner output; they are 0 when the
-            # planner decided NOT to charge the EV in this slot.
-            hsem_planned_ev = (
-                rec.ev_charger_calculated_power > 1e-9
-                or rec.ev_second_charger_calculated_power > 1e-9
-                or rec.ev_total_planned_load_kwh > 1e-9
-            )
-
-            # Cap to the house-only consumption using live data when
-            # available (already has EV power subtracted — unaffected
-            # by polluted v5 upgrade history).  Falls back to historical
-            # average.  Applies to both HSEM-planned and unplanned EV
-            # charging — the cap limits to house-only load in both cases.
-            slot_hours = slot_duration_hours(rec.start, rec.end)
-            historical_w = (
-                int(rec.avg_house_consumption_kwh / slot_hours * 1000.0)
-                if slot_hours > 1e-9 and rec.avg_house_consumption_kwh > 1e-9
-                else 0
-            )
-            live_net_w = live.net_consumption_w
-            # Only trust net_consumption_w if the EV power sensor actually
-            # provided a value.  When ev.power_w is 0/None but is_charging
-            # is True (e.g. boolean-only sensor, or sensor unavailable),
-            # net_consumption_w == house_w (no EV subtraction happened).
-            ev_power_available = (
-                live.ev.power_w is not None and live.ev.power_w > 1e-9
-            ) or (live.ev_second.power_w is not None and live.ev_second.power_w > 1e-9)
-            sub_window_ws = [
-                int(sw / slot_hours * 1000.0)
-                for sw in (
-                    rec.avg_house_consumption_1d_kwh,
-                    rec.avg_house_consumption_3d_kwh,
-                    rec.avg_house_consumption_7d_kwh,
-                    rec.avg_house_consumption_14d_kwh,
-                    rec.avg_house_consumption_kwh,
+            if primary_battery_hold:
+                # The solved plan explicitly wants neither charge nor
+                # discharge this slot — the cap is 0 W regardless of any EV,
+                # since a held slot's own batteries_discharged_kwh is
+                # already ~0 and would drive the same result below anyway.
+                cap_w = 0
+                cap_reason = "planned battery hold"
+            else:
+                blocked = tuple(
+                    name
+                    for name, ev, _ in relevant_evs
+                    if not ev.force_max_discharge_power
                 )
-                if sw > 1e-9 and slot_hours > 1e-9
-            ]
-            cap_w = compute_ev_discharge_cap_w(
-                live_net_w=live_net_w,
-                ev_power_available=ev_power_available,
-                historical_w=historical_w,
-                sub_window_ws=sub_window_ws,
-            )
-            cap_reason = "EV active" if hsem_planned_ev else "EV active (unplanned)"
+                if blocked:
+                    cap_w = 0
+                    cap_reason = (
+                        "Huawei discharge disabled while EV active/planned "
+                        f"({', '.join(blocked)})"
+                    )
+                else:
+                    slot_hours = slot_duration_hours(rec.start, rec.end)
+                    cap_w = _planned_ev_discharge_cap_w(
+                        planned_discharge_kwh=float(
+                            rec.batteries_discharged_kwh or 0.0
+                        ),
+                        slot_hours=slot_hours,
+                        max_discharge_power_w=max_discharge_power,
+                        ev_max_discharge_power_ws=tuple(
+                            ev.max_discharge_power_w for _, ev, _ in relevant_evs
+                        ),
+                    )
+                    cap_reason = (
+                        "planned Huawei discharge while EV active/planned "
+                        f"(planned={rec.batteries_discharged_kwh:.3f} kWh, "
+                        f"slot={slot_hours:.3f} h)"
+                    )
 
             # SoC guard (issue #592, v6.2.0-beta1): never let the EV cap
             # drain the battery below the energy the planner has reserved
@@ -267,7 +265,7 @@ async def async_apply_battery_settings(
                     "%s — capped max discharge power to %d W "
                     "(planned_ev_power=%dW planned_ev2_power=%dW "
                     "ev_total_load=%.3fkWh live_ev_power=%s live_ev2_power=%s "
-                    "house_avg=%.3f kWh/slot)",
+                    "planned_discharge=%.3fkWh)",
                     cap_reason,
                     cap_w,
                     rec.ev_charger_calculated_power,
@@ -275,7 +273,7 @@ async def async_apply_battery_settings(
                     rec.ev_total_planned_load_kwh,
                     _fmt_live_power_w(live.ev.power_w),
                     _fmt_live_power_w(live.ev_second.power_w),
-                    rec.avg_house_consumption_kwh,
+                    rec.batteries_discharged_kwh,
                 )
                 if ev_discharge_result.status == ApplyStatus.FAILED:
                     _LOGGER.debug(
@@ -315,14 +313,18 @@ async def async_apply_battery_settings(
             working_mode = WorkingModes.TimeOfUse.value
 
         case Recommendations.EVSmartCharging.value:
-            if (
-                live.ev.force_max_discharge_power
-                or live.ev_second.force_max_discharge_power
-            ):
-                working_mode = WorkingModes.MaximizeSelfConsumption.value
-            else:
-                tou_modes = DEFAULT_HSEM_EV_CHARGER_TOU_MODES
+            # EVSmartCharging executes as Maximize Self Consumption so
+            # unexpected solar is retained rather than sold. A held slot
+            # whose solved plan carries a material, authoritative export is
+            # the exception: keep it in TOU wait so the applier does not
+            # silently consume energy the MILP deliberately sold (issue
+            # #797). The discharge cap itself is governed separately by the
+            # permission-gated block above, never by this display label.
+            if held_planned_export:
+                tou_modes = DEFAULT_HSEM_BATTERIES_WAIT_MODE
                 working_mode = WorkingModes.TimeOfUse.value
+            else:
+                working_mode = WorkingModes.MaximizeSelfConsumption.value
 
         case Recommendations.BatteriesDischargeMode.value:
             working_mode = WorkingModes.MaximizeSelfConsumption.value
@@ -339,10 +341,20 @@ async def async_apply_battery_settings(
             return summary
 
         case Recommendations.BatteriesWaitMode.value:
-            # Strict wait keeps the battery idle in TOU mode.  Self-consumption
-            # with reserve switches to MaximizeSelfConsumption so the house can
-            # use surplus battery energy above the planner's required reserve.
-            if cfg.batteries_wait_mode_behavior == "self_consumption_with_reserve":
+            # A held idle MILP slot normally uses MSC with a verified 0 W
+            # discharge cap so unexpected PV may still charge the battery. A
+            # material, authoritative solved export is different: keep that
+            # slot in TOU wait so its planned PV sale is executable. An
+            # unheld strict wait remains in TOU; self-consumption with
+            # reserve switches to MSC so the house can use surplus battery
+            # energy above the planner's required reserve (issue #797).
+            if primary_battery_hold:
+                if held_planned_export:
+                    tou_modes = DEFAULT_HSEM_BATTERIES_WAIT_MODE
+                    working_mode = WorkingModes.TimeOfUse.value
+                else:
+                    working_mode = WorkingModes.MaximizeSelfConsumption.value
+            elif cfg.batteries_wait_mode_behavior == "self_consumption_with_reserve":
                 surplus = (
                     live.battery_current_capacity_kwh - current_required_battery_kwh
                 )
@@ -365,9 +377,10 @@ async def async_apply_battery_settings(
     # house to cover normal self-consumption from the surplus.
     wait_mode_self_consumption = (
         recommendation == Recommendations.BatteriesWaitMode.value
+        and not primary_battery_hold
         and cfg.batteries_wait_mode_behavior == "self_consumption_with_reserve"
         and working_mode == WorkingModes.MaximizeSelfConsumption.value
-        and not ev_active
+        and not relevant_evs
     )
     if wait_mode_self_consumption:
         slot_hours = slot_duration_hours(rec.start, rec.end)
@@ -416,55 +429,27 @@ async def async_apply_battery_settings(
                 )
                 return summary
 
-    # Override discharge power when EV uses V2H
-    if recommendation == Recommendations.EVSmartCharging.value and (
-        live.ev.force_max_discharge_power or live.ev_second.force_max_discharge_power
-    ):
-        ev_max = max(
-            live.ev.max_discharge_power_w,
-            live.ev_second.max_discharge_power_w,
+    # Excess PV use in TOU — fed_to_grid for the two explicit export modes and
+    # when a held idle slot carries a material, authoritative solved export
+    # (issue #797); charge otherwise.  A plain wait slot with no solved
+    # export is not itself an export decision, so routing surplus there
+    # would sell energy nobody decided to sell — only held_planned_export
+    # (which already requires primary_battery_hold) grants that for
+    # BatteriesWaitMode/EVSmartCharging.  Wait-mode self-consumption keeps
+    # excess PV in the battery so the surplus above the reserve can be used
+    # for household self-consumption; it never overlaps with a held slot.
+    export_is_intended = (
+        recommendation
+        in (
+            Recommendations.ForceExport.value,
+            Recommendations.ForceBatteriesDischarge.value,
         )
-        if live.huawei_batteries_max_discharge_power_w != ev_max:
-            discharge_entity = cfg.huawei_solar_batteries_maximum_discharging_power
-            if discharge_entity is None:
-                _LOGGER.debug(
-                    "EV V2H discharge power entity not configured; skipping write.",
-                    "warning",
-                )
-                return summary
-            _de2: str = discharge_entity  # narrowed for closure
-            ev_result = await async_write_and_verify(
-                entity_id=_de2,
-                desired=ev_max,
-                writer=lambda: async_set_number_value(sensor, _de2, ev_max),
-                reader=lambda: _read_number_state(sensor, _de2),
-            )
-            summary.results.append(ev_result)
-            if ev_result.status == ApplyStatus.FAILED:
-                _LOGGER.debug(
-                    f"EV V2H discharge power write FAILED for {discharge_entity}. "
-                    "Blocking further battery writes this cycle.",
-                    "error",
-                )
-                return summary
-
-    # Excess PV use in TOU — fed_to_grid for strict wait/fully-fed modes, charge
-    # otherwise.  Wait-mode self-consumption keeps excess PV in the battery so
-    # the surplus above the reserve can be used for household self-consumption.
-    # ForceExport maps to WorkingModes.FullyFedToGrid at the hardware level so we
-    # check both BatteriesWaitMode and ForceExport recommendations here.
+        or held_planned_export
+    )
     desired_excess = (
         "charge"
         if wait_mode_self_consumption
-        else (
-            "fed_to_grid"
-            if recommendation
-            in (
-                Recommendations.BatteriesWaitMode.value,
-                Recommendations.ForceExport.value,
-            )
-            else "charge"
-        )
+        else ("fed_to_grid" if export_is_intended else "charge")
     )
     if live.huawei_batteries_excess_pv_use_in_tou != desired_excess:
         excess_entity = cfg.huawei_solar_batteries_excess_pv_energy_use_in_tou

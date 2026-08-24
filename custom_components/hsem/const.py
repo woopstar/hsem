@@ -5,9 +5,6 @@ import voluptuous as vol
 DOMAIN = "hsem"  # Domain name for the integration.
 NAME = "Huawei Solar Energy Management"  # Display name for the integration.
 
-# Default TOU modes for EV charger when charging.
-DEFAULT_HSEM_EV_CHARGER_TOU_MODES = ["00:00-00:01/1234567/+"]
-
 # Default TOU modes for letting the battery wait.
 DEFAULT_HSEM_BATTERIES_WAIT_MODE = ["00:00-00:01/1234567/+"]
 

@@ -26,10 +26,12 @@ safety-gate assertions from log-formatting changes.
 
 from __future__ import annotations
 
+from datetime import UTC
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
+from custom_components.hsem.const import DEFAULT_HSEM_BATTERIES_WAIT_MODE
 from custom_components.hsem.custom_sensors.applier import (
     async_apply_battery_settings,
     async_apply_inverter_power_control,
@@ -38,7 +40,7 @@ from custom_components.hsem.models.hourly_recommendation import HourlyRecommenda
 from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.utils.degraded_mode import DegradedMode
-from custom_components.hsem.utils.inverter_verify import ApplyStatus
+from custom_components.hsem.utils.inverter_verify import ApplyResult, ApplyStatus
 
 # ---------------------------------------------------------------------------
 # Module-level patch targets (reused across all test classes)
@@ -83,6 +85,12 @@ def _make_rec(recommendation: str = "batteries_discharge_mode") -> HourlyRecomme
     """Return a minimal :class:`HourlyRecommendation` for testing."""
     rec = HourlyRecommendation.__new__(HourlyRecommendation)
     object.__setattr__(rec, "recommendation", recommendation)
+    # async_apply_battery_settings derives primary_battery_hold /
+    # held_planned_export from these energy fields unconditionally
+    # (issue #797); a bare __new__() instance has no dataclass defaults.
+    object.__setattr__(rec, "batteries_charged_kwh", 0.0)
+    object.__setattr__(rec, "batteries_discharged_kwh", 0.0)
+    object.__setattr__(rec, "grid_export_kwh", 0.0)
     return rec
 
 
@@ -891,3 +899,162 @@ class TestHardwareWritesAllowedDirectly:
         from custom_components.hsem.utils.degraded_mode import hardware_writes_allowed
 
         assert hardware_writes_allowed(DegradedMode.Error) is False
+
+
+# ---------------------------------------------------------------------------
+# EV discharge permission + held-export authority (issue #797)
+# ---------------------------------------------------------------------------
+
+
+def _make_rec_with_energy(
+    recommendation: str,
+    *,
+    batteries_charged_kwh: float = 0.0,
+    batteries_discharged_kwh: float = 0.0,
+    grid_export_kwh: float = 0.0,
+    ev_charger_calculated_power: float = 0.0,
+    ev_second_charger_calculated_power: float = 0.0,
+    ev_total_planned_load_kwh: float = 0.0,
+) -> HourlyRecommendation:
+    """Return a minimal recommendation with the fields this module reads."""
+    from datetime import datetime, timedelta
+
+    rec = _make_rec(recommendation)
+    object.__setattr__(rec, "batteries_charged_kwh", batteries_charged_kwh)
+    object.__setattr__(rec, "batteries_discharged_kwh", batteries_discharged_kwh)
+    object.__setattr__(rec, "grid_export_kwh", grid_export_kwh)
+    object.__setattr__(rec, "ev_charger_calculated_power", ev_charger_calculated_power)
+    object.__setattr__(
+        rec,
+        "ev_second_charger_calculated_power",
+        ev_second_charger_calculated_power,
+    )
+    object.__setattr__(rec, "ev_total_planned_load_kwh", ev_total_planned_load_kwh)
+    start = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+    object.__setattr__(rec, "start", start)
+    object.__setattr__(rec, "end", start + timedelta(hours=1))
+    return rec
+
+
+class TestEvDischargePermissionAndHeldExport:
+    """EVConfig.force_max_discharge_power is permission, never a command."""
+
+    @staticmethod
+    def _cfg_and_live() -> tuple[SensorConfig, LiveState]:
+        cfg = _make_cfg(read_only=False)
+        cfg.huawei_solar_batteries_maximum_discharging_power = "number.max_discharge"
+        cfg.huawei_solar_batteries_excess_pv_energy_use_in_tou = "select.excess_pv"
+        cfg.huawei_solar_batteries_tou_charging_and_discharging_periods = (
+            "sensor.tou_periods"
+        )
+        cfg.huawei_solar_device_id_batteries = "bat1"
+        live = _make_live(degraded_mode=DegradedMode.OK)
+        live.huawei_batteries_max_discharge_power_w = 5000
+        live.huawei_batteries_excess_pv_use_in_tou = "charge"
+        return cfg, live
+
+    @staticmethod
+    async def _run(cfg, live, rec):
+        written: dict[str, object] = {}
+
+        async def _record_desired(entity_id, desired, writer, reader, **kwargs):  # type: ignore[no-untyped-def]
+            written[entity_id] = desired
+            return ApplyResult(
+                entity_id=entity_id,
+                desired=desired,
+                actual=desired,
+                status=ApplyStatus.OK,
+                attempts=1,
+            )
+
+        with (
+            patch(_LOGGER_PATCH, new_callable=MagicMock),
+            patch(
+                "custom_components.hsem.custom_sensors.applier.async_write_and_verify",
+                side_effect=_record_desired,
+            ),
+            patch(
+                "custom_components.hsem.custom_sensors.applier.async_set_tou_periods",
+                new_callable=AsyncMock,
+            ),
+        ):
+            await async_apply_battery_settings(_make_sensor(), cfg, live, rec, 0.0)
+        return written
+
+    @pytest.mark.asyncio
+    async def test_discharge_blocked_when_relevant_ev_lacks_permission(self):
+        """A charging EV without opt-in forces the discharge cap to 0 W."""
+        from custom_components.hsem.utils.recommendations import Recommendations
+
+        cfg, live = self._cfg_and_live()
+        live.ev.is_charging = True
+        live.ev.force_max_discharge_power = False
+        rec = _make_rec_with_energy(
+            Recommendations.EVSmartCharging.value,
+            batteries_discharged_kwh=1.0,
+            ev_charger_calculated_power=3000.0,
+        )
+
+        written = await self._run(cfg, live, rec)
+
+        assert written["number.max_discharge"] == 0
+
+    @pytest.mark.asyncio
+    async def test_discharge_capped_to_planned_rate_when_ev_has_permission(self):
+        """With permission, the cap is the planner's own solved rate, not full max."""
+        from custom_components.hsem.utils.recommendations import Recommendations
+
+        cfg, live = self._cfg_and_live()
+        live.ev.is_charging = True
+        live.ev.force_max_discharge_power = True
+        live.ev.max_discharge_power_w = 4000
+        rec = _make_rec_with_energy(
+            Recommendations.EVSmartCharging.value,
+            batteries_discharged_kwh=1.0,  # 1 kWh over a 1 h slot = 1000 W
+            ev_charger_calculated_power=3000.0,
+        )
+
+        written = await self._run(cfg, live, rec)
+
+        assert written["number.max_discharge"] == 1000
+
+    @pytest.mark.asyncio
+    async def test_ev_smart_charging_uses_msc_without_held_export(self):
+        """No solved export on a non-held slot: EVSmartCharging stays in MSC."""
+        from custom_components.hsem.utils.recommendations import Recommendations
+
+        cfg, live = self._cfg_and_live()
+        live.ev.is_charging = True
+        live.ev.force_max_discharge_power = True
+        live.ev.max_discharge_power_w = 4000
+        rec = _make_rec_with_energy(
+            Recommendations.EVSmartCharging.value,
+            batteries_charged_kwh=1.0,
+            ev_charger_calculated_power=3000.0,
+        )
+
+        written = await self._run(cfg, live, rec)
+
+        assert "sensor.tou_periods" not in written
+
+    @pytest.mark.asyncio
+    async def test_ev_smart_charging_keeps_tou_wait_with_held_export(self):
+        """A held slot with a material solved export stays in TOU wait, sold."""
+        from custom_components.hsem.utils.recommendations import Recommendations
+
+        cfg, live = self._cfg_and_live()
+        live.ev.is_charging = True
+        live.ev.force_max_discharge_power = True
+        live.ev.max_discharge_power_w = 4000
+        rec = _make_rec_with_energy(
+            Recommendations.EVSmartCharging.value,
+            batteries_charged_kwh=0.0,
+            batteries_discharged_kwh=0.0,
+            grid_export_kwh=1.5,
+            ev_charger_calculated_power=3000.0,
+        )
+
+        written = await self._run(cfg, live, rec)
+
+        assert written["sensor.tou_periods:bat1"] == DEFAULT_HSEM_BATTERIES_WAIT_MODE
+        assert written["select.excess_pv"] == "fed_to_grid"

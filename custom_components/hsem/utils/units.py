@@ -390,3 +390,18 @@ def implied_price_per_kwh(total_cost: float, energy_kwh: float) -> float:
     if energy_kwh <= 0.0:
         return 0.0
     return total_cost / energy_kwh
+
+
+#: Planner flow fields are published to three decimal places, so exactly
+#: this value can be a rounding artefact rather than intentional solver
+#: output (issue #797).
+PLANNED_ENERGY_ROUNDING_KWH = 0.001
+
+
+def is_material_planned_energy_kwh(energy_kwh: float) -> bool:
+    """Return whether planned energy exceeds HSEM's 3-decimal residue.
+
+    Any value larger than the rounding residue is treated as intentional
+    solver output and must be preserved by execution.
+    """
+    return energy_kwh > PLANNED_ENERGY_ROUNDING_KWH + 1e-9

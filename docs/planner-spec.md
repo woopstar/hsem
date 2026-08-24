@@ -1759,29 +1759,63 @@ The applier must not write to hardware when:
 - required data is missing
 - config entry is unloading
 
-### EV discharge cap semantics (issue #592)
+### EV discharge cap semantics (issue #592, redefined by issue #797)
 
-When an EV is actively charging and the current recommendation is not a
-forced-discharge/export mode, the applier caps the inverter's
-`maximum_discharging_power` so the battery covers only house load while
-100 % of the EV load goes to the grid.  The cap is computed by
-`applier.compute_ev_discharge_cap_w()`:
+Huawei exposes **one global battery discharge limit**, shared by the house
+battery and every EV.  `EVConfig.force_max_discharge_power` /
+`max_discharge_power_w` are a **permission and ceiling**, never a command —
+they never create discharge on their own.
 
-- **History available** → the cap IS the historical house baseline (the
-  current slot's weighted average).  The live `net_consumption_w` reading
-  is deliberately ignored: downward it ratchets the cap toward zero when
-  the CT clamp and the EV sensor disagree (the battery's own capped
-  discharge shrinks the CT reading further — a self-poisoning input);
-  upward it swings with ordinary house noise and drains the battery into
-  what is supposed to be a grid-served EV session.
-- **No EV power sensor** → the minimum positive sub-window average
-  (1d/3d/7d/14d/weighted).
-- **No history** (fresh install) → the live reading.
+When any EV is charging or about to be commanded (`live.ev.is_charging`, a
+positive live EV power reading, or a positive planned
+`ev_charger_calculated_power`/`ev_second_charger_calculated_power`), the
+applier (`applier._planned_ev_discharge_cap_w()` +
+`applier_caps._ev_is_active_or_planned()`) gates `maximum_discharging_power`:
+
+- **Any relevant EV lacks permission** (`force_max_discharge_power=False`)
+  → the cap is **0 W**.  This replaces the old historical/live-net
+  house-only-load heuristic (`compute_ev_discharge_cap_w`, issue #592):
+  the battery no longer covers house load while an unpermitted EV charges,
+  it simply does not discharge.
+- **Every relevant EV has opted in** → the cap is the planner's own solved
+  discharge rate for this slot (`rec.batteries_discharged_kwh` averaged
+  over the slot duration), clamped to the hardware maximum and to every
+  opted-in EV's configured ceiling — never more than what the plan and the
+  user's configuration both allow.
+
+**Primary battery hold**: independent of any EV, when the solved plan
+scheduled neither charge nor discharge for the primary battery this slot
+(`primary_battery_hold` — see below), the cap is unconditionally 0 W.
 
 **SoC guard:** when the battery's remaining usable energy is at or below
 the planner's required reserve (`current_required_battery_kwh` — energy
 needed until the next solar surplus), the cap is forced to 0 W so the
 battery is preserved for its scheduled plans.
+
+### Primary battery hold and held-export authority (issue #797)
+
+`_primary_battery_hold(rec)` (`applier_caps.py`) returns whether the solved
+plan explicitly holds the primary battery: a near-zero
+(`batteries_charged_kwh`, `batteries_discharged_kwh`) pair, using the same
+3-decimal-residue materiality threshold as everywhere else
+(`utils.units.is_material_planned_energy_kwh`).  This survives display
+relabelling (e.g. `ev_smart_charging`) because relabelling never touches
+these energy fields.
+
+A held idle MILP slot can still deliberately export surplus PV.
+`_held_planned_export_is_authoritative(rec)` returns `True` only when the
+slot is held **and** carries a material `grid_export_kwh` — in that case
+the applier keeps the slot in TOU wait (`DEFAULT_HSEM_BATTERIES_WAIT_MODE`)
+with `fed_to_grid` excess routing instead of downgrading it to plain
+Maximize-Self-Consumption, so the applier never silently consumes energy
+the MILP deliberately sold.  A held slot with no material export uses MSC
+with the 0 W discharge cap above, so unexpected PV may still charge the
+battery.
+
+This applies to both `batteries_wait_mode` (an unheld strict wait stays in
+TOU; self-consumption-with-reserve still applies when unheld) and
+`ev_smart_charging` (which otherwise always executes as MSC to retain
+unexpected solar).
 
 ## Invariants for tests
 
