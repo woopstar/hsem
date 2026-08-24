@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 
 from custom_components.hsem.planner.milp._layout import (
+    MilpBoundsBlock,
     MilpBoundsBuilder,
     MilpColumnLayout,
     build_milp_column_layout,
@@ -165,3 +166,86 @@ def test_zero_width_block_is_satisfied_by_assignment() -> None:
         builder.finalize()
     builder.set("empty", [])
     assert builder.finalize() == [(0.0, 1.0)]
+
+
+# ---------------------------------------------------------------------------
+# Endpoint validation (issue #790)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "bound",
+    [
+        (2.0, 1.0),
+        (float("nan"), 1.0),
+        (0.0, float("inf")),
+        (float("-inf"), None),
+    ],
+    ids=["lower-exceeds-upper", "nan-lower", "inf-upper", "-inf-lower"],
+)
+def test_non_finite_or_inverted_bound_fails_fast(
+    bound: tuple[float, float | None],
+) -> None:
+    """Every bound endpoint must be finite; only ``None`` means unbounded."""
+    builder = MilpBoundsBuilder(_small_layout())
+    with pytest.raises(ValueError, match="invalid bounds"):
+        builder.fill("left", bound)
+
+
+def test_invalid_endpoint_error_names_block_column_and_endpoint() -> None:
+    """The error identifies the block, the absolute column, and which endpoint."""
+    builder = MilpBoundsBuilder(_small_layout())
+    with pytest.raises(ValueError) as excinfo:
+        builder.set("right", [(0.0, 1.0), (float("nan"), 1.0)])
+
+    message = str(excinfo.value)
+    assert "right" in message
+    assert "column 3" in message  # "right" starts at offset 2; second entry is 3
+    assert "lower" in message
+
+
+def test_none_endpoints_remain_unbounded() -> None:
+    """``None`` is a valid, unbounded endpoint on either side."""
+    builder = MilpBoundsBuilder(_small_layout())
+    builder.fill("left", (0.0, None))
+    builder.set("right", [(None, 5.0), (None, None)])
+
+    assert builder.finalize() == [(0.0, None), (0.0, None), (None, 5.0), (None, None)]
+
+
+# ---------------------------------------------------------------------------
+# Per-column ownership / overlap protection
+# ---------------------------------------------------------------------------
+
+
+def test_overlapping_block_declarations_are_rejected_at_construction() -> None:
+    """A layout snapshot whose declared blocks physically overlap fails fast.
+
+    ``MilpColumnLayout`` cannot produce overlapping blocks through its normal
+    constructor (offsets are always assigned sequentially), so this pins the
+    defensive per-column ownership check that runs when a builder is created
+    from a corrupted layout snapshot.
+    """
+    layout = MilpColumnLayout([("a", 2), ("b", 2)])
+    layout._blocks["b"] = MilpBoundsBlock("b", 1, 2)  # corrupt: overlaps "a"
+
+    with pytest.raises(ValueError, match="overlapping"):
+        MilpBoundsBuilder(layout)
+
+
+def test_layout_mutation_after_construction_is_rejected() -> None:
+    """The builder snapshots the layout at construction time.
+
+    Mutating the underlying layout object afterwards must not silently widen
+    or reshuffle the columns an in-progress builder is writing into.
+    """
+    layout = MilpColumnLayout([("left", 2), ("right", 2)])
+    builder = MilpBoundsBuilder(layout)
+
+    layout._blocks["extra"] = MilpBoundsBlock("extra", 4, 1)
+    layout._column_count = 5
+
+    with pytest.raises(ValueError, match="changed after"):
+        builder.fill("left", (0.0, 1.0))
+    with pytest.raises(ValueError, match="changed after"):
+        builder.finalize()

@@ -15,11 +15,12 @@ parameter to get wrong.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import NamedTuple
 
-Bound = tuple[float, float | None]
+Bound = tuple[float | None, float | None]
 
 
 @dataclass(frozen=True)
@@ -131,17 +132,31 @@ def build_milp_column_layout(
 
 
 class MilpBoundsBuilder:
-    """Assign solver bounds by declared block name, never by call order."""
+    """Assign solver bounds by declared block name, never by call order.
+
+    The declared *layout* is snapshotted once at construction: every column
+    is checked to have exactly one owning block (no gaps, no overlap), and
+    every subsequent call re-checks the live layout against that snapshot so
+    a caller cannot mutate the layout out from under an in-progress build.
+    """
 
     def __init__(self, layout: MilpColumnLayout) -> None:
-        """Preallocate one unassigned slot per column declared by *layout*."""
+        """Snapshot *layout* and preallocate one unassigned slot per column."""
         self._layout = layout
-        self._bounds: list[Bound | None] = [None] * layout.column_count
+        self._column_count = layout.column_count
+        self._blocks_snapshot: tuple[MilpBoundsBlock, ...] = layout.blocks
+        self._blocks_by_name: dict[str, MilpBoundsBlock] = {
+            block.name: block for block in self._blocks_snapshot
+        }
+        self._bounds: list[Bound | None] = [None] * self._column_count
+        self._owners: list[str | None] = [None] * self._column_count
         self._assigned: set[str] = set()
+        self._validate_layout_snapshot()
 
     def set(self, name: str, values: Sequence[Bound]) -> None:
         """Write one named block using exactly its declared width."""
-        block = self._layout.block(name)
+        self._assert_layout_unchanged()
+        block = self._resolve_block(name)
         if name in self._assigned:
             raise ValueError(f"duplicate MILP bounds block assignment: {name!r}")
         if len(values) != block.width:
@@ -149,25 +164,27 @@ class MilpBoundsBuilder:
                 f"MILP bounds block {name!r} has width {len(values)}, "
                 f"expected {block.width}"
             )
-        for index, value in enumerate(values, start=block.offset):
-            lower, upper = value
-            if upper is not None and lower > upper:
-                raise ValueError(f"invalid bounds in block {name!r}: {value!r}")
-            self._bounds[index] = (
-                float(lower),
-                None if upper is None else float(upper),
-            )
-        self._assigned.add(name)
+        normalised = [
+            self._normalise_bound(name, block.offset + index, value)
+            for index, value in enumerate(values)
+        ]
+        self._write_block(name, block, normalised)
 
     def fill(self, name: str, value: Bound) -> None:
         """Write one named block filled with a single repeated bound."""
-        self.set(name, [value] * self._layout.width(name))
+        self._assert_layout_unchanged()
+        block = self._resolve_block(name)
+        if name in self._assigned:
+            raise ValueError(f"duplicate MILP bounds block assignment: {name!r}")
+        normalised = self._normalise_bound(name, block.offset, value)
+        self._write_block(name, block, [normalised] * block.width)
 
     def finalize(self) -> list[Bound]:
         """Return complete bounds, failing when any block was never written."""
+        self._assert_layout_unchanged()
         missing = sorted(
             block.name
-            for block in self._layout.blocks
+            for block in self._blocks_snapshot
             if block.name not in self._assigned
         )
         if missing:
@@ -181,7 +198,115 @@ class MilpBoundsBuilder:
     @property
     def blocks(self) -> tuple[MilpBoundsBlock, ...]:
         """Return the declared blocks ordered by physical column offset."""
-        return self._layout.blocks
+        return self._blocks_snapshot
+
+    def _resolve_block(self, name: str) -> MilpBoundsBlock:
+        """Return one snapshotted block or reject an unknown name."""
+        block = self._blocks_by_name.get(name)
+        if block is None:
+            raise ValueError(f"unknown MILP column block: {name!r}")
+        return block
+
+    def _write_block(
+        self,
+        name: str,
+        block: MilpBoundsBlock,
+        values: Sequence[Bound],
+    ) -> None:
+        """Write one already-validated block, rejecting occupied columns."""
+        occupied = [
+            index
+            for index in range(block.offset, block.offset + block.width)
+            if self._owners[index] is not None
+        ]
+        if occupied:
+            raise ValueError(
+                f"overlapping MILP bounds block {name!r} at columns "
+                f"{_render_index_ranges(occupied)}"
+            )
+        for index, value in zip(
+            range(block.offset, block.offset + block.width), values, strict=True
+        ):
+            self._bounds[index] = value
+            self._owners[index] = name
+        self._assigned.add(name)
+
+    def _validate_layout_snapshot(self) -> None:
+        """Reject a declared layout whose blocks overlap, gap, or spill over."""
+        owners: list[str | None] = [None] * self._column_count
+        for block in self._blocks_snapshot:
+            if (
+                block.offset < 0
+                or block.width < 0
+                or block.offset + block.width > self._column_count
+            ):
+                raise ValueError(
+                    f"MILP bounds block {block.name!r} range "
+                    f"[{block.offset}:{block.offset + block.width}] exceeds "
+                    f"column count {self._column_count}"
+                )
+            for index in range(block.offset, block.offset + block.width):
+                owner = owners[index]
+                if owner is not None:
+                    raise ValueError(
+                        f"overlapping MILP bounds blocks {owner!r} and "
+                        f"{block.name!r} at column {index}"
+                    )
+                owners[index] = block.name
+
+    def _assert_layout_unchanged(self) -> None:
+        """Reject use of the builder after its layout mutates post-construction."""
+        if (
+            self._layout.column_count != self._column_count
+            or self._layout.blocks != self._blocks_snapshot
+        ):
+            raise ValueError("MILP column layout changed after bounds preallocation")
+
+    @staticmethod
+    def _normalise_bound(name: str, column: int, value: Bound) -> Bound:
+        """Validate and normalise one lower/upper bound tuple."""
+        lower = MilpBoundsBuilder._normalise_endpoint(name, column, "lower", value[0])
+        upper = MilpBoundsBuilder._normalise_endpoint(name, column, "upper", value[1])
+        if lower is not None and upper is not None and lower > upper:
+            raise ValueError(
+                f"invalid bounds in block {name!r} at column {column}: "
+                f"lower {lower} exceeds upper {upper}"
+            )
+        return (lower, upper)
+
+    @staticmethod
+    def _normalise_endpoint(
+        name: str,
+        column: int,
+        endpoint_name: str,
+        value: float | None,
+    ) -> float | None:
+        """Return one finite float endpoint, retaining ``None`` as unbounded."""
+        if value is None:
+            return None
+        if not math.isfinite(value):
+            raise ValueError(
+                f"invalid bounds in block {name!r} at column {column}: "
+                f"{endpoint_name} endpoint {value!r} must be finite or None"
+            )
+        return float(value)
+
+
+def _render_index_ranges(indices: Sequence[int]) -> str:
+    """Render sorted column indices compactly for validation errors."""
+    values = list(indices)
+    if not values:
+        return ""
+    ranges: list[str] = []
+    start = previous = values[0]
+    for value in values[1:]:
+        if value == previous + 1:
+            previous = value
+            continue
+        ranges.append(str(start) if start == previous else f"{start}-{previous}")
+        start = previous = value
+    ranges.append(str(start) if start == previous else f"{start}-{previous}")
+    return ",".join(ranges)
 
 
 class MilpOffsets(NamedTuple):
