@@ -323,10 +323,9 @@ availability tri-stating is not yet wired end-to-end).
 
 `utils/live_power.py` (`LivePowerEstimate` / `LivePowerWindow`) provides a
 short rolling-median sampler for smoothing bursty live power across
-multiple ticks before it reaches the planner.  It is not yet wired into the
-coordinator's update cycle — that integration (continuous sampling,
-same-tick secondary-site normalization, EV-ambiguity gating, and
-mismatch-triggered replanning) is future work.
+multiple ticks before it reaches the planner.  The coordinator wires it in
+via `coordinator_live_power.py` (issue #797) — see *Coordinator live-power
+window and replan budget* below.
 
 When `house_power_includes_ev = True`, the live house reading may contain EV
 charging power that the battery must not serve (issue #592).  Two layers
@@ -350,6 +349,79 @@ reading is unreliable; overwriting them with the live-injected value (which
 can still include unmeasured EV load when no EV power sensor is configured)
 would destroy that fallback and let polluted history inflate the hardware
 discharge cap.
+
+### Coordinator live-power window and replan budget (issue #797)
+
+`coordinator_live_power.py` maintains the rolling `LivePowerWindow` across
+the coordinator's lifetime and, when a sustained mismatch against the
+accepted plan's estimate persists, requests a bounded corrective replan.
+
+**Why a dedicated fast timer.** `LivePowerWindow` requires samples fresher
+than `LIVE_POWER_MAX_SAMPLE_AGE_SECONDS` (20 s) to consider a channel
+"available", with a minimum of `LIVE_POWER_MINIMUM_SAMPLES` (3) samples in
+a `LIVE_POWER_WINDOW_SECONDS` (60 s) window. The coordinator's normal
+per-cycle update interval is minutes-scale (droppable to 1 minute at
+fastest today), which cannot keep samples within a 20-second age budget —
+at that cadence the window would never accumulate enough fresh evidence
+and the feature would be permanently inert. `coordinator_live_power.py`
+therefore registers its own `async_track_time_interval` tick at
+`LIVE_POWER_MONITOR_INTERVAL_SECONDS` (10 s), independent of the main
+interval timer, purely to keep the window fed. Each full coordinator cycle
+also seeds the window from its own immutable snapshot
+(`_seed_live_power_window`), so a cycle that runs between fast-timer ticks
+still contributes a sample.
+
+**EV ambiguity.** When `house_power_includes_ev_charger_power = True`, a
+live or planned EV charging signal makes the house-power reading
+undecomposable — the same fail-closed rule as *Live house availability*
+above, applied to the rolling window: `_live_power_ev_ambiguous` clears the
+house channel (never the solar channel) whenever any EV is charging or has
+positive power, on both the once-per-cycle snapshot and the fast-timer's
+independent reads.
+
+**Materiality.** A channel is considered "changed materially" only when
+the full-slot energy delta exceeds `max(LIVE_POWER_REPLAN_MIN_DELTA_KWH,
+accepted_kwh × LIVE_POWER_REPLAN_RELATIVE_DELTA)` (0.05 kWh or 10% of the
+accepted channel's own full-slot energy, whichever is larger) —
+`_live_power_channel_changed_materially`. An availability flip (channel
+went from present to absent, or vice versa) is always material.
+
+**Debounced request.** A material mismatch must persist for
+`LIVE_POWER_MISMATCH_DEBOUNCE_SECONDS` (30 s) — tracked per current
+recommendation slot — before `_track_live_power_mismatch` marks a replan
+request pending. The request is revalidated (`_actionable_live_power_replan_slot`)
+against fresh evidence and remaining slot time
+(`LIVE_POWER_REPLAN_MIN_REMAINING_SECONDS`, 60 s) at the moment the
+coordinator actually acts on it, so a request built from stale evidence
+never fires blind.
+
+**Bounded correction budget (one correction + one proven reversal).** Each
+recommendation slot allows at most `LIVE_POWER_REPLAN_MAX_CORRECTIONS_PER_SLOT`
+(2) live-power-triggered replans:
+
+1. The first correction in a slot is always allowed.
+2. A second correction in the *same* slot is allowed only when
+   `_live_power_site_balance_direction` proves the new mismatch is the
+   **opposite sign** of the first correction's direction (e.g. a cloud dip
+   that triggered a defensive replan, followed by a genuine PV rebound) —
+   never a second correction in the same direction, which would just be
+   solve churn chasing noise.
+3. A new recommendation slot resets the budget to zero.
+
+`_live_power_site_balance_direction` computes signed net-demand change
+(positive = more demand) from whichever of house/solar are comparable
+(house is excluded entirely when ambiguous); it returns `None` — an
+unprovable direction — when there is no accepted baseline or no comparable
+channel, which fails the reversal proof closed.
+
+**Acceptance.** Only `_accept_live_power_plan_estimate`, called after a
+plan is actually persisted and published (never on a speculative or
+discarded solve), advances `_last_plan_live_power_estimate` and the
+budget counters. Consuming a pending request starts/advances the budget;
+a normal (non-live-power-triggered) replan that happens to also observe a
+fresh material mismatch re-arms the mismatch debounce for the *next* tick
+without spending budget — the plan already reflects the newer picture, so
+there is nothing to correct yet.
 
 ## SoC simulation
 
