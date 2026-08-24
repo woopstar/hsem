@@ -137,8 +137,8 @@ Primary EV charger configuration.
 | Allow charge past target | `hsem_ev_allow_charge_past_target_soc` | `False` | Allow charging beyond target SoC from surplus PV, valued against export by avoided future import cost |
 | Past-target confidence factor | `hsem_ev_past_target_confidence_factor` | `0.9` | Discount (0.0–1.0) applied to the avoided-future-import valuation used for past-target charging |
 | Auto-Full on negative price | `hsem_ev_auto_full_negative_price` | `False` | Charge EV to 100 % when electricity price is negative |
-| Force max discharge power | `hsem_ev_charger_force_max_discharge_power` | `False` | Force maximum discharge power during discharge slots |
-| Max discharge power | `hsem_ev_charger_max_discharge_power` | 0 | Maximum discharge power cap (W) |
+| Allow Huawei discharge while charging | `hsem_ev_charger_force_max_discharge_power` | `False` | Permission (not a command): allows the Huawei house battery to discharge while this EV is charging. Huawei exposes one global discharge limit shared by the battery and every EV, so leaving this off forces battery discharge to 0 W whenever the EV is active/planned |
+| Max discharge power | `hsem_ev_charger_max_discharge_power` | 0 | Discharge ceiling (W) while this EV charges, once permission above is granted. The applier's actual cap is the planner's own solved discharge rate for the slot, clamped to this ceiling — never a command on its own |
 
 ### Step: `ev_second`
 
