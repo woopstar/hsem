@@ -11,6 +11,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any
 
+from custom_components.hsem.utils.logger import log_planner
+
 _FEASIBILITY_TOLERANCE = 1e-5
 _INTEGRALITY_TOLERANCE = 1e-5
 
@@ -190,3 +192,82 @@ def validate_incumbent(
         max_bound_violation=max_bound_violation,
         max_integrality_violation=max_integrality_violation,
     )
+
+
+def solve_and_validate(
+    linprog: Any,
+    *,
+    c_obj: Any,
+    a_ub: Any,
+    b_ub: Any,
+    a_eq: Any,
+    b_eq: Any,
+    bounds: list[tuple[float | None, float | None]],
+    integrality: Any,
+    solver_time_limit_s: float,
+    n_vars: int,
+    slot_count: int,
+    future_idx: list[int],
+    m: int,
+    variable_blocks: dict[str, tuple[int, int]],
+) -> Any | None:
+    """Run HiGHS and return a validated result, or ``None`` on any failure.
+
+    Extracted from ``milp_optimizer.py`` so it stays under the repository's
+    30 KB file limit. Accepts a time-limited-but-feasible incumbent (issue
+    #797: semi-integer EV amp variables make the model materially harder
+    for HiGHS to solve to proven optimality within the time budget) only
+    after validating it against the complete model.
+    """
+    try:
+        result = linprog(
+            c_obj,
+            A_ub=a_ub,
+            b_ub=b_ub,
+            A_eq=a_eq,
+            b_eq=b_eq,
+            bounds=bounds,
+            method="highs",
+            options={"time_limit": solver_time_limit_s, "disp": False},
+            integrality=integrality,
+        )
+    except Exception as exc:
+        log_planner("warning", "[milp] Solver raised an exception: %s", exc)
+        return None
+
+    status_code = int(getattr(result, "status", -1))
+    solver_message = str(getattr(result, "message", ""))
+    is_time_limit = status_code == 1 and "time limit" in solver_message.casefold()
+    if not result.success and not is_time_limit:
+        log_planner(
+            "debug",
+            "[milp] Solver returned status=%s (%s)",
+            result.status,
+            result.message,
+        )
+        return None
+
+    validation = validate_incumbent(
+        getattr(result, "x", None),
+        n_vars=n_vars,
+        slot_count=slot_count,
+        future_idx=future_idx,
+        m=m,
+        variable_blocks=variable_blocks,
+        a_eq=a_eq,
+        b_eq=b_eq,
+        a_ub=a_ub,
+        b_ub=b_ub,
+        bounds=bounds,
+        integrality=integrality,
+    )
+    if not validation.valid:
+        log_planner(
+            "warning",
+            "[milp] Rejected solver solution status=%s time_limit=%s validation=%s",
+            status_code,
+            is_time_limit,
+            validation.reason,
+        )
+        return None
+    return result

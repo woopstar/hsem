@@ -12,7 +12,6 @@ repository's 30 KB file limit.
 
 from __future__ import annotations
 
-import math
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -308,18 +307,13 @@ def solve_milp(
     # WITHOUT the pre-computed EV planned loads (the LP will decide allocation).
     # Otherwise keep the pre-existing EV adjustment (backward-compatible).
     # ------------------------------------------------------------------
+    from custom_components.hsem.planner.milp._ev_amp_lattice import (
+        ev_has_live_session,
+    )
+
     active_evs: list[EVConfig] = []
     if ev_configs:
         for ev in ev_configs:
-            try:
-                session_kw = (
-                    float(ev.session_charge_kw)
-                    if ev.session_charge_kw is not None
-                    else 0.0
-                )
-            except TypeError, ValueError:
-                session_kw = 0.0
-            has_live_session = math.isfinite(session_kw) and session_kw > 1e-9
             # A managed live session (managed_session_cap_only, issue #797)
             # has max_charge_per_slot=0 by construction — it must still be
             # admitted so its Huawei discharge permission/ceiling is
@@ -327,7 +321,7 @@ def solve_milp(
             if (
                 ev.enabled
                 and ev.capacity_kwh > 1e-9
-                and (ev.max_charge_per_slot > 1e-9 or has_live_session)
+                and (ev.max_charge_per_slot > 1e-9 or ev_has_live_session(ev))
             ):
                 active_evs.append(ev)
         if active_evs:
@@ -614,55 +608,28 @@ def solve_milp(
     from custom_components.hsem.planner.milp._ev_amp_lattice import (
         ev_amp_integrality,
     )
+    from custom_components.hsem.planner.milp._incumbent import solve_and_validate
 
-    try:
-        integrality = np.zeros(n_vars, dtype=int)
-        integrality[export_mode_off : export_mode_off + m] = 1
-        integrality[grid_flow_mode_off : grid_flow_mode_off + m] = 1
-        integrality |= ev_amp_integrality(
-            ev_amp_plan,
-            n_vars=n_vars,
-            ev_amp_offsets=ev_amp_offsets,
-            ev_on_offsets=ev_on_offsets,
-            m=m,
-        )
-        result = linprog(
-            c_obj,
-            A_ub=A_ub,
-            b_ub=b_ub,
-            A_eq=A_eq,
-            b_eq=b_eq,
-            bounds=bounds,
-            method="highs",
-            options={"time_limit": _SOLVER_TIME_LIMIT_S, "disp": False},
-            integrality=integrality,
-        )
-    except Exception as exc:
-        log_planner("warning", "[milp] Solver raised an exception: %s", exc)
-        return None
-
-    status_code = int(getattr(result, "status", -1))
-    solver_message = str(getattr(result, "message", ""))
-    is_time_limit = status_code == 1 and "time limit" in solver_message.casefold()
-    if not result.success and not is_time_limit:
-        log_planner(
-            "debug",
-            "[milp] Solver returned status=%s (%s)",
-            result.status,
-            result.message,
-        )
-        return None
-
-    # A time limit means only that optimality was not proven — HiGHS may
-    # still have returned a feasible incumbent.  Semi-integer EV amp
-    # variables (issue #797) make the model materially harder for HiGHS to
-    # solve to proven optimality within the time budget, so a time-limited
-    # feasible incumbent must be validated and accepted rather than
-    # discarded outright.
-    from custom_components.hsem.planner.milp._incumbent import validate_incumbent
-
-    validation = validate_incumbent(
-        getattr(result, "x", None),
+    integrality = np.zeros(n_vars, dtype=int)
+    integrality[export_mode_off : export_mode_off + m] = 1
+    integrality[grid_flow_mode_off : grid_flow_mode_off + m] = 1
+    integrality |= ev_amp_integrality(
+        ev_amp_plan,
+        n_vars=n_vars,
+        ev_amp_offsets=ev_amp_offsets,
+        ev_on_offsets=ev_on_offsets,
+        m=m,
+    )
+    result = solve_and_validate(
+        linprog,
+        c_obj=c_obj,
+        a_ub=A_ub,
+        b_ub=b_ub,
+        a_eq=A_eq,
+        b_eq=b_eq,
+        bounds=bounds,
+        integrality=integrality,
+        solver_time_limit_s=_SOLVER_TIME_LIMIT_S,
         n_vars=n_vars,
         slot_count=n,
         future_idx=future_idx,
@@ -670,64 +637,34 @@ def solve_milp(
         variable_blocks={
             block.name: (block.offset, block.width) for block in column_layout.blocks
         },
-        a_eq=A_eq,
-        b_eq=b_eq,
-        a_ub=A_ub,
-        b_ub=b_ub,
-        bounds=bounds,
-        integrality=integrality,
     )
-    if not validation.valid:
-        log_planner(
-            "warning",
-            "[milp] Rejected solver solution status=%s time_limit=%s validation=%s",
-            status_code,
-            is_time_limit,
-            validation.reason,
-        )
+    if result is None:
         return None
 
-    # ------------------------------------------------------------------
-    # Compute terminal-SoC credit at end-of-horizon (diagnostic).
-    # This matches cost_function.py's terminal_soc_value calculation:
-    # terminal_soc_value = (initial_kwh - final_kwh) * replacement_price
-    #
-    # The LP objective now INCLUDES this term (see c_obj construction
-    # above), so the solution itself already reflects this valuation.
-    # This post-hoc calculation is retained as a diagnostic consistency
-    # check and for the diagnostics dict.
-    # ------------------------------------------------------------------
+    # Terminal-SoC credit at end-of-horizon (diagnostic only — the LP
+    # objective already includes this term as a linear cost).
     ec_sol = result.x[ec_off : ec_off + m]
     ed_sol = result.x[ed_off : ed_off + m]
-
-    # Compute final SoC from the LP solution
-    final_soc_kwh = current_kwh + float(np.sum(ec_sol)) - float(np.sum(ed_sol))
-    final_soc_kwh = max(0.0, min(final_soc_kwh, usable_kwh))  # clamp to bounds
-
-    # Terminal-SoC credit: positive when plan ends with less energy (penalty),
-    # negative when plan ends with more energy (credit).
-    terminal_soc_credit = 0.0
-    if replacement_price_per_kwh is not None and abs(replacement_price_per_kwh) > 1e-9:
-        terminal_soc_credit = (current_kwh - final_soc_kwh) * replacement_price_per_kwh
-        log_planner(
-            "debug",
-            "[milp] Terminal-SoC credit: initial=%.3f  final=%.3f  repl_price=%.4f  credit=%.4f",
-            current_kwh,
-            final_soc_kwh,
-            replacement_price_per_kwh,
-            terminal_soc_credit,
-        )
-
-    # Pre-compute curtailment solution (needed by both write-out and diagnostics)
-    curt_sol_full = result.x[curt_off : curt_off + m]
 
     # Import helpers here to avoid circular imports with the milp package __init__
     from custom_components.hsem.planner.milp._diagnostics import (
         _compute_milp_diagnostics,
+        _compute_terminal_soc_credit,
     )
     from custom_components.hsem.planner.milp._write_results import (
         _write_milp_results_to_slots,
     )
+
+    terminal_soc_credit = _compute_terminal_soc_credit(
+        current_kwh=current_kwh,
+        usable_kwh=usable_kwh,
+        ec_sol=ec_sol,
+        ed_sol=ed_sol,
+        replacement_price_per_kwh=replacement_price_per_kwh,
+    )
+
+    # Pre-compute curtailment solution (needed by both write-out and diagnostics)
+    curt_sol_full = result.x[curt_off : curt_off + m]
 
     # Write MILP decision variables into output slots.
     ev_writeback_diagnostics: dict[str, dict[str, object]] = {}

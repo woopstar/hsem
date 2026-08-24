@@ -307,3 +307,38 @@ def ev_amp_integrality(
         if on_off is not None:
             integrality[on_off : on_off + m] = 1
     return integrality
+
+
+def target_cap_activation_quantum_dc(
+    ev: EVConfig,
+    *,
+    d: int,
+    available_slot_hours: np.ndarray,  # type: ignore[type-arg]
+) -> float:
+    """Return the largest single-slot activation-quantum energy up to slot *d*.
+
+    The EV target-cap constraint (``planner/milp/_constraints.py``) permits
+    cumulative pre-deadline charge up to one activation quantum above the
+    exact economic shortfall: whole-amp hardware may have no executable
+    point exactly at the remaining need, and a strict cap would report an
+    avoidable deadline miss (issue #797).
+    """
+    activation_current_a = max(
+        charger_min_power_to_current_a(
+            ev.charger_min_power_w, ev.charger_phase_topology
+        ),
+        1,
+    )
+    activation_power_w = charger_current_to_power_w(
+        activation_current_a, ev.charger_phase_topology
+    )
+    return max(
+        (
+            activation_power_w
+            * float(available_slot_hours[k])
+            * ev.charger_efficiency
+            / 1000.0
+            for k in range(d + 1)
+        ),
+        default=0.0,
+    )

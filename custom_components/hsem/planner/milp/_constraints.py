@@ -10,13 +10,12 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from custom_components.hsem.planner.milp._bounds import build_bounds
+from custom_components.hsem.planner.milp._ev_amp_lattice import (
+    target_cap_activation_quantum_dc,
+)
 from custom_components.hsem.planner.milp._layout import (
     MilpColumnLayout,
     build_milp_column_layout,
-)
-from custom_components.hsem.utils.phase_power import (
-    charger_current_to_power_w,
-    charger_min_power_to_current_a,
 )
 
 if TYPE_CHECKING:
@@ -343,26 +342,8 @@ def _build_constraints(
                 shortfall = ev.target_kwh - ev.initial_soc_kwh
                 d = ev.deadline_slot
                 d = max(0, min(d, m - 1))
-                activation_current_a = max(
-                    charger_min_power_to_current_a(
-                        ev.charger_min_power_w,
-                        ev.charger_phase_topology,
-                    ),
-                    1,
-                )
-                activation_power_w = charger_current_to_power_w(
-                    activation_current_a,
-                    ev.charger_phase_topology,
-                )
-                activation_quantum_dc = max(
-                    (
-                        activation_power_w
-                        * float(available_slot_hours[k])
-                        * ev.charger_efficiency
-                        / 1000.0
-                        for k in range(d + 1)
-                    ),
-                    default=0.0,
+                activation_quantum_dc = target_cap_activation_quantum_dc(
+                    ev, d=d, available_slot_hours=available_slot_hours
                 )
                 fixed_session_dc = 0.0
                 for k in range(d + 1):
