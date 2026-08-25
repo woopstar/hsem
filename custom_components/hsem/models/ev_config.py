@@ -98,6 +98,13 @@ class EVConfig:
     #: Only meaningful when ``force_max_discharge_power`` is True; zero is
     #: fail-closed (treated as no permission).
     max_discharge_power_w: float = 0.0
+    #: When True, the live current-slot house projection has already
+    #: subtracted this EV's active session from ``avg_house_consumption_kwh``
+    #: (either because the sensor excludes EV load or because injection
+    #: removed the known session).  Prevents the MILP ``net_load`` rebuild
+    #: from subtracting the heuristic accounted value a second time and
+    #: inventing PV headroom that does not exist.
+    current_session_removed_from_base: bool = False
 
     @property
     def phase_share(self) -> float:
