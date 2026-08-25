@@ -19,7 +19,7 @@ from custom_components.hsem.models.ev_config import EVConfig
 from custom_components.hsem.planner._scipy_probe import (  # noqa: F401
     is_scipy_available,
 )
-from custom_components.hsem.utils.datetime_utils import as_tz
+from custom_components.hsem.utils.datetime_utils import as_tz, slot_contains
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import clamp_efficiency
 
@@ -325,21 +325,34 @@ def solve_milp(
             ):
                 active_evs.append(ev)
         if active_evs:
-            # Recompute net_load without EV planned loads
-            net_load = np.array(
-                [
-                    slots[i].avg_house_consumption_kwh
-                    - slots[i].solcast_pv_estimate_kwh
-                    for i in future_idx
-                ],
-                dtype=float,
-            )
+            # Recompute the pure-house baseline before adding the MILP's EV
+            # variables.  Accounted heuristic EV load is already embedded in
+            # the house forecast and must be removed, except for a known live
+            # session that current-slot injection already subtracted.
+            active_net_load: list[float] = []
+            for slot_i in future_idx:
+                slot = slots[slot_i]
+                accounted_to_remove = max(slot.ev_accounted_load_kwh, 0.0)
+                if slot_contains(slot.start, slot.end, now) and any(
+                    ev.current_session_removed_from_base for ev in active_evs
+                ):
+                    # Live injection already turned avg_house into a pure-house
+                    # current-slot projection by subtracting every known session.
+                    # The heuristic accounted value may use a different power,
+                    # so subtracting any of it again would invent PV headroom.
+                    accounted_to_remove = 0.0
+                active_net_load.append(
+                    slot.avg_house_consumption_kwh
+                    - accounted_to_remove
+                    - slot.solcast_pv_estimate_kwh
+                )
+            net_load = np.asarray(active_net_load, dtype=float)
             pv_avail = np.maximum(-net_load, 0.0)
             base_load = np.maximum(net_load, 0.0)
             log_planner(
                 "debug",
                 "[milp] EV co-optimisation enabled: %d active EV(s), "
-                "net_load rebuilt without pre-computed EV loads",
+                "net_load rebuilt without double-counted EV loads",
                 len(active_evs),
             )
         else:

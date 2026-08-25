@@ -1249,3 +1249,123 @@ def test_ev_discharge_guard_partial_pv_slot_is_exact_not_over_conservative():
         f"discharge={s0.batteries_discharged_kwh:.3f} kWh, "
         f"expected ≈ 1.03 kWh DC for the 1.0 kWh AC non-EV unmet load"
     )
+
+
+def test_ev_accounted_load_subtracted_from_net_load_no_double_count():
+    """Regression: EV load already in avg_house_consumption_kwh is not double-counted.
+
+    Scenario (all future slots, single-hour each):
+      - avg_house_consumption_kwh = 3.0  (includes 1.5 kWh of accounted EV load)
+      - ev_accounted_load_kwh       = 1.5  (heuristic EV already in the forecast)
+      - solcast_pv_estimate_kwh     = 2.0
+
+    Without the fix, the MILP rebuilds net_load as 3.0 - 2.0 = +1.0 kWh
+    (a deficit), so it draws from grid/battery — even though true house-only
+    load is 1.5 kWh and PV of 2.0 kWh leaves 0.5 kWh of genuine surplus.
+
+    With the fix, net_load = 3.0 - 1.5 - 2.0 = -0.5 kWh, i.e. a 0.5 kWh
+    PV surplus that the MILP can allocate to battery charge or EV charge.
+    We assert that grid import is zero (surplus covers house-only load) and
+    the surplus is either stored in the battery or exported — never imported.
+    """
+    # Use low import/export prices so battery discharge for export is unattractive.
+    # _build_slots sets export_price = import_price * 0.8.
+    slots = _build_slots(
+        4, start_hour=15, import_price=0.05, pv_kwh=2.0, consumption_kwh=3.0
+    )
+    for s in slots:
+        s.ev_accounted_load_kwh = 1.5
+        s.ev_total_planned_load_kwh = 1.5
+
+    ev = EVConfig(
+        enabled=True,
+        initial_soc_kwh=25.0,
+        target_kwh=40.0,
+        capacity_kwh=50.0,
+        max_charge_per_slot=5.0,
+        charger_efficiency=0.90,
+        deadline_slot=3,
+        base_load_includes_ev=True,
+    )
+
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=25.0,
+        usable_kwh=10.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=None,
+        ev_configs=[ev],
+    )
+    assert result is not None
+    out_slots, _diag = result
+
+    # With genuine 0.5 kWh PV surplus and low export price, the MILP should
+    # NOT import grid power.  The surplus (0.5 kWh) is either stored in the
+    # battery or exported — but never imported while also having PV surplus.
+    s0 = out_slots[0]
+    assert s0.grid_import_kwh == pytest.approx(0.0, abs=1e-6), (
+        "Grid import should be zero when PV surplus exists after subtracting "
+        f"accounted EV load; got import={s0.grid_import_kwh:.4f} kWh, "
+        f"charge={s0.batteries_charged_kwh:.4f}, discharge={s0.batteries_discharged_kwh:.4f}"
+    )
+    # The surplus (0.5 kWh) must go somewhere: battery charge or PV export.
+    assert (s0.batteries_charged_kwh + s0.pv_export_kwh) > 1e-6, (
+        "PV surplus must be allocated to battery charge or export; "
+        f"got charge={s0.batteries_charged_kwh:.4f}, pv_export={s0.pv_export_kwh:.4f}"
+    )
+
+
+def test_ev_accounted_load_not_subtracted_when_session_already_removed():
+    """When current_session_removed_from_base=True, accounted load is NOT subtracted again.
+
+    The current slot's avg_house_consumption_kwh has already been stripped
+    of the live session by injection.  Subtracting ev_accounted_load_kwh
+    would over-correct and invent phantom PV headroom.  The guard ensures
+    the MILP sees the already-pure house projection.
+    """
+    slots = _build_slots(
+        4, start_hour=14, import_price=0.30, pv_kwh=1.0, consumption_kwh=2.0
+    )
+    # Current slot (14:00) already has the session removed by live injection,
+    # so its avg_house is the pure-house value (2.0) — no further subtraction.
+    for s in slots:
+        s.ev_accounted_load_kwh = 1.5
+        s.ev_total_planned_load_kwh = 1.5
+
+    ev = EVConfig(
+        enabled=True,
+        initial_soc_kwh=25.0,
+        target_kwh=40.0,
+        capacity_kwh=50.0,
+        max_charge_per_slot=5.0,
+        charger_efficiency=0.90,
+        deadline_slot=3,
+        base_load_includes_ev=True,
+        # Live injection already stripped the current-slot session.
+        current_session_removed_from_base=True,
+        session_charge_kw=3.0,
+    )
+
+    result = solve_milp(
+        slots,
+        _NOW,  # 14:00 — current slot is the first one
+        current_kwh=25.0,
+        usable_kwh=10.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=None,
+        ev_configs=[ev],
+    )
+    assert result is not None
+    out_slots, _diag = result
+
+    # Current slot: net_load = 2.0 (pure house) - 0 (guarded) - 1.0 (PV)
+    # = +1.0 kWh deficit → must be covered by grid import or battery.
+    s0 = out_slots[0]
+    # The current slot has a genuine 1.0 kWh deficit, so the MILP must
+    # import or discharge — it must NOT see a phantom surplus.
+    assert (s0.grid_import_kwh + s0.batteries_discharged_kwh) > 1e-6, (
+        "Current slot with session already removed should show a deficit, "
+        f"not surplus; got import={s0.grid_import_kwh:.4f}, "
+        f"discharge={s0.batteries_discharged_kwh:.4f}"
+    )
