@@ -411,7 +411,7 @@ class FinancialTracker:
                 return None
             try:
                 parsed = float(value)  # type: ignore[arg-type]
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 return None
             return parsed if math.isfinite(parsed) else None
 
@@ -441,7 +441,7 @@ class FinancialTracker:
         try:
             with open(str(path), encoding="utf-8") as f:
                 return json.load(f)  # type: ignore[no-any-return]
-        except json.JSONDecodeError, OSError:
+        except (json.JSONDecodeError, OSError):
             return None
 
     @staticmethod

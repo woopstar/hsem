@@ -328,16 +328,8 @@ def generate_candidates(
             effective_cycle_cost,
             not inp.excess_export_enabled,
             inp.excess_export_enabled,
-            max(
-                inp.export_min_price,
-                calculate_recommended_threshold(
-                    purchase_price=inp.battery_purchase_price,
-                    expected_cycles=inp.battery_expected_cycles,
-                    usable_capacity=usable_kwh,
-                    capacity_loss_pct=inp.battery_capacity_loss_pct,
-                ),
-            ),
-            inp.battery_export_min_price,
+            inp.export_min_price,
+            effective_battery_export_floor,
             len(ev_configs) if ev_configs else 0,
         )
         if milp_result is not None:
