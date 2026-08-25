@@ -379,6 +379,8 @@ async def accumulate_financials(
         grid_export_energy_kwh=live.grid_export_energy_kwh,
         import_price=live.import_electricity_price,
         export_price=live.export_electricity_price,
+        import_price_available=live.import_electricity_price_available,
+        export_price_available=live.export_electricity_price_available,
         sample_time=now,
         max_gap_seconds=2.0 * max(float(update_interval_minutes) * 60.0, 60.0),
     )

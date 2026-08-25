@@ -28,7 +28,9 @@ def _compute_battery_capacities(state: LiveState) -> None:
         return
 
     rated_kwh = rated_wh / 1000.0
-    eod_soc = state.huawei_batteries_end_of_discharge_soc_pct or 5.0
+    eod_soc = state.huawei_batteries_end_of_discharge_soc_pct
+    if eod_soc is None:
+        eod_soc = 5.0
     # Respect the max-SoC ceiling from the charging cutoff entity; default to 100 %
     # (no upper restriction) when the entity is unavailable.
     max_soc = state.huawei_batteries_charging_cutoff_capacity_pct or 100.0

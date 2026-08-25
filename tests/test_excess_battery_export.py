@@ -270,3 +270,51 @@ class TestValidateBatteriesExcessExportInput:
         }
         errors = await validate_batteries_excess_export_input(user_input)
         assert "hsem_batteries_export_min_price" in errors
+
+    @pytest.mark.asyncio
+    async def test_forecast_reserve_pct_at_zero_is_valid(self):
+        """Forecast reserve of 0 % is the default (disabled) and must be accepted."""
+        user_input = {
+            "hsem_batteries_enable_excess_export": True,
+            "hsem_batteries_excess_export_discharge_buffer": 10,
+            "hsem_batteries_forecast_reserve_pct": 0,
+            "hsem_batteries_export_min_price": 0.0,
+        }
+        errors = await validate_batteries_excess_export_input(user_input)
+        assert errors == {}
+
+    @pytest.mark.asyncio
+    async def test_forecast_reserve_pct_at_fifty_is_valid(self):
+        """Forecast reserve of 50 % is at the maximum boundary and must be accepted."""
+        user_input = {
+            "hsem_batteries_enable_excess_export": True,
+            "hsem_batteries_excess_export_discharge_buffer": 10,
+            "hsem_batteries_forecast_reserve_pct": 50,
+            "hsem_batteries_export_min_price": 0.0,
+        }
+        errors = await validate_batteries_excess_export_input(user_input)
+        assert errors == {}
+
+    @pytest.mark.asyncio
+    async def test_forecast_reserve_pct_above_fifty_is_invalid(self):
+        """Forecast reserve > 50 % must be rejected."""
+        user_input = {
+            "hsem_batteries_enable_excess_export": True,
+            "hsem_batteries_excess_export_discharge_buffer": 10,
+            "hsem_batteries_forecast_reserve_pct": 51,
+            "hsem_batteries_export_min_price": 0.0,
+        }
+        errors = await validate_batteries_excess_export_input(user_input)
+        assert "hsem_batteries_forecast_reserve_pct" in errors
+
+    @pytest.mark.asyncio
+    async def test_forecast_reserve_pct_negative_is_invalid(self):
+        """Negative forecast reserve must be rejected."""
+        user_input = {
+            "hsem_batteries_enable_excess_export": True,
+            "hsem_batteries_excess_export_discharge_buffer": 10,
+            "hsem_batteries_forecast_reserve_pct": -1,
+            "hsem_batteries_export_min_price": 0.0,
+        }
+        errors = await validate_batteries_excess_export_input(user_input)
+        assert "hsem_batteries_forecast_reserve_pct" in errors

@@ -156,3 +156,86 @@ def test_no_export_preserves_direct_pv_export() -> None:
     assert [slot.grid_export_kwh for slot in planned] == pytest.approx(
         [0.26, 0.26, 0.0]
     )
+
+
+# ---------------------------------------------------------------------------
+# Immediate forecast-export reserve (issue #807, Stage 1)
+#
+# Unlike the checkpoint reserve above (which a later solar/grid refill may
+# restore before the *next demand window*), the forecast reserve must remain
+# immediately after the exporting slot itself — a later refill can never
+# justify spending it first.
+# ---------------------------------------------------------------------------
+
+
+def _solve_forecast_reserve(
+    *, forecast_reserve_kwh: float, no_export: bool = False
+) -> tuple[list[PlannedSlot], dict[str, Any]]:
+    """Solve one attractively-priced export slot followed by a neutral slot."""
+    slots = [
+        _slot(
+            0,
+            import_price=0.0,
+            export_price=5.0,
+            consumption_kwh=0.0,
+            pv_kwh=0.0,
+        ),
+        _slot(
+            1,
+            import_price=0.0,
+            export_price=0.0,
+            consumption_kwh=0.0,
+            pv_kwh=0.0,
+        ),
+    ]
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=5.0,
+        usable_kwh=5.0,
+        max_charge_per_slot=0.01,
+        max_discharge_per_slot=5.0,
+        charge_efficiency_pct=100.0,
+        discharge_efficiency_pct=100.0,
+        battery_export_forecast_reserve_kwh=forecast_reserve_kwh,
+        no_export=no_export,
+    )
+    assert result is not None
+    return result
+
+
+@pytest.mark.skipif(not is_scipy_available(), reason="scipy unavailable")
+def test_forecast_reserve_caps_battery_export_in_the_exporting_slot() -> None:
+    """Battery-origin export cannot drop post-export SoC below the reserve."""
+    planned, diagnostics = _solve_forecast_reserve(forecast_reserve_kwh=3.0)
+
+    # 5.0 kWh starting energy, 3.0 kWh reserve -> at most 2.0 kWh exportable.
+    assert planned[0].primary_battery_export_kwh == pytest.approx(2.0)
+    assert _trajectory(planned) == pytest.approx([3.0, 3.0])
+    assert diagnostics["battery_export_forecast_reserve_active"] is True
+    assert diagnostics["battery_export_forecast_reserve_kwh"] == pytest.approx(3.0)
+    assert diagnostics[
+        "battery_export_forecast_reserve_min_post_export_soc_kwh"
+    ] == pytest.approx(3.0)
+
+
+@pytest.mark.skipif(not is_scipy_available(), reason="scipy unavailable")
+def test_zero_forecast_reserve_leaves_export_unconstrained() -> None:
+    """A zero (default/disabled) reserve does not activate the mechanism."""
+    planned, diagnostics = _solve_forecast_reserve(forecast_reserve_kwh=0.0)
+
+    assert planned[0].primary_battery_export_kwh == pytest.approx(5.0)
+    assert diagnostics["battery_export_forecast_reserve_active"] is False
+
+
+@pytest.mark.skipif(not is_scipy_available(), reason="scipy unavailable")
+def test_no_export_disables_forecast_reserve_activation() -> None:
+    """The reserve is a battery-export protection; it is inert when export is off."""
+    planned, diagnostics = _solve_forecast_reserve(
+        forecast_reserve_kwh=3.0, no_export=True
+    )
+
+    assert [slot.primary_battery_export_kwh for slot in planned] == pytest.approx(
+        [0.0, 0.0]
+    )
+    assert diagnostics["battery_export_forecast_reserve_active"] is False

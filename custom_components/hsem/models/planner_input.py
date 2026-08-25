@@ -82,6 +82,10 @@ class PlannerInput:
             Whether the excess-export feature is active.
         excess_export_discharge_buffer_pct:
             Safety buffer kept in the battery before forced export (0-100).
+        battery_forecast_reserve_pct:
+            Extra SoC percentage points above the hardware discharge floor that
+            intentional battery export must retain immediately after each
+            export slot. Ordinary self-consumption may use this reserve.
         excess_export_price_threshold:
             Minimum export price required to trigger forced export.
         battery_export_min_price:
@@ -159,6 +163,11 @@ class PlannerInput:
     excess_export_enabled: bool = False
     excess_export_discharge_buffer_pct: float = 10.0
     excess_export_price_threshold: float = 0.10
+
+    #: Extra SoC percentage points above the hardware end-of-discharge limit
+    #: protected only from intentional battery-to-grid export. This is not a
+    #: global floor: local demand may consume it when the forecast is wrong.
+    battery_forecast_reserve_pct: float = 0.0
 
     # --- per-slot hard floor for intentional battery-to-grid export (issue #752) ---
     #: Per-slot hard floor on the export price below which intentional

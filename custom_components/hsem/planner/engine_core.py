@@ -8,6 +8,7 @@ directly testable with plain ``pytest`` without a running HA instance.
 
 from __future__ import annotations
 
+import math
 from datetime import datetime
 
 from custom_components.hsem.models.ev_config import EVConfig
@@ -79,6 +80,37 @@ from custom_components.hsem.utils.units import (
     roundtrip_loss_pct,
     slot_duration_hours,
 )
+
+
+def _resolve_effective_discharge_floor_pct(
+    inp: PlannerInput,
+) -> tuple[float, float, float]:
+    """Return finite ``(hardware, effective, maximum)`` SoC bounds in percent.
+
+    The dynamic floor shares the same absolute-SoC frame as Huawei's hardware
+    floor and the configured maximum SoC. Normalize all three limits before
+    deriving model capacity so a stale or oversized bridge estimate cannot
+    create an impossible floor above the battery ceiling.
+    """
+
+    def _finite(value: float | None, fallback: float) -> float:
+        try:
+            converted = float(value) if value is not None else fallback
+        except TypeError, ValueError:
+            return fallback
+        return converted if math.isfinite(converted) else fallback
+
+    hardware_floor = min(
+        max(_finite(inp.battery_end_of_discharge_soc_pct, 0.0), 0.0),
+        100.0,
+    )
+    maximum_soc = min(
+        max(_finite(inp.battery_max_soc_pct, 100.0), hardware_floor),
+        100.0,
+    )
+    dynamic_floor = _finite(inp.dynamic_discharge_floor_pct, hardware_floor)
+    effective_floor = min(max(dynamic_floor, hardware_floor), maximum_soc)
+    return hardware_floor, effective_floor, maximum_soc
 
 
 def _schedule_slots(
@@ -301,6 +333,7 @@ def _select_candidate(
     mcps: float,
     mdps: float | None,
     max_soc_kwh: float,
+    effective_end_of_discharge_soc_pct: float,
     rppk: float | None,
     cw: CostWeights,
     sdh: float,
@@ -329,7 +362,7 @@ def _select_candidate(
         max_charge_per_slot=mcps,
         max_discharge_per_slot=mdps,
         rated_kwh=inp.battery_rated_capacity_kwh,
-        end_of_discharge_soc_pct=inp.battery_end_of_discharge_soc_pct,
+        end_of_discharge_soc_pct=effective_end_of_discharge_soc_pct,
         cost_weights=cw,
         slot_duration_hours=sdh,
         charge_efficiency_pct=inp.battery_charge_efficiency_pct,
@@ -371,23 +404,23 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     # configured minimum, use it as the effective discharge floor.  This
     # reduces usable capacity and current capacity above the floor, which
     # naturally limits export and preserves reserve energy.
-    _effective_eod_soc = inp.battery_end_of_discharge_soc_pct
-    if (
-        inp.dynamic_discharge_floor_pct is not None
-        and inp.dynamic_discharge_floor_pct > _effective_eod_soc
-    ):
-        _effective_eod_soc = inp.dynamic_discharge_floor_pct
+    (
+        _hardware_eod_soc,
+        _effective_eod_soc,
+        _maximum_soc,
+    ) = _resolve_effective_discharge_floor_pct(inp)
+    if _effective_eod_soc > _hardware_eod_soc + 1e-9:
         log_planner(
             "debug",
             "[core] Dynamic discharge floor active: %.1f%% (configured min: %.1f%%)",
             _effective_eod_soc,
-            inp.battery_end_of_discharge_soc_pct,
+            _hardware_eod_soc,
         )
     usable_kwh, current_kwh = usable_capacity(
         inp.battery_rated_capacity_kwh,
         inp.battery_soc_pct,
         _effective_eod_soc,
-        inp.battery_max_soc_pct,
+        _maximum_soc,
     )
     if inp.battery_rated_capacity_kwh <= 0:
         warnings.append(
@@ -550,7 +583,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     # Step 4 — candidate plan generation and selection
     cw = CostWeights(
         min_soc_pct=_effective_eod_soc,
-        max_soc_pct=inp.battery_max_soc_pct,
+        max_soc_pct=_maximum_soc,
         cycle_cost_per_kwh=effective_cycle_cost,
         battery_purchase_price=inp.battery_purchase_price,
         battery_rated_capacity_kwh=inp.battery_rated_capacity_kwh,
@@ -593,6 +626,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         mcps,
         mdps,
         max_soc_kwh,
+        _effective_eod_soc,
         rppk,
         cw,
         sdh,
