@@ -101,6 +101,46 @@ def _ev_is_active_or_planned(
     )
 
 
+def _ev_phase_headroom_reservation_w(
+    *,
+    ev: EVLiveState,
+    planned_power_w: object,
+) -> int:
+    """Return the phase-headroom reservation for an EV that hasn't ramped down yet.
+
+    When an EV is live charging but the planned power is 0 (or significantly
+    lower than the live draw), the OCPP anti-flap stop window means the charger
+    hasn't stopped yet. The Huawei discharge cap must reserve headroom for the
+    still-running EV draw until the stop command verifies.
+
+    This prevents a transient phase-fuse overload when the plan transitions
+    from "EV charging" to "battery discharging" (issue #816).
+
+    Args:
+        ev: Live EV state (includes ``is_charging`` and ``power_w``).
+        planned_power_w: The planner's solved EV charge command for this slot (W).
+
+    Returns:
+        Reservation in watts. 0 when the EV is not charging live, or when the
+        planned power is >= the live draw (no reservation needed).
+    """
+    if not ev.is_charging:
+        return 0
+    live_power_w = ev.power_w
+    if not isinstance(live_power_w, (int, float)) or not math.isfinite(live_power_w):
+        return 0
+    if live_power_w <= 1e-9:
+        return 0
+    planned_w = (
+        float(planned_power_w) if isinstance(planned_power_w, (int, float)) else 0.0
+    )
+    if not math.isfinite(planned_w):
+        planned_w = 0.0
+    # Reservation is the live draw minus the planned draw (if positive).
+    reservation_w = live_power_w - planned_w
+    return max(math.floor(reservation_w + 1e-9), 0) if reservation_w > 1e-9 else 0
+
+
 def _planned_ev_discharge_cap_w(
     *,
     planned_discharge_kwh: float,

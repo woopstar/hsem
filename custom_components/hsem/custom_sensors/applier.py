@@ -42,6 +42,7 @@ from custom_components.hsem.const import (
 from custom_components.hsem.custom_sensors.applier_caps import (  # noqa: F401
     _configured_battery_device_ids,
     _ev_is_active_or_planned,
+    _ev_phase_headroom_reservation_w,
     _fmt_live_power_w,
     _held_planned_export_is_authoritative,
     _planned_ev_discharge_cap_w,
@@ -228,6 +229,30 @@ async def async_apply_battery_settings(
                         f"(planned={rec.batteries_discharged_kwh:.3f} kWh, "
                         f"slot={slot_hours:.3f} h)"
                     )
+                    # Phase-headroom reservation (issue #816): when an EV is
+                    # live charging but the planned power is 0 (or lower), the
+                    # OCPP anti-flap stop window means the charger hasn't
+                    # stopped yet. Reserve headroom for the still-running EV
+                    # draw to prevent a transient phase-fuse overload.
+                    total_reservation_w = sum(
+                        _ev_phase_headroom_reservation_w(
+                            ev=ev, planned_power_w=planned_power_w
+                        )
+                        for _, ev, planned_power_w in relevant_evs
+                    )
+                    if total_reservation_w > 0 and cap_w > 0:
+                        reserved_cap_w = max(cap_w - total_reservation_w, 0)
+                        if reserved_cap_w < cap_w:
+                            _LOGGER.debug(
+                                "%s — phase-headroom reservation reduced cap "
+                                "from %d W to %d W (reservation=%d W for "
+                                "still-running EV draw)",
+                                cap_reason,
+                                cap_w,
+                                reserved_cap_w,
+                                total_reservation_w,
+                            )
+                            cap_w = reserved_cap_w
 
             # SoC guard (issue #592, v6.2.0-beta1): never let the EV cap
             # drain the battery below the energy the planner has reserved

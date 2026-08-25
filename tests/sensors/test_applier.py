@@ -193,3 +193,83 @@ class TestWaitModeSelfConsumptionCapW:
             max_discharge_power_w=5000,
         )
         assert cap == 0
+
+
+# ---------------------------------------------------------------------------
+# _ev_phase_headroom_reservation_w — phase-headroom reservation (issue #816)
+# ---------------------------------------------------------------------------
+
+
+class TestEvPhaseHeadroomReservationW:
+    """Reservation prevents transient phase-fuse overload when EV hasn't ramped down."""
+
+    @staticmethod
+    def _reservation(**kwargs):
+        from custom_components.hsem.custom_sensors.applier_caps import (
+            _ev_phase_headroom_reservation_w,
+        )
+
+        return _ev_phase_headroom_reservation_w(**kwargs)
+
+    def test_not_charging_returns_zero(self):
+        """No reservation when EV is not live charging."""
+        from custom_components.hsem.models.live_state import EVLiveState
+
+        ev = EVLiveState()
+        ev.is_charging = False
+        ev.power_w = 7000.0
+        assert self._reservation(ev=ev, planned_power_w=0) == 0
+
+    def test_charging_but_planned_matches_live_returns_zero(self):
+        """No reservation when planned power matches live draw."""
+        from custom_components.hsem.models.live_state import EVLiveState
+
+        ev = EVLiveState()
+        ev.is_charging = True
+        ev.power_w = 7000.0
+        assert self._reservation(ev=ev, planned_power_w=7000) == 0
+
+    def test_charging_and_planned_zero_returns_live_draw(self):
+        """Full reservation when EV is charging but planned is 0."""
+        from custom_components.hsem.models.live_state import EVLiveState
+
+        ev = EVLiveState()
+        ev.is_charging = True
+        ev.power_w = 7000.0
+        assert self._reservation(ev=ev, planned_power_w=0) == 7000
+
+    def test_charging_and_planned_lower_returns_difference(self):
+        """Partial reservation when planned is lower than live."""
+        from custom_components.hsem.models.live_state import EVLiveState
+
+        ev = EVLiveState()
+        ev.is_charging = True
+        ev.power_w = 7000.0
+        assert self._reservation(ev=ev, planned_power_w=3000) == 4000
+
+    def test_planned_higher_than_live_returns_zero(self):
+        """No reservation when planned is higher than live (ramping up)."""
+        from custom_components.hsem.models.live_state import EVLiveState
+
+        ev = EVLiveState()
+        ev.is_charging = True
+        ev.power_w = 3000.0
+        assert self._reservation(ev=ev, planned_power_w=7000) == 0
+
+    def test_none_power_w_returns_zero(self):
+        """No reservation when live power is unavailable."""
+        from custom_components.hsem.models.live_state import EVLiveState
+
+        ev = EVLiveState()
+        ev.is_charging = True
+        ev.power_w = None
+        assert self._reservation(ev=ev, planned_power_w=0) == 0
+
+    def test_zero_live_power_returns_zero(self):
+        """No reservation when live power is 0."""
+        from custom_components.hsem.models.live_state import EVLiveState
+
+        ev = EVLiveState()
+        ev.is_charging = True
+        ev.power_w = 0.0
+        assert self._reservation(ev=ev, planned_power_w=0) == 0
