@@ -530,3 +530,220 @@ class TestFinancialTrackerSensorAttributes:
         assert attrs["today"]["net_balance"] == pytest.approx(-20.0)  # 10 - 30
         assert attrs["today"]["import_cost"] == pytest.approx(30.0)
         assert attrs["today"]["export_income"] == pytest.approx(10.0)
+
+
+class TestFinancialTrackerPriceAvailability:
+    """Tests for price-availability gating (issue #813)."""
+
+    def test_unavailable_import_price_skips_cost_accumulation(self) -> None:
+        """When import price is unavailable, cost must not accumulate at 0.0."""
+        tracker = FinancialTracker()
+        # Baseline: both prices available.
+        tracker.accumulate(
+            grid_import_energy_kwh=100.0,
+            grid_export_energy_kwh=50.0,
+            import_price=2.0,
+            export_price=1.0,
+            import_price_available=True,
+            export_price_available=True,
+        )
+        # Import price sensor goes unavailable (falls back to 0.0 in state_collector).
+        tracker.accumulate(
+            grid_import_energy_kwh=110.0,
+            grid_export_energy_kwh=60.0,
+            import_price=0.0,
+            export_price=1.0,
+            import_price_available=False,
+            export_price_available=True,
+        )
+        # Import cost must NOT have accumulated 10 * 0.0 = 0.0.
+        # The tracker must have skipped the import channel entirely.
+        assert tracker.import_cost_total == pytest.approx(0.0)
+        # Export channel was still available: (60-50) * 1.0 = 10.0.
+        assert tracker.export_income_total == pytest.approx(10.0)
+
+    def test_unavailable_export_price_skips_income_accumulation(self) -> None:
+        """When export price is unavailable, income must not accumulate at 0.0."""
+        tracker = FinancialTracker()
+        tracker.accumulate(
+            grid_import_energy_kwh=100.0,
+            grid_export_energy_kwh=50.0,
+            import_price=2.0,
+            export_price=1.0,
+            import_price_available=True,
+            export_price_available=True,
+        )
+        # Export price sensor goes unavailable.
+        tracker.accumulate(
+            grid_import_energy_kwh=110.0,
+            grid_export_energy_kwh=60.0,
+            import_price=2.0,
+            export_price=0.0,
+            import_price_available=True,
+            export_price_available=False,
+        )
+        # Import cost: (110-100) * 2.0 = 20.0.
+        assert tracker.import_cost_total == pytest.approx(20.0)
+        # Export income must NOT have accumulated 10 * 0.0.
+        assert tracker.export_income_total == pytest.approx(0.0)
+
+    def test_price_outage_does_not_pollute_running_totals(self) -> None:
+        """Simulate a multi-cycle price outage: totals must not use 0.0 fallback.
+
+        Timed accumulation prices each interval at the LEFT endpoint's price
+        and authority.  The first outage cycle is still priced at the last
+        good rate (the left endpoint was authoritative).  Subsequent outage
+        cycles are skipped because the left endpoint authority is False.
+        After recovery, one more cycle is skipped (left endpoint was the
+        outage's unauthoritative sample), then normal pricing resumes.
+        """
+        start = datetime(2026, 8, 22, 12, 0, tzinfo=UTC)
+        tracker = FinancialTracker()
+
+        # Normal cycle: prices available — establishes baseline.
+        assert (
+            tracker.accumulate(
+                grid_import_energy_kwh=100.0,
+                grid_export_energy_kwh=50.0,
+                import_price=2.0,
+                export_price=1.0,
+                import_price_available=True,
+                export_price_available=True,
+                sample_time=start,
+                max_gap_seconds=600.0,
+            )
+            is False
+        )  # first call, no baseline
+
+        # Second cycle: still normal, prices available.
+        # Interval [t=0, t=5] priced at left (available, 2.0).
+        assert tracker.accumulate(
+            grid_import_energy_kwh=105.0,
+            grid_export_energy_kwh=55.0,
+            import_price=2.0,
+            export_price=1.0,
+            import_price_available=True,
+            export_price_available=True,
+            sample_time=start + timedelta(minutes=5),
+            max_gap_seconds=600.0,
+        )
+        # (105-100)*2.0=10, (55-50)*1.0=5
+        assert tracker.import_cost_total == pytest.approx(10.0)
+        assert tracker.export_income_total == pytest.approx(5.0)
+
+        # First outage cycle: left endpoint was authoritative (from t=5),
+        # so this interval is still priced at the last good rate.
+        tracker.accumulate(
+            grid_import_energy_kwh=115.0,
+            grid_export_energy_kwh=65.0,
+            import_price=0.0,
+            export_price=0.0,
+            import_price_available=False,
+            export_price_available=False,
+            sample_time=start + timedelta(minutes=10),
+            max_gap_seconds=600.0,
+        )
+        # (115-105)*2.0=20, (65-55)*1.0=10 — priced at last good rate.
+        assert tracker.import_cost_total == pytest.approx(30.0)
+        assert tracker.export_income_total == pytest.approx(15.0)
+
+        # Second outage cycle: left endpoint is now unauthoritative (from t=10).
+        # This interval must be SKIPPED — not priced at 0.0.
+        tracker.accumulate(
+            grid_import_energy_kwh=125.0,
+            grid_export_energy_kwh=75.0,
+            import_price=0.0,
+            export_price=0.0,
+            import_price_available=False,
+            export_price_available=False,
+            sample_time=start + timedelta(minutes=15),
+            max_gap_seconds=600.0,
+        )
+        # Skipped — totals unchanged.
+        assert tracker.import_cost_total == pytest.approx(30.0)
+        assert tracker.export_income_total == pytest.approx(15.0)
+
+        # First recovery cycle: left endpoint is still unauthoritative (from t=15).
+        # This interval must also be SKIPPED until a new authoritative left
+        # endpoint is established.
+        tracker.accumulate(
+            grid_import_energy_kwh=130.0,
+            grid_export_energy_kwh=80.0,
+            import_price=3.0,
+            export_price=1.5,
+            import_price_available=True,
+            export_price_available=True,
+            sample_time=start + timedelta(minutes=20),
+            max_gap_seconds=600.0,
+        )
+        # Skipped — totals unchanged.
+        assert tracker.import_cost_total == pytest.approx(30.0)
+        assert tracker.export_income_total == pytest.approx(15.0)
+
+        # Second recovery cycle: left endpoint is now authoritative (from t=20).
+        # Normal pricing resumes.
+        tracker.accumulate(
+            grid_import_energy_kwh=135.0,
+            grid_export_energy_kwh=85.0,
+            import_price=3.0,
+            export_price=1.5,
+            import_price_available=True,
+            export_price_available=True,
+            sample_time=start + timedelta(minutes=25),
+            max_gap_seconds=600.0,
+        )
+        # (135-130)*3.0=15, (85-80)*1.5=7.5
+        assert tracker.import_cost_total == pytest.approx(45.0)
+        assert tracker.export_income_total == pytest.approx(22.5)
+
+    def test_default_availability_is_true_for_backward_compat(self) -> None:
+        """Existing callers without availability kwargs still work."""
+        tracker = FinancialTracker()
+        tracker.accumulate(
+            grid_import_energy_kwh=100.0,
+            grid_export_energy_kwh=50.0,
+            import_price=2.0,
+            export_price=1.0,
+        )
+        tracker.accumulate(
+            grid_import_energy_kwh=110.0,
+            grid_export_energy_kwh=60.0,
+            import_price=2.0,
+            export_price=1.0,
+        )
+        # Default import_price_available=True / export_price_available=True.
+        assert tracker.import_cost_total == pytest.approx(20.0)
+        assert tracker.export_income_total == pytest.approx(10.0)
+
+    def test_persistence_roundtrip_preserves_availability(self) -> None:
+        """Price-availability flags survive JSON roundtrip."""
+        tracker = FinancialTracker()
+        tracker.accumulate(
+            grid_import_energy_kwh=100.0,
+            grid_export_energy_kwh=50.0,
+            import_price=2.0,
+            export_price=1.0,
+            import_price_available=True,
+            export_price_available=False,
+            sample_time=datetime(2026, 8, 22, 12, 0, tzinfo=UTC),
+            max_gap_seconds=600.0,
+        )
+        data = tracker.as_dict()
+        restored = FinancialTracker.from_dict(data)
+        assert restored._last_import_price_available is True
+        assert restored._last_export_price_available is False
+        assert restored._last_import_price == pytest.approx(2.0)
+        assert restored._last_export_price == pytest.approx(1.0)
+
+    def test_persistence_unavailable_price_clears_authority(self) -> None:
+        """Persisted unavailable price cannot carry authority across restart."""
+        tracker = FinancialTracker()
+        tracker._last_import_price = 2.0
+        tracker._last_import_price_available = False
+        tracker._last_import_energy_kwh = 100.0
+        tracker._last_import_sample_at = datetime(2026, 8, 22, 12, 0, tzinfo=UTC)
+
+        data = tracker.as_dict()
+        restored = FinancialTracker.from_dict(data)
+        # Authority must be cleared because the persisted price was unavailable.
+        assert restored._last_import_price_available is False

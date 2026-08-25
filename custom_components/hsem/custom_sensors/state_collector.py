@@ -340,18 +340,23 @@ async def async_collect_live_state(
     )
 
     # --- Electricity prices ---
+    _raw_import_price = _read(
+        cfg.import_electricity_price_sensor, "float", 3, label="import_price"
+    )
+    _import_price_float = convert_to_float(_raw_import_price)
     state.import_electricity_price = (
-        convert_to_float(
-            _read(cfg.import_electricity_price_sensor, "float", 3, label="import_price")
-        )
-        or 0.0
+        _import_price_float if _import_price_float is not None else 0.0
     )
+    state.import_electricity_price_available = _import_price_float is not None
+
+    _raw_export_price = _read(
+        cfg.export_electricity_price_sensor, "float", 3, label="export_price"
+    )
+    _export_price_float = convert_to_float(_raw_export_price)
     state.export_electricity_price = (
-        convert_to_float(
-            _read(cfg.export_electricity_price_sensor, "float", 3, label="export_price")
-        )
-        or 0.0
+        _export_price_float if _export_price_float is not None else 0.0
     )
+    state.export_electricity_price_available = _export_price_float is not None
 
     # --- TOU periods (special: need State object, not just string) ---
     tou = TouPeriodsState()
