@@ -1058,3 +1058,149 @@ class TestEvDischargePermissionAndHeldExport:
 
         assert written["sensor.tou_periods:bat1"] == DEFAULT_HSEM_BATTERIES_WAIT_MODE
         assert written["select.excess_pv"] == "fed_to_grid"
+
+
+# ---------------------------------------------------------------------------
+# ForceBatteriesDischarge — excess PV routing regression (issue #819)
+# ---------------------------------------------------------------------------
+
+
+class TestForceBatteriesDischargeExcessPvRouting:
+    """ForceBatteriesDischarge must route surplus PV to the grid, not back to battery.
+
+    Regression for issue #819: the ``ForceBatteriesDischarge`` case previously
+    returned unconditionally after the forcible-discharge write, skipping the
+    shared excess-PV-routing block.  The excess PV entity therefore stayed on
+    ``"charge"`` instead of being set to ``"fed_to_grid"``, causing the battery
+    to recharge from solar surplus between forced-discharge cycles.
+    """
+
+    def _make_sensor(self):
+        sensor = MagicMock()
+        sensor.hass = MagicMock()
+        return sensor
+
+    def _make_cfg(self) -> SensorConfig:
+        cfg = SensorConfig()
+        cfg.read_only = False
+        cfg.export_electricity_min_price = 0.0
+        cfg.huawei_solar_device_id_batteries = "bat1"
+        cfg.huawei_solar_batteries_working_mode = "select.working_mode"
+        cfg.huawei_solar_batteries_maximum_discharging_power = "number.max_discharge"
+        cfg.huawei_solar_batteries_excess_pv_energy_use_in_tou = "select.excess_pv"
+        cfg.huawei_solar_batteries_tou_charging_and_discharging_periods = (
+            "sensor.tou_periods"
+        )
+        return cfg
+
+    def _make_live(self) -> LiveState:
+        live = LiveState()
+        live._degraded_mode = DegradedMode.OK
+        live.export_electricity_price = 1.0
+        live.huawei_batteries_max_discharge_power_w = 5000
+        live.huawei_batteries_rated_capacity_wh = 10000.0
+        live.huawei_batteries_working_mode = "TimeOfUse"
+        # Start with the battery charging excess PV (the buggy state).
+        live.huawei_batteries_excess_pv_use_in_tou = "charge"
+        return live
+
+    @pytest.mark.asyncio
+    async def test_force_discharge_routes_excess_pv_to_grid_on_success(self):
+        """Successful forcible discharge must fall through to excess-PV routing."""
+        from custom_components.hsem.utils.recommendations import Recommendations
+
+        sensor = self._make_sensor()
+        cfg = self._make_cfg()
+        live = self._make_live()
+        rec = _make_rec(Recommendations.ForceBatteriesDischarge.value)
+
+        # Track writes keyed by entity_id.
+        written: dict[str, str] = {}
+
+        async def _mock_wv(*, entity_id, desired, writer, reader):
+            written[entity_id] = desired
+            return ApplyResult(
+                entity_id=entity_id,
+                desired=desired,
+                actual=desired,
+                status=ApplyStatus.OK,
+                attempts=1,
+            )
+
+        with (
+            patch(_LOGGER_PATCH, new_callable=MagicMock),
+            patch(
+                "custom_components.hsem.custom_sensors.applier._async_apply_forcible_discharge",
+                new_callable=AsyncMock,
+                return_value=[
+                    ApplyResult(
+                        entity_id="bat1",
+                        desired="forcible_discharge",
+                        actual="forcible_discharge",
+                        status=ApplyStatus.OK,
+                        attempts=1,
+                    )
+                ],
+            ),
+            patch(
+                "custom_components.hsem.custom_sensors.applier.async_write_and_verify",
+                new_callable=AsyncMock,
+                side_effect=_mock_wv,
+            ),
+        ):
+            summary = await async_apply_battery_settings(sensor, cfg, live, rec, 5.0)
+
+        # The forcible discharge result is in the summary.
+        assert len(summary.results) >= 1
+        # The excess PV entity must have been written to "fed_to_grid".
+        assert written.get("select.excess_pv") == "fed_to_grid"
+
+    @pytest.mark.asyncio
+    async def test_force_discharge_returns_early_on_failure(self):
+        """Failed forcible discharge must bail out before excess-PV routing."""
+        from custom_components.hsem.utils.recommendations import Recommendations
+
+        sensor = self._make_sensor()
+        cfg = self._make_cfg()
+        live = self._make_live()
+        rec = _make_rec(Recommendations.ForceBatteriesDischarge.value)
+
+        written: dict[str, str] = {}
+
+        async def _mock_wv(*, entity_id, desired, writer, reader):
+            written[entity_id] = desired
+            return ApplyResult(
+                entity_id=entity_id,
+                desired=desired,
+                actual=desired,
+                status=ApplyStatus.OK,
+                attempts=1,
+            )
+
+        with (
+            patch(_LOGGER_PATCH, new_callable=MagicMock),
+            patch(
+                "custom_components.hsem.custom_sensors.applier._async_apply_forcible_discharge",
+                new_callable=AsyncMock,
+                return_value=[
+                    ApplyResult(
+                        entity_id="bat1",
+                        desired="forcible_discharge",
+                        actual=None,
+                        status=ApplyStatus.FAILED,
+                        attempts=3,
+                    )
+                ],
+            ),
+            patch(
+                "custom_components.hsem.custom_sensors.applier.async_write_and_verify",
+                new_callable=AsyncMock,
+                side_effect=_mock_wv,
+            ),
+        ):
+            summary = await async_apply_battery_settings(sensor, cfg, live, rec, 5.0)
+
+        # The failed forcible result is in the summary.
+        assert any(r.status == ApplyStatus.FAILED for r in summary.results)
+        # The excess PV entity must NOT have been written (early return).
+        assert "select.excess_pv" not in written
