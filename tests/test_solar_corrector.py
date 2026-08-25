@@ -265,6 +265,65 @@ class TestPhysicalSlotsAhead:
             == 4
         )
 
+    def test_populate_solcast_uses_physical_distance_not_list_position(self) -> None:
+        """Regression: populate_solcast must call slots_ahead_for, not use list index.
+
+        Simulates a mid-cycle replan where the first slot in the list is already
+        4 physical slots ahead of the reference time. The correction must reflect
+        the true physical distance (4 slots), not the list position (0).
+        """
+        from custom_components.hsem.models.planned_slot import PlannedSlot
+        from custom_components.hsem.models.solcast_slot import SolcastSlot
+        from custom_components.hsem.planner.slot_population import populate_solcast
+
+        # Reference time is 15:00 UTC; first slot starts at 16:00 UTC (4 slots ahead at 15-min granularity).
+        corrector = SolarForecastCorrector()
+        corrector.set_reference_time(datetime(2026, 8, 20, 15, 0, tzinfo=UTC))
+        # Seed residual decay so correction differs by slots_ahead.
+        corrector.update_residual(forecast_kwh=2.0, actual_kwh=1.0)
+
+        slots = [
+            PlannedSlot(
+                start=datetime(2026, 8, 20, 16, 0, tzinfo=UTC),
+                end=datetime(2026, 8, 20, 17, 0, tzinfo=UTC),
+            ),
+            PlannedSlot(
+                start=datetime(2026, 8, 20, 17, 0, tzinfo=UTC),
+                end=datetime(2026, 8, 20, 18, 0, tzinfo=UTC),
+            ),
+        ]
+        solcast_data = [
+            SolcastSlot(hour=16, pv_estimate=4.0),
+            SolcastSlot(hour=17, pv_estimate=4.0),
+        ]
+
+        populate_solcast(
+            slots,
+            solcast_data,
+            interval_minutes=15,
+            corrector=corrector,
+        )
+
+        # First slot is at list position i=0 but 4 physical slots ahead.
+        # With slots_ahead=4, the residual factor is closer to 1.0 than with slots_ahead=0.
+        # get_corrected_pv(16, raw, slots_ahead=4) != get_corrected_pv(16, raw, slots_ahead=0).
+        # Note: populate_solcast scales hourly PV by 60/interval_minutes, so raw_estimate = 4.0 / 4 = 1.0.
+        corrected_4ahead = corrector.get_corrected_pv(16, 1.0, slots_ahead=4)
+        corrected_0ahead = corrector.get_corrected_pv(16, 1.0, slots_ahead=0)
+        # The wired-in call must produce the 4-ahead result, not the 0-ahead fallback.
+        assert slots[0].solcast_pv_estimate_kwh == pytest.approx(
+            corrected_4ahead, rel=1e-3
+        )
+        assert slots[0].solcast_pv_estimate_kwh != pytest.approx(
+            corrected_0ahead, rel=1e-3
+        )
+
+        # Second slot is at list position i=1 but 8 physical slots ahead.
+        corrected_8ahead = corrector.get_corrected_pv(17, 1.0, slots_ahead=8)
+        assert slots[1].solcast_pv_estimate_kwh == pytest.approx(
+            corrected_8ahead, rel=1e-3
+        )
+
 
 class TestConfidence:
     """Tests for correction-strength behavior."""
