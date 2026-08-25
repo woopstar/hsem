@@ -150,7 +150,9 @@ def select_best_candidate(  # NOSONAR
         rated_kwh:
             Nameplate battery capacity (kWh).
         end_of_discharge_soc_pct:
-            End-of-discharge SoC floor (0-100 %).
+            Effective model end-of-discharge SoC floor (0-100 %). When the
+            dynamic floor is active, this is the raised floor that defines the
+            origin of ``current_kwh`` and ``usable_kwh``.
         cost_weights:
             Cost weights for :func:`~cost_function.score_plan`.
         slot_duration_hours:

@@ -32,11 +32,13 @@
         "data": {
           "hsem_batteries_enable_excess_export": "Enable Excess Battery Export",
           "hsem_batteries_excess_export_discharge_buffer": "Discharge Buffer (%)",
+          "hsem_batteries_forecast_reserve_pct": "Battery Export Forecast Reserve (+% SoC)",
           "hsem_batteries_export_min_price": "Battery Export Min Price"
         },
         "data_description": {
           "hsem_batteries_enable_excess_export": "Enable or disable the excess battery export feature, which automatically exports excess battery capacity to the grid when economically beneficial.",
           "hsem_batteries_excess_export_discharge_buffer": "Set the safety buffer percentage to maintain minimum battery reserves (0-50%). Default is 10% to ensure adequate capacity for unexpected demand.",
+          "hsem_batteries_forecast_reserve_pct": "Extra SoC percentage points above the Huawei end-of-discharge limit that intentional battery export must leave immediately after each export slot. For example, a 15% Huawei limit plus a 5% reserve protects 20% SoC. The reserve remains available for house load when actual demand exceeds the forecast. Set to 0 to disable (default).",
           "hsem_batteries_export_min_price": "Per-slot hard floor for intentional battery-to-grid export (issue #752). When > 0, HSEM forbids marking a slot as force_batteries_discharge when the export price is strictly below this floor - the battery can still serve house load in those slots. Reaching the threshold does NOT auto-trigger export; the optimizer still decides whether selling is worthwhile. Applies only to intentional battery-to-grid export, not to normal self-consumption, PV export, or PV charging. Set to 0 to disable (default)."
         },
         "description": "Configure excess battery export settings to automatically sell excess energy to the grid when economically beneficial.",
@@ -533,11 +535,13 @@
         "data": {
           "hsem_batteries_enable_excess_export": "Enable Excess Battery Export",
           "hsem_batteries_excess_export_discharge_buffer": "Discharge Buffer (%)",
+          "hsem_batteries_forecast_reserve_pct": "Battery Export Forecast Reserve (+% SoC)",
           "hsem_batteries_export_min_price": "Battery Export Min Price"
         },
         "data_description": {
           "hsem_batteries_enable_excess_export": "Enable or disable the excess battery export feature, which automatically exports excess battery capacity to the grid when economically beneficial.",
           "hsem_batteries_excess_export_discharge_buffer": "Set the safety buffer percentage to maintain minimum battery reserves (0-50%). Default is 10% to ensure adequate capacity for unexpected demand.",
+          "hsem_batteries_forecast_reserve_pct": "Extra SoC percentage points above the Huawei end-of-discharge limit that intentional battery export must leave immediately after each export slot. For example, a 15% Huawei limit plus a 5% reserve protects 20% SoC. The reserve remains available for house load when actual demand exceeds the forecast. Set to 0 to disable (default).",
           "hsem_batteries_export_min_price": "Per-slot hard floor for intentional battery-to-grid export (issue #752). When > 0, HSEM forbids marking a slot as force_batteries_discharge when the export price is strictly below this floor - the battery can still serve house load in those slots. Reaching the threshold does NOT auto-trigger export; the optimizer still decides whether selling is worthwhile. Applies only to intentional battery-to-grid export, not to normal self-consumption, PV export, or PV charging. Set to 0 to disable (default)."
         },
         "description": "Configure excess battery export settings to automatically sell excess energy to the grid when economically beneficial.",

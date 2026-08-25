@@ -77,6 +77,12 @@ class FinancialTracker:
     _last_export_sample_at: datetime | None = field(default=None, repr=False)
     _last_import_price: float | None = field(default=None, repr=False)
     _last_export_price: float | None = field(default=None, repr=False)
+    # Price authority sampled at the same endpoint as each meter baseline.
+    # Timed production accumulation prices the following physical interval at
+    # this left-endpoint price. Keep the channels independent because either
+    # meter or either price source can disappear without the other one.
+    _last_import_price_available: bool = field(default=False, repr=False)
+    _last_export_price_available: bool = field(default=False, repr=False)
 
     daily_log: dict[str, FinancialDayEntry] = field(default_factory=dict)
     today: str = ""
@@ -187,6 +193,8 @@ class FinancialTracker:
         grid_export_energy_kwh: float | None = None,
         import_price: float = 0.0,
         export_price: float = 0.0,
+        import_price_available: bool = True,
+        export_price_available: bool = True,
         *,
         sample_time: datetime | None = None,
         max_gap_seconds: float | None = None,
@@ -198,8 +206,23 @@ class FinancialTracker:
         without replaying the gap at one current price. Untimed calls preserve
         the legacy direct-call behaviour and use the supplied price immediately.
 
+        Args:
+            grid_import_energy_kwh: Cumulative grid import meter reading (kWh).
+            grid_export_energy_kwh: Cumulative grid export meter reading (kWh).
+            import_price: Import spot price at ``sample_time`` (currency/kWh).
+            export_price: Export spot price at ``sample_time`` (currency/kWh).
+            import_price_available: Whether the import price is authoritative.
+            export_price_available: Whether the export price is authoritative.
+            sample_time: Timestamp of the cumulative meter sample. When
+                supplied, only a contiguous interval is priced.
+            max_gap_seconds: Largest sample gap that may be priced at the
+                current interval price.
+
         Returns:
             True when every present meter channel was temporally contiguous.
+            Price authority is checked independently and can still make a
+            contiguous interval intentionally unpriced. False means at least
+            one reading was used only to establish a fresh meter baseline.
         """
         sample_key: datetime | None = None
         if sample_time is not None and sample_time.tzinfo is not None:
@@ -215,6 +238,12 @@ class FinancialTracker:
                 max_gap_seconds is None or elapsed <= max(float(max_gap_seconds), 0.0)
             )
 
+        def sampled_price(price: float, available: bool) -> tuple[float | None, bool]:
+            """Normalise one endpoint price without conflating zero and missing."""
+            if not math.isfinite(price):
+                return None, False
+            return float(price), bool(available)
+
         channel_continuity: list[bool] = []
 
         if grid_import_energy_kwh is not None:
@@ -225,8 +254,14 @@ class FinancialTracker:
                 interval_price = (
                     import_price if sample_time is None else self._last_import_price
                 )
+                interval_price_available = (
+                    import_price_available
+                    if sample_time is None
+                    else self._last_import_price_available
+                )
                 if (
                     delta > 1e-9
+                    and interval_price_available
                     and interval_price is not None
                     and math.isfinite(interval_price)
                 ):
@@ -234,9 +269,10 @@ class FinancialTracker:
             self._last_import_energy_kwh = grid_import_energy_kwh
             if sample_key is not None:
                 self._last_import_sample_at = sample_key
-                self._last_import_price = (
-                    float(import_price) if math.isfinite(import_price) else None
-                )
+                (
+                    self._last_import_price,
+                    self._last_import_price_available,
+                ) = sampled_price(import_price, import_price_available)
 
         if grid_export_energy_kwh is not None:
             is_contiguous = contiguous(self._last_export_sample_at)
@@ -246,8 +282,14 @@ class FinancialTracker:
                 interval_price = (
                     export_price if sample_time is None else self._last_export_price
                 )
+                interval_price_available = (
+                    export_price_available
+                    if sample_time is None
+                    else self._last_export_price_available
+                )
                 if (
                     delta > 1e-9
+                    and interval_price_available
                     and interval_price is not None
                     and math.isfinite(interval_price)
                 ):
@@ -255,9 +297,10 @@ class FinancialTracker:
             self._last_export_energy_kwh = grid_export_energy_kwh
             if sample_key is not None:
                 self._last_export_sample_at = sample_key
-                self._last_export_price = (
-                    float(export_price) if math.isfinite(export_price) else None
-                )
+                (
+                    self._last_export_price,
+                    self._last_export_price_available,
+                ) = sampled_price(export_price, export_price_available)
 
         return all(channel_continuity) if channel_continuity else True
 
@@ -369,6 +412,8 @@ class FinancialTracker:
             ),
             "_last_import_price": self._last_import_price,
             "_last_export_price": self._last_export_price,
+            "_last_import_price_available": self._last_import_price_available,
+            "_last_export_price_available": self._last_export_price_available,
             "today": self.today,
             "daily_log": [
                 e.as_dict()
@@ -423,6 +468,14 @@ class FinancialTracker:
         )
         tracker._last_import_price = parse_price(data.get("_last_import_price"))
         tracker._last_export_price = parse_price(data.get("_last_export_price"))
+        tracker._last_import_price_available = bool(
+            data.get("_last_import_price_available", False)
+            and tracker._last_import_price is not None
+        )
+        tracker._last_export_price_available = bool(
+            data.get("_last_export_price_available", False)
+            and tracker._last_export_price is not None
+        )
 
         daily_list = data.get("daily_log", [])
         if isinstance(daily_list, list):

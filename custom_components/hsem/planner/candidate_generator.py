@@ -38,6 +38,7 @@ Candidates produced
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -121,6 +122,51 @@ __all__ = [
     "CandidatePlan",
     "generate_candidates",
 ]
+
+
+def _forecast_export_reserve_kwh(inp: PlannerInput, usable_kwh: float) -> float:
+    """Return model kWh protected from deliberate battery export.
+
+    The configured percentage is expressed as absolute SoC points above the
+    Huawei hardware end-of-discharge limit. The MILP inventory origin may
+    already be raised by the dynamic discharge floor, so only the remaining
+    distance from that effective floor to the configured target is protected.
+    """
+
+    def _finite(value: float | None, default: float) -> float:
+        if value is None:
+            return default
+        try:
+            parsed = float(value)
+        except TypeError, ValueError:
+            return default
+        return parsed if math.isfinite(parsed) else default
+
+    model_usable_kwh = max(_finite(usable_kwh, 0.0), 0.0)
+    rated_kwh = max(_finite(inp.battery_rated_capacity_kwh, 0.0), 0.0)
+    if model_usable_kwh <= 1e-9 or rated_kwh <= 1e-9:
+        return 0.0
+
+    hardware_floor_pct = min(
+        max(_finite(inp.battery_end_of_discharge_soc_pct, 0.0), 0.0),
+        100.0,
+    )
+    maximum_soc_pct = min(
+        max(_finite(inp.battery_max_soc_pct, 100.0), hardware_floor_pct),
+        100.0,
+    )
+    dynamic_floor_pct = _finite(
+        inp.dynamic_discharge_floor_pct,
+        hardware_floor_pct,
+    )
+    effective_floor_pct = min(
+        max(dynamic_floor_pct, hardware_floor_pct), maximum_soc_pct
+    )
+    configured_pct = min(max(_finite(inp.battery_forecast_reserve_pct, 0.0), 0.0), 50.0)
+    target_soc_pct = min(hardware_floor_pct + configured_pct, maximum_soc_pct)
+    reserve_kwh = rated_kwh * max(target_soc_pct - effective_floor_pct, 0.0) / 100.0
+    return min(reserve_kwh, model_usable_kwh)
+
 
 # The charge and discharge slot counts are derived dynamically from battery
 # capacity (see _apply_aggressive_strategy).
@@ -298,6 +344,7 @@ def generate_candidates(
             inp.battery_export_min_price,
             depreciation_export_floor,
         )
+        forecast_export_reserve_kwh = _forecast_export_reserve_kwh(inp, usable_kwh)
 
         milp_result = solve_milp(
             baseline_slots,
@@ -318,13 +365,14 @@ def generate_candidates(
             main_fuse_phases=inp.main_fuse_phases,
             max_grid_export_power_kw=inp.max_grid_export_power_kw,
             battery_export_min_price=effective_battery_export_floor,
+            battery_export_forecast_reserve_kwh=forecast_export_reserve_kwh,
             excess_export_discharge_buffer_pct=(inp.excess_export_discharge_buffer_pct),
         )
         log_planner(
             "debug",
             "[gen] MILP solve called  cycle_cost=%.6f  no_export=%s  "
             "excess_export_enabled=%s  min_export_price=%.4f  "
-            "battery_export_min_price=%.4f  ev_configs=%d",
+            "battery_export_min_price=%.4f  forecast_export_reserve=%.3fkWh  ev_configs=%d",
             effective_cycle_cost,
             not inp.excess_export_enabled,
             inp.excess_export_enabled,
@@ -338,6 +386,7 @@ def generate_candidates(
                 ),
             ),
             inp.battery_export_min_price,
+            forecast_export_reserve_kwh,
             len(ev_configs) if ev_configs else 0,
         )
         if milp_result is not None:

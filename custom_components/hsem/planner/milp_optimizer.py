@@ -12,6 +12,7 @@ repository's 30 KB file limit.
 
 from __future__ import annotations
 
+import math
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -19,7 +20,7 @@ from custom_components.hsem.models.ev_config import EVConfig
 from custom_components.hsem.planner._scipy_probe import (  # noqa: F401
     is_scipy_available,
 )
-from custom_components.hsem.utils.datetime_utils import as_tz
+from custom_components.hsem.utils.datetime_utils import as_tz, slot_contains
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import clamp_efficiency
 
@@ -59,6 +60,7 @@ def solve_milp(
     main_fuse_phases: int = 3,
     max_grid_export_power_kw: float | None = None,
     battery_export_min_price: float = 0.0,
+    battery_export_forecast_reserve_kwh: float = 0.0,
     excess_export_discharge_buffer_pct: float = 0.0,
 ) -> tuple[list[PlannedSlot], dict] | None:
     """Solve the LP and return a deep-copy slot list with MILP recommendations.
@@ -181,6 +183,7 @@ def solve_milp(
         "max_chg=%.3f  max_dis=%s  cycle_cost=%.6f  "
         "chg_eff=%.2f  dis_eff=%.2f  discount=%.4f  repl_price=%s  "
         "no_export=%s  min_export_price=%.4f  battery_export_min_price=%.4f  "
+        "export_buffer=%.2f%%  forecast_reserve=%.3fkWh  "
         "fuse=%s",
         len(slots),
         current_kwh,
@@ -199,6 +202,8 @@ def solve_milp(
         no_export,
         min_export_price,
         battery_export_min_price,
+        excess_export_discharge_buffer_pct,
+        battery_export_forecast_reserve_kwh,
         (
             f"{main_fuse_amps:.1f}A/{main_fuse_phases}ph"
             if main_fuse_amps is not None
@@ -325,21 +330,34 @@ def solve_milp(
             ):
                 active_evs.append(ev)
         if active_evs:
-            # Recompute net_load without EV planned loads
-            net_load = np.array(
-                [
-                    slots[i].avg_house_consumption_kwh
-                    - slots[i].solcast_pv_estimate_kwh
-                    for i in future_idx
-                ],
-                dtype=float,
-            )
+            # Recompute the pure-house baseline before adding the MILP's EV
+            # variables.  Accounted heuristic EV load is already embedded in
+            # the house forecast and must be removed, except for a known live
+            # session that current-slot injection already subtracted.
+            active_net_load: list[float] = []
+            for slot_i in future_idx:
+                slot = slots[slot_i]
+                accounted_to_remove = max(slot.ev_accounted_load_kwh, 0.0)
+                if slot_contains(slot.start, slot.end, now) and any(
+                    ev.current_session_removed_from_base for ev in active_evs
+                ):
+                    # Live injection already turned avg_house into a pure-house
+                    # current-slot projection by subtracting every known session.
+                    # The heuristic accounted value may use a different power,
+                    # so subtracting any of it again would invent PV headroom.
+                    accounted_to_remove = 0.0
+                active_net_load.append(
+                    slot.avg_house_consumption_kwh
+                    - accounted_to_remove
+                    - slot.solcast_pv_estimate_kwh
+                )
+            net_load = np.asarray(active_net_load, dtype=float)
             pv_avail = np.maximum(-net_load, 0.0)
             base_load = np.maximum(net_load, 0.0)
             log_planner(
                 "debug",
                 "[milp] EV co-optimisation enabled: %d active EV(s), "
-                "net_load rebuilt without pre-computed EV loads",
+                "net_load rebuilt without double-counted EV loads",
                 len(active_evs),
             )
         else:
@@ -510,6 +528,14 @@ def solve_milp(
         base_load=base_load,
     )
 
+    try:
+        forecast_export_reserve_kwh = float(battery_export_forecast_reserve_kwh)
+    except TypeError, ValueError:
+        forecast_export_reserve_kwh = 0.0
+    if not math.isfinite(forecast_export_reserve_kwh):
+        forecast_export_reserve_kwh = 0.0
+    forecast_export_reserve_kwh = min(max(forecast_export_reserve_kwh, 0.0), usable_kwh)
+
     constraints = _build_constraints(
         m,
         n_vars,
@@ -551,6 +577,7 @@ def solve_milp(
         battery_export_off=battery_export_off,
         export_mode_off=export_mode_off,
         excess_export_discharge_buffer_pct=excess_export_discharge_buffer_pct,
+        forecast_reserve_kwh=forecast_export_reserve_kwh,
         grid_flow_mode_off=grid_flow_mode_off,
         grid_import_ub_per_slot=grid_import_ub_per_slot,
         grid_export_ub_per_slot=grid_export_ub_per_slot,

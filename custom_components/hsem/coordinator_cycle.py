@@ -435,6 +435,13 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
         accepted_plan_state = self._capture_accepted_plan_state()
         now = hsem_now()
 
+        # Anchor the solar corrector's slot-distance math to this cycle's
+        # physical time so DST folds and mid-cycle replans compute the true
+        # elapsed-slot distance, not the list position (issue #815).
+        getattr(self, "_solar_corrector", SolarForecastCorrector()).set_reference_time(
+            now
+        )
+
         try:
             # Phases 1-7: collect live state, populate consumption/prices/solcast.
             consumption_ok, state = await self._async_collect_and_populate(now)

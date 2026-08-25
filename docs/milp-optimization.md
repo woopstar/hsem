@@ -312,6 +312,24 @@ the reserve and no-export mode can suppress battery export without restricting
 ordinary PV export. Grouping changes only checkpoint preprocessing and adds no
 variables or rows beyond the per-slot source/reserve formulation.
 
+**Battery export forecast reserve (issue #807, Stage 1):**
+
+An independent, opt-in reserve (`hsem_batteries_forecast_reserve_pct`, 0–50 %,
+default 0 = disabled) adds one row per slot, active whenever
+`forecast_reserve_kwh > 0`:
+
+```text
+SoC[t] >= forecast_reserve_kwh - usable_kwh * (1 - z_export[t])
+```
+
+Unlike the checkpoint reserve, this row is indexed by the *same* slot `t`, so
+it binds the SoC immediately after the exporting slot itself — a later PV or
+grid refill can never justify spending it first. `forecast_reserve_kwh` is
+computed from the configured percentage above the effective (dynamic-floor
+aware) discharge floor, so it never double-counts SoC already protected by
+the dynamic floor. See `docs/planner-spec.md` § *Battery export forecast
+reserve* for the full derivation.
+
 **Battery export minimum price floor (issue #752):**
 
 For each slot $t$, when `battery_export_min_price > 0` and the slot's **raw** `p_exp[t] < battery_export_min_price` (evaluated before the `min_export_price` and export-≤-import clamps):

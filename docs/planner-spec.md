@@ -2054,6 +2054,81 @@ preprocessing only; it adds no extra rows beyond the existing per-slot reserve
 formulation and does not alter house self-consumption, EV demand, export caps,
 price floors, or hardware/dynamic SoC floors.
 
+### Battery export forecast reserve (issue #807, Stage 1)
+
+`hsem_batteries_forecast_reserve_pct` (0–50 %, default 0 = disabled) is an
+opt-in, absolute-SoC-points reserve above Huawei's hardware end-of-discharge
+floor that intentional battery export must retain **immediately after the
+exporting slot itself** — unlike the checkpoint reserve above, a later
+forecast PV/grid refill can never justify spending it first. Ordinary
+household self-consumption may still use the energy when actual demand
+exceeds forecast; direct PV export is unaffected.
+
+`_forecast_export_reserve_kwh()` (`planner/candidate_generator.py`) converts
+the configured percentage into model kWh:
+
+```text
+target_soc_pct     = min(hardware_floor_pct + configured_pct, maximum_soc_pct)
+effective_floor_pct = clamp(dynamic_floor_pct, hardware_floor_pct, maximum_soc_pct)
+reserve_kwh         = rated_kwh * max(target_soc_pct - effective_floor_pct, 0) / 100
+reserve_kwh         = min(reserve_kwh, usable_kwh)
+```
+
+Only the remaining distance from the *effective* (dynamic-floor-aware) origin
+to the configured target is protected, so a dynamic discharge floor already
+raised above the hardware floor is never double-counted against this reserve.
+
+The MILP (`planner/milp/_export_reserve.py`) enforces this with one row per
+slot, independent of the checkpoint-reserve rows, active whenever
+`battery_export_forecast_reserve_kwh > 0`:
+
+```text
+SoC[t] >= forecast_reserve_kwh - usable_kwh * (1 - z_export[t])
+```
+
+Because the row is indexed by the *same* slot's `z_export[t]`, it only binds
+the SoC immediately after a slot in which battery-origin export occurred — a
+later slot with no battery export is free to draw the battery down further
+for self-consumption. Diagnostics expose
+`battery_export_forecast_reserve_active`, `..._kwh`, `..._slots`, and
+`..._min_post_export_soc_kwh`.
+
+#### Dynamic discharge floor normalization
+
+`_resolve_effective_discharge_floor_pct()` (`planner/engine_core.py`)
+normalizes the hardware floor, the dynamic discharge floor, and the
+configured maximum SoC into one finite, bounded triple before any of them
+reach `usable_capacity`, `CostWeights`, or candidate selection:
+
+```text
+hardware_floor_pct = clamp(battery_end_of_discharge_soc_pct, 0, 100)
+maximum_soc_pct     = clamp(battery_max_soc_pct, hardware_floor_pct, 100)
+effective_floor_pct = clamp(dynamic_discharge_floor_pct or hardware_floor_pct,
+                             hardware_floor_pct, maximum_soc_pct)
+```
+
+This closes a latent gap where a stale or oversized dynamic-floor estimate
+could produce an effective floor above the battery's own ceiling
+(`effective_floor_pct > maximum_soc_pct`), which would make the SoC bounds
+fed to `usable_capacity` and the MILP internally inconsistent. For a
+well-formed configuration (hardware floor and max SoC already within
+`[0, 100]` and consistent with each other) this is behaviour-preserving.
+
+#### Invariants for tests
+
+- `battery_forecast_reserve_pct = 0` (default) never activates the reserve
+  mechanism and is fully backward compatible.
+- A material battery-export slot's post-export SoC never falls below
+  `forecast_reserve_kwh` while the reserve is active.
+- The dynamic floor and the forecast reserve never protect the same SoC
+  points twice.
+- `hardware_floor_pct <= effective_floor_pct <= maximum_soc_pct` always holds,
+  even with a stale or out-of-range dynamic-floor estimate.
+- A genuine `0` value for `battery_soc_pct`, `battery_end_of_discharge_soc_pct`,
+  `excess_export_discharge_buffer_pct`, or `battery_forecast_reserve_pct` must
+  survive config plumbing unchanged — it must never be silently replaced by a
+  fallback default (`x or default` treats `0.0` as falsy).
+
 ### Missing future data handling
 
 For every day in the horizon the engine detects and surfaces missing price
