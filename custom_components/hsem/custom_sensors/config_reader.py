@@ -385,13 +385,19 @@ def build_sensor_config(
     cfg.batteries_enable_excess_export = bool(
         get_config_value(config_entry, "hsem_batteries_enable_excess_export")
     )
+    _excess_export_discharge_buffer = convert_to_float(
+        get_config_value(config_entry, "hsem_batteries_excess_export_discharge_buffer")
+    )
     cfg.batteries_excess_export_discharge_buffer = (
-        convert_to_float(
-            get_config_value(
-                config_entry, "hsem_batteries_excess_export_discharge_buffer"
-            )
-        )
-        or 10.0
+        _excess_export_discharge_buffer
+        if _excess_export_discharge_buffer is not None
+        else 10.0
+    )
+    _forecast_reserve_pct = convert_to_float(
+        get_config_value(config_entry, "hsem_batteries_forecast_reserve_pct")
+    )
+    cfg.batteries_forecast_reserve_pct = (
+        _forecast_reserve_pct if _forecast_reserve_pct is not None else 0.0
     )
     # Per-slot hard floor for intentional battery-to-grid export (issue #752).
     # 0.0 = disabled — fully backward compatible.

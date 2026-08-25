@@ -263,19 +263,29 @@ def build_planner_input(
             live_solar_w = live_power_estimate.solar_power_w
             _live_solar_available = True
 
+    excess_export_buffer_pct = convert_to_float(
+        cfg.batteries_excess_export_discharge_buffer
+    )
+    forecast_reserve_pct = convert_to_float(cfg.batteries_forecast_reserve_pct)
+    battery_soc_pct = convert_to_float(live.huawei_batteries_soc_pct)
+    battery_end_of_discharge_soc_pct = convert_to_float(
+        live.huawei_batteries_end_of_discharge_soc_pct
+    )
+
     return PlannerInput(
         now_iso=now.isoformat(),
         interval_minutes=cfg.recommendation_interval_minutes,
         interval_length_hours=cfg.recommendation_interval_length,
-        battery_soc_pct=convert_to_float(live.huawei_batteries_soc_pct) or 50.0,
+        battery_soc_pct=battery_soc_pct if battery_soc_pct is not None else 50.0,
         battery_rated_capacity_kwh=(
             convert_to_float(live.huawei_batteries_rated_capacity_wh) or 0.0
         )
         / 1000.0,
-        battery_end_of_discharge_soc_pct=convert_to_float(
-            live.huawei_batteries_end_of_discharge_soc_pct or 5.0
-        )
-        or 5.0,
+        battery_end_of_discharge_soc_pct=(
+            battery_end_of_discharge_soc_pct
+            if battery_end_of_discharge_soc_pct is not None
+            else 5.0
+        ),
         battery_max_soc_pct=convert_to_float(
             live.huawei_batteries_charging_cutoff_capacity_pct
         )
@@ -303,10 +313,9 @@ def build_planner_input(
         solcast_slots=solcast_slots,
         battery_schedules=battery_schedules,
         excess_export_enabled=bool(cfg.batteries_enable_excess_export),
-        excess_export_discharge_buffer_pct=convert_to_float(
-            cfg.batteries_excess_export_discharge_buffer
-        )
-        or 10.0,
+        excess_export_discharge_buffer_pct=(
+            excess_export_buffer_pct if excess_export_buffer_pct is not None else 10.0
+        ),
         excess_export_price_threshold=calculate_recommended_threshold(
             purchase_price=convert_to_float(cfg.batteries_purchase_price) or 0.0,
             expected_cycles=_cycles if _cycles is not None else 6000,
@@ -320,6 +329,9 @@ def build_planner_input(
         # Per-slot hard floor for intentional battery-to-grid export (issue #752).
         battery_export_min_price=(
             convert_to_float(cfg.batteries_export_min_price) or 0.0
+        ),
+        battery_forecast_reserve_pct=(
+            forecast_reserve_pct if forecast_reserve_pct is not None else 0.0
         ),
         export_min_price=convert_to_float(cfg.export_electricity_min_price) or 0.0,
         main_fuse_amps=(float(cfg.main_fuse_amps) if cfg.main_fuse_amps > 0 else None),

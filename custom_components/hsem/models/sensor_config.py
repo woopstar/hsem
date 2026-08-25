@@ -123,6 +123,9 @@ class SensorConfig:
 
         batteries_enable_excess_export: Enable opportunistic forced-discharge export.
         batteries_excess_export_discharge_buffer: Safety buffer percentage to keep.
+        batteries_forecast_reserve_pct: Extra SoC percentage points above the
+            Huawei end-of-discharge limit that intentional battery export must
+            leave available for unexpected local demand.
         batteries_export_min_price: Per-slot hard floor for intentional
             battery-to-grid export (issue #752).  ``0.0`` disables the floor.
         batteries_wait_mode_behavior: How ``batteries_wait_mode`` is interpreted.
@@ -236,6 +239,10 @@ class SensorConfig:
     # Excess export
     batteries_enable_excess_export: bool = False
     batteries_excess_export_discharge_buffer: float = 10.0
+    #: Extra SoC percentage points above Huawei's end-of-discharge limit that
+    #: intentional battery export must leave after each export slot. Ordinary
+    #: self-consumption may use this energy when actual demand exceeds forecast.
+    batteries_forecast_reserve_pct: float = 0.0
     #: Per-slot hard floor for intentional battery-to-grid export (issue #752).
     #: When ``> 0`` and a slot's export price is strictly below this floor the
     #: MILP caps the battery discharge variable so the battery can only cover
