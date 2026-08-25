@@ -532,7 +532,18 @@ buffer is too high, excess energy stays in the battery.
 - **Check:** Is the feature enabled? What is the `discharge_buffer` value?
 - **Fix:** Enable the feature and set a reasonable buffer for your needs.
 
-**7g. Export physically blocked at inverter level**
+**7g. Forecast reserve holding back more export than expected**
+
+`hsem_batteries_forecast_reserve_pct` (issue #807, default 0 = disabled)
+reserves extra SoC points above the hardware floor immediately after each
+export slot — unlike the discharge buffer above, a later PV/grid refill
+cannot release it early. A high value can noticeably reduce export volume.
+
+- **Check:** Batteries Excess Export config step → _Forecast reserve_.
+- **Fix:** Lower the percentage, or set to 0 to disable if you don't need
+  protection against a wrong PV forecast.
+
+**7h. Export physically blocked at inverter level**
 
 HSEM writes `set_maximum_feed_grid_power_percent` to 0 % when export is
 not allowed for the current slot. If the inverter's own export limit is also

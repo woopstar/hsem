@@ -61,6 +61,7 @@ def _build_constraints(
     battery_export_off: int = 0,
     export_mode_off: int = 0,
     excess_export_discharge_buffer_pct: float = 0.0,
+    forecast_reserve_kwh: float = 0.0,
     grid_flow_mode_off: int = 0,
     grid_import_ub_per_slot: np.ndarray | None = None,  # type: ignore[name-defined]
     grid_export_ub_per_slot: np.ndarray | None = None,  # type: ignore[name-defined]
@@ -555,17 +556,25 @@ def _build_constraints(
     # Direct PV export remains available independently through ge[t].
     # ------------------------------------------------------------------
     from custom_components.hsem.planner.milp._export_reserve import (
+        _add_battery_export_reserve_constraints,
         _next_solar_refill_checkpoints,
     )
 
     reserve_pct = max(min(excess_export_discharge_buffer_pct, 100.0), 0.0)
     reserve_active = not no_export and reserve_pct > 1e-9 and usable_kwh > 1e-9
-    checkpoints = _next_solar_refill_checkpoints(pv_avail)
-    source_rows = 3 * m + (m if reserve_active else 0)
-    reserve_rows = m if reserve_active else 0
+    forecast_reserve_active = (
+        not no_export and forecast_reserve_kwh > 1e-9 and usable_kwh > 1e-9
+    )
+    any_reserve_active = reserve_active or forecast_reserve_active
+    checkpoints = _next_solar_refill_checkpoints(pv_avail) if reserve_active else None
+
+    # Source-split rows: battery export cannot exceed discharge, aggregate
+    # export is bounded by PV surplus plus battery export, and primary
+    # discharge must serve local load when exporting.
+    source_rows = 3 * m + (m if any_reserve_active else 0)
     old_rows = A_ub.shape[0]
-    extended_a = np.zeros((old_rows + source_rows + reserve_rows, n_vars))
-    extended_b = np.zeros(old_rows + source_rows + reserve_rows)
+    extended_a = np.zeros((old_rows + source_rows, n_vars))
+    extended_b = np.zeros(old_rows + source_rows)
     extended_a[:old_rows, :] = A_ub
     extended_b[:old_rows] = b_ub
     A_ub = extended_a
@@ -588,24 +597,34 @@ def _build_constraints(
         A_ub[row, battery_export_off + t] = -discharge_eff
         b_ub[row] = base_load[t]
         row += 1
-        if reserve_active:
+        if any_reserve_active:
             # Material battery export activates the binary mode.
             A_ub[row, battery_export_off + t] = 1.0
             A_ub[row, export_mode_off + t] = -max_dis
             row += 1
 
-    if reserve_active:
-        buffer_kwh = usable_kwh * reserve_pct / 100.0
-        for t in range(m):
-            checkpoint = int(checkpoints[t])
-            # SoC[checkpoint] >= buffer - usable*(1-z[t])
-            # -> -Σec + Σed + usable*z <= current + usable - buffer
-            for k in range(checkpoint + 1):
-                A_ub[row, ec_off + k] = -1.0
-                A_ub[row, ed_off + k] = 1.0
-            A_ub[row, export_mode_off + t] = usable_kwh
-            b_ub[row] = current_kwh + usable_kwh - buffer_kwh
-            row += 1
+    _reserve_input = {"A_ub": A_ub, "b_ub": b_ub}
+
+    # Conditional reserve checkpoint and immediate forecast-reserve rows.
+    if any_reserve_active:
+        _reserve_output = _add_battery_export_reserve_constraints(
+            _reserve_input,
+            m=m,
+            n_vars=n_vars,
+            ec_off=ec_off,
+            ed_off=ed_off,
+            export_mode_off=export_mode_off,
+            usable_kwh=usable_kwh,
+            current_kwh=current_kwh,
+            discharge_eff=discharge_eff,
+            checkpoints=checkpoints,
+            reserve_kwh=usable_kwh * reserve_pct / 100.0 if reserve_active else 0.0,
+            immediate_reserve_kwh=forecast_reserve_kwh
+            if forecast_reserve_active
+            else 0.0,
+        )
+        A_ub = _reserve_output["A_ub"]
+        b_ub = _reserve_output["b_ub"]
 
     # ------------------------------------------------------------------
     # Variable bounds: all ≥ 0, charge/discharge capped by power limits.
@@ -629,7 +648,7 @@ def _build_constraints(
         current_kwh=current_kwh,
         usable_kwh=usable_kwh,
         no_export=no_export,
-        reserve_active=reserve_active,
+        reserve_active=reserve_active or forecast_reserve_active,
         fuse_active=fuse_active,
         ev_amp_plan=ev_amp_plan,
     )
@@ -646,4 +665,6 @@ def _build_constraints(
         "hard_grid_import_cap_per_slot_kwh": hard_grid_import_cap_per_slot_kwh,
         "battery_export_reserve_active": reserve_active,
         "export_reserve_checkpoints": checkpoints,
+        "battery_export_forecast_reserve_active": forecast_reserve_active,
+        "battery_export_forecast_reserve_kwh": forecast_reserve_kwh,
     }

@@ -20,6 +20,7 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_batteries_discharge_efficiency": 98,
     "hsem_batteries_enable_excess_export": False,
     "hsem_batteries_excess_export_discharge_buffer": 10,
+    "hsem_batteries_forecast_reserve_pct": 0.0,
     # Per-slot hard floor for intentional battery-to-grid export (issue #752).
     # 0.0 = disabled (default) — fully backward compatible.
     "hsem_batteries_export_min_price": 0.0,

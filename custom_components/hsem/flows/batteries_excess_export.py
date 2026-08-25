@@ -67,6 +67,22 @@ async def get_batteries_excess_export_step_schema(  # NOSONAR
                 }
             ),
             vol.Required(
+                "hsem_batteries_forecast_reserve_pct",
+                default=get_config_value(
+                    config_entry, "hsem_batteries_forecast_reserve_pct"
+                ),
+            ): selector(
+                {
+                    "number": {
+                        "min": 0,
+                        "max": 50,
+                        "step": 1,
+                        "mode": "slider",
+                        "unit_of_measurement": PERCENTAGE,
+                    }
+                }
+            ),
+            vol.Required(
                 "hsem_batteries_export_min_price",
                 default=get_config_value(
                     config_entry,
@@ -109,6 +125,13 @@ async def validate_batteries_excess_export_input(
         max_price=50.0,
         allow_negative=False,
     )
+    forecast_reserve_errors = validate_price(
+        user_input,
+        "hsem_batteries_forecast_reserve_pct",
+        min_price=0.0,
+        max_price=50.0,
+        allow_negative=False,
+    )
     export_floor_errors = validate_price(
         user_input,
         "hsem_batteries_export_min_price",
@@ -116,4 +139,8 @@ async def validate_batteries_excess_export_input(
         max_price=2.0,
         allow_negative=False,
     )
-    return merge_errors(buffer_errors, export_floor_errors)
+    return merge_errors(
+        buffer_errors,
+        forecast_reserve_errors,
+        export_floor_errors,
+    )

@@ -12,6 +12,7 @@ repository's 30 KB file limit.
 
 from __future__ import annotations
 
+import math
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -59,6 +60,7 @@ def solve_milp(
     main_fuse_phases: int = 3,
     max_grid_export_power_kw: float | None = None,
     battery_export_min_price: float = 0.0,
+    battery_export_forecast_reserve_kwh: float = 0.0,
     excess_export_discharge_buffer_pct: float = 0.0,
 ) -> tuple[list[PlannedSlot], dict] | None:
     """Solve the LP and return a deep-copy slot list with MILP recommendations.
@@ -181,6 +183,7 @@ def solve_milp(
         "max_chg=%.3f  max_dis=%s  cycle_cost=%.6f  "
         "chg_eff=%.2f  dis_eff=%.2f  discount=%.4f  repl_price=%s  "
         "no_export=%s  min_export_price=%.4f  battery_export_min_price=%.4f  "
+        "export_buffer=%.2f%%  forecast_reserve=%.3fkWh  "
         "fuse=%s",
         len(slots),
         current_kwh,
@@ -199,6 +202,8 @@ def solve_milp(
         no_export,
         min_export_price,
         battery_export_min_price,
+        excess_export_discharge_buffer_pct,
+        battery_export_forecast_reserve_kwh,
         (
             f"{main_fuse_amps:.1f}A/{main_fuse_phases}ph"
             if main_fuse_amps is not None
@@ -523,6 +528,14 @@ def solve_milp(
         base_load=base_load,
     )
 
+    try:
+        forecast_export_reserve_kwh = float(battery_export_forecast_reserve_kwh)
+    except TypeError, ValueError:
+        forecast_export_reserve_kwh = 0.0
+    if not math.isfinite(forecast_export_reserve_kwh):
+        forecast_export_reserve_kwh = 0.0
+    forecast_export_reserve_kwh = min(max(forecast_export_reserve_kwh, 0.0), usable_kwh)
+
     constraints = _build_constraints(
         m,
         n_vars,
@@ -564,6 +577,7 @@ def solve_milp(
         battery_export_off=battery_export_off,
         export_mode_off=export_mode_off,
         excess_export_discharge_buffer_pct=excess_export_discharge_buffer_pct,
+        forecast_reserve_kwh=forecast_export_reserve_kwh,
         grid_flow_mode_off=grid_flow_mode_off,
         grid_import_ub_per_slot=grid_import_ub_per_slot,
         grid_export_ub_per_slot=grid_export_ub_per_slot,

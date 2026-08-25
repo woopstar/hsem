@@ -13,6 +13,7 @@ from custom_components.hsem.coordinator_builder import (
     build_planner_input,
 )
 from custom_components.hsem.models.live_state import LiveState
+from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.sensor_config import SensorConfig
 
 
@@ -83,3 +84,59 @@ def test_builder_prefers_bounded_effective_ev_soc() -> None:
 
     assert planner_input.ev_planned_load_enabled is True
     assert planner_input.ev_planned_load_current_soc_pct == pytest.approx(45.5)
+
+
+class TestFalsyZeroPreservation:
+    """A genuine 0 %/0.0 configured value must survive the builder unchanged.
+
+    ``convert_to_float(...) or <default>`` silently replaces a valid 0 with
+    the fallback because ``0.0`` is falsy in Python. The builder must check
+    ``is not None`` instead (issue #807).
+    """
+
+    @staticmethod
+    def _build(cfg: SensorConfig, live: LiveState) -> PlannerInput:
+        return build_planner_input(
+            cfg=cfg,
+            live=live,
+            hourly_recommendations=[],
+            batteries_schedules=[],
+            previous_winner_name=None,
+            previous_winner_score=0.0,
+        )
+
+    def test_battery_soc_pct_zero_is_preserved(self) -> None:
+        live = LiveState()
+        live.huawei_batteries_soc_pct = 0.0
+        planner_input = self._build(SensorConfig(), live)
+        assert planner_input.battery_soc_pct == pytest.approx(0.0)
+
+    def test_battery_soc_pct_missing_falls_back_to_default(self) -> None:
+        live = LiveState()
+        live.huawei_batteries_soc_pct = None
+        planner_input = self._build(SensorConfig(), live)
+        assert planner_input.battery_soc_pct == pytest.approx(50.0)
+
+    def test_end_of_discharge_soc_pct_zero_is_preserved(self) -> None:
+        live = LiveState()
+        live.huawei_batteries_end_of_discharge_soc_pct = 0.0
+        planner_input = self._build(SensorConfig(), live)
+        assert planner_input.battery_end_of_discharge_soc_pct == pytest.approx(0.0)
+
+    def test_excess_export_discharge_buffer_pct_zero_is_preserved(self) -> None:
+        cfg = SensorConfig()
+        cfg.batteries_excess_export_discharge_buffer = 0.0
+        planner_input = self._build(cfg, LiveState())
+        assert planner_input.excess_export_discharge_buffer_pct == pytest.approx(0.0)
+
+    def test_forecast_reserve_pct_zero_is_preserved(self) -> None:
+        cfg = SensorConfig()
+        cfg.batteries_forecast_reserve_pct = 0.0
+        planner_input = self._build(cfg, LiveState())
+        assert planner_input.battery_forecast_reserve_pct == pytest.approx(0.0)
+
+    def test_forecast_reserve_pct_configured_value_is_plumbed_through(self) -> None:
+        cfg = SensorConfig()
+        cfg.batteries_forecast_reserve_pct = 12.5
+        planner_input = self._build(cfg, LiveState())
+        assert planner_input.battery_forecast_reserve_pct == pytest.approx(12.5)
