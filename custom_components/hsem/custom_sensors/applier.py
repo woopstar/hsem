@@ -363,7 +363,8 @@ async def async_apply_battery_settings(
             )
             if forcible_results:
                 summary.results.extend(forcible_results)
-            return summary
+                if any(r.status == ApplyStatus.FAILED for r in forcible_results):
+                    return summary
 
         case Recommendations.BatteriesWaitMode.value:
             # A held idle MILP slot normally uses MSC with a verified 0 W
