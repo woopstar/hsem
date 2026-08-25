@@ -293,44 +293,22 @@ It is enforced in two places:
 Negative export prices always override the cap and write `GRID_EXPORT_LIMIT_WATT`
 to block all export, because exporting then costs money.
 
-## MILP Export-≤-Import Clamp (Issue #635 — Unbounded LP Fix)
+## MILP Grid Flow Direction Exclusivity (Issues #635 / #655 — Unbounded LP Fix)
 
-In `milp_optimizer.py`, after the `min_export_price` clamp, `p_exp` is
-further clamped so it never exceeds `p_imp` for the same slot:
+The historical `np.minimum(p_exp, p_imp)` and `np.maximum(p_imp, 0.0)`
+price-sanitisation clamps (issues #635 and #655) have been **removed**.
+Unbounded wash-flow directions are now closed structurally in the MILP
+by a binary `grid_flow_mode[t]` variable that makes import and export
+directionally mutually exclusive per slot. See `docs/planner-spec.md`
+(§"Signed-price boundedness") for the full description.
 
-```python
-p_exp = np.minimum(p_exp, p_imp)
-```
-
-This prevents an unbounded LP (HiGHS status=3) when any slot has
-`p_exp > p_imp`.  Without this clamp, the LP can drive both `gi[t]` and
-`ge[t]` to infinity (import cheap, export expensive) while the terms
-cancel in the energy-balance equality, causing `solve_milp()` to return
-`None` for the entire horizon.
-
-- This is applied **after** the `min_export_price` clamp.
-- A debug log line reports how many slots were clamped and the max delta.
-
-## MILP Negative-Import-Price Clamp (Issue #655 — Second Unbounded Direction)
-
-After the export-≤-import clamp, a second sanitisation step creates
-`p_imp_obj = np.maximum(p_imp, 0.0)` for the grid-import objective
-coefficient. Primary conversion efficiency is already physical in the energy
-balance and has no separate loss-price coefficient.  The original `p_imp` is preserved for the
-export-≤-import clamp and penalty scaling.
-
-When `p_imp[t] < 0`, the `gi[t]` objective coefficient becomes negative,
-incentivising the LP to import infinite energy.  `curt[t]` (zero objective
-cost) participates in the energy balance, so the LP can also import-and-
-curtail for unbounded profit even without `p_exp > p_imp`.
-
-- `p_imp_obj` ensures the LP never *wants* to import for the sake of a
-  negative price alone.
-- The terminal-SoC differential (issue #655/#638 regression) also uses
-  `p_imp_obj` so negative import prices don't inflate the terminal premium.
-- Both clamps together close all known unbounded LP directions.
-- These must **never** be silently reverted in future refactors — they are
-  solver-stability requirements, not cosmetic conveniences.
+- `planner/milp/_price_sanitise.py::sanitize_prices()` now returns finite
+  signed market prices unchanged (NaN→0 only); no `min`/`max` clamps.
+- Finite negative import prices correctly credit consumption in the
+  objective. Export prices above import no longer need clamping because
+  `grid_flow_mode[t]` prevents simultaneous import+export.
+- This is the authoritative mechanism — do **not** re-introduce the old
+  `np.minimum(p_exp, p_imp)` / `np.maximum(p_imp, 0.0)` clamps.
 
 ## MILP EV Discharge Guard + No-Export Cap (Issue #592)
 
@@ -960,6 +938,15 @@ served from the grid until the battery recovers.
 Regression tests: ``tests/test_coordinator_builder.py``,
 ``tests/sensors/test_applier.py::TestComputeEvDischargeCapW``.
 
+> **⚠️ DEPRECATION NOTE (2026-08-25, issue #817):**
+> Both "EV Discharge Cap" sections above describe `compute_ev_discharge_cap_w()`
+> and the historical-baseline machinery. The `fix/797-ev-dispatch-authoritative-solar-aware`
+> branch (issue #797) deletes this machinery outright — `force_max_discharge_power`
+> becomes a permission gated on actual active/planned EV state, not a
+> computed cap from live/readback values. **These two sections must be retired
+> once #797 merges.** Until then they still accurately describe the current
+> `main`-branch behaviour.
+
 ---
 
 ## Consumption Blend Peer-Median Clamp (issue #592, beta2)
@@ -1180,6 +1167,8 @@ architecture that does not exist here. Before re-attempting any port, remember:
 
 | Fork PR | Subject | Status for `main` |
 |---|---|---|
+| #2 | Complete standalone repository migration | **N/A** — fork-specific repo rename/metadata migration (manifest, ownership, CI workflows, release tooling). No planner or runtime code changes. Nothing to port. |
+| #3 | Update compatible dependencies for v7.0.2 | **N/A** — fork-specific dependency bump (HA 2026.8.2, NumPy 2.5.2, Ruff 0.16.3). This repo manages its own dependencies independently via Dependabot. |
 | #5 | ENTSO-E published-price backup | **Feature**, not a fix; new provider. Not needed — no request. The orphaned `models/price_source.py` stub was removed in PR #783. |
 | #7 | Remove unused controls + embedded OCPP | **Removal** — explicitly rejected (upstream ships OCPP, schedules, charge-rate learner). |
 | #9 / #22 | PowMr site-attribution / control stability | **Feature** — `origin/main` has no PowMr/secondary-storage subsystem at all. N/A. |
@@ -1189,18 +1178,18 @@ architecture that does not exist here. Before re-attempting any port, remember:
 | #17 | Harden MILP bounds layout | **Ported in PR #783** as `MilpBoundsBuilder` over a declared `MilpColumnLayout`: bounds are addressed by block name, and wrong offsets, overlaps, and unassigned columns all fail before the solve. |
 | #19 | Reject unavailable load + stale solves | **Already complete** — load fail-closed *and* stale-solve rejection are both native. `_update_generation` is captured per cycle and re-checked mid-solve and before publication, with `_restore_accepted_plan_state` rollback. Do not look for the fork's `_forecast_authority_generation` name; the local equivalent predates it. |
 | #21 | Coalesce boundary price refreshes | **Mostly N/A; the one real gap fixed in PR #783.** This repo drives replans from a periodic interval timer, not slot-boundary timers, so there is no boundary to coalesce. Clearing the pending flag inside the update lock was already native. The portable remainder was retrying a *failed* cycle when newer state is pending — previously the exception escaped and stranded `_event_update_pending`. Now bounded by `_MAX_FAILED_UPDATE_RETRIES`. |
-| #23 | Stabilize storage economics | **Not yet triaged in depth; no tracking issue exists.** Mixed: touches fork-only `secondary_storage.py`/`future_value.py`/`secondary_storage_applier.py` and 272 lines of the fork's still-monolithic `coordinator.py` (PowMr-coupled, likely N/A), but also `cost_function.py`, `cost_types.py`, `engine_core.py`, `milp/_objective.py`, `milp/_diagnostics.py`, `utils/misc.py` — generic planner files that may carry a portable fix. Needs a real investigation pass, and a tracking issue, before deciding. |
-| #24 | Harden safety and economic accounting | **Not yet triaged in depth; no tracking issue exists.** Very large (2910+/1036- across 74 files): `coordinator.py` (+1061), `financial_tracker.py` (+228 new), `prediction_tracker.py`, `working_mode_sensor.py`, and nearly every planner file. Title suggests real fixes, but the diff is entangled with the fork's monolithic coordinator and possibly fork-only `financial_tracker.py`. High effort to extract; needs a real investigation pass. |
+| #23 | Stabilize storage economics | **Mostly ported in PR #783** (`292afe3`, "harden planning safety, MILP bounds layout, and file limits"). The portable planner hunks (`cost_function.py`, `cost_types.py`, `engine_core.py`, `milp/_objective.py`, `milp/_diagnostics.py`, `utils/misc.py`) were extracted and landed. Fork-only files (`secondary_storage.py`, `future_value.py`, `secondary_storage_applier.py`, PowMr-coupled coordinator) are N/A. **Two real gaps remain**, tracked separately: issue #813 (price-availability gating in `FinancialTracker.accumulate()`) and issue #814 (EV `net_load` double-count when co-optimisation is active). |
+| #24 | Harden safety and economic accounting | **Mostly ported in PR #783** (`292afe3`, "harden planning safety, MILP bounds layout, and file limits"). The portable planner/tracking hunks (`financial_tracker.py`, `prediction_tracker.py`, planner files, tests) were extracted and landed. Fork-only entanglement (monolithic coordinator +2910 lines, PowMr-coupled applier) is N/A. **Two real gaps remain**, tracked separately: issue #813 (price-availability gating in `FinancialTracker.accumulate()`) and issue #814 (EV `net_load` double-count when co-optimisation is active). |
 | #26 | Model EV charger phase topology | **Ported** — tracked as issue #787, merged as PR #793 (`feat(ev): per-phase fuse constraints from charger phase topology`). File list matches almost exactly (`utils/phase_power.py`, `models/ev_config.py`, `flows/ev_planned_load_helpers.py`, `tests/planner/test_ev_charger_phase_topology.py`). |
 | #27 | Publish the charging ceiling and re-portion stranded energy | **Ported** — tracked as issue #788, merged as PR #794 (identical title). |
 | #28 | Make charging commands authoritative and executable | **Ported** — tracked as issue #789, merged as PR #796 (near-identical title, same file set: `ev_delivered_energy.py`, `integration_version.py`, `phase_power.py`, `milp/_write_results.py`, `engine_ev_milp.py`, `services.py`, `diagnostics.py`). |
-| #29 | Stabilize current-slot live power | **Partially ported — tracked/closed as issue #792.** Self-contained half: `utils/live_power.py` (`LivePowerEstimate`/`LivePowerWindow`, unwired), `PlannerInput.live_house_consumption_available` tri-state, `engine_population.py` honoring it (legacy `> 1e-9` fallback when `None`), and hardened `coordinator_builder._resolve_live_solar_measurement` / new `_resolve_live_house_measurement`. **Deliberately skipped and still absent:** the entire coordinator-level `LivePowerWindow` wiring — continuous sampling, replan gating, `_live_power_replanned_slot_start` and everything downstream of it. Verified 2026-08-24: `grep -n "live_power" coordinator.py` → zero matches. Anything that assumes this machinery exists (see #31/#797 below) is assuming a foundation that was never built, not just extending one. |
+| #29 | Stabilize current-slot live power | **Partially ported — tracked/closed as issue #792.** Self-contained half: `utils/live_power.py` (`LivePowerEstimate`/`LivePowerWindow`, unwired), `PlannerInput.live_house_consumption_available` tri-state, `engine_population.py` honoring it (legacy `> 1e-9` fallback when `None`), and hardened `coordinator_builder._resolve_live_solar_measurement` / new `_resolve_live_house_measurement`. **Coordinator-level `LivePowerWindow` wiring was previously absent but is now built from scratch on the `fix/797-ev-dispatch-authoritative-solar-aware` branch** (issue #797, COMMIT 3: `fc353133 feat(coordinator): build live-power replan budget from scratch`). Once #797 merges, the "unwired" gap in this row will close. |
 | #30 (`623269a2`) | Safely release current-slot SBU lock | **N/A — tracked/closed as issue #795, documented in PR #802.** Every hunk is cross-device Huawei/PowMr coordination: the `current_slot_sbu_allow_utility_escape` flag/MILP relaxation, `acquire_secondary_utility_authority`/`secondary_utility_authority_is_valid`, and the `working_mode_sensor.py` "stop PowMr Utility, then allow Huawei" resequencing all only mean something against a two-inverter setup this repo doesn't have. No self-contained half — re-verified 2026-08-24 directly against the live diff. Do not re-attempt without an explicit PowMr-support request. |
-| #31 | Make charging dispatch authoritative and solar-aware | **Investigated 2026-08-24 — tracked as issue #797, not started.** This is a genuine architectural improvement, not just a fix: it replaces the continuous-EV-variable-then-quantize-in-writeback approach (still native here, in `milp/_ev_quantize.py`/`_ev_power_writeout.py` from #796 — confirmed "pure move, no behaviour change" from the old heuristic) with solver-native semi-integer/semi-continuous MILP amp variables, eliminating the plan-vs-execution divergence class of bug by construction. Also includes a real discharge-cap-semantics fix (`force_max_discharge_power` becomes a permission gated on actual active/planned EV state, not a bare boolean override) and a coordinator replan-budget/reversal mechanism. **Real risk:** semi-integer variables are more expensive for HiGHS to solve than the LP relaxation, and the fork's own very next PR (#23, "separate solver and wall budgets") landed the day after this one — a strong signal they hit solve-time trouble from this exact change. **Broken prerequisite found 2026-08-24:** issue #797 lists "#792 merged" as satisfying its live-power-machinery dependency, but #792 was only *partially* ported (see #29 row above) — the coordinator-level replan-gating code #31 extends from "budget 1" to "budget 2" does not exist here at all. #797 needs rescoping (or a new prerequisite issue) before implementation starts, not a direct port of its COMMIT 3. Flagged as a comment on #797. |
+| #31 | Make charging dispatch authoritative and solar-aware | **Investigated 2026-08-24, updated 2026-08-25 — tracked as issue #797, branch in progress.** This is a genuine architectural improvement, not just a fix: it replaces the continuous-EV-variable-then-quantize-in-writeback approach (still native here, in `milp/_ev_quantize.py`/`_ev_power_writeout.py` from #796 — confirmed "pure move, no behaviour change" from the old heuristic) with solver-native semi-integer/semi-continuous MILP amp variables, eliminating the plan-vs-execution divergence class of bug by construction. Also includes a real discharge-cap-semantics fix (`force_max_discharge_power` becomes a permission gated on actual active/planned EV state, not a bare boolean override) and a coordinator replan-budget/reversal mechanism. The `fix/797-ev-dispatch-authoritative-solar-aware` branch has 5 commits implementing this: solver-native EV lattice (`535ad639`), authoritative discharge permission + export-hold (`4afcbb5d`), coordinator live-power replan budget from scratch (`fc353133` — **resolves the #29 coordinator-wiring prerequisite**), docs update (`fb5422af`), and MILP file-size refactor (`c60a24c4`). **`phase_charge_limiter.py` hunks are correctly out of scope** — fork-only PowMr runtime, no local equivalent. **Real risk** (unchanged): semi-integer variables are more expensive for HiGHS to solve than the LP relaxation, and the fork's own very next PR (#23, "separate solver and wall budgets") landed the day after this one — a strong signal they hit solve-time trouble from this exact change. |
 | #32 | Throttle live charging current safely | **Investigated 2026-08-24 — tracked as issue #798, not started.** The full live-throttling feature is PowMr-only (adds `current_slot_charge_current_limit_a`, gated on `SECONDARY_MODE_CHARGE` lock) and stays deferred, matching #30's pattern. But #798 correctly identifies that some of the underlying *bug-fix patterns* are hardware-agnostic and worth a design-review audit even without PowMr: (1) stop-before-reduce write ordering creating a self-defeating control-loop transient, (2) stale/missing telemetry falling through to a raw value instead of a monotonic never-increase fallback, (3) transition-reservation ordering when one device is written before another that shares fuse/phase headroom, (4) high-rate listener events routed to a lightweight path vs. dropped entirely. Correcting my earlier flat "N/A" verdict — #798's audit-vs-defer split is the right framing, not a blanket rejection. |
 | #33 | Dependabot: bump python-dependencies group | **N/A** — this repo runs its own independent Dependabot (see PRs #799/#800 bumping ruff/pytest-socket separately); the fork's dependency set and versions aren't a "port" target. No tracking issue, and none needed. |
 
-**Fork PR dependency graph (2026-08-24):** #26 → #27 → #28 form a chain ported in order (fork tags v7.2.0/v7.3.0/v7.3.1, tracked as #787/#788/#789, all merged). #29's self-contained core (#792) needs #26; its coordinator integration is still missing. #30 (#795) needs #26 + #29 and is N/A regardless. #31 (#797) as scoped needs #26 through #30, including the *unbuilt* coordinator half of #29 — the real blocker right now. #32 (#798) needs #26 + #29 + #30 for its full feature; its bug-fix-pattern audit half does not.
+**Fork PR dependency graph (2026-08-25):** #26 → #27 → #28 form a chain ported in order (fork tags v7.2.0/v7.3.0/v7.3.1, tracked as #787/#788/#789, all merged). #29's self-contained core (#792) needs #26; its coordinator integration is now built on the `fix/797-...` branch (issue #797, COMMIT 3). #30 (#795) needs #26 + #29 and is N/A regardless. #31 (#797) is in active development on its branch — the previously-blocked coordinator prerequisite is resolved; remaining work is review/merge. #23/#24 portable parts are in PR #783; gaps tracked as #813/#814. #32 (#798) needs #26 + #29 + #30 for its full feature; its bug-fix-pattern audit half does not.
 
 **Decision:** `origin/main` remains the baseline. Port only self-contained,
 upstream-relevant *fixes*; re-implement concrete bugs natively (with regression
