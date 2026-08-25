@@ -6,10 +6,17 @@ Extracted from ``applier.py`` to satisfy the repository's 30 KB /
 
 from __future__ import annotations
 
-from typing import Any
+import math
+from typing import TYPE_CHECKING, Any
 
-from custom_components.hsem.models.live_state import LiveState
+from custom_components.hsem.models.live_state import EVLiveState, LiveState
 from custom_components.hsem.models.sensor_config import SensorConfig
+from custom_components.hsem.utils.units import is_material_planned_energy_kwh
+
+if TYPE_CHECKING:
+    from custom_components.hsem.models.hourly_recommendation import (
+        HourlyRecommendation,
+    )
 
 
 def _fmt_live_power_w(power_w: float | None) -> str:
@@ -66,58 +73,67 @@ def _wait_mode_self_consumption_cap_w(
     return min(cap_w, max_discharge_power_w)
 
 
-def compute_ev_discharge_cap_w(
+def _is_positive_finite_number(value: object) -> bool:
+    """Return whether a value is a finite, positive non-boolean number."""
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(float(value))
+        and float(value) > 1e-9
+    )
+
+
+def _ev_is_active_or_planned(
     *,
-    live_net_w: float | None,
-    ev_power_available: bool,
-    historical_w: int,
-    sub_window_ws: list[int],
-) -> int:
-    """Compute the EV discharge cap in Watts (pure function, unit-testable).
+    ev: EVLiveState,
+    planned_power_w: object,
+) -> bool:
+    """Return whether this EV can currently create Huawei discharge demand.
 
-    The cap limits battery discharge to the house-only load while an EV is
-    charging, so 100 % of the EV load goes to the grid.
-
-    Selection rules:
-
-    - **Live reading available** (EV power sensor present): the historical
-      baseline is the stable reference — the cap **is** the baseline.  The
-      live reading (``house_w − ev_w``) must not move the cap in either
-      direction: downward it ratchets toward zero when the CT clamp and the
-      EV sensor disagree (beta8: 363→40 W staircase), and upward it swings
-      with ordinary house noise (cooking, heat pump cycles), slowly
-      draining the battery into what is supposed to be a grid-served EV
-      session (v6.2.0-beta1: 652→1968→928 W swings emptied the battery
-      before the 06:00 scheduled plan).  A short house spike covered from
-      the grid costs a few øre; an empty battery at 06:00 costs the whole
-      morning peak.
-    - **No live reading** (boolean-only EV sensor): fall back to the
-      smallest positive sub-window average — the 1d window recalibrates
-      fastest after an upgrade or sensor configuration change.
-    - **No history at all** (fresh install): trust the live reading.
-
-    Args:
-        live_net_w: ``net_consumption_w`` from the live state (EV power
-            already subtracted), or ``None``.
-        ev_power_available: Whether at least one EV power sensor reported
-            a positive reading this cycle.
-        historical_w: House baseline in Watts from the current slot's
-            weighted average (0 when unavailable).
-        sub_window_ws: Sub-window averages (1d/3d/7d/14d/weighted)
-            converted to Watts.
-
-    Returns:
-        The discharge cap in Watts (≥ 0).
+    Broader than "is charging right now": a positive planned command means
+    HSEM is about to command this charger, so its discharge permission must
+    already be enforced before the hardware catches up (issue #797).
     """
-    if live_net_w is not None and ev_power_available:
-        if historical_w > 0:
-            return historical_w
-        return int(max(live_net_w, 0.0))
-    best_w = 0
-    for w in sub_window_ws:
-        if w > 0 and (best_w == 0 or w < best_w):
-            best_w = w
-    return best_w
+    return (
+        ev.is_charging
+        or _is_positive_finite_number(ev.power_w)
+        or _is_positive_finite_number(planned_power_w)
+    )
+
+
+def _planned_ev_discharge_cap_w(
+    *,
+    planned_discharge_kwh: float,
+    slot_hours: float,
+    max_discharge_power_w: int,
+    ev_max_discharge_power_ws: tuple[int, ...],
+) -> int:
+    """Return the planned Huawei discharge rate bounded by every relevant ceiling.
+
+    Replaces the historical/live-net heuristic (``compute_ev_discharge_cap_w``)
+    with a permission-based ceiling (issue #797): once every active/planned EV
+    has explicitly opted in via ``force_max_discharge_power``, the cap is the
+    planner's own solved discharge rate for this slot, clamped to the
+    hardware maximum and to every opted-in EV's configured ceiling — never
+    more than what the plan and the user's configuration both allow.
+    """
+    if (
+        not math.isfinite(planned_discharge_kwh)
+        or planned_discharge_kwh <= 1e-9
+        or not math.isfinite(slot_hours)
+        or slot_hours <= 1e-9
+        or max_discharge_power_w <= 0
+        or not ev_max_discharge_power_ws
+    ):
+        return 0
+
+    planned_power_w = planned_discharge_kwh / slot_hours * 1000.0
+    cap_w = min(
+        planned_power_w,
+        float(max_discharge_power_w),
+        *(float(max(value, 0)) for value in ev_max_discharge_power_ws),
+    )
+    return max(math.floor(cap_w + 1e-9), 0)
 
 
 def _should_force_export_for_ev(
@@ -143,3 +159,45 @@ def _should_force_export_for_ev(
     ):
         return True
     return False
+
+
+def _primary_battery_hold(rec: HourlyRecommendation) -> bool:
+    """Return whether the solved plan explicitly holds the primary battery.
+
+    Upstream persists this as a dedicated ``primary_battery_hold`` field on
+    the recommendation (survives display relabelling such as
+    ``EVSmartCharging``); that field does not exist here.  Locally it is
+    derived instead: a slot where the solved plan scheduled neither charge
+    nor discharge for the primary battery — a near-zero
+    ``batteries_charged_kwh`` and ``batteries_discharged_kwh`` pair — is the
+    same explicit zero-energy decision, and relabelling never touches these
+    energy fields, so the derivation survives relabelling too (issue #797).
+    """
+    return not is_material_planned_energy_kwh(
+        rec.batteries_charged_kwh
+    ) and not is_material_planned_energy_kwh(rec.batteries_discharged_kwh)
+
+
+def _held_planned_export_is_authoritative(rec: HourlyRecommendation) -> bool:
+    """Return whether a held slot must preserve its solved grid export.
+
+    A MILP idle slot can deliberately export surplus PV while holding
+    primary battery energy at zero. The display recommendation may still be
+    ``wait`` (or relabelled for a managed EV), so the aggregate grid-export
+    flow is the execution authority once the slot is confirmed held.
+
+    Upstream also requires ``price_actionable``/``export_price_available``
+    (a price-freshness/authority signal this repository has no equivalent
+    for) before trusting the export figure; that extra guard is not applied
+    here.  Only the hold + materiality checks — both derivable from data
+    already on the recommendation — gate this decision locally.
+    """
+    if not _primary_battery_hold(rec):
+        return False
+    try:
+        planned_export_kwh = float(rec.grid_export_kwh)
+    except TypeError, ValueError:
+        return False
+    return math.isfinite(planned_export_kwh) and is_material_planned_energy_kwh(
+        planned_export_kwh
+    )

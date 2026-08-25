@@ -51,6 +51,7 @@ from custom_components.hsem.utils.capacity_learner import CapacityLearner
 from custom_components.hsem.utils.dynamic_floor import DynamicDischargeFloor
 from custom_components.hsem.utils.ev_delivered_energy import EVDeliveredEnergyTracker
 from custom_components.hsem.utils.forecast_tracker import ForecastTracker
+from custom_components.hsem.utils.live_power import LivePowerEstimate, LivePowerWindow
 from custom_components.hsem.utils.prediction_tracker import PredictionTracker
 from custom_components.hsem.utils.solar_corrector import SolarForecastCorrector
 
@@ -117,6 +118,18 @@ class CoordinatorSharedState(_Base):
     _last_planner_output: PlannerOutput | None
     _listener_unsubs: list
     _live: LiveState | None
+    _live_power_window: LivePowerWindow
+    _live_power_source_signature: tuple | None
+    _last_plan_live_power_estimate: LivePowerEstimate | None
+    _live_power_mismatch_since: datetime | None
+    _live_power_mismatch_slot_start: datetime | None
+    _live_power_replan_pending_slot: datetime | None
+    _live_power_replanned_slot_start: datetime | None
+    _live_power_replan_count: int
+    _live_power_first_replan_direction: int | None
+    _live_power_estimate_this_cycle: LivePowerEstimate | None
+    _live_power_replan_request_slot_this_cycle: datetime | None
+    _live_power_timer_unsub: Callable[[], None] | None
     _load_forecast_recovery_replan_pending: bool
     _ml_predictor: ConsumptionPredictor | None
     _net_consumption_ema: float | None
@@ -154,6 +167,38 @@ class CoordinatorSharedState(_Base):
     def _apply_planner_output(self, output: Any) -> None: ...
 
     def _persist_plan_state(self, *args: Any, **kwargs: Any) -> None: ...
+
+    # Methods provided by CoordinatorLivePowerMixin.
+    def _seed_live_power_window(
+        self, now: datetime, cfg: Any, live: Any
+    ) -> LivePowerEstimate:
+        raise NotImplementedError
+
+    def _actionable_live_power_replan_slot(
+        self, now: datetime, estimate: LivePowerEstimate
+    ) -> datetime | None: ...
+
+    def _accept_live_power_plan_estimate(
+        self,
+        estimate: LivePowerEstimate,
+        *,
+        plan_now: datetime,
+        requested_slot: datetime | None,
+    ) -> None: ...
+
+    def _live_power_ev_ambiguous(self, cfg: Any, live: Any) -> bool:
+        raise NotImplementedError
+
+    def _live_power_window_instance(self) -> LivePowerWindow:
+        raise NotImplementedError
+
+    def _clear_live_power_replan_state(self) -> None: ...
+
+    def _reset_live_power_replan_budget(self) -> None: ...
+
+    def reset_live_power_state(self) -> None: ...
+
+    async def async_monitor_live_power(self, now: datetime | None = None) -> None: ...
 
     @staticmethod
     def _ev_effective_energy_kwh(

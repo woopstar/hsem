@@ -53,12 +53,12 @@ def resolve_session_windows(
     - Unmanaged (``fixed_session_only``): HSEM cannot command this charger
       at all, so the whole bounded two-hour forecast window is certain,
       uncontrollable demand — unchanged from the original fix.
-    - Managed: HSEM can start/stop it through the bridge each cycle, so only
-      the already-running remainder of the CURRENT slot is certain.
-      Reserving further slots would lock in energy the planner has no
-      reason to commit to and cannot cancel.  The pinned amount is also
-      capped at the EV's own remaining target so a session that already
-      satisfies its target does not force additional certain charging.
+    - Managed: HSEM can start/stop it through the bridge each cycle, and the
+      solver-native whole-amp lattice (issue #797) directly constrains the
+      next command it can issue, so measured session power is telemetry and
+      never pins any slot's bounds -- including the current one.  Pinning it
+      here would let stale/instantaneous demand override the amp lattice's
+      own bounds instead of letting the solver choose the next command.
     """
     slot_hours = (
         slot_duration_hours(slots[future_idx[0]].start, slots[future_idx[0]].end)
@@ -104,22 +104,10 @@ def resolve_session_windows(
                     # crosses the two-hour boundary so its energy still maps
                     # back to the observed power instead of a diluted command.
                     hours_remaining -= float(available_hours)
-            elif m:
-                remaining_target_dc = max(
-                    min(ev.target_kwh, ev.capacity_kwh) - ev.initial_soc_kwh,
-                    0.0,
-                )
-                duration_scale = min(
-                    max(float(available_slot_hours[0]) / max(slot_hours, 1e-9), 0.0),
-                    1.0,
-                )
-                fixed_dc[0] = min(
-                    session_power_kw
-                    * float(available_slot_hours[0])
-                    * ev.charger_efficiency,
-                    ev.max_charge_per_slot * duration_scale,
-                    remaining_target_dc,
-                )
+            # Managed sessions pin no slot at all (issue #797): the amp
+            # lattice (planner/milp/_ev_amp_lattice.py) is the sole
+            # authority for the next command, and measured session power
+            # only informs the current-slot discharge-cap fail-safe there.
             fixed_slots = {t: dc for t, dc in fixed_dc.items() if dc > 1e-9}
             if fixed_slots:
                 session_dc_by_ev[ev_idx] = fixed_slots

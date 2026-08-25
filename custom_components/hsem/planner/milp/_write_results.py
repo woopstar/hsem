@@ -17,12 +17,6 @@ from custom_components.hsem.planner.cost_helpers import slot_grid_cash_flow_cost
 from custom_components.hsem.planner.milp._ev_power_writeout import (
     _write_ev_power_fields_to_slots,
 )
-from custom_components.hsem.planner.milp._ev_quantize import (
-    _quantize_one_ev_allocation,
-    _redistribute_below_minimum_power,
-)
-from custom_components.hsem.utils.logger import log_planner
-from custom_components.hsem.utils.phase_power import ev_phase_share_for_slot
 from custom_components.hsem.utils.units import ev_dc_to_ac_kwh, slot_duration_hours
 
 #: Minimum kWh a slot's EV allocation must clear to be considered "occupied"
@@ -54,12 +48,7 @@ def _write_milp_results_to_slots(
     usable_kwh: float,
     curt_sol_full: np.ndarray,  # type: ignore[name-defined]
     *,
-    gi_off: int | None = None,
-    grid_import_cap_per_slot_kwh: np.ndarray | None = None,  # type: ignore[name-defined]
-    max_phase_import_per_slot_kwh: float | None = None,
     ev_writeback_diagnostics: dict[str, dict[str, object]] | None = None,
-    session_slots_by_ev: dict[int, set[int]] | None = None,
-    available_slot_hours: np.ndarray | None = None,  # type: ignore[name-defined]
     _min_action_kwh: float = 1e-4,
 ) -> list[PlannedSlot]:
     """Write MILP solution into a deep-copied slot list.
@@ -88,17 +77,6 @@ def _write_milp_results_to_slots(
         current_kwh: Battery energy at horizon start (above floor, kWh).
         usable_kwh: Maximum usable energy (kWh).
         curt_sol_full: Solved curtailment per LP slot (kWh).
-        session_slots_by_ev: Optional per-EV fixed-slot mapping.  When
-            present, it is authoritative over the aggregate
-            ``session_slots_set`` for per-charger concentration/
-            quantization decisions, so an unmanaged EV's certainty window
-            cannot make a different, managed EV's flexible slots look
-            session-fixed (issue #789).
-        available_slot_hours: Optional per-LP-slot remaining duration
-            (hours).  Only the current, partially elapsed slot differs from
-            a full slot; every later slot's value equals the full slot
-            duration.  Defaults to the full slot duration for every slot
-            when omitted, matching pre-#789 behaviour.
         _min_action_kwh: Minimum kWh threshold for action slots.
         Recommendations: The canonical Recommendations enum.
 
@@ -116,193 +94,18 @@ def _write_milp_results_to_slots(
         if future_idx
         else 0.0
     )
-    # Only the current, partially elapsed slot can differ from a full slot;
-    # every later slot's available duration equals the full slot duration.
-    # DC-energy-to-power conversions must use this per-slot value, not the
-    # full slot duration, or a session/quantized amount sized for a short
-    # remaining window gets converted back with the wrong denominator
-    # (issue #789).
-    hours_by_slot: dict[int, float] = (
-        {t: float(available_slot_hours[t]) for t in range(m)}
-        if available_slot_hours is not None
-        else dict.fromkeys(range(m), full_slot_hours)
-    )
-
-    # Concentrate flexible EV fragments below startup power into already
-    # allocated slots without exceeding per-slot EV or grid-import headroom.
+    # Managed EV charge is already a validated whole-amp MILP decision
+    # (issue #797): the solver-native amp lattice (planner/milp/
+    # _ev_amp_lattice.py) links ev_c[t] to an executable amp command by
+    # equality, so it is never moved or quantised after solving here.
+    # Concentration/redistribution/quantization (below) remain available to
+    # direct compatibility callers that supply a legacy continuous
+    # allocation, but production write-out never calls them.
     for ev_idx, ev in enumerate(active_evs):
         if ev.fixed_session_only:
             continue
-        # Concentration (the donor-scan below) is a no-op without a startup
-        # minimum: with minimum_dc == 0 no fragment is ever "too small to
-        # run".  Whole-amp quantization further below must still run for
-        # every managed EV regardless, so the guard only excludes unmanaged
-        # (fixed_session_only) sessions, never a zero-minimum charger
-        # (issue #789).
-        # Fixed-session energy is per EV, not a site-wide time mask (issue
-        # #789).  Otherwise an unmanaged second charger's certainty window
-        # makes a managed first charger look session-fixed for the same
-        # slots and silently converts its flexible allocations into
-        # measured demand during writeback.
-        ev_session_slots = (
-            session_slots_by_ev.get(ev_idx, set())
-            if session_slots_by_ev is not None
-            else session_slots_set
-        )
         ev_off = ev_var_offsets[ev_idx]
-        values = executable_x[ev_off : ev_off + m].copy()
-        original_total_dc = float(np.sum(values))
-        original_values_snapshot = values.copy()
-        minimum_dc = (
-            ev.charger_min_power_w / 1000.0 * full_slot_hours * ev.charger_efficiency
-        )
-        donor_energy = 0.0
-        for t, value in enumerate(values):
-            if _min_action_kwh < value < minimum_dc - 1e-9:
-                donor_energy += float(value)
-                values[t] = 0.0
-
-        def _current_gi_kwh(t: int) -> float:
-            """Return slot ``t``'s grid import, adjusted for this EV's shift.
-
-            ``executable_x[gi_off + t]`` is the solved value from before
-            concentration/quantization moved any of this EV's own energy
-            between slots; it is never re-solved afterwards.  Assuming
-            everything else in the slot's energy balance is unchanged, a
-            shift of this EV's own allocation moves grid import by the same
-            delta, so the live grid import is approximated by applying that
-            delta to the stale solved value (issue #789).  Only called when
-            ``gi_off is not None`` (guarded by the caller).
-            """
-            assert gi_off is not None
-            return float(executable_x[gi_off + t]) + (
-                float(values[t]) - float(original_values_snapshot[t])
-            )
-
-        def _room_dc(t: int) -> float:
-            """Headroom slot ``t`` can accept without breaking its own caps."""
-            room_dc = max(ev.max_charge_per_slot - float(values[t]), 0.0)
-            if grid_import_cap_per_slot_kwh is not None and gi_off is not None:
-                grid_room_ac = max(
-                    float(grid_import_cap_per_slot_kwh[t]) - _current_gi_kwh(t),
-                    0.0,
-                )
-                room_dc = min(room_dc, grid_room_ac * ev.charger_efficiency)
-            if max_phase_import_per_slot_kwh is not None:
-                # Per-phase fuse headroom (EV charger phase topology): the
-                # same envelope as the hard constraint rows — gi/3 +
-                # (share - 1/3)·E_ac ≤ cap — so concentration cannot merge
-                # fragments into a slot whose phase envelope would exceed
-                # the single-phase fuse.  Each AC kW of added EV draw
-                # raises the envelope by exactly ``share``.
-                share = ev_phase_share_for_slot(active_evs=active_evs)[
-                    1 if ev.is_second else 0
-                ]
-                gi_kwh = (
-                    _current_gi_kwh(t)
-                    if grid_import_cap_per_slot_kwh is not None and gi_off is not None
-                    else 0.0
-                )
-                envelope_now = (
-                    gi_kwh / 3.0
-                    + (share - 1.0 / 3.0) * float(values[t]) / ev.charger_efficiency
-                )
-                phase_room_ac = max(
-                    (max_phase_import_per_slot_kwh - envelope_now) / max(share, 1e-9),
-                    0.0,
-                )
-                room_dc = min(room_dc, phase_room_ac * ev.charger_efficiency)
-            return room_dc
-
-        recipients = sorted(
-            (t for t in range(m) if t not in ev_session_slots),
-            key=lambda t: float(values[t]),
-            reverse=True,
-        )
-        for t in recipients:
-            if donor_energy <= 1e-9:
-                break
-            added = min(_room_dc(t), donor_energy)
-            values[t] += added
-            donor_energy -= added
-
-        # Only deadline-driven charging may open a further slot for a
-        # stranded residue — past-target charging is opportunistic
-        # surplus-only demand with no target to protect.
-        reportioned_slot_i: int | None = None
-        if ev.deadline_slot is not None and not ev.charge_past_target:
-            deadline_lp_limit = max(0, min(int(ev.deadline_slot), m - 1))
-            values_by_slot = {t: float(values[t]) for t in range(m)}
-            values_by_slot, donor_energy, reportioned_lp_t = (
-                _redistribute_below_minimum_power(
-                    values_by_slot,
-                    minimum_dc=minimum_dc,
-                    deadline_lp_limit=deadline_lp_limit,
-                    session_slots_set=ev_session_slots,
-                    room_dc=_room_dc,
-                    donor_energy=donor_energy,
-                )
-            )
-            if reportioned_lp_t is not None:
-                for t, v in values_by_slot.items():
-                    values[t] = v
-                reportioned_slot_i = future_idx[reportioned_lp_t]
-
-        # Whole-amp quantization (issue #789): the continuous LP result is
-        # only a budget.  An external current controller can only command
-        # whole amps, so the published energy must be what that controller
-        # can actually deliver — not an idealised continuous value the
-        # ceiling sensor then floors on display, silently diverging from the
-        # cost/energy accounting.
-        (
-            values,
-            session_quantization_residue_dc,
-            unplaceable_quant_dc,
-            reportioned_quant_slots,
-            effective_min_power_w,
-        ) = _quantize_one_ev_allocation(
-            values,
-            ev=ev,
-            ev_session_slots=ev_session_slots,
-            m=m,
-            full_slot_hours=full_slot_hours,
-            hours_by_slot=hours_by_slot,
-            room_dc=_room_dc,
-            min_action_kwh=_min_action_kwh,
-        )
-
-        executable_x[ev_off : ev_off + m] = values
-        if reportioned_slot_i is not None:
-            log_planner(
-                "debug",
-                "[milp] EV%s: re-portioned into slot %d to keep the deadline "
-                "target reachable at the %.0f W minimum",
-                "2" if ev.is_second else "1",
-                reportioned_slot_i,
-                ev.charger_min_power_w,
-            )
-        if reportioned_quant_slots:
-            log_planner(
-                "debug",
-                "[milp] EV%s: re-portioned into %d additional slot(s) %s for "
-                "whole-amp quantization at the %.0f W minimum",
-                "2" if ev.is_second else "1",
-                len(reportioned_quant_slots),
-                reportioned_quant_slots,
-                effective_min_power_w,
-            )
-        total_unplaceable_quant_dc = (
-            unplaceable_quant_dc + session_quantization_residue_dc
-        )
-        if total_unplaceable_quant_dc > 1e-6:
-            log_planner(
-                "debug",
-                "[milp] EV%s: %.3f kWh could not be placed at or above the "
-                "charger minimum of %.0f W after whole-amp quantization",
-                "2" if ev.is_second else "1",
-                total_unplaceable_quant_dc,
-                effective_min_power_w,
-            )
+        values = executable_x[ev_off : ev_off + m]
         if ev_writeback_diagnostics is not None:
             delivered_by_deadline = float(np.sum(values))
             if ev.deadline_slot is not None:
@@ -317,14 +120,8 @@ def _write_milp_results_to_slots(
                 "total_dc_kwh": round(float(np.sum(values)), 4),
                 "deadline_penalty_kwh": round(deadline_penalty, 4),
                 "deadline_met": deadline_penalty < 1e-6,
-                "unplaceable_dc_kwh": round(
-                    max(original_total_dc - float(np.sum(values)), 0.0),
-                    4,
-                ),
-                "reportioned_slots": (
-                    (1 if reportioned_slot_i is not None else 0)
-                    + len(reportioned_quant_slots)
-                ),
+                "unplaceable_dc_kwh": 0.0,
+                "reportioned_slots": 0,
             }
 
     if ev_writeback_diagnostics is not None:

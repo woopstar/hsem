@@ -93,6 +93,8 @@ def build_milp_column_layout(
     num_evs: int,
     *,
     fuse_active: bool,
+    ev_amp_widths: Sequence[int | None] | None = None,
+    ev_on_widths: Sequence[int | None] | None = None,
 ) -> MilpColumnLayout:
     """Return the canonical column layout for one MILP model.
 
@@ -105,6 +107,15 @@ def build_milp_column_layout(
         num_evs: Number of active EVs, each contributing a charge block and a
             single deadline-penalty column.
         fuse_active: Whether the aggregate fuse penalty block is present.
+        ev_amp_widths: Per-EV width of the executable whole-amp lattice
+            block (``ev_{i}_amps``), or ``None`` to omit the block for that
+            EV (unmanaged/fixed-session-only EVs never charge on command).
+            ``None`` (the default) omits every EV's amp block, matching
+            pre-issue-#797 behaviour with no semi-integer amp lattice.
+        ev_on_widths: Per-EV width of the conditional discharge-permission
+            binary block (``ev_{i}_on``), or ``None`` to omit it for that
+            EV (full discharge permission, or no discharge permission at
+            all — both cases need no conditional binary).
 
     Returns:
         A validated :class:`MilpColumnLayout`.
@@ -128,6 +139,17 @@ def build_milp_column_layout(
         blocks.append((f"ev_{ev_idx}_target_penalty", 1))
     if fuse_active:
         blocks.append(("grid_import_penalty", m))
+    # Managed-EV amp/on columns are declared last, after every physical
+    # block, so intermediate dense-matrix extenders built against the
+    # pre-amp-lattice width stay valid for every row that never references
+    # these EV-only columns (issue #797).
+    for ev_idx in range(num_evs):
+        amp_width = ev_amp_widths[ev_idx] if ev_amp_widths is not None else None
+        if amp_width:
+            blocks.append((f"ev_{ev_idx}_amps", amp_width))
+        on_width = ev_on_widths[ev_idx] if ev_on_widths is not None else None
+        if on_width:
+            blocks.append((f"ev_{ev_idx}_on", on_width))
     return MilpColumnLayout(blocks)
 
 
@@ -327,6 +349,13 @@ class MilpOffsets(NamedTuple):
     grid_flow_mode_off: int
     ev_var_offsets: list[int]
     ev_pen_offsets: list[int]
+    #: Per-EV offset of the ``ev_{i}_amps`` block, or ``None`` when that EV
+    #: has no executable whole-amp lattice (unmanaged/fixed-session-only).
+    ev_amp_offsets: list[int | None]
+    #: Per-EV offset of the ``ev_{i}_on`` conditional discharge-permission
+    #: binary, or ``None`` when that EV needs no conditional binary (full
+    #: discharge permission, or none at all).
+    ev_on_offsets: list[int | None]
 
 
 def derive_milp_offsets(layout: MilpColumnLayout, num_evs: int) -> MilpOffsets:
@@ -352,5 +381,13 @@ def derive_milp_offsets(layout: MilpColumnLayout, num_evs: int) -> MilpOffsets:
         ev_var_offsets=[layout.offset(f"ev_{i}_charge") for i in range(num_evs)],
         ev_pen_offsets=[
             layout.offset(f"ev_{i}_target_penalty") for i in range(num_evs)
+        ],
+        ev_amp_offsets=[
+            layout.offset(f"ev_{i}_amps") if layout.has(f"ev_{i}_amps") else None
+            for i in range(num_evs)
+        ],
+        ev_on_offsets=[
+            layout.offset(f"ev_{i}_on") if layout.has(f"ev_{i}_on") else None
+            for i in range(num_evs)
         ],
     )

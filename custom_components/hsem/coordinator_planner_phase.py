@@ -8,6 +8,7 @@ order, so ``self`` and every attribute reference are unchanged.
 
 from __future__ import annotations
 
+import math
 from dataclasses import replace
 from datetime import datetime
 
@@ -52,6 +53,7 @@ from custom_components.hsem.utils.datetime_utils import (
     as_tz,
     utc_key,
 )
+from custom_components.hsem.utils.live_power import LivePowerEstimate
 from custom_components.hsem.utils.logger import (
     async_log,
     set_hsem_verbose,
@@ -133,11 +135,26 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
         ):
             ev_session_kw["ev_second"] = (live.ev_second.power_w or 0.0) / 1000.0
 
+        # Seed the rolling live-power window from this cycle's immutable
+        # snapshot (issue #797). The dedicated fast timer
+        # (coordinator_live_power.py) keeps the window fresh between full
+        # cycles; this seed also lets a slow-cadence cycle (no fast timer
+        # sample in between) still see an up-to-date estimate.
+        live_power_estimate = self._seed_live_power_window(now, cfg, live)
+        live_power_replan_request_slot = self._actionable_live_power_replan_slot(
+            now, live_power_estimate
+        )
+        # Stashed for the cycle's plan-acceptance hook (coordinator_cycle.py),
+        # which runs after this method returns.
+        self._live_power_estimate_this_cycle = live_power_estimate
+        self._live_power_replan_request_slot_this_cycle = live_power_replan_request_slot
+
         # Determine whether a full re-plan is needed.
         should_replan = self._should_replan(
             live,
             now,
             load_forecast_signature=self._current_load_forecast_signature,
+            live_power_estimate=live_power_estimate,
         )
 
         if should_replan:
@@ -151,6 +168,7 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
                 ev_session_kw=ev_session_kw if ev_session_kw else None,
                 dynamic_discharge_floor_pct=_dynamic_floor_pct,
                 capacity_learner=getattr(self, "_capacity_learner", CapacityLearner()),
+                live_power_estimate=live_power_estimate,
             )
             planner_input.solar_corrector = self._solar_corrector
             self._last_planner_input = planner_input
@@ -374,37 +392,96 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
         live: LiveState,
         now: datetime,
     ) -> bool:
-        """Return whether credited energy materially changed since acceptance."""
+        """Return whether credited energy materially changed since acceptance.
+
+        Two independent triggers:
+
+        - **Target-crossing bypass** (issue #797): the whole-amp MILP lattice
+          may deliberately plan up to one activation quantum beyond the
+          exact target so it never promises an avoidable deadline miss (see
+          the target-cap relaxation in ``planner/milp/_constraints.py``).
+          As soon as delivered-energy crosses the accepted HSEM target, that
+          bounded excess must stop immediately — neither the ordinary
+          one-minute cadence gate nor the 0.25 kWh materiality threshold
+          below applies to this safety transition.
+        - **Materiality threshold**: outside a target crossing, a stale
+          reported SoC only forces a replan once accumulated delivered
+          energy diverges from the accepted baseline by a material amount,
+          gated by the minimum cadence below.
+        """
         last_plan_at = self._last_plan_slot_start
+        elapsed_seconds: float | None = None
         if last_plan_at is not None:
             try:
                 elapsed_seconds = (utc_key(now) - utc_key(last_plan_at)).total_seconds()
             except TypeError, ValueError:
-                return False
-            if elapsed_seconds < EV_DELIVERED_ENERGY_REPLAN_MIN_SECONDS:
-                return False
+                elapsed_seconds = None
 
-        for label, ev_live, capacity_kwh, baseline_kwh in (
+        observations: list[tuple[str, float, float]] = []
+        for label, ev_live, capacity_kwh, baseline_kwh, target_soc_pct in (
             (
                 "EV",
                 live.ev,
                 float(self._cfg.ev_planned_load_battery_capacity_kwh),
                 getattr(self, "_last_plan_ev_effective_energy_kwh", None),
+                getattr(self, "_last_plan_ev_target_soc", None),
             ),
             (
                 "EV2",
                 live.ev_second,
                 float(self._cfg.ev_second_planned_load_battery_capacity_kwh),
-                getattr(
-                    self,
-                    "_last_plan_ev_second_effective_energy_kwh",
-                    None,
-                ),
+                getattr(self, "_last_plan_ev_second_effective_energy_kwh", None),
+                getattr(self, "_last_plan_ev2_target_soc", None),
             ),
         ):
             current_kwh = self._ev_effective_energy_kwh(ev_live, capacity_kwh)
             if not ev_live.is_charging or current_kwh is None or baseline_kwh is None:
                 continue
+            try:
+                baseline = float(baseline_kwh)
+            except TypeError, ValueError:
+                continue
+            if not math.isfinite(baseline):
+                continue
+
+            target_kwh: float | None = None
+            if target_soc_pct is not None:
+                try:
+                    target_pct = float(target_soc_pct)
+                except TypeError, ValueError:
+                    target_pct = None
+                if (
+                    target_pct is not None
+                    and math.isfinite(target_pct)
+                    and 0.0 <= target_pct <= 100.0
+                ):
+                    target_kwh = target_pct / 100.0 * capacity_kwh
+
+            observations.append((label, current_kwh, baseline))
+
+            if (
+                target_kwh is not None
+                and baseline + 1e-9 < target_kwh
+                and current_kwh + 1e-9 >= target_kwh
+            ):
+                async_log(
+                    "debug",
+                    "[replan] %s effective battery energy crossed the accepted "
+                    "target (%.3f → %.3f kWh, target %.3f kWh) — re-planning.",
+                    label,
+                    baseline,
+                    current_kwh,
+                    target_kwh,
+                )
+                return True
+
+        if last_plan_at is not None and (
+            elapsed_seconds is None
+            or elapsed_seconds < EV_DELIVERED_ENERGY_REPLAN_MIN_SECONDS
+        ):
+            return False
+
+        for label, current_kwh, baseline_kwh in observations:
             delta_kwh = current_kwh - baseline_kwh
             if abs(delta_kwh) + 1e-9 >= EV_DELIVERED_ENERGY_REPLAN_DELTA_KWH:
                 async_log(
@@ -427,6 +504,7 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
         now: datetime,
         *,
         load_forecast_signature: LoadForecastSignature | None = None,
+        live_power_estimate: LivePowerEstimate | None = None,
     ) -> bool:
         """Determine whether the planner should be re-run.
 
@@ -438,6 +516,8 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
         - Forced working mode changed
         - Crossed into a new recommendation slot
         - Import price changed significantly (new price period)
+        - Sustained material rolling house/PV change in the current slot,
+          within its bounded correction budget (issue #797)
 
         Returns ``False`` when nothing material changed — the previous
         plan can be reused.
@@ -450,6 +530,18 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
             async_log(
                 "debug",
                 "[replan] Load forecast recovered after a safety hold — re-planning.",
+            )
+            return True
+
+        pending_live_power_slot = getattr(self, "_live_power_replan_pending_slot", None)
+        if pending_live_power_slot is not None and (
+            live_power_estimate is None
+            or self._actionable_live_power_replan_slot(now, live_power_estimate)
+            is not None
+        ):
+            async_log(
+                "debug",
+                "[replan] Sustained live power changed — re-planning.",
             )
             return True
 

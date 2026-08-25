@@ -32,6 +32,7 @@ from custom_components.hsem.models.solcast_slot import SolcastSlot
 from custom_components.hsem.utils.capacity_learner import CapacityLearner
 from custom_components.hsem.utils.conversion import convert_to_float, convert_to_int
 from custom_components.hsem.utils.datetime_utils import now as hsem_now
+from custom_components.hsem.utils.live_power import LivePowerEstimate
 from custom_components.hsem.utils.misc import (
     calculate_recommended_threshold,
     get_max_discharge_power,
@@ -134,6 +135,7 @@ def build_planner_input(
     ev_session_kw: dict[str, float] | None = None,
     capacity_learner: CapacityLearner | None = None,
     dynamic_discharge_floor_pct: float | None = None,
+    live_power_estimate: LivePowerEstimate | None = None,
 ) -> PlannerInput:
     """Assemble a :class:`PlannerInput` from the coordinator's current pipeline state.
 
@@ -247,6 +249,19 @@ def build_planner_input(
 
     live_solar_w, _live_solar_available = _resolve_live_solar_measurement(cfg, live)
     live_house_w, live_house_available = _resolve_live_house_measurement(cfg, live)
+    # The rolling median window (issue #797) is a strictly better estimate
+    # than the single boundary sample above when it has enough fresh
+    # evidence — a short appliance spike or cloud edge cannot invert it.
+    # Each channel is overridden independently; an unavailable channel
+    # keeps the single-sample fallback rather than losing that channel's
+    # planner authority entirely.
+    if live_power_estimate is not None:
+        if live_power_estimate.house_power_w is not None:
+            live_house_w = live_power_estimate.house_power_w
+            live_house_available = True
+        if live_power_estimate.solar_power_w is not None:
+            live_solar_w = live_power_estimate.solar_power_w
+            _live_solar_available = True
 
     return PlannerInput(
         now_iso=now.isoformat(),
@@ -361,6 +376,13 @@ def build_planner_input(
             cfg.ev.past_target_confidence_factor
         )
         or 0.9,
+        ev_planned_load_force_max_discharge_power=bool(
+            cfg.ev.force_max_discharge_power
+        ),
+        ev_planned_load_max_discharge_power_w=convert_to_float(
+            cfg.ev.max_discharge_power
+        )
+        or 0.0,
         # Second EV planned load
         ev_second_planned_load_enabled=bool(cfg.ev_second_planned_load_enabled),
         ev_second_planned_load_connected=bool(live.ev_second_planned_load_connected),
@@ -402,6 +424,13 @@ def build_planner_input(
             cfg.ev_second.past_target_confidence_factor
         )
         or 0.9,
+        ev_second_planned_load_force_max_discharge_power=bool(
+            cfg.ev_second.force_max_discharge_power
+        ),
+        ev_second_planned_load_max_discharge_power_w=convert_to_float(
+            cfg.ev_second.max_discharge_power
+        )
+        or 0.0,
         time_discount_rate=0.995,
         # Planner hysteresis (issue #372)
         planner_hysteresis_enabled=bool(cfg.planner_hysteresis_enabled),

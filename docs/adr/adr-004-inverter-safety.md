@@ -114,13 +114,17 @@ Applied **only to the current slot** immediately before hardware writes. Overrid
 |---|---|---|
 | 1 (highest) | Live import price < 0 | → `force_export` |
 | 2 | Current recommendation = `batteries_charge_grid` | Kept (never overridden) |
-| 3 | Any EV actively charging | → `ev_smart_charging` |
+| 3 | The EV is live charging and the planner's accepted HSEM command for it is positive | → `ev_smart_charging` |
 | 4 | Battery energy > remaining schedule need | → `batteries_discharge_mode` |
 
 **Protection rules:**
 
 - `force_export` (negative price) always wins — it overrides everything, including EV charging.
 - `batteries_charge_grid` is **never** overridden by EV or discharge rules.
+- Measured or accounted charger load alone is not actuator intent and cannot
+  authorise an `ev_smart_charging` relabel — the planner's own positive
+  command (`ev_charger_calculated_power` / `ev_second_charger_calculated_power`)
+  is required.
 - The resolver reads live sensor data that was stale at planning time (actual working mode, real-time EV state).
 
 ---

@@ -17,6 +17,8 @@ import pytest
 
 from custom_components.hsem.models.ev_config import EVConfig
 from custom_components.hsem.models.planned_slot import PlannedSlot
+from custom_components.hsem.models.planner_input import PlannerInput
+from custom_components.hsem.planner.engine_ev_milp import _build_ev_configs_for_milp
 from custom_components.hsem.planner.milp_optimizer import is_scipy_available, solve_milp
 from custom_components.hsem.utils.phase_power import EV_TOPOLOGY_THREE_PHASE_BALANCED
 from custom_components.hsem.utils.prices import SlotPrice
@@ -148,12 +150,11 @@ def test_session_charge_overrides_probabilistic_demand():
 
 @_pytestmark_scipy
 def test_session_ev_fallback_beyond_session_window():
-    """Beyond the current managed-session slot, charging stays flexible.
+    """A managed session stays fully flexible, including the current slot.
 
-    At 60-min resolution, only the current slot is fixed to observed power
-    (HSEM can stop this managed charger).  The EV has a deadline target that
-    current demand cannot meet alone, so the MILP should charge the
-    remaining energy in later flexible slots.
+    The measured 6 kW is telemetry, not actuator intent (issue #797): the
+    MILP is free to skip the current slot and schedule the target into
+    later, cheaper/flexible slots before the deadline.
     """
     slots = _build_slots(20, start_hour=14, import_price=0.20, interval_minutes=60)
 
@@ -181,9 +182,6 @@ def test_session_ev_fallback_beyond_session_window():
     assert result is not None
     out_slots, _diag = result
 
-    # The current slot contributes 5.4 kWh DC. The remaining 54.6 kWh DC is
-    # flexible and must still be delivered by the deadline.
-
     # Compute total DC-side EV charge across all slots
     ev_total_dc = sum(
         s.ev_total_planned_load_kwh * 0.9  # AC → DC
@@ -193,8 +191,8 @@ def test_session_ev_fallback_beyond_session_window():
         f"Expected ~60 kWh DC total EV charge, got {ev_total_dc}"
     )
 
-    # Output slot zero is the single fixed managed-session slot.
-    assert out_slots[0].ev_total_planned_load_kwh == pytest.approx(6.0, rel=0.05)
+    # The measured 6 kW session never pins slot 0 — it is telemetry only.
+    assert out_slots[0].ev_charger_calculated_power == pytest.approx(0.0)
 
 
 @_pytestmark_scipy
@@ -434,8 +432,8 @@ def test_session_slots_at_60min_resolution():
 
 
 @_pytestmark_scipy
-def test_partial_current_live_session_preserves_observed_power() -> None:
-    """Session energy uses executable minutes and maps back to observed watts."""
+def test_partial_current_managed_session_uses_planner_power() -> None:
+    """A managed current-slot command is independent of measured session power."""
     now = _NOW + timedelta(minutes=50)
     slots = _build_slots(5, start_hour=14, import_price=0.20, interval_minutes=60)
     ev = EVConfig(
@@ -447,7 +445,7 @@ def test_partial_current_live_session_preserves_observed_power() -> None:
         charger_efficiency=1.0,
         charger_min_power_w=1000.0,
         deadline_slot=4,
-        session_charge_kw=6.0,
+        session_charge_kw=3.62,
     )
 
     result = solve_milp(
@@ -462,10 +460,7 @@ def test_partial_current_live_session_preserves_observed_power() -> None:
 
     assert result is not None
     out, _diagnostics = result
-    assert out[0].ev_total_planned_load_kwh == pytest.approx(0.997)
-    assert out[0].ev_charger_calculated_power == pytest.approx(6000.0, rel=0.01)
-    # HSEM controls this charger, so measured power fixes only the current
-    # partial slot and cannot manufacture a two-hour reservation.
+    # HSEM controls this charger, so no two-hour reservation is manufactured.
     assert all(slot.ev_charger_calculated_power == 0 for slot in out[1:])
 
 
@@ -510,9 +505,16 @@ def test_managed_session_does_not_expand_to_nine_fixed_slots() -> None:
         for slot in out
         if slot.ev_charger_calculated_power > 1e-9
     ]
-    assert out[0].ev_charger_calculated_power == pytest.approx(8280.0)
-    assert len(active_commands) <= 3
-    assert sum(slot.ev_total_planned_load_kwh for slot in out) <= 6.3 + 1e-9
+    total_dc = sum(slot.ev_total_planned_load_kwh for slot in out)
+    # Every active command lies on the 3-amp-step (three-phase 690 W)
+    # lattice between the startup minimum and rated nameplate; the measured
+    # 8.899 kW session never pins slot 0 (issue #797).
+    assert all(
+        4_140.0 <= command <= 11_040.0 and command % 690.0 == pytest.approx(0.0)
+        for command in active_commands
+    )
+    assert len(active_commands) <= 4
+    assert 6.3 <= total_dc <= 6.3 + 1.035 + 1e-9
     assert [slot.ev_total_planned_load_kwh for slot in out[9:]] == pytest.approx(
         [0.0, 0.0, 0.0]
     )
@@ -558,8 +560,8 @@ def test_unmanaged_partial_session_retains_two_hour_certainty_window() -> None:
 
 
 @_pytestmark_scipy
-def test_managed_session_is_capped_at_remaining_target_energy() -> None:
-    """Observed power cannot reserve more energy than the target still needs."""
+def test_managed_session_reaches_target_with_bounded_amp_overshoot() -> None:
+    """An executable plan reaches target within one activation quantum."""
     slots = _build_slots(4, start_hour=14, import_price=0.20, interval_minutes=60)
     ev = EVConfig(
         enabled=True,
@@ -586,11 +588,17 @@ def test_managed_session_is_capped_at_remaining_target_energy() -> None:
     assert result is not None
     out, diagnostics = result
     # One executable single-phase amp is 0.23 kWh in an hourly slot. The
-    # capped 1.0 kWh target therefore rounds down to 4 A / 0.92 kWh.
-    assert out[0].ev_total_planned_load_kwh == pytest.approx(0.92)
-    assert out[0].ev_charger_calculated_power == pytest.approx(920.0)
-    assert sum(slot.ev_total_planned_load_kwh for slot in out) == pytest.approx(0.92)
-    assert diagnostics["ev"]["ev0"]["deadline_penalty_kwh"] == pytest.approx(0.08)
+    # target-cap constraint now permits one activation quantum (the
+    # charger's startup minimum) above the exact 1.0 kWh target, so the
+    # nearest reachable whole-amp point (5 A / 1.15 kWh) is used instead of
+    # rounding down to an avoidable shortfall (issue #797).
+    total_dc = sum(slot.ev_total_planned_load_kwh for slot in out)
+    assert 1.0 <= total_dc <= 1.23 + 1e-9
+    assert max(slot.ev_charger_calculated_power for slot in out) == pytest.approx(
+        1_150.0
+    )
+    assert diagnostics["ev"]["ev0"]["deadline_penalty_kwh"] == pytest.approx(0.0)
+    assert diagnostics["ev"]["ev0"]["deadline_met"] is True
 
 
 @_pytestmark_scipy
@@ -671,18 +679,21 @@ def test_mixed_managed_and_unmanaged_sessions_keep_distinct_windows() -> None:
 
     assert result is not None
     out, _diagnostics = result
-    # The unmanaged EV remains fixed in slot 1, but the managed EV skips that
-    # expensive slot and uses the cheaper flexible slot 2.
-    assert out[1].ev_total_planned_load_kwh == pytest.approx(3.0)
-    assert out[1].ev_charger_calculated_power == pytest.approx(0.0)
+    # The unmanaged EV remains fixed in slot 1. At most one executable amp of
+    # managed energy may supplement it to close the target lattice; the live
+    # 6 kW observation never freezes the managed slot (issue #797).
+    managed_slot_1_kwh = out[1].ev_charger_calculated_power / 1000.0
+    assert out[1].ev_total_planned_load_kwh == pytest.approx(3.0 + managed_slot_1_kwh)
+    assert managed_slot_1_kwh <= 0.23 + 1e-9
     assert out[1].ev_second_charger_calculated_power == pytest.approx(0.0)
     assert out[2].ev_charger_calculated_power == pytest.approx(5980.0)
 
 
 @_pytestmark_scipy
 def test_managed_session_below_startup_minimum_emits_no_invalid_command() -> None:
-    """A managed session cannot publish a command below its startup minimum."""
+    """A low measurement cannot ratchet a managed command below its minimum."""
     slots = _build_slots(4, start_hour=14, import_price=0.20, interval_minutes=60)
+    slots[0].price = SlotPrice(import_price=0.01, export_price=0.0)
     ev = EVConfig(
         enabled=True,
         initial_soc_kwh=0.0,
@@ -707,6 +718,66 @@ def test_managed_session_below_startup_minimum_emits_no_invalid_command() -> Non
 
     assert result is not None
     out, _diagnostics = result
-    assert out[0].ev_total_planned_load_kwh == pytest.approx(0.0)
-    assert out[0].grid_import_kwh == pytest.approx(0.5)
-    assert out[0].ev_charger_calculated_power == pytest.approx(0.0)
+    # The 0.5 kW measurement is telemetry only; the managed command is
+    # either zero or at/above the charger's startup minimum (5 A / 1150 W
+    # single-phase), never a fractional/sub-minimum publish (issue #797).
+    active_commands = [
+        slot.ev_charger_calculated_power
+        for slot in out
+        if slot.ev_charger_calculated_power > 0.0
+    ]
+    assert out[0].ev_charger_calculated_power >= 1_150.0
+    assert all(command >= 1_150.0 for command in active_commands)
+    assert all(command % 230.0 == pytest.approx(0.0) for command in active_commands)
+
+
+@_pytestmark_scipy
+def test_at_target_managed_live_session_does_not_create_fixed_demand() -> None:
+    """Lingering managed power telemetry cannot author two hours of demand."""
+    slots = _build_slots(4, start_hour=14, import_price=0.20, interval_minutes=60)
+    inp = PlannerInput(
+        now_iso=_NOW.isoformat(),
+        interval_minutes=60,
+        ev_planned_load_enabled=True,
+        ev_planned_load_connected=True,
+        ev_planned_load_smart_charging_enabled=True,
+        ev_planned_load_current_soc_pct=80.0,
+        ev_planned_load_target_soc_pct=80.0,
+        ev_planned_load_battery_capacity_kwh=50.0,
+        ev_planned_load_charger_power_kw=6.0,
+        ev_planned_load_charger_efficiency_pct=100.0,
+        ev_session_charge_kw=6.0,
+    )
+
+    configs = _build_ev_configs_for_milp(inp, slots, _NOW)
+
+    assert configs is not None
+    assert len(configs) == 1
+    # A managed session at/above target becomes a command-zero sentinel
+    # (issue #797): it retains its current-slot discharge permission/ceiling
+    # without ever manufacturing a two-hour fixed-demand reservation.
+    assert configs[0].max_charge_per_slot == pytest.approx(0.0)
+    assert configs[0].target_kwh == pytest.approx(configs[0].initial_soc_kwh)
+    assert configs[0].fixed_session_only is False
+    assert configs[0].session_charge_kw == pytest.approx(6.0)
+
+    for slot in slots:
+        slot.avg_house_consumption_kwh = 1.0
+        slot.estimated_net_consumption_kwh = 1.0
+        slot.price = SlotPrice(import_price=1.0, export_price=0.0)
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=5.0,
+        usable_kwh=5.0,
+        max_charge_per_slot=1.0,
+        max_discharge_per_slot=2.0,
+        ev_configs=configs,
+        no_export=True,
+    )
+
+    assert result is not None
+    out, _diagnostics = result
+    assert all(slot.ev_charger_calculated_power == 0.0 for slot in out)
+    assert out[0].batteries_discharged_kwh == pytest.approx(0.0)
+    assert any(slot.batteries_discharged_kwh > 0.5 for slot in out[1:])

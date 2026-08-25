@@ -58,9 +58,17 @@ Always your **solar battery** (e.g., Huawei battery), not your EV battery.
 
 HSEM uses the EV charger status and power sensors to determine when your EV is charging. Depending on your sensor setup, it either subtracts or adds EV charger power to net consumption to avoid double-counting or underestimation.
 
-### Can I force the battery to discharge into my EV?
+### Can I allow the battery to discharge while my EV is charging?
 
-Yes. Enable `hsem_ev_charger_force_max_discharge_power` and set `hsem_ev_charger_max_discharge_power` to allow the battery to discharge at the specified power when the EV charger is active.
+Yes, but the setting is *permission*, not a command. Huawei exposes one
+global battery discharge limit shared by the house battery and every EV,
+so by default HSEM forces battery discharge to 0 W whenever an EV is
+charging or about to be commanded — 100% of the EV's load then comes from
+the grid. Enabling `hsem_ev_charger_force_max_discharge_power` lifts that
+block; `hsem_ev_charger_max_discharge_power` sets the ceiling. The actual
+discharge rate is still the planner's own solved value for the slot,
+clamped to that ceiling — enabling the option does not by itself create
+any discharge.
 
 ### Should I configure time-of-use (TOU) settings in the Fusion Solar app?
 
@@ -185,7 +193,7 @@ HSEM supports two prediction modes:
 
 | Option | Purpose |
 |---|---|
-| `hsem_ev_charger_force_max_discharge_power` | Forces max battery discharge when EV is charging |
+| `hsem_ev_charger_force_max_discharge_power` | Permits (does not force) battery discharge while this EV is charging; without it, discharge is 0 W whenever the EV is active |
 | `hsem_ev_charger_max_discharge_power` | Maximum discharge power (W) for EV charging |
 | `hsem_force_working_mode` | Manually override to a specific working mode |
 

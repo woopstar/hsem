@@ -120,6 +120,19 @@ class CoordinatorLifecycleMixin(CoordinatorSharedState):
             second=10,
         )
 
+        # Dedicated live-power sampling tick (issue #797), independent of
+        # the main interval timer: the rolling median window needs samples
+        # fresher than the main timer's minutes-scale cadence can provide.
+        from custom_components.hsem.coordinator_live_power import (
+            LIVE_POWER_MONITOR_INTERVAL_SECONDS,
+        )
+
+        self._live_power_timer_unsub = async_track_time_interval(
+            self.hass,
+            self.async_monitor_live_power,  # type: ignore[arg-type]  # HA stub expects Callable[[datetime], ...]
+            timedelta(seconds=LIVE_POWER_MONITOR_INTERVAL_SECONDS),
+        )
+
     async def async_teardown(self) -> None:
         """Cancel all registered timers and state-change listeners.
 
@@ -137,6 +150,10 @@ class CoordinatorLifecycleMixin(CoordinatorSharedState):
         if self._interval_timer_unsub is not None:
             self._interval_timer_unsub()
             self._interval_timer_unsub = None
+        live_power_timer_unsub = getattr(self, "_live_power_timer_unsub", None)
+        if live_power_timer_unsub is not None:
+            live_power_timer_unsub()
+            self._live_power_timer_unsub = None
         for unsub in self._listener_unsubs:
             unsub()
         self._listener_unsubs.clear()
