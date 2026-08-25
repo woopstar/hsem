@@ -312,7 +312,7 @@ the reserve and no-export mode can suppress battery export without restricting
 ordinary PV export. Grouping changes only checkpoint preprocessing and adds no
 variables or rows beyond the per-slot source/reserve formulation.
 
-**Battery export forecast reserve (issue #807, Stage 1):**
+**Battery export forecast reserve (issue #807):**
 
 An independent, opt-in reserve (`hsem_batteries_forecast_reserve_pct`, 0–50 %,
 default 0 = disabled) adds one row per slot, active whenever

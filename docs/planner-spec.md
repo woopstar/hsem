@@ -2054,7 +2054,7 @@ preprocessing only; it adds no extra rows beyond the existing per-slot reserve
 formulation and does not alter house self-consumption, EV demand, export caps,
 price floors, or hardware/dynamic SoC floors.
 
-### Battery export forecast reserve (issue #807, Stage 1)
+### Battery export forecast reserve (issue #807)
 
 `hsem_batteries_forecast_reserve_pct` (0–50 %, default 0 = disabled) is an
 opt-in, absolute-SoC-points reserve above Huawei's hardware end-of-discharge
@@ -2063,6 +2063,15 @@ exporting slot itself** — unlike the checkpoint reserve above, a later
 forecast PV/grid refill can never justify spending it first. Ordinary
 household self-consumption may still use the energy when actual demand
 exceeds forecast; direct PV export is unaffected.
+
+This is the complete, permanent scope of the port from
+`Ambilights/hsem-ambilights#35` for this repository. The upstream PR's
+remaining parts — feedback-free phase-limit reconstruction and a 45 s
+fail-closed grid-charge transition deadline — are written against a live
+per-phase hardware-write-time limiter (`phase_charge_limiter.py`) and PowMr
+transition machinery that do not exist here (see `.github/memories.md` §Fork
+Divergence, fork PR #35 row; re-verified 2026-08-25, issue #831). They are not
+"unfinished" and are not tracked as pending work.
 
 `_forecast_export_reserve_kwh()` (`planner/candidate_generator.py`) converts
 the configured percentage into model kWh:
