@@ -88,6 +88,16 @@ class EVConfig:
     #: worst-case envelope, where every hard per-phase row assumes the whole
     #: EV command lands on that one phase.
     charger_phase_topology: str = EV_TOPOLOGY_SINGLE_PHASE
+    #: Permission (not a command) for the Huawei house battery to discharge
+    #: while this EV charges.  Huawei exposes one global discharge cap, so an
+    #: EV charging without this permission forces primary battery discharge
+    #: to zero for the whole slot (see ``_add_managed_ev_amp_constraints`` in
+    #: ``planner/milp/_constraints.py``).
+    force_max_discharge_power: bool = False
+    #: User-selected Huawei discharge ceiling (W) while this EV charges.
+    #: Only meaningful when ``force_max_discharge_power`` is True; zero is
+    #: fail-closed (treated as no permission).
+    max_discharge_power_w: float = 0.0
 
     @property
     def phase_share(self) -> float:

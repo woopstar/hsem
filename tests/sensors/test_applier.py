@@ -72,93 +72,54 @@ class TestParsePowerControlPct:
 
 
 # ---------------------------------------------------------------------------
-# compute_ev_discharge_cap_w — EV discharge cap selection (issue #592, beta8)
+# _planned_ev_discharge_cap_w — planner-authorised EV discharge ceiling
 # ---------------------------------------------------------------------------
 
 
-class TestComputeEvDischargeCapW:
-    """With history present, the cap IS the historical baseline — the live
-    reading must not move it in either direction (issue #592)."""
+class TestPlannedEvDischargeCapW:
+    """EV permission bounds positive planned discharge; it never creates it."""
 
     @staticmethod
     def _cap(**kwargs):
         from custom_components.hsem.custom_sensors.applier import (
-            compute_ev_discharge_cap_w,
+            _planned_ev_discharge_cap_w,
         )
 
-        return compute_ev_discharge_cap_w(**kwargs)
+        return _planned_ev_discharge_cap_w(**kwargs)
 
-    def test_live_below_history_holds_baseline(self):
-        """Sensor drift pulling live below the baseline must NOT lower the
-        cap (beta8 ratchet: 363→289→…→40 W over one night)."""
-        cap = self._cap(
-            live_net_w=200.0,  # drifted below the true 400 W baseline
-            ev_power_available=True,
-            historical_w=400,
-            sub_window_ws=[400],
+    def test_zero_planned_discharge_returns_zero(self):
+        """An opt-in cannot manufacture battery discharge absent from the plan."""
+        assert (
+            self._cap(
+                planned_discharge_kwh=0.0,
+                slot_hours=0.25,
+                max_discharge_power_w=10000,
+                ev_max_discharge_power_ws=(5000,),
+            )
+            == 0
         )
-        assert cap == 400
 
-    def test_live_above_history_does_not_raise_cap(self):
-        """House noise (cooking, heat pump) must NOT raise the cap —
-        swinging with live demand for hours drains the battery into a
-        grid-served EV session (v6.2.0-beta1: 652→1968→928 W swings)."""
-        cap = self._cap(
-            live_net_w=900.0,
-            ev_power_available=True,
-            historical_w=400,
-            sub_window_ws=[400],
+    def test_planned_energy_is_averaged_over_slot(self):
+        assert (
+            self._cap(
+                planned_discharge_kwh=0.75,
+                slot_hours=0.25,
+                max_discharge_power_w=10000,
+                ev_max_discharge_power_ws=(5000,),
+            )
+            == 3000
         )
-        assert cap == 400
 
-    def test_live_spike_does_not_raise_cap(self):
-        """Even a huge live spike leaves the cap at the baseline."""
-        cap = self._cap(
-            live_net_w=5000.0,
-            ev_power_available=True,
-            historical_w=400,
-            sub_window_ws=[400],
+    def test_all_relevant_ev_and_hardware_ceilings_apply(self):
+        assert (
+            self._cap(
+                planned_discharge_kwh=2.0,
+                slot_hours=0.25,
+                max_discharge_power_w=6000,
+                ev_max_discharge_power_ws=(5000, 3200),
+            )
+            == 3200
         )
-        assert cap == 400
-
-    def test_no_history_trusts_live(self):
-        cap = self._cap(
-            live_net_w=350.0,
-            ev_power_available=True,
-            historical_w=0,
-            sub_window_ws=[],
-        )
-        assert cap == 350
-
-    def test_no_ev_power_sensor_uses_min_sub_window(self):
-        """Boolean-only EV sensor: fall back to the smallest sub-window."""
-        cap = self._cap(
-            live_net_w=None,
-            ev_power_available=False,
-            historical_w=400,
-            sub_window_ws=[280, 520, 480, 400],
-        )
-        assert cap == 280
-
-    def test_negative_live_treated_as_zero(self):
-        """CT clamp < EV sensor (slight over-read) → live is negative;
-        cap still holds the historical baseline."""
-        cap = self._cap(
-            live_net_w=-150.0,
-            ev_power_available=True,
-            historical_w=400,
-            sub_window_ws=[400],
-        )
-        assert cap == 400
-
-    def test_everything_missing_returns_zero(self):
-        cap = self._cap(
-            live_net_w=None,
-            ev_power_available=False,
-            historical_w=0,
-            sub_window_ws=[],
-        )
-        assert cap == 0
 
 
 # ---------------------------------------------------------------------------

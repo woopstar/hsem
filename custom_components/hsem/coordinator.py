@@ -50,6 +50,12 @@ from custom_components.hsem.coordinator_helpers import (
     load_forecast_signatures_match,
 )
 from custom_components.hsem.coordinator_lifecycle import CoordinatorLifecycleMixin
+from custom_components.hsem.coordinator_live_power import (
+    LIVE_POWER_MAX_SAMPLE_AGE_SECONDS,
+    LIVE_POWER_MINIMUM_SAMPLES,
+    LIVE_POWER_WINDOW_SECONDS,
+    CoordinatorLivePowerMixin,
+)
 from custom_components.hsem.coordinator_planner_phase import (
     CoordinatorPlannerPhaseMixin,
 )
@@ -77,6 +83,7 @@ from custom_components.hsem.utils.capacity_learner import CapacityLearner
 from custom_components.hsem.utils.dynamic_floor import DynamicDischargeFloor
 from custom_components.hsem.utils.ev_delivered_energy import EVDeliveredEnergyTracker
 from custom_components.hsem.utils.forecast_tracker import ForecastTracker
+from custom_components.hsem.utils.live_power import LivePowerEstimate, LivePowerWindow
 from custom_components.hsem.utils.logger import (
     HSEM_LOGGER as _LOGGER,
     async_log,
@@ -113,6 +120,7 @@ class HSEMDataUpdateCoordinator(
     CoordinatorLifecycleMixin,
     CoordinatorCycleMixin,
     CoordinatorPlannerPhaseMixin,
+    CoordinatorLivePowerMixin,
     DataUpdateCoordinator[CoordinatorData],
 ):
     """DataUpdateCoordinator for HSEM.
@@ -234,6 +242,29 @@ class HSEMDataUpdateCoordinator(
         self._last_plan_ev2_target_soc: float | None = None
         self._last_plan_ev2_smart_charging: bool | None = None
         self._last_plan_ev2_deadline: datetime | None = None
+
+        # Rolling live house/PV power window and bounded corrective-replan
+        # budget (issue #797). The dedicated fast timer is registered in
+        # async_setup(); see coordinator_live_power.py for the full model.
+        self._live_power_window = LivePowerWindow(
+            window_seconds=LIVE_POWER_WINDOW_SECONDS,
+            minimum_samples=LIVE_POWER_MINIMUM_SAMPLES,
+            maximum_sample_age_seconds=LIVE_POWER_MAX_SAMPLE_AGE_SECONDS,
+        )
+        self._live_power_source_signature = None
+        self._last_plan_live_power_estimate: LivePowerEstimate | None = None
+        self._live_power_mismatch_since: datetime | None = None
+        self._live_power_mismatch_slot_start: datetime | None = None
+        # A matured request is retried until a new plan is accepted and
+        # published. The budget below enforces one correction plus one
+        # debounced, provably-opposite-direction reversal per slot.
+        self._live_power_replan_pending_slot: datetime | None = None
+        self._live_power_replanned_slot_start: datetime | None = None
+        self._live_power_replan_count: int = 0
+        self._live_power_first_replan_direction: int | None = None
+        self._live_power_estimate_this_cycle: LivePowerEstimate | None = None
+        self._live_power_replan_request_slot_this_cycle: datetime | None = None
+        self._live_power_timer_unsub: Callable[[], None] | None = None
 
         # Solar forecast accuracy auto-corrector (issue #602).
         self._solar_corrector: SolarForecastCorrector = SolarForecastCorrector()

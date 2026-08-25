@@ -38,7 +38,10 @@ from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.utils.degraded_mode import hardware_writes_allowed
 from custom_components.hsem.utils.inverter_verify import ApplyStatus, CycleApplySummary
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
-from custom_components.hsem.utils.misc import calculate_recommended_threshold
+from custom_components.hsem.utils.misc import (
+    calculate_recommended_threshold,
+    get_config_value,
+)
 from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.sensornames.diagnostics import (
     get_working_mode_sensor_entity_id,
@@ -241,7 +244,52 @@ class HSEMWorkingModeSensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
             "ev_past_target_confidence_factor": cfg.ev.past_target_confidence_factor,
             "ev_charger_max_discharge_power_state": live.ev.max_discharge_power_w,
             "ev_charger_force_max_discharge_power": live.ev.force_max_discharge_power,
+            # EV planned-load configuration — gates whether the planner/MILP
+            # schedules EV charging at all. Exposed so missing charging can be
+            # diagnosed directly from the working-mode sensor attributes.
+            "ev_planned_load_enabled": cfg.ev_planned_load_enabled,
+            "ev_planned_load_smart_charging_enabled": live.ev_planned_load_smart_charging_enabled,
+            "ev_planned_load_battery_capacity_kwh": cfg.ev_planned_load_battery_capacity_kwh,
+            "ev_planned_load_charger_power_kw": cfg.ev_planned_load_charger_power_kw,
+            "ev_planned_load_charger_efficiency_pct": cfg.ev_planned_load_charger_efficiency_pct,
+            "ev_planned_load_charger_min_power_w": cfg.ev_planned_load_charger_min_power_w,
+            "ev_planned_load_charger_phase_topology": cfg.ev_planned_load_charger_phase_topology,
+            "ev_planned_load_deadline": (
+                live.ev_planned_load_deadline.isoformat()
+                if live.ev_planned_load_deadline
+                else None
+            ),
+            # Effective SoC = reported SoC + bounded delivered-energy credit.
+            # The planner uses this value, not the raw reported SoC above —
+            # when they diverge the plan may show fully_charged/waiting even
+            # though the car reports below target.
+            "ev_effective_soc_state": live.ev.effective_soc_pct,
+            "ev_delivered_energy_credit_kwh": round(
+                live.ev.delivered_energy_credit_kwh, 3
+            ),
+            "ev_force_charge_now": bool(
+                get_config_value(self._config_entry, "hsem_ev_force_charge_now")
+            ),
             "ev_second_enabled": cfg.ev_second_enabled,
+            "ev_second_planned_load_enabled": cfg.ev_second_planned_load_enabled,
+            "ev_second_planned_load_battery_capacity_kwh": cfg.ev_second_planned_load_battery_capacity_kwh,
+            "ev_second_planned_load_charger_power_kw": cfg.ev_second_planned_load_charger_power_kw,
+            "ev_second_planned_load_smart_charging_enabled": live.ev_second_planned_load_smart_charging_enabled,
+            "ev_second_planned_load_deadline": (
+                live.ev_second_planned_load_deadline.isoformat()
+                if live.ev_second_planned_load_deadline
+                else None
+            ),
+            "ev_second_effective_soc_state": live.ev_second.effective_soc_pct,
+            "ev_second_delivered_energy_credit_kwh": round(
+                live.ev_second.delivered_energy_credit_kwh, 3
+            ),
+            "ev_second_force_charge_now": bool(
+                get_config_value(self._config_entry, "hsem_ev_second_force_charge_now")
+            ),
+            "ev_second_planned_load_charger_efficiency_pct": cfg.ev_second_planned_load_charger_efficiency_pct,
+            "ev_second_planned_load_charger_min_power_w": cfg.ev_second_planned_load_charger_min_power_w,
+            "ev_second_planned_load_charger_phase_topology": cfg.ev_second_planned_load_charger_phase_topology,
             "ev_second_charger_power_state": live.ev_second.power_w,
             "ev_second_charger_status_state": live.ev_second.is_charging,
             "ev_second_soc_state": live.ev_second.soc_pct,

@@ -257,8 +257,13 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
                 )
         self._last_load_forecast_readiness_reason = readiness_reason
 
-        # Adjust timer based on missing-entities or pending-consumption status.
-        if live.missing_entities or not consumption_ok:
+        # Adjust timer based on missing-entities, pending-consumption status,
+        # or a physically charging EV. Missing inputs and load-forecast
+        # recovery retain their one-minute retry cadence; a charging EV also
+        # refreshes each minute so delivered-energy target crossings stop a
+        # bounded whole-amp overshoot promptly instead of waiting for the
+        # normal (several-minute) coordinator interval (issue #797).
+        if live.missing_entities or not consumption_ok or live.any_ev_charging:
             await self._set_update_interval(1)
         else:
             await self._set_update_interval()
@@ -605,6 +610,15 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
                 live,
                 load_forecast_signature=self._current_load_forecast_signature,
             )
+            live_power_estimate = getattr(self, "_live_power_estimate_this_cycle", None)
+            if live_power_estimate is not None:
+                self._accept_live_power_plan_estimate(
+                    live_power_estimate,
+                    plan_now=now,
+                    requested_slot=getattr(
+                        self, "_live_power_replan_request_slot_this_cycle", None
+                    ),
+                )
 
         # Push the accepted EV targets only after the freshness gate passes.
         # Each EV gets its own OCPP server: the primary plan drives the

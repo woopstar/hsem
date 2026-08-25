@@ -85,8 +85,28 @@ When an EV's `charge_past_target` flag is `True` (EV already at user-configured 
 - An **avoided-future-import-cost benefit** (`future_value_per_kwh`, issue #630) is added to the objective, falling back to a tiny fixed tiebreaker when no future price data is available (see Objective function below)
 
 When an EV has a deadline and `charge_past_target=False` (normal mode):
-- **Pre-deadline slots** (`t \u2264 D`): direct benefit `-ev_penalty_cost` on `ev_c[t]` forces charging.  This benefit is **mutually exclusive** with `charge_past_target` — the LP guards the pre-deadline benefit block with `and not ev.charge_past_target`, mirroring the post-deadline zero-charge and target-cap constraint guards.
+- **Pre-deadline slots** (`t \u2264 D`, issue #797): no direct per-kWh benefit on `ev_c[t]`; the deadline slack penalty alone already prices meeting the target far above any real import price, so charging competes only against its own real grid/PV opportunity cost. A tiny tiebreak cost (`_EV_TARGET_ENERGY_TIEBREAK_COST = 1e-7`/kWh) nudges the LP toward the smallest executable energy that clears the target-cap constraint.
 - **Post-deadline slots** (`t > D`): hard constraint `ev_c[t] = 0` — charging is forbidden
+
+### Managed EV whole-amp lattice (issue #797)
+
+A **managed** EV (not `fixed_session_only`) gets a solver-native semi-integer
+amp variable `ev_{i}_amps[t]` (HiGHS integrality type 3: zero, or an integer
+in `[min_amp, rated_amp]`), declared as the last blocks in
+`build_milp_column_layout` (`planner/milp/_layout.py`), after every physical
+and fuse block. An equality constraint per slot links it to the DC charge
+variable:
+
+$$
+ev\_c[t] = ev\_amps[t] \times \text{one\_amp\_dc\_kwh}[t]
+$$
+
+so the solved allocation is always directly executable — `_write_results.py`
+publishes it verbatim, with no post-solve concentration/quantization pass.
+See `planner/milp/_ev_amp_lattice.py` and the *Discharge permission and
+whole-amp lattice* section of `docs/planner-spec.md` for the full
+constraint model, including the conditional `ev_{i}_on` binary that caps
+primary battery discharge while a permission-restricted EV charges.
 
 ### Fuse constraint extension (issue #567)
 

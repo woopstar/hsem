@@ -11,6 +11,39 @@ import numpy as np
 
 from custom_components.hsem.models.ev_config import EVConfig
 from custom_components.hsem.models.planned_slot import PlannedSlot
+from custom_components.hsem.utils.logger import log_planner
+
+
+def _compute_terminal_soc_credit(
+    *,
+    current_kwh: float,
+    usable_kwh: float,
+    ec_sol: np.ndarray,  # type: ignore[type-arg]
+    ed_sol: np.ndarray,  # type: ignore[type-arg]
+    replacement_price_per_kwh: float | None,
+) -> float:
+    """Return the diagnostic terminal-SoC credit at end-of-horizon.
+
+    This matches ``cost_function.py``'s ``terminal_soc_value`` calculation:
+    ``terminal_soc_value = (initial_kwh - final_kwh) * replacement_price``.
+    The LP objective already includes this term as a linear cost, so the
+    solution itself reflects this valuation — this is a post-hoc
+    consistency check for the diagnostics dict, not a decision input.
+    """
+    if replacement_price_per_kwh is None or abs(replacement_price_per_kwh) <= 1e-9:
+        return 0.0
+    final_soc_kwh = current_kwh + float(np.sum(ec_sol)) - float(np.sum(ed_sol))
+    final_soc_kwh = max(0.0, min(final_soc_kwh, usable_kwh))  # clamp to bounds
+    terminal_soc_credit = (current_kwh - final_soc_kwh) * replacement_price_per_kwh
+    log_planner(
+        "debug",
+        "[milp] Terminal-SoC credit: initial=%.3f  final=%.3f  repl_price=%.4f  credit=%.4f",
+        current_kwh,
+        final_soc_kwh,
+        replacement_price_per_kwh,
+        terminal_soc_credit,
+    )
+    return terminal_soc_credit
 
 
 def _compute_milp_diagnostics(

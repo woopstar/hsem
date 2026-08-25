@@ -901,38 +901,38 @@ class TestEvSolarSurplusRegression:
             "EV should be scheduled in the solar-surplus slot (hour 10)"
         )
 
-        # The slot at hour 10 uses the largest executable command that does
-        # not overrun the 2.5 kWh target: 10 A × 230 V = 2.3 kW.
+        # The slot at hour 10 uses the smallest whole-amp command that reaches
+        # the 2.5 kWh target: 11 A × 230 V = 2.53 kW. Solar supplies 2.50
+        # kWh and the remaining 0.03 kWh comes from the grid.
         slot_10 = solar_ev_slots[0]
-        assert slot_10.solar_surplus_kwh == pytest.approx(2.3, abs=0.01), (
-            f"EV solar_surplus_kwh should be 2.3, got {slot_10.solar_surplus_kwh}. "
+        assert slot_10.solar_surplus_kwh == pytest.approx(2.5, abs=0.01), (
+            f"EV solar_surplus_kwh should be 2.5, got {slot_10.solar_surplus_kwh}. "
             "If 0.0, the solar surplus computation bug is still present."
         )
-        assert slot_10.import_needed_kwh == pytest.approx(0.0, abs=0.01), (
-            f"EV import_needed_kwh should be 0.0 (covered by solar), got {slot_10.import_needed_kwh}"
+        assert slot_10.import_needed_kwh == pytest.approx(0.03, abs=0.01), (
+            f"EV import_needed_kwh should be 0.03, got {slot_10.import_needed_kwh}"
         )
 
         # --- Assert effective net load at hour 10 ---
         planner_slot_10 = next((s for s in out.slots if s.start.hour == 10), None)
         assert planner_slot_10 is not None
-        assert planner_slot_10.ev_planned_load_kwh == pytest.approx(2.3, abs=0.01), (
-            f"Planner slot 10 ev_planned_load_kwh should be 2.3, got {planner_slot_10.ev_planned_load_kwh}"
+        assert planner_slot_10.ev_planned_load_kwh == pytest.approx(2.53, abs=0.01), (
+            f"Planner slot 10 ev_planned_load_kwh should be 2.53, got {planner_slot_10.ev_planned_load_kwh}"
         )
-        assert planner_slot_10.ev_charger_calculated_power == pytest.approx(2300.0)
+        assert planner_slot_10.ev_charger_calculated_power == pytest.approx(2530.0)
         assert planner_slot_10.estimated_net_consumption_kwh == pytest.approx(
-            -0.2, abs=0.01
+            0.03, abs=0.01
         ), (
-            f"effective_net at hour 10 should be -0.2, got {planner_slot_10.estimated_net_consumption_kwh}"
+            f"effective_net at hour 10 should be 0.03, got {planner_slot_10.estimated_net_consumption_kwh}"
         )
+        assert planner_slot_10.grid_import_kwh == pytest.approx(0.03, abs=0.01)
+        assert planner_slot_10.grid_export_kwh == pytest.approx(0.0, abs=0.01)
+        assert plan.data_quality.get("unmet_target_kwh", 0.0) == pytest.approx(0.0)
 
-        # --- Assert the remaining surplus is not double-counted by the battery ---
-        # The MILP is a global cost-minimiser: the 0.2 kWh residue the EV's
-        # whole-amp command left behind is genuine free PV surplus, and the
-        # battery is entitled to store it (issue #789). The invariant is that
-        # it can only claim the *leftover* residue, never the EV's own 2.3 kWh.
-        assert planner_slot_10.batteries_charged_kwh == pytest.approx(0.2, abs=0.01), (
-            "Battery should only claim the EV's unclaimed 0.2 kWh residue at hour 10, "
-            "not double-count solar surplus the EV already consumed. "
+        # --- Assert the EV allocation is not double-counted by the battery ---
+        assert planner_slot_10.batteries_charged_kwh == pytest.approx(0.0, abs=0.01), (
+            "Battery should NOT charge energy at hour 10: "
+            "the executable EV allocation consumes the available PV. "
             f"batteries_charged_kwh={planner_slot_10.batteries_charged_kwh}, "
             f"ev_load={planner_slot_10.ev_planned_load_kwh}, "
             f"net={planner_slot_10.estimated_net_consumption_kwh}"
@@ -1290,14 +1290,14 @@ class TestEvAcLoadAndSoCPath:
           pv_estimate      = 0.0 kWh/h
           EV needed        = 10 kWh  (10 → 20 % of 100 kWh battery)
           charger          = 11 kW, single-phase, eff = 100 %
-          command          = floor(10000 / 230) = 43 A
-          allocated        = 43 × 230 W × 1 h = 9.89 kWh
-          ev_planned_load_kwh (AC) = 9.89
+          command          = ceil(10000 / 230) = 44 A
+          allocated        = 44 × 230 W × 1 h = 10.12 kWh
+          ev_planned_load_kwh (AC) = 10.12
 
-          net for EV slot: 0.5 + 9.89 - 0.0 = 10.39 kWh
+          net for EV slot: 0.5 + 10.12 - 0.0 = 10.62 kWh
 
-        A 44 A command would deliver 10.12 kWh and exceed the strict target,
-        leaving an unavoidable, explicitly reported 0.11 kWh shortfall.
+        The one-amp 0.12 kWh excess is within the managed EV's bounded startup
+        quantum and avoids publishing a target-missing 43 A schedule.
         """
         inp = self._make_no_battery_input(
             ev_soc=10.0,
@@ -1326,10 +1326,13 @@ class TestEvAcLoadAndSoCPath:
                 expected_net, abs=1e-6
             )
             # With no PV and 100 % efficiency, AC load = battery-side:
-            # net = 0.5 + 9.89 = 10.39 kWh.
-            assert s.estimated_net_consumption_kwh == pytest.approx(10.39), (
-                f"Slot {s.start.hour}: expected net=10.39, got {s.estimated_net_consumption_kwh}"
+            # net = 0.5 + 10.12 = 10.62 kWh.
+            assert s.estimated_net_consumption_kwh == pytest.approx(10.62), (
+                f"Slot {s.start.hour}: expected net=10.62, got {s.estimated_net_consumption_kwh}"
             )
+        assert sum(s.ev_planned_load_kwh for s in ev_slots) == pytest.approx(
+            10.12, abs=1e-6
+        )
 
     # ------------------------------------------------------------------
     # grid_import_kwh includes EV AC draw (SoC simulation path)
@@ -1632,12 +1635,12 @@ class TestEvLoadSemantics:
     # ------------------------------------------------------------------
 
     def test_two_evs_same_slot_base_excludes_ev(self):
-        """Primary (3.0 kWh) + secondary (4.0 kWh) in same slot, base excludes EV.
+        """Primary and secondary whole-amp targets, with base excluding EV.
 
         Expected:
-          ev_planned_load_kwh      = 7.0  (injected into net consumption)
+          ev_planned_load_kwh      = 7.36 (3.22 + 4.14, injected into net consumption)
           ev_accounted_load_kwh    = 0.0  (nothing pre-included)
-          ev_total_planned_load_kwh = 7.0
+          ev_total_planned_load_kwh = 7.36
         """
         avg_house_consumption_kwh = 1.0
         solcast_pv_estimate_kwh = 2.0
@@ -1663,9 +1666,8 @@ class TestEvLoadSemantics:
             for h in range(24)
         ]
 
-        # Primary EV: needs 3.0 kWh (3 → 6 % of 100 kWh, charger=11kW)
-        # Second EV: needs 4.0 kWh (4 → 8 % of 100 kWh, charger=11kW)
-        # Both have deadline past slot 8, so they both schedule at slot 8 (cheapest/first)
+        # Targets are 3.0 and 4.0 kWh. Whole-amp execution reaches them with
+        # 3.22 kWh (14 A-hours) and 4.14 kWh (18 A-hours), respectively.
         inp = PlannerInput(
             now_iso=now_iso,
             interval_minutes=60,
@@ -1710,19 +1712,19 @@ class TestEvLoadSemantics:
         )
         out = run_planner(inp)
 
-        # Both EVs together need 7.0 kWh total
+        # Both EVs together schedule 7.36 kWh on the executable amp lattice.
         total_ev_injected = sum(s.ev_planned_load_kwh for s in out.slots)
         total_ev_accounted = sum(s.ev_accounted_load_kwh for s in out.slots)
         total_ev_total = sum(s.ev_total_planned_load_kwh for s in out.slots)
 
-        assert total_ev_injected == pytest.approx(7.0, abs=0.1), (
-            f"Total ev_planned_load_kwh should be 7.0 (3+4), got {total_ev_injected:.3f}"
+        assert total_ev_injected == pytest.approx(7.36), (
+            f"Total ev_planned_load_kwh should be 7.36, got {total_ev_injected:.3f}"
         )
         assert total_ev_accounted == pytest.approx(0.0, abs=1e-9), (
             f"ev_accounted_load_kwh should be 0 (base excludes EV), got {total_ev_accounted:.3f}"
         )
-        assert total_ev_total == pytest.approx(7.0, abs=0.1), (
-            f"ev_total_planned_load_kwh total should be 7.0, got {total_ev_total:.3f}"
+        assert total_ev_total == pytest.approx(7.36), (
+            f"ev_total_planned_load_kwh total should be 7.36, got {total_ev_total:.3f}"
         )
 
         # Per-EV power fields must not exceed each EV's own rated power.
@@ -1741,12 +1743,12 @@ class TestEvLoadSemantics:
     # ------------------------------------------------------------------
 
     def test_two_evs_same_slot_base_includes_ev(self):
-        """Primary (3 kWh) + secondary (4 kWh) in same slot, base includes EV.
+        """Primary and secondary whole-amp targets, with base including EV.
 
         Expected:
           ev_planned_load_kwh       = 0.0  (not injected — already in base load)
-          ev_accounted_load_kwh     = 7.0  (pre-included in house consumption)
-          ev_total_planned_load_kwh = 7.0
+          ev_accounted_load_kwh     = 7.36 (pre-included in house consumption)
+          ev_total_planned_load_kwh = 7.36
           estimated_net_consumption_kwh = avg_house - pv  (no extra EV added)
         """
         avg_house = 2.0
@@ -1826,11 +1828,11 @@ class TestEvLoadSemantics:
         total_ev_accounted = sum(s.ev_accounted_load_kwh for s in out.slots)
         total_ev_total = sum(s.ev_total_planned_load_kwh for s in out.slots)
 
-        assert total_ev_accounted == pytest.approx(7.0, abs=0.1), (
-            f"ev_accounted_load_kwh total should be 7.0, got {total_ev_accounted:.3f}"
+        assert total_ev_accounted == pytest.approx(7.36), (
+            f"ev_accounted_load_kwh total should be 7.36, got {total_ev_accounted:.3f}"
         )
-        assert total_ev_total == pytest.approx(7.0, abs=0.1), (
-            f"ev_total_planned_load_kwh total should be 7.0, got {total_ev_total:.3f}"
+        assert total_ev_total == pytest.approx(7.36), (
+            f"ev_total_planned_load_kwh total should be 7.36, got {total_ev_total:.3f}"
         )
 
         # Per-EV power fields must not exceed each EV's own rated power.
@@ -1931,8 +1933,8 @@ class TestEvLoadSemantics:
         out = run_planner(inp)
 
         total_ev_total = sum(s.ev_total_planned_load_kwh for s in out.slots)
-        assert total_ev_total == pytest.approx(4.0, abs=0.1), (
-            f"ev_total_planned_load_kwh should be 4.0 (second EV only), "
+        assert total_ev_total == pytest.approx(4.14), (
+            f"ev_total_planned_load_kwh should be 4.14 (second EV only), "
             f"got {total_ev_total:.3f}"
         )
         # Primary EV plan should be fully_charged
@@ -2035,8 +2037,8 @@ class TestEvLoadSemantics:
         out = run_planner(inp)
 
         total_ev_total = sum(s.ev_total_planned_load_kwh for s in out.slots)
-        assert total_ev_total == pytest.approx(3.0, abs=0.1), (
-            f"ev_total_planned_load_kwh should be 3.0 (primary only, second is zero), "
+        assert total_ev_total == pytest.approx(3.22), (
+            f"ev_total_planned_load_kwh should be 3.22 (primary only, second is zero), "
             f"got {total_ev_total:.3f}"
         )
 
@@ -2304,20 +2306,19 @@ class TestEvLoadSemantics:
                 f"(base includes EV), got {s.ev_planned_load_kwh}"
             )
 
-        # ev_total_planned_load_kwh must be > 0 on charging slots. The 5 kWh
-        # target is a strict ceiling: 21 A-hours = 4.83 kWh, while 22 A-hours
-        # would be 5.06 kWh and overrun the target.
+        # The 5 kWh target requires 22 A-hours / 5.06 kWh: the smallest
+        # executable whole-amp command that reaches the target.
         total_ev_total = sum(s.ev_total_planned_load_kwh for s in out.slots)
-        assert total_ev_total == pytest.approx(4.83), (
-            f"ev_total_planned_load_kwh total should be 4.83, got {total_ev_total:.3f}. "
+        assert total_ev_total == pytest.approx(5.06), (
+            f"ev_total_planned_load_kwh total should be 5.06, got {total_ev_total:.3f}. "
             "This is the key regression test: EV charging IS planned but appears as 0 "
             "in ev_planned_load_kwh because base load includes EV."
         )
 
         # ev_accounted_load_kwh = ev_total (all accounted, none injected)
         total_ev_accounted = sum(s.ev_accounted_load_kwh for s in out.slots)
-        assert total_ev_accounted == pytest.approx(4.83), (
-            f"ev_accounted_load_kwh total should be 4.83, got {total_ev_accounted:.3f}"
+        assert total_ev_accounted == pytest.approx(5.06), (
+            f"ev_accounted_load_kwh total should be 5.06, got {total_ev_accounted:.3f}"
         )
 
     # ------------------------------------------------------------------
@@ -2537,8 +2538,8 @@ class TestEvLoadSemantics:
         out = run_planner(inp)
 
         total_ev_total = sum(s.ev_total_planned_load_kwh for s in out.slots)
-        assert total_ev_total == pytest.approx(4.0, abs=0.1), (
-            f"ev_total_planned_load_kwh should be 4.0 (primary EV only), "
+        assert total_ev_total == pytest.approx(4.14), (
+            f"ev_total_planned_load_kwh should be 4.14 (primary EV only), "
             f"got {total_ev_total:.3f}"
         )
         # Second EV plan should be fully_charged

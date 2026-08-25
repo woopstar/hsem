@@ -134,10 +134,14 @@ def test_ev_uses_largest_executable_target_below_deadline_cap():
 
     # EV diagnostics
     assert "ev" in diag
-    # Ninety-six amp-hours deliver 19.872 kWh DC.  A 97th amp-hour would
-    # deliver 20.079 kWh and violate the strict 20 kWh target cap.
-    assert diag["ev"]["ev0"]["deadline_met"] is False
-    assert diag["ev"]["ev0"]["deadline_penalty_kwh"] == pytest.approx(0.128)
+    # Ninety-six amp-hours deliver 19.872 kWh DC; a 97th amp-hour delivers
+    # 20.079 kWh.  The target-cap constraint now permits one activation
+    # quantum (the charger's startup minimum) above the exact target
+    # (issue #797), so the 97th amp-hour is reachable and the deadline is
+    # met — a strict cap previously reported an avoidable deadline miss for
+    # a target with no exact whole-amp solution.
+    assert diag["ev"]["ev0"]["deadline_met"] is True
+    assert diag["ev"]["ev0"]["deadline_penalty_kwh"] == pytest.approx(0.0, abs=1e-6)
 
 
 @_pytestmark_scipy
@@ -294,11 +298,13 @@ def test_two_evs_cooptimized():
     _out_slots, diag = result
 
     assert "ev" in diag
-    # EV0 exposes its irreducible strict-cap residue; EV1's target is exactly
-    # executable on its 10 A / 2300 W nameplate lattice.
-    assert diag["ev"]["ev0"]["deadline_met"] is False
+    # Both targets are reachable on their whole-amp lattices once the
+    # target-cap constraint permits one activation quantum above the exact
+    # target (issue #797): EV1's target is exactly executable, and EV0's
+    # nearest executable point above target is now within the allowed cap.
+    assert diag["ev"]["ev0"]["deadline_met"] is True
     assert diag["ev"]["ev1"]["deadline_met"] is True
-    assert diag["ev"]["ev0"]["deadline_penalty_kwh"] == pytest.approx(0.128)
+    assert diag["ev"]["ev0"]["deadline_penalty_kwh"] == pytest.approx(0.0, abs=1e-6)
     assert diag["ev"]["ev1"]["deadline_penalty_kwh"] == pytest.approx(0.0)
 
     # EV0 total DC should be ~20 kWh, EV1 total DC should be ~10 kWh
@@ -1119,12 +1125,17 @@ def test_full_planner_with_ev_integration():
     milp_candidates = [c for c in output.candidates if c.name == "milp"]
     assert len(milp_candidates) == 1, "MILP candidate should be present"
 
-    # If MILP won, check EV diagnostics
+    # If MILP won, check EV diagnostics.  The target-cap constraint now
+    # permits one activation quantum above the exact target (issue #797),
+    # so a reachable target with an abundant deadline is met exactly
+    # rather than reporting an avoidable strict-cap residue.
     if output.winner_name == "milp":
         diag = milp_candidates[0].diagnostics
         if diag and "ev" in diag:
-            assert diag["ev"]["ev0"]["deadline_met"] is False
-            assert 0.0 < diag["ev"]["ev0"]["deadline_penalty_kwh"] < 0.207
+            assert diag["ev"]["ev0"]["deadline_met"] is True
+            assert diag["ev"]["ev0"]["deadline_penalty_kwh"] == pytest.approx(
+                0.0, abs=1e-6
+            )
 
 
 @_pytestmark_scipy

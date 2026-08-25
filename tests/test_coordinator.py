@@ -216,15 +216,19 @@ class TestCoordinatorTeardown:
 
         interval_unsub = MagicMock()
         hourly_unsub = MagicMock()
+        live_power_unsub = MagicMock()
         coordinator._interval_timer_unsub = interval_unsub
         coordinator._hourly_timer_unsub = hourly_unsub
+        coordinator._live_power_timer_unsub = live_power_unsub
 
         await coordinator.async_teardown()
 
         interval_unsub.assert_called_once()
         hourly_unsub.assert_called_once()
+        live_power_unsub.assert_called_once()
         assert coordinator._interval_timer_unsub is None
         assert coordinator._hourly_timer_unsub is None
+        assert coordinator._live_power_timer_unsub is None
 
     @pytest.mark.asyncio
     async def test_teardown_safe_when_no_timers(self) -> None:

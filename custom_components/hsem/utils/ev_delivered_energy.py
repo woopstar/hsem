@@ -137,11 +137,15 @@ class EVDeliveredEnergyTracker:
         delivered_kwh = 0.0
         observation_timestamp = timestamp
         if self._last_timestamp is not None and (
-            timestamp is None or timestamp <= self._last_timestamp
+            timestamp is None or timestamp < self._last_timestamp
         ):
-            # A missing, duplicate, or reversed clock cannot become the start
-            # of a later integration interval. Preserve validated credit, but
-            # require the next valid sample to establish a fresh baseline.
+            # A missing or reversed clock cannot become the start of a later
+            # integration interval. Preserve validated credit, but require
+            # the next valid sample to establish a fresh baseline. An equal
+            # timestamp is a valid zero-duration observation: keeping it
+            # lets a same-second coordinator refresh update the power/SoC
+            # endpoint without discarding the following measurable interval
+            # (issue #797).
             observation_timestamp = None
         if (
             timestamp is not None

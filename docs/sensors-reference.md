@@ -153,8 +153,8 @@ attributes are exposed. These reference the raw HA entity IDs for troubleshootin
 | `ev_connected_state` | bool | Primary EV plugged in |
 | `ev_allow_charge_past_target_soc` | bool | Allow charging past target |
 | `ev_past_target_confidence_factor` | float | Confidence factor (0.0–1.0) applied to the avoided-future-import valuation of past-target charging |
-| `ev_charger_max_discharge_power_state` | float (W) | Max discharge power cap |
-| `ev_charger_force_max_discharge_power` | bool | Force max discharge power flag |
+| `ev_charger_max_discharge_power_state` | float (W) | Battery discharge ceiling while this EV charges (once permission below is granted) |
+| `ev_charger_force_max_discharge_power` | bool | Permission for the Huawei battery to discharge while this EV charges; without it, discharge is 0 W whenever the EV is active |
 | `ev_second_enabled` | bool | Second EV integration enabled |
 | `ev_second_charger_power_state` | float (W) | Second EV charger power |
 | `ev_second_charger_status_state` | bool | Second EV charging |
@@ -163,8 +163,8 @@ attributes are exposed. These reference the raw HA entity IDs for troubleshootin
 | `ev_second_connected_state` | bool | Second EV plugged in |
 | `ev_second_allow_charge_past_target_soc` | bool | Second EV past-target flag |
 | `ev_second_past_target_confidence_factor` | float | Second EV past-target confidence factor (0.0–1.0) |
-| `ev_second_charger_max_discharge_power_state` | float (W) | Second EV max discharge cap |
-| `ev_second_charger_force_max_discharge_power` | bool | Second EV force max discharge flag |
+| `ev_second_charger_max_discharge_power_state` | float (W) | Second EV: same discharge ceiling semantics as the primary EV |
+| `ev_second_charger_force_max_discharge_power` | bool | Second EV: same discharge permission semantics as the primary EV |
 
 ### Huawei battery attributes
 

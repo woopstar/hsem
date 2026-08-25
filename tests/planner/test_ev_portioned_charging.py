@@ -6,15 +6,16 @@ behaviour that makes the published ceiling trustworthy: the amp conversion
 always rounds down, and a residue too small for the charger to run must be
 re-portioned into a further slot rather than discarded.
 
-The upstream fork's ``_redistribute_below_minimum_power`` concentrates the
-*entire* EV allocation from scratch (a self-contained pure function).  This
-repository's ``_write_milp_results_to_slots`` already performs that
-concentration inline with a different (donor-pool) algorithm predating this
-port, so only the new re-portioning tail — opening one further empty,
-runnable slot for a residue concentration could not place — was extracted
-into a standalone function of the same name for testability.  These tests
-exercise that tail directly, with ``values`` representing the per-slot EV
-allocation *after* the (unchanged) concentration pass has already run.
+As of issue #797, production managed-EV write-out no longer calls
+``_redistribute_below_minimum_power`` at all: the solver-native whole-amp
+lattice (``planner/milp/_ev_amp_lattice.py``) links every managed EV's
+charge energy to an executable amp command by equality during the solve
+itself, so the published schedule is already whole-amp-exact and needs no
+post-solve concentration or quantization.  ``_redistribute_below_minimum_power``
+and ``_quantize_one_ev_allocation`` (``planner/milp/_ev_quantize.py``) remain
+as standalone pure functions for direct/compatibility callers.  These tests
+exercise the re-portioning tail directly, with ``values`` representing a
+supplied per-slot EV allocation.
 """
 
 from __future__ import annotations
@@ -25,7 +26,7 @@ import pytest
 
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.planner.engine_ev_milp import _build_ev_configs_for_milp
-from custom_components.hsem.planner.milp._write_results import (
+from custom_components.hsem.planner.milp._ev_quantize import (
     _redistribute_below_minimum_power,
 )
 from custom_components.hsem.planner.milp_optimizer import is_scipy_available, solve_milp
@@ -186,8 +187,13 @@ def test_managed_session_cannot_expand_the_configured_nameplate() -> None:
 
     assert result is not None
     planned, _diagnostics = result
-    assert planned[0].ev_charger_calculated_power == pytest.approx(2_990.0)
-    assert all(slot.ev_charger_calculated_power <= 2_990.0 for slot in planned)
+    commands = [slot.ev_charger_calculated_power for slot in planned]
+    delivered_dc = sum(slot.ev_total_planned_load_kwh for slot in planned)
+    assert all(command <= 2_990.0 for command in commands)
+    assert all(command % 230.0 == pytest.approx(0.0) for command in commands)
+    assert 8.0 <= delivered_dc <= 8.23 + 1e-9
+    # The 6 kW observation is telemetry only; no command follows or exceeds it.
+    assert all(command != pytest.approx(6_000.0) for command in commands)
 
 
 def test_unmanaged_session_may_expand_the_accounting_envelope() -> None:
@@ -345,3 +351,111 @@ def test_reportioning_preserves_total_energy() -> None:
     total_before = sum(values.values()) + donor_energy
     placed, deficit, _opened = _repair(values, donor_energy, room={3: 5.0})
     assert sum(placed.values()) + deficit == pytest.approx(total_before, abs=1e-9)
+
+
+# ---------------------------------------------------------------------------
+# Discharge permission (issue #797)
+# ---------------------------------------------------------------------------
+
+
+def test_ev_discharge_permission_reaches_both_milp_configs() -> None:
+    """Primary and second-EV Huawei-discharge opt-ins remain independent."""
+    slots = _build_slots(
+        4,
+        start_hour=14,
+        import_price=0.20,
+        consumption_kwh=0.0,
+        interval_minutes=60,
+    )
+    deadline = _NOW + timedelta(hours=4)
+    inp = PlannerInput(
+        now_iso=_NOW.isoformat(),
+        interval_minutes=60,
+        ev_planned_load_enabled=True,
+        ev_planned_load_connected=True,
+        ev_planned_load_smart_charging_enabled=True,
+        ev_planned_load_current_soc_pct=0.0,
+        ev_planned_load_target_soc_pct=80.0,
+        ev_planned_load_battery_capacity_kwh=10.0,
+        ev_planned_load_charger_power_kw=3.0,
+        ev_planned_load_charger_efficiency_pct=100.0,
+        ev_planned_load_deadline=deadline,
+        ev_planned_load_force_max_discharge_power=False,
+        ev_planned_load_max_discharge_power_w=2_400.0,
+        ev_second_planned_load_enabled=True,
+        ev_second_planned_load_connected=True,
+        ev_second_planned_load_smart_charging_enabled=True,
+        ev_second_planned_load_current_soc_pct=0.0,
+        ev_second_planned_load_target_soc_pct=80.0,
+        ev_second_planned_load_battery_capacity_kwh=10.0,
+        ev_second_planned_load_charger_power_kw=3.0,
+        ev_second_planned_load_charger_efficiency_pct=100.0,
+        ev_second_planned_load_deadline=deadline,
+        ev_second_planned_load_force_max_discharge_power=True,
+        ev_second_planned_load_max_discharge_power_w=5_000.0,
+    )
+
+    configs = _build_ev_configs_for_milp(inp, slots, _NOW)
+
+    assert configs is not None
+    assert {
+        ev.is_second: (ev.force_max_discharge_power, ev.max_discharge_power_w)
+        for ev in configs
+    } == {
+        False: (False, 2_400.0),
+        True: (True, 5_000.0),
+    }
+
+
+@pytest.mark.skipif(
+    not is_scipy_available(),
+    reason="scipy not available in this environment",
+)
+def test_snapped_11_kw_nameplate_retains_16_amp_solver_bound() -> None:
+    """Independent efficiency rounding cannot turn 11.04 kW into 15 A."""
+    slots = _build_slots(
+        1,
+        start_hour=14,
+        import_price=0.20,
+        consumption_kwh=0.0,
+        interval_minutes=15,
+    )
+    inp = PlannerInput(
+        now_iso=_NOW.isoformat(),
+        interval_minutes=15,
+        ev_planned_load_enabled=True,
+        ev_planned_load_connected=True,
+        ev_planned_load_smart_charging_enabled=True,
+        ev_planned_load_current_soc_pct=0.0,
+        ev_planned_load_target_soc_pct=10.0,
+        ev_planned_load_battery_capacity_kwh=30.0,
+        ev_planned_load_charger_power_kw=11.0,
+        ev_planned_load_charger_efficiency_pct=93.127,
+        ev_planned_load_charger_min_power_w=3_600.0,
+        ev_planned_load_charger_phase_topology=EV_TOPOLOGY_THREE_PHASE_BALANCED,
+        ev_planned_load_deadline=_NOW + timedelta(minutes=15),
+    )
+    configs = _build_ev_configs_for_milp(inp, slots, _NOW)
+
+    assert configs is not None
+    assert len(configs) == 1
+    ev = configs[0]
+    recovered_ac_power_w = (
+        ev.max_charge_per_slot / ev.charger_efficiency / 0.25 * 1000.0
+    )
+    assert recovered_ac_power_w == pytest.approx(11_040.0)
+
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=10.0,
+        max_charge_per_slot=1.0,
+        max_discharge_per_slot=0.0,
+        ev_configs=configs,
+        no_export=True,
+    )
+
+    assert result is not None
+    planned, _diagnostics = result
+    assert planned[0].ev_charger_calculated_power == pytest.approx(11_040.0)
