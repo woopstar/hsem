@@ -83,6 +83,11 @@ class SensorConfig:
         huawei_solar_batteries_grid_charge_cutoff_soc: Entity ID for grid charge cutoff SoC.
         huawei_solar_batteries_maximum_charging_power: Entity ID for max charge power.
         huawei_solar_batteries_maximum_discharging_power: Entity ID for max discharge power.
+        huawei_solar_batteries_grid_charge_maximum_power: Entity ID for the grid-charge
+            maximum-power number, written by the live phase-aware charging limiter.
+        huawei_solar_power_meter_phase_a_active_power: Entity ID for phase A live power.
+        huawei_solar_power_meter_phase_b_active_power: Entity ID for phase B live power.
+        huawei_solar_power_meter_phase_c_active_power: Entity ID for phase C live power.
         huawei_solar_batteries_tou_charging_and_discharging_periods: Entity ID for TOU periods.
         huawei_solar_batteries_excess_pv_energy_use_in_tou: Entity ID for excess PV use select.
         huawei_solar_inverter_active_power_control: Entity ID for export power control.
@@ -133,6 +138,9 @@ class SensorConfig:
             allows normal household self-consumption while protecting the
             planner's required battery reserve.
 
+        phase_aware_charging_enabled: Enable the live per-phase Huawei
+            grid-charge safety limiter (issue #831).
+
         months_winter: List of month integers (1-12) treated as winter.
         months_summer: List of month integers (1-12) treated as summer.
 
@@ -165,11 +173,21 @@ class SensorConfig:
     huawei_solar_batteries_grid_charge_cutoff_soc: str | None = None
     huawei_solar_batteries_maximum_charging_power: str | None = None
     huawei_solar_batteries_maximum_discharging_power: str | None = None
+    #: Entity ID for the Huawei grid-charge maximum-power number (issue #831).
+    #: Written by the live phase-aware charging limiter to cap grid-funded
+    #: charge power below the fuse limit; ``None`` disables the write path.
+    huawei_solar_batteries_grid_charge_maximum_power: str | None = None
     huawei_solar_batteries_tou_charging_and_discharging_periods: str | None = None
     huawei_solar_batteries_excess_pv_energy_use_in_tou: str | None = None
     huawei_solar_batteries_forcible_charge: str | None = None
     huawei_solar_inverter_active_power_control: str | None = None
     huawei_solar_batteries_rated_capacity: str | None = None
+    #: Entity IDs for the three Huawei power-meter phase active-power sensors
+    #: (issue #831).  All three must be configured for the live phase-aware
+    #: charging limiter to activate.
+    huawei_solar_power_meter_phase_a_active_power: str | None = None
+    huawei_solar_power_meter_phase_b_active_power: str | None = None
+    huawei_solar_power_meter_phase_c_active_power: str | None = None
 
     # Power meters
     house_consumption_power: str | None = None
@@ -186,6 +204,11 @@ class SensorConfig:
     #: cap for export-limited connections (issue #726).  The MILP optimizer
     #: uses this as a hard bound on per-slot grid export energy.
     max_grid_export_power_kw: float = 0.0
+    #: Enable the live per-phase Huawei grid-charge safety limiter (issue
+    #: #831).  Requires ``main_fuse_phases == 3`` and both the grid-charge
+    #: maximum-power entity and all three phase power-meter entities to be
+    #: configured.  Disabled by default — fully backward compatible.
+    phase_aware_charging_enabled: bool = False
 
     # Solcast
     solcast_pv_forecast_forecast_today: str | None = None

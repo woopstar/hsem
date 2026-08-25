@@ -59,6 +59,9 @@ all planner output as attributes.
 | `batteries_enable_excess_export` | bool | Excess export gating enabled |
 | `batteries_excess_export_discharge_buffer` | float | Discharge buffer for excess export |
 | `batteries_forecast_reserve_pct` | float | Extra SoC points above the hardware floor reserved immediately after intentional battery export (issue #807, 0 = disabled) |
+| `phase_aware_charging_enabled` | bool | Live phase-aware grid-charge safety limiter enabled (issue #831, default `False`) |
+| `grid_phase_power_w` | tuple[float \| None, float \| None, float \| None] | Live per-phase grid power `(a, b, c)` in Watts; `None` per phase when unavailable |
+| `huawei_batteries_grid_charge_max_power_w` | float \| None | Live Huawei grid-charge maximum-power ceiling in Watts, or `None` if unconfigured/unavailable |
 | `batteries_wait_mode_behavior` | string | Wait mode behaviour: `strict` or `self_consumption_with_reserve` |
 | `house_consumption_energy_weight_1d` | float | 1-day consumption prediction weight |
 | `house_consumption_energy_weight_3d` | float | 3-day weight |

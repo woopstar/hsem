@@ -18,7 +18,7 @@
 | End-of-charge SOC | `number.batteries_end_of_charge_soc` | % | ✅ `hsem_huawei_solar_batteries_charging_cutoff_capacity` |
 | End-of-discharge SOC | `number.batteries_end_of_discharge_soc` | % | ✅ `hsem_huawei_solar_batteries_end_of_discharge_soc` |
 | Grid charge cutoff SOC | `number.batteries_grid_charge_cutoff_soc` | % | ✅ `hsem_huawei_solar_batteries_grid_charge_cutoff_soc` |
-| Grid charge maximum power | `number.batteries_grid_charge_maximum_power` | W | — |
+| Grid charge maximum power | `number.batteries_grid_charge_maximum_power` | W | ✅ `hsem_huawei_solar_batteries_grid_charge_maximum_power` (issue #831) |
 | Maximum charging power | `number.batteries_maximum_charging_power` | W | ✅ `hsem_huawei_solar_batteries_maximum_charging_power` |
 | Maximum discharging power | `number.batteries_maximum_discharging_power` | W | ✅ `hsem_huawei_solar_batteries_maximum_discharging_power` |
 | Peak Shaving SOC | `number.batteries_peak_shaving_soc` | % | — |
@@ -103,13 +103,13 @@
 | Exported | `sensor.power_meter_exported` | kWh | — |
 | Frequency | `sensor.power_meter_frequency` | Hz | — |
 | Meter status | `sensor.power_meter_meter_status` | — | — |
-| Phase A active power | `sensor.power_meter_phase_a_active_power` | W | — |
+| Phase A active power | `sensor.power_meter_phase_a_active_power` | W | ✅ `hsem_huawei_solar_power_meter_phase_a_active_power` (issue #831) |
 | Phase A current | `sensor.power_meter_current` | A | — |
 | Phase A voltage | `sensor.power_meter_phase_a_voltage` | V | — |
-| Phase B active power | `sensor.power_meter_phase_b_active_power` | W | — |
+| Phase B active power | `sensor.power_meter_phase_b_active_power` | W | ✅ `hsem_huawei_solar_power_meter_phase_b_active_power` (issue #831) |
 | Phase B current | `sensor.power_meter_current_2` | A | — |
 | Phase B voltage | `sensor.power_meter_phase_b_voltage` | V | — |
-| Phase C active power | `sensor.power_meter_phase_c_active_power` | W | — |
+| Phase C active power | `sensor.power_meter_phase_c_active_power` | W | ✅ `hsem_huawei_solar_power_meter_phase_c_active_power` (issue #831) |
 | Phase C current | `sensor.power_meter_current_3` | A | — |
 | Phase C voltage | `sensor.power_meter_phase_c_voltage` | V | — |
 | Power factor | `sensor.power_meter_power_factor` | — | — |

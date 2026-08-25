@@ -80,6 +80,13 @@ async def get_huawei_solar_step_schema(
                     "hsem_huawei_solar_batteries_maximum_discharging_power",
                 ),
             ): selector({"entity": {"domain": "number"}}),
+            vol.Optional(
+                "hsem_huawei_solar_batteries_grid_charge_maximum_power",
+                default=get_config_value(
+                    config_entry,
+                    "hsem_huawei_solar_batteries_grid_charge_maximum_power",
+                ),
+            ): selector({"entity": {"domain": "number"}}),
             vol.Required(
                 "hsem_huawei_solar_batteries_grid_charge_cutoff_soc",
                 default=get_config_value(
@@ -151,6 +158,7 @@ async def validate_huawei_solar_input(
         ],
         optional_fields=[
             "hsem_huawei_solar_batteries_maximum_discharging_power",
+            "hsem_huawei_solar_batteries_grid_charge_maximum_power",
         ],
     )
 

@@ -237,6 +237,47 @@ class TestBuildSensorConfig:
         )
         assert cfg.batteries_excess_export_discharge_buffer == pytest.approx(0.0)
 
+    def test_phase_aware_charging_disabled_by_default(self):
+        """Missing config (fresh install) defaults to disabled (issue #831)."""
+        cfg = build_sensor_config(_make_config_entry())
+        assert cfg.phase_aware_charging_enabled is False
+
+    def test_phase_aware_charging_enabled_is_read(self):
+        cfg = build_sensor_config(
+            _make_config_entry(hsem_phase_aware_charging_enabled=True)
+        )
+        assert cfg.phase_aware_charging_enabled is True
+
+    def test_grid_charge_maximum_power_entity_is_read(self):
+        cfg = build_sensor_config(
+            _make_config_entry(
+                hsem_huawei_solar_batteries_grid_charge_maximum_power="number.gcmp"
+            )
+        )
+        assert cfg.huawei_solar_batteries_grid_charge_maximum_power == "number.gcmp"
+
+    def test_grid_charge_maximum_power_entity_defaults_to_none(self):
+        cfg = build_sensor_config(_make_config_entry())
+        assert cfg.huawei_solar_batteries_grid_charge_maximum_power is None
+
+    def test_power_meter_phase_entities_are_read(self):
+        cfg = build_sensor_config(
+            _make_config_entry(
+                hsem_huawei_solar_power_meter_phase_a_active_power="sensor.phase_a",
+                hsem_huawei_solar_power_meter_phase_b_active_power="sensor.phase_b",
+                hsem_huawei_solar_power_meter_phase_c_active_power="sensor.phase_c",
+            )
+        )
+        assert cfg.huawei_solar_power_meter_phase_a_active_power == "sensor.phase_a"
+        assert cfg.huawei_solar_power_meter_phase_b_active_power == "sensor.phase_b"
+        assert cfg.huawei_solar_power_meter_phase_c_active_power == "sensor.phase_c"
+
+    def test_power_meter_phase_entities_default_to_none(self):
+        cfg = build_sensor_config(_make_config_entry())
+        assert cfg.huawei_solar_power_meter_phase_a_active_power is None
+        assert cfg.huawei_solar_power_meter_phase_b_active_power is None
+        assert cfg.huawei_solar_power_meter_phase_c_active_power is None
+
 
 # ---------------------------------------------------------------------------
 # _compute_battery_capacities

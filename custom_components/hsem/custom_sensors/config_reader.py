@@ -166,6 +166,11 @@ def build_sensor_config(
     cfg.huawei_solar_batteries_maximum_discharging_power = get_config_value(
         config_entry, "hsem_huawei_solar_batteries_maximum_discharging_power"
     )
+    cfg.huawei_solar_batteries_grid_charge_maximum_power = _optional_entity(
+        get_config_value(
+            config_entry, "hsem_huawei_solar_batteries_grid_charge_maximum_power"
+        )
+    )
     cfg.huawei_solar_batteries_tou_charging_and_discharging_periods = get_config_value(
         config_entry,
         "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods",
@@ -181,6 +186,21 @@ def build_sensor_config(
     )
     cfg.huawei_solar_batteries_rated_capacity = get_config_value(
         config_entry, "hsem_huawei_solar_batteries_rated_capacity"
+    )
+    cfg.huawei_solar_power_meter_phase_a_active_power = _optional_entity(
+        get_config_value(
+            config_entry, "hsem_huawei_solar_power_meter_phase_a_active_power"
+        )
+    )
+    cfg.huawei_solar_power_meter_phase_b_active_power = _optional_entity(
+        get_config_value(
+            config_entry, "hsem_huawei_solar_power_meter_phase_b_active_power"
+        )
+    )
+    cfg.huawei_solar_power_meter_phase_c_active_power = _optional_entity(
+        get_config_value(
+            config_entry, "hsem_huawei_solar_power_meter_phase_c_active_power"
+        )
     )
 
     # Power meters
@@ -203,6 +223,9 @@ def build_sensor_config(
         get_config_value(config_entry, "hsem_max_grid_export_power_kw")
     )
     cfg.max_grid_export_power_kw = _max_export_kw if _max_export_kw is not None else 0.0
+    cfg.phase_aware_charging_enabled = convert_to_boolean(
+        get_config_value(config_entry, "hsem_phase_aware_charging_enabled")
+    )
 
     # Solcast
     cfg.solcast_pv_forecast_forecast_today = get_config_value(

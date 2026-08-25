@@ -93,6 +93,8 @@ class LiveState:
         solar_production_power_w: Instantaneous PV production in Watts.
         net_consumption_w: Computed net consumption (house − solar − EV if separate).
         net_consumption_with_ev_w: Net consumption including EV draw.
+        grid_phase_power_w: Live per-phase grid power ``(a, b, c)`` in Watts
+            (issue #831); any element is ``None`` when unavailable.
 
         huawei_batteries_working_mode: Working mode string (e.g. ``"TimeOfUse"``).
         huawei_batteries_soc_pct: Battery state-of-charge in percent.
@@ -101,6 +103,8 @@ class LiveState:
         huawei_batteries_grid_charge_cutoff_soc_pct: Grid charge cutoff SoC.
         huawei_batteries_max_charge_power_w: Maximum charging power in Watts.
         huawei_batteries_max_discharge_power_w: Maximum discharging power in Watts.
+        huawei_batteries_grid_charge_max_power_w: Live grid-charge maximum-power
+            ceiling in Watts (issue #831), or ``None`` if unconfigured.
         huawei_batteries_rated_capacity_wh: Nameplate capacity in Watt-hours.
         huawei_batteries_excess_pv_use_in_tou: Current excess PV use mode string.
         huawei_inverter_active_power_control: Active power control state string.
@@ -142,6 +146,16 @@ class LiveState:
     net_consumption_w: float = 0.0
     net_consumption_with_ev_w: float = 0.0
 
+    #: Live per-phase grid power in Watts, ``(phase_a, phase_b, phase_c)``
+    #: (issue #831).  Any element is ``None`` when its entity is unconfigured
+    #: or its reading is unavailable/invalid — the phase-aware charging
+    #: limiter fails closed rather than guessing a missing phase.
+    grid_phase_power_w: tuple[float | None, float | None, float | None] = (
+        None,
+        None,
+        None,
+    )
+
     # Huawei Solar battery state
     huawei_batteries_working_mode: str | None = None
     huawei_batteries_soc_pct: float | None = None
@@ -150,6 +164,9 @@ class LiveState:
     huawei_batteries_grid_charge_cutoff_soc_pct: float | None = None
     huawei_batteries_max_charge_power_w: float | None = None
     huawei_batteries_max_discharge_power_w: float | None = None
+    #: Live Huawei grid-charge maximum-power ceiling in Watts (issue #831),
+    #: or ``None`` when unconfigured/unavailable.
+    huawei_batteries_grid_charge_max_power_w: float | None = None
     huawei_batteries_rated_capacity_wh: float | None = None
     huawei_batteries_excess_pv_use_in_tou: str | None = None
     huawei_batteries_forcible_charge_state: str | None = None
