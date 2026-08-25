@@ -212,6 +212,31 @@ class TestBuildSensorConfig:
         assert cfg.batteries_enable_excess_export is True
         assert cfg.batteries_excess_export_discharge_buffer == pytest.approx(15.0)
 
+    def test_forecast_reserve_pct_defaults_to_zero_when_unconfigured(self):
+        """Missing config (fresh install / not yet migrated) defaults to 0 (disabled)."""
+        cfg = build_sensor_config(_make_config_entry())
+        assert cfg.batteries_forecast_reserve_pct == pytest.approx(0.0)
+
+    def test_forecast_reserve_pct_explicit_zero_is_preserved(self):
+        """A user-configured 0 % must not be swallowed by an ``or`` fallback (issue #807)."""
+        cfg = build_sensor_config(
+            _make_config_entry(hsem_batteries_forecast_reserve_pct=0.0)
+        )
+        assert cfg.batteries_forecast_reserve_pct == pytest.approx(0.0)
+
+    def test_forecast_reserve_pct_configured_value_is_read(self):
+        cfg = build_sensor_config(
+            _make_config_entry(hsem_batteries_forecast_reserve_pct=12.5)
+        )
+        assert cfg.batteries_forecast_reserve_pct == pytest.approx(12.5)
+
+    def test_excess_export_discharge_buffer_explicit_zero_is_preserved(self):
+        """A user-configured 0 % buffer must not be swallowed by an ``or`` fallback."""
+        cfg = build_sensor_config(
+            _make_config_entry(hsem_batteries_excess_export_discharge_buffer=0.0)
+        )
+        assert cfg.batteries_excess_export_discharge_buffer == pytest.approx(0.0)
+
 
 # ---------------------------------------------------------------------------
 # _compute_battery_capacities
@@ -248,6 +273,19 @@ class TestComputeBatteryCapacities:
         _compute_battery_capacities(live)
         # current available = max(3% - 5%, 0) = 0
         assert live.battery_current_capacity_kwh == pytest.approx(0.0)
+
+    def test_zero_eod_pct_is_preserved_not_replaced_by_default(self):
+        """A genuine 0 % end-of-discharge floor must not become 5 % (issue #807).
+
+        ``eod_soc = state.huawei_batteries_end_of_discharge_soc_pct or 5.0``
+        would silently replace a valid ``0.0`` with the fallback because
+        ``0.0`` is falsy in Python.
+        """
+        live = self._make_live(rated_wh=10_000, soc_pct=50.0, eod_pct=0.0)
+        _compute_battery_capacities(live)
+        # usable = 10 kWh (no reserve), current = 5 kWh (no reserve).
+        assert live.battery_usable_capacity_kwh == pytest.approx(10.0, abs=0.01)
+        assert live.battery_current_capacity_kwh == pytest.approx(5.0, abs=0.01)
 
     def test_missing_soc_no_update(self):
         live = LiveState()
