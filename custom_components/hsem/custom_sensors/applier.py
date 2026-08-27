@@ -63,6 +63,9 @@ from custom_components.hsem.custom_sensors.applier_state_readers import (  # noq
     _read_select_state,
     _read_tou_periods,
 )
+from custom_components.hsem.custom_sensors.phase_charge_limiter import (
+    build_phase_aware_charge_commands,
+)
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.sensor_config import SensorConfig
@@ -396,6 +399,46 @@ async def async_apply_battery_settings(
         case _:
             # Unrecognised recommendation — nothing to apply.
             return summary
+
+    # Live per-phase Huawei grid-charge safety limiter (issue #831). Runtime
+    # correction on top of the horizon MILP: uses the newest live phase-meter
+    # snapshot immediately before this write, so an appliance change since
+    # the plan was solved cannot push a phase over the main fuse rating.
+    phase_commands = build_phase_aware_charge_commands(cfg, live, rec)
+    if phase_commands.primary_grid_charge_power_w is not None:
+        target_w = round(phase_commands.primary_grid_charge_power_w)
+        if live.huawei_batteries_grid_charge_max_power_w != target_w:
+            grid_charge_entity = cfg.huawei_solar_batteries_grid_charge_maximum_power
+            if grid_charge_entity is None:
+                _LOGGER.debug(
+                    "Grid-charge maximum-power entity not configured; "
+                    "skipping phase-aware charge write.",
+                    "warning",
+                )
+                return summary
+            _gce: str = grid_charge_entity  # narrowed for closure
+            grid_charge_result = await async_write_and_verify(
+                entity_id=_gce,
+                desired=target_w,
+                writer=lambda: async_set_number_value(sensor, _gce, target_w),
+                reader=lambda: _read_number_state(sensor, _gce),
+            )
+            summary.results.append(grid_charge_result)
+            _LOGGER.debug(
+                "Phase-aware charging — capped grid-charge maximum power to "
+                "%d W (fuse=%dA/%dph, battery_power=%s)",
+                target_w,
+                cfg.main_fuse_amps,
+                cfg.main_fuse_phases,
+                live.huawei_batteries_charge_discharge_power_w,
+            )
+            if grid_charge_result.status == ApplyStatus.FAILED:
+                _LOGGER.debug(
+                    f"Grid-charge maximum-power write FAILED for {grid_charge_entity}. "
+                    "Blocking further battery writes this cycle.",
+                    "error",
+                )
+                return summary
 
     # Wait mode self-consumption: cap discharge power so only surplus energy
     # above the planner's required reserve can be used.  This preserves the

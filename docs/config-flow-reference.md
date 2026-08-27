@@ -93,6 +93,7 @@ Huawei Solar inverter and battery entity configuration (device selectors and ent
 | Max charging power | `hsem_huawei_solar_batteries_maximum_charging_power` | `number.batteries_maximum_charging_power` | Max charge power |
 | Max discharging power | `hsem_huawei_solar_batteries_maximum_discharging_power` | `number.batteries_maximum_discharging_power` | Max discharge power |
 | Grid charge maximum power | `hsem_huawei_solar_batteries_grid_charge_maximum_power` | — | Optional. Written by the live phase-aware charging safety limiter (issue #831, `hsem_phase_aware_charging_enabled` in the `power` step) to cap grid-funded charging below the main fuse's per-phase limit. Required only when that limiter is enabled |
+| Charge/discharge power | `hsem_huawei_solar_batteries_charge_discharge_power` | — | Optional. Signed instantaneous battery power sensor (positive = charging, negative = discharging). Required by the phase-aware charging safety limiter to remove Huawei's own contribution from the live phase snapshot before computing headroom |
 | Rated capacity | `hsem_huawei_solar_batteries_rated_capacity` | `sensor.batteries_rated_capacity` | Nameplate capacity sensor |
 | TOU periods | `hsem_huawei_solar_batteries_tou_charging_and_discharging_periods` | `sensor.batteries_tou_charging_and_discharging_periods` | TOU period schedule |
 | Excess PV use | `hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou` | `select.batteries_excess_pv_energy_use_in_tou` | Excess PV mode in TOU |

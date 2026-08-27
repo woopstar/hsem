@@ -171,6 +171,11 @@ def build_sensor_config(
             config_entry, "hsem_huawei_solar_batteries_grid_charge_maximum_power"
         )
     )
+    cfg.huawei_solar_batteries_charge_discharge_power = _optional_entity(
+        get_config_value(
+            config_entry, "hsem_huawei_solar_batteries_charge_discharge_power"
+        )
+    )
     cfg.huawei_solar_batteries_tou_charging_and_discharging_periods = get_config_value(
         config_entry,
         "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods",

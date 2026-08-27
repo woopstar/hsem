@@ -29,6 +29,7 @@
 |---|---|---|---|
 | State of capacity (SoC) | `sensor.batteries_state_of_capacity` | % | ✅ `hsem_huawei_solar_batteries_state_of_capacity` |
 | Rated capacity | `sensor.batteries_rated_capacity` | Wh | ✅ `hsem_huawei_solar_batteries_rated_capacity` |
+| Charge/discharge power | `sensor.batteries_charge_discharge_power` | W | ✅ `hsem_huawei_solar_batteries_charge_discharge_power` (issue #831) — signed instantaneous battery power; positive = charging, negative = discharging |
 | TOU charging and discharging periods | `sensor.batteries_tou_charging_and_discharging_periods` | — | ✅ `hsem_huawei_solar_batteries_tou_charging_and_discharging_periods` |
 
 ### select entities

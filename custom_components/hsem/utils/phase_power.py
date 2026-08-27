@@ -13,8 +13,10 @@ shared helpers below), never by re-deriving a fraction inline.
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, TypeGuard
 
+from custom_components.hsem.utils.misc import clamp_efficiency
 from custom_components.hsem.utils.units import GRID_PHASE_VOLTAGE
 
 if TYPE_CHECKING:
@@ -22,6 +24,9 @@ if TYPE_CHECKING:
 
 #: Nominal number of mains phases used by the per-phase fuse model.
 PHASE_COUNT = 3
+
+#: Signed live per-phase grid power in Watts, ``(phase_a, phase_b, phase_c)``.
+PhasePowers = tuple[float, float, float]
 
 #: EV charger phase topology identifiers.  ``single_phase`` is the safe
 #: default: with an unknown or single-phase charger every hard per-phase row
@@ -208,4 +213,115 @@ def fixed_session_phase_ac_kwh(
         for ev_idx, ev in enumerate(active_evs)
         if lp_t in session_slots_by_ev.get(ev_idx, set())
         and (not unmanaged_only or ev.fixed_session_only)
+    )
+
+
+# ---------------------------------------------------------------------------
+# Live per-phase Huawei grid-charge safety limiter (issue #831)
+# ---------------------------------------------------------------------------
+#
+# Runtime correction on top of the horizon MILP: the MILP's phase-fuse
+# constraint (above) uses a forecast at solve time.  Immediately before each
+# hardware write, this section re-checks the newest live phase-meter snapshot
+# so an appliance change since the plan was solved cannot push a phase over
+# the fuse rating.  Huawei-only — this repo has no secondary/PowMr inverter.
+
+
+@dataclass(frozen=True)
+class PhaseChargeLimits:
+    """Safe Huawei grid-charge command derived from live per-phase power."""
+
+    primary_charge_power_w: float
+    """Safe grid-charge maximum-power command (W), floored to a 100 W step."""
+
+    base_phase_power_w: PhasePowers
+    """Live phase power with Huawei's own measured contribution removed."""
+
+    predicted_phase_power_w: PhasePowers
+    """``base_phase_power_w`` plus the commanded charge, evenly split."""
+
+
+def phase_powers_valid(
+    values: tuple[float | None, float | None, float | None],
+) -> TypeGuard[PhasePowers]:
+    """Return whether all three signed phase readings are finite numbers."""
+    return all(value is not None and math.isfinite(value) for value in values)
+
+
+def _floor_step(value: float, step: float) -> float:
+    """Round a non-negative command down to a supported hardware step."""
+    if value <= 1e-9 or step <= 1e-9:
+        return 0.0
+    return math.floor((value + 1e-9) / step) * step
+
+
+def compute_phase_charge_limits(
+    *,
+    measured_phase_power_w: PhasePowers,
+    fuse_amps: float,
+    desired_charge_power_w: float,
+    battery_actual_power_w: float,
+    charge_efficiency_pct: float,
+    discharge_efficiency_pct: float,
+) -> PhaseChargeLimits:
+    """Return the safe Huawei grid-charge command for the live phase snapshot.
+
+    The battery's own currently measured contribution is removed from the
+    meter snapshot before the new command is calculated.  This avoids a
+    feedback loop where a running charge consumes its own apparent headroom:
+    without the correction, a battery already charging at full power would
+    make the meter appear to have no spare capacity, and the limiter would
+    cut the command to zero even though the fuse has ample headroom.
+
+    ``battery_actual_power_w`` follows the ``STORAGE_CHARGE_DISCHARGE_POWER``
+    sign convention: positive is charging, negative is discharging.  The
+    resulting command targets the rated fuse current; no intentional
+    overload allowance is used.
+
+    Args:
+        measured_phase_power_w: Live per-phase grid power, signed (import
+            positive), from the Huawei power meter.
+        fuse_amps: Main fuse rating in amps. Must be a three-phase supply;
+            callers gate on ``main_fuse_phases == 3`` before calling this.
+        desired_charge_power_w: The plan's requested grid-charge power (W,
+            battery-side/DC), non-negative.
+        battery_actual_power_w: Live signed battery charge/discharge power
+            (W), from ``STORAGE_CHARGE_DISCHARGE_POWER``.
+        charge_efficiency_pct: Battery charge-side efficiency (0-100).
+        discharge_efficiency_pct: Battery discharge-side efficiency (0-100).
+
+    Returns:
+        :class:`PhaseChargeLimits` with the safe command and the phase-power
+        frames used to compute it, for diagnostics.
+    """
+    limit_w = max(fuse_amps, 0.0) * GRID_PHASE_VOLTAGE
+    base = list(measured_phase_power_w)
+
+    charge_eff = clamp_efficiency(charge_efficiency_pct)
+    discharge_eff = clamp_efficiency(discharge_efficiency_pct)
+    if battery_actual_power_w > 1e-9:
+        actual_site_w = battery_actual_power_w / charge_eff
+    elif battery_actual_power_w < -1e-9:
+        actual_site_w = battery_actual_power_w * discharge_eff
+    else:
+        actual_site_w = 0.0
+    for index in range(PHASE_COUNT):
+        base[index] -= actual_site_w / PHASE_COUNT
+
+    desired_dc_w = max(desired_charge_power_w, 0.0)
+    ac_headroom_w = PHASE_COUNT * max(
+        min(limit_w - phase_w for phase_w in base),
+        0.0,
+    )
+    dc_limit_w = ac_headroom_w * charge_eff
+    dc_target_w = _floor_step(min(desired_dc_w, dc_limit_w), 100.0)
+    ac_target_w = dc_target_w / charge_eff if dc_target_w > 1e-9 else 0.0
+
+    predicted = tuple(
+        base[index] + ac_target_w / PHASE_COUNT for index in range(PHASE_COUNT)
+    )
+    return PhaseChargeLimits(
+        primary_charge_power_w=dc_target_w,
+        base_phase_power_w=tuple(base),  # type: ignore[arg-type]
+        predicted_phase_power_w=predicted,  # type: ignore[arg-type]
     )

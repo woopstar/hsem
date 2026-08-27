@@ -1082,6 +1082,39 @@ before any Huawei Solar service call:
 3. Verifies the inverter is not unloading.
 4. After writing, reads back the entity state to confirm the change applied.
 
+### Live phase-aware grid-charge safety limiter (issue #831)
+
+The MILP's phase-fuse constraint (`planner/milp/_phase_fuse.py`) protects
+against overload using a **forecast** at solve time. Between solve time and
+the hardware write, another appliance on a shared phase can spike load, so
+`custom_sensors/phase_charge_limiter.py` re-checks the newest live
+per-phase power-meter snapshot immediately before every Huawei grid-charge
+write. Huawei-only — this repository has no secondary/PowMr inverter.
+
+Disabled by default (`hsem_phase_aware_charging_enabled = False`). When
+enabled, requires `hsem_main_fuse_phases = 3` and four entities configured:
+the three Huawei power-meter phase sensors (`power` config step) and both
+the grid-charge maximum-power number and the battery charge/discharge power
+sensor (`huawei_solar` config step).
+
+For a `batteries_charge_grid` slot, the limiter:
+
+1. Removes the battery's own currently measured charge/discharge
+   contribution from the live phase snapshot (avoiding a feedback loop
+   where a running charge appears to consume its own headroom).
+2. Computes the maximum grid-charge power that keeps every phase at or
+   below the fuse rating, floored to a 100 W step.
+3. Writes the lesser of the plan's desired charge power and that live-safe
+   limit to `hsem_huawei_solar_batteries_grid_charge_maximum_power`.
+
+**Fails closed to 0 W** (rather than leaving a stale positive cap in
+place) whenever the feature is enabled and any of the following are true
+for a grid-charge slot: `main_fuse_phases != 3`, `main_fuse_amps <= 0`, any
+phase-power reading is missing/non-finite, or the battery
+charge/discharge-power reading is missing/non-finite. When the feature is
+disabled or the slot is not a grid-charge slot, the limiter makes no
+changes and the grid-charge-maximum-power entity is left untouched.
+
 ---
 
 ## Data quality diagnostics

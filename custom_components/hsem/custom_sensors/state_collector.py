@@ -353,6 +353,13 @@ async def async_collect_live_state(
                 )
             ),
         )
+        state.huawei_batteries_charge_discharge_power_w = convert_to_float(
+            _read(
+                cfg.huawei_solar_batteries_charge_discharge_power,
+                "float",
+                label="batteries_charge_discharge_power",
+            )
+        )
 
     rated_capacity_wh = convert_to_float(
         _read(

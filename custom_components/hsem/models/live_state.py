@@ -105,6 +105,8 @@ class LiveState:
         huawei_batteries_max_discharge_power_w: Maximum discharging power in Watts.
         huawei_batteries_grid_charge_max_power_w: Live grid-charge maximum-power
             ceiling in Watts (issue #831), or ``None`` if unconfigured.
+        huawei_batteries_charge_discharge_power_w: Live signed battery
+            charge/discharge power in Watts (issue #831); positive = charging.
         huawei_batteries_rated_capacity_wh: Nameplate capacity in Watt-hours.
         huawei_batteries_excess_pv_use_in_tou: Current excess PV use mode string.
         huawei_inverter_active_power_control: Active power control state string.
@@ -167,6 +169,11 @@ class LiveState:
     #: Live Huawei grid-charge maximum-power ceiling in Watts (issue #831),
     #: or ``None`` when unconfigured/unavailable.
     huawei_batteries_grid_charge_max_power_w: float | None = None
+    #: Live signed battery charge/discharge power in Watts (issue #831).
+    #: Positive = charging, negative = discharging.  ``None`` when
+    #: unconfigured/unavailable — the phase-aware charging limiter fails
+    #: closed rather than assuming the battery is idle.
+    huawei_batteries_charge_discharge_power_w: float | None = None
     huawei_batteries_rated_capacity_wh: float | None = None
     huawei_batteries_excess_pv_use_in_tou: str | None = None
     huawei_batteries_forcible_charge_state: str | None = None
