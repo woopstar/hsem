@@ -318,6 +318,42 @@ async def async_collect_live_state(
         )
     state.huawei_batteries_max_discharge_power_w = max_discharge_w
 
+    # Live phase-aware charging limiter inputs (issue #831). Non-critical:
+    # the feature is opt-in and the limiter itself fails closed when any of
+    # these is missing, so a missing reading here does not enter degraded
+    # mode on its own.
+    if cfg.phase_aware_charging_enabled:
+        state.huawei_batteries_grid_charge_max_power_w = convert_to_float(
+            _read(
+                cfg.huawei_solar_batteries_grid_charge_maximum_power,
+                "float",
+                label="grid_charge_maximum_power",
+            )
+        )
+        state.grid_phase_power_w = (
+            convert_to_float(
+                _read(
+                    cfg.huawei_solar_power_meter_phase_a_active_power,
+                    "float",
+                    label="power_meter_phase_a_active_power",
+                )
+            ),
+            convert_to_float(
+                _read(
+                    cfg.huawei_solar_power_meter_phase_b_active_power,
+                    "float",
+                    label="power_meter_phase_b_active_power",
+                )
+            ),
+            convert_to_float(
+                _read(
+                    cfg.huawei_solar_power_meter_phase_c_active_power,
+                    "float",
+                    label="power_meter_phase_c_active_power",
+                )
+            ),
+        )
+
     rated_capacity_wh = convert_to_float(
         _read(
             cfg.huawei_solar_batteries_rated_capacity,

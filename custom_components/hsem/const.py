@@ -104,13 +104,22 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_main_fuse_amps": 25,
     "hsem_main_fuse_phases": 3,
     "hsem_max_grid_export_power_kw": 0,
+    # Live per-phase Huawei grid-charge safety limiter (issue #831).
+    # Disabled by default — fully backward compatible.  Requires
+    # main_fuse_phases == 3 and the grid-charge-maximum-power +
+    # power-meter-phase entities below to be configured.
+    "hsem_phase_aware_charging_enabled": False,
     "hsem_huawei_solar_batteries_charging_cutoff_capacity": "number.batteries_end_of_charge_soc",
     "hsem_huawei_solar_batteries_end_of_discharge_soc": "number.batteries_end_of_discharge_soc",
     "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "select.batteries_excess_pv_energy_use_in_tou",
     "hsem_huawei_solar_batteries_forcible_charge": "sensor.batteries_forcible_charge",
     "hsem_huawei_solar_batteries_grid_charge_cutoff_soc": "number.batteries_grid_charge_cutoff_soc",
+    "hsem_huawei_solar_batteries_grid_charge_maximum_power": vol.UNDEFINED,
     "hsem_huawei_solar_batteries_maximum_charging_power": "number.batteries_maximum_charging_power",
     "hsem_huawei_solar_batteries_maximum_discharging_power": "number.batteries_maximum_discharging_power",
+    "hsem_huawei_solar_power_meter_phase_a_active_power": vol.UNDEFINED,
+    "hsem_huawei_solar_power_meter_phase_b_active_power": vol.UNDEFINED,
+    "hsem_huawei_solar_power_meter_phase_c_active_power": vol.UNDEFINED,
     "hsem_huawei_solar_batteries_rated_capacity": "sensor.batteries_rated_capacity",
     "hsem_huawei_solar_batteries_state_of_capacity": "sensor.batteries_state_of_capacity",
     "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods": "sensor.batteries_tou_charging_and_discharging_periods",

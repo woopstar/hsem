@@ -1,7 +1,11 @@
 """Config flow step for power sensor selection.
 
 Allows the user to select the Home Assistant entities for house
-consumption power and solar production power.
+consumption power and solar production power, the main fuse rating,
+and the optional live per-phase grid-charge safety limiter (issue #831):
+three Huawei power-meter phase sensors plus the enable toggle. The
+limiter's own grid-charge-maximum-power write entity is configured in the
+``huawei_solar`` step alongside the other Huawei number entities.
 """
 
 import voluptuous as vol
@@ -70,6 +74,30 @@ async def get_power_step_schema(
                     }
                 }
             ),
+            vol.Optional(
+                "hsem_phase_aware_charging_enabled",
+                default=get_config_value(
+                    config_entry, "hsem_phase_aware_charging_enabled"
+                ),
+            ): selector({"boolean": {}}),
+            vol.Optional(
+                "hsem_huawei_solar_power_meter_phase_a_active_power",
+                default=get_config_value(
+                    config_entry, "hsem_huawei_solar_power_meter_phase_a_active_power"
+                ),
+            ): selector({"entity": {"domain": "sensor"}}),
+            vol.Optional(
+                "hsem_huawei_solar_power_meter_phase_b_active_power",
+                default=get_config_value(
+                    config_entry, "hsem_huawei_solar_power_meter_phase_b_active_power"
+                ),
+            ): selector({"entity": {"domain": "sensor"}}),
+            vol.Optional(
+                "hsem_huawei_solar_power_meter_phase_c_active_power",
+                default=get_config_value(
+                    config_entry, "hsem_huawei_solar_power_meter_phase_c_active_power"
+                ),
+            ): selector({"entity": {"domain": "sensor"}}),
         }
     )
 
@@ -84,5 +112,10 @@ async def validate_power_step_input(
         required_fields=[
             "hsem_house_consumption_power",
             "hsem_solar_production_power",
+        ],
+        optional_fields=[
+            "hsem_huawei_solar_power_meter_phase_a_active_power",
+            "hsem_huawei_solar_power_meter_phase_b_active_power",
+            "hsem_huawei_solar_power_meter_phase_c_active_power",
         ],
     )

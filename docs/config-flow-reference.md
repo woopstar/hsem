@@ -92,6 +92,7 @@ Huawei Solar inverter and battery entity configuration (device selectors and ent
 | Grid charge cutoff SoC | `hsem_huawei_solar_batteries_grid_charge_cutoff_soc` | `number.batteries_grid_charge_cutoff_soc` | Max SoC when charging from grid |
 | Max charging power | `hsem_huawei_solar_batteries_maximum_charging_power` | `number.batteries_maximum_charging_power` | Max charge power |
 | Max discharging power | `hsem_huawei_solar_batteries_maximum_discharging_power` | `number.batteries_maximum_discharging_power` | Max discharge power |
+| Grid charge maximum power | `hsem_huawei_solar_batteries_grid_charge_maximum_power` | — | Optional. Written by the live phase-aware charging safety limiter (issue #831, `hsem_phase_aware_charging_enabled` in the `power` step) to cap grid-funded charging below the main fuse's per-phase limit. Required only when that limiter is enabled |
 | Rated capacity | `hsem_huawei_solar_batteries_rated_capacity` | `sensor.batteries_rated_capacity` | Nameplate capacity sensor |
 | TOU periods | `hsem_huawei_solar_batteries_tou_charging_and_discharging_periods` | `sensor.batteries_tou_charging_and_discharging_periods` | TOU period schedule |
 | Excess PV use | `hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou` | `select.batteries_excess_pv_energy_use_in_tou` | Excess PV mode in TOU |
@@ -122,6 +123,8 @@ Power sensor configuration.
 | Main fuse amps | `hsem_main_fuse_amps` | 25 | Main fuse/breaker rating in amps. Set to 0 to disable. The MILP optimizer will respect this limit when scheduling battery and EV charging |
 | Main fuse phases | `hsem_main_fuse_phases` | 3 | Electrical phase count (1 or 3). Single-phase installations MUST set this to 1 — setting 3 on a single-phase install makes the fuse constraint 3× too permissive |
 | Max grid export power | `hsem_max_grid_export_power_kw` | 0 | DNO/inverter grid export cap in kW for export-limited connections (issue #726). The MILP planner never schedules export above this limit, and the applier writes this value in watts to the inverter when export is allowed (issue #770). Set to 0 to disable |
+| Power meter phase A/B/C | `hsem_huawei_solar_power_meter_phase_{a,b,c}_active_power` | — | Optional. Live per-phase active-power sensors from the Huawei power meter. Required only when the phase-aware charging safety limiter below is enabled |
+| Enable phase-aware charging | `hsem_phase_aware_charging_enabled` | `False` | Enable a live safety check immediately before each Huawei grid-charge hardware write (issue #831). Uses the three phase power-meter sensors above plus the grid-charge maximum-power entity (`huawei_solar` step) to cap grid-funded charging so it never pushes a phase over the fuse rating, even if load changed since the plan was solved. Requires `hsem_main_fuse_phases = 3` and all four entities configured |
 
 ### Step: `ev`
 

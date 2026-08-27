@@ -726,6 +726,92 @@ class TestFlowValidatorsUseConfigValidator:
         assert errors["hsem_house_consumption_power"] == "invalid_entity_id"
 
     @pytest.mark.asyncio
+    async def test_power_step_schema_includes_phase_aware_charging_fields(self):
+        """Phase-aware charging fields (issue #831) round-trip through the schema."""
+        from custom_components.hsem.flows.power import get_power_step_schema
+
+        schema = await get_power_step_schema(None)
+        result = schema(
+            {
+                "hsem_house_consumption_power": "sensor.house",
+                "hsem_solar_production_power": "sensor.solar",
+                "hsem_phase_aware_charging_enabled": True,
+                "hsem_huawei_solar_power_meter_phase_a_active_power": "sensor.phase_a",
+                "hsem_huawei_solar_power_meter_phase_b_active_power": "sensor.phase_b",
+                "hsem_huawei_solar_power_meter_phase_c_active_power": "sensor.phase_c",
+            }
+        )
+        assert result["hsem_phase_aware_charging_enabled"] is True  # pyright: ignore[reportIndexIssue]
+        assert (
+            result["hsem_huawei_solar_power_meter_phase_a_active_power"]  # pyright: ignore[reportIndexIssue]
+            == "sensor.phase_a"
+        )
+
+    @pytest.mark.asyncio
+    async def test_power_step_phase_aware_charging_defaults_disabled(self):
+        """Omitting the toggle must default to disabled — backward compatible."""
+        from custom_components.hsem.flows.power import get_power_step_schema
+
+        schema = await get_power_step_schema(None)
+        result = schema(
+            {
+                "hsem_house_consumption_power": "sensor.house",
+                "hsem_solar_production_power": "sensor.solar",
+            }
+        )
+        assert result["hsem_phase_aware_charging_enabled"] is False  # pyright: ignore[reportIndexIssue]
+
+    @pytest.mark.asyncio
+    async def test_validate_power_step_phase_meter_entity_not_found(self):
+        """Phase power-meter entities are validated when present (issue #831)."""
+        from custom_components.hsem.flows.power import validate_power_step_input
+
+        hass = _hass_with_states("sensor.house", "sensor.solar")
+        errors = await validate_power_step_input(
+            hass,
+            {
+                "hsem_house_consumption_power": "sensor.house",
+                "hsem_solar_production_power": "sensor.solar",
+                "hsem_huawei_solar_power_meter_phase_a_active_power": "sensor.missing",
+            },
+        )
+        assert (
+            errors["hsem_huawei_solar_power_meter_phase_a_active_power"]
+            == "entity_not_found"
+        )
+
+    @pytest.mark.asyncio
+    async def test_huawei_solar_step_schema_includes_grid_charge_max_power(self):
+        """Grid-charge maximum-power entity (issue #831) round-trips through the schema."""
+        from custom_components.hsem.flows.huawei_solar import (
+            get_huawei_solar_step_schema,
+        )
+
+        schema = await get_huawei_solar_step_schema(None)
+        result = schema(
+            {
+                "hsem_huawei_solar_device_id_inverter_1": "inv1",
+                "hsem_huawei_solar_device_id_batteries": "bat1",
+                "hsem_huawei_solar_batteries_working_mode": "select.wm",
+                "hsem_huawei_solar_batteries_state_of_capacity": "sensor.soc",
+                "hsem_huawei_solar_inverter_active_power_control": "sensor.apc",
+                "hsem_huawei_solar_batteries_maximum_charging_power": "number.mcp",
+                "hsem_huawei_solar_batteries_grid_charge_cutoff_soc": "number.gc",
+                "hsem_huawei_solar_batteries_charging_cutoff_capacity": "number.cc",
+                "hsem_huawei_solar_batteries_end_of_discharge_soc": "number.eod",
+                "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods": "sensor.tou",
+                "hsem_huawei_solar_batteries_rated_capacity": "sensor.rc",
+                "hsem_huawei_solar_batteries_forcible_charge": "sensor.fc",
+                "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "select.excess",
+                "hsem_huawei_solar_batteries_grid_charge_maximum_power": "number.gcmp",
+            }
+        )
+        assert (
+            result["hsem_huawei_solar_batteries_grid_charge_maximum_power"]  # pyright: ignore[reportIndexIssue]
+            == "number.gcmp"
+        )
+
+    @pytest.mark.asyncio
     async def test_validate_months_empty_winter(self):
         from custom_components.hsem.flows.months import validate_months_input
 

@@ -201,6 +201,10 @@ class HSEMWorkingModeSensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
                 "huawei_solar_batteries_grid_charge_cutoff_soc_entity": cfg.huawei_solar_batteries_grid_charge_cutoff_soc,
                 "huawei_solar_batteries_maximum_charging_power_entity": cfg.huawei_solar_batteries_maximum_charging_power,
                 "huawei_solar_batteries_maximum_discharging_power_entity": cfg.huawei_solar_batteries_maximum_discharging_power,
+                "huawei_solar_batteries_grid_charge_maximum_power_entity": cfg.huawei_solar_batteries_grid_charge_maximum_power,
+                "huawei_solar_power_meter_phase_a_active_power_entity": cfg.huawei_solar_power_meter_phase_a_active_power,
+                "huawei_solar_power_meter_phase_b_active_power_entity": cfg.huawei_solar_power_meter_phase_b_active_power,
+                "huawei_solar_power_meter_phase_c_active_power_entity": cfg.huawei_solar_power_meter_phase_c_active_power,
                 "huawei_solar_batteries_rated_capacity_max_entity": cfg.huawei_solar_batteries_rated_capacity,
                 "huawei_solar_batteries_state_of_capacity_entity": cfg.huawei_solar_batteries_state_of_capacity,
                 "huawei_solar_batteries_tou_charging_and_discharging_periods_entity": cfg.huawei_solar_batteries_tou_charging_and_discharging_periods,
@@ -332,6 +336,9 @@ class HSEMWorkingModeSensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
             "batteries_enable_excess_export": cfg.batteries_enable_excess_export,
             "batteries_excess_export_discharge_buffer": cfg.batteries_excess_export_discharge_buffer,
             "main_fuse_amps": cfg.main_fuse_amps,
+            "phase_aware_charging_enabled": cfg.phase_aware_charging_enabled,
+            "grid_phase_power_w": live.grid_phase_power_w,
+            "huawei_batteries_grid_charge_max_power_w": live.huawei_batteries_grid_charge_max_power_w,
         }
 
         apply_summary = data.apply_summary
