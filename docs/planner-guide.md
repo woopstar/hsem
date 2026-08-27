@@ -1115,6 +1115,30 @@ charge/discharge-power reading is missing/non-finite. When the feature is
 disabled or the slot is not a grid-charge slot, the limiter makes no
 changes and the grid-charge-maximum-power entity is left untouched.
 
+#### Transition safety: feedback-free floor + 45-second fail-closed deadline
+
+A verified downward cap change can take several seconds to physically
+settle, during which the live battery-power reading may still show the old
+(higher) draw. `custom_sensors/phase_charge_transition.py` (mixed into the
+working-mode sensor) tracks this as a slot-scoped transition:
+
+- **While unsettled**, the limiter is handed the *previous* verified cap
+  instead of trusting the live battery-power reading, so a temporarily
+  stale-low reading cannot make the limiter believe more headroom exists
+  than is physically true yet.
+- **Once settled** (both the live cap and the live battery-power reading
+  agree with the new target), the transition clears and the limiter goes
+  back to reading live telemetry directly.
+- **If it never settles within 45 seconds**, the slot fails closed: the
+  grid-charge cap is written as 0 W for the rest of the slot. A dedicated
+  background task fires exactly at the 45-second deadline and forces a
+  fresh hardware-write pass even if nothing else would have triggered one
+  — a stalled or silent telemetry feed cannot indefinitely defer the
+  fail-close.
+- **Every transition is scoped to one recommendation slot** and is
+  cancelled and cleared whenever the config entry reloads, so a reload can
+  never leave a stale transition or a leaked background task behind.
+
 ---
 
 ## Data quality diagnostics

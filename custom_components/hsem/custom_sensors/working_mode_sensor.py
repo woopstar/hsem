@@ -31,6 +31,9 @@ from custom_components.hsem.custom_sensors.applier import (
     async_apply_battery_settings,
     async_apply_inverter_power_control,
 )
+from custom_components.hsem.custom_sensors.phase_charge_transition import (
+    PhaseChargeTransitionMixin,
+)
 from custom_components.hsem.custom_sensors.recommendation_resolver import (
     resolve_current_recommendation,
 )
@@ -50,7 +53,9 @@ from custom_components.hsem.utils.sensornames.diagnostics import (
 )
 
 
-class HSEMWorkingModeSensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
+class HSEMWorkingModeSensor(
+    PhaseChargeTransitionMixin, HSEMCoordinatorEntity, SensorEntity, HSEMEntity
+):
     """HA sensor entity for the HSEM working-mode recommendation.
 
     Subscribes to :class:`HSEMDataUpdateCoordinator` for shared state and
@@ -99,6 +104,11 @@ class HSEMWorkingModeSensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
         # unload.  Only the most-recent task is retained; prior tasks will
         # have already completed or been replaced.
         self._update_task: asyncio.Task | None = None
+
+        # Live phase-aware grid-charge transition tracking (issue #831).
+        # Cleared/rearmed per-slot; see _primary_grid_charge_transition_status()
+        # in PhaseChargeTransitionMixin.
+        self._init_phase_charge_transition_state()
 
     # ------------------------------------------------------------------
     # HA entity properties
@@ -365,6 +375,7 @@ class HSEMWorkingModeSensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
     async def async_added_to_hass(self) -> None:
         """Register coordinator listener and run an initial hardware-write pass."""
         await super().async_added_to_hass()
+        self._transition_deadline_tasks_enabled = True
         # If the coordinator already has data (from its first cycle in setup),
         # apply hardware settings immediately so the entity is not stale.
         if self.coordinator.data is not None:
@@ -375,9 +386,16 @@ class HSEMWorkingModeSensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
         """Cancel any pending background update task before unloading.
 
         This prevents a stale task from issuing inverter/battery writes after
-        the config entry has been unloaded.
+        the config entry has been unloaded.  A verified but unsettled
+        grid-charge transition (issue #831) cannot be left stranded across a
+        reload, so its deadline task is cancelled and awaited here too.
         """
+        self._transition_deadline_tasks_enabled = False
+        deadline_task = self._primary_grid_charge_deadline_task
+        self._clear_primary_grid_charge_transition()
         self._cancel_update_task()
+        if deadline_task is not None:
+            await asyncio.gather(deadline_task, return_exceptions=True)
         await super().async_will_remove_from_hass()
 
     def _cancel_update_task(self) -> None:
@@ -471,9 +489,13 @@ class HSEMWorkingModeSensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
         live = data.live
 
         if cfg is None or live is None:
+            self._clear_primary_grid_charge_transition()
             return
 
         hourly_rec = data.hourly_recommendation
+
+        if hourly_rec is None:
+            self._clear_primary_grid_charge_transition()
 
         # Apply real-time override to the active slot.
         if hourly_rec is not None:
@@ -519,12 +541,17 @@ class HSEMWorkingModeSensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
                 inv_summary.overall_status != ApplyStatus.FAILED
                 and hourly_rec is not None
             ):
+                transition_reference_w, transition_timed_out = (
+                    self._primary_grid_charge_transition_status(cfg, live, hourly_rec)
+                )
                 bat_summary = await async_apply_battery_settings(
                     self,
                     cfg,
                     live,
                     hourly_rec,
                     data.current_required_battery,
+                    primary_grid_charge_transition_reference_w=transition_reference_w,
+                    primary_grid_charge_transition_timed_out=transition_timed_out,
                 )
                 combined_summary.results.extend(bat_summary.results)
 

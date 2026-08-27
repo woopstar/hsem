@@ -762,6 +762,7 @@ class TestWorkingModeSensorTopLevelGate:
 
             sensor = MagicMock(spec=HSEMWorkingModeSensor)
             sensor.hass = MagicMock()
+            sensor._primary_grid_charge_transition_status.return_value = (None, False)
 
             await HSEMWorkingModeSensor._async_apply_hardware_writes(sensor, data)
 
@@ -792,6 +793,7 @@ class TestWorkingModeSensorTopLevelGate:
 
             sensor = MagicMock(spec=HSEMWorkingModeSensor)
             sensor.hass = MagicMock()
+            sensor._primary_grid_charge_transition_status.return_value = (None, False)
 
             await HSEMWorkingModeSensor._async_apply_hardware_writes(sensor, data)
 
@@ -826,6 +828,7 @@ class TestWorkingModeSensorTopLevelGate:
 
             sensor = MagicMock(spec=HSEMWorkingModeSensor)
             sensor.hass = MagicMock()
+            sensor._primary_grid_charge_transition_status.return_value = (None, False)
 
             await HSEMWorkingModeSensor._async_apply_hardware_writes(sensor, data)
 
@@ -870,6 +873,7 @@ class TestWorkingModeSensorTopLevelGate:
 
             sensor = MagicMock(spec=HSEMWorkingModeSensor)
             sensor.hass = MagicMock()
+            sensor._primary_grid_charge_transition_status.return_value = (None, False)
 
             await HSEMWorkingModeSensor._async_apply_hardware_writes(sensor, data)
 
