@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import numpy as np
+
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.units import (
     export_max_energy_per_slot_kwh,
@@ -14,6 +16,7 @@ from custom_components.hsem.utils.units import (
 )
 
 if TYPE_CHECKING:
+    from custom_components.hsem.models.ev_config import EVConfig
     from custom_components.hsem.models.planned_slot import PlannedSlot
 
 
@@ -56,3 +59,47 @@ def _resolve_export_cap(
         slot_hours * 60.0,
     )
     return True, max_kwh
+
+
+def resolve_grid_bounds(
+    *,
+    active_evs: list[EVConfig],
+    base_load: np.ndarray,  # type: ignore[name-defined]
+    pv_avail: np.ndarray,  # type: ignore[name-defined]
+    max_charge_per_slot: float,
+    charge_eff: float,
+    max_dis: float,
+    discharge_eff: float,
+    max_grid_export_power_kw: float | None,
+    slots: list[PlannedSlot],
+    future_idx: list[int],
+) -> tuple[np.ndarray, np.ndarray, bool, float]:  # type: ignore[name-defined]
+    """Resolve finite grid import/export bounds that close both signed-price directions.
+
+    Returns ``(grid_import_ub_per_slot, grid_export_ub_per_slot,
+    export_limit_active, max_grid_export_per_slot_kwh)``.
+    """
+    ev_import_capacity = sum(
+        ev.max_charge_per_slot / max(ev.charger_efficiency, 0.01) for ev in active_evs
+    )
+    grid_import_ub_per_slot = (
+        base_load + max_charge_per_slot / charge_eff + ev_import_capacity
+    )
+    grid_export_ub_per_slot = pv_avail + max_dis * discharge_eff
+
+    # Grid export power cap (issue #726): hard per-slot bound on ge[t].
+    export_limit_active, max_grid_export_per_slot_kwh = _resolve_export_cap(
+        max_grid_export_power_kw, slots, future_idx
+    )
+    if export_limit_active:
+        grid_export_ub_per_slot = np.minimum(
+            grid_export_ub_per_slot,
+            max_grid_export_per_slot_kwh,
+        )
+
+    return (
+        grid_import_ub_per_slot,
+        grid_export_ub_per_slot,
+        export_limit_active,
+        max_grid_export_per_slot_kwh,
+    )

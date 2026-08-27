@@ -20,7 +20,7 @@ from custom_components.hsem.models.ev_config import EVConfig
 from custom_components.hsem.planner._scipy_probe import (  # noqa: F401
     is_scipy_available,
 )
-from custom_components.hsem.utils.datetime_utils import as_tz, slot_contains
+from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import clamp_efficiency
 
@@ -312,62 +312,23 @@ def solve_milp(
     # WITHOUT the pre-computed EV planned loads (the LP will decide allocation).
     # Otherwise keep the pre-existing EV adjustment (backward-compatible).
     # ------------------------------------------------------------------
-    from custom_components.hsem.planner.milp._ev_amp_lattice import (
-        ev_has_live_session,
+    from custom_components.hsem.planner.milp._ev_net_load import (
+        resolve_active_evs_and_net_load,
     )
 
-    active_evs: list[EVConfig] = []
-    if ev_configs:
-        for ev in ev_configs:
-            # A managed live session (managed_session_cap_only, issue #797)
-            # has max_charge_per_slot=0 by construction — it must still be
-            # admitted so its Huawei discharge permission/ceiling is
-            # honoured even though it can command no further charge.
-            if (
-                ev.enabled
-                and ev.capacity_kwh > 1e-9
-                and (ev.max_charge_per_slot > 1e-9 or ev_has_live_session(ev))
-            ):
-                active_evs.append(ev)
-        if active_evs:
-            # Recompute the pure-house baseline before adding the MILP's EV
-            # variables.  Accounted heuristic EV load is already embedded in
-            # the house forecast and must be removed, except for a known live
-            # session that current-slot injection already subtracted.
-            active_net_load: list[float] = []
-            for slot_i in future_idx:
-                slot = slots[slot_i]
-                accounted_to_remove = max(slot.ev_accounted_load_kwh, 0.0)
-                if slot_contains(slot.start, slot.end, now) and any(
-                    ev.current_session_removed_from_base for ev in active_evs
-                ):
-                    # Live injection already turned avg_house into a pure-house
-                    # current-slot projection by subtracting every known session.
-                    # The heuristic accounted value may use a different power,
-                    # so subtracting any of it again would invent PV headroom.
-                    accounted_to_remove = 0.0
-                active_net_load.append(
-                    slot.avg_house_consumption_kwh
-                    - accounted_to_remove
-                    - slot.solcast_pv_estimate_kwh
-                )
-            net_load = np.asarray(active_net_load, dtype=float)
-            pv_avail = np.maximum(-net_load, 0.0)
-            base_load = np.maximum(net_load, 0.0)
-            log_planner(
-                "debug",
-                "[milp] EV co-optimisation enabled: %d active EV(s), "
-                "net_load rebuilt without double-counted EV loads",
-                len(active_evs),
-            )
-        else:
-            active_evs = []
-    if not active_evs and ev_configs:
-        log_planner(
-            "debug",
-            "[milp] EV configs provided but no valid active EVs — "
-            "falling back to fixed EV loads",
-        )
+    _active_ev_net_load = resolve_active_evs_and_net_load(
+        ev_configs=ev_configs,
+        slots=slots,
+        future_idx=future_idx,
+        now=now,
+        net_load=net_load,
+        pv_avail=pv_avail,
+        base_load=base_load,
+    )
+    active_evs = _active_ev_net_load.active_evs
+    net_load = _active_ev_net_load.net_load
+    pv_avail = _active_ev_net_load.pv_avail
+    base_load = _active_ev_net_load.base_load
 
     m = len(future_idx)  # number of active LP slots
 
@@ -465,25 +426,26 @@ def solve_milp(
     # Finite physical grid bounds close both signed-price unbounded directions.
     charge_eff = clamp_efficiency(charge_efficiency_pct)
     discharge_eff = clamp_efficiency(discharge_efficiency_pct)
-    ev_import_capacity = sum(
-        ev.max_charge_per_slot / max(ev.charger_efficiency, 0.01) for ev in active_evs
-    )
-    grid_import_ub_per_slot = (
-        base_load + max_charge_per_slot / charge_eff + ev_import_capacity
-    )
-    grid_export_ub_per_slot = pv_avail + max_dis * discharge_eff
 
-    # Grid export power cap (issue #726): hard per-slot bound on ge[t].
-    from custom_components.hsem.planner.milp._export_cap import _resolve_export_cap
+    from custom_components.hsem.planner.milp._export_cap import resolve_grid_bounds
 
-    export_limit_active, max_grid_export_per_slot_kwh = _resolve_export_cap(
-        max_grid_export_power_kw, slots, future_idx
+    (
+        grid_import_ub_per_slot,
+        grid_export_ub_per_slot,
+        export_limit_active,
+        max_grid_export_per_slot_kwh,
+    ) = resolve_grid_bounds(
+        active_evs=active_evs,
+        base_load=base_load,
+        pv_avail=pv_avail,
+        max_charge_per_slot=max_charge_per_slot,
+        charge_eff=charge_eff,
+        max_dis=max_dis,
+        discharge_eff=discharge_eff,
+        max_grid_export_power_kw=max_grid_export_power_kw,
+        slots=slots,
+        future_idx=future_idx,
     )
-    if export_limit_active:
-        grid_export_ub_per_slot = np.minimum(
-            grid_export_ub_per_slot,
-            max_grid_export_per_slot_kwh,
-        )
 
     # ------------------------------------------------------------------
     # Build objective vector and constraint matrices
