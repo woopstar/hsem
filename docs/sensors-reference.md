@@ -62,6 +62,7 @@ all planner output as attributes.
 | `phase_aware_charging_enabled` | bool | Live phase-aware grid-charge safety limiter enabled (issue #831, default `False`) |
 | `grid_phase_power_w` | tuple[float \| None, float \| None, float \| None] | Live per-phase grid power `(a, b, c)` in Watts; `None` per phase when unavailable |
 | `huawei_batteries_grid_charge_max_power_w` | float \| None | Live Huawei grid-charge maximum-power ceiling in Watts, or `None` if unconfigured/unavailable |
+| `primary_grid_charge_owned` | bool | Whether HSEM currently believes it owns an armed Huawei grid-charge cap (issue #840). Drives the Error-mode emergency stop; never true for a charge armed outside of HSEM |
 | `batteries_wait_mode_behavior` | string | Wait mode behaviour: `strict` or `self_consumption_with_reserve` |
 | `house_consumption_energy_weight_1d` | float | 1-day consumption prediction weight |
 | `house_consumption_energy_weight_3d` | float | 3-day weight |

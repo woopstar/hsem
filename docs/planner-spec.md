@@ -2013,6 +2013,60 @@ scoped to the recommendation slot that armed it:
 - The deadline task is cancelled and the transition cleared on unload,
   every time, with no exceptions escaping `async_will_remove_from_hass()`.
 
+#### Error-mode emergency stop for an HSEM-owned grid charge (issue #840)
+
+`DegradedMode.Error` blocks every ordinary hardware write, because critical
+telemetry (battery SoC, house load, etc.) is missing and the planner cannot
+safely decide anything new. But if HSEM had already armed a Huawei
+grid-charge (TOU force-charge periods plus a positive grid-charge-maximum-power
+cap) before that telemetry loss, the blanket block would leave the charge
+running uncontrolled at its last commanded rate.
+`custom_sensors/applier_emergency_stop.py::GridChargeEmergencyStopMixin`
+(mixed into `HSEMWorkingModeSensor`) adds exactly one narrowly-scoped,
+downward-only exception to that block:
+
+1. **Ownership, never inferred from hardware alone.** HSEM owns the armed
+   charge when either the *current* accepted recommendation is
+   `batteries_charge_grid`, or a previous cycle already latched ownership
+   (`self._primary_grid_charge_owned`). An externally or manually armed
+   TOU/force-charge schedule — one HSEM's own recommendation history never
+   marked as `batteries_charge_grid` — is never claimed.
+2. **The exception fires only in `Error` mode**, only when
+   `cfg.phase_aware_charging_enabled` is `True` (the emergency path only
+   ever touches the entity that feature already manages), and only when
+   live telemetry does not already prove the charge is stopped
+   (`primary_grid_charge_is_known_disarmed()`: a verified cap ≤ 0 W, a
+   working mode other than `TimeOfUse`, or TOU periods that no longer match
+   the force-charge schedule).
+3. **The write.** `async_emergency_disable_grid_charge()` writes exactly
+   `0` to `hsem_huawei_solar_batteries_grid_charge_maximum_power` via the
+   same write-and-verify primitive as every other applier write. It never
+   writes any other entity and never writes a non-zero value.
+4. **Retry semantics.** Ownership is latched (`_primary_grid_charge_owned =
+   True`) before the write, and is released only once
+   `summary_verifies_zero_grid_charge()` confirms the write verified at
+   0 W. A failed or unverified write leaves ownership latched so the next
+   cycle retries — it is never abandoned after one failed attempt.
+5. **Release on independent proof, every cycle.** Ownership is also
+   released whenever `primary_grid_charge_is_known_disarmed()` becomes
+   true or the feature is disabled, independent of read-only/degraded-mode
+   gating — not only when degraded mode happens to clear.
+
+##### Invariants
+
+- No write other than a `0` write to the grid-charge-maximum-power entity
+  is ever issued while `DegradedMode.Error` is active.
+- Ownership is only ever established from the accepted plan's own
+  recommendation history (current recommendation or a prior latch) —
+  never from live hardware state alone.
+- A charge whose current recommendation is not `batteries_charge_grid` and
+  for which ownership was never previously latched is never touched, even
+  if live telemetry shows it armed.
+- A failed or unverified emergency write leaves ownership latched for retry
+  on the next cycle.
+- Ownership releases only on a verified 0 W write or independently proven
+  live-disarmed state — never merely because degraded mode cleared.
+
 ## Invariants for tests
 
 Add tests for these invariants:

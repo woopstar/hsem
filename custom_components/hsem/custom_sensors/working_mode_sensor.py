@@ -31,6 +31,9 @@ from custom_components.hsem.custom_sensors.applier import (
     async_apply_battery_settings,
     async_apply_inverter_power_control,
 )
+from custom_components.hsem.custom_sensors.applier_emergency_stop import (
+    GridChargeEmergencyStopMixin,
+)
 from custom_components.hsem.custom_sensors.phase_charge_transition import (
     PhaseChargeTransitionMixin,
 )
@@ -54,7 +57,11 @@ from custom_components.hsem.utils.sensornames.diagnostics import (
 
 
 class HSEMWorkingModeSensor(
-    PhaseChargeTransitionMixin, HSEMCoordinatorEntity, SensorEntity, HSEMEntity
+    PhaseChargeTransitionMixin,
+    GridChargeEmergencyStopMixin,
+    HSEMCoordinatorEntity,
+    SensorEntity,
+    HSEMEntity,
 ):
     """HA sensor entity for the HSEM working-mode recommendation.
 
@@ -109,6 +116,12 @@ class HSEMWorkingModeSensor(
         # Cleared/rearmed per-slot; see _primary_grid_charge_transition_status()
         # in PhaseChargeTransitionMixin.
         self._init_phase_charge_transition_state()
+
+        # Error-mode emergency-stop ownership (issue #840). Survives across
+        # cycles so a failed emergency write is retried, not abandoned; never
+        # latched from hardware state alone (never claims an
+        # externally/manually armed charge).
+        self._primary_grid_charge_owned: bool = False
 
     # ------------------------------------------------------------------
     # HA entity properties
@@ -349,6 +362,7 @@ class HSEMWorkingModeSensor(
             "phase_aware_charging_enabled": cfg.phase_aware_charging_enabled,
             "grid_phase_power_w": live.grid_phase_power_w,
             "huawei_batteries_grid_charge_max_power_w": live.huawei_batteries_grid_charge_max_power_w,
+            "primary_grid_charge_owned": self._primary_grid_charge_owned,
         }
 
         apply_summary = data.apply_summary
@@ -497,6 +511,9 @@ class HSEMWorkingModeSensor(
         if hourly_rec is None:
             self._clear_primary_grid_charge_transition()
 
+        # Error-mode emergency-stop ownership release (issue #840).
+        self._release_primary_grid_charge_ownership_if_safe(cfg, live)
+
         # Apply real-time override to the active slot.
         if hourly_rec is not None:
             resolve_current_recommendation(
@@ -532,6 +549,12 @@ class HSEMWorkingModeSensor(
                 f"Hardware writes BLOCKED — degraded mode: {live.degraded_mode.value}. Missing: {live.missing_entities_list}",
                 "warning",
             )
+            # Narrow downward-only exception (issue #840) — see
+            # GridChargeEmergencyStopMixin for the ownership/retry contract.
+            emergency_summary = await self._async_run_error_mode_emergency_stop(
+                self, cfg, live, hourly_rec
+            )
+            combined_summary.results.extend(emergency_summary.results)
         else:
             inv_summary = await async_apply_inverter_power_control(self, cfg, live)
             combined_summary.results.extend(inv_summary.results)

@@ -1139,6 +1139,31 @@ working-mode sensor) tracks this as a slot-scoped transition:
   cancelled and cleared whenever the config entry reloads, so a reload can
   never leave a stale transition or a leaked background task behind.
 
+#### Error-mode emergency stop for an HSEM-owned grid charge (issue #840)
+
+`Error` mode normally blocks *every* hardware write, because critical
+telemetry is missing and the planner can't safely decide anything new. The
+one exception: if HSEM itself armed a Huawei grid charge and then critical
+telemetry disappeared mid-charge, HSEM can still safely stop that specific
+charge. `custom_sensors/applier_emergency_stop.py` adds this as a narrow,
+downward-only carve-out:
+
+- **Ownership comes only from HSEM's own plan history** — the current
+  recommendation being `batteries_charge_grid`, or a previous cycle having
+  already latched ownership. A charge armed by a manual TOU schedule or
+  any other source outside HSEM's own recommendations is never touched.
+- **The only write permitted** is forcing
+  `hsem_huawei_solar_batteries_grid_charge_maximum_power` to `0`, verified
+  the same way as every other applier write.
+- **A failed or unverified stop keeps ownership latched**, so the next
+  cycle retries automatically instead of giving up.
+- **Ownership is released** as soon as the 0 W write verifies, or as soon
+  as live telemetry independently proves the charge is already
+  stopped — whichever happens first, and independent of whether degraded
+  mode has cleared.
+- This exception requires `hsem_phase_aware_charging_enabled = True`; it
+  only ever protects the entity that feature already manages.
+
 ---
 
 ## Data quality diagnostics
