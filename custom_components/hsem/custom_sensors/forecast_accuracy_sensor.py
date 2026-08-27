@@ -16,6 +16,8 @@ are exposed as flat state attributes, plus:
 - ``latest_load_actual_kwh`` — most recent finalised slot load actual.
 - ``latest_bias_pv_kwh`` — bias for the most recent finalised slot.
 - ``latest_bias_load_kwh`` — bias for the most recent finalised slot.
+- ``restored_unfinalised_count`` — number of restored slots whose lifecycle
+  was not finalised before the previous HA session ended.
 - ``_forecast_tracker_data`` — serialised tracker record list (not displayed
   in UI; used internally to restore state across HA restarts).
 
@@ -28,12 +30,7 @@ from typing import Any, cast, override
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import (
-    STATE_UNAVAILABLE,
-    STATE_UNKNOWN,
-    EntityCategory,
-    UnitOfEnergy,
-)
+from homeassistant.const import EntityCategory, UnitOfEnergy
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from custom_components.hsem.coordinator import (
@@ -41,7 +38,10 @@ from custom_components.hsem.coordinator import (
     HSEMDataUpdateCoordinator,
 )
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
+from custom_components.hsem.utils.datetime_utils import now as hsem_now
 from custom_components.hsem.utils.forecast_tracker import ForecastTracker
+from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+from custom_components.hsem.utils.persistence import finite_float
 from custom_components.hsem.utils.sensornames.diagnostics import (
     get_forecast_accuracy_sensor_entity_id,
     get_forecast_accuracy_sensor_name,
@@ -154,12 +154,16 @@ class HSEMForecastAccuracySensor(
                 round(latest.bias_load, 4) if latest.bias_load is not None else None
             )
 
-        # Include serialized tracker data for reboot persistence.
-        # Limit to most recent 24 records to stay under HA's 16 KB attribute limit.
-        _data = tracker.to_dict()
-        if _data:
-            _data["records"] = _data.get("records", [])[-24:]
-        attrs["_forecast_tracker_data"] = _data
+        # Number of restored slots whose lifecycle was not finalised before
+        # the previous HA session ended (issue #832).
+        attrs["restored_unfinalised_count"] = len(tracker.restored_unfinalised_keys)
+
+        # Include serialized tracker data for reboot persistence. Bounded to
+        # the slots that matter across a restart to stay under HA's 16 KB
+        # attribute limit (active/frozen/finalised/nearest-future slots).
+        attrs["_forecast_tracker_data"] = tracker.to_persistence_dict(
+            now=hsem_now(), max_records=24
+        )
 
         return cast(dict[str, Any], attrs)
 
@@ -181,8 +185,9 @@ class HSEMForecastAccuracySensor(
         if restored is None:
             return
 
-        # Restore sensor state
-        if restored.state not in {STATE_UNAVAILABLE, STATE_UNKNOWN, None}:
+        # Restore sensor state — only trust it when it parses as a finite
+        # float, since `native_value` calls `float()` on it unconditionally.
+        if finite_float(restored.state) is not None:
             self._restored_state = restored.state
 
         tracker_data = restored.attributes.get("_forecast_tracker_data")
@@ -192,5 +197,19 @@ class HSEMForecastAccuracySensor(
         tracker: ForecastTracker | None = getattr(
             self.coordinator, "_forecast_tracker", None
         )
-        if tracker is not None:
+        if tracker is None:
+            return
+
+        try:
             tracker.load_from_dict(tracker_data)
+        except Exception:
+            _LOGGER.exception(
+                "Failed to restore forecast tracker state from previous session"
+            )
+            return
+
+        if tracker.restored_unfinalised_keys:
+            _LOGGER.debug(
+                "Restored %d unfinalised forecast slot(s) from previous session",
+                len(tracker.restored_unfinalised_keys),
+            )

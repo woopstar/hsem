@@ -10,6 +10,8 @@ Attributes
 - ``hour_factors`` — JSON-serialized dict of per-hour factors (0–23).
 - ``confidence`` — Configured confidence percentile.
 - ``residual_count`` — Number of intra-hour residuals in the buffer.
+- ``processed_through`` — ISO timestamp of the newest slot the corrector has
+  already learned from, or ``None`` before any slot has been processed.
 - ``_solar_corrector_data`` — Serialised corrector state for reboot persistence.
 
 The sensor is a *diagnostic* entity (``EntityCategory.DIAGNOSTIC``).
@@ -22,11 +24,7 @@ from typing import Any, cast, override
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import (
-    STATE_UNAVAILABLE,
-    STATE_UNKNOWN,
-    EntityCategory,
-)
+from homeassistant.const import EntityCategory
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from custom_components.hsem.coordinator import (
@@ -34,6 +32,9 @@ from custom_components.hsem.coordinator import (
     HSEMDataUpdateCoordinator,
 )
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
+from custom_components.hsem.utils.datetime_utils import now as hsem_now
+from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+from custom_components.hsem.utils.persistence import finite_float
 from custom_components.hsem.utils.sensornames.diagnostics import (
     get_solar_confidence_sensor_entity_id,
     get_solar_confidence_sensor_name,
@@ -127,6 +128,11 @@ class HSEMSolarConfidenceSensor(
             "residual_count": (
                 len(corrector._recent_residuals) if corrector is not None else 0
             ),
+            "processed_through": (
+                corrector.processed_through.isoformat()
+                if corrector is not None and corrector.processed_through is not None
+                else None
+            ),
         }
 
         # Include serialised corrector state for reboot persistence.
@@ -153,8 +159,9 @@ class HSEMSolarConfidenceSensor(
         if restored is None:
             return
 
-        # Restore sensor state
-        if restored.state not in {STATE_UNAVAILABLE, STATE_UNKNOWN, None}:
+        # Restore sensor state — only trust it when it parses as a finite
+        # float, since `native_value` calls `float()` on it unconditionally.
+        if finite_float(restored.state) is not None:
             self._restored_state = restored.state
 
         corrector_data = restored.attributes.get("_solar_corrector_data")
@@ -164,5 +171,12 @@ class HSEMSolarConfidenceSensor(
         corrector: SolarForecastCorrector | None = getattr(
             self.coordinator, "_solar_corrector", None
         )
-        if corrector is not None:
-            corrector.load_from_dict(corrector_data)
+        if corrector is None:
+            return
+
+        try:
+            corrector.load_from_dict(corrector_data, restored_at=hsem_now())
+        except Exception:
+            _LOGGER.exception(
+                "Failed to restore solar corrector state from previous session"
+            )
