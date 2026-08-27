@@ -100,6 +100,9 @@ async def async_apply_battery_settings(
     live: LiveState,
     rec: HourlyRecommendation,
     current_required_battery_kwh: float,
+    *,
+    primary_grid_charge_transition_reference_w: float | None = None,
+    primary_grid_charge_transition_timed_out: bool = False,
 ) -> CycleApplySummary:
     """Apply the working mode, TOU periods, and discharge power to the battery pack.
 
@@ -119,6 +122,12 @@ async def async_apply_battery_settings(
         rec: The current-interval recommendation.
         current_required_battery_kwh: Remaining energy required until end of day
             (used when computing forcible-discharge target SoC).
+        primary_grid_charge_transition_reference_w: Passed through to
+            :func:`~custom_sensors.phase_charge_limiter.build_phase_aware_charge_commands`
+            (issue #831). See that function's docstring.
+        primary_grid_charge_transition_timed_out: Passed through to
+            :func:`~custom_sensors.phase_charge_limiter.build_phase_aware_charge_commands`
+            (issue #831). See that function's docstring.
 
     Returns:
         :class:`CycleApplySummary` with one :class:`ApplyResult` per write
@@ -404,7 +413,17 @@ async def async_apply_battery_settings(
     # correction on top of the horizon MILP: uses the newest live phase-meter
     # snapshot immediately before this write, so an appliance change since
     # the plan was solved cannot push a phase over the main fuse rating.
-    phase_commands = build_phase_aware_charge_commands(cfg, live, rec)
+    phase_commands = build_phase_aware_charge_commands(
+        cfg,
+        live,
+        rec,
+        primary_grid_charge_transition_reference_w=(
+            primary_grid_charge_transition_reference_w
+        ),
+        primary_grid_charge_transition_timed_out=(
+            primary_grid_charge_transition_timed_out
+        ),
+    )
     if phase_commands.primary_grid_charge_power_w is not None:
         target_w = round(phase_commands.primary_grid_charge_power_w)
         if live.huawei_batteries_grid_charge_max_power_w != target_w:
@@ -431,6 +450,9 @@ async def async_apply_battery_settings(
                 cfg.main_fuse_amps,
                 cfg.main_fuse_phases,
                 live.huawei_batteries_charge_discharge_power_w,
+            )
+            sensor._record_verified_primary_grid_charge_transition(
+                cfg, live, rec, float(target_w), summary
             )
             if grid_charge_result.status == ApplyStatus.FAILED:
                 _LOGGER.debug(

@@ -1952,6 +1952,67 @@ slot is a grid-charge slot, and any of:
 - Any missing or non-finite required live telemetry produces exactly
   `0.0`, never `None` and never a stale prior value.
 
+#### Feedback-free floor + 45-second fail-closed transition (issue #831)
+
+A verified downward Huawei grid-charge cap change may take several seconds
+to physically settle. During that window the live battery-power reading can
+lag the just-verified command, which would otherwise let the limiter
+manufacture headroom that does not yet physically exist.
+`custom_sensors/phase_charge_transition.py::PhaseChargeTransitionMixin`
+(mixed into `HSEMWorkingModeSensor`) tracks exactly one such transition,
+scoped to the recommendation slot that armed it:
+
+1. **Arming.** After a Huawei grid-charge-maximum-power write verifies
+   (`ApplyStatus.OK` or `SKIPPED`, desired/actual both within 1 W of the
+   target) at a **lower** value than the previous live reading,
+   `_record_verified_primary_grid_charge_transition()` records
+   `(previous_limit_w, target_limit_w, slot, expires_at_monotonic)` with a
+   45-second deadline (`PRIMARY_GRID_CHARGE_TRANSITION_MAX_SECONDS`).
+   Repeated verification of the *same* target does not extend the
+   deadline. A nested lower target keeps the original (higher)
+   `previous_limit_w` so the physical reference is never forgotten.
+2. **Feedback-free floor.** While a transition is active and unsettled,
+   `_primary_grid_charge_transition_status()` returns
+   `previous_limit_w` as `primary_grid_charge_transition_reference_w`.
+   `build_phase_aware_charge_commands()` substitutes this reference for
+   the live battery-power reading whenever the reference is *higher* than
+   the live value — never lower, so a real increase in battery power is
+   still honoured immediately.
+3. **Settlement.** The transition clears as soon as **both** the live
+   grid-charge-max-power reading (within 1 W) and the live battery-power
+   reading (within 300 W) agree with the target.
+4. **Fail-closed deadline.** If neither settles within 45 seconds, the
+   slot is marked timed out: `build_phase_aware_charge_commands()` then
+   receives `primary_grid_charge_transition_timed_out=True` and returns
+   `primary_grid_charge_power_w=0.0` for the remainder of the slot. An
+   entity-owned `asyncio.Task` (`_schedule_primary_grid_charge_deadline()`)
+   fires at the deadline and forces a fresh `_async_apply_hardware_writes()`
+   pass even if no coordinator cycle or state-change event would otherwise
+   run one — silent telemetry cannot defer the fail-close.
+5. **Slot scoping.** A transition or timeout latch from one
+   recommendation slot never leaks into the next: both are keyed by
+   `(utc_key(rec.start), utc_key(rec.end))` and cleared whenever the slot
+   changes, the recommendation is no longer `batteries_charge_grid`, or
+   the feature is disabled.
+6. **Reload safety.** `async_will_remove_from_hass()` disables further
+   deadline scheduling, cancels any in-flight deadline task, and clears
+   the transition before unload completes — a config-entry reload can
+   never strand a transition or its deadline task.
+
+##### Invariants
+
+- An upward or unchanged verified cap never arms a transition.
+- An unverified (`FAILED`) write never arms a transition.
+- The feedback-free reference is only ever used when it exceeds the live
+  battery-power reading — it can tighten the effective floor but never
+  relax it below the raw live reading.
+- A transition and its timeout latch are always scoped to one
+  `(slot_start, slot_end)` pair and never observed by a different slot.
+- After 45 seconds without settlement, every subsequent call for that slot
+  returns `primary_grid_charge_power_w=0.0` until the slot changes.
+- The deadline task is cancelled and the transition cleared on unload,
+  every time, with no exceptions escaping `async_will_remove_from_hass()`.
+
 ## Invariants for tests
 
 Add tests for these invariants:
