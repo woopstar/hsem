@@ -1273,3 +1273,20 @@ fraction inline.
 - Cancelled and cleared in `async_will_remove_from_hass()` — a config-entry reload can never strand a transition or leak its deadline task.
 
 Tests: `tests/test_phase_charge_limiter.py` (limiter core + Part 2 applier integration), `tests/test_phase_charge_transition_safety.py` (Part 3 transition/deadline logic, 18 tests mirroring the fork's coverage style but Huawei-only).
+
+## Error-Mode Grid-Charge Emergency Stop (issue #840, follow-up to #831)
+
+**Gap left open by #831:** the Part 3 transition/deadline logic only runs while `hardware_writes_allowed()` is true. If `classify_degraded_mode()` escalates to `DegradedMode.Error` mid-cycle (e.g. a critical sensor goes unavailable) while HSEM itself is the one holding an armed grid-charge cap, `_async_apply_hardware_writes()` takes the `elif not writes_safe:` branch and simply skips all writes. The last HSEM-written cap is left live on the inverter with no further supervision until Error mode clears. #840 closes that gap with a narrow, downward-only exception that is allowed to run even in Error mode.
+
+**New module:** `custom_sensors/applier_emergency_stop.py`, following the same applier extraction pattern as `applier_caps.py` / `applier_forcible_discharge.py`, mixed into `HSEMWorkingModeSensor` via `GridChargeEmergencyStopMixin` (same mixin-extraction pattern as `PhaseChargeTransitionMixin` from Part 3, required to keep `working_mode_sensor.py` under the 30 KB/1000-line limit).
+
+**Ownership model, not a blanket safety net.** HSEM must never touch a grid-charge cap it did not itself arm; the emergency stop only fires when HSEM believes it currently owns an armed cap:
+- Ownership (`self._primary_grid_charge_owned`) is set `True` only when HSEM successfully writes and verifies a `batteries_charge_grid` recommendation while writes are safe (i.e. it piggybacks on the existing Part 2/3 write path, never a new inference).
+- Ownership is cleared as soon as `primary_grid_charge_is_known_disarmed()` confirms the live telemetry itself (cap <= 0 W, working mode not Time-Of-Use, or the current TOU period not in `DEFAULT_HSEM_TOU_MODES_FORCE_CHARGE`) shows no charge is armed -- this runs every cycle via `_release_primary_grid_charge_ownership_if_safe()`, independent of degraded mode, so ownership never outlives the condition that justified it.
+- An externally-armed charge (ownership `False`) is never touched by the emergency stop, even in Error mode -- HSEM only ever un-arms what it itself armed.
+
+**Downward-only, retry-safe write.** `huawei_grid_charge_emergency_needed()` is a pure gating function: fires only when `ownership_latched` is `True` and the current recommendation is no longer `batteries_charge_grid` (or degraded mode is `Error`) and telemetry has not already gone to `primary_grid_charge_is_known_disarmed()`. `async_emergency_disable_grid_charge()` writes `0` to `cfg.huawei_solar_batteries_grid_charge_maximum_power` via the existing `async_write_and_verify()` helper -- the same verified-write primitive Part 2/3 already use, so no new write path was introduced. On a failed/unverified write, ownership is deliberately **not** cleared, so the next cycle retries the same 0 W write until it verifies or the condition resolves itself via telemetry.
+
+**Canonical helper:** never re-derive the "is a grid charge actually armed right now" check inline -- always call `primary_grid_charge_is_known_disarmed()`. Never gate the emergency stop on anything other than `huawei_grid_charge_emergency_needed()`; it already encodes the ownership + Error-mode + telemetry precedence correctly.
+
+Tests: `tests/test_grid_charge_emergency_stop.py` (26 tests: disarmed-telemetry detection, ownership+gating logic, `CycleApplySummary` verification helper, the write helper itself, and full mixin lifecycle including the externally-armed-is-never-touched and failed-write-retains-ownership-for-retry cases).
