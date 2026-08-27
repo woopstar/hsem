@@ -85,6 +85,8 @@ class SensorConfig:
         huawei_solar_batteries_maximum_discharging_power: Entity ID for max discharge power.
         huawei_solar_batteries_grid_charge_maximum_power: Entity ID for the grid-charge
             maximum-power number, written by the live phase-aware charging limiter.
+        huawei_solar_batteries_charge_discharge_power: Entity ID for the signed
+            instantaneous battery charge/discharge power sensor.
         huawei_solar_power_meter_phase_a_active_power: Entity ID for phase A live power.
         huawei_solar_power_meter_phase_b_active_power: Entity ID for phase B live power.
         huawei_solar_power_meter_phase_c_active_power: Entity ID for phase C live power.
@@ -177,6 +179,12 @@ class SensorConfig:
     #: Written by the live phase-aware charging limiter to cap grid-funded
     #: charge power below the fuse limit; ``None`` disables the write path.
     huawei_solar_batteries_grid_charge_maximum_power: str | None = None
+    #: Entity ID for the signed instantaneous battery charge/discharge power
+    #: sensor (issue #831). Positive = charging, negative = discharging.
+    #: Required by the live phase-aware charging limiter to remove Huawei's
+    #: own contribution from the live phase snapshot before computing
+    #: headroom; ``None`` makes the limiter fail closed.
+    huawei_solar_batteries_charge_discharge_power: str | None = None
     huawei_solar_batteries_tou_charging_and_discharging_periods: str | None = None
     huawei_solar_batteries_excess_pv_energy_use_in_tou: str | None = None
     huawei_solar_batteries_forcible_charge: str | None = None

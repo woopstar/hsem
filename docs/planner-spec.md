@@ -1889,6 +1889,69 @@ TOU; self-consumption-with-reserve still applies when unheld) and
 `ev_smart_charging` (which otherwise always executes as MSC to retain
 unexpected solar).
 
+### Live phase-aware grid-charge safety limiter (issue #831)
+
+`custom_sensors/phase_charge_limiter.py::build_phase_aware_charge_commands()`
+is a **runtime** correction layered on top of the MILP's planning-time
+phase-fuse constraint (`planner/milp/_phase_fuse.py`). The MILP uses a
+forecast at solve time; this limiter uses the newest live per-phase
+power-meter snapshot immediately before the Huawei grid-charge hardware
+write, so an appliance load change since the plan was solved cannot push a
+phase over the main fuse rating. Huawei-only (no PowMr/secondary inverter
+in this repository).
+
+Disabled by default (`cfg.phase_aware_charging_enabled = False`) — fully
+backward compatible. When disabled, or when the current recommendation is
+not `batteries_charge_grid`, the limiter returns
+`primary_grid_charge_power_w=None` and the applier leaves the
+grid-charge-maximum-power entity untouched.
+
+When enabled and the slot is a grid-charge slot:
+
+```text
+desired_charge_power_w = min(
+    batteries_charged_kwh * 1000 / slot_hours,
+    live.huawei_batteries_max_charge_power_w,
+)
+base_phase_power_w[i] = measured_phase_power_w[i] - battery_actual_site_w / 3
+ac_headroom_w = 3 * max(min(fuse_limit_w - base_phase_power_w[i] for i in 0..2), 0)
+dc_limit_w = ac_headroom_w * charge_efficiency
+primary_charge_power_w = floor_to_100w(min(desired_charge_power_w, dc_limit_w))
+```
+
+`battery_actual_site_w` converts the live signed battery
+charge/discharge-power reading (`STORAGE_CHARGE_DISCHARGE_POWER`; positive
+= charging, negative = discharging) to AC-site power using the configured
+charge/discharge efficiency, then removes it evenly across all three
+phases before the headroom check. This prevents a feedback loop where a
+battery already charging at full power would make the meter appear to have
+no spare capacity, cutting the command to zero even though the fuse has
+ample headroom.
+
+**Fails closed to `primary_grid_charge_power_w=0.0`** (never leaves a
+stale positive cap in place) when phase-aware charging is enabled, the
+slot is a grid-charge slot, and any of:
+
+- `main_fuse_phases != 3` or `main_fuse_amps <= 0` (not a valid
+  three-phase supply)
+- any of the three live phase-power readings is missing or non-finite
+- the live battery charge/discharge-power reading is missing or
+  non-finite
+
+#### Invariants
+
+- `phase_aware_charging_enabled = False` (default) never changes applier
+  behaviour — fully backward compatible.
+- The written command never exceeds the plan's own desired charge power
+  for the slot.
+- The written command never causes `predicted_phase_power_w` to exceed
+  `main_fuse_amps * 230 V` on any phase (within the 100 W flooring step).
+- Removing the battery's own live contribution from the phase snapshot
+  never reduces the computed headroom below what an idle battery at the
+  same appliance load would receive.
+- Any missing or non-finite required live telemetry produces exactly
+  `0.0`, never `None` and never a stale prior value.
+
 ## Invariants for tests
 
 Add tests for these invariants:
