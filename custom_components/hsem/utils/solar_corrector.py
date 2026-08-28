@@ -123,16 +123,6 @@ class SolarForecastCorrector:
         if self._processed_through is None or key > self._processed_through:
             self._processed_through = key
 
-    def was_processed(self, slot_start: datetime) -> bool:
-        """Return whether a physical slot is at or before the replay watermark."""
-        if slot_start.tzinfo is None or slot_start.utcoffset() is None:
-            return False
-        return (
-            self._processed_through is not None
-            and slot_start.astimezone(UTC).replace(microsecond=0)
-            <= self._processed_through
-        )
-
     def slots_ahead_for(
         self,
         slot_start: datetime,

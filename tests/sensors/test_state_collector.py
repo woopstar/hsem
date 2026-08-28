@@ -184,7 +184,12 @@ class TestBuildSensorConfig:
         assert cfg.house_consumption_energy_weight_3d == 30
         assert cfg.house_consumption_energy_weight_7d == 30
         assert cfg.house_consumption_energy_weight_14d == 15
-        assert cfg.weights_sum() == 100
+        assert (
+            cfg.house_consumption_energy_weight_1d
+            + cfg.house_consumption_energy_weight_3d
+            + cfg.house_consumption_energy_weight_7d
+            + cfg.house_consumption_energy_weight_14d
+        ) == 100
 
     def test_schedule_1_propagates(self):
         cfg = build_sensor_config(

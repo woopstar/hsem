@@ -439,11 +439,6 @@ class TestOutputHelpers:
         manual = sum(1 for s in result.slots if s.recommendation in _CHARGE_VALUES)
         assert result.charge_slot_count() == manual
 
-    def test_discharge_slot_count_matches_manual_count(self):
-        result = run_planner(make_summer_day_input())
-        manual = sum(1 for s in result.slots if s.recommendation in _DISCHARGE_VALUES)
-        assert result.discharge_slot_count() == manual
-
     def test_total_charged_energy_matches_sum(self):
         result = run_planner(make_summer_day_input(battery_soc_pct=0.0))
         expected = round(sum(s.batteries_charged_kwh for s in result.slots), 3)

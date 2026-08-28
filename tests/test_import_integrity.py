@@ -31,9 +31,8 @@ def _public_names(module: ModuleType) -> set[str]:
 
 FLOW_MODULES = [
     "custom_components.hsem.flows.batteries_excess_export",
-    "custom_components.hsem.flows.batteries_schedule_1",
-    "custom_components.hsem.flows.batteries_schedule_2",
-    "custom_components.hsem.flows.batteries_schedule_3",
+    "custom_components.hsem.flows.batteries_schedules",
+    "custom_components.hsem.flows.schedule_helpers",
     "custom_components.hsem.flows.prices",
     "custom_components.hsem.flows.ev",
     "custom_components.hsem.flows.ev_second",
@@ -74,14 +73,11 @@ class TestFlowModulesImportCleanly:
     def test_batteries_excess_export_importable(self):
         self._assert_importable("custom_components.hsem.flows.batteries_excess_export")
 
-    def test_batteries_schedule_1_importable(self):
-        self._assert_importable("custom_components.hsem.flows.batteries_schedule_1")
+    def test_batteries_schedules_importable(self):
+        self._assert_importable("custom_components.hsem.flows.batteries_schedules")
 
-    def test_batteries_schedule_2_importable(self):
-        self._assert_importable("custom_components.hsem.flows.batteries_schedule_2")
-
-    def test_batteries_schedule_3_importable(self):
-        self._assert_importable("custom_components.hsem.flows.batteries_schedule_3")
+    def test_schedule_helpers_importable(self):
+        self._assert_importable("custom_components.hsem.flows.schedule_helpers")
 
     def test_prices_importable(self):
         self._assert_importable("custom_components.hsem.flows.prices")

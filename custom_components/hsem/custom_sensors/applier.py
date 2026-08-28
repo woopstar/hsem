@@ -47,7 +47,6 @@ from custom_components.hsem.custom_sensors.applier_caps import (  # noqa: F401
     _held_planned_export_is_authoritative,
     _planned_ev_discharge_cap_w,
     _primary_battery_hold,
-    _should_force_export_for_ev,
     _wait_mode_self_consumption_cap_w,
 )
 from custom_components.hsem.custom_sensors.applier_forcible_discharge import (  # noqa: F401

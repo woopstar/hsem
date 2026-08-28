@@ -73,30 +73,6 @@ class TestBuildBatteriesScheduleStepSchema:
         # min_price_difference field removed
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("n", [1, 2, 3])
-    async def test_schema_keys_match_original_numbered_wrappers(self, n: int) -> None:
-        """Schema keys produced by the helper must equal those of the original
-        numbered modules — ensuring no config migration is needed."""
-        # Import the numbered wrapper (which now delegates to the helper)
-        import importlib
-
-        from custom_components.hsem.flows.schedule_helpers import (
-            build_batteries_schedule_step_schema,
-        )
-
-        mod = importlib.import_module(
-            f"custom_components.hsem.flows.batteries_schedule_{n}"
-        )
-        getter = getattr(mod, f"get_batteries_schedule_{n}_step_schema")
-
-        schema_helper = await build_batteries_schedule_step_schema(n, None)
-        schema_wrapper = await getter(None)
-
-        keys_helper = {str(k) for k in schema_helper.schema}
-        keys_wrapper = {str(k) for k in schema_wrapper.schema}
-        assert keys_helper == keys_wrapper
-
-    @pytest.mark.asyncio
     async def test_schema_has_no_min_price_difference(self):
         """The min_price_difference field was removed from the schedule schema."""
         from custom_components.hsem.flows.schedule_helpers import (
@@ -229,55 +205,6 @@ class TestValidateBatteriesScheduleInput:
             },
         )
         assert errors.get(f"{prefix}_start") == "invalid_time_format"
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize("n", [1, 2, 3])
-    async def test_helper_output_matches_numbered_wrapper(self, n: int) -> None:
-        """Helper and numbered wrapper must return identical errors for the same input."""
-        import importlib
-
-        from custom_components.hsem.flows.schedule_helpers import (
-            validate_batteries_schedule_input,
-        )
-
-        mod = importlib.import_module(
-            f"custom_components.hsem.flows.batteries_schedule_{n}"
-        )
-        wrapper_validate = getattr(mod, f"validate_batteries_schedule_{n}_input")
-
-        prefix = f"hsem_batteries_enable_batteries_schedule_{n}"
-        user_input = {
-            prefix: True,
-            f"{prefix}_start": "08:00:00",
-            f"{prefix}_end": "08:00:00",
-        }
-        errors_helper = await validate_batteries_schedule_input(n, user_input)
-        errors_wrapper = await wrapper_validate(user_input)
-        assert errors_helper == errors_wrapper
-
-
-# ===========================================================================
-# Legacy private alias — _resolve_usable_capacity_kwh
-# ===========================================================================
-
-
-class TestLegacyPrivateAlias:
-    """The legacy ``_resolve_usable_capacity_kwh`` re-export in batteries_schedule_1
-    must still work so that any external code that imports it continues to function."""
-
-    def test_alias_is_callable(self):
-        from custom_components.hsem.flows.batteries_schedule_1 import (
-            _resolve_usable_capacity_kwh,
-        )
-
-        assert callable(_resolve_usable_capacity_kwh)
-
-    def test_alias_returns_fallback(self):
-        from custom_components.hsem.flows.batteries_schedule_1 import (
-            _resolve_usable_capacity_kwh,
-        )
-
-        assert _resolve_usable_capacity_kwh(None, None) == pytest.approx(10.0)
 
 
 # ===========================================================================

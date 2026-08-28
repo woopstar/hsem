@@ -104,11 +104,6 @@ class PlannerOutput:
         charge_values = {"batteries_charge_grid", "batteries_charge_solar"}
         return sum(1 for s in self.slots if s.recommendation in charge_values)
 
-    def discharge_slot_count(self) -> int:
-        """Return the number of slots assigned to any type of discharging."""
-        discharge_values = {"batteries_discharge_mode", "force_batteries_discharge"}
-        return sum(1 for s in self.slots if s.recommendation in discharge_values)
-
     def total_charged_energy_kwh(self) -> float:
         """Sum of ``batteries_charged`` across all slots."""
         return round(sum(s.batteries_charged_kwh for s in self.slots), 3)

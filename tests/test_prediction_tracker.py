@@ -117,29 +117,6 @@ class TestWarmupGate:
         assert len(tracker.records) == 1
         assert tracker.soc_mae_7d is not None
 
-    def test_reset_warmup(self) -> None:
-        """Resetting the warm-up counter restarts the gate."""
-        tracker = PredictionTracker()
-        tracker._warmup_slots = 2
-
-        # Feed 2 slots — both skipped
-        tracker.add_record(**_make_record_args(hour=0, minute=0))
-        tracker.add_record(**_make_record_args(hour=0, minute=15))
-        assert len(tracker.records) == 0
-
-        # 3rd slot recorded
-        tracker.add_record(**_make_record_args(hour=0, minute=30))
-        assert len(tracker.records) == 1
-
-        # Reset and feed again
-        tracker.reset_warmup()
-        tracker.add_record(**_make_record_args(hour=0, minute=45))
-        assert len(tracker.records) == 1  # still skipped
-        tracker.add_record(**_make_record_args(hour=1, minute=0))
-        assert len(tracker.records) == 1  # still skipped
-        tracker.add_record(**_make_record_args(hour=1, minute=15))
-        assert len(tracker.records) == 2  # now through
-
     def test_warmup_zero(self) -> None:
         """When warmup_slots is 0, first slot is recorded immediately."""
         tracker = PredictionTracker()

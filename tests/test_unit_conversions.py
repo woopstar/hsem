@@ -18,7 +18,6 @@ from custom_components.hsem.utils.units import (
     implied_price_per_kwh,
     kilowatt_to_watt,
     kilowatthours_to_watthours,
-    power_to_energy_kwh,
     watt_to_kilowatt,
     watthours_to_kilowatthours,
 )
@@ -130,30 +129,6 @@ class TestKilowatthoursToWatthours:
 # ---------------------------------------------------------------------------
 
 
-class TestPowerToEnergyKwh:
-    """Tests for :func:`power_to_energy_kwh`."""
-
-    def test_typical_value(self) -> None:
-        """5 kW × 2 h → 10 kWh."""
-        assert power_to_energy_kwh(power_kw=5.0, duration_h=2.0) == pytest.approx(10.0)
-
-    def test_zero_power(self) -> None:
-        """0 kW × 2 h → 0 kWh."""
-        assert power_to_energy_kwh(power_kw=0.0, duration_h=2.0) == pytest.approx(0.0)
-
-    def test_zero_duration(self) -> None:
-        """5 kW × 0 h → 0 kWh."""
-        assert power_to_energy_kwh(power_kw=5.0, duration_h=0.0) == pytest.approx(0.0)
-
-    def test_quarter_hour(self) -> None:
-        """5 kW × 0.25 h → 1.25 kWh (15-min slot)."""
-        assert power_to_energy_kwh(power_kw=5.0, duration_h=0.25) == pytest.approx(1.25)
-
-    def test_negative_power(self) -> None:
-        """-3 kW × 1 h → -3 kWh (discharge / export)."""
-        assert power_to_energy_kwh(power_kw=-3.0, duration_h=1.0) == pytest.approx(-3.0)
-
-
 class TestEnergyToPowerKw:
     """Tests for :func:`energy_to_power_kw`."""
 
@@ -176,13 +151,6 @@ class TestEnergyToPowerKw:
         assert energy_to_power_kw(energy_kwh=-3.0, duration_h=1.0) == pytest.approx(
             -3.0
         )
-
-    def test_roundtrip(self) -> None:
-        """Round-trip: kW → kWh → kW preserves value."""
-        original_kw = 7.5
-        duration = 0.5
-        kwh = power_to_energy_kwh(original_kw, duration)
-        assert energy_to_power_kw(kwh, duration) == pytest.approx(original_kw)
 
 
 # ---------------------------------------------------------------------------
@@ -256,16 +224,6 @@ class TestImpliedPricePerKwh:
 class TestCrossCategoryConsistency:
     """Verify that related conversions produce consistent results."""
 
-    def test_w_to_kw_to_energy(self) -> None:
-        """W → kW → kWh chain produces the same result as direct W × h → Wh → kWh."""
-        power_w = 5000.0
-        duration_h = 1.5
-        # Path A: W → kW → kWh
-        energy_a = power_to_energy_kwh(watt_to_kilowatt(power_w), duration_h)
-        # Path B: W × h → Wh → kWh
-        energy_b = watthours_to_kilowatthours(power_w * duration_h)
-        assert energy_a == pytest.approx(energy_b)
-
     def test_kwh_to_cost_to_implied_price(self) -> None:
         """energy_cost then implied_price_per_kwh recovers the original price."""
         energy = 12.5
@@ -273,13 +231,6 @@ class TestCrossCategoryConsistency:
         cost = energy_cost(energy, price)
         recovered = implied_price_per_kwh(cost, energy)
         assert recovered == pytest.approx(price)
-
-    def test_power_energy_roundtrip(self) -> None:
-        """power_to_energy_kwh then energy_to_power_kw recovers original power."""
-        power = 3.6
-        duration = 0.25
-        energy = power_to_energy_kwh(power, duration)
-        assert energy_to_power_kw(energy, duration) == pytest.approx(power)
 
 
 # ---------------------------------------------------------------------------

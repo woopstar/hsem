@@ -235,16 +235,6 @@ class TestSavingsTracker:
         assert entry.missed_savings == pytest.approx(0.20)
         assert entry.baseline_cost == pytest.approx(2.50)  # 2.00 + 0.50
 
-    def test_get_today_entry(self) -> None:
-        """get_today_entry should return today's SavingsDay."""
-        st = SavingsTracker()
-        st._today = "2026-06-26"
-        st.accumulate(0.50, 0.30, 2.00, True)
-
-        entry = st.get_today_entry()
-        assert entry.date == "2026-06-26"
-        assert entry.actual_savings == pytest.approx(0.80)
-
     def test_get_sorted_daily(self) -> None:
         """get_sorted_daily should return entries sorted by most recent first."""
         st = SavingsTracker()

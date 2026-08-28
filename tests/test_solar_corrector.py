@@ -395,7 +395,6 @@ class TestSerialization:
         assert restored._hour_history == corrector._hour_history
         assert restored._recent_residuals == corrector._recent_residuals
         assert restored.processed_through == processed
-        assert restored.was_processed(processed) is True
 
         restored.update_hour(12, forecast_kwh=1.0, actual_kwh=1.5)
         assert restored._hour_history[12] == [

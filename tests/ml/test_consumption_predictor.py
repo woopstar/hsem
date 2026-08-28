@@ -97,9 +97,9 @@ class TestConsumptionPredictor:
         p = _predictor(decay_days=7.0, alpha=1.0, slots_per_day=96)
         history = [_mk(d, s, 0.5 + s * 0.005) for d in range(1, 8) for s in range(96)]
         p.train(history, NOW)
-        result = p.predict_all_slots(0, NOW)
+        result = [p.predict(s, 0, NOW) for s in range(96)]
         assert len(result) == 96
-        assert all(v > 0 for v in result.values())
+        assert all(v > 0 for v in result)
 
     def test_hourly_mode(self) -> None:
         p = _predictor(decay_days=7.0, alpha=1.0, slots_per_day=24)
@@ -107,7 +107,7 @@ class TestConsumptionPredictor:
             (NOW - timedelta(days=d), h, 2.0) for d in range(1, 8) for h in range(24)
         ]
         p.train(history, NOW)
-        result = p.predict_all_slots(0, NOW)
+        result = [p.predict(h, 0, NOW) for h in range(24)]
         assert len(result) == 24
 
     def test_min_two_samples(self) -> None:
