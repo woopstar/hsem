@@ -22,12 +22,10 @@ code quality. All tools are invoked via `./scripts/quality.sh`. This ensures:
 ```
 
 This runs in order:
-1. `isort` — sorts and groups imports consistently
-2. `black` — formats code to 88-char line length
-3. `ruff format` — applies ruff’s formatter (consistent with black)
-4. `ruff check` — lints for bugs, style issues, and code quality
+1. `ruff format` — formats code to 88-char line length (Black-compatible)
+2. `ruff check` — lints for bugs, style issues, and code quality (includes isort-compatible import sorting via rule `I`)
 
-All four steps must pass without errors.
+Both steps must pass without errors.
 
 ### 2. **Type Hints Required**
 
@@ -213,22 +211,33 @@ All tool configuration lives in `pyproject.toml`.
 
 | Tool | Line length | Style |
 |------|-------------|-------|
-| `isort` | 88 chars | `--multi-line 3 --trailing-comma` (compatible with black) |
-| `black` | 88 chars | `--target-version py312` |
-| `ruff format` | 88 chars | Consistent with black |
-| `ruff check` | 88 chars | See `[tool.ruff.lint]` in `pyproject.toml` |
+| `ruff format` | 88 chars | Black-compatible formatter |
+| `ruff check` | 88 chars | See `[tool.ruff.lint]` in `pyproject.toml` (includes import sorting via `I` rules) |
 
 ### Ruff rules enabled
 
 - `E` / `W` — pycodestyle errors and warnings
 - `F` — pyflakes (unused imports, undefined names)
 - `I` — isort-compatible import sorting
-- `C` — flake8-comprehensions
 - `B` — flake8-bugbear
+- `SIM` — flake8-simplify
 - `UP` — pyupgrade (modern Python syntax)
-- `PIE` — flake8-pie
+- `RUF` — ruff-specific rules
+- Plus selected rules for pytest style, import conventions, and no `print`/`pprint`
 
 See `pyproject.toml` for the full ruff configuration.
+
+## Experimental Static Analysis (Skylos)
+
+Skylos is included as an optional, experimental static-analysis runner. It is **not** part of the mandatory `all` gate yet.
+
+Run it manually with:
+
+```bash
+./scripts/quality.sh skylos
+```
+
+This executes `skylos . -a`, which scans for dead code, security issues, secrets, quality regressions, and common AI-code mistakes. Findings are informational while the project tunes baselines and ignores.
 
 ## Common Ruff Violations and Fixes
 

@@ -350,7 +350,7 @@ A change is considered complete when:
 
 - All relevant tests pass locally and in CI
 - New behavior is covered by tests (where feasible)
-- Code follows project style and conventions (enforced by isort, black, and ruff)
+- Code follows project style and conventions (enforced by ruff)
 - **All lint checks pass** (`./scripts/quality.sh lint`)
 - **Type checks pass** (`./scripts/quality.sh typing` — runs mypy)
 - **Quality checks pass** (`./scripts/quality.sh quality` — runs pyright and vulture)
