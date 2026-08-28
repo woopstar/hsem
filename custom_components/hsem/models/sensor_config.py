@@ -292,6 +292,10 @@ class SensorConfig:
     ev_planned_load_charger_min_power_w: float = 1380.0
     #: Electrical topology of the primary charger (see ``utils/phase_power``).
     ev_planned_load_charger_phase_topology: str = "single_phase"
+    #: Percentage of the deadline shortfall budgeted as extra safety margin
+    #: above the target SoC, so execution-layer friction doesn't turn an
+    #: exact plan into a missed deadline (issue #845).
+    ev_planned_load_deadline_safety_margin_pct: float = 0.0
     # EV planned load integration — second EV (optional, disabled by default)
     ev_second_planned_load_enabled: bool = False
     ev_second_planned_load_battery_capacity_kwh: float = 0.0
@@ -300,6 +304,8 @@ class SensorConfig:
     ev_second_planned_load_charger_min_power_w: float = 1380.0
     #: Electrical topology of the second charger (see ``utils/phase_power``).
     ev_second_planned_load_charger_phase_topology: str = "single_phase"
+    #: Same as ev_planned_load_deadline_safety_margin_pct, for the second EV.
+    ev_second_planned_load_deadline_safety_margin_pct: float = 0.0
 
     # Seasonal configuration
     months_winter: list[int] = field(default_factory=list)

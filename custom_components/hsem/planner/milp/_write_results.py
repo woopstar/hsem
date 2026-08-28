@@ -113,7 +113,9 @@ def _write_milp_results_to_slots(
                     np.sum(values[: max(0, min(ev.deadline_slot, m - 1)) + 1])
                 )
             deadline_penalty = max(
-                ev.target_kwh - ev.initial_soc_kwh - delivered_by_deadline,
+                ev.effective_deadline_target_kwh
+                - ev.initial_soc_kwh
+                - delivered_by_deadline,
                 0.0,
             )
             ev_writeback_diagnostics[f"ev{ev_idx}"] = {
@@ -137,7 +139,9 @@ def _write_milp_results_to_slots(
                     np.sum(values[: max(0, min(ev.deadline_slot, m - 1)) + 1])
                 )
             deadline_penalty = max(
-                ev.target_kwh - ev.initial_soc_kwh - delivered_by_deadline,
+                ev.effective_deadline_target_kwh
+                - ev.initial_soc_kwh
+                - delivered_by_deadline,
                 0.0,
             )
             ev_writeback_diagnostics[key] = {

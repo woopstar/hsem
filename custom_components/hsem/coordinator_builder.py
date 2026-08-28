@@ -395,6 +395,10 @@ def build_planner_input(
             cfg.ev.max_discharge_power
         )
         or 0.0,
+        ev_planned_load_deadline_safety_margin_pct=convert_to_float(
+            cfg.ev_planned_load_deadline_safety_margin_pct
+        )
+        or 0.0,
         # Second EV planned load
         ev_second_planned_load_enabled=bool(cfg.ev_second_planned_load_enabled),
         ev_second_planned_load_connected=bool(live.ev_second_planned_load_connected),
@@ -441,6 +445,10 @@ def build_planner_input(
         ),
         ev_second_planned_load_max_discharge_power_w=convert_to_float(
             cfg.ev_second.max_discharge_power
+        )
+        or 0.0,
+        ev_second_planned_load_deadline_safety_margin_pct=convert_to_float(
+            cfg.ev_second_planned_load_deadline_safety_margin_pct
         )
         or 0.0,
         time_discount_rate=0.995,

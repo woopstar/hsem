@@ -80,6 +80,7 @@ def _build_ev_configs_for_milp(
             float,
             bool,
             float,
+            float,
             bool,
         ]
     ] = [
@@ -100,6 +101,7 @@ def _build_ev_configs_for_milp(
             inp.ev_past_target_confidence_factor,
             inp.ev_planned_load_force_max_discharge_power,
             inp.ev_planned_load_max_discharge_power_w,
+            inp.ev_planned_load_deadline_safety_margin_pct,
             False,  # is_second = False (primary EV)
         ),
         (
@@ -121,6 +123,7 @@ def _build_ev_configs_for_milp(
             inp.ev_second_past_target_confidence_factor,
             inp.ev_second_planned_load_force_max_discharge_power,
             inp.ev_second_planned_load_max_discharge_power_w,
+            inp.ev_second_planned_load_deadline_safety_margin_pct,
             True,  # is_second = True (second EV)
         ),
     ]
@@ -141,6 +144,7 @@ def _build_ev_configs_for_milp(
         past_target_confidence_factor,
         force_max_discharge_power,
         max_discharge_power_w,
+        deadline_margin_pct,
         is_second,
     ) in ev_sources:
         label = "second" if is_second else "primary"
@@ -209,6 +213,7 @@ def _build_ev_configs_for_milp(
         deadline_slot: int | None = None
         charge_past_target = False
         managed_session_cap_only = False
+        deadline_margin_kwh = 0.0
         if fixed_session_only:
             initial_kwh = 0.0
             target_kwh = 0.0
@@ -255,6 +260,14 @@ def _build_ev_configs_for_milp(
                 )
                 continue
             charge_past_target = False
+            # Safety margin (issue #845): budget extra energy above the
+            # bare target, proportional to the shortfall, so normal
+            # execution-layer friction (anti-flap windows, min-power
+            # floors, phase-headroom throttling) doesn't turn an
+            # on-paper-exact plan into a missed deadline.
+            deadline_margin_kwh = (
+                max(target_kwh - initial_kwh, 0.0) * deadline_margin_pct / 100.0
+            )
 
         # Configured power is the hard actuator nameplate for every managed
         # session. Only an unmanaged session may expand its *accounting*
@@ -306,6 +319,7 @@ def _build_ev_configs_for_milp(
                 charger_min_power_w=round(effective_min_power_w, 1),
                 charger_phase_topology=phase_topology,
                 deadline_slot=deadline_slot,
+                deadline_margin_kwh=round(deadline_margin_kwh, 3),
                 base_load_includes_ev=base_includes,
                 charge_past_target=charge_past_target,
                 future_value_per_kwh=future_value_per_kwh,

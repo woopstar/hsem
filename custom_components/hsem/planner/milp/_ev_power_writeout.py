@@ -44,6 +44,15 @@ def _write_ev_power_fields_to_slots(
     for ev_idx, ev in enumerate(active_evs):
         ev_off = ev_var_offsets[ev_idx]
         ev_c_sol = executable_x[ev_off : ev_off + m]
+        # Redistribution target window (issue #845): a deadline-driven EV
+        # may move a below-minimum-power slot's energy forward instead of
+        # discarding it.  Charge-past-target EVs have no deadline to
+        # protect, so they're excluded.
+        deadline_lp_limit = (
+            max(0, min(ev.deadline_slot, m - 1))
+            if ev.deadline_slot is not None and not ev.charge_past_target
+            else None
+        )
         for lp_t, slot_i in enumerate(future_idx):
             ev_dc_kwh = float(ev_c_sol[lp_t])
             if ev_dc_kwh < _min_action_kwh:
@@ -108,9 +117,47 @@ def _write_ev_power_fields_to_slots(
             # field so the applier does not attempt to throttle below
             # the minimum.
             if ev.charger_min_power_w > 1e-9 and ac_power_w < ev.charger_min_power_w:
+                # Before discarding, try to move this slot's energy forward
+                # onto a later pre-deadline slot with headroom (issue #845)
+                # instead of silently losing it.  ``ev_c_sol`` is mutated in
+                # place, so the loop's own later iteration over the target
+                # slot picks up the boosted value, re-derives its charger
+                # command from it, and re-subjects it to this same floor
+                # check.  The grid-balance correction below mirrors the
+                # discard formula (net_grid = import - export ± ac_load),
+                # since the extra draw at the target slot wasn't accounted
+                # for by the original MILP-level grid-balance write-out.
+                remaining_dc = ev_dc_kwh
+                if deadline_lp_limit is not None:
+                    for lp_t2 in range(lp_t + 1, deadline_lp_limit + 1):
+                        if remaining_dc <= 1e-9:
+                            break
+                        headroom_dc = max(
+                            ev.max_charge_per_slot - float(ev_c_sol[lp_t2]), 0.0
+                        )
+                        if headroom_dc <= 1e-9:
+                            continue
+                        take_dc = min(headroom_dc, remaining_dc)
+                        ev_c_sol[lp_t2] += take_dc
+                        take_ac = ev_dc_to_ac_kwh(take_dc, ev.charger_efficiency)
+                        target_slot_i = future_idx[lp_t2]
+                        target_net_grid = (
+                            out_slots[target_slot_i].grid_import_kwh
+                            - out_slots[target_slot_i].grid_export_kwh
+                            + take_ac
+                        )
+                        out_slots[target_slot_i].grid_import_kwh = round(
+                            max(target_net_grid, 0.0), 3
+                        )
+                        out_slots[target_slot_i].grid_export_kwh = round(
+                            max(-target_net_grid, 0.0), 3
+                        )
+                        remaining_dc -= take_dc
                 # The charger cannot execute this fragment. Remove its
                 # energy and grid flow instead of publishing energy with a
-                # zero command.
+                # zero command.  (Whatever was placed forward above is now
+                # counted at its new slot instead, so this slot's own
+                # contribution must still go to zero either way.)
                 if ev.base_load_includes_ev:
                     out_slots[slot_i].ev_accounted_load_kwh = round(
                         max(out_slots[slot_i].ev_accounted_load_kwh - ac_load, 0.0),

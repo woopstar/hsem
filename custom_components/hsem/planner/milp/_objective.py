@@ -27,6 +27,12 @@ _BATTERY_EXPORT_SOURCE_TIEBREAK = 1e-7
 # smallest executable whole-amp energy above the target (issue #797).
 _EV_TARGET_ENERGY_TIEBREAK_COST = 1e-7
 
+# When even max-power charging can't reach the margined deadline target
+# (EVConfig.deadline_escalated), steepen the deadline penalty so the LP
+# treats closing the gap as more urgent than its already-high baseline
+# priority (issue #845).
+_EV_DEADLINE_ESCALATION_PENALTY_MULTIPLIER = 5.0
+
 
 def _build_objective(
     slots: list[PlannedSlot],
@@ -222,8 +228,10 @@ def _build_objective(
             # executable (whole-amp) energy that clears the target-cap
             # constraint, rather than leaving it indifferent among
             # cost-equivalent solutions above the target.
-            energy_needed = ev.target_kwh - ev.initial_soc_kwh
+            energy_needed = ev.effective_deadline_target_kwh - ev.initial_soc_kwh
             ev_penalty_cost = max(p_imp_max, 0.1) * max(energy_needed, 1.0) * 10.0
+            if ev.deadline_escalated:
+                ev_penalty_cost *= _EV_DEADLINE_ESCALATION_PENALTY_MULTIPLIER
             c_obj[ev_pen_offsets[ev_idx]] = ev_penalty_cost
 
             ev_off = ev_var_offsets[ev_idx]

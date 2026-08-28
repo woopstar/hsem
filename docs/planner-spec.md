@@ -624,7 +624,9 @@ the MILP decides **when and how much each EV charges**.
 **EV variables** (per active EV):
 - `ev_c[t]` — DC-side energy delivered to the EV battery in slot `t` (kWh).
   Bounded by `[0, ev.max_charge_per_slot]`.
-- `ev_pen` — single slack variable absorbing unmet deadline target (kWh).
+- `ev_pen` — single slack variable absorbing unmet deadline target (kWh),
+  measured against the margined target (see *Deadline safety margin and
+  escalation* below).
 - `ev_amps[t]` — solver-native whole-amp charger command for a **managed**
   EV (not `fixed_session_only`), semi-integer (HiGHS type 3): either `0` or
   an integer in `[min_amp, rated_amp]` (issue #797).  Linked to `ev_c[t]` by
@@ -639,22 +641,25 @@ the MILP decides **when and how much each EV charges**.
 - SOC dynamics (cumulative, no discharge):
   `ev_soc[t] = ev_initial + Σ_{k≤t} ev_c[k]`
 - SOC upper bound per slot: `ev_soc[t] ≤ ev_capacity`
-- Deadline soft goal: `ev_soc[D] + ev_pen ≥ ev_target` where `D` is the
-  LP-slot index of the effective deadline.
+- Deadline soft goal: `ev_soc[D] + ev_pen ≥ effective_target` where `D` is
+  the LP-slot index of the effective deadline and `effective_target` is
+  `ev_target` plus the configured safety margin (see below).
 - **Post-deadline zero-charge**: For EVs with a deadline and `charge_past_target=False`,
   `ev_c[t] = 0` for all `t > D`. This prevents charging after the deadline.
-- **Target-cap constraint** (issue #636, relaxed by issue #797): For EVs
-  with a deadline and `charge_past_target=False`, a hard upper bound caps
-  cumulative pre-deadline charge near the economic shortfall:
-  `Σ_{k≤D} ev_c[k] ≤ target_kwh − initial_soc_kwh + activation_quantum`.
-  `activation_quantum` is the largest single-slot energy the EV's charger
-  startup minimum could deliver across the pre-deadline slots — the
-  smallest amount whole-amp hardware might have to overshoot by when no
-  executable point lands exactly on the target.  Without this relaxation, a
-  target with no exact whole-amp solution reports an avoidable deadline
-  miss even though the nearest reachable whole-amp point is one activation
-  quantum away.  `charge_past_target=True` still uses its own surplus-only
-  mechanism instead.
+- **Target-cap constraint** (issue #636, relaxed by issue #797, margin/escalation
+  added by issue #845): For EVs with a deadline and `charge_past_target=False`,
+  a hard upper bound caps cumulative pre-deadline charge near the economic
+  shortfall:
+  `Σ_{k≤D} ev_c[k] ≤ cap_target − initial_soc_kwh + activation_quantum`, where
+  `cap_target` is `effective_target` normally, or `capacity_kwh` when the EV
+  is *deadline-escalated* (see below). `activation_quantum` is the largest
+  single-slot energy the EV's charger startup minimum could deliver across
+  the pre-deadline slots — the smallest amount whole-amp hardware might have
+  to overshoot by when no executable point lands exactly on the target.
+  Without this relaxation, a target with no exact whole-amp solution reports
+  an avoidable deadline miss even though the nearest reachable whole-amp
+  point is one activation quantum away.  `charge_past_target=True` still uses
+  its own surplus-only mechanism instead.
 - **Surplus-only for charge-past-target**: When `charge_past_target=True`,
   `ev_c[t]/η_charger ≤ max(0, pv[t] − base_load[t])` — charging only from PV surplus.
 - **Battery-first for charge-past-target (issue #775)**: When `charge_past_target=True`,
@@ -673,11 +678,48 @@ gi + pv + ed·η_dis = base_load + ec/η_chg + ge + Σ ev_c/eff
 where `base_load` is recomputed **without** pre-computed EV planned loads
 (only house consumption minus PV).
 
+**Deadline safety margin and escalation** (issue #845): the exact-target
+design above (target-cap capped precisely at the computed shortfall) leaves
+zero slack for execution-layer friction — OCPP anti-flap start/stop windows,
+the charger minimum-power floor, and Huawei phase-headroom/discharge-permission
+throttling can all silently shave delivered energy off an already-tight plan,
+turning an on-paper-exact plan into a missed deadline. Two mechanisms address
+this, both computed on `EVConfig` and re-evaluated fresh on every solve (no
+persistent trajectory state):
+- `effective_deadline_target_kwh = min(target_kwh + deadline_margin_kwh, capacity_kwh)`.
+  `deadline_margin_kwh` is supplied by the caller as a configured percentage
+  of the shortfall (`hsem_ev_planned_load_deadline_safety_margin_pct`,
+  default 0%, disabled — opt in via config; 0% reproduces the pre-#845
+  exact-target behaviour exactly). This is
+  the target the deadline soft-goal and target-cap constraint actually aim
+  for; `target_kwh` itself is untouched everywhere else, so `deadline_met`
+  in diagnostics (`ev_pen < 1e-6`) now certifies the strictly stronger
+  "target + margin was met" outcome.
+- `deadline_escalated` — `True` when even max-power charging for every
+  remaining pre-deadline slot can't reach `effective_deadline_target_kwh`
+  (`initial_soc_kwh + max_charge_per_slot × (deadline_slot + 1) < effective_deadline_target_kwh`).
+  When escalated, the target-cap's `cap_target` lifts all the way to
+  `capacity_kwh` (the margin itself is no longer achievable, so the solver
+  is freed to charge as much as physically possible instead of staying
+  artificially capped below full capacity), and the deadline penalty
+  (below) is multiplied by `_EV_DEADLINE_ESCALATION_PENALTY_MULTIPLIER = 5.0`.
+
+A dedicated coordinator trigger, `_ev_deadline_pacing_requires_replan`
+(`coordinator_ev_deadline_pacing.py`), forces a prompt out-of-cycle replan as
+soon as an EV's live SoC makes the margined target unreachable at max
+charger power, gated by a minimum cadence (`EV_DEADLINE_PACING_REPLAN_MIN_SECONDS`,
+120s) so escalation doesn't have to wait for an unrelated trigger (slot
+boundary, EV state change, live-power drift) to force the next solve.
+
 **Objective** includes a high-cost deadline penalty:
 ```text
 ev_penalty_cost = max(p_imp) * max(energy_needed, 1.0) * 10
+if ev.deadline_escalated:
+    ev_penalty_cost *= 5.0
 ```
-ensuring the MILP always prefers meeting the target when physically possible.
+where `energy_needed = effective_deadline_target_kwh − initial_soc_kwh`,
+ensuring the MILP always prefers meeting the (margined, possibly escalated)
+target when physically possible.
 
 **Pre-deadline slots** (`t ≤ D`, issue #797): `ev_c[t]` receives **no** direct
 per-kWh benefit coefficient.  The slack penalty alone already prices meeting
@@ -801,14 +843,26 @@ revenue the optimiser forbade.
 - EV charge per slot never exceeds `ev.max_charge_per_slot`.
 - Cumulative EV SoC never exceeds `ev.capacity_kwh`.
 - For EVs with a deadline and `charge_past_target=False`, cumulative
-  pre-deadline charge `Σ_{k≤D} ev_c[k]` never exceeds `target_kwh − initial_soc_kwh`.
-- When `ev.deadline_slot` is provided and the target is reachable, the
-  deadline penalty `ev_pen` is zero.
+  pre-deadline charge `Σ_{k≤D} ev_c[k]` never exceeds
+  `effective_deadline_target_kwh − initial_soc_kwh` (issue #845), or
+  `capacity_kwh − initial_soc_kwh` when `deadline_escalated` is `True`.
+- `deadline_margin_kwh = 0.0` reproduces the pre-#845 exact-target
+  behaviour exactly (`effective_deadline_target_kwh == target_kwh`).
+- When `ev.deadline_slot` is provided and the margined target is reachable,
+  the deadline penalty `ev_pen` is zero.
 - When the target is unreachable within the available slots, `ev_pen > 0`
   absorbs the shortfall — the MILP never becomes infeasible due to EV
-  constraints.
+  constraints. When `deadline_escalated` is `True`, `ev_penalty_cost` is
+  multiplied by `_EV_DEADLINE_ESCALATION_PENALTY_MULTIPLIER` (5.0).
 - EV diagnostics (total DC kWh delivered, deadline penalty, deadline met)
-  are included in the diagnostics dict under the `"ev"` key.
+  are included in the diagnostics dict under the `"ev"` key; `deadline_met`
+  now certifies meeting `target_kwh + deadline_margin_kwh` (or
+  `capacity_kwh` under escalation), a strictly stronger guarantee than the
+  bare `target_kwh` it certified before issue #845.
+- A write-out slot dropped for falling below `charger_min_power_w` is
+  first redistributed forward onto a later pre-deadline slot with
+  headroom (`planner/milp/_ev_power_writeout.py`, issue #845); only the
+  portion that cannot be placed anywhere is discarded.
 
 ### MILP decision priority
 
@@ -852,7 +906,9 @@ has zero cost.  The LP always uses available PV to cover house load first.
 When the EV is **below target SoC** with a deadline approaching:
 
 - Penalty: `max(p_imp) × max(energy_needed, 1.0) × 10` per kWh shortfall
-- Constraint: `initial_soc + Σ ev_c + penalty ≥ target`
+  against the margined target (`energy_needed = effective_deadline_target_kwh
+  − initial_soc_kwh`), multiplied by 5 when `deadline_escalated` (issue #845).
+- Constraint: `initial_soc + Σ ev_c + penalty ≥ effective_deadline_target_kwh`
 - **Pre-deadline benefit**: Each slot `t ≤ D` gets coefficient `-ev_penalty_cost`
   on `ev_c[t]`, so the LP always prefers charging over paying the penalty.
 - This penalty dominates everything — the LP will import at high prices

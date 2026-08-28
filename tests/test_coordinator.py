@@ -575,3 +575,92 @@ class TestEVDeliveredEnergyReplan:
             next_material_change,
         )
         assert coordinator._should_replan(live, next_material_change) is True
+
+
+class TestEVDeadlinePacingReplan:
+    """An EV that can no longer reach its margined target at max power forces a replan."""
+
+    @staticmethod
+    def _coordinator_and_cfg(
+        now: datetime,
+    ) -> tuple[HSEMDataUpdateCoordinator, SensorConfig]:
+        coordinator = _make_bare_coordinator()
+        cfg = SensorConfig()
+        cfg.ev_planned_load_battery_capacity_kwh = 100.0
+        cfg.ev_planned_load_charger_power_kw = 7.0
+        cfg.ev_planned_load_charger_efficiency_pct = 100.0
+        cfg.ev_planned_load_deadline_safety_margin_pct = 10.0
+        coordinator._cfg = cfg
+        # A previous plan exists, old enough to clear the cadence gate.
+        coordinator._last_plan_slot_start = now - timedelta(seconds=200)
+        return coordinator, cfg
+
+    def test_replan_when_max_power_cannot_reach_margined_target(self) -> None:
+        now = datetime(2026, 8, 23, 8, 0, tzinfo=UTC)
+        coordinator, _cfg = self._coordinator_and_cfg(now)
+
+        live = LiveState()
+        live.ev_planned_load_connected = True
+        live.ev_planned_load_smart_charging_enabled = True
+        live.ev_planned_load_target_soc_pct = 80.0
+        live.ev.effective_soc_pct = 20.0  # 20 kWh of 100 kWh capacity
+        live.ev_planned_load_deadline = now + timedelta(hours=1)
+
+        # Shortfall 60 kWh + 10% margin (6 kWh) = 86 kWh needed; at 7 kW for
+        # 1h only 27 kWh is physically reachable.
+        assert coordinator._ev_deadline_pacing_requires_replan(live, now) is True
+
+    def test_no_replan_with_comfortable_margin_and_time(self) -> None:
+        now = datetime(2026, 8, 23, 8, 0, tzinfo=UTC)
+        coordinator, _cfg = self._coordinator_and_cfg(now)
+
+        live = LiveState()
+        live.ev_planned_load_connected = True
+        live.ev_planned_load_smart_charging_enabled = True
+        live.ev_planned_load_target_soc_pct = 80.0
+        live.ev.effective_soc_pct = 20.0
+        live.ev_planned_load_deadline = now + timedelta(hours=20)
+
+        # 7 kW for 20h reaches 160 kWh, far more than the 86 kWh needed.
+        assert coordinator._ev_deadline_pacing_requires_replan(live, now) is False
+
+    def test_no_replan_when_ev_not_connected(self) -> None:
+        now = datetime(2026, 8, 23, 8, 0, tzinfo=UTC)
+        coordinator, _cfg = self._coordinator_and_cfg(now)
+
+        live = LiveState()
+        live.ev_planned_load_connected = False
+        live.ev_planned_load_smart_charging_enabled = True
+        live.ev_planned_load_target_soc_pct = 80.0
+        live.ev.effective_soc_pct = 20.0
+        live.ev_planned_load_deadline = now + timedelta(hours=1)
+
+        assert coordinator._ev_deadline_pacing_requires_replan(live, now) is False
+
+    def test_no_replan_without_deadline(self) -> None:
+        now = datetime(2026, 8, 23, 8, 0, tzinfo=UTC)
+        coordinator, _cfg = self._coordinator_and_cfg(now)
+
+        live = LiveState()
+        live.ev_planned_load_connected = True
+        live.ev_planned_load_smart_charging_enabled = True
+        live.ev_planned_load_target_soc_pct = 80.0
+        live.ev.effective_soc_pct = 20.0
+        live.ev_planned_load_deadline = None
+
+        assert coordinator._ev_deadline_pacing_requires_replan(live, now) is False
+
+    def test_cadence_gate_blocks_immediate_retrigger(self) -> None:
+        now = datetime(2026, 8, 23, 8, 0, tzinfo=UTC)
+        coordinator, _cfg = self._coordinator_and_cfg(now)
+        # Last plan was only 10s ago — inside the cadence window.
+        coordinator._last_plan_slot_start = now - timedelta(seconds=10)
+
+        live = LiveState()
+        live.ev_planned_load_connected = True
+        live.ev_planned_load_smart_charging_enabled = True
+        live.ev_planned_load_target_soc_pct = 80.0
+        live.ev.effective_soc_pct = 20.0
+        live.ev_planned_load_deadline = now + timedelta(hours=1)
+
+        assert coordinator._ev_deadline_pacing_requires_replan(live, now) is False

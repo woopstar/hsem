@@ -518,6 +518,8 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
         - Import price changed significantly (new price period)
         - Sustained material rolling house/PV change in the current slot,
           within its bounded correction budget (issue #797)
+        - An EV can no longer reach its margined deadline target at max
+          charger power for the remaining time (issue #845)
 
         Returns ``False`` when nothing material changed — the previous
         plan can be reused.
@@ -580,6 +582,9 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
                 return True
 
         if self._ev_delivered_energy_requires_replan(live, now):
+            return True
+
+        if self._ev_deadline_pacing_requires_replan(live, now):
             return True
 
         # EV connection state changed.
