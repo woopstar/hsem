@@ -33,6 +33,7 @@ Commands:
   lint      Format and lint code (ruff format + ruff check)
   typing    Type check with mypy
   quality   Static quality checks (pyright + vulture)
+  skylos    Run Skylos static analysis (experimental, not in 'all')
   test      Run tests with pytest and coverage
   all       Run lint, typing, quality, and test in sequence
 EOF
@@ -50,6 +51,9 @@ case "${1:-}" in
     quality)
         run python -m pyright
         run python -m vulture custom_components/hsem tests vulture_whitelist.py --min-confidence 80
+        ;;
+    skylos)
+        SKYLOS_GREP_BUDGET=120 run skylos custom_components -a
         ;;
     test)
         run python -m pytest tests/ \
