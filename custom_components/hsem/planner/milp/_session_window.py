@@ -43,7 +43,6 @@ def resolve_session_windows(
     future_idx: list[int],
     now: datetime,
     active_evs: list[EVConfig],
-    m: int,
 ) -> SessionWindows:
     """Return each active EV's live-session certainty window.
 

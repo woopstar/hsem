@@ -55,8 +55,6 @@ def _build_constraints(
     session_ev_indices: list[int],
     slot_hours: float,
     _has_session_demand: bool,
-    max_grid_export_per_slot_kwh: float = 0.0,
-    export_limit_active: bool = False,
     battery_export_blocked: np.ndarray | None = None,  # type: ignore[name-defined]
     battery_export_off: int = 0,
     export_mode_off: int = 0,
@@ -387,7 +385,6 @@ def _build_constraints(
             export_mode_off=export_mode_off,
             usable_kwh=usable_kwh,
             current_kwh=current_kwh,
-            discharge_eff=discharge_eff,
             checkpoints=checkpoints,
             reserve_kwh=usable_kwh * reserve_pct / 100.0 if reserve_active else 0.0,
             immediate_reserve_kwh=forecast_reserve_kwh

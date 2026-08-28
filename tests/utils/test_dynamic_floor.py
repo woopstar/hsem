@@ -82,7 +82,6 @@ class TestBridgeComputation:
         floor_pct, diag = df.compute_floor(
             now=now,
             slots=slots,
-            current_kwh=5.0,
             usable_kwh=10.0,
             configured_min_soc_pct=10.0,
         )
@@ -108,7 +107,6 @@ class TestBridgeComputation:
         floor_pct, diag = df.compute_floor(
             now=now,
             slots=slots,
-            current_kwh=5.0,
             usable_kwh=10.0,
             configured_min_soc_pct=10.0,
         )
@@ -126,7 +124,6 @@ class TestBridgeComputation:
         floor_pct, diag = df.compute_floor(
             now=now,
             slots=slots,
-            current_kwh=5.0,
             usable_kwh=10.0,
             configured_min_soc_pct=15.0,
         )
@@ -141,7 +138,6 @@ class TestBridgeComputation:
         floor_pct, diag = df.compute_floor(
             now=now,
             slots=slots,
-            current_kwh=5.0,
             usable_kwh=10.0,
             configured_min_soc_pct=5.0,
         )
@@ -156,7 +152,6 @@ class TestBridgeComputation:
         floor_pct, diag = df.compute_floor(
             now=now,
             slots=[],
-            current_kwh=5.0,
             usable_kwh=10.0,
             configured_min_soc_pct=10.0,
         )
@@ -188,7 +183,6 @@ class TestBridgeComputation:
         floor_pct, diag = df.compute_floor(
             now=now,
             slots=slots,
-            current_kwh=5.0,
             usable_kwh=10.0,
             configured_min_soc_pct=5.0,
         )
@@ -204,7 +198,6 @@ class TestBridgeComputation:
         floor_pct, diag = df.compute_floor(
             now=now,
             slots=slots,
-            current_kwh=5.0,
             usable_kwh=10.0,
             configured_min_soc_pct=5.0,
         )
@@ -222,13 +215,49 @@ class TestBridgeComputation:
         floor_pct, diag = df.compute_floor(
             now=now,
             slots=slots,
-            current_kwh=5.0,
             usable_kwh=10.0,
             configured_min_soc_pct=5.0,
         )
         assert diag["refill_type"] == "solar_surplus"
         assert diag["reserve_kwh"] == pytest.approx(0.5, rel=1e-4)
         assert diag["bridge_duration_hours"] == pytest.approx(1.0, rel=1e-4)
+
+    def test_hours_ahead_bounds_the_scan(self) -> None:
+        """A refill beyond hours_ahead must not extend the bridge scan."""
+        now = datetime(2025, 6, 15, 12, 0)
+        df = DynamicDischargeFloor()
+        # 50 hourly slots of steady consumption; solar surplus only shows up
+        # at hour 49 — outside the default 48h look-ahead window.
+        net_values = [0.5] * 49 + [-5.0]
+        slots = _make_slots(now, net_values)
+        floor_pct, diag = df.compute_floor(
+            now=now,
+            slots=slots,
+            usable_kwh=100.0,
+            configured_min_soc_pct=5.0,
+        )
+        # The surplus slot at hour 49 must be excluded from the scan, so no
+        # refill is found within the window and consumption accumulates
+        # only over the 48 in-window slots (0.5 * 48 = 24.0 kWh).
+        assert diag["refill_type"] == "none"
+        assert diag["reserve_kwh"] == pytest.approx(24.0, rel=1e-4)
+
+    def test_hours_ahead_custom_window(self) -> None:
+        """A custom hours_ahead further restricts the scan window."""
+        now = datetime(2025, 6, 15, 12, 0)
+        df = DynamicDischargeFloor()
+        # Solar surplus at hour 5, but hours_ahead=3 excludes it.
+        net_values = [0.5, 0.5, 0.5, 0.5, 0.5, -5.0]
+        slots = _make_slots(now, net_values)
+        floor_pct, diag = df.compute_floor(
+            now=now,
+            slots=slots,
+            usable_kwh=100.0,
+            configured_min_soc_pct=5.0,
+            hours_ahead=3,
+        )
+        assert diag["refill_type"] == "none"
+        assert diag["reserve_kwh"] == pytest.approx(1.5, rel=1e-4)
 
     def test_solar_surplus_between_consumption_reduces_reserve(self) -> None:
         """Solar surplus stops the scan at first surplus, even if followed by more consumption."""
@@ -238,7 +267,6 @@ class TestBridgeComputation:
         floor_pct, diag = df.compute_floor(
             now=now,
             slots=slots,
-            current_kwh=5.0,
             usable_kwh=10.0,
             configured_min_soc_pct=5.0,
         )

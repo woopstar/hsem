@@ -191,7 +191,6 @@ def add_ev_amp_lattice_constraints(
     ed_off: int,
     max_dis: float,
     available_slot_hours: np.ndarray,  # type: ignore[type-arg]
-    session_dc_by_ev: dict[int, dict[int, float]],
 ) -> dict[str, Any]:
     """Link managed EV energy to executable whole-amp commands.
 

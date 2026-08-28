@@ -2446,9 +2446,21 @@ bridge_reserve_pct  = (next_refill_need_kwh / usable_capacity_kwh) × 100
                     × safety_margin
 ```
 
-Where `safety_margin` is a self-learning multiplier that starts at **1.50**
-and decays toward **1.05** as successful solar refills are observed.  The
-floor is never lower than the hardware-configured minimum SoC.
+Where `safety_margin` is a self-learning multiplier that starts at **1.15**
+(a 15 % buffer) and self-corrects within **[1.05, 1.50]**: it steps up by
+0.05 after 2 consecutive days where actual SoC fell below the floor, and
+steps down by 0.02 after 7 consecutive days where actual SoC stayed
+comfortably above the floor (`DynamicDischargeFloor.correct_margin()`,
+`utils/dynamic_floor.py`). The floor is never lower than the
+hardware-configured minimum SoC.
+
+The bridge scan (`DynamicDischargeFloor.compute_floor()`,
+`utils/dynamic_floor.py`) is bounded to a `hours_ahead` look-ahead window
+(default 48 h): slots starting at or after `now + hours_ahead` are excluded
+before the refill scan and consumption accumulation run, so a low-confidence
+day+2/day+3 forecast refill cannot extend the bridge past the window. If no
+refill is found within the window, consumption accumulates only over the
+in-window slots.
 
 #### Dynamic floor invariant
 

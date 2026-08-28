@@ -48,7 +48,6 @@ def _add_battery_export_reserve_constraints(
     export_mode_off: int,
     usable_kwh: float,
     current_kwh: float,
-    discharge_eff: float,
     checkpoints: np.ndarray | None,
     reserve_kwh: float,
     immediate_reserve_kwh: float = 0.0,
