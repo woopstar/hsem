@@ -237,7 +237,7 @@ Run it manually with:
 ./scripts/quality.sh skylos
 ```
 
-This executes `skylos . -a`, which scans for dead code, security issues, secrets, quality regressions, and common AI-code mistakes. Findings are informational while the project tunes baselines and ignores.
+This executes `SKYLOS_GREP_BUDGET=120 skylos custom_components -a`, which scans `custom_components/` for dead code, security issues, secrets, quality regressions, and common AI-code mistakes. The `custom_components` path is passed explicitly because Skylos does not handle the repo root (`.`) correctly in this workspace, and `-a` enables the full all-checks scan rather than the default dead-code-only scan. Findings are informational while the project tunes baselines and ignores.
 
 ## Common Ruff Violations and Fixes
 

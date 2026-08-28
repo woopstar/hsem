@@ -53,7 +53,7 @@ case "${1:-}" in
         run python -m vulture custom_components/hsem tests vulture_whitelist.py --min-confidence 80
         ;;
     skylos)
-        run skylos . -a
+        SKYLOS_GREP_BUDGET=120 run skylos custom_components -a
         ;;
     test)
         run python -m pytest tests/ \
