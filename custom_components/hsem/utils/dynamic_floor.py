@@ -13,7 +13,7 @@ the actual SoC to let the safety margin self-correct over time.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.units import slot_duration_hours
@@ -79,7 +79,6 @@ class DynamicDischargeFloor:
         self,
         now: datetime,
         slots: list,  # list[PlannedSlot] — kept typing-free for pure-Python testability
-        current_kwh: float,
         usable_kwh: float,
         configured_min_soc_pct: float,
         hours_ahead: int = 48,
@@ -105,8 +104,6 @@ class DynamicDischargeFloor:
                 Future planner output slots (list of objects with
                 ``start``, ``end``, ``estimated_net_consumption_kwh``,
                 ``batteries_charged_kwh``, and ``recommendation`` attributes).
-            current_kwh:
-                Current usable battery energy above the absolute floor (kWh).
             usable_kwh:
                 Maximum usable battery capacity (kWh).
             configured_min_soc_pct:
@@ -139,8 +136,11 @@ class DynamicDischargeFloor:
             )
             return configured_min_soc_pct, diag
 
-        # Filter to future slots only, ordered chronologically.
-        future = [s for s in slots if s.end > now]
+        # Filter to future slots only, ordered chronologically, bounded to
+        # the look-ahead window — low-confidence day+2/day+3 forecasts
+        # beyond hours_ahead must not extend the bridge scan.
+        horizon_end = now + timedelta(hours=hours_ahead)
+        future = [s for s in slots if s.end > now and s.start < horizon_end]
         if not future:
             log_planner(
                 "debug",

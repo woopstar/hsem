@@ -346,7 +346,6 @@ def solve_milp(
         future_idx=future_idx,
         now=now,
         active_evs=active_evs,
-        m=m,
     )
     slot_hours = _session_windows.slot_hours
     available_slot_hours = _session_windows.available_slot_hours
@@ -432,8 +431,8 @@ def solve_milp(
     (
         grid_import_ub_per_slot,
         grid_export_ub_per_slot,
-        export_limit_active,
-        max_grid_export_per_slot_kwh,
+        _export_limit_active,
+        _max_grid_export_per_slot_kwh,
     ) = resolve_grid_bounds(
         active_evs=active_evs,
         base_load=base_load,
@@ -533,8 +532,6 @@ def solve_milp(
         session_dc_by_ev=session_dc_by_ev,
         available_slot_hours=available_slot_hours,
         column_layout=column_layout,
-        max_grid_export_per_slot_kwh=max_grid_export_per_slot_kwh,
-        export_limit_active=export_limit_active,
         battery_export_blocked=battery_export_blocked,
         battery_export_off=battery_export_off,
         export_mode_off=export_mode_off,
@@ -569,7 +566,6 @@ def solve_milp(
         ed_off=ed_off,
         max_dis=max_dis,
         available_slot_hours=available_slot_hours,
-        session_dc_by_ev=session_dc_by_ev,
     )
 
     A_eq = constraints["A_eq"]
@@ -729,8 +725,6 @@ def solve_milp(
         s_max_off,
         s_min_off,
         curt_off,
-        gi_off,
-        gi_pen_off,
         replacement_price_per_kwh,
         fuse_active,
         max_grid_import_per_slot_kwh,

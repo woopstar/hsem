@@ -91,7 +91,6 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
             min_soc_pct = live.huawei_batteries_end_of_discharge_soc_pct or 0.0
             max_soc_pct = live.huawei_batteries_charging_cutoff_capacity_pct or 100.0
             _usable_kwh = usable_kwh_from_rated(rated_kwh, min_soc_pct, max_soc_pct)
-            _current_kwh = (live.huawei_batteries_soc_pct or 0.0) / 100.0 * _usable_kwh
             _bridge_slots: list = []
             for rec in self._hourly_recommendations:
                 _bridge_slots.append(
@@ -108,7 +107,6 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
             floor_pct, floor_diag = self._dynamic_floor.compute_floor(
                 now=now,
                 slots=_bridge_slots,
-                current_kwh=_current_kwh,
                 usable_kwh=_usable_kwh,
                 configured_min_soc_pct=min_soc_pct,
             )
