@@ -77,14 +77,6 @@ class LivePowerWindow:
         self._house.clear()
         self._solar.clear()
 
-    def clear_house(self) -> None:
-        """Discard retained house samples while preserving PV history."""
-        self._house.clear()
-
-    def clear_solar(self) -> None:
-        """Discard retained PV samples while preserving house history."""
-        self._solar.clear()
-
     def add_sample(
         self,
         timestamp: datetime,

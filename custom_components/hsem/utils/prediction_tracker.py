@@ -200,14 +200,6 @@ class PredictionTracker:
             action: count / total for action, count in action_counts.items()
         }
 
-    def reset_warmup(self) -> None:
-        """Reset the warm-up counter so the next *warmup_slots* are skipped.
-
-        Useful in tests or after a coordinator restart to guarantee the
-        warm-up gate is active.
-        """
-        self._slots_seen = 0
-
     def to_persistence_dict(self) -> dict[str, Any]:
         """Return bounded history for JSON persistence."""
         self._prune()

@@ -370,34 +370,6 @@ class ConsumptionPredictor:
             prev_timestamp_utc = physical_start
         return result
 
-    def predict_all_slots(
-        self,
-        day_offset: int = 0,
-        reference_time: datetime | None = None,
-        temperatures: dict[int, float] | None = None,
-    ) -> dict[int, float]:
-        """Predict consumption for all slots of a given day."""
-        if self._coef is None:
-            return {}
-
-        if reference_time is None:
-            reference_time = datetime.now().astimezone()
-
-        target_date = reference_time.date() + timedelta(days=day_offset)
-        temps = temperatures or {}
-
-        result: dict[int, float] = {}
-        for s in range(self._slots_per_day):
-            slot_dt = datetime(
-                target_date.year,
-                target_date.month,
-                target_date.day,
-                tzinfo=reference_time.tzinfo,
-            ) + timedelta(minutes=s * (1440 // self._slots_per_day))
-            temp_val = temps.get(s)
-            result[s] = float(self._predict_from_features(slot_dt, s, temp_val))
-        return result
-
     # ------------------------------------------------------------------
     # Prediction helpers
     # ------------------------------------------------------------------

@@ -191,34 +191,36 @@ class TestScheduleValidator:
 
     def test_same_day_window_valid(self):
         """A same-day window (start < end) passes validation."""
-        from custom_components.hsem.flows.batteries_schedule_1 import (
-            validate_batteries_schedule_1_input,
+        from custom_components.hsem.flows.schedule_helpers import (
+            validate_batteries_schedule_input,
         )
 
         errors = _run_async(
-            validate_batteries_schedule_1_input(
+            validate_batteries_schedule_input(
+                1,
                 {
                     "hsem_batteries_enable_batteries_schedule_1": True,
                     "hsem_batteries_enable_batteries_schedule_1_start": "07:00:00",
                     "hsem_batteries_enable_batteries_schedule_1_end": "09:00:00",
-                }
+                },
             )
         )
         assert errors == {}
 
     def test_cross_midnight_window_valid(self):
         """A cross-midnight window (start > end, e.g. 23:00-02:00) passes validation."""
-        from custom_components.hsem.flows.batteries_schedule_1 import (
-            validate_batteries_schedule_1_input,
+        from custom_components.hsem.flows.schedule_helpers import (
+            validate_batteries_schedule_input,
         )
 
         errors = _run_async(
-            validate_batteries_schedule_1_input(
+            validate_batteries_schedule_input(
+                1,
                 {
                     "hsem_batteries_enable_batteries_schedule_1": True,
                     "hsem_batteries_enable_batteries_schedule_1_start": "23:00:00",
                     "hsem_batteries_enable_batteries_schedule_1_end": "02:00:00",
-                }
+                },
             )
         )
         assert errors == {}, (
@@ -227,51 +229,54 @@ class TestScheduleValidator:
 
     def test_zero_to_six_window_valid(self):
         """A 00:00-06:00 window (P0-02 AC) passes validation."""
-        from custom_components.hsem.flows.batteries_schedule_1 import (
-            validate_batteries_schedule_1_input,
+        from custom_components.hsem.flows.schedule_helpers import (
+            validate_batteries_schedule_input,
         )
 
         errors = _run_async(
-            validate_batteries_schedule_1_input(
+            validate_batteries_schedule_input(
+                1,
                 {
                     "hsem_batteries_enable_batteries_schedule_1": True,
                     "hsem_batteries_enable_batteries_schedule_1_start": "00:00:00",
                     "hsem_batteries_enable_batteries_schedule_1_end": "06:00:00",
-                }
+                },
             )
         )
         assert errors == {}
 
     def test_equal_start_end_invalid(self):
         """A window with identical start and end times is invalid."""
-        from custom_components.hsem.flows.batteries_schedule_1 import (
-            validate_batteries_schedule_1_input,
+        from custom_components.hsem.flows.schedule_helpers import (
+            validate_batteries_schedule_input,
         )
 
         errors = _run_async(
-            validate_batteries_schedule_1_input(
+            validate_batteries_schedule_input(
+                1,
                 {
                     "hsem_batteries_enable_batteries_schedule_1": True,
                     "hsem_batteries_enable_batteries_schedule_1_start": "09:00:00",
                     "hsem_batteries_enable_batteries_schedule_1_end": "09:00:00",
-                }
+                },
             )
         )
         assert errors != {}
 
     def test_schedule_2_cross_midnight_window_valid(self):
         """Schedule 2: cross-midnight window passes validation."""
-        from custom_components.hsem.flows.batteries_schedule_2 import (
-            validate_batteries_schedule_2_input,
+        from custom_components.hsem.flows.schedule_helpers import (
+            validate_batteries_schedule_input,
         )
 
         errors = _run_async(
-            validate_batteries_schedule_2_input(
+            validate_batteries_schedule_input(
+                2,
                 {
                     "hsem_batteries_enable_batteries_schedule_2": True,
                     "hsem_batteries_enable_batteries_schedule_2_start": "23:00:00",
                     "hsem_batteries_enable_batteries_schedule_2_end": "02:00:00",
-                }
+                },
             )
         )
         assert errors == {}, (
@@ -280,17 +285,18 @@ class TestScheduleValidator:
 
     def test_schedule_3_cross_midnight_window_valid(self):
         """Schedule 3: cross-midnight window passes validation."""
-        from custom_components.hsem.flows.batteries_schedule_3 import (
-            validate_batteries_schedule_3_input,
+        from custom_components.hsem.flows.schedule_helpers import (
+            validate_batteries_schedule_input,
         )
 
         errors = _run_async(
-            validate_batteries_schedule_3_input(
+            validate_batteries_schedule_input(
+                3,
                 {
                     "hsem_batteries_enable_batteries_schedule_3": True,
                     "hsem_batteries_enable_batteries_schedule_3_start": "23:00:00",
                     "hsem_batteries_enable_batteries_schedule_3_end": "02:00:00",
-                }
+                },
             )
         )
         assert errors == {}, (

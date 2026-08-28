@@ -7,9 +7,9 @@ Extracted from ``applier.py`` to satisfy the repository's 30 KB /
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
-from custom_components.hsem.models.live_state import EVLiveState, LiveState
+from custom_components.hsem.models.live_state import EVLiveState
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.utils.units import is_material_planned_energy_kwh
 
@@ -174,31 +174,6 @@ def _planned_ev_discharge_cap_w(
         *(float(max(value, 0)) for value in ev_max_discharge_power_ws),
     )
     return max(math.floor(cap_w + 1e-9), 0)
-
-
-def _should_force_export_for_ev(
-    ev: Any,
-    ev_cfg: Any,
-    live: LiveState,
-) -> bool:
-    """Return True if the EV needs charging and export should be forced."""
-    if not ev.is_connected:
-        return False
-    if (
-        isinstance(ev.soc_pct, (int, float))
-        and isinstance(ev.soc_target_pct, (int, float))
-        and ev.soc_pct < ev.soc_target_pct
-    ):
-        return True
-    if (
-        isinstance(ev.soc_pct, (int, float))
-        and ev_cfg.allow_charge_past_target_soc
-        and ev.soc_pct < 100
-        and live.huawei_batteries_soc_pct is not None
-        and live.huawei_batteries_soc_pct >= 99.0
-    ):
-        return True
-    return False
 
 
 def _primary_battery_hold(rec: HourlyRecommendation) -> bool:

@@ -185,6 +185,10 @@ class CoordinatorLifecycleMixin(CoordinatorSharedState):
             debounce_task.cancel()
             self._options_update_debounce_task = None
 
+        # Clear retained live-power state (window, replan budget, source
+        # signature) so a stale estimate cannot survive teardown.
+        self.reset_live_power_state()
+
     async def async_options_updated(self) -> None:
         """Schedule a debounced pipeline re-run after an options change.
 

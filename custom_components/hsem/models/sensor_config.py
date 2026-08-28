@@ -353,15 +353,6 @@ class SensorConfig:
             self.batteries_schedule_3,
         ]
 
-    def weights_sum(self) -> int:
-        """Return the sum of all four consumption weights."""
-        return (
-            self.house_consumption_energy_weight_1d
-            + self.house_consumption_energy_weight_3d
-            + self.house_consumption_energy_weight_7d
-            + self.house_consumption_energy_weight_14d
-        )
-
     def __repr__(self) -> str:
         return (
             f"SensorConfig(read_only={self.read_only}, "

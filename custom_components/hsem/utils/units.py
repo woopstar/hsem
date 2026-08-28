@@ -12,7 +12,7 @@ Usage
 >>> from custom_components.hsem.utils.units import (
 ...     watt_to_kilowatt, kilowatt_to_watt,
 ...     watthours_to_kilowatthours, kilowatthours_to_watthours,
-...     power_to_energy_kwh, energy_to_power_kw,
+...     energy_to_power_kw,
 ...     timedelta_to_hours, slot_duration_hours, hours_ahead,
 ...     roundtrip_loss_pct, usable_kwh_from_rated,
 ...     max_energy_per_slot_kwh, fuse_max_energy_per_slot_kwh,
@@ -142,21 +142,6 @@ def hours_ahead(now: datetime, future_time: datetime) -> float:
 # ---------------------------------------------------------------------------
 # Duration-aware conversions (power ⇄ energy)
 # ---------------------------------------------------------------------------
-
-
-def power_to_energy_kwh(power_kw: float, duration_h: float) -> float:
-    """Convert power over a duration to energy.
-
-    ``energy_kwh = power_kw × duration_h``
-
-    Args:
-        power_kw: Average power in kiloWatts (kW).
-        duration_h: Duration in hours (h).
-
-    Returns:
-        Energy in kiloWatt-hours (kWh).
-    """
-    return power_kw * duration_h
 
 
 def energy_to_power_kw(energy_kwh: float, duration_h: float) -> float:

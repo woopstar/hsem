@@ -362,8 +362,8 @@ class TestP004Schedule3Default:
     @pytest.mark.asyncio
     async def test_zero_length_window_rejected_by_validator(self) -> None:
         """The schedule validator must reject a 00:00:00 → 00:00:00 window when enabled."""
-        from custom_components.hsem.flows.batteries_schedule_3 import (
-            validate_batteries_schedule_3_input,
+        from custom_components.hsem.flows.schedule_helpers import (
+            validate_batteries_schedule_input,
         )
 
         user_input = {
@@ -372,7 +372,7 @@ class TestP004Schedule3Default:
             "hsem_batteries_enable_batteries_schedule_3_end": "00:00:00",
             "hsem_batteries_enable_batteries_schedule_3_min_price_difference": 0.0,
         }
-        errors = await validate_batteries_schedule_3_input(user_input)
+        errors = await validate_batteries_schedule_input(3, user_input)
         assert "base" in errors, (
             "00:00→00:00 with enabled=True must produce a validation error"
         )
@@ -380,8 +380,8 @@ class TestP004Schedule3Default:
     @pytest.mark.asyncio
     async def test_disabled_schedule_3_accepts_any_times(self) -> None:
         """A disabled schedule_3 must never fail validation (times are irrelevant)."""
-        from custom_components.hsem.flows.batteries_schedule_3 import (
-            validate_batteries_schedule_3_input,
+        from custom_components.hsem.flows.schedule_helpers import (
+            validate_batteries_schedule_input,
         )
 
         user_input = {
@@ -390,7 +390,7 @@ class TestP004Schedule3Default:
             "hsem_batteries_enable_batteries_schedule_3_end": "00:00:00",
             "hsem_batteries_enable_batteries_schedule_3_min_price_difference": 0.0,
         }
-        errors = await validate_batteries_schedule_3_input(user_input)
+        errors = await validate_batteries_schedule_input(3, user_input)
         assert errors == {}, "Disabled schedule must not fail validation"
 
 

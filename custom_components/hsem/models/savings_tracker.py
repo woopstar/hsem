@@ -186,10 +186,6 @@ class SavingsTracker:
     # Daily access
     # ------------------------------------------------------------------
 
-    def get_today_entry(self) -> SavingsDay:
-        """Return today's :class:`SavingsDay` entry."""
-        return self.daily.setdefault(self._today, SavingsDay(date=self._today))
-
     def get_sorted_daily(self, limit: int = 90) -> list[SavingsDay]:
         """Return the most recent *limit* daily entries sorted by date."""
         sorted_dates = sorted(self.daily.keys(), reverse=True)[:limit]

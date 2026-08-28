@@ -830,61 +830,65 @@ class TestFlowValidatorsUseConfigValidator:
 
     @pytest.mark.asyncio
     async def test_validate_schedule_1_disabled_passes(self):
-        from custom_components.hsem.flows.batteries_schedule_1 import (
-            validate_batteries_schedule_1_input,
+        from custom_components.hsem.flows.schedule_helpers import (
+            validate_batteries_schedule_input,
         )
 
-        errors = await validate_batteries_schedule_1_input(
+        errors = await validate_batteries_schedule_input(
+            1,
             {
                 "hsem_batteries_enable_batteries_schedule_1": False,
                 "hsem_batteries_enable_batteries_schedule_1_start": "INVALID",
                 "hsem_batteries_enable_batteries_schedule_1_end": "INVALID",
-            }
+            },
         )
         assert errors == {}
 
     @pytest.mark.asyncio
     async def test_validate_schedule_1_zero_length_rejected(self):
-        from custom_components.hsem.flows.batteries_schedule_1 import (
-            validate_batteries_schedule_1_input,
+        from custom_components.hsem.flows.schedule_helpers import (
+            validate_batteries_schedule_input,
         )
 
-        errors = await validate_batteries_schedule_1_input(
+        errors = await validate_batteries_schedule_input(
+            1,
             {
                 "hsem_batteries_enable_batteries_schedule_1": True,
                 "hsem_batteries_enable_batteries_schedule_1_start": "07:00:00",
                 "hsem_batteries_enable_batteries_schedule_1_end": "07:00:00",
-            }
+            },
         )
         assert errors["base"] == "start_time_equals_end_time"
 
     @pytest.mark.asyncio
     async def test_validate_schedule_2_cross_midnight_valid(self):
-        from custom_components.hsem.flows.batteries_schedule_2 import (
-            validate_batteries_schedule_2_input,
+        from custom_components.hsem.flows.schedule_helpers import (
+            validate_batteries_schedule_input,
         )
 
-        errors = await validate_batteries_schedule_2_input(
+        errors = await validate_batteries_schedule_input(
+            2,
             {
                 "hsem_batteries_enable_batteries_schedule_2": True,
                 "hsem_batteries_enable_batteries_schedule_2_start": "23:00:00",
                 "hsem_batteries_enable_batteries_schedule_2_end": "02:00:00",
-            }
+            },
         )
         assert errors == {}
 
     @pytest.mark.asyncio
     async def test_validate_schedule_3_invalid_time_format(self):
-        from custom_components.hsem.flows.batteries_schedule_3 import (
-            validate_batteries_schedule_3_input,
+        from custom_components.hsem.flows.schedule_helpers import (
+            validate_batteries_schedule_input,
         )
 
-        errors = await validate_batteries_schedule_3_input(
+        errors = await validate_batteries_schedule_input(
+            3,
             {
                 "hsem_batteries_enable_batteries_schedule_3": True,
                 "hsem_batteries_enable_batteries_schedule_3_start": "9am",
                 "hsem_batteries_enable_batteries_schedule_3_end": "11:00:00",
-            }
+            },
         )
         assert (
             errors.get("hsem_batteries_enable_batteries_schedule_3_start")

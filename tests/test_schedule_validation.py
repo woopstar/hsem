@@ -11,14 +11,8 @@ Verifies:
 import pytest
 
 from custom_components.hsem.const import DEFAULT_CONFIG_VALUES
-from custom_components.hsem.flows.batteries_schedule_1 import (
-    validate_batteries_schedule_1_input,
-)
-from custom_components.hsem.flows.batteries_schedule_2 import (
-    validate_batteries_schedule_2_input,
-)
-from custom_components.hsem.flows.batteries_schedule_3 import (
-    validate_batteries_schedule_3_input,
+from custom_components.hsem.flows.schedule_helpers import (
+    validate_batteries_schedule_input,
 )
 
 # ---------------------------------------------------------------------------
@@ -90,7 +84,7 @@ class TestZeroLengthWindowRejected:
             "hsem_batteries_enable_batteries_schedule_1_end": "08:00:00",
             "hsem_batteries_enable_batteries_schedule_1_min_price_difference": 0.0,
         }
-        errors = await validate_batteries_schedule_1_input(user_input)
+        errors = await validate_batteries_schedule_input(1, user_input)
         assert errors.get("base") == "start_time_equals_end_time"
 
     @pytest.mark.asyncio
@@ -102,7 +96,7 @@ class TestZeroLengthWindowRejected:
             "hsem_batteries_enable_batteries_schedule_2_end": "17:00:00",
             "hsem_batteries_enable_batteries_schedule_2_min_price_difference": 0.0,
         }
-        errors = await validate_batteries_schedule_2_input(user_input)
+        errors = await validate_batteries_schedule_input(2, user_input)
         assert errors.get("base") == "start_time_equals_end_time"
 
     @pytest.mark.asyncio
@@ -114,7 +108,7 @@ class TestZeroLengthWindowRejected:
             "hsem_batteries_enable_batteries_schedule_3_end": "00:00:00",
             "hsem_batteries_enable_batteries_schedule_3_min_price_difference": 0.0,
         }
-        errors = await validate_batteries_schedule_3_input(user_input)
+        errors = await validate_batteries_schedule_input(3, user_input)
         assert errors.get("base") == "start_time_equals_end_time"
 
     @pytest.mark.asyncio
@@ -126,7 +120,7 @@ class TestZeroLengthWindowRejected:
             "hsem_batteries_enable_batteries_schedule_3_end": "00:00:00",
             "hsem_batteries_enable_batteries_schedule_3_min_price_difference": 0.0,
         }
-        errors = await validate_batteries_schedule_3_input(user_input)
+        errors = await validate_batteries_schedule_input(3, user_input)
         assert "base" in errors, "00:00->00:00 with enabled=True must be rejected"
         assert errors["base"] == "start_time_equals_end_time"
 
@@ -148,7 +142,7 @@ class TestDisabledScheduleSkipsValidation:
             "hsem_batteries_enable_batteries_schedule_1_end": "00:00:00",
             "hsem_batteries_enable_batteries_schedule_1_min_price_difference": 0.0,
         }
-        errors = await validate_batteries_schedule_1_input(user_input)
+        errors = await validate_batteries_schedule_input(1, user_input)
         assert errors == {}
 
     @pytest.mark.asyncio
@@ -160,7 +154,7 @@ class TestDisabledScheduleSkipsValidation:
             "hsem_batteries_enable_batteries_schedule_2_end": "00:00:00",
             "hsem_batteries_enable_batteries_schedule_2_min_price_difference": 0.0,
         }
-        errors = await validate_batteries_schedule_2_input(user_input)
+        errors = await validate_batteries_schedule_input(2, user_input)
         assert errors == {}
 
     @pytest.mark.asyncio
@@ -172,7 +166,7 @@ class TestDisabledScheduleSkipsValidation:
             "hsem_batteries_enable_batteries_schedule_3_end": "00:00:00",
             "hsem_batteries_enable_batteries_schedule_3_min_price_difference": 0.0,
         }
-        errors = await validate_batteries_schedule_3_input(user_input)
+        errors = await validate_batteries_schedule_input(3, user_input)
         assert errors == {}
 
 
@@ -193,7 +187,7 @@ class TestValidScheduleWindows:
             "hsem_batteries_enable_batteries_schedule_1_end": "09:00:00",
             "hsem_batteries_enable_batteries_schedule_1_min_price_difference": 0.0,
         }
-        errors = await validate_batteries_schedule_1_input(user_input)
+        errors = await validate_batteries_schedule_input(1, user_input)
         assert errors == {}
 
     @pytest.mark.asyncio
@@ -205,7 +199,7 @@ class TestValidScheduleWindows:
             "hsem_batteries_enable_batteries_schedule_2_end": "21:00:00",
             "hsem_batteries_enable_batteries_schedule_2_min_price_difference": 0.0,
         }
-        errors = await validate_batteries_schedule_2_input(user_input)
+        errors = await validate_batteries_schedule_input(2, user_input)
         assert errors == {}
 
     @pytest.mark.asyncio
@@ -217,7 +211,7 @@ class TestValidScheduleWindows:
             "hsem_batteries_enable_batteries_schedule_3_end": "02:00:00",
             "hsem_batteries_enable_batteries_schedule_3_min_price_difference": 0.0,
         }
-        errors = await validate_batteries_schedule_3_input(user_input)
+        errors = await validate_batteries_schedule_input(3, user_input)
         assert errors == {}
 
     @pytest.mark.asyncio
@@ -233,7 +227,7 @@ class TestValidScheduleWindows:
             "hsem_batteries_enable_batteries_schedule_3_end": end,
             "hsem_batteries_enable_batteries_schedule_3_min_price_difference": 0.0,
         }
-        errors = await validate_batteries_schedule_3_input(user_input)
+        errors = await validate_batteries_schedule_input(3, user_input)
         assert errors == {}, (
             f"Default times {start}->{end} should be valid when schedule_3 is enabled, "
             f"but got errors: {errors}"
@@ -257,7 +251,7 @@ class TestInvalidTimeFormat:
             "hsem_batteries_enable_batteries_schedule_1_end": "09:00:00",
             "hsem_batteries_enable_batteries_schedule_1_min_price_difference": 0.0,
         }
-        errors = await validate_batteries_schedule_1_input(user_input)
+        errors = await validate_batteries_schedule_input(1, user_input)
         # Centralized validator reports the error on the specific field, not on 'base'.
         assert (
             errors.get("hsem_batteries_enable_batteries_schedule_1_start")
@@ -273,7 +267,7 @@ class TestInvalidTimeFormat:
             "hsem_batteries_enable_batteries_schedule_3_end": "02:00:00",
             "hsem_batteries_enable_batteries_schedule_3_min_price_difference": 0.0,
         }
-        errors = await validate_batteries_schedule_3_input(user_input)
+        errors = await validate_batteries_schedule_input(3, user_input)
         # Centralized validator reports the error on the specific field, not on 'base'.
         assert (
             errors.get("hsem_batteries_enable_batteries_schedule_3_start")
