@@ -21,6 +21,14 @@ The devcontainer is pre-configured to use your YubiKey for SSH authentication an
 - Your host `~/.ssh`, `~/.gnupg`, and `~/.gitconfig` are mounted into the container
 - `yubikey-manager` CLI (`ykman`) is available for managing your YubiKey
 
+**Persistent `/root`**
+
+The whole `/root` home directory is backed by a named Docker volume (`hsem-root`), with the host
+identity bind mounts above (`.ssh`, `.gnupg`, `.gitconfig`) layered on top of it. This means CLI
+tool state under `/root` — `.claude`, `.copilot`, `.config`, shell history, etc. — survives
+container rebuilds instead of requiring re-authentication or re-setup every time. Anything you
+install or configure as root persists automatically; there's no per-tool mount to add.
+
 **macOS setup**: Docker Desktop runs inside a Linux VM and cannot forward Unix domain
 sockets (like `gpg-agent.ssh`) across the VM boundary. This devcontainer uses a TCP
 relay to bridge the SSH and GPG agents from host to container.
@@ -52,12 +60,34 @@ To uninstall the relay:
 Docker Desktop on macOS runs containers inside a Linux VM, so the default bind-mounted workspace is slower than the native container filesystem. This devcontainer mitigates that by:
 
 - Mounting the workspace with `consistency=cached` to reduce cross-VM sync overhead.
-- Storing Python tool caches (`__pycache__`, `.mypy_cache`, `.pytest_cache`, `.ruff_cache`, `uv`) in a named Docker volume (`hsem-cache`) instead of inside the bind-mounted workspace.
+- Storing Python tool caches (`__pycache__`, `.mypy_cache`, `.pytest_cache`, `.ruff_cache`, `uv`) in
+  a named Docker volume (`hsem-cache`) mounted at `/tmp/hsem-cache`, outside the bind-mounted
+  workspace entirely. This also keeps `grep`/`find`/`ruff format .`-style commands run from the
+  workspace root from wandering into cache contents.
 
-These changes are automatic after rebuilding the container. You may see an empty `.cache` folder on your Mac; this is expected and harmless — the actual cache data lives inside the Docker volume.
+These changes are automatic after rebuilding the container.
 
 **Linux note**: On a native Linux Docker host, you can add `--privileged` and USB
 device mounts via `runArgs` in `devcontainer.json` for direct hardware access.
+
+**Zed parallel agents / git worktrees**
+
+Zed's [parallel agents](https://zed.dev/docs/ai/parallel-agents) feature and its worktree picker
+create linked git worktrees under the path set by `git.worktree_directory`. `.zed/settings.json`
+pins this to the absolute path `/workspaces/worktrees` (matching the convention Claude Code's
+`EnterWorktree` tool already uses) rather than relying on Zed's relative default, so it resolves
+the same way regardless of where in Zed's config resolution it's read from. That path is backed
+by a dedicated named Docker volume (`hsem-worktrees`), so linked worktrees persist across
+container rebuilds instead of living in the container's writable layer, which gets discarded on
+rebuild. Worktrees are treated as disposable, container-scoped scratch space (like the tool
+caches) rather than durable source of truth — they aren't visible from the host filesystem, since
+all editing happens through Zed's remote session (or Claude Code) running inside the container
+anyway. Push or commit anything you want to keep before removing the volume.
+
+No per-worktree Python setup is needed: dependencies are installed into the container's system
+Python (see `setup-python-deps.sh`), not a per-checkout virtualenv, so every worktree shares the
+same installed packages automatically. Git hooks (pre-commit) are also shared, since `.git/hooks`
+lives in the common git dir, not per-worktree.
 
 [More info about requirements and devcontainer in general](https://code.visualstudio.com/docs/remote/containers#_getting-started)
 
