@@ -144,8 +144,13 @@ def add_ev_and_session_constraint_rows(
             ev_row += m
 
             # EV deadline soft constraint:
-            # initial_soc + Σ_{k≤D} ev_c[k] + penalty ≥ target
-            # → -Σ_{k≤D} ev_c[k] - penalty ≤ initial_soc - target
+            # initial_soc + Σ_{k≤D} ev_c[k] + penalty ≥ effective_target
+            # → -Σ_{k≤D} ev_c[k] - penalty ≤ initial_soc - effective_target
+            # ``effective_deadline_target_kwh`` is target_kwh plus a
+            # configured safety margin (issue #845), so the plan aims past
+            # the bare target and has slack to absorb execution-layer
+            # friction (anti-flap windows, min-power floors, phase-headroom
+            # throttling) without silently missing the deadline.
             if (
                 ev.deadline_slot is not None
                 and ev.target_kwh > ev.initial_soc_kwh + 1e-9
@@ -156,14 +161,14 @@ def add_ev_and_session_constraint_rows(
                 for k in range(d + 1):
                     A_ub[ev_row, ev_off + k] = -1.0
                 A_ub[ev_row, ev_pen_offsets[ev_idx]] = -1.0
-                b_ub[ev_row] = ev.initial_soc_kwh - ev.target_kwh
+                b_ub[ev_row] = ev.initial_soc_kwh - ev.effective_deadline_target_kwh
                 ev_row += 1
 
             # EV target-cap constraint:
-            # Σ_{k≤D} ev_c[k] ≤ target_kwh - initial_soc_kwh + activation_quantum
-            # Caps EV charging near the economic target for pre-deadline
-            # slots.  Without this, the benefit coefficient on ev_c[t]
-            # would drive charging all the way to capacity_kwh
+            # Σ_{k≤D} ev_c[k] ≤ cap_target - initial_soc_kwh + activation_quantum
+            # Caps EV charging near the economic target (plus safety margin)
+            # for pre-deadline slots.  Without this, the benefit coefficient
+            # on ev_c[t] would drive charging all the way to capacity_kwh
             # regardless of the actual shortfall.  One activation quantum
             # (the smallest executable whole-amp energy) is permitted above
             # the exact target: whole-amp hardware may have no executable
@@ -172,12 +177,23 @@ def add_ev_and_session_constraint_rows(
             # Does NOT apply when charge_past_target is enabled — that
             # mode intentionally allows charging beyond target_kwh via
             # a separate surplus-only mechanism.
+            # When ``deadline_escalated`` is True — even max-power charging
+            # for every remaining pre-deadline slot can't reach the margined
+            # target — the cap is lifted all the way to capacity_kwh
+            # (issue #845), so the solver isn't artificially blocked from
+            # charging as much as physically possible once the safety
+            # margin itself is no longer achievable.
             if (
                 ev.deadline_slot is not None
                 and ev.target_kwh > ev.initial_soc_kwh + 1e-9
                 and not ev.charge_past_target
             ):
-                shortfall = ev.target_kwh - ev.initial_soc_kwh
+                cap_target = (
+                    ev.capacity_kwh
+                    if ev.deadline_escalated
+                    else ev.effective_deadline_target_kwh
+                )
+                shortfall = cap_target - ev.initial_soc_kwh
                 d = ev.deadline_slot
                 d = max(0, min(d, m - 1))
                 activation_quantum_dc = target_cap_activation_quantum_dc(

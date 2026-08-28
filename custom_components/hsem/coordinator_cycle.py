@@ -72,6 +72,11 @@ EV_DELIVERED_ENERGY_REPLAN_DELTA_KWH = 0.25
 EV_DELIVERED_ENERGY_REPLAN_MIN_SECONDS = 60.0
 EV_DELIVERED_ENERGY_MAX_GAP_SECONDS = 3600.0
 
+# An EV that can no longer reach its margined deadline target at max
+# charger power should trigger a prompt replan (issue #845) rather than
+# waiting for an unrelated event — but not on every single cadence tick.
+EV_DEADLINE_PACING_REPLAN_MIN_SECONDS = 120.0
+
 
 class CoordinatorCycleMixin(CoordinatorSharedState):
     """Live-state collection and the guarded update cycle for the coordinator."""

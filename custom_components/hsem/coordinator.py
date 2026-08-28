@@ -40,6 +40,9 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from custom_components.hsem.coordinator_cycle import CoordinatorCycleMixin
 from custom_components.hsem.coordinator_data import CoordinatorData
+from custom_components.hsem.coordinator_ev_deadline_pacing import (
+    CoordinatorEvDeadlinePacingMixin,
+)
 from custom_components.hsem.coordinator_helpers import (
     LoadForecastSignature,
     apply_force_charge_now,
@@ -121,6 +124,7 @@ class HSEMDataUpdateCoordinator(
     CoordinatorCycleMixin,
     CoordinatorPlannerPhaseMixin,
     CoordinatorLivePowerMixin,
+    CoordinatorEvDeadlinePacingMixin,
     DataUpdateCoordinator[CoordinatorData],
 ):
     """DataUpdateCoordinator for HSEM.

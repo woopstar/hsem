@@ -78,6 +78,20 @@ _MIN_POWER_W_SELECTOR = selector(
     }
 )
 
+# Extra energy budgeted above the deadline target so normal execution-layer
+# friction doesn't turn an exact plan into a missed deadline (issue #845).
+_DEADLINE_SAFETY_MARGIN_SELECTOR = selector(
+    {
+        "number": {
+            "min": 0,
+            "max": 50,
+            "step": 1,
+            "unit_of_measurement": PERCENTAGE,
+            "mode": "slider",
+        }
+    }
+)
+
 # Charger phase topology decides how much of an EV command any single phase
 # may be assumed to carry in the hard per-phase fuse rows.  ``single_phase``
 # is the safe default: it keeps the pre-feature worst-case envelope.
@@ -139,6 +153,10 @@ async def build_ev_planned_load_schema(  # NOSONAR
                 _k("charger_phase_topology"),
                 default=_v("charger_phase_topology"),
             ): _PHASE_TOPOLOGY_SELECTOR,
+            vol.Required(
+                _k("deadline_safety_margin_pct"),
+                default=_v("deadline_safety_margin_pct"),
+            ): _DEADLINE_SAFETY_MARGIN_SELECTOR,
         }
     )
 

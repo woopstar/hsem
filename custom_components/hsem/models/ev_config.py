@@ -42,6 +42,14 @@ class EVConfig:
             captured in the house consumption sensor.  The MILP will mark
             the EV load as accounted rather than planned (affects how the
             results are written to ``PlannedSlot`` fields).
+        deadline_margin_kwh: Extra energy budgeted above ``target_kwh`` for
+            the deadline soft-goal and target-cap constraints, so normal
+            execution-layer friction (anti-flap windows, min-power floors,
+            phase-headroom throttling) doesn't turn an on-paper-exact plan
+            into a missed deadline (issue #845).  Derived by the caller as
+            a configured percentage of the shortfall
+            (``target_kwh - initial_soc_kwh``).  ``0.0`` reproduces the
+            pre-#845 exact-target behaviour.
     """
 
     enabled: bool = False
@@ -53,6 +61,7 @@ class EVConfig:
     charger_min_power_w: float = 1380.0
     deadline_slot: int | None = None
     base_load_includes_ev: bool = False
+    deadline_margin_kwh: float = 0.0
     #: When True, the EV is already at its user-configured target SoC and
     #: is only included so the MILP can allocate surplus PV that would
     #: otherwise be exported at low/negative prices.  In this mode the
@@ -115,3 +124,34 @@ class EVConfig:
         published-plan validation cannot diverge.
         """
         return ev_phase_share(self.charger_phase_topology)
+
+    @property
+    def effective_deadline_target_kwh(self) -> float:
+        """Return ``target_kwh`` inflated by the safety margin, capped at capacity.
+
+        This is the value the deadline soft-constraint and target-cap
+        constraint actually aim for (issue #845) — ``target_kwh`` itself
+        stays the literal user-configured target for diagnostics (e.g.
+        ``deadline_met``), which now certifies the strictly stronger
+        "target + margin was met" outcome.
+        """
+        return min(self.target_kwh + self.deadline_margin_kwh, self.capacity_kwh)
+
+    @property
+    def deadline_escalated(self) -> bool:
+        """Return whether even max-power charging can't reach the margined target.
+
+        A stateless reachability check, re-evaluated on every MILP solve
+        from the current (live) ``initial_soc_kwh`` — no persistent
+        trajectory tracking is needed.  When ``True``, the target-cap
+        constraint is lifted to ``capacity_kwh`` and the deadline penalty
+        is steepened (issue #845), so the solver is free to charge past the
+        normal margined ceiling when that's the only way to still meet the
+        deadline.
+        """
+        if self.deadline_slot is None:
+            return False
+        max_reachable = self.initial_soc_kwh + self.max_charge_per_slot * (
+            self.deadline_slot + 1
+        )
+        return max_reachable < self.effective_deadline_target_kwh - 1e-9

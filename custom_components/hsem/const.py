@@ -68,6 +68,7 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_ev_planned_load_charger_efficiency": 100,
     "hsem_ev_planned_load_charger_min_power_w": 1380,
     "hsem_ev_planned_load_charger_phase_topology": "single_phase",
+    "hsem_ev_planned_load_deadline_safety_margin_pct": 0,
     # EV planned load integration — second EV (optional, disabled by default)
     "hsem_ev_second_planned_load_enabled": False,
     "hsem_ev_second_planned_load_battery_capacity_kwh": 0.0,
@@ -75,6 +76,7 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_ev_second_planned_load_charger_efficiency": 100,
     "hsem_ev_second_planned_load_charger_min_power_w": 1380,
     "hsem_ev_second_planned_load_charger_phase_topology": "single_phase",
+    "hsem_ev_second_planned_load_deadline_safety_margin_pct": 0,
     "hsem_ev_second_allow_charge_past_target_soc": False,
     "hsem_ev_second_past_target_confidence_factor": 0.9,
     "hsem_ev_second_charger_force_max_discharge_power": False,

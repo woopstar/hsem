@@ -204,3 +204,9 @@ class CoordinatorSharedState(_Base):
     def _ev_effective_energy_kwh(
         ev_live: Any, battery_capacity_kwh: float
     ) -> float | None: ...
+
+    # Method provided by CoordinatorEvDeadlinePacingMixin.
+    def _ev_deadline_pacing_requires_replan(
+        self, live: LiveState, now: datetime
+    ) -> bool:
+        raise NotImplementedError

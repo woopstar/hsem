@@ -473,6 +473,14 @@ def build_sensor_config(
     cfg.ev_planned_load_charger_phase_topology = normalize_ev_phase_topology(
         get_config_value(config_entry, "hsem_ev_planned_load_charger_phase_topology")
     )
+    _margin_pct = convert_to_float(
+        get_config_value(
+            config_entry, "hsem_ev_planned_load_deadline_safety_margin_pct"
+        )
+    )
+    cfg.ev_planned_load_deadline_safety_margin_pct = (
+        _margin_pct if _margin_pct is not None else 0.0
+    )
 
     # Second EV planned load integration
     cfg.ev_second_planned_load_enabled = convert_to_boolean(
@@ -510,6 +518,14 @@ def build_sensor_config(
         get_config_value(
             config_entry, "hsem_ev_second_planned_load_charger_phase_topology"
         )
+    )
+    _s2_margin_pct = convert_to_float(
+        get_config_value(
+            config_entry, "hsem_ev_second_planned_load_deadline_safety_margin_pct"
+        )
+    )
+    cfg.ev_second_planned_load_deadline_safety_margin_pct = (
+        _s2_margin_pct if _s2_margin_pct is not None else 0.0
     )
 
     # EV auto-Full on negative price (issue #609)

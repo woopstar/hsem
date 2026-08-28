@@ -265,6 +265,10 @@ class PlannerInput:
     #: Huawei discharge ceiling (W) while the primary EV charges.  Only
     #: meaningful when ``ev_planned_load_force_max_discharge_power`` is True.
     ev_planned_load_max_discharge_power_w: float = 0.0
+    #: Percentage of the deadline shortfall budgeted as extra safety margin
+    #: above the target SoC, so execution-layer friction doesn't turn an
+    #: exact plan into a missed deadline (issue #845).
+    ev_planned_load_deadline_safety_margin_pct: float = 0.0
 
     # --- EV planned load integration — second EV (optional, disabled by default) ---
     #: When True, the second EV planned load feature is active.
@@ -289,6 +293,8 @@ class PlannerInput:
     ev_second_planned_load_force_max_discharge_power: bool = False
     #: Same as ev_planned_load_max_discharge_power_w, for the second EV.
     ev_second_planned_load_max_discharge_power_w: float = 0.0
+    #: Same as ev_planned_load_deadline_safety_margin_pct, for the second EV.
+    ev_second_planned_load_deadline_safety_margin_pct: float = 0.0
 
     # --- planner hysteresis — keep the active plan unless the new plan
     # is materially better (anti-flapping, issue #372). ---

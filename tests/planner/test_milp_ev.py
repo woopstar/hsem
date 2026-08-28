@@ -921,6 +921,7 @@ def test_ev_target_capped_not_to_capacity():
         max_charge_per_slot=10.0,
         charger_efficiency=0.90,
         deadline_slot=9,
+        deadline_margin_kwh=0.0,  # exact-target behavior, no safety margin (issue #845)
     )
 
     result = solve_milp(
@@ -963,6 +964,7 @@ def test_ev_target_capped_large_reachable_shortfall():
         max_charge_per_slot=10.0,
         charger_efficiency=0.90,
         deadline_slot=5,  # slots 0-5 = 6 slots, 6*10 = 60 kWh max
+        deadline_margin_kwh=0.0,  # exact-target behavior, no safety margin (issue #845)
     )
 
     result = solve_milp(
@@ -985,6 +987,136 @@ def test_ev_target_capped_large_reachable_shortfall():
     assert ev_total_dc == pytest.approx(40.0, rel=0.05), (
         f"Expected ~40 kWh DC (target shortfall), got {ev_total_dc}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Deadline safety margin and escalation (issue #845)
+# ---------------------------------------------------------------------------
+
+
+@_pytestmark_scipy
+def test_ev_charges_to_margined_target_not_bare_target():
+    """A configured safety margin is charged on top of the bare target.
+
+    EV at 50/80 kWh needs +5 kWh to reach the 55 kWh target, plus a 0.5 kWh
+    safety margin (10% of the 5 kWh shortfall). Total DC charge should land
+    at ~5.5 kWh, not the bare 5 kWh shortfall.
+    """
+    slots = _build_slots(10, start_hour=14, import_price=3.00)
+    ev = EVConfig(
+        enabled=True,
+        initial_soc_kwh=50.0,
+        target_kwh=55.0,
+        capacity_kwh=80.0,
+        max_charge_per_slot=10.0,
+        charger_efficiency=0.90,
+        deadline_slot=9,
+        deadline_margin_kwh=0.5,
+    )
+
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=0.001,
+        max_charge_per_slot=0.001,
+        max_discharge_per_slot=None,
+        ev_configs=[ev],
+    )
+
+    assert result is not None
+    out_slots, _diag = result
+
+    ev_total_dc = sum(s.ev_total_planned_load_kwh * 0.9 for s in out_slots)
+    assert ev_total_dc == pytest.approx(5.5, rel=0.05), (
+        f"Expected ~5.5 kWh DC (shortfall + margin), got {ev_total_dc} kWh"
+    )
+
+
+@_pytestmark_scipy
+def test_ev_margin_capped_at_capacity():
+    """The margined target-cap never allows charging past capacity_kwh.
+
+    EV at 50/57 kWh needs +5 kWh to reach the 55 kWh target; a huge margin
+    would overshoot the 57 kWh capacity, so the cap must stay at capacity.
+    """
+    slots = _build_slots(10, start_hour=14, import_price=3.00)
+    ev = EVConfig(
+        enabled=True,
+        initial_soc_kwh=50.0,
+        target_kwh=55.0,
+        capacity_kwh=57.0,
+        max_charge_per_slot=10.0,
+        charger_efficiency=0.90,
+        deadline_slot=9,
+        deadline_margin_kwh=10.0,  # would push target+margin to 65 > capacity
+    )
+
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=0.001,
+        max_charge_per_slot=0.001,
+        max_discharge_per_slot=None,
+        ev_configs=[ev],
+    )
+
+    assert result is not None
+    out_slots, _diag = result
+
+    ev_total_dc = sum(s.ev_total_planned_load_kwh * 0.9 for s in out_slots)
+    # Capacity headroom above initial_soc_kwh is 7 kWh (57 - 50).
+    assert ev_total_dc == pytest.approx(7.0, rel=0.05), (
+        f"Expected ~7 kWh DC (capped at capacity), got {ev_total_dc} kWh"
+    )
+
+
+@_pytestmark_scipy
+def test_ev_deadline_escalated_charges_to_physical_max():
+    """When even max-power charging can't reach the margined target, escalate.
+
+    EV at 10/80 kWh needs 40 kWh to reach the 50 kWh target, plus a 4 kWh
+    margin (effective target 54 kWh). With only 4 slots at 10 kWh/slot, the
+    physical maximum reachable is 40 kWh — below the margined target, so
+    the EV is deadline_escalated. The MILP should still charge to the full
+    physical maximum (40 kWh) despite an extreme import price, and the
+    deadline penalty should reflect the true shortfall against the
+    margined target (54 - 50 = 4 kWh), not report a met deadline.
+    """
+    slots = _build_slots(10, start_hour=14, import_price=3.00)
+    ev = EVConfig(
+        enabled=True,
+        initial_soc_kwh=10.0,
+        target_kwh=50.0,
+        capacity_kwh=80.0,
+        max_charge_per_slot=10.0,
+        charger_efficiency=0.90,
+        deadline_slot=3,  # 4 slots => 40 kWh physically reachable
+        deadline_margin_kwh=4.0,
+    )
+    assert ev.deadline_escalated is True
+
+    result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=0.001,
+        max_charge_per_slot=0.001,
+        max_discharge_per_slot=None,
+        ev_configs=[ev],
+    )
+
+    assert result is not None
+    out_slots, diag = result
+
+    ev_total_dc = sum(s.ev_total_planned_load_kwh * 0.9 for s in out_slots)
+    assert ev_total_dc == pytest.approx(40.0, rel=0.05), (
+        f"Expected ~40 kWh DC (full physical max under escalation), got {ev_total_dc} kWh"
+    )
+    ev_diag = diag["ev"]["ev0"]
+    assert ev_diag["deadline_met"] is False
+    assert ev_diag["deadline_penalty_kwh"] == pytest.approx(4.0, abs=0.5)
 
 
 @_pytestmark_scipy
