@@ -162,7 +162,12 @@ class OCPPServer:
 
     @property
     def active_chargers(self) -> list[str]:
-        """Return list of CPIDs for currently connected chargers."""
+        """Return list of CPIDs for currently connected chargers.
+
+        Manual/diagnostic accessor — no HA service currently exposes this
+        (see issue #843). Kept as public API for direct/test use alongside
+        :meth:`send_set_charging_profile` and :meth:`send_remote_stop`.
+        """
         return list(self._chargers.keys())
 
     async def update_charge_target(
@@ -256,6 +261,11 @@ class OCPPServer:
         Bypasses the anti-flap state machine.  Use
         :meth:`update_charge_target` for normal planner-driven operation.
 
+        No HA service registers this as a manual override (see issue #843
+        — deliberately left unwired: registering it would let a user bypass
+        the anti-flap safety window with no corresponding product need).
+        Kept as public API for direct/test use.
+
         Args:
             cpid: Charge-point identifier.
             max_power_w: Maximum charging power in watts.
@@ -272,6 +282,10 @@ class OCPPServer:
 
     async def send_remote_stop(self, cpid: str) -> None:
         """Directly send a ``RemoteStopTransaction`` to a charger.
+
+        Bypasses the anti-flap state machine — see
+        :meth:`send_set_charging_profile` for why this is intentionally not
+        wired to an HA service (issue #843).
 
         Args:
             cpid: Charge-point identifier.
