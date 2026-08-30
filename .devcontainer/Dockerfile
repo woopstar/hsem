@@ -1,4 +1,4 @@
-FROM python:3.14.2-slim
+FROM python:3.14.7-slim
 
 ENV SSH_AUTH_SOCK=/tmp/ssh-agent.sock
 ENV GNUPGHOME=/tmp/gpg-home
@@ -30,6 +30,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # rtk installation
 RUN curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh
 RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> /root/.bashrc
+
+# croc installation
+RUN curl https://getcroc.com | bash
 
 # Copy devcontainer helper scripts
 COPY scripts/devcontainer-agent-bridge.sh /usr/local/bin/devcontainer-agent-bridge.sh
