@@ -47,7 +47,9 @@
           "hsem_ev_planned_load_charger_power_kw": "EV lader-effekt (kW)",
           "hsem_ev_planned_load_charger_efficiency": "EV lader-efficiens",
           "hsem_ev_planned_load_charger_min_power_w": "EV lader minimumseffekt (W)",
-          "hsem_ev_planned_load_deadline_safety_margin_pct": "Sikkerhedsmargin til deadline (%)"
+          "hsem_ev_planned_load_deadline_safety_margin_pct": "Sikkerhedsmargin til deadline (%)",
+          "hsem_ev_planned_load_command_deadband_a": "Dødbånd for loft (A)",
+          "hsem_ev_planned_load_stub_floor_minutes": "Undertryk stop sidst i interval (min)"
         },
         "data_description": {
           "hsem_ev_planned_load_enabled": "Aktiver eller deaktiver planlagt EV-opladningsbelastningsintegration.",
@@ -55,7 +57,9 @@
           "hsem_ev_planned_load_charger_power_kw": "AC-udgangseffekt for EV-laderen i kW.",
           "hsem_ev_planned_load_charger_efficiency": "Laderefficiens i procent (1-100). Standard: 100.",
           "hsem_ev_planned_load_charger_min_power_w": "Minimum AC-effekt (W) som EV-laderen skal bruge for at starte opladning. Under dette niveau vil laderen ikke fungere. Standard: 1380 W (230 V × 6 A).",
-          "hsem_ev_planned_load_deadline_safety_margin_pct": "Ekstra energi budgetteret ud over mål-SoC, som en procentdel af manglen, så normal opladningsfriktion (startforsinkelser, minimumseffektgrænser, gennemtvinget reduktion) ikke får deadline til at blive overskredet. Standard: 0% (deaktiveret)."
+          "hsem_ev_planned_load_deadline_safety_margin_pct": "Ekstra energi budgetteret ud over mål-SoC, som en procentdel af manglen, så normal opladningsfriktion (startforsinkelser, minimumseffektgrænser, gennemtvinget reduktion) ikke får deadline til at blive overskredet. Standard: 0% (deaktiveret).",
+          "hsem_ev_planned_load_command_deadband_a": "Mindste sænkning af det offentliggjorte ladeloft, der faktisk gennemføres. Mindre sænkninger holdes, fordi konkurrerende hele-ampere-planer typisk ligger inden for en afrundingsfejl af hinanden på pris. En hævning af loftet forsinkes aldrig, og en sænkning, der forbedrer dette intervals ladeomkostning med mere end 5 %, slipper altid igennem. Standard: 3 A; 0 deaktiverer.",
+          "hsem_ev_planned_load_stub_floor_minutes": "Undertryk en stop-kommando i så mange minutter sidst i et interval, mens bilen stadig mangler energi. De sidste sekunder kan ikke rumme nok energi til at nå laderens minimum, så planen tildeler dem ingenting, og ladningen ville stoppe og starte igen uden gevinst. Standard: 2 minutter; 0 deaktiverer."
         },
         "description": "Konfigurer valgfri planlagt EV-opladningsbelastningsintegration. Når aktiveret, tager HSEM højde for kommende EV-opladningsbehov pr. planslot.",
         "title": "EV-planlagt belastningsintegration"
@@ -67,7 +71,9 @@
           "hsem_ev_second_planned_load_charger_power_kw": "EV 2 lader-effekt (kW)",
           "hsem_ev_second_planned_load_charger_efficiency": "EV 2 lader-efficiens",
           "hsem_ev_second_planned_load_charger_min_power_w": "EV 2 lader minimumseffekt (W)",
-          "hsem_ev_second_planned_load_deadline_safety_margin_pct": "EV 2 sikkerhedsmargin til deadline (%)"
+          "hsem_ev_second_planned_load_deadline_safety_margin_pct": "EV 2 sikkerhedsmargin til deadline (%)",
+          "hsem_ev_second_planned_load_command_deadband_a": "EV 2 dødbånd for loft (A)",
+          "hsem_ev_second_planned_load_stub_floor_minutes": "EV 2 undertryk stop sidst i interval (min)"
         },
         "data_description": {
           "hsem_ev_second_planned_load_enabled": "Aktiver eller deaktiver planlagt opladningsbelastningsintegration for den anden EV.",
@@ -75,7 +81,9 @@
           "hsem_ev_second_planned_load_charger_power_kw": "AC-udgangseffekt for den anden EV-lader i kW.",
           "hsem_ev_second_planned_load_charger_efficiency": "Anden EV-lader-efficiens i procent (1-100). Standard: 100.",
           "hsem_ev_second_planned_load_charger_min_power_w": "Minimum AC-effekt (W) som den anden EV-lader skal bruge for at starte opladning. Standard: 1380 W (230 V × 6 A).",
-          "hsem_ev_second_planned_load_deadline_safety_margin_pct": "Samme som den primære EVs sikkerhedsmargin til deadline, for den anden EV. Standard: 0% (deaktiveret)."
+          "hsem_ev_second_planned_load_deadline_safety_margin_pct": "Samme som den primære EVs sikkerhedsmargin til deadline, for den anden EV. Standard: 0% (deaktiveret).",
+          "hsem_ev_second_planned_load_command_deadband_a": "Samme som den primære EVs dødbånd for loft, for den anden EV. Standard: 3 A; 0 deaktiverer.",
+          "hsem_ev_second_planned_load_stub_floor_minutes": "Samme som den primære EVs undertrykkelse af stop sidst i interval, for den anden EV. Standard: 2 minutter; 0 deaktiverer."
         },
         "description": "Konfigurer valgfri planlagt opladningsbelastningsintegration for den anden EV. Vises kun, når en anden EV-lader er aktiveret.",
         "title": "EV 2-planlagt belastningsintegration"
@@ -576,7 +584,9 @@
           "hsem_ev_second_planned_load_charger_power_kw": "EV 2 lader-effekt (kW)",
           "hsem_ev_second_planned_load_charger_efficiency": "EV 2 lader-efficiens",
           "hsem_ev_second_planned_load_charger_min_power_w": "EV 2 lader minimumseffekt (W)",
-          "hsem_ev_second_planned_load_deadline_safety_margin_pct": "EV 2 sikkerhedsmargin til deadline (%)"
+          "hsem_ev_second_planned_load_deadline_safety_margin_pct": "EV 2 sikkerhedsmargin til deadline (%)",
+          "hsem_ev_second_planned_load_command_deadband_a": "EV 2 dødbånd for loft (A)",
+          "hsem_ev_second_planned_load_stub_floor_minutes": "EV 2 undertryk stop sidst i interval (min)"
         },
         "data_description": {
           "hsem_ev_second_planned_load_enabled": "Aktiver eller deaktiver planlagt opladningsbelastningsintegration for den anden EV.",
@@ -584,7 +594,9 @@
           "hsem_ev_second_planned_load_charger_power_kw": "AC-udgangseffekt for den anden EV-lader i kW.",
           "hsem_ev_second_planned_load_charger_efficiency": "Anden EV-lader-efficiens i procent (1-100). Standard: 100.",
           "hsem_ev_second_planned_load_charger_min_power_w": "Minimum AC-effekt (W) som den anden EV-lader skal bruge for at starte opladning. Standard: 1380 W (230 V × 6 A).",
-          "hsem_ev_second_planned_load_deadline_safety_margin_pct": "Samme som den primære EVs sikkerhedsmargin til deadline, for den anden EV. Standard: 0% (deaktiveret)."
+          "hsem_ev_second_planned_load_deadline_safety_margin_pct": "Samme som den primære EVs sikkerhedsmargin til deadline, for den anden EV. Standard: 0% (deaktiveret).",
+          "hsem_ev_second_planned_load_command_deadband_a": "Samme som den primære EVs dødbånd for loft, for den anden EV. Standard: 3 A; 0 deaktiverer.",
+          "hsem_ev_second_planned_load_stub_floor_minutes": "Samme som den primære EVs undertrykkelse af stop sidst i interval, for den anden EV. Standard: 2 minutter; 0 deaktiverer."
         },
         "description": "Konfigurer valgfri planlagt opladningsbelastningsintegration for den anden EV. Vises kun, når en anden EV-lader er aktiveret.",
         "title": "EV 2-planlagt belastningsintegration"

@@ -481,6 +481,16 @@ def build_sensor_config(
     cfg.ev_planned_load_deadline_safety_margin_pct = (
         _margin_pct if _margin_pct is not None else 0.0
     )
+    _deadband_a = convert_to_float(
+        get_config_value(config_entry, "hsem_ev_planned_load_command_deadband_a")
+    )
+    cfg.ev_planned_load_command_deadband_a = (
+        _deadband_a if _deadband_a is not None else 3.0
+    )
+    _stub_min = convert_to_float(
+        get_config_value(config_entry, "hsem_ev_planned_load_stub_floor_minutes")
+    )
+    cfg.ev_planned_load_stub_floor_minutes = _stub_min if _stub_min is not None else 2.0
 
     # Second EV planned load integration
     cfg.ev_second_planned_load_enabled = convert_to_boolean(
@@ -526,6 +536,18 @@ def build_sensor_config(
     )
     cfg.ev_second_planned_load_deadline_safety_margin_pct = (
         _s2_margin_pct if _s2_margin_pct is not None else 0.0
+    )
+    _s2_deadband_a = convert_to_float(
+        get_config_value(config_entry, "hsem_ev_second_planned_load_command_deadband_a")
+    )
+    cfg.ev_second_planned_load_command_deadband_a = (
+        _s2_deadband_a if _s2_deadband_a is not None else 3.0
+    )
+    _s2_stub_min = convert_to_float(
+        get_config_value(config_entry, "hsem_ev_second_planned_load_stub_floor_minutes")
+    )
+    cfg.ev_second_planned_load_stub_floor_minutes = (
+        _s2_stub_min if _s2_stub_min is not None else 2.0
     )
 
     # EV auto-Full on negative price (issue #609)

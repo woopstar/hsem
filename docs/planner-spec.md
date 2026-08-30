@@ -2744,6 +2744,87 @@ The EV planner (`planner/ev_planner.py`) MUST satisfy these invariants:
 - `ev_smart_charging` label is applied when `ev_total_planned_load_kwh > 0`, even when
   `ev_planned_load_kwh == 0` (i.e. `base_load_includes_ev = True`).
 
+### EV charger command stability (post-plan command layer)
+
+The planner re-solves on every cycle and re-derives the **live** slot's charger
+command from scratch:
+
+```text
+command_W = energy allocated to the remainder of this slot
+            ÷ time remaining in this slot
+```
+
+Both terms move every solve.  The amp lattice is integer, the target-cap pins
+total pre-deadline energy to the remaining need, and the live slot's amp step
+shrinks continuously as the slot elapses — so the live slot's amps is a
+*residual* on a lattice that is itself moving.  Competing integer splits are
+routinely within a rounding error of each other on cost: on one observed
+2.5 h session the two best splits for a slot differed by **0.01 %**, yet a
+0.3 % SoC update flipped the published command by 2–3 A.
+
+Two corrections are applied in
+`coordinator_ev_command_stability.py`, invoked from
+`_run_planner_phase` **after** every other post-plan override:
+
+| Mechanism | Setting | Default |
+|---|---|---|
+| Ceiling deadband | `hsem_ev_planned_load_command_deadband_a` (0–5 A) | 3 A |
+| Slot-tail stop suppression | `hsem_ev_planned_load_stub_floor_minutes` (0–10 min) | 2 min |
+
+Both have `hsem_ev_second_planned_load_*` counterparts.  Setting either to 0
+reproduces the pre-feature behaviour exactly.
+
+**The deadband is deliberately asymmetric.**  `ev_charger_calculated_power` is
+a *ceiling* an external current controller (or the charger's own PV-surplus
+logic) ramps **within** — see `custom_sensors/ev_charger_current_limit_sensor.py`.
+Only a downward move can force a charger to reduce; raising the ceiling merely
+grants headroom.  So increases are always published immediately and only
+reductions are damped.  On the observed session this suppressed the same 9 of
+21 downward moves a symmetric deadband would, while departing from the solved
+plan on 3 fewer occasions.
+
+The deadband is bypassed when holding is materially worse than the plan.
+Holding shifts energy between the live slot and the next slot carrying this
+EV's load, so the honest cost of holding is that energy delta priced at the
+*difference* between the two slots' import prices; when it exceeds
+`EV_COMMAND_DEADBAND_COST_BYPASS_FRACTION` (5 %, mirroring the plan-level
+hysteresis default) of the live slot's own EV cost, the change is published.
+
+**Slot-tail stop suppression** addresses a distinct defect: in the last seconds
+of a slot the remaining time cannot hold enough energy to clear the charger
+minimum, so the optimiser correctly allocates the stub nothing and the
+write-out floor zeroes it (`milp/_ev_power_writeout.py`).  Publishing 0 W drops
+the slot out of `ev_smart_charging` and commands a stop; the restart handshake
+costs far more energy than the stub was worth.  Suppression is gated on *all*
+of: within the configured tail, a previous non-zero command, a live charging
+session, and proven unmet need before the deadline — each of which fails closed.
+
+**Why post-plan.**  A deadband deliberately departs from the freshly solved
+optimum, so it must not run inside the solver: `winner.cost == final_output.cost`
+must keep describing the plan the selector chose.  The stability layer therefore
+mutates only the published command, and does so through
+`coordinator_helpers.write_ev_slot_commands()` so the slot's energy, grid-flow
+and cost fields move with it.  Held commands are re-clamped to the live fuse
+budget (`ev_site_power_budget_w()`) and re-quantised to whole amps, so stability
+can never publish something the site cannot carry.
+
+#### Invariants for tests
+
+- A reduction smaller than the deadband holds the previous command.
+- A reduction at or beyond the deadband is published immediately.
+- An *increase* is never held, at any deadband value.
+- Deadband 0 and stub-floor 0 reproduce pre-feature pass-through exactly.
+- A hold never exceeds the live fuse budget or the charger's nameplate current
+  (snapped via `charger_max_power_to_current_a`, so 11.0 kW three-phase stays
+  16 A and is not capped a step low).
+- A held command below the charger minimum collapses to 0, never a trickle.
+- Stop suppression never fires for a disconnected EV, a disabled smart-charging
+  switch, a met target, a passed deadline, or an idle charger.
+- Slot accounting stays coherent: `ev_total_planned_load_kwh`,
+  `ev_accounted_load_kwh`/`ev_planned_load_kwh`, `grid_import_kwh`,
+  `grid_export_kwh` and `estimated_cost_currency` all follow the published
+  command.
+
 ## Documentation expectations
 
 Every planner change should update:

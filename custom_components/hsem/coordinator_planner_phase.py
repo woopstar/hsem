@@ -77,7 +77,7 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
         """Run the planner engine and apply results to recommendations.
 
         Handles dynamic floor computation, MILP solve (or plan reuse),
-        window hysteresis, EV charger power freeze, and all post-plan
+        window hysteresis, EV charger command stability, and all post-plan
         overrides (auto-full-EV, force-charge-now, load-forecast hold).
 
         Returns the updated working-mode state string.
@@ -312,6 +312,11 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
                     "batteries_wait_mode",
                     consumption_ok,
                 )
+
+        # 8e. EV charger command stability — damp integer-lattice churn and
+        # suppress a slot-tail stop.  Runs last so it smooths the command that
+        # every earlier override has already had its say on.
+        self._apply_ev_command_stability(now, live, cfg)
 
         # 9. Find the current time-slot recommendation.
         self._hourly_recommendations.sort(key=lambda x: x.start)
