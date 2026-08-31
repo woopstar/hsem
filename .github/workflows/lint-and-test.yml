@@ -35,10 +35,9 @@ jobs:
           scandir: "./scripts"
 
       - name: Check Prettier formatting
-        # Pinned to the same version as the pre-commit hook
-        # (.pre-commit-config.yaml, mirrors-prettier v3.1.0) so a locally
-        # clean file can never fail here on a version difference.
-        run: npx --yes prettier@3.1.0 --check .
+        # Goes through quality.sh so the version and invocation live in one
+        # place; see PRETTIER_VERSION there.
+        run: ./scripts/quality.sh format-check
 
   quality:
     name: Quality gates (devcontainer)

@@ -14,7 +14,7 @@ repos:
   - repo: local
     hooks:
       - id: lint
-        name: Format and lint (ruff)
+        name: Format and lint (ruff + prettier)
         language: system
         entry: ./scripts/quality.sh
         args: [lint]
@@ -36,11 +36,3 @@ repos:
         args: [quality]
         pass_filenames: false
         always_run: true
-
-  - repo: https://github.com/pre-commit/mirrors-prettier
-    rev: v3.1.0
-    hooks:
-      - id: prettier
-        name: Format with Prettier
-        types_or: [markdown, yaml, json]
-        exclude: "^custom_components/.*\\.json$|^translations/.*"

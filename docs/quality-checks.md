@@ -26,6 +26,17 @@ This document describes the static quality tools available in HSEM and how to ru
 This runs ruff format, ruff check, and prettier (markdown/YAML/JSON). Must pass before a PR
 can be opened.
 
+### Verify formatting without writing (CI mode)
+
+```bash
+./scripts/quality.sh format-check
+```
+
+Same prettier invocation and pinned version as `lint`, but `--check` instead of
+`--write`, so it never mutates the tree. This is what the GitHub Actions
+workflow calls — the version and the command live only in `scripts/quality.sh`,
+so CI, the pre-commit hook and a local run can never drift apart.
+
 ### Run mypy type checking
 
 ```bash

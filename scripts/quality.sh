@@ -36,17 +36,26 @@ run() {
     fi
 }
 
-# Format markdown/YAML/JSON with prettier, pinned to the same version as the
-# pre-commit hook and the CI check so all three agree. Skipped with a warning
-# when node isn't present rather than failing the whole gate — CI still
-# enforces it, so a missing local toolchain can't let drift through.
+# Prettier formats markdown/YAML/JSON.  This is the single source of truth for
+# the version and the invocation: the pre-commit hook and the CI workflow both
+# reach prettier through this script, so there is nothing to keep in sync.
+# Scope is owned by .prettierignore, not by per-caller include/exclude lists.
 PRETTIER_VERSION="3.1.0"
-prettier_format() {
+
+# Usage: prettier_run --write | --check
+# --write is used by the fixing targets (lint/all), matching ruff's behaviour.
+# --check is used by CI, which must never mutate the tree.
+prettier_run() {
+    local mode="$1"
     if ! command -v npx >/dev/null 2>&1; then
+        if [[ "${mode}" == "--check" ]]; then
+            echo "[error] npx not found — cannot verify prettier formatting" >&2
+            return 1
+        fi
         echo "[warn] npx not found — skipping prettier (CI will still check it)" >&2
         return 0
     fi
-    run npx --yes "prettier@${PRETTIER_VERSION}" --write .
+    run npx --yes "prettier@${PRETTIER_VERSION}" "${mode}" .
 }
 
 usage() {
@@ -54,9 +63,10 @@ usage() {
 Usage: quality <command>
 
 Commands:
-  lint      Format and lint code (ruff format + ruff check + prettier)
+  lint      Format and lint code (ruff format + ruff check + prettier --write)
   typing    Type check with mypy
   quality   Static quality checks (pyright + vulture)
+  format-check  Verify prettier formatting without writing (used by CI)
   skylos    Run Skylos static analysis (experimental, not in 'all')
   test      Run tests with pytest and coverage
   all       Run lint, typing, quality, and test in sequence
@@ -68,7 +78,7 @@ case "${1:-}" in
     lint)
         run ruff format .
         run ruff check . --fix
-        prettier_format
+        prettier_run --write
         ;;
     typing)
         run mypy custom_components tests
@@ -76,6 +86,9 @@ case "${1:-}" in
     quality)
         run python -m pyright
         run python -m vulture custom_components/hsem tests vulture_whitelist.py --min-confidence 80
+        ;;
+    format-check)
+        prettier_run --check
         ;;
     skylos)
         SKYLOS_GREP_BUDGET=120 run skylos custom_components -a
@@ -92,7 +105,7 @@ case "${1:-}" in
     all)
         echo "=== Lint ==="
         run ruff format .
-        prettier_format
+        prettier_run --write
         echo ""
         echo "=== Type Check ==="
         run mypy custom_components tests
