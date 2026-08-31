@@ -1,5 +1,8 @@
 # SPDX-License-Identifier: MIT
 # Copyright (C) 2025 Andreas Krüger
+#
+# Label names used below must exist in .github/sync-labels.yml, the
+# canonical label manifest.
 
 name: Auto Label PRs from Conventional Commits
 
@@ -53,5 +56,17 @@ jobs:
               - type: 'dependencies'
                 nouns: ['deps', 'dep', 'dependencies', 'dependency']
                 labels: ['dependencies']
+              - type: 'refactor'
+                nouns: ['refactor', 'Refactor', 'REFACTOR']
+                labels: ['area:refactor']
+              - type: 'perf'
+                nouns: ['perf', 'Perf', 'PERF', 'performance']
+                labels: ['performance']
+              - type: 'test'
+                nouns: ['test', 'Test', 'TEST', 'tests']
+                labels: ['area:tests']
+              - type: 'ci'
+                nouns: ['ci', 'CI']
+                labels: ['build']
           maintain-labels-not-matched: false
           apply-changes: true
