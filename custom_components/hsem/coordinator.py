@@ -40,6 +40,9 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from custom_components.hsem.coordinator_cycle import CoordinatorCycleMixin
 from custom_components.hsem.coordinator_data import CoordinatorData
+from custom_components.hsem.coordinator_ev_command_stability import (
+    CoordinatorEvCommandStabilityMixin,
+)
 from custom_components.hsem.coordinator_ev_deadline_pacing import (
     CoordinatorEvDeadlinePacingMixin,
 )
@@ -125,6 +128,7 @@ class HSEMDataUpdateCoordinator(
     CoordinatorPlannerPhaseMixin,
     CoordinatorLivePowerMixin,
     CoordinatorEvDeadlinePacingMixin,
+    CoordinatorEvCommandStabilityMixin,
     DataUpdateCoordinator[CoordinatorData],
 ):
     """DataUpdateCoordinator for HSEM.
@@ -219,6 +223,11 @@ class HSEMDataUpdateCoordinator(
         # charging setpoint for the rest of a 15-minute slot.  Initialised
         # on the first cycle and updated every subsequent cycle.
         self._net_consumption_ema: float | None = None
+
+        # Last EV charger command actually published, per EV key.  The
+        # command-stability layer holds against this so integer-lattice
+        # churn in the freshly solved plan doesn't reach the charger.
+        self._ev_last_command_w: dict[str, float] = {}
         self._window_hys_previous_rec: str | None = None
         self._window_hys_previous_slot_start: datetime | None = None
 

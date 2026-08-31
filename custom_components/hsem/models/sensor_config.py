@@ -296,6 +296,15 @@ class SensorConfig:
     #: above the target SoC, so execution-layer friction doesn't turn an
     #: exact plan into a missed deadline (issue #845).
     ev_planned_load_deadline_safety_margin_pct: float = 0.0
+    #: Minimum whole-amp *reduction* the plan must ask for before the live
+    #: charger ceiling is lowered.  Raising the ceiling is never held.
+    #: Damps integer-lattice churn that costs nothing to ignore.
+    #: 0 disables the deadband.
+    ev_planned_load_command_deadband_a: float = 3.0
+    #: Tail of a slot (minutes) during which a zero command is suppressed
+    #: while unmet EV need remains, so a few seconds of leftover slot
+    #: cannot stop and restart the charging session.  0 disables it.
+    ev_planned_load_stub_floor_minutes: float = 2.0
     # EV planned load integration — second EV (optional, disabled by default)
     ev_second_planned_load_enabled: bool = False
     ev_second_planned_load_battery_capacity_kwh: float = 0.0
@@ -306,6 +315,10 @@ class SensorConfig:
     ev_second_planned_load_charger_phase_topology: str = "single_phase"
     #: Same as ev_planned_load_deadline_safety_margin_pct, for the second EV.
     ev_second_planned_load_deadline_safety_margin_pct: float = 0.0
+    #: Same as ev_planned_load_command_deadband_a, for the second EV.
+    ev_second_planned_load_command_deadband_a: float = 3.0
+    #: Same as ev_planned_load_stub_floor_minutes, for the second EV.
+    ev_second_planned_load_stub_floor_minutes: float = 2.0
 
     # Seasonal configuration
     months_winter: list[int] = field(default_factory=list)

@@ -46,6 +46,123 @@ class _SimpleSlot:
 
 
 # ---------------------------------------------------------------------------
+# Live site power budget for EV charging
+# ---------------------------------------------------------------------------
+
+
+def ev_site_power_budget_w(
+    config_entry: ConfigEntry,
+    live: LiveState | None,
+) -> float:
+    """Return the Watts available to EV charging under the main fuse right now.
+
+    The budget is the whole fuse rating minus the *non-EV* site load, so it is
+    the ceiling the combined EV commands must share.  Returns ``math.inf``
+    when no main fuse is configured — an unconfigured fuse is not a limit.
+
+    Both the force-charge-now override and the command-stability layer clamp
+    through this one helper so a held or overridden command can never exceed
+    the same live headroom the other path respects.
+
+    Args:
+        config_entry: Config entry supplying fuse rating, phase count, and
+            whether the house power sensor already includes EV charger draw.
+        live: Live state snapshot, or ``None`` when no live reading exists
+            (treated as zero fixed site load).
+
+    Returns:
+        Available Watts for EV charging, or ``math.inf`` when unconstrained.
+    """
+    fuse_amps = max(
+        float(get_config_value(config_entry, "hsem_main_fuse_amps") or 0.0), 0.0
+    )
+    if fuse_amps <= 1e-9:
+        return math.inf
+    fuse_phases = max(
+        int(get_config_value(config_entry, "hsem_main_fuse_phases") or 3), 1
+    )
+    fixed_site_w = (
+        max(float(live.house_consumption_power_w or 0.0), 0.0) if live else 0.0
+    )
+    if live is not None and bool(
+        get_config_value(config_entry, "hsem_house_power_includes_ev_charger_power")
+    ):
+        fixed_site_w = max(
+            fixed_site_w
+            - max(float(live.ev.power_w or 0.0), 0.0)
+            - max(float(live.ev_second.power_w or 0.0), 0.0),
+            0.0,
+        )
+    return max(fuse_amps * fuse_phases * 230.0 - fixed_site_w, 0.0)
+
+
+# ---------------------------------------------------------------------------
+# Coherent EV command write-back
+# ---------------------------------------------------------------------------
+
+
+def write_ev_slot_commands(
+    slot: HourlyRecommendation,
+    *,
+    primary_w: float,
+    second_w: float,
+    remaining_hours: float,
+    old_total_ev_kwh: float,
+    base_load_includes_ev: bool,
+) -> None:
+    """Publish EV charger commands onto a slot with coherent accounting.
+
+    Any post-plan layer that changes a charger command must also move the
+    slot's derived energy, grid-flow and cost fields with it, or the published
+    plan stops describing what HSEM is actually asking the site to do.
+    Centralised here so every such layer (force-charge-now override, command
+    stability) updates exactly the same set of fields the same way.
+
+    The slot's ``recommendation`` is deliberately *not* touched: the working-
+    mode resolver derives that downstream from the published command, and it
+    intentionally preserves some recommendations (e.g. ``batteries_charge_grid``)
+    that outrank EV smart charging.
+
+    Args:
+        slot: Recommendation slot to mutate in place.
+        primary_w: Primary charger AC command in Watts.
+        second_w: Second charger AC command in Watts.
+        remaining_hours: Hours left in the slot, used to convert the command
+            into the energy the slot will actually carry.
+        old_total_ev_kwh: The slot's EV load before this write, so the grid
+            flow can be corrected by the delta rather than recomputed.
+        base_load_includes_ev: True when the house consumption forecast already
+            contains EV draw, which decides whether the load lands in
+            ``ev_accounted_load_kwh`` or ``ev_planned_load_kwh``.
+    """
+    slot.ev_charger_calculated_power = round(primary_w)
+    slot.ev_second_charger_calculated_power = round(second_w)
+    new_total_ev_kwh = round((primary_w + second_w) * remaining_hours / 1000.0, 3)
+    slot.ev_total_planned_load_kwh = new_total_ev_kwh
+    slot.ev_accounted_load_kwh = new_total_ev_kwh if base_load_includes_ev else 0.0
+    slot.ev_planned_load_kwh = 0.0 if base_load_includes_ev else new_total_ev_kwh
+    slot.estimated_net_consumption_kwh = round(
+        slot.avg_house_consumption_kwh
+        + slot.ev_planned_load_kwh
+        - slot.solcast_pv_estimate_kwh,
+        3,
+    )
+    net_grid_kwh = (
+        slot.grid_import_kwh
+        - slot.grid_export_kwh
+        + new_total_ev_kwh
+        - old_total_ev_kwh
+    )
+    slot.grid_import_kwh = round(max(net_grid_kwh, 0.0), 3)
+    slot.grid_export_kwh = round(max(-net_grid_kwh, 0.0), 3)
+    slot.estimated_cost_currency = round(
+        slot.grid_import_kwh * slot.import_price
+        - slot.grid_export_kwh * slot.export_price,
+        4,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Force-charge-now override helper
 # ---------------------------------------------------------------------------
 
@@ -105,27 +222,7 @@ def apply_current_ev_power_override(
         if override_second and live.ev_second.is_connected is False:
             second_max_w = 0.0
 
-    fuse_amps = max(
-        float(get_config_value(config_entry, "hsem_main_fuse_amps") or 0.0), 0.0
-    )
-    fuse_phases = max(
-        int(get_config_value(config_entry, "hsem_main_fuse_phases") or 3), 1
-    )
-    budget_w = math.inf
-    if fuse_amps > 1e-9:
-        fixed_site_w = (
-            max(float(live.house_consumption_power_w or 0.0), 0.0) if live else 0.0
-        )
-        if live is not None and bool(
-            get_config_value(config_entry, "hsem_house_power_includes_ev_charger_power")
-        ):
-            fixed_site_w = max(
-                fixed_site_w
-                - max(float(live.ev.power_w or 0.0), 0.0)
-                - max(float(live.ev_second.power_w or 0.0), 0.0),
-                0.0,
-            )
-        budget_w = max(fuse_amps * fuse_phases * 230.0 - fixed_site_w, 0.0)
+    budget_w = ev_site_power_budget_w(config_entry, live)
 
     if not override_primary:
         budget_w = max(budget_w - primary_w, 0.0)
@@ -137,33 +234,15 @@ def apply_current_ev_power_override(
     else:
         second_w = min(second_max_w, budget_w)
 
-    slot.ev_charger_calculated_power = round(primary_w)
-    slot.ev_second_charger_calculated_power = round(second_w)
-    new_total_ev_kwh = round((primary_w + second_w) * remaining_hours / 1000.0, 3)
-    slot.ev_total_planned_load_kwh = new_total_ev_kwh
-    base_includes_ev = bool(
-        get_config_value(config_entry, "hsem_house_power_includes_ev_charger_power")
-    )
-    slot.ev_accounted_load_kwh = new_total_ev_kwh if base_includes_ev else 0.0
-    slot.ev_planned_load_kwh = 0.0 if base_includes_ev else new_total_ev_kwh
-    slot.estimated_net_consumption_kwh = round(
-        slot.avg_house_consumption_kwh
-        + slot.ev_planned_load_kwh
-        - slot.solcast_pv_estimate_kwh,
-        3,
-    )
-    net_grid_kwh = (
-        slot.grid_import_kwh
-        - slot.grid_export_kwh
-        + new_total_ev_kwh
-        - old_total_ev_kwh
-    )
-    slot.grid_import_kwh = round(max(net_grid_kwh, 0.0), 3)
-    slot.grid_export_kwh = round(max(-net_grid_kwh, 0.0), 3)
-    slot.estimated_cost_currency = round(
-        slot.grid_import_kwh * slot.import_price
-        - slot.grid_export_kwh * slot.export_price,
-        4,
+    write_ev_slot_commands(
+        slot,
+        primary_w=primary_w,
+        second_w=second_w,
+        remaining_hours=remaining_hours,
+        old_total_ev_kwh=old_total_ev_kwh,
+        base_load_includes_ev=bool(
+            get_config_value(config_entry, "hsem_house_power_includes_ev_charger_power")
+        ),
     )
     if primary_w > 1e-9 or second_w > 1e-9:
         slot.recommendation = Recommendations.EVSmartCharging.value

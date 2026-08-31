@@ -69,6 +69,8 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_ev_planned_load_charger_min_power_w": 1380,
     "hsem_ev_planned_load_charger_phase_topology": "single_phase",
     "hsem_ev_planned_load_deadline_safety_margin_pct": 0,
+    "hsem_ev_planned_load_command_deadband_a": 3,
+    "hsem_ev_planned_load_stub_floor_minutes": 2,
     # EV planned load integration — second EV (optional, disabled by default)
     "hsem_ev_second_planned_load_enabled": False,
     "hsem_ev_second_planned_load_battery_capacity_kwh": 0.0,
@@ -77,6 +79,8 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_ev_second_planned_load_charger_min_power_w": 1380,
     "hsem_ev_second_planned_load_charger_phase_topology": "single_phase",
     "hsem_ev_second_planned_load_deadline_safety_margin_pct": 0,
+    "hsem_ev_second_planned_load_command_deadband_a": 3,
+    "hsem_ev_second_planned_load_stub_floor_minutes": 2,
     "hsem_ev_second_allow_charge_past_target_soc": False,
     "hsem_ev_second_past_target_confidence_factor": 0.9,
     "hsem_ev_second_charger_force_max_discharge_power": False,
@@ -234,3 +238,18 @@ NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH = 0.1
 # short cloud shadows so they don't kill the EV charging setpoint for the
 # rest of the 15-minute slot.
 EMA_ALPHA_NET_CONSUMPTION = 0.3
+
+# EV charger command stability.
+#
+# The MILP re-solves every cycle and re-derives the live slot's charger
+# command from scratch.  Because the amp lattice is integer (issue #797) and
+# the current slot's amp step shrinks as the slot elapses, competing integer
+# splits are frequently within a rounding error of each other on cost — so a
+# 0.3 % SoC update can flip the published command by 2-3 A for a fraction of
+# an ore.  The deadband below holds the previous command through that noise.
+#
+# Escape hatch: a change that improves the live slot's own EV cost by more
+# than this fraction is always allowed through, so the deadband can never
+# trap the charger in a materially worse command.  5 % mirrors the default
+# ``hsem_planner_hysteresis_percentage`` used for plan-level hysteresis.
+EV_COMMAND_DEADBAND_COST_BYPASS_FRACTION = 0.05

@@ -84,6 +84,7 @@ class CoordinatorSharedState(_Base):
     _effective_discharge_floor_pct: float | None
     _ev_charging_plan: EVChargingPlan | None
     _ev_delivered_energy_tracker: EVDeliveredEnergyTracker
+    _ev_last_command_w: dict[str, float]
     _ev_second_charging_plan: EVChargingPlan | None
     _ev_second_delivered_energy_tracker: EVDeliveredEnergyTracker
     _event_update_pending: bool
@@ -209,4 +210,10 @@ class CoordinatorSharedState(_Base):
     def _ev_deadline_pacing_requires_replan(
         self, live: LiveState, now: datetime
     ) -> bool:
+        raise NotImplementedError
+
+    # Method provided by CoordinatorEvCommandStabilityMixin.
+    def _apply_ev_command_stability(
+        self, now: datetime, live: LiveState, cfg: SensorConfig
+    ) -> None:
         raise NotImplementedError

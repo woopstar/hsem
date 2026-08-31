@@ -160,6 +160,9 @@ Primary EV planned load integration (optional, default disabled).
 | Charger efficiency | `hsem_ev_planned_load_charger_efficiency` | 100 % | Charger efficiency |
 | Charger min power | `hsem_ev_planned_load_charger_min_power_w` | 1380 W | Minimum charger power for physical operation |
 | Charger phase topology | `hsem_ev_planned_load_charger_phase_topology` | `single_phase` | How the charger spreads load across mains phases. `single_phase` (safe default) makes the hard per-phase fuse rows assume the whole command can land on one phase; `three_phase_balanced` charges only one third to each phase. See [planner-spec.md](planner-spec.md) *Optional hard per-phase charging protection*. |
+| Deadline safety margin | `hsem_ev_planned_load_deadline_safety_margin_pct` | 0 % | Extra energy budgeted above the target SoC so charging friction doesn't miss the deadline. Opt-in. |
+| Ceiling deadband | `hsem_ev_planned_load_command_deadband_a` | 3 A | Smallest *reduction* in the published charging ceiling that is actually applied (0–5 A). Raising the ceiling is never delayed. Damps integer-lattice churn that costs nothing to ignore. 0 disables. See [planner-spec.md](planner-spec.md) *EV charger command stability*. |
+| Slot-tail stop suppression | `hsem_ev_planned_load_stub_floor_minutes` | 2 min | In the last N minutes of a slot, suppress a 0 W command while the EV still has unmet need before its deadline (0–10 min). Prevents a stop/restart handshake over a few seconds of leftover slot. 0 disables. |
 
 The planner's per-slot charging decision for this charger is published as a
 whole-amp ceiling on the diagnostic sensor `sensor.hsem_ev_charger_current_limit`

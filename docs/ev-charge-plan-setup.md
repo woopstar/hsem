@@ -211,6 +211,8 @@ flowchart TD
 | Charger AC power | `hsem_ev_planned_load_charger_power_kw` | AC kW output |
 | Charger efficiency | `hsem_ev_planned_load_charger_efficiency` | Percent (50–100) |
 | Charger min power | `hsem_ev_planned_load_charger_min_power_w` | Watts (default 1380) |
+| Ceiling deadband | `hsem_ev_planned_load_command_deadband_a` | Amps (0–5, default 3). Smallest reduction in the published ceiling that is applied; increases always pass through |
+| Slot-tail stop suppression | `hsem_ev_planned_load_stub_floor_minutes` | Minutes (0–10, default 2). Suppresses a 0 W command in the slot tail while need remains |
 | Connected sensor | `hsem_ev_connected` binary sensor | Plug status |
 | Smart charging switch | `switch.hsem_ev_smart_charging` | Enable/disable |
 | Force charge now | `switch.hsem_ev_force_charge_now` | Immediate charge |
@@ -384,6 +386,48 @@ This was a bug fixed in PR #397. The EV planner was computing solar surplus from
 raw `pv - house_load` fields.
 
 If you are on a version before this fix, update HSEM.
+
+### How real chargers follow HSEM's ceiling
+
+HSEM publishes a **ceiling**, not a setpoint. `sensor.hsem_ev_charger_calculated_power`
+and `sensor.hsem_ev_charger_current_limit` are diagnostic entities: HSEM owns the
+*economics* (how many amps are worth drawing this slot) while the charger or an
+external controller keeps *final authority* and may only ramp within that ceiling.
+The one exception is the built-in OCPP server — when `hsem_ocpp_enabled` is on,
+HSEM dispatches `SetChargingProfile` and the value is a real setpoint (with its own
+anti-flap start/stop windows and a 50 W material-change filter).
+
+This distinction drives the asymmetric ceiling deadband: a *reduction* can force a
+charger to throttle, an *increase* only offers headroom it may or may not take.
+
+**go-e Charger.** The V2 API exposes `ama` (max ampere) for dynamic load balancing.
+go-e have confirmed setting it frequently is safe, but the community convention is
+still to apply hysteresis of roughly 0.5–1 A before moving the limit — for example
+only stepping up at 7.1 A and down at 6.9 A — with load-balancing automations
+typically recalculating every ~5 s. HSEM's default 3 A ceiling deadband is the
+coarser equivalent for a planner that re-solves every ~2 minutes on an integer
+lattice, rather than a continuous controller reacting every few seconds.
+
+**Huawei SmartCharger (SCharger-7KS-S0 / 22KT-S0).** Adjusts charging power
+dynamically against solar irradiance and other household load, and supports
+three-phase to single-phase switchover to reach as low as 1.4 kW. Huawei recommend
+wiring the charger's L1 to the least-loaded phase so that switching does not
+overload a single phase — relevant if you set `..._charger_phase_topology`, since a
+charger that drops to single-phase no longer spreads its command across three
+phases.
+
+**Phase switching is not modelled.** HSEM plans a single topology per charger for
+the whole horizon; it does not schedule 1↔3-phase transitions. A charger that
+switches phases on its own will draw a different per-phase profile than the hard
+per-phase fuse rows assume, so leave `single_phase` (the conservative default)
+configured if your charger switches autonomously.
+
+> Sources: [go-eCharger API v2 discussion #137](https://github.com/goecharger/go-eCharger-API-v2/discussions/137),
+> [Huawei SCharger product page](https://solar.huawei.com/en/products/scharger-7ks-s0-22kt-s0/),
+> [Huawei PV+ESS+Charger three-phase system manual](https://support.huawei.com/enterprise/en/doc/EDOC1100280349/c8c88135/three-phase-system).
+> No manufacturer-published *minimum interval* between ampere changes was found for
+> either charger; the deadband default is derived from HSEM's own measured churn,
+> not from a vendor limit.
 
 ### EV charging slots show zero power
 

@@ -23,7 +23,13 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import PERCENTAGE, UnitOfEnergy, UnitOfPower
+from homeassistant.const import (
+    PERCENTAGE,
+    UnitOfElectricCurrent,
+    UnitOfEnergy,
+    UnitOfPower,
+    UnitOfTime,
+)
 from homeassistant.helpers.selector import selector
 
 from custom_components.hsem.utils.misc import get_config_value
@@ -87,6 +93,40 @@ _DEADLINE_SAFETY_MARGIN_SELECTOR = selector(
             "max": 50,
             "step": 1,
             "unit_of_measurement": PERCENTAGE,
+            "mode": "slider",
+        }
+    }
+)
+
+# Minimum amp change the planner must ask for before the live charger command
+# is actually moved.  The MILP re-derives the live slot's command from scratch
+# every solve and competing whole-amp splits are often within a rounding error
+# of each other on cost, so without a deadband the charger is re-commanded
+# every few minutes for no economic gain.
+_COMMAND_DEADBAND_SELECTOR = selector(
+    {
+        "number": {
+            "min": 0,
+            "max": 5,
+            "step": 1,
+            "unit_of_measurement": UnitOfElectricCurrent.AMPERE,
+            "mode": "slider",
+        }
+    }
+)
+
+# Tail of a slot during which a zero command is suppressed while the EV still
+# has unmet energy need.  A few seconds of remaining slot cannot hold enough
+# energy to clear the charger minimum, so the plan legitimately allocates it
+# nothing -- but publishing 0 W stops the session and the restart handshake
+# costs more than the stub was ever worth.
+_STUB_FLOOR_MINUTES_SELECTOR = selector(
+    {
+        "number": {
+            "min": 0,
+            "max": 10,
+            "step": 1,
+            "unit_of_measurement": UnitOfTime.MINUTES,
             "mode": "slider",
         }
     }
@@ -157,6 +197,14 @@ async def build_ev_planned_load_schema(  # NOSONAR
                 _k("deadline_safety_margin_pct"),
                 default=_v("deadline_safety_margin_pct"),
             ): _DEADLINE_SAFETY_MARGIN_SELECTOR,
+            vol.Required(
+                _k("command_deadband_a"),
+                default=_v("command_deadband_a"),
+            ): _COMMAND_DEADBAND_SELECTOR,
+            vol.Required(
+                _k("stub_floor_minutes"),
+                default=_v("stub_floor_minutes"),
+            ): _STUB_FLOOR_MINUTES_SELECTOR,
         }
     )
 
