@@ -1,4 +1,7 @@
 {
+  "git": {
+    "worktree_directory": "/workspaces/worktrees"
+  },
   "lsp": {
     "basedpyright": {
       "settings": {
