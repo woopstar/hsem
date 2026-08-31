@@ -48,6 +48,7 @@ from custom_components.hsem.models.live_state import EVLiveState, LiveState
 from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.price_point import PricePoint
+from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.models.solcast_slot import SolcastSlot
 from custom_components.hsem.planner import run_planner
 from custom_components.hsem.planner.candidate_generator import (
@@ -204,14 +205,24 @@ def _make_live(
     ev2_charging: bool = False,
     import_price: float = 0.20,
     battery_kwh: float = 5.0,
+    export_price: float = 0.20,
 ) -> LiveState:
     """Build a minimal :class:`LiveState` for resolver tests."""
     live = LiveState()
     live.import_electricity_price = import_price
+    live.export_electricity_price = export_price
+    live.export_electricity_price_available = True
     live.ev = EVLiveState(is_charging=ev_charging)
     live.ev_second = EVLiveState(is_charging=ev2_charging)
     live.battery_current_capacity_kwh = battery_kwh
     return live
+
+
+def _make_resolver_cfg() -> SensorConfig:
+    """Build a :class:`SensorConfig` with excess battery export enabled."""
+    cfg = SensorConfig()
+    cfg.batteries_enable_excess_export = True
+    return cfg
 
 
 # ===========================================================================
@@ -599,7 +610,9 @@ class TestResolverPreservesEnergyFields:
             ev_kwh=2.5, estimated_net_consumption_kwh=0.5, batteries_charged_kwh=1.0
         )
         before = self._snapshot_energy(rec)
-        resolve_current_recommendation(rec, _make_live(import_price=-0.05), 0.0)
+        resolve_current_recommendation(
+            rec, _make_live(import_price=-0.05), 0.0, _make_resolver_cfg()
+        )
         assert rec.recommendation == Recommendations.ForceExport.value
         assert self._snapshot_energy(rec) == before
 
@@ -610,7 +623,9 @@ class TestResolverPreservesEnergyFields:
         )
         rec.ev_charger_calculated_power = 7500.0
         before = self._snapshot_energy(rec)
-        resolve_current_recommendation(rec, _make_live(ev_charging=True), 0.0)
+        resolve_current_recommendation(
+            rec, _make_live(ev_charging=True), 0.0, _make_resolver_cfg()
+        )
         assert rec.recommendation == Recommendations.EVSmartCharging.value
         assert self._snapshot_energy(rec) == before
 
@@ -624,6 +639,7 @@ class TestResolverPreservesEnergyFields:
             rec,
             _make_live(battery_kwh=10.0),
             batteries_schedules_remaining_capacity_needed=5.0,
+            cfg=_make_resolver_cfg(),
         )
         assert rec.recommendation == Recommendations.BatteriesDischargeMode.value
         assert self._snapshot_energy(rec) == before
@@ -637,7 +653,9 @@ class TestResolverPreservesEnergyFields:
         )
         before_rec = rec.recommendation
         before = self._snapshot_energy(rec)
-        resolve_current_recommendation(rec, _make_live(ev_charging=True), 0.0)
+        resolve_current_recommendation(
+            rec, _make_live(ev_charging=True), 0.0, _make_resolver_cfg()
+        )
         assert rec.recommendation == before_rec  # unchanged
         assert self._snapshot_energy(rec) == before
 
@@ -651,7 +669,10 @@ class TestResolverPreservesEnergyFields:
         before_rec = rec.recommendation
         before = self._snapshot_energy(rec)
         resolve_current_recommendation(
-            rec, _make_live(ev_charging=False, import_price=0.20), 0.0
+            rec,
+            _make_live(ev_charging=False, import_price=0.20),
+            0.0,
+            _make_resolver_cfg(),
         )
         assert rec.recommendation == before_rec
         assert self._snapshot_energy(rec) == before
@@ -671,6 +692,7 @@ class TestResolverPreservesEnergyFields:
                     ev_charging=ev_charging, import_price=import_price, battery_kwh=10.0
                 ),
                 batteries_schedules_remaining_capacity_needed=sched_needed,
+                cfg=_make_resolver_cfg(),
             )
             assert abs(rec.ev_planned_load_kwh - 4.2) < 1e-9, (
                 f"ev_planned_load_kwh was modified to {rec.ev_planned_load_kwh} "

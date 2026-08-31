@@ -413,7 +413,7 @@ Each `PlannedSlot` in the output list covers one time interval and carries:
 | `batteries_charge_solar`    | Battery is charging from PV surplus                                                                                                                                                             |
 | `batteries_discharge_mode`  | Battery discharges to cover house load during high-price window                                                                                                                                 |
 | `force_batteries_discharge` | Forced discharge (excess export to grid)                                                                                                                                                        |
-| `force_export`              | Negative import price — all available energy exported to earn money                                                                                                                             |
+| `force_export`              | Export price above import/threshold (planner), or — at runtime only — a negative import price combined with a profitable live export price and excess battery export enabled                    |
 | `ev_smart_charging`         | EV charging load is allocated to this slot (planner or runtime resolver)                                                                                                                        |
 | `batteries_wait_mode`       | Battery idle by default; when **Wait mode behaviour** is set to _Self-consumption with reserve_, normal household self-consumption is allowed using energy above the planner's required reserve |
 | `time_passed`               | Slot is in the past — no recommendation applied                                                                                                                                                 |
@@ -534,24 +534,28 @@ permission.
 Applied to the **current slot only** at hardware-write time. Overrides the planner
 output with live sensor readings that were unknown at planning time.
 
-| Priority    | Condition                                                 | Result                                |
-| ----------- | --------------------------------------------------------- | ------------------------------------- |
-| 1 (highest) | Live import price < 0                                     | → `force_export`                      |
-| 2           | Current recommendation = `batteries_charge_grid`          | Kept — grid charge never overridden   |
-| 3           | Any EV (primary or second) is actively charging right now | → `ev_smart_charging`                 |
-| 4           | Battery energy > remaining discharge-schedule need        | → `batteries_discharge_mode`          |
-| —           | None of the above                                         | Planner recommendation kept unchanged |
+| Priority    | Condition                                                                                                                                                                                    | Result                                |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| 1 (highest) | Live import price < 0 AND **Enable Excess Battery Export** is on AND the live export price is available, non-negative, and ≥ `max(export_electricity_min_price, batteries_export_min_price)` | → `force_export`                      |
+| 2           | Current recommendation = `batteries_charge_grid`                                                                                                                                             | Kept — grid charge never overridden   |
+| 3           | Any EV (primary or second) is actively charging right now                                                                                                                                    | → `ev_smart_charging`                 |
+| 4           | Battery energy > remaining discharge-schedule need                                                                                                                                           | → `batteries_discharge_mode`          |
+| —           | None of the above                                                                                                                                                                            | Planner recommendation kept unchanged |
 
-> **Note:** Priorities 1 and 3 interact. A negative import price always wins — even
-> when an EV is charging. However, a grid-charge slot (priority 2) is never overridden
-> by an actively charging EV (priority 3).
+> **Note (issue #732):** a negative import price alone does not make exporting
+> profitable — the export price can be negative too, or the user may have
+> disabled excess battery export. Priority 1 only fires when exporting is
+> both permitted and economically viable; otherwise evaluation falls through
+> to priority 2 and beyond. When priority 1 does fire it always wins — even
+> over an actively charging EV (priority 3). A grid-charge slot (priority 2)
+> is never overridden by an actively charging EV (priority 3).
 
 ---
 
 ##### Summary: full priority stack (highest → lowest)
 
 ```
-1. import_price < 0               → force_export           [runtime resolver]
+1. import_price < 0 + profitable export + excess export enabled → force_export [runtime resolver]
 2. batteries_charge_grid active   → batteries_charge_grid  [runtime resolver guard]
 3. EV actively charging (live)    → ev_smart_charging      [runtime resolver]
 4. Battery above schedule need    → batteries_discharge_mode [runtime resolver]

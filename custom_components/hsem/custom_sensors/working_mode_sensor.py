@@ -520,6 +520,7 @@ class HSEMWorkingModeSensor(
                 hourly_rec,
                 live,
                 data.batteries_schedules_remaining_capacity_needed,
+                cfg,
             )
             # Sync data.state so the sensor's state property reflects the
             # resolved recommendation (e.g. ev_smart_charging) rather than

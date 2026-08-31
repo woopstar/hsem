@@ -730,6 +730,8 @@ class TestResolverDoesNotEraseEVFields:
 
         defaults = {
             "import_electricity_price": "0.25",
+            "export_electricity_price": "0.25",
+            "export_electricity_price_available": True,
             "ev": MagicMock(is_charging=False),
             "ev_second": MagicMock(is_charging=False),
             "battery_current_capacity_kwh": 5.0,
@@ -740,6 +742,14 @@ class TestResolverDoesNotEraseEVFields:
         for k, v in defaults.items():
             setattr(live, k, v)
         return live
+
+    def _make_resolver_cfg(self):
+        """Build a SensorConfig with excess battery export enabled."""
+        from custom_components.hsem.models.sensor_config import SensorConfig
+
+        cfg = SensorConfig()
+        cfg.batteries_enable_excess_export = True
+        return cfg
 
     def test_resolver_preserves_ev_load_when_relabelling(self):
         """Resolver changing the label must not zero out ev_planned_load_kwh."""
@@ -764,7 +774,10 @@ class TestResolverDoesNotEraseEVFields:
         live = self._make_live_state(ev=MagicMock(is_charging=True))
 
         resolve_current_recommendation(
-            rec, live, batteries_schedules_remaining_capacity_needed=0.0
+            rec,
+            live,
+            batteries_schedules_remaining_capacity_needed=0.0,
+            cfg=self._make_resolver_cfg(),
         )
 
         # Label changes but energy fields must be preserved
@@ -794,14 +807,19 @@ class TestResolverDoesNotEraseEVFields:
             recommendation="batteries_charge_solar",
         )
 
-        # Negative import price → ForceExport
+        # Negative import price with profitable export → ForceExport
         live = self._make_live_state(
             import_electricity_price="-0.05",
+            export_electricity_price="0.10",
+            export_electricity_price_available=True,
             ev=MagicMock(is_charging=False),
         )
 
         resolve_current_recommendation(
-            rec, live, batteries_schedules_remaining_capacity_needed=0.0
+            rec,
+            live,
+            batteries_schedules_remaining_capacity_needed=0.0,
+            cfg=self._make_resolver_cfg(),
         )
 
         assert rec.recommendation == "force_export"
@@ -835,7 +853,10 @@ class TestResolverDoesNotEraseEVFields:
         )
 
         resolve_current_recommendation(
-            rec, live, batteries_schedules_remaining_capacity_needed=5.0
+            rec,
+            live,
+            batteries_schedules_remaining_capacity_needed=5.0,
+            cfg=self._make_resolver_cfg(),
         )
 
         assert rec.recommendation == "batteries_discharge_mode"
