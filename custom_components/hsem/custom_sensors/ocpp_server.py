@@ -156,6 +156,21 @@ class OCPPServer:
         _LOGGER.info("OCPP server stopped")
 
     @property
+    def host(self) -> str:
+        """Return the configured bind address."""
+        return self._host
+
+    @property
+    def port(self) -> int:
+        """Return the configured TCP port."""
+        return self._port
+
+    @property
+    def is_listening(self) -> bool:
+        """Return True while the aiohttp WebSocket site is bound and active."""
+        return self._site is not None
+
+    @property
     def charger_sessions(self) -> dict[str, ChargerSession]:
         """Return a copy of the current charger sessions dict."""
         return dict(self._chargers)
