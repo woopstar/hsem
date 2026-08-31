@@ -102,7 +102,7 @@ Branch naming: `<type>/<issue-number>-<slug>`
 ## Quality Gates (All Four Must Pass)
 
 ```bash
-./scripts/quality.sh lint     # ruff format + ruff check
+./scripts/quality.sh lint     # ruff format + ruff check + prettier
 ./scripts/quality.sh typing   # mypy — 0 errors
 ./scripts/quality.sh quality  # pyright + vulture — 0 errors
 ./scripts/quality.sh test     # pytest with coverage

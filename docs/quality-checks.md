@@ -17,13 +17,14 @@ This document describes the static quality tools available in HSEM and how to ru
 
 ## Local Commands
 
-### Run all lint/format checks (ruff)
+### Run all lint/format checks (ruff + prettier)
 
 ```bash
 ./scripts/quality.sh lint
 ```
 
-This runs ruff format and ruff check. Must pass before a PR can be opened.
+This runs ruff format, ruff check, and prettier (markdown/YAML/JSON). Must pass before a PR
+can be opened.
 
 ### Run mypy type checking
 

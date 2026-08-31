@@ -190,7 +190,8 @@ The following checks run on every PR:
 
 | Check         | Tool          | Command                       | Purpose                        |
 | ------------- | ------------- | ----------------------------- | ------------------------------ |
-| Formatting    | `ruff format` | `./scripts/quality.sh lint`   | Consistent code style          |
+| Formatting    | `ruff format` | `./scripts/quality.sh lint`   | Consistent Python code style   |
+| Doc format    | `prettier`    | `./scripts/quality.sh lint`   | Markdown / YAML / JSON style   |
 | Linting       | `ruff check`  | `./scripts/quality.sh lint`   | Bugs, style issues, complexity |
 | Type Checking | `mypy`        | `./scripts/quality.sh typing` | Type errors and unsafe code    |
 | Tests         | `pytest`      | `./scripts/quality.sh test`   | Verifies functionality         |

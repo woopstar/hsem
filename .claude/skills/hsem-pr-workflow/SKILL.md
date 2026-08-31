@@ -16,7 +16,7 @@ Activate this skill when:
 Before opening a PR, all four quality gates must pass:
 
 ```bash
-./scripts/quality.sh lint     # ruff format + ruff check
+./scripts/quality.sh lint     # ruff format + ruff check + prettier
 ./scripts/quality.sh typing   # mypy — 0 errors
 ./scripts/quality.sh quality  # pyright + vulture — 0 errors
 ./scripts/quality.sh test     # pytest with coverage

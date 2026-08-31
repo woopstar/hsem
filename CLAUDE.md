@@ -32,7 +32,7 @@ please refer to `AGENTS.md`.
    - Keep changes focused and minimal
 
 3. **Code Quality**
-   - Run `./scripts/quality.sh lint` before committing (ruff format + ruff check)
+   - Run `./scripts/quality.sh lint` before committing (ruff format + ruff check + prettier)
    - Run `./scripts/quality.sh typing` after lint (mypy type checking)
    - Run `./scripts/quality.sh quality` after typing (pyright + vulture)
    - Run `./scripts/quality.sh test` to run tests with coverage before opening a PR

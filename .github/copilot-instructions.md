@@ -50,7 +50,7 @@ When asked to solve a GitHub issue, always follow these steps in order:
 7. **Add or update regression tests** — Cover the bug or new behavior.
 8. **Run the relevant tests** — `pytest tests/` or the targeted test file.
 9. **Run lint/type + quality checks** — all four must pass before opening a PR:
-   - `./scripts/quality.sh lint` — ruff format + ruff check
+   - `./scripts/quality.sh lint` — ruff format + ruff check + prettier
    - `./scripts/quality.sh typing` — mypy type checking
    - `./scripts/quality.sh quality` — pyright + vulture
    - `./scripts/quality.sh test` — pytest with coverage

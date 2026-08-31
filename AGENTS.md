@@ -280,7 +280,7 @@ Before creating a commit, the agent MUST report the result of:
 
 Before submitting a PR, the agent MUST:
 
-- Run `./scripts/quality.sh lint` to format and lint all code
+- Run `./scripts/quality.sh lint` to format and lint all code, markdown, YAML and JSON
 - Run `./scripts/quality.sh quality` after lint (runs pyright and vulture static checks)
 - Run all tests locally: `./scripts/quality.sh test`
 - Verify `git status` shows only intended changes
