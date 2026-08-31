@@ -1,8 +1,8 @@
 # Forecast Accuracy Tracking — Technical Guide
 
 This document explains how HSEM tracks forecast-vs-actual accuracy for PV
-production and house load predictions.  The system is purely diagnostic — it
-does **not** influence planner decisions.  It was introduced in
+production and house load predictions. The system is purely diagnostic — it
+does **not** influence planner decisions. It was introduced in
 [issue #373](https://github.com/woopstar/hsem/issues/373).
 
 ---
@@ -23,8 +23,8 @@ does **not** influence planner decisions.  It was introduced in
 ## Overview
 
 HSEM relies on forecasts: predicted PV production from Solcast and predicted
-house load from weighted historical averages.  These forecasts are never
-perfect.  The forecast accuracy tracking system:
+house load from weighted historical averages. These forecasts are never
+perfect. The forecast accuracy tracking system:
 
 1. **Stores** the forecasted PV and load values for every planning slot.
 2. **Accumulates** actual PV and load energy from instantaneous power
@@ -76,65 +76,65 @@ flowchart TD
 
 ### File layout
 
-| File | Responsibility |
-|---|---|
-| `utils/forecast_tracker.py` | Pure-Python tracker, slot records, summary, serialization |
-| `custom_sensors/forecast_accuracy_sensor.py` | HA diagnostic sensor (coordinator subscriber) |
-| `coordinator.py` | Integrates accumulation & forecast registration into update cycle |
-| `sensor.py` | Registers the sensor entity |
-| `utils/sensornames.py` | Name/unique_id/entity_id helpers |
+| File                                         | Responsibility                                                    |
+| -------------------------------------------- | ----------------------------------------------------------------- |
+| `utils/forecast_tracker.py`                  | Pure-Python tracker, slot records, summary, serialization         |
+| `custom_sensors/forecast_accuracy_sensor.py` | HA diagnostic sensor (coordinator subscriber)                     |
+| `coordinator.py`                             | Integrates accumulation & forecast registration into update cycle |
+| `sensor.py`                                  | Registers the sensor entity                                       |
+| `utils/sensornames.py`                       | Name/unique_id/entity_id helpers                                  |
 
 ---
 
 ## ForecastTracker — core data structure
 
 The `ForecastTracker` class in `utils/forecast_tracker.py` is a **rolling
-ring-buffer** of `ForecastSlotRecord` objects.  It has **no** Home Assistant
+ring-buffer** of `ForecastSlotRecord` objects. It has **no** Home Assistant
 dependencies and can be used in isolation.
 
 ### ForecastSlotRecord
 
 Each record captures one planning slot:
 
-| Field | Type | Description |
-|---|---|---|
-| `start` | `datetime` | Timezone-aware slot start |
-| `end` | `datetime` | Timezone-aware slot end |
-| `forecast_pv_kwh` | `float` | Solcast PV forecast for this slot (kWh) |
-| `forecast_load_kwh` | `float` | Weighted average load forecast (kWh) |
-| `actual_pv_kwh` | `float` | Accumulated actual PV energy (kWh) |
-| `actual_load_kwh` | `float` | Accumulated actual load energy (kWh) |
-| `finalised` | `bool` | `True` after slot's end time passed and metrics computed |
-| `mae_pv` | `float \| None` | Mean absolute error PV (kWh), set on finalise |
-| `mae_load` | `float \| None` | Mean absolute error load (kWh), set on finalise |
-| `bias_pv` | `float \| None` | Signed bias PV (kWh), set on finalise |
-| `bias_load` | `float \| None` | Signed bias load (kWh), set on finalise |
+| Field               | Type            | Description                                              |
+| ------------------- | --------------- | -------------------------------------------------------- |
+| `start`             | `datetime`      | Timezone-aware slot start                                |
+| `end`               | `datetime`      | Timezone-aware slot end                                  |
+| `forecast_pv_kwh`   | `float`         | Solcast PV forecast for this slot (kWh)                  |
+| `forecast_load_kwh` | `float`         | Weighted average load forecast (kWh)                     |
+| `actual_pv_kwh`     | `float`         | Accumulated actual PV energy (kWh)                       |
+| `actual_load_kwh`   | `float`         | Accumulated actual load energy (kWh)                     |
+| `finalised`         | `bool`          | `True` after slot's end time passed and metrics computed |
+| `mae_pv`            | `float \| None` | Mean absolute error PV (kWh), set on finalise            |
+| `mae_load`          | `float \| None` | Mean absolute error load (kWh), set on finalise          |
+| `bias_pv`           | `float \| None` | Signed bias PV (kWh), set on finalise                    |
+| `bias_load`         | `float \| None` | Signed bias load (kWh), set on finalise                  |
 
 Key methods:
 
 - **`accumulate_pv(energy_kwh)`** / **`accumulate_load(energy_kwh)`** —
-  Add measured energy to the accumulator.  Called multiple times per slot
+  Add measured energy to the accumulator. Called multiple times per slot
   as the coordinator cycles.
 - **`finalise()`** — Freezes the record and computes `mae_pv`, `mae_load`,
-  `bias_pv`, `bias_load`.  Idempotent — calling a second time is a no-op.
+  `bias_pv`, `bias_load`. Idempotent — calling a second time is a no-op.
 - **`to_dict()`** / **`from_dict(data)`** — JSON-safe serialization for
   reboot persistence (see below).
 
 ### ForecastTracker
 
-| Property / Method | Description |
-|---|---|
-| `records` | Copy of all slot records, oldest first |
-| `summary` | Computes and returns a `ForecastErrorSummary` from finalised records |
-| `get_or_create_record(start, end)` | Returns existing record or creates a new one |
-| `find_record(start)` | Look up a record by slot start time |
-| `finalise_record(start)` | Finalise a specific record |
-| `finalise_past_records(now)` | Finalise all records whose `end <= now` |
-| `set_forecasts(start, pv_kwh, load_kwh)` | Set forecast values (only if not finalised) |
-| `to_dict()` / `load_from_dict(data)` | Serialize / deserialize the full record list |
+| Property / Method                        | Description                                                          |
+| ---------------------------------------- | -------------------------------------------------------------------- |
+| `records`                                | Copy of all slot records, oldest first                               |
+| `summary`                                | Computes and returns a `ForecastErrorSummary` from finalised records |
+| `get_or_create_record(start, end)`       | Returns existing record or creates a new one                         |
+| `find_record(start)`                     | Look up a record by slot start time                                  |
+| `finalise_record(start)`                 | Finalise a specific record                                           |
+| `finalise_past_records(now)`             | Finalise all records whose `end <= now`                              |
+| `set_forecasts(start, pv_kwh, load_kwh)` | Set forecast values (only if not finalised)                          |
+| `to_dict()` / `load_from_dict(data)`     | Serialize / deserialize the full record list                         |
 
 The default maximum is 2880 records, which covers approximately 30 days
-of 15-minute slots.  Older records are automatically pruned.
+of 15-minute slots. Older records are automatically pruned.
 
 ### Energy accumulation
 
@@ -145,7 +145,7 @@ $$
 where $P$ is instantaneous power in watts and $\Delta t$ is elapsed seconds.
 
 The helper function `compute_accumulated_energy(power_w, elapsed_seconds)`
-handles this conversion.  Elapsed time is computed as the difference between
+handles this conversion. Elapsed time is computed as the difference between
 the current coordinator cycle timestamp and the previous cycle's timestamp,
 so the accuracy depends on the coordinator update interval (default 5 minutes).
 
@@ -162,7 +162,7 @@ $$
 \mathrm{MAE} = \frac{1}{n} \sum_{i=1}^{n} \left| \mathrm{forecast}_i - \mathrm{actual}_i \right|
 $$
 
-Units: kWh.  Averages the absolute deviation.  Lower is better.
+Units: kWh. Averages the absolute deviation. Lower is better.
 
 ### Bias (signed error)
 
@@ -170,8 +170,8 @@ $$
 \mathrm{Bias} = \frac{1}{n} \sum_{i=1}^{n} \left( \mathrm{forecast}_i - \mathrm{actual}_i \right)
 $$
 
-Units: kWh.  Positive bias = systematic over-forecast (predicted more than
-actually occurred).  Negative bias = under-forecast.  Zero bias means the
+Units: kWh. Positive bias = systematic over-forecast (predicted more than
+actually occurred). Negative bias = under-forecast. Zero bias means the
 forecast is accurate on average (but may have large cancellations).
 
 ### RMSE — Root Mean Squared Error
@@ -180,7 +180,7 @@ $$
 \mathrm{RMSE} = \sqrt{ \frac{1}{n} \sum_{i=1}^{n} \left( \mathrm{forecast}_i - \mathrm{actual}_i \right)^2 }
 $$
 
-Units: kWh.  Penalises large errors more heavily than MAE.  Useful for
+Units: kWh. Penalises large errors more heavily than MAE. Useful for
 detecting occasional big misses.
 
 ### MAPE — Mean Absolute Percentage Error
@@ -189,12 +189,13 @@ $$
 \mathrm{MAPE} = \frac{1}{n} \sum_{i=1}^{n} \frac{ \left| \mathrm{forecast}_i - \mathrm{actual}_i \right| }{ \left| \mathrm{actual}_i \right| } \times 100
 $$
 
-Units: percent.  Makes errors comparable across different power levels.
-Returns ``None`` when all actual values are zero (division by zero guard).
+Units: percent. Makes errors comparable across different power levels.
+Returns `None` when all actual values are zero (division by zero guard).
 
 ### Exposure via `as_dict()`
 
 The summary also includes:
+
 - `window_slots` — total slots in the ring buffer (finalised + unfinalised)
 - `finalised_slots` — how many slots contribute to the metrics
 
@@ -203,12 +204,12 @@ The summary also includes:
 ## Coordinator integration
 
 The coordinator owns the single `_forecast_tracker: ForecastTracker`
-instance, created in `__init__` with `max_slots=192`.  Two private methods
+instance, created in `__init__` with `max_slots=192`. Two private methods
 are called during each update cycle:
 
 ### `_accumulate_forecast_actuals(now, live)`
 
-Called every cycle **after** state collection.  Steps:
+Called every cycle **after** state collection. Steps:
 
 1. Compute elapsed seconds since the last accumulation.
 2. Find the current recommendation slot (the one whose time range contains `now`).
@@ -239,29 +240,29 @@ The `HSEMForecastAccuracySensor` is a diagnostic sensor
 ### State
 
 The sensor's `native_value` is the **PV MAE** in kWh, rounded to 3 decimal
-places.  Returns `None` while no slots have been finalised yet.
+places. Returns `None` while no slots have been finalised yet.
 
 ### Extra state attributes
 
-| Attribute | Source | Example |
-|---|---|---|
-| `window_slots` | `ForecastErrorSummary.window_slots` | `192` |
-| `finalised_slots` | `ForecastErrorSummary.finalised_count` | `24` |
-| `mae_pv_kwh` | `ForecastErrorSummary.mae_pv_kwh` | `0.1523` |
-| `mae_load_kwh` | `ForecastErrorSummary.mae_load_kwh` | `0.0841` |
-| `bias_pv_kwh` | `ForecastErrorSummary.bias_pv_kwh` | `0.0421` |
-| `bias_load_kwh` | `ForecastErrorSummary.bias_load_kwh` | `-0.0112` |
-| `rmse_pv_kwh` | `ForecastErrorSummary.rmse_pv_kwh` | `0.2134` |
-| `rmse_load_kwh` | `ForecastErrorSummary.rmse_load_kwh` | `0.1245` |
-| `mape_pv_pct` | `ForecastErrorSummary.mape_pv_pct` | `22.5` |
-| `mape_load_pct` | `ForecastErrorSummary.mape_load_pct` | `8.3` |
-| `latest_pv_forecast_kwh` | Latest finalised record's forecast PV | `1.25` |
-| `latest_pv_actual_kwh` | Latest finalised record's actual PV | `1.18` |
-| `latest_load_forecast_kwh` | Latest finalised record's forecast load | `0.65` |
-| `latest_load_actual_kwh` | Latest finalised record's actual load | `0.72` |
-| `latest_bias_pv_kwh` | Latest finalised record's PV bias | `0.07` |
-| `latest_bias_load_kwh` | Latest finalised record's load bias | `-0.07` |
-| `_forecast_tracker_data` | Serialised record list (used internally) | *(opaque dict)* |
+| Attribute                  | Source                                   | Example         |
+| -------------------------- | ---------------------------------------- | --------------- |
+| `window_slots`             | `ForecastErrorSummary.window_slots`      | `192`           |
+| `finalised_slots`          | `ForecastErrorSummary.finalised_count`   | `24`            |
+| `mae_pv_kwh`               | `ForecastErrorSummary.mae_pv_kwh`        | `0.1523`        |
+| `mae_load_kwh`             | `ForecastErrorSummary.mae_load_kwh`      | `0.0841`        |
+| `bias_pv_kwh`              | `ForecastErrorSummary.bias_pv_kwh`       | `0.0421`        |
+| `bias_load_kwh`            | `ForecastErrorSummary.bias_load_kwh`     | `-0.0112`       |
+| `rmse_pv_kwh`              | `ForecastErrorSummary.rmse_pv_kwh`       | `0.2134`        |
+| `rmse_load_kwh`            | `ForecastErrorSummary.rmse_load_kwh`     | `0.1245`        |
+| `mape_pv_pct`              | `ForecastErrorSummary.mape_pv_pct`       | `22.5`          |
+| `mape_load_pct`            | `ForecastErrorSummary.mape_load_pct`     | `8.3`           |
+| `latest_pv_forecast_kwh`   | Latest finalised record's forecast PV    | `1.25`          |
+| `latest_pv_actual_kwh`     | Latest finalised record's actual PV      | `1.18`          |
+| `latest_load_forecast_kwh` | Latest finalised record's forecast load  | `0.65`          |
+| `latest_load_actual_kwh`   | Latest finalised record's actual load    | `0.72`          |
+| `latest_bias_pv_kwh`       | Latest finalised record's PV bias        | `0.07`          |
+| `latest_bias_load_kwh`     | Latest finalised record's load bias      | `-0.07`         |
+| `_forecast_tracker_data`   | Serialised record list (used internally) | _(opaque dict)_ |
 
 ### Template examples
 
@@ -308,20 +309,20 @@ any custom storage, file I/O, or database schema.
 
 ## Tests
 
-All tests are in `tests/test_forecast_tracker.py`.  They use the real
+All tests are in `tests/test_forecast_tracker.py`. They use the real
 `ForecastTracker` class **without** Home Assistant — plain `pytest`
 against pure Python code.
 
 ### Test coverage (31 tests)
 
-| Category | Tests | What's covered |
-|---|---|---|
-| `TestComputeAccumulatedEnergy` | 5 | 1000W/1h, 500W/30m, zero power, zero elapsed, negative power |
-| `TestForecastSlotRecord` | 5 | Finalise metrics, exact match, accumulate, idempotent finalise |
-| `TestForecastTrackerLifecycle` | 10 | Create/find records, finalise, prune, set forecasts, finalise past |
-| `TestForecastTrackerSummary` | 9 | Empty, exact, over, under, mixed, MAPE div-by-zero, MAPE values, as_dict |
-| `TestForecastTrackerIntegration` | 3 | Full cycle single slot, over+under pair, finalise past + summary |
-| `TestForecastTrackerSerialization` | 5 | Record to_dict empty, record to_dict finalised, tracker empty, round trip, unfinalised restore |
+| Category                           | Tests | What's covered                                                                                 |
+| ---------------------------------- | ----- | ---------------------------------------------------------------------------------------------- |
+| `TestComputeAccumulatedEnergy`     | 5     | 1000W/1h, 500W/30m, zero power, zero elapsed, negative power                                   |
+| `TestForecastSlotRecord`           | 5     | Finalise metrics, exact match, accumulate, idempotent finalise                                 |
+| `TestForecastTrackerLifecycle`     | 10    | Create/find records, finalise, prune, set forecasts, finalise past                             |
+| `TestForecastTrackerSummary`       | 9     | Empty, exact, over, under, mixed, MAPE div-by-zero, MAPE values, as_dict                       |
+| `TestForecastTrackerIntegration`   | 3     | Full cycle single slot, over+under pair, finalise past + summary                               |
+| `TestForecastTrackerSerialization` | 5     | Record to_dict empty, record to_dict finalised, tracker empty, round trip, unfinalised restore |
 
 ### Running the tests
 

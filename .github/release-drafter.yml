@@ -1,53 +1,53 @@
-name-template: 'v$RESOLVED_VERSION'
-tag-template: 'v$RESOLVED_VERSION'
-change-template: '- #$NUMBER $TITLE @$AUTHOR'
+name-template: "v$RESOLVED_VERSION"
+tag-template: "v$RESOLVED_VERSION"
+change-template: "- #$NUMBER $TITLE @$AUTHOR"
 sort-direction: ascending
 exclude-labels:
-  - 'skip-changelog'
+  - "skip-changelog"
 categories:
-  - title: '⚒️ Breaking Changes'
+  - title: "⚒️ Breaking Changes"
     labels:
-      - 'breaking-change'
+      - "breaking-change"
 
-  - title: '🚀 Features'
+  - title: "🚀 Features"
     labels:
-      - 'enhancement'
+      - "enhancement"
 
-  - title: '🐛 Bug Fixes'
+  - title: "🐛 Bug Fixes"
     labels:
-      - 'bug'
-      - 'bug-fix'
+      - "bug"
+      - "bug-fix"
 
-  - title: '📖 Documentation'
+  - title: "📖 Documentation"
     labels:
-      - 'documentation'
+      - "documentation"
 
-  - title: '🔧 Configuration'
+  - title: "🔧 Configuration"
     labels:
-      - 'config'
+      - "config"
 
-  - title: '🏗️ Build & CI'
+  - title: "🏗️ Build & CI"
     labels:
-      - 'build'
+      - "build"
 
-  - title: '🧰 Maintenance'
+  - title: "🧰 Maintenance"
     labels:
-      - 'chore'
+      - "chore"
 
-  - title: '📦 Dependencies'
+  - title: "📦 Dependencies"
     labels:
-      - 'dependencies'
+      - "dependencies"
 
 version-resolver:
   major:
     labels:
-      - 'major'
+      - "major"
   minor:
     labels:
-      - 'minor'
+      - "minor"
   patch:
     labels:
-      - 'patch'
+      - "patch"
   default: patch
 template: |
   ## Changes
@@ -55,26 +55,26 @@ template: |
   $CHANGES
 
 autolabeler:
-  - label: 'bug'
+  - label: "bug"
     branch:
       - '/fix\/.+/'
-  - label: 'enhancement'
+  - label: "enhancement"
     branch:
       - '/feat\/.+/'
       - '/feature\/.+/'
-  - label: 'breaking-change'
+  - label: "breaking-change"
     branch:
       - '/breaking\/.+/'
-  - label: 'documentation'
+  - label: "documentation"
     branch:
       - '/docs\/.+/'
-  - label: 'chore'
+  - label: "chore"
     branch:
       - '/chore\/.+/'
-  - label: 'build'
+  - label: "build"
     branch:
       - '/build\/.+/'
       - '/ci\/.+/'
-  - label: 'dependencies'
+  - label: "dependencies"
     branch:
       - '/deps\/.+/'

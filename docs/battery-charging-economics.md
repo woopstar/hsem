@@ -37,13 +37,13 @@ This model calculates depreciation per kWh assuming:
 
 Let:
 
-| Symbol | Parameter | Description |
-|---|---|---|
-| $P$ | Purchase price | Total battery system cost (in your currency) |
-| $L$ | Capacity loss | Maximum capacity reduction over lifetime as a fraction, e.g. $0.30$ for 30% |
-| $N$ | Number of cycles | Total expected complete charge/discharge cycles |
-| $C$ | Battery capacity | Total usable energy storage in kWh |
-| $D$ | Depreciation per kWh | Battery wear cost per kWh |
+| Symbol | Parameter            | Description                                                                 |
+| ------ | -------------------- | --------------------------------------------------------------------------- |
+| $P$    | Purchase price       | Total battery system cost (in your currency)                                |
+| $L$    | Capacity loss        | Maximum capacity reduction over lifetime as a fraction, e.g. $0.30$ for 30% |
+| $N$    | Number of cycles     | Total expected complete charge/discharge cycles                             |
+| $C$    | Battery capacity     | Total usable energy storage in kWh                                          |
+| $D$    | Depreciation per kWh | Battery wear cost per kWh                                                   |
 
 The simplified depreciation per kWh is:
 
@@ -108,13 +108,13 @@ HSEM uses a round-trip cycle-cost formula in the **Excess Battery Export** featu
 
 Let:
 
-| Symbol | Parameter | Description |
-|---|---|---|
-| $P$ | Purchase price | Battery system purchase price |
+| Symbol    | Parameter             | Description                       |
+| --------- | --------------------- | --------------------------------- |
+| $P$       | Purchase price        | Battery system purchase price     |
 | $L_{pct}$ | Capacity loss percent | Lifetime capacity loss percentage |
-| $N$ | Expected cycles | Expected full-cycle lifetime |
-| $C_u$ | Usable capacity | Usable battery capacity in kWh |
-| $\alpha$ | Cycle cost per kWh | HSEM battery wear cost per kWh |
+| $N$       | Expected cycles       | Expected full-cycle lifetime      |
+| $C_u$     | Usable capacity       | Usable battery capacity in kWh    |
+| $\alpha$  | Cycle cost per kWh    | HSEM battery wear cost per kWh    |
 
 The canonical HSEM cycle-cost formula is:
 

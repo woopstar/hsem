@@ -6,6 +6,7 @@ description: Activate when making changes that touch Home Assistant integration 
 # HSEM Home Assistant Compliance Checklist
 
 Activate this skill when your change touches any of these HA integration surfaces:
+
 - Config flow (`config_flow.py`, `flows/`)
 - Entity classes and platforms
 - Translations (`translations/en.json`)
@@ -17,17 +18,20 @@ Activate this skill when your change touches any of these HA integration surface
 ## Section 1 — Development Checklist (HA Silver/Gold)
 
 ### Dependencies
+
 - [ ] No new third-party deps in `manifest.json` without justification
 - [ ] Dev-only deps go in `pyproject.toml`
 - [ ] All `manifest.json` requirements pinned to exact versions (`"pkg==1.2.3"`)
 - [ ] `REQUIREMENTS` constant is deprecated — use `manifest.json` only
 
 ### API & Async
+
 - [ ] All device/API-specific code lives in a third-party PyPI library; HA code only interacts with library objects
 - [ ] All `hass.async_create_task()` calls have error handling (no fire-and-forget without `try/except`)
 - [ ] No blocking calls (`time.sleep`, `requests`, `open()`) on the event loop — offload via `hass.async_add_executor_job()`
 
 ### Config Flow
+
 - [ ] Every `async_step_*` returns a proper dict
 - [ ] No state leaks between steps
 - [ ] `async_migrate_entry` handles version bumps
@@ -37,21 +41,25 @@ Activate this skill when your change touches any of these HA integration surface
 - [ ] No `customize` dependency — never depend on users adding things to `customize`
 
 ### Translations
+
 - [ ] Every user-facing string has a key in `translations/en.json`
 - [ ] Field labels, errors, aborts, boolean/switch fields all present
 - [ ] Both `config` and `options` steps updated for `huawei_solar` if applicable
 
 ### Entities
+
 - [ ] Correct MRO: mixins before base — `CoordinatorEntity, RestoreEntity, SensorEntity`
 - [ ] No bare `Entity`
 - [ ] Every entity has `unique_id` (stable, uses config entry ID)
 - [ ] Every entity has `device_info` with `identifiers={(DOMAIN, entry.entry_id)}`
 
 ### Services
+
 - [ ] Registered in `async_setup_entry`, removed in `async_unload_entry`
 - [ ] All have voluptuous schemas
 
 ### Platform Communication
+
 - [ ] Share data via `hass.data[DOMAIN]`
 - [ ] Notify platforms of updates via `homeassistant.helpers.dispatcher`
 - [ ] Prefix all custom event names with the domain name

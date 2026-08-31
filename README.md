@@ -17,12 +17,14 @@
 ## Features
 
 ### Core Optimization
+
 - **MILP-based planner** — global optimal charge/discharge scheduling via linear programming (HiGHS solver)
 - **8-term cost function** — rigorous mathematical formulation with formal invariants
 - **Multiple candidate strategies** — baseline, passive, aggressive, partial-SoC, and MILP-optimal plans
 - **Time-discounted candidate selection** — prefers near-term savings over far-future gains
 
 ### Battery Intelligence
+
 - **Dynamic self-learning discharge floor** — reserves enough energy to bridge the house to the next solar surplus or cheap grid window, with self-correcting safety margin
 - **Temperature-adaptive charge rate learning** — 7 temperature buckets track actual charge power at p90, adapting to cold-weather limitations
 - **Battery capacity auto-detection** — learns usable capacity from BMS kWh-remaining readings in the 15-85 % SoC range
@@ -32,12 +34,14 @@
 - **Weekday/weekend consumption profiling** — separate EWMA load profiles for workdays and weekends improve prediction accuracy
 
 ### Solar & Forecast
+
 - **Solar forecast accuracy auto-correction** — per-hour learned factors (4-day rolling) + intra-hour residual correction (2h decay)
 - **Configurable solar confidence** — plans against a user-selectable percentile (10-90 %) of historical forecast accuracy
 - **48-hour PV horizon** — Solcast today + tomorrow integration
 - **PV curtailment detection** — detects when the inverter throttles solar production
 
 ### EV Charging
+
 - **MILP EV co-optimisation** — EV charging scheduled alongside battery in one LP solve
 - **Session-aware EV demand** — treats actively-charging EV as certain demand for the next 2 hours
 - **Embedded OCPP 1.6 server** — direct EV charger control via WebSocket (Easee, Zaptec, Wallbox, etc.), one server per EV (second EV optional, separate port)
@@ -45,18 +49,21 @@
 - **Dual EV support** — independent configuration and planning for two EVs
 
 ### Financial Visibility
+
 - **Export income / import cost / net balance sensors** — monetary, cumulative, HA Energy dashboard compatible
 - **Savings tracker** — actual vs missed savings with 90-day rolling log
 - **Prediction accuracy scorecard** — 7-day and 30-day SoC MAE, solar MAPE, action mix
 - **Daily plan-vs-actual tracking** — compares planned and actual energy flows
 
 ### Safety & Trust
+
 - **Read-only / monitoring mode** — observe what HSEM would do before enabling control
 - **Degraded mode** — safely degrades when critical entities are missing
 - **Hardware write verification** — confirms inverter accepted every command
 - **Data quality diagnostics** — reports missing price/PV data per horizon day
 
 ### User Experience
+
 - **Quick setup wizard** — auto-detects Huawei Solar, Solcast, and price entities
 - **Bundled Lovelace dashboard** — single-section dashboard with price charts, energy flow, savings, and accuracy
 - **Live-configurable** — all thresholds and settings editable from the dashboard without restart

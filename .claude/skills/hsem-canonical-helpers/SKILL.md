@@ -64,6 +64,7 @@ from custom_components.hsem.utils.logger import HSEM_LOGGER
 Use for ALL planner code. Never use `logging.getLogger(__name__)` in planner files.
 
 When creating log statements, never use runtime string formatting — use `%` placeholders and the `extra` argument:
+
 ```python
 HSEM_LOGGER.debug("Processing slot %d with price %.4f", slot_index, price)
 ```
@@ -89,15 +90,16 @@ assert result == pytest.approx(expected, rel=1e-6)
 
 ### Module Responsibilities (Know Where Code Lives)
 
-| Layer | Location | Key files |
-|-------|----------|-----------|
-| Planner | `custom_components/hsem/planner/` | `engine.py`, `cost_function.py`, `soc_simulation.py`, `candidate_generator.py`, `candidate_selector.py`, `slot_population.py`, `charge_scheduler.py`, `discharge_scheduler.py`, `milp_optimizer.py`, `ev_planner.py` |
-| ML | `custom_components/hsem/ml/` | `consumption_predictor.py`, `history_reader.py`, `populator.py` |
-| Utils | `custom_components/hsem/utils/` | `recommendations.py`, `misc.py`, `sensornames.py`, `prices.py`, `huawei.py`, `logger.py`, `solar_corrector.py`, `dynamic_floor.py`, `capacity_learner.py`, `prediction_tracker.py`, `weekday_profile.py`, `ev_mode_resolver.py` |
+| Layer   | Location                          | Key files                                                                                                                                                                                                                       |
+| ------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Planner | `custom_components/hsem/planner/` | `engine.py`, `cost_function.py`, `soc_simulation.py`, `candidate_generator.py`, `candidate_selector.py`, `slot_population.py`, `charge_scheduler.py`, `discharge_scheduler.py`, `milp_optimizer.py`, `ev_planner.py`            |
+| ML      | `custom_components/hsem/ml/`      | `consumption_predictor.py`, `history_reader.py`, `populator.py`                                                                                                                                                                 |
+| Utils   | `custom_components/hsem/utils/`   | `recommendations.py`, `misc.py`, `sensornames.py`, `prices.py`, `huawei.py`, `logger.py`, `solar_corrector.py`, `dynamic_floor.py`, `capacity_learner.py`, `prediction_tracker.py`, `weekday_profile.py`, `ev_mode_resolver.py` |
 
 ### Utility Function Centralization
 
 If a utility function is used in 2+ modules, it belongs in `utils/`. Before writing any utility:
+
 1. Check `utils/misc.py` and other `utils/*.py` modules for existing implementations
 2. If found: import and reuse
 3. If not found AND used 2+ times: create in utils with a public name and docstring
@@ -105,7 +107,7 @@ If a utility function is used in 2+ modules, it belongs in `utils/`. Before writ
 
 ### MILP Variable Vector
 
-The MILP in `milp_optimizer.py` uses **8*n** LP variables for battery-only. With EV co-optimisation, it grows to **8n + 2n·E + E** where E is the number of active EVs.
+The MILP in `milp_optimizer.py` uses **8\*n** LP variables for battery-only. With EV co-optimisation, it grows to **8n + 2n·E + E** where E is the number of active EVs.
 
 ### Cycle Cost Formula
 

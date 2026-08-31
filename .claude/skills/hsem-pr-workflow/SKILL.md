@@ -6,6 +6,7 @@ description: Activate when creating, updating, or managing a pull request for th
 # HSEM Pull Request Workflow
 
 Activate this skill when:
+
 - Creating a new pull request
 - Updating an existing PR after follow-up commits
 - Preparing to merge a PR
@@ -22,6 +23,7 @@ Before opening a PR, all four quality gates must pass:
 ```
 
 Or run all at once:
+
 ```bash
 ./scripts/quality.sh all
 ```
@@ -52,6 +54,7 @@ Types: `feat`, `fix`, `chore`, `docs`, `refactor`, `perf`, `test`, `ci`
 Scopes should be specific to the domain: `sensor`, `flow`, `config`, `planner`, `milp`, etc.
 
 Examples:
+
 ```
 fix(planner): correct cycle cost denominator — Fixes #444
 feat(sensor): add temperature-adaptive charge rate — Fixes #123
@@ -65,16 +68,16 @@ feat(sensor): add temperature-adaptive charge rate — Fixes #123
 - **GitHub MCP tools are not present in every session.** Never assume they exist. When
   both are available either path is fine; when they are not, `gh` is the only path.
 
-| Operation | `gh` command | MCP tool (when available) |
-|---|---|---|
-| Create a PR | `gh pr create --base main --title ... --body-file -` | `create_pull_request` |
-| Update a PR (title/body) | `gh pr edit <n> --title ... --body-file -` | `update_pull_request` |
-| Read a PR / diff / comments | `gh pr view <n> --json ...` / `gh pr diff <n>` | `pull_request_read` |
-| Review a PR | `gh pr review <n>` | `pull_request_review_write` |
-| Create / update / close issues | `gh issue create` / `gh issue edit` / `gh issue close` | `issue_write` / `issue_read` |
-| List / search issues & PRs | `gh issue list` / `gh search issues` | `list_issues` / `search_issues` |
-| Merge a PR | `gh pr merge <n>` | `merge_pull_request` |
-| Create / list branches | `git push -u origin <branch>` | `create_branch` / `list_branches` |
+| Operation                      | `gh` command                                           | MCP tool (when available)         |
+| ------------------------------ | ------------------------------------------------------ | --------------------------------- |
+| Create a PR                    | `gh pr create --base main --title ... --body-file -`   | `create_pull_request`             |
+| Update a PR (title/body)       | `gh pr edit <n> --title ... --body-file -`             | `update_pull_request`             |
+| Read a PR / diff / comments    | `gh pr view <n> --json ...` / `gh pr diff <n>`         | `pull_request_read`               |
+| Review a PR                    | `gh pr review <n>`                                     | `pull_request_review_write`       |
+| Create / update / close issues | `gh issue create` / `gh issue edit` / `gh issue close` | `issue_write` / `issue_read`      |
+| List / search issues & PRs     | `gh issue list` / `gh search issues`                   | `list_issues` / `search_issues`   |
+| Merge a PR                     | `gh pr merge <n>`                                      | `merge_pull_request`              |
+| Create / list branches         | `git push -u origin <branch>`                          | `create_branch` / `list_branches` |
 
 - **Multiline bodies:** pass `--body-file <path>`, or `--body-file -` and pipe a
   heredoc. Do not inline a long markdown body as a single shell argument.
@@ -84,9 +87,11 @@ feat(sensor): add temperature-adaptive charge rate — Fixes #123
 ## Creating a PR
 
 ### PR Title
+
 Must follow Conventional Commits format: `<type>(scope): <description>`
 
 ### PR Description Must Include
+
 - Summary of changes
 - Branch name
 - Files changed
@@ -98,6 +103,7 @@ Must follow Conventional Commits format: `<type>(scope): <description>`
 - `Fixes #<ISSUE_NUMBER>` (if applicable)
 
 ### PR Scope Rules
+
 - [ ] Single platform per PR
 - [ ] No feature creep
 - [ ] No mixed cleanups with features
@@ -124,6 +130,7 @@ shell argument.
 ## Merge Rules
 
 Before merging ANY PR:
+
 - [ ] All four quality gates pass (`./scripts/quality.sh all`)
 - [ ] All CI/status checks are green
 - [ ] Code review requirements are met (if applicable)
@@ -137,6 +144,7 @@ After merge, delete the branch locally and remotely.
 ## PR Review Request
 
 If requesting a Copilot code review:
+
 ```bash
 # Use the request_copilot_review tool
 ```
@@ -144,6 +152,7 @@ If requesting a Copilot code review:
 ## Definition of Done
 
 A PR is complete when:
+
 - [ ] All tests pass locally and in CI
 - [ ] New behavior is covered by tests
 - [ ] Code follows project style and conventions

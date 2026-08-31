@@ -6,12 +6,12 @@ This document describes the static quality tools available in HSEM and how to ru
 
 ## Tools
 
-| Tool | Purpose | Config |
-|------|---------|--------|
-| **Pyright** | Type checking (CI-friendly Pylance equivalent) | `pyrightconfig.json` |
-| **Vulture** | Dead-code and unused-symbol detection | `vulture_whitelist.py` |
-| **mypy** | Type checking | `pyproject.toml [tool.mypy]` |
-| **ruff** | Linting and formatting | `pyproject.toml [tool.ruff]` |
+| Tool        | Purpose                                        | Config                       |
+| ----------- | ---------------------------------------------- | ---------------------------- |
+| **Pyright** | Type checking (CI-friendly Pylance equivalent) | `pyrightconfig.json`         |
+| **Vulture** | Dead-code and unused-symbol detection          | `vulture_whitelist.py`       |
+| **mypy**    | Type checking                                  | `pyproject.toml [tool.mypy]` |
+| **ruff**    | Linting and formatting                         | `pyproject.toml [tool.ruff]` |
 
 ---
 
@@ -81,18 +81,18 @@ flowchart TD
 ## Pyright Configuration
 
 `pyrightconfig.json` is set to `typeCheckingMode: "basic"` — a safe starting point for an
-HA integration that uses many dynamic patterns.  Do **not** upgrade to `strict` mode without
+HA integration that uses many dynamic patterns. Do **not** upgrade to `strict` mode without
 first resolving the known false-positive list.
 
 ### Severity levels
 
-| Rule | Level | Reason |
-|------|-------|--------|
-| `reportMissingTypeStubs` | none | HA stubs are incomplete |
-| `reportUnknownMemberType` | none | HA uses `Any` extensively |
-| `reportUnknownVariableType` | none | HA uses `Any` extensively |
-| `reportUnknownArgumentType` | none | HA uses `Any` extensively |
-| `reportTypedDictNotRequiredAccess` | none | HA flow results use TypedDict with all-optional keys |
+| Rule                               | Level | Reason                                               |
+| ---------------------------------- | ----- | ---------------------------------------------------- |
+| `reportMissingTypeStubs`           | none  | HA stubs are incomplete                              |
+| `reportUnknownMemberType`          | none  | HA uses `Any` extensively                            |
+| `reportUnknownVariableType`        | none  | HA uses `Any` extensively                            |
+| `reportUnknownArgumentType`        | none  | HA uses `Any` extensively                            |
+| `reportTypedDictNotRequiredAccess` | none  | HA flow results use TypedDict with all-optional keys |
 
 ### Known remaining warnings (~156 total)
 
@@ -106,13 +106,13 @@ not bugs in HSEM:
 
 2. **Test mock patterns** (~100 warnings in `tests/`):
    Tests use partial mocks, `MagicMock`, and stub objects that don't have full type
-   annotations.  These are safe and intentional.
+   annotations. These are safe and intentional.
 
 ---
 
 ## Vulture Whitelist
 
-`vulture_whitelist.py` documents all HA dynamic entry points.  **Before deleting any function
+`vulture_whitelist.py` documents all HA dynamic entry points. **Before deleting any function
 that Vulture flags**, check whether it belongs to one of these categories:
 
 - HA integration lifecycle: `async_setup_entry`, `async_unload_entry`, `async_migrate_entry`
@@ -132,6 +132,7 @@ Both are currently set to `continue-on-error: true` (staged rollout) to avoid bl
 PRs until the warning baseline is fully resolved.
 
 **Next steps to harden CI:**
+
 1. Resolve the remaining `CoordinatorEntity` invariance warnings (requires HA framework fix
    or a type-ignore comment on each `super().__init__()` call).
 2. Set `continue-on-error: false` in the CI workflow once the warning count is zero.

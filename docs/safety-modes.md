@@ -23,11 +23,11 @@ Layer 4: Runtime Recommendation Resolver (custom_sensors/recommendation_resolver
 Every update cycle, the state collector classifies the system health into one
 of three states:
 
-| Mode | Writes allowed | Meaning |
-|---|---|---|
-| `OK` | ✅ Yes | All required entities are present and readable |
-| `Degraded` | ✅ Yes (with warnings) | Non-critical data missing (e.g. tomorrow's prices) |
-| `Error` | ❌ Blocked | Critical data missing — hardware writes are **blocked** |
+| Mode       | Writes allowed         | Meaning                                                 |
+| ---------- | ---------------------- | ------------------------------------------------------- |
+| `OK`       | ✅ Yes                 | All required entities are present and readable          |
+| `Degraded` | ✅ Yes (with warnings) | Non-critical data missing (e.g. tomorrow's prices)      |
+| `Error`    | ❌ Blocked             | Critical data missing — hardware writes are **blocked** |
 
 ### Critical entities (trigger `Error` mode)
 
@@ -45,6 +45,7 @@ All other missing entities produce `Degraded` mode. The plan is computed and
 applied, but warnings are logged and surfaced in `data_quality`.
 
 Examples:
+
 - Tomorrow's price/PV forecast gaps
 - EV charger states
 - Export price sensor
@@ -102,12 +103,12 @@ with a read-back verification loop:
 
 ### Apply status values
 
-| Status | Meaning |
-|---|---|
-| `ok` | Read-back value matched desired value within tolerance |
+| Status       | Meaning                                                   |
+| ------------ | --------------------------------------------------------- |
+| `ok`         | Read-back value matched desired value within tolerance    |
 | `unverified` | Write accepted but read-back timed out or returned `None` |
-| `failed` | All retries exhausted — inverter did not accept the value |
-| `skipped` | Current value already matched — no write performed |
+| `failed`     | All retries exhausted — inverter did not accept the value |
+| `skipped`    | Current value already matched — no write performed        |
 
 ### Verified writes
 
@@ -127,13 +128,13 @@ The applier verifies these hardware writes:
 Applied to the **current slot only** at hardware-write time. Overrides the
 planner output with live sensor readings:
 
-| Priority | Condition | Action |
-|---|---|---|
-| 1 (highest) | Live import price < 0 | → `force_export` (overrides everything) |
-| 2 | Current recommendation = `batteries_charge_grid` | Kept (never overridden) |
-| 3 | Any EV actively charging | → `ev_smart_charging` |
-| 4 | Battery energy > remaining schedule need | → `batteries_discharge_mode` |
-| — | None of the above | Planner recommendation kept |
+| Priority    | Condition                                        | Action                                  |
+| ----------- | ------------------------------------------------ | --------------------------------------- |
+| 1 (highest) | Live import price < 0                            | → `force_export` (overrides everything) |
+| 2           | Current recommendation = `batteries_charge_grid` | Kept (never overridden)                 |
+| 3           | Any EV actively charging                         | → `ev_smart_charging`                   |
+| 4           | Battery energy > remaining schedule need         | → `batteries_discharge_mode`            |
+| —           | None of the above                                | Planner recommendation kept             |
 
 ### Protection rules
 

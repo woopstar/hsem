@@ -52,12 +52,12 @@ score = total_cost + soc_penalties + grid_limit_penalty + terminal_soc_value
 
 ### Why two aggregates instead of a single weighted sum
 
-| Concern | `total_cost` | `score` |
-|---|---|---|
-| Auditable money | ✅ Yes | ✅ (as subset) |
-| Avoids drain-to-zero bias | ❌ No | ✅ (via terminal SoC value) |
-| Avoids SoC bound violations | ❌ No | ✅ (via quadratic guard) |
-| Picks cheapest plan | ✅ If penalties=0 | ✅ Always |
+| Concern                     | `total_cost`      | `score`                     |
+| --------------------------- | ----------------- | --------------------------- |
+| Auditable money             | ✅ Yes            | ✅ (as subset)              |
+| Avoids drain-to-zero bias   | ❌ No             | ✅ (via terminal SoC value) |
+| Avoids SoC bound violations | ❌ No             | ✅ (via quadratic guard)    |
+| Picks cheapest plan         | ✅ If penalties=0 | ✅ Always                   |
 
 A single number cannot serve both purposes without one of them being wrong.
 

@@ -65,8 +65,8 @@ configured minimum.
 > (and `sensor.hsem_ev_second_charger_current_limit`) now publishes HSEM's
 > per-slot maximum current limit natively, in whole amps, phase-topology aware
 > — no template/formula needed to convert `ev_charger_calculated_power` to
-> amps yourself. See [sensors-reference.md](sensors-reference.md) *EV charger
-> current limit sensors*. The manual watt→amp conversion below still applies
+> amps yourself. See [sensors-reference.md](sensors-reference.md) _EV charger
+> current limit sensors_. The manual watt→amp conversion below still applies
 > if you prefer computing it inline in your own automation.
 
 ---
@@ -80,11 +80,11 @@ surplus after accounting for what it's already drawing:
 pGrid = (ev_charger_calculated_power × -1) + current_charge_power
 ```
 
-| Variable | Source | Example |
-|---|---|---|
+| Variable                      | Source                                                                                              | Example  |
+| ----------------------------- | --------------------------------------------------------------------------------------------------- | -------- |
 | `ev_charger_calculated_power` | `state_attr('sensor.hsem_workingmode_sensor', 'hourly_recommendation').ev_charger_calculated_power` | `2900` W |
-| `current_charge_power` | Your charger's power sensor (W) | `2000` W |
-| `pGrid` | Sent to charger | `-900` W |
+| `current_charge_power`        | Your charger's power sensor (W)                                                                     | `2000` W |
+| `pGrid`                       | Sent to charger                                                                                     | `-900` W |
 
 **Worked example:**
 
@@ -117,11 +117,11 @@ adjusts the actual charge power to drive `pGrid` toward zero.
 
 ### Prerequisites
 
-| Entity | Purpose |
-|---|---|
-| `sensor.hsem_workingmode_sensor` | HSEM hourly recommendation with `ev_charger_calculated_power` |
-| `binary_sensor.go_echarger_<serial>_car` | `on` when car is plugged in |
-| `sensor.go_echarger_<serial>_nrg_12` | Current charging power in watts |
+| Entity                                   | Purpose                                                       |
+| ---------------------------------------- | ------------------------------------------------------------- |
+| `sensor.hsem_workingmode_sensor`         | HSEM hourly recommendation with `ev_charger_calculated_power` |
+| `binary_sensor.go_echarger_<serial>_car` | `on` when car is plugged in                                   |
+| `sensor.go_echarger_<serial>_nrg_12`     | Current charging power in watts                               |
 
 ### Option A: HSEM direct control
 
@@ -228,6 +228,7 @@ mode: single
 ```
 
 > **Notes:**
+>
 > - Replace `222819` with your charger's serial number.
 > - Replace `sensor.power_meter_active_power` with your actual grid power
 >   sensor (negative = export, positive = import).
@@ -264,11 +265,11 @@ For single-phase: `amps = power_w / 230`.
 
 ### Prerequisites
 
-| Entity | Purpose |
-|---|---|
-| `sensor.hsem_workingmode_sensor` | HSEM hourly recommendation with `ev_charger_calculated_power` |
-| `binary_sensor.easee_<id>_cable_connected` | `on` when car is plugged in |
-| `sensor.easee_<id>_power` | Current charging power in watts (for diagnostics) |
+| Entity                                     | Purpose                                                       |
+| ------------------------------------------ | ------------------------------------------------------------- |
+| `sensor.hsem_workingmode_sensor`           | HSEM hourly recommendation with `ev_charger_calculated_power` |
+| `binary_sensor.easee_<id>_cable_connected` | `on` when car is plugged in                                   |
+| `sensor.easee_<id>_power`                  | Current charging power in watts (for diagnostics)             |
 
 > **Note:** You also need an Easee Equalizer (HAN/Nevion) installed for dynamic
 > current limiting to work. Without it, the charger ignores dynamic current commands.
@@ -302,6 +303,7 @@ mode: single
 ```
 
 > **Notes:**
+>
 > - Replace `12345` with your charger ID (find it in the Easee integration
 >   device list).
 > - Replace `690` with `230` if you have a single-phase installation.
@@ -346,11 +348,11 @@ target to amps and set it as the available current.
 
 ### Prerequisites
 
-| Entity | Purpose |
-|---|---|
-| `sensor.hsem_workingmode_sensor` | HSEM hourly recommendation with `ev_charger_calculated_power` |
-| `binary_sensor.zaptec_<name>_connected` | `on` when car is plugged in |
-| `number.<installation_name>_available_current` | Sets max current for the installation |
+| Entity                                         | Purpose                                                       |
+| ---------------------------------------------- | ------------------------------------------------------------- |
+| `sensor.hsem_workingmode_sensor`               | HSEM hourly recommendation with `ev_charger_calculated_power` |
+| `binary_sensor.zaptec_<name>_connected`        | `on` when car is plugged in                                   |
+| `number.<installation_name>_available_current` | Sets max current for the installation                         |
 
 > **Before you start:** Disable **Zaptec Sense** (APM/Automatic Power
 > Management) and **stand-alone mode** in the Zaptec Portal. The charger
@@ -385,6 +387,7 @@ mode: single
 ```
 
 > **Notes:**
+>
 > - Replace `my_charger` and `my_installation` with your actual Zaptec entity
 >   names.
 > - Replace `690` with `230` if you have a single-phase installation.

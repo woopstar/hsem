@@ -28,6 +28,7 @@ Runs: ruff format → ruff check. Auto-formats and checks for style violations.
 Runs: mypy type checking. Must pass with **0 errors**.
 
 Rules:
+
 - `disable_error_code` is empty in `pyproject.toml` — never add new suppressions
 - No `# type: ignore` without a comment justifying why
 
@@ -48,6 +49,7 @@ Runs: pyright + vulture static checks. Must pass with **0 errors**.
 Runs: pytest with coverage on Python 3.14.
 
 For faster iteration during development:
+
 ```bash
 ./scripts/quality.sh test tests/test_module.py           # specific file
 ./scripts/quality.sh test tests/test_module.py::test_fn   # specific test
@@ -62,6 +64,7 @@ For faster iteration during development:
 ## File Size Check
 
 Hard limit: **30 KB per file** in `planner/` and `utils/`. Check before PR:
+
 ```bash
 wc -c custom_components/hsem/planner/*.py
 wc -c custom_components/hsem/utils/*.py

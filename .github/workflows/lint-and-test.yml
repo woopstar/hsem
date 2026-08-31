@@ -32,7 +32,7 @@ jobs:
       - name: Lint shell scripts
         uses: ludeeus/action-shellcheck@2.0.0
         with:
-          scandir: './scripts'
+          scandir: "./scripts"
 
       - name: Check Prettier formatting
         # Pinned to the same version as the pre-commit hook

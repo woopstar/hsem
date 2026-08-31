@@ -45,11 +45,11 @@ Layer 4 — Runtime Recommendation Resolver (live override)
 
 Every update cycle, the system classifies overall health into one of three states based on which Home Assistant entities are currently available and readable:
 
-| Mode | Writes allowed | Meaning |
-|---|---|---|
-| `OK` | ✅ Yes | All required entities present |
-| `Degraded` | ✅ Yes (with warnings) | Non-critical data missing |
-| `Error` | ❌ Blocked | Critical data missing — writes blocked |
+| Mode       | Writes allowed         | Meaning                                |
+| ---------- | ---------------------- | -------------------------------------- |
+| `OK`       | ✅ Yes                 | All required entities present          |
+| `Degraded` | ✅ Yes (with warnings) | Non-critical data missing              |
+| `Error`    | ❌ Blocked             | Critical data missing — writes blocked |
 
 **Critical entities** (any missing → `Error` mode, writes blocked):
 
@@ -99,23 +99,23 @@ The `WriteVerifyApplier` wraps every hardware write with a read-back confirmatio
 
 **Result statuses:**
 
-| Status | Meaning |
-|---|---|
-| `ok` | Read-back value matched within tolerance |
+| Status       | Meaning                                                   |
+| ------------ | --------------------------------------------------------- |
+| `ok`         | Read-back value matched within tolerance                  |
 | `unverified` | Write accepted but read-back timed out or returned `None` |
-| `failed` | All retries exhausted |
-| `skipped` | Current value already matched — no write performed |
+| `failed`     | All retries exhausted                                     |
+| `skipped`    | Current value already matched — no write performed        |
 
 ### Layer 4: Runtime Recommendation Resolver
 
 Applied **only to the current slot** immediately before hardware writes. Overrides the planner output based on live sensor data that was unavailable at planning time:
 
-| Priority | Condition | Action |
-|---|---|---|
-| 1 (highest) | Live import price < 0 | → `force_export` |
-| 2 | Current recommendation = `batteries_charge_grid` | Kept (never overridden) |
-| 3 | The EV is live charging and the planner's accepted HSEM command for it is positive | → `ev_smart_charging` |
-| 4 | Battery energy > remaining schedule need | → `batteries_discharge_mode` |
+| Priority    | Condition                                                                          | Action                       |
+| ----------- | ---------------------------------------------------------------------------------- | ---------------------------- |
+| 1 (highest) | Live import price < 0                                                              | → `force_export`             |
+| 2           | Current recommendation = `batteries_charge_grid`                                   | Kept (never overridden)      |
+| 3           | The EV is live charging and the planner's accepted HSEM command for it is positive | → `ev_smart_charging`        |
+| 4           | Battery energy > remaining schedule need                                           | → `batteries_discharge_mode` |
 
 **Protection rules:**
 
@@ -156,19 +156,19 @@ Applied **only to the current slot** immediately before hardware writes. Overrid
 
 ### A. Single gate (degraded mode only)
 
-*Rejected because:* Missing the read-only/dry-run gates would prevent users from monitoring the planner without hardware control. Also, the write-verify loop catches hardware-level failures (inverter non-responsive) that degraded mode cannot detect.
+_Rejected because:_ Missing the read-only/dry-run gates would prevent users from monitoring the planner without hardware control. Also, the write-verify loop catches hardware-level failures (inverter non-responsive) that degraded mode cannot detect.
 
 ### B. Pessimistic: block all writes when any entity is missing
 
-*Rejected because:* This would make the system unusable during minor data gaps (e.g., missing tomorrow's prices). The `Degraded` mode allows safe continued operation.
+_Rejected because:_ This would make the system unusable during minor data gaps (e.g., missing tomorrow's prices). The `Degraded` mode allows safe continued operation.
 
 ### C. Trust the planner — no write verification
 
-*Rejected because:* Inverter communication is inherently unreliable (Wi-Fi dropouts, Modbus timeouts). A write that appears successful to the HA service call may not have been persisted by the inverter. The read-back step is the only way to confirm.
+_Rejected because:_ Inverter communication is inherently unreliable (Wi-Fi dropouts, Modbus timeouts). A write that appears successful to the HA service call may not have been persisted by the inverter. The read-back step is the only way to confirm.
 
 ### D. Software kill switch only
 
-*Rejected because:* A software-only gate is vulnerable to bugs. The degraded mode classification is conceptually independent of the read-only toggle, providing defence-in-depth even if one layer has a logic error.
+_Rejected because:_ A software-only gate is vulnerable to bugs. The degraded mode classification is conceptually independent of the read-only toggle, providing defence-in-depth even if one layer has a logic error.
 
 ---
 

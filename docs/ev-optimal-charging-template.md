@@ -20,14 +20,14 @@ The sensor exposes:
 
 You need the following entities in Home Assistant:
 
-| Entity | Purpose |
-|---|---|
-| `binary_sensor.go_echarger_222819_car` | `on` when the car is connected to the charger |
-| `sensor.audi_e_tron_state_of_charge` | Current SoC in percent |
-| `input_number.audi_e_tron_charging_target` | Target SoC (e.g., 80) |
-| `input_datetime.audi_e_tron_charge_end_time` | Latest time the car must be ready |
-| `input_boolean.audi_e_tron_smart_charging` | Smart charging toggle |
-| `sensor.hsem_workingmode_sensor` | HSEM working mode sensor with `hourly_recommendations` |
+| Entity                                       | Purpose                                                |
+| -------------------------------------------- | ------------------------------------------------------ |
+| `binary_sensor.go_echarger_222819_car`       | `on` when the car is connected to the charger          |
+| `sensor.audi_e_tron_state_of_charge`         | Current SoC in percent                                 |
+| `input_number.audi_e_tron_charging_target`   | Target SoC (e.g., 80)                                  |
+| `input_datetime.audi_e_tron_charge_end_time` | Latest time the car must be ready                      |
+| `input_boolean.audi_e_tron_smart_charging`   | Smart charging toggle                                  |
+| `sensor.hsem_workingmode_sensor`             | HSEM working mode sensor with `hourly_recommendations` |
 
 The `hourly_recommendations` items must contain at least:
 
@@ -57,6 +57,7 @@ It does this by:
 6. **Exposing** those as `charging_slots` and switching state between `charging` and `waiting`
 
 The plan:
+
 - Prefers slots with solar surplus
 - Prefers cheap grid prices
 - Respects your end‑time deadline
@@ -72,27 +73,27 @@ The template creates one sensor:
 
 **State** (string):
 
-| State | Meaning |
-|---|---|
-| `not_connected` | Car not plugged in |
-| `smart_charging_disabled` | Smart charging boolean is off |
-| `fully_charged` | Current SoC ≥ target SoC |
-| `charging` | Inside a selected charging slot |
-| `waiting` | Connected and not full, but outside selected slots |
+| State                     | Meaning                                            |
+| ------------------------- | -------------------------------------------------- |
+| `not_connected`           | Car not plugged in                                 |
+| `smart_charging_disabled` | Smart charging boolean is off                      |
+| `fully_charged`           | Current SoC ≥ target SoC                           |
+| `charging`                | Inside a selected charging slot                    |
+| `waiting`                 | Connected and not full, but outside selected slots |
 
 **Attributes:**
 
-| Attribute | Type | Description |
-|---|---|---|
-| `smart_charging` | boolean | Smart charging toggle state |
-| `battery_capacity_kwh` | float | Fixed EV battery capacity |
-| `charge_power_kw` | float | Fixed charging power |
-| `current_soc` | float | Current state of charge |
-| `target_soc` | float | Target state of charge |
-| `ev_connected` | boolean | EV connection status |
-| `total_kwh_needed` | float | Energy needed to reach target |
-| `deadline` | datetime | Latest charging deadline |
-| `charging_slots` | list | Planned charging slots (see below) |
+| Attribute              | Type     | Description                        |
+| ---------------------- | -------- | ---------------------------------- |
+| `smart_charging`       | boolean  | Smart charging toggle state        |
+| `battery_capacity_kwh` | float    | Fixed EV battery capacity          |
+| `charge_power_kw`      | float    | Fixed charging power               |
+| `current_soc`          | float    | Current state of charge            |
+| `target_soc`           | float    | Target state of charge             |
+| `ev_connected`         | boolean  | EV connection status               |
+| `total_kwh_needed`     | float    | Energy needed to reach target      |
+| `deadline`             | datetime | Latest charging deadline           |
+| `charging_slots`       | list     | Planned charging slots (see below) |
 
 Each `charging_slots` item:
 
@@ -104,7 +105,7 @@ Each `charging_slots` item:
   "solar_surplus_kwh": 1.2,
   "import_needed_kwh": 0.4,
   "estimated_charged_kwh": 1.6,
-  "estimated_cost": 0.30
+  "estimated_cost": 0.3
 }
 ```
 

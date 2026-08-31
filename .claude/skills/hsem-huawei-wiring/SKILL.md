@@ -6,6 +6,7 @@ description: Activate when adding, modifying, or using any Huawei Solar inverter
 # HSEM Huawei Solar Sensor Wiring
 
 Activate this skill when you need to:
+
 - Add a new Huawei Solar entity to HSEM
 - Use an existing Huawei Solar entity value
 - Reference battery/inverter parameters (max SoC, charge cutoff, rated capacity, etc.)
@@ -41,18 +42,18 @@ Add it to `docs/huawei_entities.md` as part of the same PR that wires it into HS
 
 ## Key Entity Mappings
 
-| Register / Source | Entity | Meaning |
-|---|---|---|
-| `STORAGE_CHARGING_CUTOFF_CAPACITY` | `number.batteries_end_of_charge_soc` | Max SoC during charging (90-100 %) |
-| `STORAGE_GRID_CHARGE_CUTOFF_STATE_OF_CHARGE` | `number.batteries_grid_charge_cutoff_soc` | Max SoC when charging from grid |
-| `STORAGE_DISCHARGING_CUTOFF_CAPACITY` | `number.batteries_end_of_discharge_soc` | Min SoC floor |
-| `STORAGE_MAXIMUM_CHARGING_POWER` | `number.batteries_maximum_charging_power` | Max charge power (W) |
-| `STORAGE_MAXIMUM_DISCHARGING_POWER` | `number.batteries_maximum_discharging_power` | Max discharge power (W) |
-| `STORAGE_STATE_OF_CAPACITY` | `sensor.batteries_state_of_capacity` | Current SoC (%) |
-| `STORAGE_RATED_CAPACITY` | `sensor.batteries_rated_capacity` | Nameplate capacity (Wh) |
-| `STORAGE_WORKING_MODE_SETTINGS` | `select.batteries_working_mode` | Working mode select |
-| `STORAGE_EXCESS_PV_ENERGY_USE_IN_TOU` | `select.batteries_excess_pv_energy_use_in_tou` | Excess PV use mode in TOU |
-| `STORAGE_HUAWEI_LUNA2000_TOU_…_PERIODS` | `sensor.batteries_tou_charging_and_discharging_periods` | TOU period schedule |
+| Register / Source                            | Entity                                                  | Meaning                            |
+| -------------------------------------------- | ------------------------------------------------------- | ---------------------------------- |
+| `STORAGE_CHARGING_CUTOFF_CAPACITY`           | `number.batteries_end_of_charge_soc`                    | Max SoC during charging (90-100 %) |
+| `STORAGE_GRID_CHARGE_CUTOFF_STATE_OF_CHARGE` | `number.batteries_grid_charge_cutoff_soc`               | Max SoC when charging from grid    |
+| `STORAGE_DISCHARGING_CUTOFF_CAPACITY`        | `number.batteries_end_of_discharge_soc`                 | Min SoC floor                      |
+| `STORAGE_MAXIMUM_CHARGING_POWER`             | `number.batteries_maximum_charging_power`               | Max charge power (W)               |
+| `STORAGE_MAXIMUM_DISCHARGING_POWER`          | `number.batteries_maximum_discharging_power`            | Max discharge power (W)            |
+| `STORAGE_STATE_OF_CAPACITY`                  | `sensor.batteries_state_of_capacity`                    | Current SoC (%)                    |
+| `STORAGE_RATED_CAPACITY`                     | `sensor.batteries_rated_capacity`                       | Nameplate capacity (Wh)            |
+| `STORAGE_WORKING_MODE_SETTINGS`              | `select.batteries_working_mode`                         | Working mode select                |
+| `STORAGE_EXCESS_PV_ENERGY_USE_IN_TOU`        | `select.batteries_excess_pv_energy_use_in_tou`          | Excess PV use mode in TOU          |
+| `STORAGE_HUAWEI_LUNA2000_TOU_…_PERIODS`      | `sensor.batteries_tou_charging_and_discharging_periods` | TOU period schedule                |
 
 ## Never Do This
 

@@ -1,6 +1,7 @@
 # HSEM Compliance Checklist — Read Before Any Code Change
 
 This checklist enforces Home Assistant development guidelines from:
+
 - https://developers.home-assistant.io/docs/creating_component_code_review
 - https://developers.home-assistant.io/docs/development_guidelines
 - Validated in issue #491
@@ -89,12 +90,12 @@ Branch naming: `<type>/<issue-number>-<slug>`
 
 ## Canonical Helpers — Never Re-Invent
 
-| Helper | Location | Use for |
-|---|---|---|
-| `clamp_efficiency(pct)` | `utils/misc.py` | Efficiency % → fraction |
-| `calculate_recommended_threshold(...)` | `utils/misc.py` | Discharge threshold |
-| `DISCHARGE_RECS` / `CHARGE_RECS` | `utils/recommendations.py` | Recommendation checks |
-| `HSEM_LOGGER` | `utils/logger.py` | Planner logging |
+| Helper                                 | Location                   | Use for                 |
+| -------------------------------------- | -------------------------- | ----------------------- |
+| `clamp_efficiency(pct)`                | `utils/misc.py`            | Efficiency % → fraction |
+| `calculate_recommended_threshold(...)` | `utils/misc.py`            | Discharge threshold     |
+| `DISCHARGE_RECS` / `CHARGE_RECS`       | `utils/recommendations.py` | Recommendation checks   |
+| `HSEM_LOGGER`                          | `utils/logger.py`          | Planner logging         |
 
 ---
 

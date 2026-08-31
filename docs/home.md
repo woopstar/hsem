@@ -60,7 +60,7 @@ HSEM uses the EV charger status and power sensors to determine when your EV is c
 
 ### Can I allow the battery to discharge while my EV is charging?
 
-Yes, but the setting is *permission*, not a command. Huawei exposes one
+Yes, but the setting is _permission_, not a command. Huawei exposes one
 global battery discharge limit shared by the house battery and every EV,
 so by default HSEM forces battery discharge to 0 W whenever an EV is
 charging or about to be commanded — 100% of the EV's load then comes from
@@ -102,19 +102,19 @@ HSEM enters a "Missing Entities Input" state with a clear error description. No 
 
 ## Working Mode Sensor States
 
-| Working Mode | Description |
-|---|---|
-| **Time Passed** | No recommendations — the hour has already passed. |
-| **Force Export** | Charges from grid at negative prices, then exports for profit. |
-| **Force Batteries Charge** | Forces discharge to export excess capacity when profitable. |
-| **EV Smart Charging** | Disables battery discharge when EV charger is active. |
-| **Force Batteries Discharge** | Discharges battery during high-cost periods. |
-| **Batteries Charge Solar** | Charges battery from solar surplus. |
-| **Batteries Charge Grid** | Charges from grid during low/negative import prices. |
-| **Batteries Discharge Mode** | Scheduled battery discharge to minimize grid import. |
-| **Batteries Wait Mode** | Battery idle, waiting for optimal conditions. |
-| **Missing Entities Input** | Missing or misconfigured input sensors. |
-| **Read Only** | Dry run mode — no commands sent to devices. |
+| Working Mode                  | Description                                                    |
+| ----------------------------- | -------------------------------------------------------------- |
+| **Time Passed**               | No recommendations — the hour has already passed.              |
+| **Force Export**              | Charges from grid at negative prices, then exports for profit. |
+| **Force Batteries Charge**    | Forces discharge to export excess capacity when profitable.    |
+| **EV Smart Charging**         | Disables battery discharge when EV charger is active.          |
+| **Force Batteries Discharge** | Discharges battery during high-cost periods.                   |
+| **Batteries Charge Solar**    | Charges battery from solar surplus.                            |
+| **Batteries Charge Grid**     | Charges from grid during low/negative import prices.           |
+| **Batteries Discharge Mode**  | Scheduled battery discharge to minimize grid import.           |
+| **Batteries Wait Mode**       | Battery idle, waiting for optimal conditions.                  |
+| **Missing Entities Input**    | Missing or misconfigured input sensors.                        |
+| **Read Only**                 | Dry run mode — no commands sent to devices.                    |
 
 ---
 
@@ -181,21 +181,21 @@ HSEM supports two prediction modes:
 
 ### Default Weights (sum must equal 100)
 
-| Mode | 1 Day | 3 Days | 7 Days | 14 Days |
-|---|---|---|---|---|
-| Balanced (default) | 25 | 30 | 30 | 15 |
-| Conservative | 20 | 30 | 35 | 15 |
-| Fast-reacting | 30 | 30 | 25 | 15 |
+| Mode               | 1 Day | 3 Days | 7 Days | 14 Days |
+| ------------------ | ----- | ------ | ------ | ------- |
+| Balanced (default) | 25    | 30     | 30     | 15      |
+| Conservative       | 20    | 30     | 35     | 15      |
+| Fast-reacting      | 30    | 30     | 25     | 15      |
 
 ---
 
 ## Special Configuration Options
 
-| Option | Purpose |
-|---|---|
+| Option                                      | Purpose                                                                                                                      |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | `hsem_ev_charger_force_max_discharge_power` | Permits (does not force) battery discharge while this EV is charging; without it, discharge is 0 W whenever the EV is active |
-| `hsem_ev_charger_max_discharge_power` | Maximum discharge power (W) for EV charging |
-| `hsem_force_working_mode` | Manually override to a specific working mode |
+| `hsem_ev_charger_max_discharge_power`       | Maximum discharge power (W) for EV charging                                                                                  |
+| `hsem_force_working_mode`                   | Manually override to a specific working mode                                                                                 |
 
 ---
 

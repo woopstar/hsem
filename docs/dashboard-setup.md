@@ -1206,7 +1206,6 @@ views:
                     const e = new Date(end).getTime();
                     out.push([s, import_price], [e, import_price]);
                   }); return out;
-
 ```
 
 ---
@@ -1215,15 +1214,15 @@ views:
 
 The dashboard uses a seven-section layout within one view:
 
-| Section | Column span | Cards | Description |
-|---|---|---|---|
-| **Status & Control** | 1 column | 10 | Working mode, system health, read-only toggle, plan strategy, force mode, next update, inverter apply, hardware writes, PV curtailment |
-| **Financial Insights** | 1 column | 5 | Export income, import cost, net grid balance, savings tracker |
-| **Forecast Quality** | 1 column | 4 | Forecast accuracy, prediction accuracy, solar confidence |
-| **EV Charging** | 1 column | 12 | EV plan, active status, smart charging, force charge, target SoC, deadline (primary + secondary, conditional) |
-| **Working Mode Recommendation** | 2 columns | 7 | Recommendation timeline, battery status, charged kWh, consumption breakdown |
-| **Planner Output (left)** | 1 column | 4 | Net consumption, estimated cost, consumption, export price |
-| **Planner Output (right)** | 1 column | 4 | Battery capacity, simulated SoC, PV forecast, import price |
+| Section                         | Column span | Cards | Description                                                                                                                            |
+| ------------------------------- | ----------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| **Status & Control**            | 1 column    | 10    | Working mode, system health, read-only toggle, plan strategy, force mode, next update, inverter apply, hardware writes, PV curtailment |
+| **Financial Insights**          | 1 column    | 5     | Export income, import cost, net grid balance, savings tracker                                                                          |
+| **Forecast Quality**            | 1 column    | 4     | Forecast accuracy, prediction accuracy, solar confidence                                                                               |
+| **EV Charging**                 | 1 column    | 12    | EV plan, active status, smart charging, force charge, target SoC, deadline (primary + secondary, conditional)                          |
+| **Working Mode Recommendation** | 2 columns   | 7     | Recommendation timeline, battery status, charged kWh, consumption breakdown                                                            |
+| **Planner Output (left)**       | 1 column    | 4     | Net consumption, estimated cost, consumption, export price                                                                             |
+| **Planner Output (right)**      | 1 column    | 4     | Battery capacity, simulated SoC, PV forecast, import price                                                                             |
 
 ---
 
@@ -1234,38 +1233,38 @@ The dashboard uses a seven-section layout within one view:
 The top section uses built-in `tile` cards to surface the most important HSEM
 state at a glance and to provide quick controls:
 
-| Card | Entity | Purpose |
-|---|---|---|
-| Working Mode | `sensor.hsem_workingmode_sensor` | Current planner recommendation |
-| System Health | `sensor.hsem_degraded_mode_sensor` | `ok` / `degraded` / `error` state |
-| Read-Only | `switch.hsem_read_only` | Toggle hardware write protection |
-| Plan Strategy | `sensor.hsem_plan_explanation_sensor` | Why the planner chose the current plan |
-| Force Mode | `select.hsem_force_working_mode` | Override the planner working mode |
-| Next Update | `sensor.hsem_next_update_sensor` | Countdown to the next planner cycle |
-| Inverter Apply | `sensor.hsem_applier_status_sensor` | Last hardware write result |
-| Hardware Writes | `sensor.hsem_hardware_writes_sensor` | Whether writes are currently blocked |
-| PV Curtailment | `sensor.hsem_pv_curtailment_sensor` | `curtailed` when PV is being throttled |
+| Card            | Entity                                | Purpose                                |
+| --------------- | ------------------------------------- | -------------------------------------- |
+| Working Mode    | `sensor.hsem_workingmode_sensor`      | Current planner recommendation         |
+| System Health   | `sensor.hsem_degraded_mode_sensor`    | `ok` / `degraded` / `error` state      |
+| Read-Only       | `switch.hsem_read_only`               | Toggle hardware write protection       |
+| Plan Strategy   | `sensor.hsem_plan_explanation_sensor` | Why the planner chose the current plan |
+| Force Mode      | `select.hsem_force_working_mode`      | Override the planner working mode      |
+| Next Update     | `sensor.hsem_next_update_sensor`      | Countdown to the next planner cycle    |
+| Inverter Apply  | `sensor.hsem_applier_status_sensor`   | Last hardware write result             |
+| Hardware Writes | `sensor.hsem_hardware_writes_sensor`  | Whether writes are currently blocked   |
+| PV Curtailment  | `sensor.hsem_pv_curtailment_sensor`   | `curtailed` when PV is being throttled |
 
 ### Financial Insights tiles
 
 Quick visibility into the financial impact of the planner:
 
-| Card | Entity | Purpose |
-|---|---|---|
-| Export Income | `sensor.hsem_export_income` | Cumulative revenue from grid exports |
-| Import Cost | `sensor.hsem_import_cost` | Cumulative cost of grid imports |
-| Net Grid Balance | `sensor.hsem_net_grid_balance` | Export income minus import cost |
-| Savings Tracker | `sensor.hsem_savings_tracker` | Actual savings vs missed savings |
+| Card             | Entity                         | Purpose                              |
+| ---------------- | ------------------------------ | ------------------------------------ |
+| Export Income    | `sensor.hsem_export_income`    | Cumulative revenue from grid exports |
+| Import Cost      | `sensor.hsem_import_cost`      | Cumulative cost of grid imports      |
+| Net Grid Balance | `sensor.hsem_net_grid_balance` | Export income minus import cost      |
+| Savings Tracker  | `sensor.hsem_savings_tracker`  | Actual savings vs missed savings     |
 
 ### Forecast Quality tiles
 
 Visibility into how well the planner's forecasts match reality:
 
-| Card | Entity | Purpose |
-|---|---|---|
-| Forecast Accuracy | `sensor.hsem_forecast_accuracy_sensor` | PV and load forecast MAE |
-| Prediction Accuracy | `sensor.hsem_prediction_accuracy_sensor` | SoC prediction MAE over 7/30 days |
-| Solar Confidence | `sensor.hsem_solar_confidence_sensor` | Learned per-hour solar correction factors |
+| Card                | Entity                                   | Purpose                                   |
+| ------------------- | ---------------------------------------- | ----------------------------------------- |
+| Forecast Accuracy   | `sensor.hsem_forecast_accuracy_sensor`   | PV and load forecast MAE                  |
+| Prediction Accuracy | `sensor.hsem_prediction_accuracy_sensor` | SoC prediction MAE over 7/30 days         |
+| Solar Confidence    | `sensor.hsem_solar_confidence_sensor`    | Learned per-hour solar correction factors |
 
 ### EV Charging tiles
 
@@ -1273,34 +1272,34 @@ All EV cards are wrapped in `conditional` cards so they only appear when the
 corresponding EV entity is available. The section covers the primary EV and a
 secondary EV when configured:
 
-| Card | Entity | Purpose |
-|---|---|---|
-| EV Plan | `sensor.hsem_ev_optimal_charging_plan` | Current EV charging plan state |
-| EV Charging Active | `sensor.hsem_ev_charging_sensor` | Whether an EV is currently charging |
-| EV Smart Charging | `switch.hsem_ev_smart_charging` | Enable/disable smart EV charging |
-| EV Force Charge | `switch.hsem_ev_force_charge_now` | Override and start charging now |
-| EV Target SoC | `number.hsem_ev_target_soc` | Target state of charge for smart charging |
-| EV Deadline | `time.hsem_ev_deadline_time` | Deadline by which the EV must reach target SoC |
-| EV 2 Plan | `sensor.hsem_ev_second_optimal_charging_plan` | Second EV charging plan state |
-| EV 2 Smart Charging | `switch.hsem_ev_second_smart_charging` | Enable/disable smart charging for second EV |
-| EV 2 Force Charge | `switch.hsem_ev_second_force_charge_now` | Override and start second EV charging now |
-| EV 2 Target SoC | `number.hsem_ev_second_target_soc` | Target SoC for second EV |
-| EV 2 Deadline | `time.hsem_ev_second_deadline_time` | Deadline for second EV |
+| Card                | Entity                                        | Purpose                                        |
+| ------------------- | --------------------------------------------- | ---------------------------------------------- |
+| EV Plan             | `sensor.hsem_ev_optimal_charging_plan`        | Current EV charging plan state                 |
+| EV Charging Active  | `sensor.hsem_ev_charging_sensor`              | Whether an EV is currently charging            |
+| EV Smart Charging   | `switch.hsem_ev_smart_charging`               | Enable/disable smart EV charging               |
+| EV Force Charge     | `switch.hsem_ev_force_charge_now`             | Override and start charging now                |
+| EV Target SoC       | `number.hsem_ev_target_soc`                   | Target state of charge for smart charging      |
+| EV Deadline         | `time.hsem_ev_deadline_time`                  | Deadline by which the EV must reach target SoC |
+| EV 2 Plan           | `sensor.hsem_ev_second_optimal_charging_plan` | Second EV charging plan state                  |
+| EV 2 Smart Charging | `switch.hsem_ev_second_smart_charging`        | Enable/disable smart charging for second EV    |
+| EV 2 Force Charge   | `switch.hsem_ev_second_force_charge_now`      | Override and start second EV charging now      |
+| EV 2 Target SoC     | `number.hsem_ev_second_target_soc`            | Target SoC for second EV                       |
+| EV 2 Deadline       | `time.hsem_ev_second_deadline_time`           | Deadline for second EV                         |
 
 ### Recommendation timeline chart
 
 The top stepline area chart renders 48 hours of planner recommendations. Each
 recommendation type is a color-coded horizontal band.
 
-| Series | Color | Recommendation string |
-|---|---|---|
-| Batteries Charge From Grid | `#ef4444` (red) | `batteries_charge_grid` |
-| Batteries Charge From Solar | `#22c55e` (green) | `batteries_charge_solar` |
-| Batteries Discharge Mode | `#f97316` (orange) | `batteries_discharge_mode` |
-| Batteries Wait Mode | `#8b5cf6` (purple) | `batteries_wait_mode` |
-| EV Smart Charging | `#06b6d4` (cyan) | `ev_smart_charging` |
-| Time Passed | `#64748b` (slate) | `time_passed` |
-| Force Batteries Discharge | `#ec4899` (pink) | `force_batteries_discharge` |
+| Series                      | Color              | Recommendation string       |
+| --------------------------- | ------------------ | --------------------------- |
+| Batteries Charge From Grid  | `#ef4444` (red)    | `batteries_charge_grid`     |
+| Batteries Charge From Solar | `#22c55e` (green)  | `batteries_charge_solar`    |
+| Batteries Discharge Mode    | `#f97316` (orange) | `batteries_discharge_mode`  |
+| Batteries Wait Mode         | `#8b5cf6` (purple) | `batteries_wait_mode`       |
+| EV Smart Charging           | `#06b6d4` (cyan)   | `ev_smart_charging`         |
+| Time Passed                 | `#64748b` (slate)  | `time_passed`               |
+| Force Batteries Discharge   | `#ec4899` (pink)   | `force_batteries_discharge` |
 
 ### Battery status chart
 
@@ -1315,18 +1314,18 @@ with 5-minute averaged grid import power (`sensor.power_import`).
 The remaining 11 charts each plot a single field from `hourly_recommendations`
 as a stepline across the 48-hour horizon:
 
-| Chart title | Field | Unit |
-|---|---|---|
-| `batteries_charged_kwh` | `batteries_charged_kwh` | kWh |
-| Consumption breakdown (5 series) | `avg_house_consumption_kwh`, `..._1d/3d/7d/14d_kwh` | kWh |
-| `estimated_net_consumption_kwh` | `estimated_net_consumption_kwh` | kWh |
-| `estimated_cost` | `estimated_cost_currency` | Currency |
-| `avg_house_consumption_kwh` | `avg_house_consumption_kwh` | kWh |
-| `export_price` | `export_price` | Currency/kWh |
-| `estimated_battery_capacity_kwh` | `estimated_battery_capacity_kwh` | kWh |
-| `estimated_battery_soc_pct` | `estimated_battery_soc_pct` | % |
-| `solcast_pv_estimate_kwh` | `solcast_pv_estimate_kwh` | kWh |
-| `import_price` | `import_price` | Currency/kWh |
+| Chart title                      | Field                                               | Unit         |
+| -------------------------------- | --------------------------------------------------- | ------------ |
+| `batteries_charged_kwh`          | `batteries_charged_kwh`                             | kWh          |
+| Consumption breakdown (5 series) | `avg_house_consumption_kwh`, `..._1d/3d/7d/14d_kwh` | kWh          |
+| `estimated_net_consumption_kwh`  | `estimated_net_consumption_kwh`                     | kWh          |
+| `estimated_cost`                 | `estimated_cost_currency`                           | Currency     |
+| `avg_house_consumption_kwh`      | `avg_house_consumption_kwh`                         | kWh          |
+| `export_price`                   | `export_price`                                      | Currency/kWh |
+| `estimated_battery_capacity_kwh` | `estimated_battery_capacity_kwh`                    | kWh          |
+| `estimated_battery_soc_pct`      | `estimated_battery_soc_pct`                         | %            |
+| `solcast_pv_estimate_kwh`        | `solcast_pv_estimate_kwh`                           | kWh          |
+| `import_price`                   | `import_price`                                      | Currency/kWh |
 
 ---
 
@@ -1344,10 +1343,13 @@ All HSEM charts use the same JavaScript pattern to extract data from
 Example for a single-field stepline:
 
 ```javascript
-const rows = (Array.isArray(entity.attributes.hourly_recommendations)
-  ? entity.attributes.hourly_recommendations : [])
-    .slice()
-    .sort((a, b) => new Date(a.start) - new Date(b.start));
+const rows = (
+  Array.isArray(entity.attributes.hourly_recommendations)
+    ? entity.attributes.hourly_recommendations
+    : []
+)
+  .slice()
+  .sort((a, b) => new Date(a.start) - new Date(b.start));
 const out = [];
 rows.forEach(({ start, end, field_name }) => {
   const s = new Date(start).getTime();
@@ -1361,10 +1363,10 @@ return out;
 
 ## Troubleshooting
 
-| Problem | Solution |
-|---|---|
-| Charts show no data | Verify `sensor.hsem_workingmode_sensor` exists and `hourly_recommendations` attribute is populated |
-| All bands are gray (`time_passed`) | The planner hasn't run a new cycle yet — wait for the next update interval |
-| Charts are offset by one hour | Check your Home Assistant timezone matches your local time |
-| Battery SoC chart is empty | Replace `sensor.batteries_state_of_capacity` with your actual battery SoC entity |
-| Grid import chart is empty | Replace `sensor.power_import` with your actual grid import power entity |
+| Problem                            | Solution                                                                                           |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Charts show no data                | Verify `sensor.hsem_workingmode_sensor` exists and `hourly_recommendations` attribute is populated |
+| All bands are gray (`time_passed`) | The planner hasn't run a new cycle yet — wait for the next update interval                         |
+| Charts are offset by one hour      | Check your Home Assistant timezone matches your local time                                         |
+| Battery SoC chart is empty         | Replace `sensor.batteries_state_of_capacity` with your actual battery SoC entity                   |
+| Grid import chart is empty         | Replace `sensor.power_import` with your actual grid import power entity                            |

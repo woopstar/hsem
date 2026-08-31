@@ -5,9 +5,10 @@
 **Always read `.github/memories.md` before starting any work.**
 
 It contains:
+
 - Module responsibility map for all planner and utils files
 - Canonical patterns you must use (never re-invent)
-- MILP variable vector layout (8*n)
+- MILP variable vector layout (8\*n)
 - File size limits and oversized files
 - Cycle cost formula with the mandatory 2x denominator
 - File organization patterns (by responsibility, not by theme)
@@ -19,6 +20,7 @@ It contains:
 **Always read `.rules/ha-development-rules.md` before creating a PR.**
 
 It contains the complete Home Assistant development compliance checklist:
+
 - Dependency management and requirement pinning
 - Async patterns, config flow, and voluptuous schemas
 - Translations, entity base classes, and device info
@@ -53,12 +55,14 @@ When asked to solve a GitHub issue, always follow these steps in order:
    - `./scripts/quality.sh quality` — pyright + vulture
    - `./scripts/quality.sh test` — pytest with coverage
 10. **Report a summary** including:
-   - Issue title
-   - Branch name
-   - Files changed
-   - What changed and why
-   - Tests added or updated
-   - Test and lint results
+
+- Issue title
+- Branch name
+- Files changed
+- What changed and why
+- Tests added or updated
+- Test and lint results
+
 11. **Create a pull request** linked to the issue using `Fixes #<ISSUE_NUMBER>` in the description.
 12. **Keep the PR up to date** — after every follow-up commit on a branch that already has an open
     PR, update both the PR title and description to reflect the current state of all changes made.
@@ -75,16 +79,16 @@ When asked to solve a GitHub issue, always follow these steps in order:
 - **GitHub MCP tools are not present in every session.** Never assume they exist. When
   both are available either path is fine; when they are not, `gh` is the only path.
 
-| Operation | `gh` command | MCP tool (when available) |
-|---|---|---|
-| Create a PR | `gh pr create --base main --title ... --body-file -` | `create_pull_request` |
-| Update a PR (title/body) | `gh pr edit <n> --title ... --body-file -` | `update_pull_request` |
-| Read a PR / diff / comments | `gh pr view <n> --json ...` / `gh pr diff <n>` | `pull_request_read` |
-| Review a PR | `gh pr review <n>` | `pull_request_review_write` |
-| Create / update / close issues | `gh issue create` / `gh issue edit` / `gh issue close` | `issue_write` / `issue_read` |
-| List / search issues & PRs | `gh issue list` / `gh search issues` | `list_issues` / `search_issues` |
-| Merge a PR | `gh pr merge <n>` | `merge_pull_request` |
-| Create / list branches | `git push -u origin <branch>` | `create_branch` / `list_branches` |
+| Operation                      | `gh` command                                           | MCP tool (when available)         |
+| ------------------------------ | ------------------------------------------------------ | --------------------------------- |
+| Create a PR                    | `gh pr create --base main --title ... --body-file -`   | `create_pull_request`             |
+| Update a PR (title/body)       | `gh pr edit <n> --title ... --body-file -`             | `update_pull_request`             |
+| Read a PR / diff / comments    | `gh pr view <n> --json ...` / `gh pr diff <n>`         | `pull_request_read`               |
+| Review a PR                    | `gh pr review <n>`                                     | `pull_request_review_write`       |
+| Create / update / close issues | `gh issue create` / `gh issue edit` / `gh issue close` | `issue_write` / `issue_read`      |
+| List / search issues & PRs     | `gh issue list` / `gh search issues`                   | `list_issues` / `search_issues`   |
+| Merge a PR                     | `gh pr merge <n>`                                      | `merge_pull_request`              |
+| Create / list branches         | `git push -u origin <branch>`                          | `create_branch` / `list_branches` |
 
 - **Multiline bodies:** pass `--body-file <path>`, or `--body-file -` and pipe a
   heredoc. Do not inline a long markdown body as a single shell argument.
@@ -92,6 +96,7 @@ When asked to solve a GitHub issue, always follow these steps in order:
 - **Local git is still fine** for `git add` / `git commit` / `git checkout` / `git push`.
 
 ## Planner Specification Rule (Mandatory)
+
 - **Always read `docs/planner-spec.md` before touching any planner code** — engine, cost
   function, SoC simulation, candidate generation, slot population, or safety gates.
 - **Every planner change must satisfy all spec invariants**: energy balance per slot, SoC bounds,
@@ -103,6 +108,7 @@ When asked to solve a GitHub issue, always follow these steps in order:
 - See `AGENTS.md` → **Planner Specification** for the full compliance checklist.
 
 ## Documentation Update Rule (Mandatory)
+
 - **All documentation that describes the changed behaviour must be updated in the same PR.**
   This includes, but is not limited to:
   - `docs/planner-guide.md` — planner inputs, outputs, cost function, scenarios
@@ -116,6 +122,7 @@ When asked to solve a GitHub issue, always follow these steps in order:
 - **A PR is not done until all affected docs are consistent with the implementation.**
 
 ## Huawei Solar Sensor Rule (Mandatory)
+
 - **Always use entities exposed by `wlcrs/huawei_solar`** for every inverter/battery value.
 - Never hard-code numeric battery constants — always source from the live HA entity.
 - If a value is needed but not yet wired into HSEM, add it through the full stack:
@@ -139,7 +146,7 @@ These helpers exist — never re-implement them inline:
 ## File Size Rule (Mandatory)
 
 - **Hard limit: 30 KB AND 1000 lines per file** across the entire codebase.
-  Both limits must be satisfied.  A file under 30 KB but over 1000 lines still
+  Both limits must be satisfied. A file under 30 KB but over 1000 lines still
   needs splitting.
 - If a file exceeds either limit, split it before adding more features.
 - Check before every PR:
@@ -151,6 +158,7 @@ These helpers exist — never re-implement them inline:
   ```
 
 ## Issue-Solving Rules
+
 - Always read `AGENTS.md` and `CLAUDE.md` before starting any issue work.
 - Solve **one issue only** per branch and PR.
 - Do **not** refactor unrelated code.
@@ -162,12 +170,14 @@ These helpers exist — never re-implement them inline:
 - Ask the user before making any broad architectural changes.
 
 ## Solve One Issue Per Branch
+
 - Each branch should solve **one** issue from the GitHub issue tracker.
 - Use the branch naming convention: `<type>/<issue-number>-<description>`
 - Examples: `feat/123-add-feature`, `fix/456-resolve-bug`, `chore/789-update-docs`
 - Do not combine multiple issues in a single branch or PR.
 
 ## Conventional Commits
+
 - Always use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) for commit messages and pull request titles.
 - Format: `<type>(<scope>): <description>`
 - Types: `feat`, `fix`, `chore`, `docs`, `refactor`, `perf`, `test`, `ci`
@@ -175,6 +185,7 @@ These helpers exist — never re-implement them inline:
 - Always include `Fixes #<ISSUE_NUMBER>` in the PR description
 
 ## Code Quality
+
 - All code MUST use safe and secure coding practices.
 - All code MUST be fully optimized for performance and maintainability.
 - Avoid clear passwords, hardcoded secrets, and common security gaps.
@@ -189,11 +200,13 @@ These helpers exist — never re-implement them inline:
 - Run `./scripts/quality.sh test` to run the full test suite with coverage before opening a PR.
 
 ## Write Modular Code
+
 - Break code into modules and components for easy reuse.
 - Maximize code reuse (DRY principle).
 - Minimize technical debt.
 
 ## Python Instructions
+
 - Use snake_case for variable and function names.
 - Use CamelCase for class names.
 - Include type hints for function parameters and return types.
@@ -209,10 +222,12 @@ These helpers exist — never re-implement them inline:
 - When creating log statements, never use runtime string formatting — use `%` placeholders and the `extra` argument.
 
 ## Always Provide File Names
+
 - Always provide the complete file path in responses.
 - Help users understand where code changes should be placed.
 
 ## Do Not
+
 - Do not refactor planner or safety logic unless solving a specific issue that requires it.
 - Do not change runtime behavior unless specifically requested.
 - Do not fix unrelated bugs in the same PR.
@@ -223,6 +238,7 @@ These helpers exist — never re-implement them inline:
 - Do not use `break` in slot iteration loops unless the loop is explicitly ordered and early exit is provably correct.
 
 <!-- rtk-instructions v2 -->
+
 # RTK — Token-Optimized CLI
 
 **rtk** is a CLI proxy that filters and compresses command outputs, saving 60-90% tokens.
@@ -248,4 +264,5 @@ rtk gain --history    # Per-command savings history
 rtk discover          # Find missed rtk opportunities
 rtk proxy <cmd>       # Run raw (no filtering) but track usage
 ```
+
 <!-- /rtk-instructions -->

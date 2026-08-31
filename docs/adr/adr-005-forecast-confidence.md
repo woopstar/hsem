@@ -8,7 +8,7 @@
 
 > **Note:** The original "diagnostic-only, non-adaptive" decision was
 > amended in June 2026 by ADR-006, which introduces adaptive per-hour PV
-> correction.  The deterministic decay factors for future-day PV, the
+> correction. The deterministic decay factors for future-day PV, the
 > non-adaptive load and price treatment, and the diagnostic tracking
 > infrastructure remain unchanged.
 
@@ -43,11 +43,11 @@ We adopt a **diagnostic-only, non-adaptive** approach to forecast confidence, wi
 
 Instead of a probabilistic or adaptive confidence model, PV estimates for future days are multiplied by a fixed decay factor at slot-population time. This is a **deterministic discount**, not a statistical confidence interval.
 
-| Day offset | Decay factor | Rationale |
-|---|---|---|
-| 0 (today)   | 1.00          | Solcast nowcast is calibrated hourly |
-| 1 (tomorrow) | 0.90         | Day-ahead PV forecasts degrade ~10 % |
-| 2 (day after)| 0.80         | 48-hour PV forecasts degrade ~20 % |
+| Day offset    | Decay factor | Rationale                            |
+| ------------- | ------------ | ------------------------------------ |
+| 0 (today)     | 1.00         | Solcast nowcast is calibrated hourly |
+| 1 (tomorrow)  | 0.90         | Day-ahead PV forecasts degrade ~10 % |
+| 2 (day after) | 0.80         | 48-hour PV forecasts degrade ~20 %   |
 
 The decayed PV value is used in the slot's `estimated_net_consumption` calculation:
 
@@ -73,12 +73,12 @@ A separate `ForecastTracker` system (`utils/forecast_tracker.py`) stores per-slo
 
 Once a slot is finalised, these aggregates are computed across all finalised records:
 
-| Metric | Formula | Interpretation |
-|---|---|---|
-| MAE (Mean Absolute Error) | `(1/n) × Σ \|forecast − actual\|` | Average absolute deviation (kWh) |
-| Bias (signed error) | `(1/n) × Σ (forecast − actual)` | Systematic over/under forecast (kWh) |
-| RMSE (Root Mean Squared Error) | `√((1/n) × Σ (forecast − actual)²)` | Large-error penalised (kWh) |
-| MAPE (Mean Absolute % Error) | `(1/n) × Σ (\|forecast − actual\| / \|actual\|) × 100` | Relative error (%, None if all actual=0) |
+| Metric                         | Formula                                                | Interpretation                           |
+| ------------------------------ | ------------------------------------------------------ | ---------------------------------------- |
+| MAE (Mean Absolute Error)      | `(1/n) × Σ \|forecast − actual\|`                      | Average absolute deviation (kWh)         |
+| Bias (signed error)            | `(1/n) × Σ (forecast − actual)`                        | Systematic over/under forecast (kWh)     |
+| RMSE (Root Mean Squared Error) | `√((1/n) × Σ (forecast − actual)²)`                    | Large-error penalised (kWh)              |
+| MAPE (Mean Absolute % Error)   | `(1/n) × Σ (\|forecast − actual\| / \|actual\|) × 100` | Relative error (%, None if all actual=0) |
 
 ### Why diagnostic-only (non-adaptive)
 
@@ -126,6 +126,7 @@ We deliberately chose **not** to feed accuracy metrics back into the planner for
 Assign a probability distribution to every forecast and integrate over the uncertainty during optimisation.
 
 **Rejected because:**
+
 - Massive complexity increase: the MILP would need to handle stochastic programming or scenario trees.
 - The additional computational cost (multiple scenario evaluations × MILP iterations) is not justified by the marginal benefit.
 - Hard to explain and debug — a "80 % confidence PV" number is less transparent than a "0.90 multiplier."
@@ -135,6 +136,7 @@ Assign a probability distribution to every forecast and integrate over the uncer
 Feed the tracker's MAE/bias back into the planner, e.g., subtract bias from PV forecasts, or weigh Day+2 PV by `(1 − trailing_mape)`.
 
 **Rejected because:**
+
 - Feedback loops (see Stability risk above).
 - Non-stationary errors — a moving window tuned for one season fails in another.
 - User transparency — "why is Day+2 PV suddenly worth only 50 %?" is hard to answer.
@@ -145,6 +147,7 @@ Feed the tracker's MAE/bias back into the planner, e.g., subtract bias from PV f
 Run the planner multiple times with different PV scenarios (e.g., p10/p50/p90 from Solcast) and select the plan with the best expected outcome across scenarios.
 
 **Rejected because:**
+
 - Solcast does not expose probabilistic forecast bands via its HA integration — only point estimates.
 - Multiple scenario runs would multiply planner compute time (currently < 100 ms per run) by the scenario count, potentially exceeding HA's coordinator timeout.
 - The marginal benefit over the existing candidate set + PV decay is unproven.

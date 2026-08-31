@@ -25,7 +25,7 @@ Every planner change must satisfy ALL of these invariants:
 - [ ] **Forced discharge/export** — changes SoC and cost/revenue correctly
 - [ ] **Grid charge prices** — actual grid import, not stored energy
 - [ ] **Float comparisons** — use epsilon guard (`abs(x) > 1e-9`) in production, `pytest.approx()` in tests
-- [ ] **MILP variable vector** — 8*n base, growing to 8n + 2n·E + E with EV co-optimisation
+- [ ] **MILP variable vector** — 8\*n base, growing to 8n + 2n·E + E with EV co-optimisation
 - [ ] **Cycle cost formula** — uses mandatory 2x denominator
 
 ## Step 3: Update the Spec If Semantics Change
@@ -35,6 +35,7 @@ If a change intentionally alters planner semantics (formulas, invariants, safety
 ## Step 4: Add or Update Tests
 
 Add tests covering the affected invariants. Every planner change must have regression test coverage for:
+
 - Energy balance
 - SoC bounds
 - Cost function correctness
@@ -57,6 +58,7 @@ When creating log statements, never use runtime string formatting — use `%` pl
 ## Step 7: Check File Size
 
 Hard limit: 30 KB per file in `planner/` and `utils/`. Check before PR:
+
 ```bash
 wc -c custom_components/hsem/planner/*.py
 ```

@@ -43,16 +43,16 @@ flowchart TD
 
 For each slot `t ∈ 0…n-1` the LP variable vector `x` contains eight decision variables:
 
-| Offset | Variable | Name | Description | Bounds |
-|---|---|---|---|---|
-| `0` | `ec[t]` | `ec_off` | Energy charged and stored in battery this slot (kWh) | `[0, max_charge_per_slot]` |
-| `n` | `ed[t]` | `ed_off` | Energy discharged from battery this slot (kWh) | `[0, max_discharge_per_slot]` |
-| `2n` | `gi[t]` | `gi_off` | Grid import this slot (kWh) | `[0, ∞)` |
-| `3n` | `ge[t]` | `ge_off` | Grid export this slot (kWh) | `[0, ∞)` — hard-capped to `max_grid_export_power_kw × slot_hours` when the export cap is configured (issue #726) |
-| `4n` | `pv[t]` | `pv_off` | PV surplus available in slot t (kWh) | `[pv_avail[t], pv_avail[t]]` (fixed) |
-| `5n` | `m[t]` | `m_off` | Auxiliary variable ≥ max(ec[t], ed[t]) for cycle cost (kWh) | `[0, ∞)` |
-| `6n` | `s_max_pen[t]` | `s_max_off` | SoC upper penalty — kWh by which state of charge exceeds `usable_kwh` | `[0, ∞)` |
-| `7n` | `s_min_pen[t]` | `s_min_off` | SoC lower penalty — kWh by which state of charge drops below 0 | `[0, ∞)` |
+| Offset | Variable       | Name        | Description                                                           | Bounds                                                                                                           |
+| ------ | -------------- | ----------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `0`    | `ec[t]`        | `ec_off`    | Energy charged and stored in battery this slot (kWh)                  | `[0, max_charge_per_slot]`                                                                                       |
+| `n`    | `ed[t]`        | `ed_off`    | Energy discharged from battery this slot (kWh)                        | `[0, max_discharge_per_slot]`                                                                                    |
+| `2n`   | `gi[t]`        | `gi_off`    | Grid import this slot (kWh)                                           | `[0, ∞)`                                                                                                         |
+| `3n`   | `ge[t]`        | `ge_off`    | Grid export this slot (kWh)                                           | `[0, ∞)` — hard-capped to `max_grid_export_power_kw × slot_hours` when the export cap is configured (issue #726) |
+| `4n`   | `pv[t]`        | `pv_off`    | PV surplus available in slot t (kWh)                                  | `[pv_avail[t], pv_avail[t]]` (fixed)                                                                             |
+| `5n`   | `m[t]`         | `m_off`     | Auxiliary variable ≥ max(ec[t], ed[t]) for cycle cost (kWh)           | `[0, ∞)`                                                                                                         |
+| `6n`   | `s_max_pen[t]` | `s_max_off` | SoC upper penalty — kWh by which state of charge exceeds `usable_kwh` | `[0, ∞)`                                                                                                         |
+| `7n`   | `s_min_pen[t]` | `s_min_off` | SoC lower penalty — kWh by which state of charge drops below 0        | `[0, ∞)`                                                                                                         |
 
 The state of charge `soc[t]` is **not an explicit variable** — it is derived from the forward recurrence:
 
@@ -72,19 +72,21 @@ $$
 
 where `E` is the number of active EVs.
 
-| Offset | Variable | Name | Description | Bounds |
-|---|---|---|---|---|
-| `8n + i·n` | `evN_c[t]` | EV N DC-side charge per slot (kWh) | `[0, evN.max_charge_per_slot]` |
-| `8n + E·n + i` | `evN_pen` | EV N deadline target slack (kWh shortfall) | `[0, ∞)` |
+| Offset         | Variable   | Name                                       | Description                    | Bounds |
+| -------------- | ---------- | ------------------------------------------ | ------------------------------ | ------ |
+| `8n + i·n`     | `evN_c[t]` | EV N DC-side charge per slot (kWh)         | `[0, evN.max_charge_per_slot]` |
+| `8n + E·n + i` | `evN_pen`  | EV N deadline target slack (kWh shortfall) | `[0, ∞)`                       |
 
 The EV charger AC load entering the energy balance equation is `evN_c[t] / charger_efficiency`.
 
 When an EV's `charge_past_target` flag is `True` (EV already at user-configured target SoC, `allow_charge_past_target_soc` enabled, SoC < 100 %):
+
 - The deadline constraint is **suppressed** (`deadline_slot = None`) — no grid import pressure
 - The **surplus-only constraint** is added (see Constraints below)
 - An **avoided-future-import-cost benefit** (`future_value_per_kwh`, issue #630) is added to the objective, falling back to a tiny fixed tiebreaker when no future price data is available (see Objective function below)
 
 When an EV has a deadline and `charge_past_target=False` (normal mode):
+
 - **Pre-deadline slots** (`t \u2264 D`, issue #797): no direct per-kWh benefit on `ev_c[t]`; the deadline slack penalty alone already prices meeting the target far above any real import price, so charging competes only against its own real grid/PV opportunity cost. A tiny tiebreak cost (`_EV_TARGET_ENERGY_TIEBREAK_COST = 1e-7`/kWh) nudges the LP toward the smallest executable energy that clears the target-cap constraint.
 - **Post-deadline slots** (`t > D`): hard constraint `ev_c[t] = 0` — charging is forbidden
 
@@ -103,8 +105,8 @@ $$
 
 so the solved allocation is always directly executable — `_write_results.py`
 publishes it verbatim, with no post-solve concentration/quantization pass.
-See `planner/milp/_ev_amp_lattice.py` and the *Discharge permission and
-whole-amp lattice* section of `docs/planner-spec.md` for the full
+See `planner/milp/_ev_amp_lattice.py` and the _Discharge permission and
+whole-amp lattice_ section of `docs/planner-spec.md` for the full
 constraint model, including the conditional `ev_{i}_on` binary that caps
 primary battery discharge while a permission-restricted EV charges.
 
@@ -116,8 +118,8 @@ $$
 \text{total variables} = 8n + n \cdot E + E + n
 $$
 
-| Offset | Variable | Name | Description | Bounds |
-|---|---|---|---|---|
+| Offset        | Variable    | Name         | Description                                                   | Bounds   |
+| ------------- | ----------- | ------------ | ------------------------------------------------------------- | -------- |
 | after EV vars | `gi_pen[t]` | `gi_pen_off` | Grid import fuse penalty — kWh exceeding the main fuse rating | `[0, ∞)` |
 
 The max grid import per slot is converted from amps to kWh/slot:
@@ -126,7 +128,7 @@ $$
 \mathrm{max\_grid\_import} = \frac{\mathrm{amps} \times 230 \times \mathrm{phases}}{1000} \times \frac{\mathrm{interval\_minutes}}{60}
 $$
 
-where ``phases`` is the electrical phase count (1 or 3, default 3).
+where `phases` is the electrical phase count (1 or 3, default 3).
 This assumes balanced load at 230 V phase-to-neutral per phase.
 
 The penalty uses the same high coefficient as SoC penalties (`max(p_imp) × 100`), ensuring the solver only exceeds the fuse limit when physically unavoidable (e.g. house base load alone exceeds the rating). When `main_fuse_amps` is `None` or 0, no variables or constraints are added — behaviour is unchanged.
@@ -164,12 +166,12 @@ $$
 
 Where:
 
-| Symbol | Description |
-|---|---|
-| $\delta_t$ | Time discount per slot: $\delta_t = r^{\Delta t}$ where $\Delta t$ is hours from now |
-| $p_{\mathrm{imp}}[t]$ | Grid import price (currency/kWh), sanitised to `max(p_imp_raw[t], 0)` (issue #655). |
-| $p_{\mathrm{exp}}[t]$ | Grid export price (currency/kWh). Before solving, `p_exp` is sanitised by clamping to `min(p_exp, p_imp)` to prevent an unbounded LP when `p_exp > p_imp` in any slot (issue #635).  The legacy `min_export_price` clamp has been removed because the applier no longer physically blocks grid export below this price (issue #767). |
-| $\alpha$ | Battery cycle cost per kWh: $\alpha = \frac{P \cdot L_{pct}/100}{2 \cdot N \cdot C_u}$ |
+| Symbol                | Description                                                                                                                                                                                                                                                                                                                         |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| $\delta_t$            | Time discount per slot: $\delta_t = r^{\Delta t}$ where $\Delta t$ is hours from now                                                                                                                                                                                                                                                |
+| $p_{\mathrm{imp}}[t]$ | Grid import price (currency/kWh), sanitised to `max(p_imp_raw[t], 0)` (issue #655).                                                                                                                                                                                                                                                 |
+| $p_{\mathrm{exp}}[t]$ | Grid export price (currency/kWh). Before solving, `p_exp` is sanitised by clamping to `min(p_exp, p_imp)` to prevent an unbounded LP when `p_exp > p_imp` in any slot (issue #635). The legacy `min_export_price` clamp has been removed because the applier no longer physically blocks grid export below this price (issue #767). |
+| $\alpha$              | Battery cycle cost per kWh: $\alpha = \frac{P \cdot L_{pct}/100}{2 \cdot N \cdot C_u}$                                                                                                                                                                                                                                              |
 
 | $\gamma$ | Terminal-SoC replacement price (currency/kWh), from the engine |
 | $p_{\mathrm{soc}}$ | SoC penalty cost: $\max(p_{\mathrm{imp}}) \times 100$ |
@@ -240,6 +242,7 @@ $$
 $$
 -m[t] + ec[t] \leq 0
 $$
+
 $$
 -m[t] + ed[t] \leq 0
 $$
@@ -291,7 +294,7 @@ $$
 ge[t] \leq \mathrm{max\_grid\_export\_power\_kw} \times \mathrm{slot\_hours}
 $$
 
-This is a **hard bound** on the `ge[t]` variable — unlike the fuse it needs no penalty variable because the cap is physically enforced by the inverter/DNO, so exceeding it is never required for feasibility.  Battery export and PV export compete for the same cap through the energy-balance equality, so the LP naturally front-loads battery export into low-PV slots and tapers it as PV ramps; PV that cannot be exported at the cap is handled by the free `curt[t]` variable.  When `max_grid_export_power_kw` is `None` or 0, `ge[t]` remains unbounded above (identical to previous behaviour).
+This is a **hard bound** on the `ge[t]` variable — unlike the fuse it needs no penalty variable because the cap is physically enforced by the inverter/DNO, so exceeding it is never required for feasibility. Battery export and PV export compete for the same cap through the energy-balance equality, so the LP naturally front-loads battery export into low-PV slots and tapers it as PV ramps; PV that cannot be exported at the cap is handled by the free `curt[t]` variable. When `max_grid_export_power_kw` is `None` or 0, `ge[t]` remains unbounded above (identical to previous behaviour).
 
 Where $D_v$ is the deadline slot index for EV v.
 
@@ -322,13 +325,13 @@ default 0 = disabled) adds one row per slot, active whenever
 SoC[t] >= forecast_reserve_kwh - usable_kwh * (1 - z_export[t])
 ```
 
-Unlike the checkpoint reserve, this row is indexed by the *same* slot `t`, so
+Unlike the checkpoint reserve, this row is indexed by the _same_ slot `t`, so
 it binds the SoC immediately after the exporting slot itself — a later PV or
 grid refill can never justify spending it first. `forecast_reserve_kwh` is
 computed from the configured percentage above the effective (dynamic-floor
 aware) discharge floor, so it never double-counts SoC already protected by
-the dynamic floor. See `docs/planner-spec.md` § *Battery export forecast
-reserve* for the full derivation.
+the dynamic floor. See `docs/planner-spec.md` § _Battery export forecast
+reserve_ for the full derivation.
 
 **Battery export minimum price floor (issue #752):**
 
@@ -342,7 +345,7 @@ This is the **per-slot, soft-switch companion to the global `no_export` cap**. W
 
 Scope: the floor applies only to intentional battery-to-grid export (`ForceBatteriesDischarge`). It does not affect normal battery self-consumption, battery discharge for house load, direct PV export (`ge` is not capped — only `ed` is), or PV charging of the battery.
 
-Evaluation on the **raw** `p_exp` is essential: the user's `battery_export_min_price` floor must be honoured even when the `recommended_threshold` (auto-calculated cycle wear) or the `export_min_price` battery-export floor are lower.  Selecting the larger of the three floors would force every user to overwrite their own threshold when they want a stricter guard, defeating the purpose of the dedicated setting.
+Evaluation on the **raw** `p_exp` is essential: the user's `battery_export_min_price` floor must be honoured even when the `recommended_threshold` (auto-calculated cycle wear) or the `export_min_price` battery-export floor are lower. Selecting the larger of the three floors would force every user to overwrite their own threshold when they want a stricter guard, defeating the purpose of the dedicated setting.
 
 The non-MILP `apply_excess_export` path enforces the same floor by requiring `export_price >= max(export_min_price, recommended_threshold, battery_export_min_price)` for any slot it would otherwise label `ForceBatteriesDischarge`.
 
@@ -357,12 +360,12 @@ Before the LP is built, two sanitisation steps are applied to `p_exp` to prevent
 ### 1. Battery export floor (replaces min-export-price clamp)
 
 Slots where `p_exp < max(min_export_price, battery_export_min_price)` do
-not have their export price clamped to 0.  Instead, the battery discharge
+not have their export price clamped to 0. Instead, the battery discharge
 variable `ed[t]` is capped to `base_load[t] / η_dis` so the battery can
-serve house load but cannot intentionally export to the grid.  This keeps
+serve house load but cannot intentionally export to the grid. This keeps
 surplus PV export possible (the applier no longer throttles the grid
 feed-in limit for non-negative prices, issue #767) while still preventing
-battery-to-grid discharge below the configured floor.  Negative export
+battery-to-grid discharge below the configured floor. Negative export
 prices are handled by the applier, which writes a physical watt limit to
 block all grid export when exporting costs money.
 
@@ -441,41 +444,42 @@ flowchart TD
 The MILP now writes **all** per-slot energy flow fields directly from the LP solution,
 making them the source of truth:
 
-| Field | LP variable | Description |
-|---|---|---|
-| `batteries_discharged_kwh` | `ed[t]` | Energy discharged from battery (kWh) |
-| `grid_import_kwh` | `gi[t]` | Grid import (kWh) |
-| `grid_export_kwh` | `ge[t]` | Grid export (kWh) |
+| Field                      | LP variable | Description                          |
+| -------------------------- | ----------- | ------------------------------------ |
+| `batteries_discharged_kwh` | `ed[t]`     | Energy discharged from battery (kWh) |
+| `grid_import_kwh`          | `gi[t]`     | Grid import (kWh)                    |
+| `grid_export_kwh`          | `ge[t]`     | Grid export (kWh)                    |
 
-These are populated for **every** future slot (zero for idle slots).  The
+These are populated for **every** future slot (zero for idle slots). The
 SoC simulation (:func:`~soc_simulation.simulate_soc`) must be called with
-``milp_prepopulated=True`` for MILP-sourced candidates so it preserves
+`milp_prepopulated=True` for MILP-sourced candidates so it preserves
 these values verbatim instead of re-deriving a different (greedy)
 allocation from the recommendation label and net demand.
 
 ### EV charging fields written to slots
 
-| Field | Source |
-|---|---|
-| `ev_planned_load_kwh` | AC load added when `base_load_includes_ev` is `False` |
-| `ev_accounted_load_kwh` | AC load when already captured in house consumption |
-| `ev_total_planned_load_kwh` | Total AC load (sum of planned + accounted) |
-| `ev_charger_calculated_power` | Target AC power (W) for primary EV |
-| `ev_second_charger_calculated_power` | Target AC power (W) for second EV |
+| Field                                | Source                                                |
+| ------------------------------------ | ----------------------------------------------------- |
+| `ev_planned_load_kwh`                | AC load added when `base_load_includes_ev` is `False` |
+| `ev_accounted_load_kwh`              | AC load when already captured in house consumption    |
+| `ev_total_planned_load_kwh`          | Total AC load (sum of planned + accounted)            |
+| `ev_charger_calculated_power`        | Target AC power (W) for primary EV                    |
+| `ev_second_charger_calculated_power` | Target AC power (W) for second EV                     |
 
 ### Engine-level post-processing (after winner selection)
 
 After the MILP (or baseline) winner is selected, the engine runs a final pass over all slots to ensure consistency:
 
-1. **Power recomputation**: `ev_charger_calculated_power` is recomputed from the actual per-slot EV AC load (`ev_planned_load_kwh + ev_accounted_load_kwh`).  For the current (partially elapsed) slot the remaining time is used as the divisor.  This ensures the power field always matches the load, even when the baseline candidate wins (bypassing the MILP's own power calculation).
+1. **Power recomputation**: `ev_charger_calculated_power` is recomputed from the actual per-slot EV AC load (`ev_planned_load_kwh + ev_accounted_load_kwh`). For the current (partially elapsed) slot the remaining time is used as the divisor. This ensures the power field always matches the load, even when the baseline candidate wins (bypassing the MILP's own power calculation).
 
-2. **Minimum power floor**: If the computed AC power is below `charger_min_power_w` (default 1380 W = 230 V × 6 A), the charger physically cannot start.  The slot's EV fields are zeroed out:
+2. **Minimum power floor**: If the computed AC power is below `charger_min_power_w` (default 1380 W = 230 V × 6 A), the charger physically cannot start. The slot's EV fields are zeroed out:
+
    - `ev_charger_calculated_power = 0`
    - `ev_planned_load_kwh = 0`, `ev_accounted_load_kwh = 0`, `ev_total_planned_load_kwh = 0`
    - `recommendation` cleared if it was `ev_smart_charging`
    - `estimated_net_consumption_kwh` and `estimated_cost_currency` recomputed without EV load
 
-3. **EV plan rebuild**: When the MILP wins, the `EVChargingPlan` objects (used by the `ev_optimal_charging_plan` sensor) are rebuilt from the winning slots via `rebuild_ev_plan_from_slots()`.  This ensures the sensor displays the MILP's actual decisions, not the EV planner's pre-MILP estimate.
+3. **EV plan rebuild**: When the MILP wins, the `EVChargingPlan` objects (used by the `ev_optimal_charging_plan` sensor) are rebuilt from the winning slots via `rebuild_ev_plan_from_slots()`. This ensures the sensor displays the MILP's actual decisions, not the EV planner's pre-MILP estimate.
 
 ---
 
@@ -492,11 +496,11 @@ After the MILP (or baseline) winner is selected, the engine runs a final pass ov
 
 ## Solver configuration
 
-| Parameter | Value | Rationale |
-|---|---|---|
-| Method | `highs` | scipy's HiGHS is the only supported LP method |
-| Timeout | 2.0 s | Covers 192-slot (768+ variable) problems where preprocessing reaches 200-400 ms |
-| `pv[t]` bounds | `(pv_avail[t], pv_avail[t])` | Fixed — PV surplus is not chosen by the LP |
+| Parameter      | Value                        | Rationale                                                                       |
+| -------------- | ---------------------------- | ------------------------------------------------------------------------------- |
+| Method         | `highs`                      | scipy's HiGHS is the only supported LP method                                   |
+| Timeout        | 2.0 s                        | Covers 192-slot (768+ variable) problems where preprocessing reaches 200-400 ms |
+| `pv[t]` bounds | `(pv_avail[t], pv_avail[t])` | Fixed — PV surplus is not chosen by the LP                                      |
 
 ---
 
